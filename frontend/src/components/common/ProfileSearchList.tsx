@@ -175,9 +175,23 @@ export function ProfileSearchList({
     if (seedRef.current) setQuery(seedRef.current);
   }, []);
 
-  // Keep the highlighted row visible for both keyboard walking and the initial
-  // "reopened on a profile that sits far down the list" case.
+  // Keep the highlighted row visible for keyboard walking and for the initial "reopened on a
+  // profile that sits far down the list" case — but NEVER when the pointer is what moved the
+  // highlight. Hover sets the highlight too (see onMouseEnter below), and scrolling then is
+  // both pointless and hostile: the row is already under the cursor, so there is nothing to
+  // reveal, and moving the content out from under a stationary pointer reads as the list
+  // scrolling by itself. Worse, it feeds itself — the scroll slides a NEW row under the
+  // cursor, which fires another mouseenter, which scrolls again, so merely resting near the
+  // bottom edge walks the list down.
+  // The ref records WHO last moved the highlight and is never consumed by the effect. A
+  // "consume once and re-arm" flag looks equivalent and is subtly broken: hovering the row
+  // that is ALREADY highlighted sets the same name, React bails out of the re-render, the
+  // effect never runs — and the flag stays down, so the next arrow key silently fails to
+  // scroll. Here every non-pointer path (arrows, typing, mount) raises it before changing
+  // state, so it always describes the real cause.
+  const scrollOnHighlightRef = useRef(true);
   useEffect(() => {
+    if (!scrollOnHighlightRef.current) return;
     const row = listRef.current?.querySelector<HTMLElement>(`[data-idx="${highlight}"]`);
     row?.scrollIntoView({ block: 'nearest' });
   }, [highlight]);
@@ -188,6 +202,7 @@ export function ProfileSearchList({
       e.stopPropagation();
       if (filtered.length === 0) return;
       const next = (highlight + (e.key === 'ArrowDown' ? 1 : -1) + filtered.length) % filtered.length;
+      scrollOnHighlightRef.current = true;   // keyboard walking must reveal the new row
       setHighlightName(filtered[next]);   // wraps, like the native select did
       return;
     }
@@ -223,14 +238,16 @@ export function ProfileSearchList({
           aria-activedescendant={filtered.length > 0 ? rowId(highlight) : undefined}
           placeholder={placeholder ?? tt('Search profiles...', 'Pesquisar profiles...')}
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          // Typing re-filters, which moves the highlight to the top match — revealing it is
+          // right, so raise the flag the same way the arrow keys do.
+          onChange={(e) => { scrollOnHighlightRef.current = true; setQuery(e.target.value); }}
           onKeyDown={handleKeyDown}
           className="bg-transparent text-xs text-text-primary placeholder:text-text-disabled outline-none flex-1 min-w-0"
         />
         {query && (
           <button
             type="button"
-            onClick={() => { setQuery(''); inputRef.current?.focus(); }}
+            onClick={() => { scrollOnHighlightRef.current = true; setQuery(''); inputRef.current?.focus(); }}
             aria-label={tt('Clear search', 'Limpar pesquisa')}
             className="text-text-disabled hover:text-text-secondary transition-colors shrink-0"
           >
@@ -278,8 +295,12 @@ export function ProfileSearchList({
                 // confirming the PREVIOUS value instead of the focused one.
                 tabIndex={-1}
                 // Highlight follows the pointer too, so a click never picks a different
-                // row than the one Enter would have.
-                onMouseEnter={() => setHighlightName(name)}
+                // row than the one Enter would have. Flagged as a POINTER move so the
+                // scroll-into-view effect stands down — see the note on it.
+                onMouseEnter={() => {
+                  scrollOnHighlightRef.current = false;
+                  setHighlightName(name);
+                }}
                 onClick={() => onChange(name)}
                 className={`w-full flex items-center gap-2 px-2.5 py-1.5 text-left transition-colors ${
                   isSelected
