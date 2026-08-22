@@ -681,13 +681,18 @@ export function Toolbar(_props: ToolbarProps) {
                 <div className="px-3 py-1 label-micro text-text-tertiary">
                   Wait for condition — stop quietly on timeout
                 </div>
+                {/* "Until X", not "X": these insert the SAME Assert row the Assert ▾ menu
+                    does, differing only in two invisible defaults (10 s budget + quiet
+                    stop). Identical labels in two menus read as an accident and give the
+                    user no way to tell afterwards which door they came through — the verb
+                    is what makes this one say "wait", matching the header above. */}
                 {([
-                  { ct: 'WindowOpen', Icon: AppWindow, label: 'Window Open' },
-                  { ct: 'ProcessRunning', Icon: Cpu, label: 'Process Running' },
-                  { ct: 'ClipboardMatch', Icon: Clipboard, label: 'Clipboard' },
-                  { ct: 'Variable', Icon: Braces, label: 'Variable' },
-                  { ct: 'FileExists', Icon: FileCheck, label: 'File Exists' },
-                  { ct: 'TimeWindow', Icon: Clock, label: 'Time' },
+                  { ct: 'WindowOpen', Icon: AppWindow, label: 'Until Window Open' },
+                  { ct: 'ProcessRunning', Icon: Cpu, label: 'Until Process Running' },
+                  { ct: 'ClipboardMatch', Icon: Clipboard, label: 'Until Clipboard' },
+                  { ct: 'Variable', Icon: Braces, label: 'Until Variable' },
+                  { ct: 'FileExists', Icon: FileCheck, label: 'Until File Exists' },
+                  { ct: 'TimeWindow', Icon: Clock, label: 'Until Time' },
                 ] as const).map(({ ct, Icon, label }) => (
                   <button
                     key={`waitcond-${ct}`}
