@@ -4,6 +4,7 @@ import { ArrowLeft, RefreshCw, Crosshair, Copy, ClipboardPaste, ShieldCheck, Shi
 import { ActionIcon } from './ActionTable';
 import { useBridge } from '../bridge/BridgeContext';
 import { useAppState } from '../state/AppStateContext';
+import { carriesConditionProbe, hasConditionFields } from '../utils/conditionalBlocks';
 import { useTt } from '../state/LanguageContext';
 import type { SelectorAlternative, BrowserTestResult } from '../bridge/messageTypes';
 import { Checkbox } from './Checkbox';
@@ -70,7 +71,7 @@ const familyTypes: Record<ActionFamily, { value: string; label: string }[]> = {
 
 // NOTE this is the SHEET's copy; displayUtils has its own for the grid's Details column. Both
 // must list a coordinate-less action or it grows phantom X/Y fields in one surface only.
-const noCoordTypes = new Set(['Assert', 'KeyDown', 'KeyUp', 'Keystroke', 'HoldKey', 'RunProfile', 'ScrollUp', 'ScrollDown', 'SendText', 'SetVariable', 'CopyToSlot', 'ActivateWindow', 'WaitImage', 'WaitPixelColor', 'BrowserClick', 'BrowserRightClick', 'BrowserType', 'BrowserWaitElement', 'BrowserNavigate', 'BrowserSelectOption', 'BrowserAssert', 'Pause', 'If', 'Else', 'EndIf', 'Stop', 'Return', 'While', 'EndLoop', 'BreakLoop', 'ContinueLoop', 'ForEachRow']);
+const noCoordTypes = new Set(['Assert', 'KeyDown', 'KeyUp', 'Keystroke', 'HoldKey', 'RunProfile', 'ScrollUp', 'ScrollDown', 'SendText', 'SetVariable', 'CopyToSlot', 'ActivateWindow', 'WaitImage', 'WaitPixelColor', 'BrowserClick', 'BrowserRightClick', 'BrowserType', 'BrowserWaitElement', 'BrowserNavigate', 'BrowserSelectOption', 'BrowserAssert', 'Pause', 'If', 'ElseIf', 'Else', 'EndIf', 'Stop', 'Return', 'While', 'EndLoop', 'BreakLoop', 'ContinueLoop', 'ForEachRow']);
 
 // One normalizer for the Assert on-fail persistence pair: the default Halt stays ''
 // (null on disk), Continue/StopReplay persist verbatim — mirrors the bridge's
@@ -131,7 +132,7 @@ function isBrowserSelectorAction(actionType: string, conditionType?: string | nu
     // If AND While: the loop guard renders the same selector editor (isIfBrowser), so it
     // must persist selectorAlternatives / split text-modes the same way — one gate short
     // and a picked alternatives list silently vanishes on save.
-    || ((actionType === 'If' || actionType === 'While') && conditionType === 'BrowserElementState');
+    || (carriesConditionProbe(actionType) && conditionType === 'BrowserElementState');
 }
 
 function parseTextSelector(value: string): { mode: TextMode | null; raw: string } {
@@ -808,11 +809,10 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     // (after this useCallback). TypeScript flags forward references as
     // TS2448 / TS2454 in strict mode, even though the closure would read
     // them correctly at runtime. Cost is one bool eval per save click.
-    const _isIf = actionType === 'If';
     // Desktop Assert stores the SAME condition payload, so every condition field below must
-    // persist for it too. Gating these on _isIf alone would render a full Assert editor whose
+    // persist for it too. Gating these on 'If' alone would render a full Assert editor whose
     // window/clipboard/variable fields silently never save.
-    const _hasCondition = _isIf || actionType === 'Assert' || actionType === 'While';
+    const _hasCondition = hasConditionFields(actionType);
     const _isIfImage = _hasCondition && action.conditionType === 'ImageFound';
     const _isIfPixel = _hasCondition && action.conditionType === 'PixelColorMatch';
 
@@ -1000,7 +1000,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       // must not write it either — otherwise a hand-edited Assert would have the field
       // silently reset on save. The While guard DOES honor the knob (Halt rethrows out of
       // the loop; TreatAsFalse reads false and exits it), so it persists like the If.
-      if (_isIf || actionType === 'While') {
+      if (carriesConditionProbe(actionType)) {
         const persistedErr = ifOnProbeError === 'Halt' ? 'Halt' : '';
         const currentErr = action.ifOnProbeError === 'Halt' ? 'Halt' : '';
         if (persistedErr !== currentErr) {
@@ -1312,11 +1312,10 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   // Powers the dirty-aware Esc guard (a reflexive Esc arms a warning instead of discarding).
   const hasUnsavedChanges = useMemo<boolean>(() => {
     if (actionIndex == null || !action) return false;
-    const _isIf = actionType === 'If';
     // Desktop Assert stores the SAME condition payload, so every condition field below must
-    // persist for it too. Gating these on _isIf alone would render a full Assert editor whose
+    // persist for it too. Gating these on 'If' alone would render a full Assert editor whose
     // window/clipboard/variable fields silently never save.
-    const _hasCondition = _isIf || actionType === 'Assert' || actionType === 'While';
+    const _hasCondition = hasConditionFields(actionType);
     const _isIfImage = _hasCondition && action.conditionType === 'ImageFound';
     const _isIfPixel = _hasCondition && action.conditionType === 'PixelColorMatch';
 
@@ -1409,7 +1408,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       if (ctVal !== (action.conditionTimeout ?? 0)) return true;
       // Mirrors the If/While gate in handleSave — an Assert never writes ifOnProbeError, so
       // it must not report a difference in it as unsaved work either.
-      if (_isIf || actionType === 'While') {
+      if (carriesConditionProbe(actionType)) {
         const persistedErr = ifOnProbeError === 'Halt' ? 'Halt' : '';
         const currentErr = action.ifOnProbeError === 'Halt' ? 'Halt' : '';
         if (persistedErr !== currentErr) return true;
@@ -2071,6 +2070,9 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   // (WaitImage's image picker vs WaitPixelColor's pixel + colour fields) renders.
   // Else/EndIf are pure structural markers — their editor is a Notes-only stub.
   const isIf = actionType === 'If';
+  // ElseIf is NOT a marker stub: it carries a full condition, so it flows through every
+  // hasCondition/carriesConditionProbe gate below exactly like If and While.
+  const isElseIf = actionType === 'ElseIf';
   const isElse = actionType === 'Else';
   const isEndIf = actionType === 'EndIf';
   // Desktop Assert reuses the If condition editor wholesale — same ConditionType family, same
@@ -2083,18 +2085,18 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   // one flag. LOCKSTEP RULE: this line and the two _hasCondition twins in the save /
   // dirty-mirror callbacks must always name the same three types.
   const isWhile = actionType === 'While';
-  const hasCondition = isIf || isAssert || isWhile;
+  const hasCondition = hasConditionFields(actionType);
   const isIfImage = hasCondition && action?.conditionType === 'ImageFound';
   const isIfPixel = hasCondition && action?.conditionType === 'PixelColorMatch';
   const isIfWindow = hasCondition && action?.conditionType === 'WindowOpen';
   const isIfClipboard = hasCondition && action?.conditionType === 'ClipboardMatch';
-  const isIfBrowser = (isIf || isWhile) && action?.conditionType === 'BrowserElementState';
+  const isIfBrowser = carriesConditionProbe(actionType) && action?.conditionType === 'BrowserElementState';
   const isIfRandom = hasCondition && action?.conditionType === 'Random';
   const isIfVariable = hasCondition && action?.conditionType === 'Variable';
   const isIfProcess = hasCondition && action?.conditionType === 'ProcessRunning';
   const isIfFile = hasCondition && action?.conditionType === 'FileExists';
   const isIfTime = hasCondition && action?.conditionType === 'TimeWindow';
-  const isConditional = isIf || isElse || isEndIf;
+  const isConditional = isIf || isElseIf || isElse || isEndIf;
   const isBrowserType = actionType === 'BrowserType';
   const isBrowserNavigate = actionType === 'BrowserNavigate';
   const isBrowserWait = actionType === 'BrowserWaitElement';
@@ -2141,7 +2143,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   // for tooltips). Replaces the inline 17-branch ternary that used to live in the header.
   // "If" vs "Assert" for the condition-family headings below — the flags they key off are
   // shared by both row types now.
-  const condPrefix = isAssert ? 'Assert' : isWhile ? 'While' : 'If';
+  const condPrefix = isAssert ? 'Assert' : isWhile ? 'While' : isElseIf ? 'Else If' : 'If';
   const actionLabel = isWaitImage ? 'Wait Image'
     : isSetVariable ? 'Set Variable'
     : isCopyToSlot ? 'Copy to Slot'
@@ -2162,6 +2164,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     : isIfTime ? `${condPrefix} Time`
     : isAssert ? 'Assert'
     : isIf ? 'If'
+    : isElseIf ? 'Else If'
     : isWhile ? 'While'
     : isElse ? 'Else'
     : isEndIf ? 'End If'
@@ -2194,7 +2197,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     actionType === 'SendText' ? 'var(--color-action-sendtext-fg)'
     : actionType === 'Pause' ? 'var(--color-action-pause-fg)'
     : (actionType === 'Keystroke' || actionType === 'KeyDown' || actionType === 'KeyUp' || actionType === 'HoldKey') ? 'var(--color-action-key-fg)'
-    : (isIf || isElse || isEndIf) ? 'var(--color-action-if-fg)'
+    : (isIf || isElseIf || isElse || isEndIf) ? 'var(--color-action-if-fg)'
     : (actionType === 'Stop' || actionType === 'Return') ? 'var(--color-action-flow-fg, var(--color-action-pause-fg))'
     : (isWhile || actionType === 'EndLoop' || actionType === 'BreakLoop'
         || actionType === 'ContinueLoop' || actionType === 'ForEachRow')
@@ -2410,7 +2413,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 instead routes a broken probe through the same failure path as a false one.
                 On a While, TreatAsFalse reads false and EXITS the loop (fail-safe), Halt
                 stops the run — both honored, so the knob renders. */}
-            {(isIf || isWhile) && (
+            {carriesConditionProbe(actionType) && (
             <Field
               label="On Probe Error"
               hint={tt('What to do if the check itself errors.', 'O que fazer se a própria checagem der erro.')}
@@ -3041,7 +3044,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
 
             {/* WAIT UNTIL — WaitImage only. IF rows route "wait for absence" via the
                 CONDITION section's Found / NOT Found toggle. */}
-            {!isIf && !isWhile && (
+            {!carriesConditionProbe(actionType) && (
             <Field label="Wait Until">
               <SegmentedControl<'appears' | 'disappears'>
                 ariaLabel="Wait until"
@@ -3060,7 +3063,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 shape to the Pixel editor's matching block. Edited in milliseconds
                 (min 1000 — the backend clamps non-Pause timeouts to ≥1s anyway), step
                 1000 so the +/- spinner moves a second at a time. */}
-            {!isIf && !isWhile && (
+            {!carriesConditionProbe(actionType) && (
             <div className="flex gap-2.5">
               <Field label="Timeout" className="w-[124px] shrink-0">
                 <NumberInput
@@ -3095,7 +3098,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 meaning). Suppressed on IF rows (the user routes click via a regular
                 LeftClick in the TRUE branch) and when waiting for disappearance (no
                 found-location to click on). */}
-            {!isIf && !isWhile && !waitImageInvert && (
+            {!carriesConditionProbe(actionType) && !waitImageInvert && (
               <Checkbox
                 checked={waitImageClickOnMatch}
                 onChange={setWaitImageClickOnMatch}
@@ -3235,7 +3238,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
             {/* WAIT UNTIL — WaitPixelColor only. Same shape (own row, dropdown) and
                 same label as the WaitImage editor above. IF rows express the same
                 concept via the CONDITION section's Found / NOT Found toggle. */}
-            {!isIf && !isWhile && (
+            {!carriesConditionProbe(actionType) && (
             <Field label="Wait Until">
               <SegmentedControl<'matches' | 'stopsMatching'>
                 ariaLabel="Wait until"
@@ -3253,7 +3256,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
             {/* TIMEOUT + ON TIMEOUT — WaitPixelColor only. Side-by-side row identical
                 in shape to the WaitImage editor above. Edited in milliseconds (min 1000,
                 step 1000) — same unit as every other action duration. */}
-            {!isIf && !isWhile && (
+            {!carriesConditionProbe(actionType) && (
             <div className="flex gap-2.5">
               <Field label="Timeout" className="w-[124px] shrink-0">
                 <NumberInput
@@ -3286,7 +3289,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
 
             {/* After Match — bare Checkbox (no Field wrapper). IF rows route click via
                 a regular LeftClick in the TRUE branch. */}
-            {!isIf && !isWhile && !pixelInvert && (
+            {!carriesConditionProbe(actionType) && !pixelInvert && (
               <Checkbox
                 checked={pixelClickOnMatch}
                 onChange={setPixelClickOnMatch}

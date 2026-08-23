@@ -973,6 +973,15 @@ export type OutgoingMessage =
   // right EndIf, so the call works in nested blocks without the caller having to track
   // depth. PushUndoState is fired so the user can Ctrl+Z the Else they just added.
   | { type: 'actions:addElseBranch'; payload: { ifRowIndex: number } }
+  // Conditional logic — appends ONE ElseIf arm to the branch chain of the IF at ifRowIndex.
+  // The caller does NOT choose the position: the backend forward-scans (FindBranchChainAnchor)
+  // and lands the row before the terminal Else, or before the EndIf when the block has none,
+  // because an arm placed after the unconditional Else is unreachable and would be stripped by
+  // the load-time validator. conditionType is the probe family, the same ten insertConditional
+  // accepts; 'ImageFound' / 'PixelColorMatch' run their capture overlay first and a cancel
+  // inserts zero rows. Unlike insertConditional this adds ONE row — the block already owns its
+  // EndIf. PushUndoState is fired so the arm is a single Ctrl+Z away.
+  | { type: 'actions:addElseIfBranch'; payload: { ifRowIndex: number; conditionType: 'ImageFound' | 'PixelColorMatch' | 'WindowOpen' | 'ClipboardMatch' | 'BrowserElementState' | 'Random' | 'Variable' | 'ProcessRunning' | 'FileExists' | 'TimeWindow' } }
   // Conditional logic — capture-first insert. conditionType selects which probe family
   // the new IF uses: 'ImageFound' runs the same screen overlay region-pick as WaitImage
   // and the captured image becomes the IF's reference; 'PixelColorMatch' runs the same

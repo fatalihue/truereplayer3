@@ -1,4 +1,5 @@
 import type { ActionItem } from '../bridge/messageTypes';
+import { carriesConditionProbe } from './conditionalBlocks';
 
 const DISPLAY_KEY_MAP: Record<string, string> = {
   '162': 'Ctrl', '163': 'Ctrl',
@@ -17,7 +18,7 @@ const DISPLAY_KEY_MAP: Record<string, string> = {
   'Next': 'Page Down', 'Prior': 'Page Up',
 };
 
-const NO_COORD_TYPES = new Set(['Assert', 'KeyDown', 'KeyUp', 'Keystroke', 'HoldKey', 'ScrollUp', 'ScrollDown', 'SendText', 'SetVariable', 'CopyToSlot', 'ActivateWindow', 'WaitImage', 'WaitPixelColor', 'BrowserClick', 'BrowserRightClick', 'BrowserType', 'BrowserWaitElement', 'BrowserNavigate', 'BrowserSelectOption', 'BrowserAssert', 'RunProfile', 'Pause', 'If', 'Else', 'EndIf', 'Stop', 'Return', 'While', 'EndLoop', 'BreakLoop', 'ContinueLoop', 'ForEachRow']);
+const NO_COORD_TYPES = new Set(['Assert', 'KeyDown', 'KeyUp', 'Keystroke', 'HoldKey', 'ScrollUp', 'ScrollDown', 'SendText', 'SetVariable', 'CopyToSlot', 'ActivateWindow', 'WaitImage', 'WaitPixelColor', 'BrowserClick', 'BrowserRightClick', 'BrowserType', 'BrowserWaitElement', 'BrowserNavigate', 'BrowserSelectOption', 'BrowserAssert', 'RunProfile', 'Pause', 'If', 'ElseIf', 'Else', 'EndIf', 'Stop', 'Return', 'While', 'EndLoop', 'BreakLoop', 'ContinueLoop', 'ForEachRow']);
 
 export function getDisplayKey(key: string): string {
   if (!key) return '';
@@ -59,7 +60,7 @@ export function formatMs(ms: number, language: 'en' | 'pt-BR'): string {
 // in pixelX/pixelY and show it in the Details column.
 function showsPixelCoords(item: ActionItem): boolean {
   return item.actionType === 'WaitPixelColor'
-    || ((item.actionType === 'If' || item.actionType === 'While') && item.conditionType === 'PixelColorMatch');
+    || (carriesConditionProbe(item.actionType) && item.conditionType === 'PixelColorMatch');
 }
 
 export function getDisplayX(item: ActionItem): string {
@@ -91,8 +92,8 @@ const ACTION_COLOR_CACHE: Map<string, { bg: string; fg: string }> = new Map();
 
 function computeActionTypeColors(actionType: string): { bg: string; fg: string } {
   // Check conditional types first — they share a single token regardless of which
-  // marker (If / Else / EndIf) so the whole block reads as one cohesive surface.
-  if (actionType === 'If' || actionType === 'Else' || actionType === 'EndIf')
+  // marker (If / ElseIf / Else / EndIf) so the whole block reads as one cohesive surface.
+  if (actionType === 'If' || actionType === 'ElseIf' || actionType === 'Else' || actionType === 'EndIf')
     return { bg: 'var(--color-action-if-bg)', fg: 'var(--color-action-if-fg)' };
   // Loop family: dedicated tokens with the If fallback — zero work across the 37 themes
   // now, and any theme can opt into a distinct loop tint later (the ActivateWindow mold).

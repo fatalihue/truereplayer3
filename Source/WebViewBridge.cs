@@ -281,7 +281,7 @@ namespace TrueReplayer
                 // DiagnosticLog.Warn, no alert, and the grid silently snapping back. The set is a
                 // MIRROR of the executor's dispatch, so it is wrong whenever it is a subset —
                 // a new case in ActionExecution has to be added here in the same commit.
-                "If", "Else", "EndIf", "Assert",
+                "If", "ElseIf", "Else", "EndIf", "Assert",
                 // Flow leaves (2.24.0+): Stop ends the run as success, Return ends the current
                 // pass. Cases in ActionExecution's switch — the mirror rule above applies.
                 "Stop", "Return",
@@ -293,11 +293,13 @@ namespace TrueReplayer
             };
 
         // A row whose CONDITION owns image/pixel probe data — If since 2.3.0, While since the
-        // loop family shipped. Every image-lifecycle site (thumbnail, paste, recapture, crop,
-        // duplicate, profile-copy, coordinate conversion) must ask THIS, never "If" — or a
-        // While-guarded image silently loses its lifecycle.
-        private static bool IsConditionOpenerRow(ActionItem a) =>
+        // loop family shipped, ElseIf since the branch chain. Every image-lifecycle site
+        // (thumbnail, paste, recapture, crop, duplicate, profile-copy, coordinate conversion)
+        // must ask THIS, never "If" — or a While- or ElseIf-guarded image silently loses its
+        // lifecycle. Twin of ActionItem.CarriesConditionProbe; the two move together.
+        private static bool CarriesConditionProbeRow(ActionItem a) =>
             string.Equals(a.ActionType, "If", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(a.ActionType, "ElseIf", StringComparison.OrdinalIgnoreCase)
             || string.Equals(a.ActionType, "While", StringComparison.OrdinalIgnoreCase);
 
         private void EndSelectInteraction()
@@ -764,6 +766,7 @@ namespace TrueReplayer
                     case "actions:convertMode": HandleConvertActionMode(payload); break;
                     case "actions:insertAction": HandleInsertAction(payload); break;
                     case "actions:addElseBranch": HandleActionsAddElseBranch(payload); break;
+                    case "actions:addElseIfBranch": HandleActionsAddElseIfBranch(payload); break;
                     case "actions:insertConditional": HandleActionsInsertConditional(payload); break;
                     case "actions:insertLoop": HandleActionsInsertLoop(payload); break;
                     case "actions:deleteLoop": HandleActionsDeleteLoop(payload); break;
@@ -1025,7 +1028,7 @@ namespace TrueReplayer
                 // "empty" right after a capture even though the row's ImagePath is set.
                 imageBase64 = !string.IsNullOrEmpty(a.ImagePath) && (
                         a.ActionType == "WaitImage"
-                        || (IsConditionOpenerRow(a) && string.Equals(a.ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase)))
+                        || (CarriesConditionProbeRow(a) && string.Equals(a.ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase)))
                     ? GetImageBase64Cached(profileName, a.ImagePath)
                     : "",
                 // WaitImage extras (forwarded so the editor restores their state)
@@ -3283,7 +3286,7 @@ namespace TrueReplayer
                     // profile so deleting the source doesn't break the paste.
                     bool refsImage = !string.IsNullOrEmpty(clone.ImagePath) && (
                                         clone.ActionType == "WaitImage"
-                                        || (IsConditionOpenerRow(clone) && string.Equals(clone.ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase)));
+                                        || (CarriesConditionProbeRow(clone) && string.Equals(clone.ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase)));
                     if (refsImage)
                     {
                         var newPath = ImageStorageService.CloneReferenceImage(srcProfile, clone.ImagePath!, dstProfile);
@@ -4498,6 +4501,79 @@ namespace TrueReplayer
             mainController.UpdateButtonStates();
         }
 
+        // ── Conditional logic: Add Else If arm ────────────────────────────────
+        // Appends one ELSEIF row to the END of the IF's branch chain — immediately before the
+        // terminal ELSE when the block already has one, otherwise immediately before the ENDIF.
+        // That position is what keeps the chain legal: every arm must precede the unconditional
+        // ELSE, because nothing after it is reachable. The load-time validator strips an ELSEIF
+        // that lands late and BuildBlockMap ignores it, so an out-of-order insert would look
+        // like the row silently vanishing — hence the anchor is computed here, not by the UI.
+        // Image / Pixel arms route through the SAME capture-first overlay the IF uses, so a
+        // cancelled capture inserts zero rows. Unlike the IF insert, only ONE row is added:
+        // the block already owns its ENDIF.
+        private void HandleActionsAddElseIfBranch(JsonElement payload)
+        {
+            if (!payload.TryGetProperty("ifRowIndex", out var idxEl) || idxEl.ValueKind != JsonValueKind.Number) return;
+            int ifIdx = idxEl.GetInt32();
+            if (ifIdx < 0 || ifIdx >= actions.Count) return;
+            // The chain always hangs off the IF itself, never off an arm — the frontend sends
+            // blockInfo's opener index, and the backend re-validates so a stale UI is harmless.
+            if (!string.Equals(actions[ifIdx].ActionType, "If", StringComparison.OrdinalIgnoreCase)) return;
+            string conditionType = payload.TryGetProperty("conditionType", out var ct) && ct.ValueKind == JsonValueKind.String
+                ? ct.GetString() ?? ""
+                : "";
+
+            int anchor = FindBranchChainAnchor(ifIdx);
+            if (anchor < 0) return;   // malformed block (no ENDIF) — insert nothing, never guess
+
+            // Same family dispatch as HandleActionsInsertConditional, so the two entry points
+            // can never drift on which conditions exist. An unknown family falls through and
+            // inserts nothing, exactly like the IF insert.
+            if (string.Equals(conditionType, "ImageFound", StringComparison.OrdinalIgnoreCase))
+                _ = HandleInsertConditionalImageAsync(anchor, "ElseIf");
+            else if (string.Equals(conditionType, "PixelColorMatch", StringComparison.OrdinalIgnoreCase))
+                _ = HandleInsertConditionalPixelAsync(anchor, "ElseIf");
+            else if (string.Equals(conditionType, "WindowOpen", StringComparison.OrdinalIgnoreCase)
+                  || string.Equals(conditionType, "ClipboardMatch", StringComparison.OrdinalIgnoreCase)
+                  || string.Equals(conditionType, "BrowserElementState", StringComparison.OrdinalIgnoreCase)
+                  || string.Equals(conditionType, "Random", StringComparison.OrdinalIgnoreCase)
+                  || string.Equals(conditionType, "Variable", StringComparison.OrdinalIgnoreCase)
+                  || string.Equals(conditionType, "ProcessRunning", StringComparison.OrdinalIgnoreCase)
+                  || string.Equals(conditionType, "FileExists", StringComparison.OrdinalIgnoreCase)
+                  || string.Equals(conditionType, "TimeWindow", StringComparison.OrdinalIgnoreCase))
+                InsertBlockDirect(anchor, "ElseIf", conditionType);
+        }
+
+        // The row a new arm must be inserted BEFORE: the terminal ELSE of the block opened at
+        // ifIdx, or its ENDIF when the block has no ELSE. Forward scan with a nested-IF depth
+        // counter — the same shape as HandleActionsAddElseBranch and HandleActionsDeleteConditional
+        // — so an inner block's markers can never be mistaken for this one's. ELSEIF rows are
+        // deliberately transparent to the scan: like ELSE they neither open nor close a block,
+        // so they do not move the depth counter and an existing chain is simply walked past.
+        // Returns -1 when no matching ENDIF exists (malformed in-memory list).
+        private int FindBranchChainAnchor(int ifIdx)
+        {
+            int depth = 0;
+            for (int i = ifIdx + 1; i < actions.Count; i++)
+            {
+                var t = actions[i].ActionType;
+                if (string.Equals(t, "If", StringComparison.OrdinalIgnoreCase))
+                {
+                    depth++;
+                }
+                else if (string.Equals(t, "Else", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (depth == 0) return i;   // land before the terminal ELSE
+                }
+                else if (string.Equals(t, "EndIf", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (depth == 0) return i;   // no ELSE — land before the closer
+                    depth--;
+                }
+            }
+            return -1;
+        }
+
         // ── Conditional logic: Insert IF block ────────────────────────────────
         // Capture-first insert: the user's click in the toolbar picker routes here with
         // a conditionType, we run the SAME screen-overlay flow WaitImage / WaitPixelColor
@@ -4642,13 +4718,18 @@ namespace TrueReplayer
                 // but the seed stays here so a hand-fed payload still lands functional.
                 RandomPercent = string.Equals(conditionType, "Random", StringComparison.OrdinalIgnoreCase) ? 50 : 0,
             });
-            actions.Insert(insertIndex + 1, new ActionItem
+            // ElseIf is an ARM, not an opener: it joins a block that already owns its closer,
+            // so there is no pair to complete. If/While/ForEachRow do get theirs.
+            if (!string.Equals(openerType, "ElseIf", StringComparison.OrdinalIgnoreCase))
             {
-                ActionType = string.Equals(openerType, "If", StringComparison.OrdinalIgnoreCase) ? "EndIf" : "EndLoop",
-                Delay = 0,
-                Key = "",
-                Comment = "",
-            });
+                actions.Insert(insertIndex + 1, new ActionItem
+                {
+                    ActionType = string.Equals(openerType, "If", StringComparison.OrdinalIgnoreCase) ? "EndIf" : "EndLoop",
+                    Delay = 0,
+                    Key = "",
+                    Comment = "",
+                });
+            }
             for (int i = 0; i < actions.Count; i++)
                 actions[i].RowNumber = i + 1;
             HasUnsavedChanges = true;
@@ -4886,13 +4967,18 @@ namespace TrueReplayer
                         Key = "",
                         Comment = "",
                     });
-                    actions.Insert(at + 1, new ActionItem
+                    // ElseIf is an ARM, not an opener: it joins a block that already owns its
+                    // closer, so there is no pair to complete. If/While do get theirs.
+                    if (!string.Equals(openerType, "ElseIf", StringComparison.OrdinalIgnoreCase))
                     {
-                        ActionType = string.Equals(openerType, "If", StringComparison.OrdinalIgnoreCase) ? "EndIf" : "EndLoop",
-                        Delay = 0,
-                        Key = "",
-                        Comment = "",
-                    });
+                        actions.Insert(at + 1, new ActionItem
+                        {
+                            ActionType = string.Equals(openerType, "If", StringComparison.OrdinalIgnoreCase) ? "EndIf" : "EndLoop",
+                            Delay = 0,
+                            Key = "",
+                            Comment = "",
+                        });
+                    }
                     for (int i = 0; i < actions.Count; i++)
                         actions[i].RowNumber = i + 1;
                     HasUnsavedChanges = true;
@@ -5000,13 +5086,18 @@ namespace TrueReplayer
                         Key = "",
                         Comment = "",
                     });
-                    actions.Insert(at + 1, new ActionItem
+                    // ElseIf is an ARM, not an opener: it joins a block that already owns its
+                    // closer, so there is no pair to complete. If/While do get theirs.
+                    if (!string.Equals(openerType, "ElseIf", StringComparison.OrdinalIgnoreCase))
                     {
-                        ActionType = string.Equals(openerType, "If", StringComparison.OrdinalIgnoreCase) ? "EndIf" : "EndLoop",
-                        Delay = 0,
-                        Key = "",
-                        Comment = "",
-                    });
+                        actions.Insert(at + 1, new ActionItem
+                        {
+                            ActionType = string.Equals(openerType, "If", StringComparison.OrdinalIgnoreCase) ? "EndIf" : "EndLoop",
+                            Delay = 0,
+                            Key = "",
+                            Comment = "",
+                        });
+                    }
                     for (int i = 0; i < actions.Count; i++)
                         actions[i].RowNumber = i + 1;
                     HasUnsavedChanges = true;
@@ -5459,7 +5550,7 @@ namespace TrueReplayer
             // either; the older WaitImage-only check silently dropped the IF Image clicks.
             var a = actions[index];
             bool eligible = a.ActionType == "WaitImage"
-                || (IsConditionOpenerRow(a) && string.Equals(a.ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase));
+                || (CarriesConditionProbeRow(a) && string.Equals(a.ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase));
             if (!eligible) return;
             // Anchor on the ROW OBJECT, not on its index. The write-back lands after an overlay
             // the user can sit in for a minute, and `index < actions.Count` is a bounds check,
@@ -5688,7 +5779,7 @@ namespace TrueReplayer
             // this, the Sheet thumbnail's crop-on-click silently no-opped for IF Image.
             bool eligible = !string.IsNullOrEmpty(action.ImagePath) && (
                 action.ActionType == "WaitImage"
-                || (IsConditionOpenerRow(action) && string.Equals(action.ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase)));
+                || (CarriesConditionProbeRow(action) && string.Equals(action.ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase)));
             if (!eligible) return;
             if (w < 10 || h < 10) return;
 
@@ -6291,7 +6382,7 @@ namespace TrueReplayer
                     // IF Image and later deleting the original would orphan the duplicate.
                     bool refsImage = !string.IsNullOrEmpty(original.ImagePath) && (
                         original.ActionType == "WaitImage"
-                        || (IsConditionOpenerRow(original) && string.Equals(original.ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase)));
+                        || (CarriesConditionProbeRow(original) && string.Equals(original.ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase)));
                     if (refsImage)
                     {
                         clone.ImagePath = ImageStorageService.CloneReferenceImage(profileName, original.ImagePath!, profileName)
@@ -6871,7 +6962,7 @@ namespace TrueReplayer
                     {
                         if (string.IsNullOrEmpty(action.ImagePath)) continue;
                         bool refsImage = action.ActionType == "WaitImage"
-                            || (IsConditionOpenerRow(action) && string.Equals(action.ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase));
+                            || (CarriesConditionProbeRow(action) && string.Equals(action.ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase));
                         if (!refsImage) continue;
                         action.ImagePath = ImageStorageService.CloneReferenceImage(name, action.ImagePath!, copyName);
                         mutated = true;
@@ -7703,7 +7794,7 @@ namespace TrueReplayer
                 // are set. The X/Y fields are meaningless without W/H — leaving them at 0
                 // lets the action fall back to a full-screen scan (existing behaviour).
                 else if ((action.ActionType == "WaitImage"
-                          || (IsConditionOpenerRow(action) && string.Equals(action.ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase)))
+                          || (CarriesConditionProbeRow(action) && string.Equals(action.ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase)))
                     && action.WaitImageSearchW is int w && action.WaitImageSearchH is int h
                     && w > 0 && h > 0)
                 {
@@ -7714,7 +7805,7 @@ namespace TrueReplayer
                 // WaitPixelColor (and IF Pixel): PixelX/Y are nullable but required for the
                 // action to do anything — only convert when both are present.
                 else if ((action.ActionType == "WaitPixelColor"
-                          || (IsConditionOpenerRow(action) && string.Equals(action.ConditionType, "PixelColorMatch", StringComparison.OrdinalIgnoreCase)))
+                          || (CarriesConditionProbeRow(action) && string.Equals(action.ConditionType, "PixelColorMatch", StringComparison.OrdinalIgnoreCase)))
                     && action.PixelX.HasValue && action.PixelY.HasValue)
                 {
                     action.PixelX = action.PixelX.Value + sign * rect.Left;

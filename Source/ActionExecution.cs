@@ -2315,26 +2315,31 @@ namespace TrueReplayer.Services
         /// </summary>
         // ── Conditional logic: block map ─────────────────────────────────────
         // Single O(n) pass over the action list pre-computing:
-        //   elseOf[ifIndex]  = index of matching ELSE row (only when one exists)
-        //   endIfOf[ifIndex] = index of matching ENDIF row
-        //   endIfOf[elseIdx] = same ENDIF, so the engine can jump from inside a
-        //                       TRUE-branch body — when it hits the ELSE boundary —
-        //                       all the way to the closing ENDIF (skipping the FALSE body).
-        // Orphan ELSE / ENDIF (no open IF on the stack) are silently ignored at runtime;
-        // the load-time validator should have stripped them, but the engine stays
+        //   nextBranchOf[armIdx] = index of the NEXT branch marker in the same block —
+        //                       IF → ELSEIF → ELSEIF → … → ELSE. Absent on the last arm.
+        //                       With no ELSEIF rows this degenerates to the old
+        //                       elseOf[ifIndex] = index of the matching ELSE.
+        //   endIfOf[armIdx]  = index of the matching ENDIF, recorded for EVERY arm (the IF,
+        //                       each ELSEIF and the ELSE) so the engine can jump from inside
+        //                       a TAKEN branch's body — when it hits the next branch
+        //                       boundary — all the way to the closing ENDIF, skipping every
+        //                       remaining branch body.
+        // Orphan ELSEIF / ELSE / ENDIF (no open IF on the stack) are silently ignored at
+        // runtime; the load-time validator should have stripped them, but the engine stays
         // graceful if a hand-edited profile slipped through.
-        // The three block-opening kinds. If closes with EndIf (and may own an Else); While
-        // and ForEachRow share the one EndLoop closer.
+        // The three block-opening kinds. If closes with EndIf (and may own a chain of ElseIf
+        // arms plus one Else); While and ForEachRow share the one EndLoop closer. ElseIf does
+        // NOT open a block — it never pushes, exactly like Else.
         internal enum BlockKind { If, While, ForEachRow }
 
         // Pre-pass index maps for one action list. TYPED stack underneath: EndIf only ever
-        // closes an If, EndLoop only a loop opener, and Else only pairs with an If sitting on
-        // TOP — the kind checks are what keep an Else inside a While from leaking into the
-        // outer If (a latent bug the untyped int-stack would have had).
+        // closes an If, EndLoop only a loop opener, and Else/ElseIf only pair with an If
+        // sitting on TOP — the kind checks are what keep an Else inside a While from leaking
+        // into the outer If (a latent bug the untyped int-stack would have had).
         private sealed class BlockMap
         {
-            public readonly Dictionary<int, int> ElseOf = new();     // If idx → Else idx
-            public readonly Dictionary<int, int> EndIfOf = new();    // If/Else idx → EndIf idx
+            public readonly Dictionary<int, int> NextBranchOf = new(); // arm idx → next arm idx
+            public readonly Dictionary<int, int> EndIfOf = new();    // every arm idx → EndIf idx
             public readonly Dictionary<int, int> EndLoopOf = new();  // While/ForEachRow idx → EndLoop idx
             public readonly Dictionary<int, int> LoopStartOf = new();// EndLoop idx → its opener idx
             // BreakLoop/ContinueLoop idx → innermost enclosing loop (kind + opener idx).
@@ -2347,12 +2352,19 @@ namespace TrueReplayer.Services
         {
             var map = new BlockMap();
             var stack = new Stack<(BlockKind Kind, int Idx)>();
+            // Per OPEN If: the TAIL of its branch chain (the arm a new one links from) and
+            // whether a terminal Else has already claimed it. Side tables rather than fields on
+            // the stack frame so the frame stays the plain value tuple the loop families share.
+            // Keyed by the If's own index, so nested blocks can never collide.
+            var lastArmOf = new Dictionary<int, int>();
+            var elseClaimed = new HashSet<int>();
             for (int i = 0; i < actions.Count; i++)
             {
                 var t = actions[i].ActionType;
                 if (string.Equals(t, "If", StringComparison.OrdinalIgnoreCase))
                 {
                     stack.Push((BlockKind.If, i));
+                    lastArmOf[i] = i;          // the IF is its own chain head
                 }
                 else if (string.Equals(t, "While", StringComparison.OrdinalIgnoreCase))
                 {
@@ -2362,24 +2374,55 @@ namespace TrueReplayer.Services
                 {
                     stack.Push((BlockKind.ForEachRow, i));
                 }
+                else if (string.Equals(t, "ElseIf", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Links onto the chain of the If sitting on TOP, and only while no terminal
+                    // Else has claimed it yet — an ELSEIF *after* the ELSE is unreachable by
+                    // construction, so the validator strips it and the engine ignores it here.
+                    // Same agreement rule as the first-Else-wins case below.
+                    if (stack.Count > 0 && stack.Peek().Kind == BlockKind.If)
+                    {
+                        int ifIdx = stack.Peek().Idx;
+                        if (!elseClaimed.Contains(ifIdx) && lastArmOf.TryGetValue(ifIdx, out int tail))
+                        {
+                            map.NextBranchOf[tail] = i;
+                            lastArmOf[ifIdx] = i;
+                        }
+                    }
+                }
                 else if (string.Equals(t, "Else", StringComparison.OrdinalIgnoreCase))
                 {
                     // FIRST Else wins — the same first-wins rule the validator's hasElseFor
                     // applies, so on a hand-fed list with a duplicate Else the two agree on
                     // WHICH one is the orphan (last-wins here made the engine no-op the
                     // first Else while the validator would have removed the second).
-                    if (stack.Count > 0 && stack.Peek().Kind == BlockKind.If
-                        && !map.ElseOf.ContainsKey(stack.Peek().Idx))
-                        map.ElseOf[stack.Peek().Idx] = i;
+                    // The Else CLOSES the chain: nothing may link after it.
+                    if (stack.Count > 0 && stack.Peek().Kind == BlockKind.If)
+                    {
+                        int ifIdx = stack.Peek().Idx;
+                        if (elseClaimed.Add(ifIdx) && lastArmOf.TryGetValue(ifIdx, out int tail))
+                        {
+                            map.NextBranchOf[tail] = i;
+                            lastArmOf[ifIdx] = i;
+                        }
+                    }
                 }
                 else if (string.Equals(t, "EndIf", StringComparison.OrdinalIgnoreCase))
                 {
                     if (stack.Count > 0 && stack.Peek().Kind == BlockKind.If)
                     {
                         int ifIdx = stack.Pop().Idx;
-                        map.EndIfOf[ifIdx] = i;
-                        if (map.ElseOf.TryGetValue(ifIdx, out int elseIdx))
-                            map.EndIfOf[elseIdx] = i;
+                        // EVERY arm maps to this ENDIF, so a body walking off the end of ANY
+                        // taken branch lands past the whole block. The walk terminates because
+                        // NextBranchOf only ever points FORWARD (it is written as we scan).
+                        for (int b = ifIdx; ; )
+                        {
+                            map.EndIfOf[b] = i;
+                            if (!map.NextBranchOf.TryGetValue(b, out int nxt)) break;
+                            b = nxt;
+                        }
+                        lastArmOf.Remove(ifIdx);
+                        elseClaimed.Remove(ifIdx);
                     }
                     // else: orphan/crossed EndIf — no entry, the engine no-ops it (the
                     // load-time validator removes these; this is the belt for hand-fed lists).
@@ -2749,8 +2792,8 @@ namespace TrueReplayer.Services
                             Detail = _runStepsFull ? null : DescribeIfDetail(action, null),
                             Status = "skipped",
                         });
-                        // Block-level skip: jump past the whole IF/ELSE/ENDIF range so the
-                        // body rows of BOTH branches are elided. Mirrors the visual
+                        // Block-level skip: jump past the whole IF/ELSEIF/ELSE/ENDIF range so the
+                        // body rows of EVERY branch are elided. Mirrors the visual
                         // "whole block is greyed out" the frontend renders for an IF row
                         // whose IsSkipped is true. Orphan IF (no matching EndIf in the map
                         // because the load-time validator failed somehow) → bail out to
@@ -2763,96 +2806,171 @@ namespace TrueReplayer.Services
                             i = actions.Count;
                         continue;
                     }
-                    // The IF carries an optional delay applied BEFORE the probe — a "wait for the
-                    // condition to settle" knob. Some conditions (an image/pixel that only appears
-                    // after a page or animation loads) aren't ready the instant the loop reaches the
-                    // IF, so an immediate probe reads FALSE and the block is wrongly skipped. The
-                    // delay lets the screen catch up first. (ELSE/ENDIF are pure jumps — no delay.)
-                    // Honours the same jitter setting as a regular action's delay.
-                    int ifDelay = Math.Max(0, action.Delay);
-                    if (_useDelayVariation && _delayVariationPercent > 0 && ifDelay > 0)
+
+                    // ── The BRANCH CHAIN — IF → ELSEIF → ELSEIF → … → ELSE.
+                    // Walked HERE, from the opener, rather than by jumping to each marker row and
+                    // letting it probe itself. An ELSEIF row is reachable two ways that are
+                    // POSITIONALLY IDENTICAL: falling in from a FALSE sibling (it must probe) and
+                    // walking out of the TRUE body above it (it must jump to ENDIF). Driving the
+                    // chain from the opener leaves the ELSEIF *row* with the single ELSE meaning,
+                    // so there is no per-run "which arm is pending" state that could go stale
+                    // across a While back-edge, a ForEachRow reentry, or a cancelled jump.
+                    // With zero ELSEIF rows this walks exactly one arm and is behaviourally
+                    // identical to the pre-chain engine.
+                    int branchArm = i;
+                    bool branchTaken = false;
+                    bool branchAbort = false;   // cancellation → stop the whole replay
+                    bool branchAbsorb = false;  // probe error absorbed as a skipped data row
+                    while (true)
                     {
-                        int variation = ifDelay * _delayVariationPercent / 100;
-                        ifDelay += Random.Shared.Next(-variation, variation + 1);
-                        ifDelay = Math.Max(0, ifDelay);
-                    }
-                    if (ifDelay > 0)
-                    {
-                        try { await Task.Delay(ifDelay, token); }
-                        catch (OperationCanceledException) { break; }
-                    }
-                    // Highlight while the probe runs — user feedback "we're checking the condition".
-                    dispatcherQueue.TryEnqueue(() => OnActionExecuting?.Invoke(action));
-                    // Filed BEFORE the probe, like every other step, so a report pulled while a
-                    // timed IF is still polling shows the row it is stuck on instead of omitting
-                    // it. Status starts "running" and the outcome is written below; a cancel
-                    // during the probe leaves it running, which is exactly what happened.
-                    var ifRec = new RunStepRecord
-                    {
-                        Row = i + 1,
-                        Profile = CurrentExecutingProfileName,
-                        ActionType = "If",
-                        Detail = _runStepsFull ? null : DescribeIfDetail(action, null),
-                    };
-                    var ifWatch = System.Diagnostics.Stopwatch.StartNew();
-                    RecordRunStep(ifRec);
-                    bool branchTrue;
-                    try { branchTrue = await EvaluateConditionWithTimeout(action, token); }
-                    catch (OperationCanceledException) { ifRec.Status = "skipped"; ifWatch.Stop(); ifRec.DurationMs = ifWatch.ElapsedMilliseconds; break; }
-                    catch (Exception ex)
-                    {
-                        // Reachable: a probe error under IfOnProbeError == "Halt" rethrows out of
-                        // InstantProbeAsync (the TreatAsFalse policy swallows it instead). Without
-                        // this the row would stay "running" and read as in-flight when it actually
-                        // killed the run — the same lie the in-flight default was fixed to stop
-                        // telling. Rethrown untouched so the halt still halts — EXCEPT inside an
-                        // inline ForEachRow whose table policy is skip: there a thrown error is a
-                        // ROW error (the sub-over-data catch treats it the same), softened to a
-                        // fault so the loop-top absorb reenters on the next data row.
-                        ifRec.Status = "failed";
-                        ifRec.ErrorMessage = ex.Message;
-                        ifWatch.Stop();
-                        ifRec.DurationMs = ifWatch.ElapsedMilliseconds;
-                        if (feActive.Count > 0
-                            && string.Equals(_dataTable?.OnRowError, "skip", StringComparison.OrdinalIgnoreCase))
+                        var armRow = actions[branchArm];
+                        // A greyed-out ELSEIF elides only ITS OWN arm — the chain moves on as if
+                        // the probe had read false. (A greyed-out IF elides the entire block and
+                        // never reaches here; that is the IsSkipped branch above.)
+                        if (branchArm != i && armRow.IsSkipped)
                         {
-                            FaultRow(ex.Message);
-                            continue;
+                            RecordRunStep(new RunStepRecord
+                            {
+                                Row = branchArm + 1,
+                                Profile = CurrentExecutingProfileName,
+                                ActionType = "ElseIf",
+                                Detail = _runStepsFull ? null : DescribeIfDetail(armRow, null),
+                                Status = "skipped",
+                            });
                         }
-                        throw;
-                    }
-                    ifWatch.Stop();
-                    ifRec.DurationMs = ifWatch.ElapsedMilliseconds;
-                    ifRec.Status = "ok";      // the PROBE ran; a false condition is an answer, not a failure
-                    if (!_runStepsFull) ifRec.Detail = DescribeIfDetail(action, branchTrue);
-                    // A timed IF polls for up to ConditionTimeout ms — wall time that is the
-                    // feature, not schedule debt. Same wait-class resync as the one after the
-                    // action switch, for the same settle-delay reason. (If rows never reach
-                    // that switch — they `continue` out of the loop body right below.)
-                    if (action.ConditionTimeout > 0)
-                        nextTickMs = sw.ElapsedMilliseconds;
-                    if (!branchTrue)
-                    {
-                        // FALSE — jump to ELSE if one exists, otherwise to ENDIF. The loop's
-                        // i++ lands us on the row AFTER the structural marker (start of the
-                        // ELSE body, or the row right after the block if there's no ELSE).
-                        if (map.ElseOf.TryGetValue(i, out int elseIdx))
-                            i = elseIdx;
                         else
-                            i = map.EndIfOf.GetValueOrDefault(i, i);
+                        {
+                            // The arm carries an optional delay applied BEFORE the probe — a "wait for
+                            // the condition to settle" knob. Some conditions (an image/pixel that only
+                            // appears after a page or animation loads) aren't ready the instant the loop
+                            // reaches the row, so an immediate probe reads FALSE and the branch is
+                            // wrongly skipped. The delay lets the screen catch up first. (ELSE/ENDIF are
+                            // pure jumps and carry no delay; ELSEIF runs a probe, so it keeps the knob.)
+                            // Honours the same jitter setting as a regular action's delay.
+                            int ifDelay = Math.Max(0, armRow.Delay);
+                            if (_useDelayVariation && _delayVariationPercent > 0 && ifDelay > 0)
+                            {
+                                int variation = ifDelay * _delayVariationPercent / 100;
+                                ifDelay += Random.Shared.Next(-variation, variation + 1);
+                                ifDelay = Math.Max(0, ifDelay);
+                            }
+                            if (ifDelay > 0)
+                            {
+                                try { await Task.Delay(ifDelay, token); }
+                                catch (OperationCanceledException) { branchAbort = true; break; }
+                            }
+                            // Highlight while the probe runs — user feedback "we're checking the condition".
+                            dispatcherQueue.TryEnqueue(() => OnActionExecuting?.Invoke(armRow));
+                            // Filed BEFORE the probe, like every other step, so a report pulled while a
+                            // timed arm is still polling shows the row it is stuck on instead of omitting
+                            // it. Status starts "running" and the outcome is written below; a cancel
+                            // during the probe leaves it running, which is exactly what happened.
+                            var ifRec = new RunStepRecord
+                            {
+                                Row = branchArm + 1,
+                                Profile = CurrentExecutingProfileName,
+                                ActionType = branchArm == i ? "If" : "ElseIf",
+                                Detail = _runStepsFull ? null : DescribeIfDetail(armRow, null),
+                            };
+                            var ifWatch = System.Diagnostics.Stopwatch.StartNew();
+                            RecordRunStep(ifRec);
+                            bool branchTrue;
+                            try { branchTrue = await EvaluateConditionWithTimeout(armRow, token); }
+                            catch (OperationCanceledException) { ifRec.Status = "skipped"; ifWatch.Stop(); ifRec.DurationMs = ifWatch.ElapsedMilliseconds; branchAbort = true; break; }
+                            catch (Exception ex)
+                            {
+                                // Reachable: a probe error under IfOnProbeError == "Halt" rethrows out of
+                                // InstantProbeAsync (the TreatAsFalse policy swallows it instead). Without
+                                // this the row would stay "running" and read as in-flight when it actually
+                                // killed the run — the same lie the in-flight default was fixed to stop
+                                // telling. Rethrown untouched so the halt still halts — EXCEPT inside an
+                                // inline ForEachRow whose table policy is skip: there a thrown error is a
+                                // ROW error (the sub-over-data catch treats it the same), softened to a
+                                // fault so the loop-top absorb reenters on the next data row.
+                                ifRec.Status = "failed";
+                                ifRec.ErrorMessage = ex.Message;
+                                ifWatch.Stop();
+                                ifRec.DurationMs = ifWatch.ElapsedMilliseconds;
+                                if (feActive.Count > 0
+                                    && string.Equals(_dataTable?.OnRowError, "skip", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    FaultRow(ex.Message);
+                                    branchAbsorb = true;
+                                    break;
+                                }
+                                throw;
+                            }
+                            ifWatch.Stop();
+                            ifRec.DurationMs = ifWatch.ElapsedMilliseconds;
+                            ifRec.Status = "ok";      // the PROBE ran; a false condition is an answer, not a failure
+                            if (!_runStepsFull) ifRec.Detail = DescribeIfDetail(armRow, branchTrue);
+                            // A timed arm polls for up to ConditionTimeout ms — wall time that is the
+                            // feature, not schedule debt. Same wait-class resync as the one after the
+                            // action switch, for the same settle-delay reason. (Branch rows never reach
+                            // that switch — they `continue` out of the loop body right below.)
+                            if (armRow.ConditionTimeout > 0)
+                                nextTickMs = sw.ElapsedMilliseconds;
+                            if (branchTrue)
+                            {
+                                branchTaken = true;
+                                break;
+                            }
+                            // A probe that FAULTED the data row (e.g. a missing rel-coords target under
+                            // OnRowError=="skip") returns false WITHOUT throwing. The chain is the only
+                            // place in the engine that runs several probes before passing back through
+                            // the loop-top absorb, so without this gate the remaining arms would each pay
+                            // their delay, file an "ok" step and RESOLVE THEIR TOKENS — burning a
+                            // {clipboard:next} cursor or popping an {input:...} prompt for a row that is
+                            // already being abandoned. Same "unwind NOW, do not keep probing a dead row"
+                            // rule EvaluateConditionWithTimeout applies one level down. Leaving
+                            // branchTaken false makes the post-loop jump past the block, which is exactly
+                            // what the pre-chain engine did before the loop top absorbed the row.
+                            if (_rowFaulted) break;
+                        }
+
+                        // FALSE (or an elided ELSEIF arm) — advance to the next branch marker.
+                        // No next marker at all → every arm failed and the block has no ELSE.
+                        if (!map.NextBranchOf.TryGetValue(branchArm, out int nextArm)) break;
+                        if (string.Equals(actions[nextArm].ActionType, "Else", StringComparison.OrdinalIgnoreCase))
+                        {
+                            // Terminal ELSE — the unconditional fallback. Land ON the marker so the
+                            // outer loop's i++ steps into the ELSE body.
+                            branchArm = nextArm;
+                            branchTaken = true;
+                            break;
+                        }
+                        branchArm = nextArm;   // another ELSEIF — probe it on the next turn
                     }
-                    // TRUE → fall through; loop advances to i+1 which is the first body row.
+                    if (branchAbort) break;
+                    if (branchAbsorb) continue;
+                    if (branchTaken)
+                    {
+                        // Land on the winning marker; the loop's i++ steps into its body. When the
+                        // IF itself won this is `i = i`, byte-identical to the old fall-through.
+                        i = branchArm;
+                    }
+                    else
+                    {
+                        // Every arm read false and there is no ELSE — jump past the block. Orphan
+                        // opener (no ENDIF in the map) falls back to i, the same self-landing the
+                        // pre-chain engine had; the load-time validator is what guarantees it
+                        // cannot actually happen.
+                        i = map.EndIfOf.GetValueOrDefault(branchArm, i);
+                    }
                     continue;
                 }
-                if (string.Equals(action.ActionType, "Else", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(action.ActionType, "Else", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(action.ActionType, "ElseIf", StringComparison.OrdinalIgnoreCase))
                 {
-                    // Encountered only when walking through the TRUE-branch body and the
-                    // loop reached the ELSE boundary. Skip the FALSE-branch body entirely
-                    // by jumping to the matching ENDIF. Orphan ELSE (no entry in the map
-                    // because the load-time validator failed to strip it) → treat as a
-                    // no-op so the rows after it run with whatever scope they were already
-                    // in. Falling through to the FALSE branch instead would execute the
-                    // wrong code path, which is worse than ignoring the orphan marker.
+                    // Encountered only when walking through a TAKEN branch's body and the loop
+                    // reached the next branch boundary. Skip every remaining branch body entirely
+                    // by jumping to the matching ENDIF. An ELSEIF reached this way must NOT probe:
+                    // a sibling above it already won, and the chain walk in the IF arm is the only
+                    // place an arm is ever evaluated. Orphan marker (no entry in the map because
+                    // the load-time validator failed to strip it) → treat as a no-op so the rows
+                    // after it run with whatever scope they were already in. Falling through to
+                    // the next branch instead would execute the wrong code path, which is worse
+                    // than ignoring the orphan marker.
                     if (map.EndIfOf.TryGetValue(i, out int endIdx))
                         i = endIdx;
                     continue;

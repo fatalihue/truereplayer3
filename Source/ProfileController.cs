@@ -383,9 +383,9 @@ namespace TrueReplayer.Controllers
                 if (string.IsNullOrEmpty(action.ImagePath)) continue;
                 // Same predicate as the paste / duplicate / import sites: a condition OPENER
                 // (If or While) with ConditionType "ImageFound" shares WaitImage's per-profile
-                // PNG storage — ActionItem.IsConditionOpener is the one source of that rule.
+                // PNG storage — ActionItem.CarriesConditionProbe is the one source of that rule.
                 bool refsImage = action.ActionType == "WaitImage"
-                    || (action.IsConditionOpener && string.Equals(action.ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase));
+                    || (action.CarriesConditionProbe && string.Equals(action.ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase));
                 if (!refsImage) continue;
 
                 if (!TryCarryOneImage(srcKey, dstKey, action.ImagePath!, out string? carriedName))
@@ -893,7 +893,7 @@ namespace TrueReplayer.Controllers
                 {
                     if (string.IsNullOrEmpty(a.ImagePath)) continue;
                     if (a.ActionType == "WaitImage"
-                        || (a.IsConditionOpener && string.Equals(a.ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase)))
+                        || (a.CarriesConditionProbe && string.Equals(a.ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase)))
                     {
                         refs.Add(a.ImagePath);
                     }
@@ -1681,7 +1681,7 @@ namespace TrueReplayer.Controllers
                 {
                     if (string.IsNullOrEmpty(action.ImagePath)) continue;
                     bool refsImage = action.ActionType == "WaitImage"
-                        || (action.IsConditionOpener && string.Equals(action.ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase));
+                        || (action.CarriesConditionProbe && string.Equals(action.ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase));
                     if (refsImage)
                     {
                         var base64 = ImageStorageService.ReadAsBase64(name, action.ImagePath);
@@ -2188,7 +2188,7 @@ namespace TrueReplayer.Controllers
                 {
                     if (string.IsNullOrEmpty(imgAction.ImagePath)) continue;
                     bool refsImage = imgAction.ActionType == "WaitImage"
-                        || (imgAction.IsConditionOpener && string.Equals(imgAction.ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase));
+                        || (imgAction.CarriesConditionProbe && string.Equals(imgAction.ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase));
                     // Count only genuinely-absent PNGs: not restored from this envelope AND not
                     // already present on disk (an Overwrite re-import may legitimately omit images
                     // the receiver already has — those rows still resolve at replay).

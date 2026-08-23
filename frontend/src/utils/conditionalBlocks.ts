@@ -4,7 +4,7 @@ import type { ActionItem } from '../bridge/messageTypes';
 // module so it has no React/component dependency. BreakLoop/ContinueLoop are deliberately
 // NOT here: they are ordinary single rows INSIDE a block — selecting one must not drag the
 // whole loop along, and deleting one is a granular edit.
-const STRUCTURAL = new Set(['If', 'Else', 'EndIf', 'While', 'ForEachRow', 'EndLoop']);
+const STRUCTURAL = new Set(['If', 'ElseIf', 'Else', 'EndIf', 'While', 'ForEachRow', 'EndLoop']);
 
 // Stack-built map of each opener row → its matching closer row, across BOTH families with a
 // TYPED stack: EndIf only closes an If, EndLoop only closes a While/ForEachRow — the kind
@@ -62,4 +62,23 @@ export function loopDepthAt(actions: ActionItem[], insertIndex: number): number 
     else if (t === 'EndLoop') depth = Math.max(0, depth - 1);
   }
   return depth;
+}
+
+// ── Condition-bearing rows ───────────────────────────────────────────────────
+// TS twin of ActionItem.CarriesConditionProbe (Source/ActionItem.cs). A row whose
+// CONDITION owns probe data — image/pixel/window/clipboard/variable/… — as opposed to a
+// pure structural marker. Extracted because the disjunction used to be written INLINE in a
+// dozen places across four files: adding a third keyword to a dozen loose `===` chains is
+// exactly how the C# side once shipped "the 8 image sites were really 12". Ask this, never
+// `=== 'If'`, or the new keyword silently loses its probe rendering / image lifecycle.
+export function carriesConditionProbe(actionType: string | null | undefined): boolean {
+  return actionType === 'If' || actionType === 'ElseIf' || actionType === 'While';
+}
+
+// The wider family: every row the Sheet renders a CONDITION EDITOR for. Assert joins the
+// probe openers here — it checks state the same way — but it is NOT a block row and never
+// gets the On-Probe-Error policy, which is why this is a separate predicate rather than one
+// widened set. Mirrors SheetPanel's `hasCondition`, whose three copies must stay in lockstep.
+export function hasConditionFields(actionType: string | null | undefined): boolean {
+  return carriesConditionProbe(actionType) || actionType === 'Assert';
 }

@@ -8,8 +8,10 @@ namespace TrueReplayer.Services
     /// <summary>
     /// Walks an action list at profile-load time, ensuring the structural blocks are
     /// balanced. Two families share one TYPED stack:
-    ///   • If / Else / EndIf — the conditional block (Else only pairs with an If on TOP
-    ///     of the stack, so an Else inside a While can never leak into the outer If);
+    ///   • If / ElseIf / Else / EndIf — the conditional block. Else and ElseIf only pair
+    ///     with an If on TOP of the stack, so a marker inside a While can never leak into
+    ///     the outer If. An If may own any number of ElseIf arms, at most one Else, and the
+    ///     Else must come LAST — nothing after an unconditional branch is reachable;
     ///   • While / ForEachRow / EndLoop — the loop blocks (one closer for both openers).
     ///
     /// ONE deterministic rule: a closer only closes its OWN kind. A mismatched or
@@ -53,11 +55,11 @@ namespace TrueReplayer.Services
                 return new BlockValidationResult(0, 0);
 
             // Pure jump markers carry no replay delay — normalise any stray value to 0 so a
-            // hand-edited profile can't leave a meaningless delay on them. The opening If and
-            // While are deliberately exempt: they run a probe, so their delay is a real "wait
-            // for the condition to settle" knob (per ITERATION on a While). ForEachRow has no
-            // probe and no delay either — it joins the zeroed set. Silent (not counted as a
-            // fixup → no toast) and idempotent.
+            // hand-edited profile can't leave a meaningless delay on them. The opening If, the
+            // ElseIf arms and the While are deliberately exempt: they run a probe, so their
+            // delay is a real "wait for the condition to settle" knob (per ITERATION on a
+            // While). ForEachRow has no probe and no delay either — it joins the zeroed set.
+            // Silent (not counted as a fixup → no toast) and idempotent.
             foreach (var a in actions)
             {
                 if (a.Delay != 0
@@ -71,8 +73,9 @@ namespace TrueReplayer.Services
 
             // First pass — collect orphans + open blocks. No mutation while scanning so the
             // stack's indices stay valid; mutations happen in a second pass.
-            // hasElseFor tracks If indices that already own an Else — a SECOND Else under
-            // the same If is structurally invalid and treated as orphan.
+            // hasElseFor tracks If indices that already own a TERMINAL Else — a SECOND Else
+            // under the same If is structurally invalid and treated as orphan, and so is any
+            // ElseIf that follows it (nothing after an unconditional Else is reachable).
             var stack = new Stack<(Kind Kind, int Idx)>();
             var hasElseFor = new HashSet<int>();
             var toRemove = new List<int>(); // sorted ascending by construction
@@ -82,6 +85,20 @@ namespace TrueReplayer.Services
                 if (Is(a, "If")) stack.Push((Kind.If, i));
                 else if (Is(a, "While")) stack.Push((Kind.While, i));
                 else if (Is(a, "ForEachRow")) stack.Push((Kind.ForEachRow, i));
+                else if (Is(a, "ElseIf"))
+                {
+                    // Another arm on the innermost open If's chain. Same TOP-of-stack rule as
+                    // Else — an ElseIf whose innermost block is a loop belongs to nobody — plus
+                    // one more: it must come BEFORE the terminal Else, because nothing after an
+                    // unconditional Else can ever be reached.
+                    // It deliberately does NOT consume hasElseFor: that set means "this If
+                    // already owns its terminal Else", and claiming it here would make the
+                    // SECOND ElseIf of an if/elseif/elseif ladder delete itself.
+                    if (stack.Count == 0 || stack.Peek().Kind != Kind.If)
+                        toRemove.Add(i);
+                    else if (hasElseFor.Contains(stack.Peek().Idx))
+                        toRemove.Add(i); // ElseIf after the terminal Else — unreachable
+                }
                 else if (Is(a, "Else"))
                 {
                     // Else pairs ONLY with an If sitting on TOP — "the innermost open block

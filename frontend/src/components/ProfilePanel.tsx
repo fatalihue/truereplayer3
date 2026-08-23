@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, laz
 import { Search, SearchX, X, Pencil, Copy, Trash2, FolderOpen, FolderMinus, Keyboard, Crosshair, ArrowLeftRight, Type, Ban, ChevronsLeft, ChevronsRight, ChevronsDownUp, ChevronsUpDown, Pin, PinOff, FolderPlus, FilePlus, ChevronRight, ChevronDown, Palette, ArrowRightFromLine, Zap, Repeat, Repeat2, Hourglass, ArrowUpFromDot, ExternalLink, Info, MoreHorizontal, Hash, Upload, Download, Check } from 'lucide-react';
 import type { ProfileEntry, ImportPreviewPayload, ImportResultPayload, ImportConflictResolution, TriggerMode } from '../bridge/messageTypes';
 import { useAppState } from '../state/AppStateContext';
+import { carriesConditionProbe } from '../utils/conditionalBlocks';
 import { useBridge } from '../bridge/BridgeContext';
 import { KbdTag } from './common/KbdTag';
 import { RemovableChip } from './common/RemovableChip';
@@ -92,12 +93,12 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
     // Pixel rows with set coords. Without these branches the dialog under-reports
     // how many rows will actually be converted when the profile uses conditionals.
     const isImageProbe = a.actionType === 'WaitImage'
-      || ((a.actionType === 'If' || a.actionType === 'While') && a.conditionType === 'ImageFound');
+      || (carriesConditionProbe(a.actionType) && a.conditionType === 'ImageFound');
     if (isImageProbe
       && typeof a.waitImageSearchW === 'number' && a.waitImageSearchW > 0
       && typeof a.waitImageSearchH === 'number' && a.waitImageSearchH > 0) return n + 1;
     const isPixelProbe = a.actionType === 'WaitPixelColor'
-      || ((a.actionType === 'If' || a.actionType === 'While') && a.conditionType === 'PixelColorMatch');
+      || (carriesConditionProbe(a.actionType) && a.conditionType === 'PixelColorMatch');
     if (isPixelProbe
       && typeof a.pixelX === 'number' && typeof a.pixelY === 'number') return n + 1;
     return n;

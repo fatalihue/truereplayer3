@@ -281,6 +281,18 @@ namespace TrueReplayer.Services
             (p => p.Actions.Any(a => string.Equals(a.AssertOnFail, "StopReplay", StringComparison.OrdinalIgnoreCase)),
                 new Version(2, 25, 0), "Assert quiet-stop policy"),
 
+            // The Else If arm — the WORST degradation in this whole matrix, worse than the
+            // While no-op class it otherwise resembles. An older build has no "ElseIf" case in
+            // the replay switch AND none in BuildBlockMap, so the marker is invisible twice
+            // over: the opening IF sees no branch after it and jumps a false probe straight to
+            // the ENDIF, while a TRUE probe runs its body and then walks STRAIGHT THROUGH the
+            // ElseIf marker into the next arm's body. So the old build does not merely skip a
+            // branch — it EXECUTES TWO of them, firing actions the author wrote as mutually
+            // exclusive alternatives. One row pins the feature.
+            // Introduced after 2.25.1 — bump at release.
+            (p => p.Actions.Any(a => string.Equals(a.ActionType, "ElseIf", StringComparison.OrdinalIgnoreCase)),
+                new Version(2, 25, 1), "Else If branch"),
+
             // A modifier chain on {clip:name} / {var:name} / {winclip:N}. Those heads carried no
             // chain before 2.20.0, so an older build's regex does not match the token at all and
             // types it out verbatim — the literal-token failure class of the winclip and

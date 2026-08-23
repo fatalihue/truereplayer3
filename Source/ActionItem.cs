@@ -565,13 +565,14 @@ namespace TrueReplayer.Models
             "BrowserClick", "BrowserRightClick", "BrowserType", "BrowserWaitElement", "BrowserNavigate",
             "BrowserSelectOption", "BrowserAssert",
             "RunProfile", "Pause", "SetVariable", "CopyToSlot", "ActivateWindow",
-            // Conditional structural rows never carry their OWN coordinates — the IF row
-            // borrows X/Y from its underlying probe data (handled below in DisplayX/Y);
-            // Else/EndIf are pure markers with no coordinate semantics at all. Assert is a
-            // leaf condition row in the same boat: it checks state, it never clicks anywhere.
+            // Conditional structural rows never carry their OWN coordinates — the IF and
+            // ELSEIF rows borrow X/Y from their underlying probe data (handled below in
+            // DisplayX/Y); Else/EndIf are pure markers with no coordinate semantics at all.
+            // Assert is a leaf condition row in the same boat: it checks state, it never
+            // clicks anywhere.
             // (This is the THIRD no-coord list — SheetPanel.tsx and displayUtils.ts each keep
             // their own; a type missing here shows phantom 0,0 in the Copy-as-Table export.)
-            "If", "Else", "EndIf", "Assert",
+            "If", "ElseIf", "Else", "EndIf", "Assert",
             // Flow leaves — Stop ends the run, Return ends the current pass. They decide,
             // they never touch the screen. Same third-list warning as above applies.
             "Stop", "Return",
@@ -604,12 +605,17 @@ namespace TrueReplayer.Models
         // regular WaitPixelColor row would after the column is enabled. ImageFound
         // conditions still render blank (the IF row doesn't have a single XY — the
         // matched-rect is dynamic per probe).
-        // While rows carry the same probe fields as If (the loop guard IS a condition),
-        // so the pixel-coordinate borrow applies to both. internal: the image-lifecycle
-        // sites (WebViewBridge + ProfileController's cleanup/carry/export/import) key off
-        // THIS predicate — a site asking "If" directly goes blind to While-guarded images.
-        internal bool IsConditionOpener =>
+        // While rows carry the same probe fields as If (the loop guard IS a condition), and so
+        // does every ElseIf arm (each one is a full condition of its own), so the
+        // pixel-coordinate borrow applies to all three. NOTE the name says PROBE, not opener:
+        // an ElseIf does NOT open a block and never pushes the stack — what it shares with If
+        // and While is owning condition data. internal: the image-lifecycle sites
+        // (WebViewBridge + ProfileController cleanup/carry/export/import) key off THIS
+        // predicate — a site asking "If" directly goes blind to While- and ElseIf-guarded
+        // images. That exact shortcut is how the loop family once shipped 8 of its 12 sites.
+        internal bool CarriesConditionProbe =>
             string.Equals(ActionType, "If", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(ActionType, "ElseIf", StringComparison.OrdinalIgnoreCase)
             || string.Equals(ActionType, "While", StringComparison.OrdinalIgnoreCase);
 
         [System.Text.Json.Serialization.JsonIgnore]
@@ -617,7 +623,7 @@ namespace TrueReplayer.Models
         {
             get
             {
-                if (IsConditionOpener &&
+                if (CarriesConditionProbe &&
                     string.Equals(ConditionType, "PixelColorMatch", StringComparison.OrdinalIgnoreCase))
                     return PixelX?.ToString() ?? "";
                 return HideCoordinates ? "" : X.ToString();
@@ -629,7 +635,7 @@ namespace TrueReplayer.Models
         {
             get
             {
-                if (IsConditionOpener &&
+                if (CarriesConditionProbe &&
                     string.Equals(ConditionType, "PixelColorMatch", StringComparison.OrdinalIgnoreCase))
                     return PixelY?.ToString() ?? "";
                 return HideCoordinates ? "" : Y.ToString();
@@ -665,7 +671,7 @@ namespace TrueReplayer.Models
                 // the block intent without opening the Sheet. The frontend renders the
                 // NOT badge separately when ConditionNegate is true, so this stays clean
                 // (no "NOT " prefix string concat — keeps presentation in the renderer).
-                if (IsConditionOpener)
+                if (CarriesConditionProbe)
                 {
                     if (string.Equals(ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase))
                     {

@@ -16,7 +16,7 @@ import type { Language } from '../state/LanguageContext';
 import { useSelectionRef } from '../state/SelectionContext';
 import { useToast } from '../state/ToastContext';
 import { getDisplayKey, getDisplayX, getDisplayY, getActionTypeColors, formatKeyCombo, formatMs } from '../utils/displayUtils';
-import { snapIndicesToBlocks } from '../utils/conditionalBlocks';
+import { snapIndicesToBlocks, carriesConditionProbe, hasConditionFields } from '../utils/conditionalBlocks';
 import { uiZoom } from '../utils/zoomSpace';
 // Deferred: already rendered conditionally, but a static import pulls the whole Lexical editor
 // stack and emoji-picker-react (~300 KB minified) into the startup chunk for a dialog most sessions
@@ -40,9 +40,26 @@ import { useContextMenuPosition } from '../hooks/useContextMenuPosition';
 // probe, so its delay is a meaningful "wait for the condition to settle before checking" knob
 // (applied before the probe in the engine) and is editable like any other action's delay.
 // Pure jump markers with no replay delay (the load-time validator zeroes them). The
-// opening If and While are NOT here — their delay is the pre-probe settle knob (per
+// opening If, the ElseIf arms and the While are NOT here — their delay is the pre-probe settle knob (per
 // iteration on a While).
 const NO_DELAY_TYPES = new Set(['Else', 'EndIf', 'EndLoop', 'BreakLoop', 'ContinueLoop', 'ForEachRow']);
+
+// The condition families a BRANCH ARM can use — the same ten the toolbar's Conditional ▾
+// offers, in the same order and with the same glyphs, so the two entry points can never drift
+// on which conditions exist or read differently for the same family. ImageFound and
+// PixelColorMatch route through the capture-first overlay on the backend (cancel = zero rows).
+const BRANCH_CONDITION_FAMILIES = [
+  { ct: 'ImageFound', Icon: ScanSearch, label: 'Image Found' },
+  { ct: 'PixelColorMatch', Icon: Pipette, label: 'Pixel Color Match' },
+  { ct: 'WindowOpen', Icon: AppWindow, label: 'Window Open' },
+  { ct: 'ClipboardMatch', Icon: Clipboard, label: 'Clipboard' },
+  { ct: 'BrowserElementState', Icon: Globe, label: 'Browser Element' },
+  { ct: 'Random', Icon: Dice5, label: 'Random' },
+  { ct: 'Variable', Icon: Braces, label: 'Variable' },
+  { ct: 'ProcessRunning', Icon: Cpu, label: 'Process Running' },
+  { ct: 'FileExists', Icon: FileCheck, label: 'File Exists' },
+  { ct: 'TimeWindow', Icon: Clock, label: 'Time' },
+] as const;
 
 // Per-nesting-level colour ("rainbow brackets") so a nested block reads apart from its parent.
 // Level 0 keeps the user's configurable IF colour, so a single-level block looks exactly as before;
@@ -93,6 +110,9 @@ export function ActionIcon({ actionType, size = 12 }: { actionType: string; size
   // matches the toolbar's + If button. Else uses the two-way swap arrows; EndIf
   // closes the block with a ChevronDown.
   if (actionType === 'If') return <GitBranch size={size} />;
+  // ElseIf continues the branch, so it reads as a SPLIT (another fork) rather than the
+  // two-way swap Else uses -- the glyph says "one more question", not "the other path".
+  if (actionType === 'ElseIf') return <Split size={size} />;
   if (actionType === 'Else') return <ArrowRightLeft size={size} />;
   if (actionType === 'EndIf') return <ChevronDown size={size} />;
   // Flow leaves — same glyphs as the Assert ▾ menu entries that insert them, per the
@@ -185,6 +205,7 @@ function actionPillLabel(action: ActionItem): string {
     // distinction (and its payload) lives in the Details cell via ProbeDetails, so
     // the grid reads as a clean "if … endif" block.
     case 'If': return 'if';
+    case 'ElseIf': return 'else if';
     case 'Else': return 'else';
     case 'EndIf': return 'endif';
     // Flow leaves share the keyword register: they are control flow, not gestures.
@@ -206,7 +227,7 @@ function actionPillLabel(action: ActionItem): string {
 function isProbeAction(action: ActionItem): boolean {
   return action.actionType === 'WaitImage'
     || action.actionType === 'WaitPixelColor'
-    || ((action.actionType === 'If' || action.actionType === 'While')
+    || (carriesConditionProbe(action.actionType)
       && (action.conditionType === 'ImageFound' || action.conditionType === 'PixelColorMatch'));
 }
 
@@ -294,7 +315,7 @@ function ProbeDetails({ action }: { action: ActionItem }) {
   const tt = useTt();
   // While guards carry the same probe payload as If and get the same type tag (their
   // pill is the generic "while", so the tag says WHAT the guard watches).
-  const isIf = action.actionType === 'If' || action.actionType === 'While';
+  const isIf = carriesConditionProbe(action.actionType);
   const isImage = action.actionType === 'WaitImage'
     || (isIf && action.conditionType === 'ImageFound');
 
@@ -348,7 +369,7 @@ function isConditionAction(action: ActionItem): boolean {
   // Desktop Assert carries the same ConditionType payload as an If, so it reuses this exact
   // "type tag + value" summary — the grid then reads WHAT is being checked identically for
   // both, and only the Action pill says whether it branches or requires.
-  return (action.actionType === 'If' || action.actionType === 'Assert' || action.actionType === 'While')
+  return hasConditionFields(action.actionType)
     && (action.conditionType === 'WindowOpen'
       || action.conditionType === 'ClipboardMatch'
       || action.conditionType === 'BrowserElementState'
@@ -372,7 +393,7 @@ function isConditionAction(action: ActionItem): boolean {
 // since actionType alone doesn't distinguish them (an If-ImageFound and an If-ClipboardMatch
 // share actionType 'If').
 function similarActionKey(action: ActionItem): string {
-  const conditionType = (action.actionType === 'If' || action.actionType === 'Assert' || action.actionType === 'While') ? action.conditionType : null;
+  const conditionType = hasConditionFields(action.actionType) ? action.conditionType : null;
   if (action.actionType === 'WaitImage' || conditionType === 'ImageFound') {
     return `image:${action.imagePath ?? ''}`;
   }
@@ -567,6 +588,10 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
     const blockOpenerOf = new Array<number | null>(n).fill(null);
     const closerOf = new Map<number, number>();
     const hasElse = new Set<number>();
+    // ifIdx -> index of its TERMINAL Else, when it has one. The "+ Add Else If" affordance
+    // anchors on this: a new arm must land BEFORE the Else (nothing after an unconditional
+    // branch is reachable), so the ghost row renders above it rather than above the EndIf.
+    const elseOf = new Map<number, number>();
     const stack: { kind: 'If' | 'Loop'; idx: number }[] = [];
     for (let i = 0; i < n; i++) {
       const t = actions[i].actionType;
@@ -578,12 +603,24 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
         stack.push({ kind: 'Loop', idx: i });
         depth[i] = stack.length - 1;
         blockOpenerOf[i] = i;
+      } else if (t === 'ElseIf') {
+        // Another arm on the innermost open If. Like Else it PEEKS — never pushes, never
+        // pops — so it renders at the depth of the block itself and the rails are unchanged.
+        // Deliberately does NOT feed hasElse: that set means "this If already owns its
+        // TERMINAL Else" and is what hides the "+ Add Else" button. An ElseIf must not hide
+        // it, because a chain can still be closed off with a plain Else afterwards.
+        if (stack.length && stack[stack.length - 1].kind === 'If') {
+          const ifIdx = stack[stack.length - 1].idx;
+          depth[i] = stack.length - 1;
+          blockOpenerOf[i] = ifIdx;
+        }
       } else if (t === 'Else') {
         if (stack.length && stack[stack.length - 1].kind === 'If') {
           const ifIdx = stack[stack.length - 1].idx;
           depth[i] = stack.length - 1;
           blockOpenerOf[i] = ifIdx;
           hasElse.add(ifIdx);
+          elseOf.set(ifIdx, i);
         }
       } else if (t === 'EndIf') {
         if (stack.length && stack[stack.length - 1].kind === 'If') {
@@ -608,7 +645,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
         if (stack.length) blockOpenerOf[i] = stack[stack.length - 1].idx;
       }
     }
-    return { depth, blockOpenerOf, closerOf, hasElse };
+    return { depth, blockOpenerOf, closerOf, hasElse, elseOf };
   }, [actions]);
 
   // Block-snap a selection ONLY when it includes a structural marker (If/Else/EndIf): a selection
@@ -623,6 +660,11 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; rowIndex: number } | null>(null);
+  // "+ Add Else If" family picker — which IF the arm will join, and where to draw the menu.
+  // x/y are VISUAL px (a getBoundingClientRect bottom-left) -- exactly what MenuAnchor wants.
+  // useContextMenuPosition converts to LAYOUT once, on the way out; never pre-convert here.
+  const [elseIfPicker, setElseIfPicker] = useState<{ x: number; y: number; ifRowIndex: number } | null>(null);
+  const elseIfPickerRef = useRef<HTMLDivElement>(null);
   const [activeSubmenu, setActiveSubmenu] = useState<'more' | null>(null);
   // The "More ▸" submenu opens to the side; flip it left/up when the context menu sits
   // near the right/bottom edge so it isn't clipped. Measured on open by useFlyoutFlip,
@@ -634,6 +676,12 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
   // position state, so closing the menu means clearing the anchor and nothing else —
   // the position follows on the same commit.
   const menuPos = useContextMenuPosition(contextMenu, contextMenuRef);
+  // Same two-pass measure-and-clamp as the row context menu. It is what converts the chip rect
+  // from VISUAL px (getBoundingClientRect) to the LAYOUT px an inline left/top needs -- writing
+  // the raw rect would let the root CSS zoom multiply it a SECOND time (0.90 by default) -- and
+  // what flips the 10-item menu up when it would otherwise paint past the viewport bottom, which
+  // body overflow:hidden makes unreachable.
+  const elseIfPickerPos = useContextMenuPosition(elseIfPicker, elseIfPickerRef);
   // Drives the RunProfile insert dialog. Opened by dragging a profile onto the grid
   // (the 'profiledrag:dropOnGrid' handler) — pre-filled with the dropped profile's name.
   const [runProfileInsert, setRunProfileInsert] = useState<{ insertIndex: number; profileName?: string } | null>(null);
@@ -788,6 +836,31 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
       document.removeEventListener('keydown', handleKey, true);
     };
   }, [contextMenu]);
+
+  // Close the "+ Add Else If" family picker on click outside or Escape — same contract as
+  // the row context menu above. Kept as its own effect (not merged) so the two menus can be
+  // open-and-closed independently without one clobbering the other's state.
+  useEffect(() => {
+    if (!elseIfPicker) return;
+    const handleClick = (e: MouseEvent) => {
+      if (elseIfPickerRef.current && !elseIfPickerRef.current.contains(e.target as Node)) {
+        setElseIfPicker(null);
+      }
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        setElseIfPicker(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKey, true);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKey, true);
+    };
+  }, [elseIfPicker]);
 
   // Handle row click with selection logic
   const handleRowClick = useCallback((idx: number, e: React.MouseEvent) => {
@@ -1745,7 +1818,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                         if (hasTimeout) return `${ms} ms`;
                         return '—';
                       })()
-                    : (action.actionType === 'If' || action.actionType === 'Assert')
+                    : (action.actionType === 'If' || action.actionType === 'ElseIf' || action.actionType === 'Assert')
                       // If/Assert share the condition-identifier summary (Assert used to
                       // fall through to getDisplayKey(key) and leak the raw selector).
                       ? conditionSummary(action)
@@ -1829,7 +1902,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
               // carry their own scope rail in addition to any outer-block rails, get a subtle
               // tinted bg, and (If only) anchor the "+ Add Else" ghost row injected below.
               // Rails keep encoding DEPTH, not family — BLOCK_LEVEL_COLORS untouched.
-              const isStructural = action.actionType === 'If' || action.actionType === 'Else' || action.actionType === 'EndIf'
+              const isStructural = action.actionType === 'If' || action.actionType === 'ElseIf' || action.actionType === 'Else' || action.actionType === 'EndIf'
                 || action.actionType === 'While' || action.actionType === 'ForEachRow' || action.actionType === 'EndLoop';
               const depth = blockInfo.depth[idx] || 0;
               // Body rows of a conditional block (depth ≥ 1, non-structural) get a
@@ -1860,22 +1933,30 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
               // to the user's IF colour, so a single-level block looks exactly as it did before.
               const rowBlockColor = blockColor(isStructural ? depth : depth - 1);
 
-              // Ghost "+ Add Else branch" row — rendered just BEFORE an EndIf row whose
-              // matching IF has no ELSE. Placing it before the EndIf keeps it visually
-              // tucked between the end of the body (or right after the IF for an empty
-              // block) and the closing marker — exactly where the user would think to
-              // click "add an else branch here". Disabled during recording/replay to
-              // avoid mid-run mutations.
-              const showAddElseBefore = action.actionType === 'EndIf'
-                && blockIf !== null
-                && actions[blockIf]?.actionType === 'If'   // typed stack makes this a tautology; belt for hand-fed lists
-                && !blockInfo.hasElse.has(blockIf);
-              const addElseDepth = showAddElseBefore && blockIf !== null ? blockInfo.depth[blockIf] : 0;
+              // Ghost "+ Add Else If / + Add Else" row — rendered just BEFORE the ANCHOR of
+              // the block's branch chain: the terminal ELSE when the block has one, otherwise
+              // the ENDIF. That is exactly where a new arm has to land — every arm must precede
+              // the unconditional ELSE, because nothing after it is reachable — so the
+              // affordance sits where the row it creates will appear. For a block with no ELSE
+              // this is byte-identical to the old "before the EndIf" placement. Disabled during
+              // recording/replay to avoid mid-run mutations.
+              const chainOpener = blockIf !== null && actions[blockIf]?.actionType === 'If'
+                ? blockIf                    // typed stack makes this a tautology; belt for hand-fed lists
+                : null;
+              const chainAnchor = chainOpener !== null
+                ? (blockInfo.elseOf.get(chainOpener) ?? blockInfo.closerOf.get(chainOpener) ?? null)
+                : null;
+              const showAddElseBefore = chainAnchor === idx;
+              const addElseDepth = showAddElseBefore && chainOpener !== null ? blockInfo.depth[chainOpener] : 0;
+              // A block may gain arms forever, but only ONE terminal Else — once it has one the
+              // second button disappears while "+ Add Else If" stays.
+              const canAddPlainElse = showAddElseBefore && chainOpener !== null && !blockInfo.hasElse.has(chainOpener);
 
-              // Else / EndIf / EndLoop rows can't be dragged on their own — structural
+              // ElseIf / Else / EndIf / EndLoop rows cannot be dragged on their own — structural
               // markers bound to their opener; moving one in isolation would orphan the
               // block. (Dragging the opener row carries the whole block instead.)
               const rowSortDisabled = !isDraggable
+                || action.actionType === 'ElseIf'
                 || action.actionType === 'Else'
                 || action.actionType === 'EndIf'
                 || action.actionType === 'EndLoop';
@@ -1888,7 +1969,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                     at drag start, so unmounting it mid-drag would leave every rect
                     below it stale by one row height. It isn't a sortable item, so it
                     won't slide with its neighbours; a minor cosmetic trade-off. */}
-                {showAddElseBefore && blockIf !== null && (
+                {showAddElseBefore && chainOpener !== null && (
                   <tr
                     // Same amber tint AND height as structural rows so the block reads as
                     // one uniform band. Earlier attempts used h-7 (28 px) for a thinner
@@ -1907,30 +1988,68 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                     className="h-row border-b border-border-subtle relative pointer-events-none bg-[color-mix(in_srgb,var(--row-block-color)_6%,transparent)]"
                   >
                     <td colSpan={99} className="p-0 relative">
-                      <button
-                        type="button"
-                        onClick={() => send({ type: 'actions:addElseBranch', payload: { ifRowIndex: blockIf } })}
-                        disabled={buttonStates.recordingActive || buttonStates.replayActive}
-                        className="pointer-events-auto inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[10.5px] font-medium rounded border border-dashed transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      <span
+                        className="inline-flex items-center gap-1.5"
                         style={{
-                          // Anchor the chip past the rails of the containing block so it
-                          // visually sits inside that block's scope at the same indent the
+                          // Anchor the chips past the rails of the containing block so they
+                          // visually sit inside that block's scope at the same indent the
                           // body rows use. 78 (col-2 boundary) + addElseDepth*14 (depth indent)
-                          // + 4 (default pl-1) lands the button just past the IF's rail.
+                          // + 4 (default pl-1) lands the first button just past the IF's rail.
                           marginLeft: `${78 + addElseDepth * 14 + 4}px`,
-                          // 72%-mix toward text-primary (the W1 pill recipe) — the raw
-                          // block hue was sub-AA on light themes at deep nesting levels.
-                          color: 'color-mix(in srgb, var(--row-block-color) 72%, var(--color-text-primary))',
-                          borderColor: 'color-mix(in srgb, var(--row-block-color) 35%, transparent)',
-                          background: 'transparent',
                         }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = 'color-mix(in srgb, var(--row-block-color) 10%, transparent)'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                        data-add-else
                       >
-                        <Plus size={11} />
-                        Add Else branch
-                      </button>
+                        {/* Else If comes FIRST: it is the repeatable one (a chain can grow
+                            without limit) while "+ Add Else" closes the block off for good. */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            const r = e.currentTarget.getBoundingClientRect();
+                            setElseIfPicker({ x: r.left, y: r.bottom + 2, ifRowIndex: chainOpener });
+                          }}
+                          disabled={buttonStates.recordingActive || buttonStates.replayActive}
+                          className="pointer-events-auto inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[10.5px] font-medium rounded border border-dashed transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                          style={{
+                            // 72%-mix toward text-primary (the W1 pill recipe) — the raw
+                            // block hue was sub-AA on light themes at deep nesting levels.
+                            color: 'color-mix(in srgb, var(--row-block-color) 72%, var(--color-text-primary))',
+                            borderColor: 'color-mix(in srgb, var(--row-block-color) 35%, transparent)',
+                            background: 'transparent',
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = 'color-mix(in srgb, var(--row-block-color) 10%, transparent)'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                          data-add-else
+                          data-tip={tt(
+                            'Add another condition to this block — checked only if the ones above it were false',
+                            'Adiciona mais uma condição a este bloco — só é checada se as de cima deram falso',
+                          )}
+                        >
+                          <Plus size={11} />
+                          Add Else If
+                        </button>
+                        {canAddPlainElse && (
+                          <button
+                            type="button"
+                            onClick={() => send({ type: 'actions:addElseBranch', payload: { ifRowIndex: chainOpener } })}
+                            disabled={buttonStates.recordingActive || buttonStates.replayActive}
+                            className="pointer-events-auto inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[10.5px] font-medium rounded border border-dashed transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                            style={{
+                              color: 'color-mix(in srgb, var(--row-block-color) 72%, var(--color-text-primary))',
+                              borderColor: 'color-mix(in srgb, var(--row-block-color) 35%, transparent)',
+                              background: 'transparent',
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = 'color-mix(in srgb, var(--row-block-color) 10%, transparent)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                            data-add-else
+                            data-tip={tt(
+                              'Add the fallback branch — runs when every condition above was false',
+                              'Adiciona o ramo de fallback — roda quando toda condição acima deu falso',
+                            )}
+                          >
+                            <Plus size={11} />
+                            Add Else branch
+                          </button>
+                        )}
+                      </span>
                     </td>
                   </tr>
                 )}
@@ -2107,7 +2226,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                       {/* Assert carries the same conditionNegate and it matters MORE there: an If
                           shows both outcomes in the block below it, but "require X" and "require
                           NOT X" are opposite guards that would otherwise render identically. */}
-                      {(action.actionType === 'If' || action.actionType === 'Assert' || action.actionType === 'While') && action.conditionNegate && (
+                      {hasConditionFields(action.actionType) && action.conditionNegate && (
                         <span
                           className="ml-0.5 px-1 rounded text-[9px] font-bold tracking-wider"
                           style={{ background: 'var(--color-action-if-fg)', color: 'var(--color-bg-surface)' }}
@@ -2678,6 +2797,37 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
       })()}
 
       {/* Context Menu — rendered via portal to escape overflow:hidden */}
+      {/* Condition-family picker for "+ Add Else If". Portal + fixed positioning, the same
+          mould as the row context menu, so it escapes the table's overflow clipping. The
+          backend owns WHERE the arm lands (FindBranchChainAnchor) — the UI only says which
+          family, exactly like the Conditional ▾ menu. Image / Pixel run the capture overlay
+          first, so Esc there inserts nothing. */}
+      {elseIfPicker && elseIfPickerPos && createPortal(
+        <div
+          ref={elseIfPickerRef}
+          className="fixed z-50 min-w-[180px] py-1 bg-bg-card border border-border-default rounded-md shadow-lg"
+          style={{ left: elseIfPickerPos.x, top: elseIfPickerPos.y }}
+        >
+          <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-text-tertiary">
+            Else If — condition
+          </div>
+          {BRANCH_CONDITION_FAMILIES.map(({ ct, Icon, label }) => (
+            <button
+              key={ct}
+              type="button"
+              onClick={() => {
+                send({ type: 'actions:addElseIfBranch', payload: { ifRowIndex: elseIfPicker.ifRowIndex, conditionType: ct } });
+                setElseIfPicker(null);
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+            >
+              <Icon size={13} className="text-text-tertiary" />
+              {label}
+            </button>
+          ))}
+        </div>,
+        document.body,
+      )}
       {contextMenu && menuPos && createPortal(
         <div
           ref={contextMenuRef}
