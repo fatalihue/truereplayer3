@@ -289,9 +289,9 @@ namespace TrueReplayer.Services
             // ElseIf marker into the next arm's body. So the old build does not merely skip a
             // branch — it EXECUTES TWO of them, firing actions the author wrote as mutually
             // exclusive alternatives. One row pins the feature.
-            // Introduced after 2.25.1 — bump at release.
+            // Shipped in 2.26.0.
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "ElseIf", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 25, 1), "Else If branch"),
+                new Version(2, 26, 0), "Else If branch"),
 
             // A modifier chain on {clip:name} / {var:name} / {winclip:N}. Those heads carried no
             // chain before 2.20.0, so an older build's regex does not match the token at all and
