@@ -777,9 +777,25 @@ namespace TrueReplayer.Controllers
                     .Where(e => e.IsDisabled && !string.IsNullOrEmpty(e.Hotkey))
                     .Select(e => $"'{e.Name}'({e.Hotkey})")
                     .ToList();
+                // Keys the hook still believes are down that the OS says are not, appended to the
+                // line that already exists rather than spent on a new one. A modifier stranded in
+                // the hook's chord state is silent by construction — every later hotkey composes to
+                // "Ctrl+PageUp" and simply misses the map, which is not an error anywhere — so the
+                // only trace it can leave is one it is handed. This line is the right carrier
+                // because it lands one message AFTER a save, which is precisely where the strand
+                // happened: the overwrite dialog suppresses the hook while the user is still
+                // holding the Ctrl of Ctrl+S. The cross-check inside the snapshot is what makes it
+                // empty on a healthy arm rather than merely usually empty.
+                //
+                // Comma-separated, never "+": a "+"-joined list is character-for-character a
+                // composed hotkey, which is the one vocabulary this line must not borrow when the
+                // failure it reports is "everything is composing as Ctrl+X" — and with both Ctrls
+                // stranded it would read "Ctrl+Ctrl".
+                var strandedKeys = InputHookManager.SnapshotStrandedKeys();
                 DiagnosticLog.Info(
                     $"Hotkeys armed ({map.Count}): {armed}. Hotstrings: {hotstringMap.Count}." +
-                    (skipped.Count > 0 ? $" Skipped (disabled w/ hotkey): {string.Join(", ", skipped)}." : ""));
+                    (skipped.Count > 0 ? $" Skipped (disabled w/ hotkey): {string.Join(", ", skipped)}." : "") +
+                    (strandedKeys.Count > 0 ? $" Stranded: {string.Join(", ", strandedKeys)}." : ""));
             }
             catch (Exception ex) { DiagnosticLog.Info($"Hotkeys armed-summary log failed: {ex.Message}"); }
         }

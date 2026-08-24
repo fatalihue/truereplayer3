@@ -74,7 +74,11 @@ namespace TrueReplayer.Services
             IsRecording = false;
             onButtonStateChanged?.Invoke("Recording", false);
             recorder.Stop();
-            DiagnosticLog.Info("Recording stopped");
+            // captured=N, not a bare "stopped". A recording that appended NOTHING while keyboard
+            // and mouse were both armed points at a hook that is no longer installed, and it is the
+            // one question a session log could never answer after the fact — the old line was
+            // identical whether the recorder saw 40 events or none.
+            DiagnosticLog.Info($"Recording stopped: captured={recorder.CapturedThisSession}");
             // Clear the <select>-interaction suppression flag in case the user hit Stop
             // mid-interaction. Without this the flag would persist up to 15 s before the
             // safety timer cleared it — and any clicks recorded in the next session
@@ -1047,9 +1051,21 @@ namespace TrueReplayer.Services
         public void SetInsertIndex(int? index) => insertIndex = (index >= 0 && index <= _actions.Count) ? index : null;
         public bool IsInsertMode => insertIndex.HasValue;
 
+        /// Rows this recording session has appended. Reset by <see cref="Start"/> and deliberately
+        /// NOT by <see cref="Stop"/>: RecordingService calls Stop() before it logs, so zeroing it
+        /// there would erase the number the log line exists to print. Its job is to make a dead
+        /// keyboard hook visible: "keyboard=True" plus "captured=0" narrows it to a dead hook or an
+        /// idle session — the two are told apart by how long the session ran — where the old bare
+        /// "Recording stopped" could not tell a hook Windows had silently removed from one that saw
+        /// forty events. Counts rows APPENDED, so a capture the user discards still reports what it
+        /// captured, and events merged into the previous row are not counted twice.
+        private int _capturedThisSession;
+        public int CapturedThisSession => _capturedThisSession;
+
         public void Start()
         {
             _isRecording = true;
+            _capturedThisSession = 0;
             _lastActionTime = null;
             // A click from a previous session must never pair with the first click of
             // this one — the wall-clock gap check would usually reject it anyway, but a
@@ -1408,6 +1424,7 @@ namespace TrueReplayer.Services
             }
 
             _lastAdded = action;
+            _capturedThisSession++;
             _onActionAdded?.Invoke();
 
             if (_captureType != CaptureType.None)

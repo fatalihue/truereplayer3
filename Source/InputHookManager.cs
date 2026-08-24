@@ -112,6 +112,92 @@ namespace TrueReplayer
         // than they pressed them (which would leak entries and make the next press look like a repeat).
         private static readonly HashSet<int> _vkCodesCurrentlyDown = new();
 
+        /// <summary>
+        /// The release half of <see cref="_vkCodesCurrentlyDown"/> maintenance, run for the events
+        /// the suppression gates are about to wave past.
+        ///
+        /// Those gates return from the callback ~190 lines ABOVE the bookkeeping at the bottom, so
+        /// a key whose DOWN was recorded while they were open had its UP silently dropped and the
+        /// set kept the key forever. For a modifier that is fatal and permanent:
+        /// <see cref="BuildComposedKey(int, string?)"/> reads this set, so a stranded Ctrl prefixes
+        /// "Ctrl+" onto every later press and no bare hotkey composes to anything the map contains.
+        /// Nothing healed it short of a restart — <see cref="Stop"/> holds the only Clear() — and
+        /// nothing logged it, because a compose miss is not an error, just a lookup that fails.
+        ///
+        /// Ctrl+S is the shortest path in and the one a user actually walks: the save it triggers
+        /// opens the overwrite ContentDialog, whose ModalGate claims an InteractionScope BEFORE its
+        /// first await, so the gate is reliably up by the time the user lifts the Ctrl they are
+        /// still holding. Every other guarded dialog and picker reaches it the same way.
+        ///
+        /// ONLY the release side belongs here. A gated DOWN must still never enter the set: the
+        /// foreground app is the one holding that key — <see cref="_remapBypassedDowns"/> exists
+        /// for exactly that asymmetry — and marking it held would make its next press read as an
+        /// auto-repeat. An UP can only ever shrink the set, which is the fail-safe direction; the
+        /// cost is that a modifier held ACROSS a gate boundary under-reports until it is pressed
+        /// again, the same trade already accepted in BuildComposedKey's remarks.
+        /// </summary>
+        private static void ReleaseHeldKeyUnderGate(int vkCode, bool isDown, IntPtr lParam)
+        {
+            if (isDown) return;
+            // Injected ups never had a matching down in the set (the main path drops injected
+            // events wholesale), so honouring one here would remove an entry a PHYSICAL press put
+            // there — our own replay output clearing the user's real modifier.
+            if (((uint)Marshal.ReadInt32(lParam, 8) & LLKHF_INJECTED) != 0) return;
+            // Same exclusion, same reason as the main branch: on ABNT2 and the European layouts
+            // win32k brackets every AltGr with a synthetic left Ctrl, and honouring that phantom's
+            // up would strip a Ctrl the user is genuinely holding.
+            if (IsAltGrPhantomCtrl(vkCode, lParam)) return;
+            // The mirror belongs to the remap pairing; only CloseRemapPairing may remove it.
+            if (_remapMirroredVks.Contains(vkCode)) return;
+            _vkCodesCurrentlyDown.Remove(vkCode);
+        }
+
+        /// <summary>
+        /// The keys this hook currently believes are held, as display names, for diagnostics only.
+        ///
+        /// It exists because the failure above is otherwise invisible: a stranded modifier produces
+        /// no exception, no warning and no missing step — every later hotkey simply composes to a
+        /// string the map does not contain and falls through to CallNextHookEx exactly as an
+        /// ordinary keypress does. A session log reading "Hotkeys armed (33)" and then nothing was
+        /// the entire body of evidence, and it pointed at the wrong suspect.
+        ///
+        /// Reports only keys the set believes are held that are NOT physically down, because a
+        /// bare dump of the set has a false positive on the very keystroke it exists to explain:
+        /// Ctrl+S is handled on the S KEYDOWN, so a save fast enough to reach the summary while the
+        /// user is still holding Ctrl would print a strand that is simply a hold. Cross-checking
+        /// makes every line it prints a real defect.
+        ///
+        /// Read WITHOUT a lock, and that is deliberate rather than sloppy: both low-level hooks
+        /// pump on the UI thread (see <see cref="_activeRemapDowns"/>), and the one caller — the
+        /// armed-profiles summary in ProfileController — publishes an ObservableCollection on that
+        /// same thread a few lines earlier. That call site already sits inside a try/catch that
+        /// degrades to a log line, so even a future off-thread caller costs a diagnostic, never a
+        /// crash. Adding a lock here would put one on the hook's hot path to serve a log string.
+        /// </summary>
+        public static List<string> SnapshotStrandedKeys()
+        {
+            var stranded = new List<string>();
+            foreach (int vk in _vkCodesCurrentlyDown)
+            {
+                // GetAsyncKeyState is the WRONG oracle for composing a chord — BuildComposedKey's
+                // remarks list the two ways it lies — and exactly the right one here: the tracked
+                // set and the OS disagree precisely when the set has gone stale, which is the whole
+                // signal. Both lies fail safe for THIS use. A capture-mode swallow leaves the OS
+                // unaware of a key that is genuinely held, which can only over-report a strand, and
+                // capture never overlaps the armed summary anyway; a replay-injected modifier the
+                // OS does report is never in the set to begin with, so it cannot mask one.
+                if ((NativeMethods.GetAsyncKeyState(vk) & 0x8000) != 0) continue;
+                // The raw vk rides along because the name collapses a whole class — 0x11, 0xA2 and
+                // 0xA3 all render "Ctrl" — and WHICH physical key stranded is the first thing the
+                // next person debugging this needs to know.
+                stranded.Add($"{GetKeyName(vk)}[{vk:X2}]");
+            }
+            // Sorted so two log lines from different sessions are comparable by eye; HashSet order
+            // is an implementation detail and would make the same set read differently.
+            stranded.Sort(StringComparer.Ordinal);
+            return stranded;
+        }
+
         // When WhilePressed mode is active, records which profile is currently running tied to
         // which PHYSICAL key (vkCode), so releasing that key stops the replay. Tracked by
         // vkCode (not composed key) so modifier-state flicker between down and up doesn't
@@ -2002,18 +2088,22 @@ namespace TrueReplayer
                     }
                 }
 
+                // Hoisted above the gates so both branches can maintain the held-key set before
+                // returning. Reading them here costs the same two loads it cost below.
+                int vkCode = Marshal.ReadInt32(lParam);
+                bool isDown = wParam == (IntPtr)NativeMethods.WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN;
+
                 if (suppressAll)
                 {
+                    ReleaseHeldKeyUnderGate(vkCode, isDown, lParam);
                     return NativeMethods.CallNextHookEx(_keyboardHookId, nCode, wParam, lParam);
                 }
 
                 if (ignoreProfileKeys)
                 {
+                    ReleaseHeldKeyUnderGate(vkCode, isDown, lParam);
                     return NativeMethods.CallNextHookEx(_keyboardHookId, nCode, wParam, lParam);
                 }
-
-                int vkCode = Marshal.ReadInt32(lParam);
-                bool isDown = wParam == (IntPtr)NativeMethods.WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN;
 
                 // Skip any trigger-mode / hotkey / hotstring logic for events we injected
                 // via SendInput — replay-simulated keystrokes and the F15 menu-cancel phantom.
