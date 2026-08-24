@@ -772,6 +772,7 @@ namespace TrueReplayer
                     case "actions:deleteLoop": HandleActionsDeleteLoop(payload); break;
                     case "actions:insertAssert": HandleActionsInsertAssert(payload); break;
                     case "actions:deleteConditional": HandleActionsDeleteConditional(payload); break;
+                    case "actions:deleteElseIfArm": HandleActionsDeleteElseIfArm(payload); break;
                     case "actions:insertKeystroke": HandleInsertKeystroke(payload); break;
                     case "actions:insertHoldKey": HandleInsertHoldKey(payload); break;
                     case "actions:insertPause": HandleInsertPause(payload); break;
@@ -5146,6 +5147,82 @@ namespace TrueReplayer
             PushUndoState();
             // Remove from the END of the range so earlier indices stay valid as we go.
             for (int i = endIfIdx; i >= ifIdx; i--)
+                actions.RemoveAt(i);
+            for (int i = 0; i < actions.Count; i++)
+                actions[i].RowNumber = i + 1;
+            HasUnsavedChanges = true;
+            PushActionsUpdate();
+            mainController.UpdateButtonStates();
+        }
+
+        /// <summary>
+        /// Removes ONE Else If arm — its marker and its body — leaving the rest of the chain
+        /// standing. The sibling of <see cref="HandleActionsDeleteConditional"/> one level down.
+        ///
+        /// TWO differences from the block walk above, and both are load-bearing. That one
+        /// recognises only If/EndIf, because it WANTS the whole block and a depth-0 ElseIf/Else is
+        /// deliberately invisible to it; this one has to stop at exactly those markers. And its
+        /// range is INCLUSIVE of the EndIf, whereas an arm's boundary row is the first row that
+        /// SURVIVES — hence <c>i - 1</c>.
+        ///
+        /// Loop markers stay transparent: While / ForEachRow / EndLoop never move the counter.
+        /// That is not laziness, it is the only correct reading. ConditionalBlockValidator walks a
+        /// TYPED stack and strips any arm, EndIf or EndLoop that crosses a block of the other kind,
+        /// so on a validated list a loop can never straddle an arm boundary. Counting EndLoop here
+        /// would be a BUG rather than extra safety — on
+        /// <c>If / ElseIf / While / If / Else / EndIf / EndLoop / Else / EndIf</c> treating it as a
+        /// depth-0 boundary ends the arm at the wrong row, and decrementing on it drives the
+        /// counter negative so the real Else never registers. The shipped precedent is
+        /// FindBranchChainAnchor, the inverse operation, which is loop-blind for the same reason.
+        ///
+        /// THE BODY GOES WITH THE ARM. BuildBlockMap advances arm-to-arm only on a FALSE probe, so
+        /// an arm's body is exactly the span between its marker and the next branch marker, and it
+        /// is reachable only when that arm's probe won. Delete the marker alone and those rows fall
+        /// into the PREVIOUS arm's span — they begin running under a condition the user never
+        /// wrote. The validator does not repair that (it only strips an orphaned arm, or one after
+        /// the terminal Else), so the mis-guard is permanent and invisible. The whole-block delete
+        /// names the same failure in its own comment. An over-large delete is one Ctrl+Z away; a
+        /// silent re-guard has no safety valve.
+        ///
+        /// No image work here, deliberately — see <see cref="HandleActionsDeleteConditional"/>: no
+        /// delete path in this file unlinks reference PNGs, so undo can restore a row with its
+        /// image. The keep-set is rebuilt from the SAVED profile and asks CarriesConditionProbe,
+        /// which already covers ElseIf. The hazard at this call site is ADDING image deletion.
+        /// </summary>
+        private void HandleActionsDeleteElseIfArm(JsonElement payload)
+        {
+            if (!payload.TryGetProperty("elseIfRowIndex", out var idxEl) || idxEl.ValueKind != JsonValueKind.Number) return;
+            int armIdx = idxEl.GetInt32();
+            if (armIdx < 0 || armIdx >= actions.Count) return;
+            if (!string.Equals(actions[armIdx].ActionType, "ElseIf", StringComparison.OrdinalIgnoreCase)) return;
+
+            int depth = 0;
+            // Marker-only unless a boundary is found. On an in-memory list that is momentarily
+            // unbalanced the scan below can run off the end, and a silent no-op would leave the arm
+            // UNDELETABLE now that the frontend routes it away from actions:delete — the same
+            // reasoning, and the same fallback, as the two sibling handlers.
+            int endIdx = armIdx;
+            for (int i = armIdx + 1; i < actions.Count; i++)
+            {
+                var t = actions[i].ActionType;
+                if (string.Equals(t, "If", StringComparison.OrdinalIgnoreCase)) depth++;
+                else if (string.Equals(t, "EndIf", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (depth == 0) { endIdx = i - 1; break; }
+                    depth--;
+                }
+                else if (depth == 0
+                    && (string.Equals(t, "ElseIf", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(t, "Else", StringComparison.OrdinalIgnoreCase)))
+                {
+                    endIdx = i - 1;
+                    break;
+                }
+            }
+
+            PushUndoState();
+            // Remove from the END of the range so earlier indices stay valid as we go.
+            for (int i = endIdx; i >= armIdx; i--)
                 actions.RemoveAt(i);
             for (int i = 0; i < actions.Count; i++)
                 actions[i].RowNumber = i + 1;

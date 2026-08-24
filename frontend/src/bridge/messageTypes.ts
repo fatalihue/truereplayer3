@@ -1015,6 +1015,12 @@ export type OutgoingMessage =
   // Delete the entire loop block (opener + body + EndLoop) — deleteConditional's mirror
   // with a kind-aware scan (both loop openers deepen, only EndLoop pops).
   | { type: 'actions:deleteLoop'; payload: { loopRowIndex: number } }
+  // Delete ONE Else If arm — its marker plus its body — leaving the rest of the chain standing.
+  // Sibling of deleteConditional/deleteLoop, with the one structural difference that matters: an
+  // arm is not a block, so the scan stops one row EARLIER than those two and the boundary row
+  // (the next ElseIf/Else, or the EndIf) SURVIVES. Without this the row falls through to
+  // actions:delete, where snapIndicesToBlocks sees a STRUCTURAL row and takes the whole If…EndIf.
+  | { type: 'actions:deleteElseIfArm'; payload: { elseIfRowIndex: number } }
   // Insert a single Keystroke action (atomic combo like "Alt+Tab", "Ctrl+Shift+T").
   // Unlike insertKey which expands a single tap into a KeyDown+KeyUp pair, insertKeystroke
   // creates ONE row holding the whole combo as a "+"-joined string. The replay engine

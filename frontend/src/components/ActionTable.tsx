@@ -1100,6 +1100,11 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
       } else if (sel.length === 1 && (actions[sel[0]]?.actionType === 'While' || actions[sel[0]]?.actionType === 'ForEachRow')) {
         // Lone loop opener → the whole block goes, same never-orphan rule as the If.
         send({ type: 'actions:deleteLoop', payload: { loopRowIndex: sel[0] } });
+      } else if (sel.length === 1 && actions[sel[0]]?.actionType === 'ElseIf') {
+        // Lone arm → just that arm (its marker + its body), chain and EndIf left standing.
+        // Without this the row falls to snapSelectionToBlocks, where ElseIf is STRUCTURAL and
+        // the whole If…EndIf goes — the bulk bar saying "1 selected" while seven rows vanish.
+        send({ type: 'actions:deleteElseIfArm', payload: { elseIfRowIndex: sel[0] } });
       } else {
         send({ type: 'actions:delete', payload: { indices: snapSelectionToBlocks(sel) } });
       }
@@ -1588,6 +1593,13 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
         closeContextMenu();
         return;
       }
+      // Lone Else If → the arm only. Mirrors the Delete-key path; see there.
+      if (actions[idx]?.actionType === 'ElseIf') {
+        send({ type: 'actions:deleteElseIfArm', payload: { elseIfRowIndex: idx } });
+        setSelectedIndices(new Set());
+        closeContextMenu();
+        return;
+      }
     }
     // A selection touching a marker snaps to whole IF…EndIf blocks so a straddling multi-select
     // can't orphan block rows; a pure body-row selection deletes just those rows
@@ -1596,6 +1608,24 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
     setSelectedIndices(new Set());
     closeContextMenu();
   }, [contextMenu, selectedIndices, send, closeContextMenu, actions, snapSelectionToBlocks]);
+
+  // What Delete will actually take, for the menu label. A lone marker row deletes its own SCOPE —
+  // a block, a loop, or now a single arm — and one flat "Delete" gave no hint which of the three,
+  // nor that a right-click on one row can take seven. Mirrors handleContextDelete's effective-
+  // selection rule exactly (whole selection when the clicked row is in it, otherwise that row
+  // alone); if the two ever disagree the label starts lying, which is worse than no label.
+  const deleteScope = useMemo<'block' | 'loop' | 'arm' | 'rows'>(() => {
+    if (!contextMenu) return 'rows';
+    const indices = selectedIndices.size > 0 && selectedIndices.has(contextMenu.rowIndex)
+      ? Array.from(selectedIndices)
+      : [contextMenu.rowIndex];
+    if (indices.length !== 1) return 'rows';
+    const t = actions[indices[0]]?.actionType;
+    if (t === 'If') return 'block';
+    if (t === 'While' || t === 'ForEachRow') return 'loop';
+    if (t === 'ElseIf') return 'arm';
+    return 'rows';
+  }, [contextMenu, selectedIndices, actions]);
 
   // Resolve the "effective selection" for context-menu operations the same way
   // Duplicate/Delete do: if the right-clicked row is part of the multi-select,
@@ -3260,11 +3290,26 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
           <button
             onMouseEnter={() => setActiveSubmenu(null)}
             onClick={handleContextDelete}
+            data-tip={
+              deleteScope === 'block'
+                ? tt('Removes the If, its body, every Else If arm and the End If.',
+                     'Remove o If, o corpo dele, todos os braços Else If e o End If.')
+                : deleteScope === 'loop'
+                  ? tt('Removes the loop opener, its body and the End Loop.',
+                       'Remove o abridor do loop, o corpo dele e o End Loop.')
+                  : deleteScope === 'arm'
+                    ? tt('Removes only this Else If and its body. The rest of the chain stays.',
+                         'Remove só este Else If e o corpo dele. O resto da cadeia fica.')
+                    : undefined
+            }
             className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-recording hover:bg-bg-elevated transition-colors"
           >
             <span className="flex items-center gap-2.5">
               <Trash2 size={13} />
-              Delete
+              {deleteScope === 'block' ? 'Delete block'
+                : deleteScope === 'loop' ? 'Delete loop'
+                  : deleteScope === 'arm' ? 'Delete arm'
+                    : 'Delete'}
             </span>
             <span className="text-[10px] text-text-disabled font-mono">Del</span>
           </button>
