@@ -4,6 +4,7 @@ import { useBridge } from '../bridge/BridgeContext';
 import { useTt } from '../state/LanguageContext';
 import { Field } from './sheet/Field';
 import { SegmentedControl } from './common/SegmentedControl';
+import { FieldError } from './common/FieldError';
 
 export type WindowTargetValue = {
   processName: string;
@@ -241,7 +242,17 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
             </button>
           )}
         </div>
-        {titleError && <p className="text-[10px] text-recording mt-1 leading-tight">{titleError}</p>}
+        {/* Reserved slot: titleError is a regex-parser message recomputed on EVERY keystroke, so
+            "(Chrome|Firefox)" is invalid until the closing paren and this line used to flash in and
+            out per character — shifting everything below it, and re-centring the whole card in the
+            dialog that hosts these fields. One line, truncated, full text on hover. */}
+        <FieldError
+          show={!!titleError}
+          className="text-[10px] text-recording mt-1 leading-tight"
+          tip={titleError ?? undefined}
+        >
+          {titleError}
+        </FieldError>
       </Field>
 
       {showDetect && (

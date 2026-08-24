@@ -12,6 +12,7 @@ import { NumberInput } from './common/NumberInput';
 import { SegmentedControl } from './common/SegmentedControl';
 import { DurationChips } from './common/DurationChips';
 import { ProcessNameInput } from './common/ProcessNameInput';
+import { FieldError } from './common/FieldError';
 import { chipDotOn, chipDotOff } from './common/chipStyles';
 import { ImageCropper } from './ImageCropper';
 // Deferred: only the BrowserType "Text to Type" field renders this, but a static import pulls
@@ -3509,9 +3510,15 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                   placeholder={textMode === 'regex' ? 'e.g. ^Sign in$' : 'e.g. Sign in'}
                 />
               </div>
-              {regexError && (
-                <p className="text-[10px] mt-1 font-mono" style={{ color: 'var(--color-recording-fg)' }}>Invalid regex: {regexError}</p>
-              )}
+              {/* Reserved slot — same per-keystroke flicker as the window-target title field. */}
+              <FieldError
+                show={!!regexError}
+                className="text-[10px] mt-1 font-mono"
+                style={{ color: 'var(--color-recording-fg)' }}
+                tip={regexError ? `Invalid regex: ${regexError}` : undefined}
+              >
+                Invalid regex: {regexError}
+              </FieldError>
             </div>
             )}
 

@@ -8,6 +8,7 @@ import { KbdTag } from './common/KbdTag';
 import { RemovableChip } from './common/RemovableChip';
 import { CheckboxBox } from './Checkbox';
 import { DialogShell } from './common/DialogShell';
+import { FieldError } from './common/FieldError';
 import { Button } from './common/Button';
 import { TargetConfigDialog } from './TargetConfigDialog';
 import { SecurityWarningModal } from './SecurityWarningModal';
@@ -2561,9 +2562,10 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               placeholder="Profile name..."
               className="w-full h-9 px-3 text-sm text-text-primary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid"
             />
-            {createProfileNameTaken && (
-              <p className="text-[11px] text-recording mt-2">A profile named "{dialogValue.trim()}" already exists.</p>
-            )}
+            {/* Reserved slot, not a conditional mount — see FieldError. The name is deliberately
+                NOT echoed here: it is in the focused input 8 px above, and an interpolated value
+                would make the reserved width track what the user types. */}
+            <FieldError show={createProfileNameTaken}>A profile with that name already exists.</FieldError>
             <div className="flex justify-end gap-2 mt-4">
               <button
                 onClick={() => setShowCreateDialog(false)}
@@ -2597,9 +2599,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               placeholder="New name..."
               className="w-full h-9 px-3 text-sm text-text-primary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid"
             />
-            {renameProfileNameTaken && (
-              <p className="text-[11px] text-recording mt-2">A profile named "{dialogValue.trim()}" already exists.</p>
-            )}
+            <FieldError show={renameProfileNameTaken}>A profile with that name already exists.</FieldError>
             <div className="flex justify-end gap-2 mt-4">
               <button
                 onClick={() => setShowRenameDialog(null)}
@@ -3140,9 +3140,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               </span>
               <span className="ml-auto text-[9px] uppercase tracking-wide text-text-disabled shrink-0">preview</span>
             </div>
-            {createFolderNameTaken && (
-              <p className="text-[11px] text-recording mt-2">A folder named "{folderDialogName.trim()}" already exists.</p>
-            )}
+            <FieldError show={createFolderNameTaken}>A folder with that name already exists.</FieldError>
             <div className="flex justify-end gap-2 mt-4">
               <button
                 onClick={() => setShowCreateFolderDialog(false)}
@@ -3179,9 +3177,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               placeholder="New folder name..."
               className="w-full h-9 px-3 text-sm text-text-primary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid"
             />
-            {renameFolderNameTaken && (
-              <p className="text-[11px] text-recording mt-2">A folder named "{folderDialogName.trim()}" already exists.</p>
-            )}
+            <FieldError show={renameFolderNameTaken}>A folder with that name already exists.</FieldError>
             <div className="flex justify-end gap-2 mt-4">
               <button
                 onClick={() => setShowRenameFolderDialog(null)}
