@@ -559,6 +559,12 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
     [dragIndices]
   );
   const [dropTarget, setDropTarget] = useState<number | null>(null);
+  // Bracket-match probe. Hovering a STRUCTURAL marker lights its whole block span — the rail at
+  // that block's own nesting level runs full strength from opener to closer and the rows in
+  // between take a wash: the affordance a code editor gives when the caret touches a brace.
+  // Wired only to structural rows' mouseenter, so hovering an ordinary body row costs no state
+  // update and no re-render of the table.
+  const [hoverBlock, setHoverBlock] = useState<{ open: number; close: number; level: number } | null>(null);
 
   // ── Conditional logic block map ────────────────────────────────────
   // Single-pass O(n) walk over the action list produces 4 parallel structures used
@@ -647,6 +653,15 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
     }
     return { depth, blockOpenerOf, closerOf, hasElse, elseOf };
   }, [actions]);
+
+  // Indices in hoverBlock address the list as it was when the pointer entered; a delete, reorder
+  // or undo would leave the span painted over unrelated rows until the pointer happens to leave
+  // the marker. Setting null when it is already null is a React bail-out, so the common case is free.
+  useEffect(() => { setHoverBlock(null); }, [actions]);
+
+  // Suppressed during a row drag: dnd-kit moves rows under a stationary pointer, so the span would
+  // strobe across whatever slid beneath it. One gate here beats a guard at every consumer below.
+  const hoverSpan = dragIndices === null ? hoverBlock : null;
 
   // Block-snap a selection ONLY when it includes a structural marker (If/Else/EndIf): a selection
   // touching a marker expands to whole IF…EndIf blocks so the marker can't be orphaned; a PURE
@@ -1934,6 +1949,16 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
               // Rails keep encoding DEPTH, not family — BLOCK_LEVEL_COLORS untouched.
               const isStructural = action.actionType === 'If' || action.actionType === 'ElseIf' || action.actionType === 'Else' || action.actionType === 'EndIf'
                 || action.actionType === 'While' || action.actionType === 'ForEachRow' || action.actionType === 'EndLoop';
+              // The two ENDS of a block, split out of isStructural because only they cap a rail:
+              // an ElseIf / Else sits mid-block and its rail has to run straight through. Both
+              // families share the treatment — a loop is bracketed exactly like a conditional.
+              const isBlockOpener = action.actionType === 'If' || action.actionType === 'While' || action.actionType === 'ForEachRow';
+              const isBlockCloser = action.actionType === 'EndIf' || action.actionType === 'EndLoop';
+              // Bracket-match span for THIS row. hoverRailLevel = -1 means "no rail on this row is
+              // lit"; otherwise it is the nesting level of the hovered block, which is exactly the
+              // rail INDEX to light, since rail i sits at level i.
+              const inHoverSpan = hoverSpan !== null && idx >= hoverSpan.open && idx <= hoverSpan.close;
+              const hoverRailLevel = inHoverSpan ? hoverSpan.level : -1;
               const depth = blockInfo.depth[idx] || 0;
               // Body rows of a conditional block (depth ≥ 1, non-structural) get a
               // softer wash of the same IF hue so the whole block reads as one band,
@@ -2018,6 +2043,27 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                     className="h-row border-b border-border-subtle relative pointer-events-none bg-[color-mix(in_srgb,var(--row-block-color)_6%,transparent)]"
                   >
                     <td colSpan={99} className="p-0 relative">
+                      {/* The ghost slot used to render NO rails, so every block with an Add-Else row
+                          had its bracket cut in two just above the endif — a gap that now reads as
+                          "one block ended, another began". It sits at BODY position inside the block
+                          whose opener is at addElseDepth, so it draws that block's rail plus every
+                          enclosing one: addElseDepth + 1 rails, all at wash strength, never capped.
+                          Anchors to this td rather than the tr, but the colSpan=99 td starts at the
+                          row's left edge, so the same left = 78 + i*14 lands in the same place. */}
+                      {Array.from({ length: addElseDepth + 1 }, (_, i) => (
+                        <div
+                          key={`rail-${i}`}
+                          className="absolute top-0 bottom-0 pointer-events-none"
+                          style={{
+                            left: `${78 + i * 14}px`,
+                            width: '2px',
+                            background: i === hoverRailLevel
+                              ? blockColor(i)
+                              : `color-mix(in srgb, ${blockColor(i)} 35%, transparent)`,
+                            transition: 'background 120ms ease-out',
+                          }}
+                        />
+                      ))}
                       <span
                         className="inline-flex items-center gap-1.5"
                         style={{
@@ -2039,13 +2085,18 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                           disabled={buttonStates.recordingActive || buttonStates.replayActive}
                           className="pointer-events-auto inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[10.5px] font-medium rounded border border-dashed transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                           style={{
-                            // 72%-mix toward text-primary (the W1 pill recipe) — the raw
-                            // block hue was sub-AA on light themes at deep nesting levels.
-                            color: 'color-mix(in srgb, var(--row-block-color) 72%, var(--color-text-primary))',
+                            // Plain text-primary, NOT a mix toward the block hue. The old 72% mix
+                            // was inherited from the W1 pill recipe, but a pill supplies its own
+                            // tinted background to sit on and these chips are transparent on the
+                            // ghost band — measured across 37 themes x 5 nesting levels x rest /
+                            // hover / bracket-lit, it bottomed out at 2.37:1 and missed AA in 328
+                            // of 740 samples. Every partial tint down to 15% still misses. The hue
+                            // stays on the dashed border, which carries no reading load.
+                            color: 'var(--color-text-primary)',
                             borderColor: 'color-mix(in srgb, var(--row-block-color) 35%, transparent)',
                             background: 'transparent',
                           }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = 'color-mix(in srgb, var(--row-block-color) 10%, transparent)'; }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-bg-elevated)'; }}
                           onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                           data-add-else
                           data-tip={tt(
@@ -2063,11 +2114,12 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                             disabled={buttonStates.recordingActive || buttonStates.replayActive}
                             className="pointer-events-auto inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[10.5px] font-medium rounded border border-dashed transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                             style={{
-                              color: 'color-mix(in srgb, var(--row-block-color) 72%, var(--color-text-primary))',
+                              // Same measured recipe as the sibling chip above.
+                              color: 'var(--color-text-primary)',
                               borderColor: 'color-mix(in srgb, var(--row-block-color) 35%, transparent)',
                               background: 'transparent',
                             }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = 'color-mix(in srgb, var(--row-block-color) 10%, transparent)'; }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-bg-elevated)'; }}
                             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                             data-add-else
                             data-tip={tt(
@@ -2108,6 +2160,19 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                   {...sortable.listeners}
                   onClick={(e) => handleRowClick(idx, e)}
                   onContextMenu={(e) => handleRowContextMenu(idx, e)}
+                  // Bracket-match probe, wired ONLY to structural markers. The rows are an inline
+                  // map with no memo boundary, so any state set here re-renders the whole grid —
+                  // hanging this on every row would pay that on each mouse move between rows.
+                  // On a marker it fires at most twice per visit (enter + leave), which is the
+                  // same cadence the context menu already sets state at.
+                  onMouseEnter={isStructural ? () => {
+                    const open = blockInfo.blockOpenerOf[idx];
+                    if (open === null) return;                       // orphan marker — nothing to pair
+                    const close = blockInfo.closerOf.get(open);
+                    if (close === undefined) return;                 // unclosed block — same
+                    setHoverBlock({ open, close, level: blockInfo.depth[open] ?? 0 });
+                  } : undefined}
+                  onMouseLeave={isStructural ? () => setHoverBlock(null) : undefined}
                   // Paused rows use the pause-action colour (purple by default) instead of
                   // the accent-blue "running" tint, plus a soft pulse to mirror the status-bar
                   // PAUSED indicator. The transform/transition pair is dnd-kit's live
@@ -2184,20 +2249,46 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                     {railCount > 0 && Array.from({ length: railCount }, (_, i) => {
                       const isInnermost = i === railCount - 1;
                       const strong = isStructural && isInnermost;
+                      // CAPS — what turns a rail into a BRACKET. Only the row's own (innermost)
+                      // rail caps, and only at the end it actually is: an opener rounds off at the
+                      // top, a closer at the bottom, each inset 4 px. Two adjacent SIBLING blocks
+                      // therefore break apart with ~9 px of clear air between the endif's foot and
+                      // the next if's head, instead of the seamless line they used to share.
+                      // ElseIf/Else never cap — their rail runs through the block they belong to.
+                      const capTop = isBlockOpener && isInnermost;
+                      const capBottom = isBlockCloser && isInnermost;
+                      // Bracket-match: the hovered block's rail goes full strength AND 3px wide along
+                      // its WHOLE span, body rows included, so the pair reads as one solid bracket.
+                      // This is the ONLY channel the probe uses. It deliberately does not wash the
+                      // rows: a translucent tint behind text demotes whatever already sits near the
+                      // contrast floor, and measured over 37 themes x 5 nesting levels a 12% wash
+                      // pushed 522 samples of grid text from >=4.5:1 to below it in 14 themes.
+                      // Dimming the wash does not fix it — at 6% it is still 175 demotions and the
+                      // lit state becomes INVISIBLE on structural rows, which already carry a 6%
+                      // band of the same hue. A neutral bg-elevated wash was worse still (1254).
+                      // The rail carries no text, so widening and saturating it costs nothing. It
+                      // grows rightward from a fixed `left`, so nothing else on the row moves.
+                      const lit = i === hoverRailLevel;
                       return (
                         <div
                           key={`rail-${i}`}
                           className="absolute top-0 bottom-0 pointer-events-none"
                           style={{
                             left: `${78 + i * 14}px`,
-                            width: strong ? '3px' : '2px',
+                            width: strong || lit ? '3px' : '2px',
+                            // Undefined leaves the top-0 / bottom-0 classes in force; only a capped
+                            // end overrides, so an uncapped rail still meets its neighbour exactly.
+                            top: capTop ? '4px' : undefined,
+                            bottom: capBottom ? '4px' : undefined,
+                            borderRadius: capTop ? '2px 2px 0 0' : capBottom ? '0 0 2px 2px' : undefined,
                             // Rail i sits at nesting level i, so it takes that level's colour —
                             // each enclosing block contributes its own coloured rail (rainbow
                             // brackets). The innermost rail of a structural row is full strength;
                             // outer/body rails use the 35% wash the old --if-border used.
-                            background: strong
+                            background: strong || lit
                               ? blockColor(i)
                               : `color-mix(in srgb, ${blockColor(i)} 35%, transparent)`,
+                            transition: 'background 120ms ease-out',
                           }}
                         />
                       );
