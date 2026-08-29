@@ -36,6 +36,13 @@ export function TooltipLayer() {
     const show = (el: HTMLElement, mx: number, my: number) => {
       const text = el.getAttribute('data-tip');
       if (!text) return;
+      // A REVEAL tip carries the anchor's own content and nothing else — it exists so a value
+      // clipped by its column can still be read. When the anchor is not clipped, that tip is the
+      // text the user is already looking at, so it says nothing and is skipped. Opt-in per anchor
+      // (`data-tip-reveal`) rather than inferred from text equality: the anchor may render the same
+      // value differently from the raw string the tip carries — a SendText payload draws its
+      // `{Enter}` tokens as chips, so the two never compare equal even when nothing is hidden.
+      if (el.hasAttribute('data-tip-reveal') && el.scrollWidth <= el.clientWidth) return;
       // Watch the DOM only while a tooltip is actually up (see the observer below for why it
       // exists). Re-observing an already-observing MutationObserver on the same target+options
       // is a no-op, so a hover moving straight from one anchor to the next is fine.

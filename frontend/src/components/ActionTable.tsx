@@ -312,7 +312,6 @@ function renderMsDetail(text: string, language: Language): ReactNode {
 // modifier and the image confidence % live elsewhere — the Action pill and the
 // Sheet panel respectively — to keep this cell to just "what is matched".)
 function ProbeDetails({ action }: { action: ActionItem }) {
-  const tt = useTt();
   // While guards carry the same probe payload as If and get the same type tag (their
   // pill is the generic "while", so the tag says WHAT the guard watches).
   const isIf = carriesConditionProbe(action.actionType);
@@ -345,10 +344,10 @@ function ProbeDetails({ action }: { action: ActionItem }) {
       ) : (
         <>
           {action.pixelColor && (
+            // No tooltip: the hex sits immediately to the right of this swatch.
             <span
               className="inline-block w-2.5 h-2.5 rounded-sm border border-white/20 shrink-0"
               style={{ background: action.pixelColor }}
-              data-tip={tt(`Target colour: ${action.pixelColor}`, `Cor-alvo: ${action.pixelColor}`)}
             />
           )}
           <span className="font-mono text-text-secondary truncate">
@@ -473,7 +472,8 @@ function ConditionDetails({ action }: { action: ActionItem }) {
         // max-width caps the value so a long selector truncates INSIDE the 280px Details
         // column instead of forcing the cell wider (bare `truncate` needs a bounded width to
         // engage). ~190px = column minus the type chip; matches the displayKey max-w pattern.
-        <span className="font-mono text-text-secondary truncate max-w-[190px]" data-tip={value}>
+        // data-tip-reveal: the tip IS this text, so it only shows when the column clipped it.
+        <span className="font-mono text-text-secondary truncate max-w-[190px]" data-tip={value} data-tip-reveal>
           {value}
         </span>
       )}
@@ -2099,10 +2099,6 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                           onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-bg-elevated)'; }}
                           onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                           data-add-else
-                          data-tip={tt(
-                            'Add another condition to this block — checked only if the ones above it were false',
-                            'Adiciona mais uma condição a este bloco — só é checada se as de cima deram falso',
-                          )}
                         >
                           <Plus size={11} />
                           Add Else If
@@ -2122,10 +2118,6 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-bg-elevated)'; }}
                             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                             data-add-else
-                            data-tip={tt(
-                              'Add the fallback branch — runs when every condition above was false',
-                              'Adiciona o ramo de fallback — roda quando toda condição acima deu falso',
-                            )}
                           >
                             <Plus size={11} />
                             Add Else branch
@@ -2348,12 +2340,11 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                           shows both outcomes in the block below it, but "require X" and "require
                           NOT X" are opposite guards that would otherwise render identically. */}
                       {hasConditionFields(action.actionType) && action.conditionNegate && (
+                        // No tooltip: the badge reads NOT next to the condition it negates, which
+                        // is the whole of what the tip used to spell out.
                         <span
                           className="ml-0.5 px-1 rounded text-[9px] font-bold tracking-wider"
                           style={{ background: 'var(--color-action-if-fg)', color: 'var(--color-bg-surface)' }}
-                          data-tip={action.actionType === 'Assert'
-                            ? tt('Negated requirement — this row DEMANDS the probe fails', 'Requisito negado — esta linha EXIGE que a verificação falhe')
-                            : tt('Negated condition — the TRUE branch fires when the probe FAILS (IFNOT)', 'Condição negada — a ramificação TRUE dispara quando a verificação FALHA (IFNOT)')}
                         >
                           NOT
                         </span>
@@ -2467,23 +2458,22 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                         // prose in this cell ("Maximize · notepad", "name = value") whose ordinary
                         // spaces must stay ordinary.
                         style={action.actionType === 'Keystroke' ? { wordSpacing: '-2.5px' } : undefined}
+                        // REVEAL tips only (see TooltipLayer): each one carries this cell's own
+                        // value, so it shows only when the 220 px cap actually clipped it. What
+                        // reaches here is what a column cannot hold — a paragraph of SendText, a
+                        // long CSS selector or URL, a variable value — and reading it on hover
+                        // beats opening the editor. ActivateWindow was dropped: its summary
+                        // ("Maximize · notepad") is short and already fully drawn in the cell.
+                        data-tip-reveal
                         data-tip={
                           action.actionType === 'SendText' ? action.key
-                          // Browser actions can have long CSS selectors / URLs that
-                          // get truncated at 92 px. Exposing the full string on hover
-                          // saves the user from opening the editor just to read it.
                           : action.actionType.startsWith('Browser') ? action.key
-                          // Long variable values truncate at the cell width — expose the
-                          // full assignment on hover, same rationale as Browser selectors.
                           // Cycle rows list the items (· separated — the tip layer collapses
                           // newlines) instead of asserting an "=" assignment that never happens.
                           : action.actionType === 'SetVariable' && action.key
                             ? (action.variableMode === 'cycle'
                                 ? `${action.key} ⟳ ${(action.variableValue ?? '').split('\n').filter(l => l.trim()).join(' · ')}`
                                 : `${action.key} = ${action.variableValue ?? ''}`)
-                          // Launch paths / matcher summaries truncate too — displayKey
-                          // already holds the full untruncated string for this type.
-                          : action.actionType === 'ActivateWindow' && displayKey ? displayKey
                           : undefined
                         }
                         // dblclick handler lives on the parent <td> (see above) so
