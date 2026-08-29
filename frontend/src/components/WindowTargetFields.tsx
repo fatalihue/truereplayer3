@@ -215,8 +215,8 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
               value={value.titleMatchMode}
               onChange={(m) => edit({ titleMatchMode: m })}
               options={[
-                { value: 'contains', label: 'Contains', tip: tt('Title must contain this text (case-insensitive)', 'Título deve conter este texto (sem diferenciar maiúsculas)') },
-                { value: 'regex', label: 'Regex', tip: tt('Title is a .NET regular expression (case-insensitive)', 'Título é uma expressão regular .NET (sem diferenciar maiúsculas)') },
+                { value: 'contains', label: 'Contains', tip: tt('Contains this text', 'Contém este texto') },
+                { value: 'regex', label: 'Regex', tip: tt('.NET regular expression', 'Expressão regular .NET') },
               ]}
             />
           </div>
@@ -266,8 +266,8 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
           }`}
         >
           {isDetecting
-            ? tt('Waiting for click… (click target window)', 'Aguardando clique… (clique na janela-alvo)')
-            : tt('Detect Window (click on target)', 'Detectar janela (clique no alvo)')}
+            ? tt('Click the target window…', 'Clique na janela-alvo…')
+            : tt('Detect window', 'Detectar janela')}
         </button>
       )}
     </>

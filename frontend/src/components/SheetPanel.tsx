@@ -113,6 +113,31 @@ function resultCardStyle(ok: boolean) {
   };
 }
 
+// One axis of the Activate Window placement grid: a single-letter caption and a stepper, half a
+// row wide. Four of these make X/Y and W/H, so the caption alignment, the clamp and the disabled
+// dimming are written once instead of four times.
+function AxisInput({ axis, value, onChange, disabled = false, min }: {
+  axis: string;
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+  min?: number;
+}) {
+  return (
+    <div className="flex-1 min-w-0 flex items-center gap-1.5">
+      <span className={`label-micro shrink-0 w-3 ${disabled ? 'text-text-tertiary/50' : 'text-text-tertiary'}`}>{axis}</span>
+      <NumberInput
+        value={parseInt(value, 10) || 0}
+        onChange={(n) => onChange(String(min != null ? Math.max(min, n) : n))}
+        min={min}
+        disabled={disabled}
+        ariaLabel={`Window ${axis}`}
+        inputWidth="w-full" inputHeight="h-8" className="flex-1 min-w-0"
+      />
+    </div>
+  );
+}
+
 // #1 — Text matching modes mapped to selector prefixes
 type TextMode = 'exact' | 'contains' | 'icontains' | 'regex';
 const TEXT_MODES: { value: TextMode; label: string; prefix: string }[] = [
@@ -241,10 +266,6 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   const [isPicking, setIsPicking] = useState(false);
 
   // #6, #7, #5 — new browser fields
-  // Rare-key chips (Escape/Backspace/Delete/arrows) live behind a "⋯" expander so the
-  // default palette stays at the two rows users actually reach for. Ephemeral on
-  // purpose — collapses again when the panel remounts for another action.
-  const [showMoreTypeChips, setShowMoreTypeChips] = useState(false);
   const [waitMode, setWaitMode] = useState<string>('appears');
   const [urlWaitPattern, setUrlWaitPattern] = useState('');
   const [postNavigateSelector, setPostNavigateSelector] = useState('');
@@ -1896,11 +1917,15 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     captureGeoReqRef.current = requestId;
     setCaptureGeoRequestId(requestId);
     setCaptureGeoError(null);
+    // Capture reads BOTH pairs, so clicking it with neither applied arms both — otherwise it
+    // fills four numbers that nothing uses, which reads as a no-op. Never turns one OFF: a
+    // deliberate position-only setup stays position-only.
+    if (!restorePosition && !restoreSize) { setRestorePosition(true); setRestoreSize(true); }
     send({
       type: 'window:captureGeometry',
       payload: { requestId, processName: windowProcessName, windowTitle, titleMatchMode: windowTitleMatchMode },
     });
-  }, [windowProcessName, windowTitle, windowTitleMatchMode, send]);
+  }, [windowProcessName, windowTitle, windowTitleMatchMode, restorePosition, restoreSize, send]);
 
   // WaitImage: capture screen now and report best confidence + matched rect against the reference
   // image. Doesn't run the replay — pure calibration helper.
@@ -2328,15 +2353,6 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
               the probe configuration. */}
           {hasCondition && (
           <>
-            {/* What an Assert IS, said once where it's decided. The three condition-shaped
-                actions are easy to confuse, and picking the wrong one fails quietly:
-                WaitImage synchronises, If branches, Assert requires. */}
-            {isAssert && (
-              <div className="text-[11px] text-text-tertiary leading-relaxed bg-bg-card border border-border-subtle rounded px-2.5 py-2">
-                {tt('Stops the run and names the failure when this is not true. Use it for the preconditions a macro assumes — the right window focused, the clipboard actually holding what you copied — instead of finding out 40 blind clicks later.',
-                    'Interrompe a execução e nomeia a falha quando isto não for verdade. Use para as premissas que a macro assume — a janela certa em foco, o clipboard realmente com o que você copiou — em vez de descobrir 40 cliques cegos depois.')}
-              </div>
-            )}
 
             <Field label={isAssert ? 'Require' : 'Condition'}>
               {/* 2-bucket label map (pure render): object probes read Found/NOT Found;
@@ -2370,7 +2386,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
             {!isIfRandom && (
             <Field
               label="Wait for condition"
-              hint={tt('How long to keep re-checking before giving up. 0 = check once.', 'Por quanto tempo continuar checando antes de desistir. 0 = checa uma vez.')}
+              hint={tt('0 = check once.', '0 = checa uma vez.')}
             >
               <NumberInput
                 value={parseInt(conditionTimeout, 10) || 0}
@@ -2391,8 +2407,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
             {isWhile && (
             <Field
               label="Max iterations"
-              hint={tt('Safety ceiling: the loop exits normally after this many passes even if the condition is still true. 0 = the 1000-iteration default.',
-                      'Teto de segurança: o loop sai normalmente depois deste número de passagens mesmo com a condição ainda verdadeira. 0 = o padrão de 1000 iterações.')}
+              hint={tt('0 = default (1000).', '0 = padrão (1000).')}
             >
               <NumberInput
                 value={parseInt(loopMaxIterations, 10) || 0}
@@ -2417,7 +2432,6 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
             {carriesConditionProbe(actionType) && (
             <Field
               label="On Probe Error"
-              hint={tt('What to do if the check itself errors.', 'O que fazer se a própria checagem der erro.')}
             >
               <SegmentedControl<'TreatAsFalse' | 'Halt'>
                 ariaLabel="On probe error"
@@ -2425,8 +2439,8 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 value={ifOnProbeError === 'Halt' ? 'Halt' : 'TreatAsFalse'}
                 onChange={(v) => setIfOnProbeError(v)}
                 options={[
-                  { value: 'TreatAsFalse', label: 'Treat as false', tip: tt('Probe errors count as NOT found (default)', 'Erros de sondagem contam como NÃO encontrado (padrão)') },
-                  { value: 'Halt', label: 'Halt', tip: tt('Stop the replay', 'Interrompe a reprodução') },
+                  { value: 'TreatAsFalse', label: 'Treat as false' },
+                  { value: 'Halt', label: 'Halt' },
                 ]}
               />
             </Field>
@@ -2435,8 +2449,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
             {isAssert && (
             <Field
               label="On failure"
-              hint={tt('Abort names the failure and stops. Continue only logs a warning — it does NOT mark a data-loop row failed; for that leave this on Abort and set the Data panel to "Skip row". Stop quietly ends the run with no error — and beats the table’s "Skip row" policy.',
-                      'Abort nomeia a falha e para. Continue só registra um aviso — NÃO marca a linha do data loop como falha; para isso deixe em Abort e ponha o painel Data em "Skip row". Stop quietly encerra a execução sem erro — e prevalece sobre o "Skip row" da tabela.')}
+              hint={tt('Continue does not fail a data-loop row.', 'Continue não marca a linha do data loop como falha.')}
             >
               {/* Same tri-state BrowserAssert uses (persisted as ''|'Continue'|'StopReplay');
                   only the label reads "Abort", which is what the failure actually does. */}
@@ -2446,9 +2459,9 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 value={assertOnFail}
                 onChange={setAssertOnFail}
                 options={[
-                  { value: 'Halt', label: 'Abort', tip: tt('Stop the run and report which assert failed (default)', 'Para a execução e informa qual assert falhou (padrão)') },
-                  { value: 'Continue', label: 'Continue', tip: tt('Log a warning and keep going', 'Registra um aviso e segue') },
-                  { value: 'StopReplay', label: 'Stop quietly', tip: tt('End the run with no error — like pressing Stop yourself. Beats the data table’s "Skip row" policy.', 'Encerra a execução sem erro — como apertar Stop você mesmo. Prevalece sobre o "Skip row" da tabela de dados.') },
+                  { value: 'Halt', label: 'Abort' },
+                  { value: 'Continue', label: 'Continue' },
+                  { value: 'StopReplay', label: 'Stop quietly' },
                 ]}
               />
             </Field>
@@ -2472,14 +2485,14 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 if (p.titleMatchMode !== undefined) setWindowTitleMatchMode(p.titleMatchMode);
               }}
               processLabel="Process Name"
-              processHint={tt('e.g. notepad.exe — ".exe" is assumed when omitted. Leave empty to match by title only.', 'ex.: notepad.exe — ".exe" é assumido se omitido. Deixe vazio para casar só pelo título.')}
-              titleHint={tt('Case-insensitive. Leave empty to match by process only — but set at least one of the two.', 'Sem diferenciar maiúsculas. Deixe vazio para casar só pelo processo — mas preencha ao menos um dos dois.')}
+              processHint={tt('Empty = match by title only.', 'Vazio = casar só pelo título.')}
+              titleHint={tt('Case-insensitive. Fill at least one of the two.', 'Sem diferenciar maiúsculas. Preencha ao menos um dos dois.')}
             />
             <Checkbox
               checked={windowMatchForegroundOnly}
               onChange={setWindowMatchForegroundOnly}
               label="Foreground window only"
-              title={tt('TRUE only if the matching window is currently in front — instead of existing anywhere.', 'TRUE somente se a janela correspondente estiver em primeiro plano — em vez de apenas existir.')}
+              title={tt('Must be in front, not just open.', 'Precisa estar em primeiro plano, não só aberta.')}
             />
             {/* Exists-anywhere Test — reuses the ActivateWindow probe (window:testProbe) verbatim;
                 the two editors are mutually exclusive so they share the same probe state. */}
@@ -2529,7 +2542,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
             </Field>
             <Field
               label="Pattern"
-              hint={tt('Compared against the clipboard TEXT, case-insensitive. Non-text clipboard (image/files) never matches.', 'Comparado com o TEXTO do clipboard, sem diferenciar maiúsculas. Clipboard não-texto (imagem/arquivos) nunca casa.')}
+              hint={tt('Text only, case-insensitive.', 'Só texto, sem diferenciar maiúsculas.')}
             >
               <input
                 type="text"
@@ -2547,7 +2560,6 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
             <Field
               label="Chance"
               className="w-[124px]"
-              hint={tt('TRUE this often. 100% always takes the main branch, 0% never does.', 'TRUE nesta frequência. 100% sempre pega o ramo principal, 0% nunca.')}
             >
               <NumberInput
                 value={parseInt(randomPercent, 10) || 0}
@@ -2568,7 +2580,6 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
           <>
             <Field
               label="Variable Name"
-              hint={tt('The variable set earlier with Set Variable. Case-insensitive.', 'A variável definida antes com Set Variable. Sem diferenciar maiúsculas.')}
             >
               <input
                 type="text"
@@ -2586,7 +2597,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 value={conditionOperator}
                 onChange={setConditionOperator}
                 options={[
-                  { value: 'eq', label: '=', tip: tt('Equal (case-insensitive text)', 'Igual (texto, sem diferenciar maiúsculas)') },
+                  { value: 'eq', label: '=', tip: tt('Equal — text, case-insensitive', 'Igual — texto, sem diferenciar maiúsculas') },
                   { value: 'neq', label: '≠', tip: tt('Not equal', 'Diferente') },
                   { value: 'contains', label: 'has', tip: tt('Variable contains the operand', 'A variável contém o operando') },
                   { value: 'gt', label: '>', tip: tt('Greater than (numeric when both are numbers)', 'Maior que (numérico quando ambos são números)') },
@@ -2596,7 +2607,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
             </Field>
             <Field
               label="Value"
-              hint={tt('Tokens like {var:other}, {counter} or {clipboard} resolve here. In Test the variable is empty — run the profile to evaluate.', 'Tokens como {var:other}, {counter} ou {clipboard} resolvem aqui. No Test a variável está vazia — execute o perfil para avaliar.')}
+              hint={tt('Tokens resolve here. Test reads them as empty.', 'Tokens resolvem aqui. O Test lê como vazio.')}
             >
               <input
                 type="text"
@@ -2613,7 +2624,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
           {isIfProcess && (
             <Field
               label="Process Name"
-              hint={tt('e.g. chrome.exe — ".exe" optional. TRUE when the process is running (with or without a window).', 'ex.: chrome.exe — ".exe" opcional. TRUE quando o processo está em execução (com ou sem janela).')}
+              hint={tt('TRUE while the process runs, window or not.', 'TRUE enquanto o processo roda, com ou sem janela.')}
             >
               <ProcessNameInput value={windowProcessName} onChange={setWindowProcessName} />
             </Field>
@@ -2623,7 +2634,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
           {isIfFile && (
             <Field
               label="Path"
-              hint={tt('File or folder path. Tokens like {var:x} or {date} resolve at run time. Pairs with a flag file to control the macro from outside.', 'Caminho de arquivo ou pasta. Tokens como {var:x} ou {date} resolvem na execução. Combina com um arquivo-bandeira para controlar a macro de fora.')}
+              hint={tt('File or folder. Tokens resolve at run time.', 'Arquivo ou pasta. Tokens resolvem na execução.')}
             >
               <input
                 type="text"
@@ -2640,7 +2651,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
           {isIfTime && (
           <>
             <div className="flex gap-2.5">
-              <Field label="From" className="flex-1" hint={tt('Local time HH:mm', 'Hora local HH:mm')}>
+              <Field label="From" className="flex-1">
                 <input
                   type="time"
                   value={timeStart}
@@ -2657,7 +2668,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 />
               </Field>
             </div>
-            <Field label="Days" hint={tt('None selected = every day. Leave times empty for a day-only condition.', 'Nenhum marcado = todo dia. Deixe as horas vazias para condição só por dia.')}>
+            <Field label="Days" hint={tt('None = every day.', 'Nenhum = todo dia.')}>
               {/* Independent toggle chips, NOT a segmented track — multi-select must not
                   look like an exclusive choice. Same XOR bitmask write as before. */}
               <div className="flex gap-1">
@@ -2703,7 +2714,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                   <span className="text-[10px] font-semibold normal-case">{tier}</span>
                 </span>
               ) : undefined}
-              hint={tt('Requires the browser extension connected; when it is not, the condition reads as NOT found instead of stopping the replay.', 'Requer a extensão do navegador conectada; sem ela, a condição lê como NÃO encontrado em vez de parar a reprodução.')}
+              hint={tt('Extension offline = reads as not found.', 'Extensão offline = lê como não encontrado.')}
             >
               <div className="flex gap-1.5">
                 <input
@@ -2773,7 +2784,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 onChange={(e) => setWaitMode(e.target.value)}
                 className="w-full h-8 px-2 text-ui bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid"
               >
-                <option value="appears">Visible (default)</option>
+                <option value="appears">Visible</option>
                 <option value="disappears">Not present / hidden</option>
                 <option value="enabled">Enabled</option>
                 <option value="text-match">Text matches</option>
@@ -2782,7 +2793,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
             {waitMode === 'text-match' && (
               <Field
                 label="Text Pattern"
-                hint={tt("Element's visible text must match. Supports the text-selector syntax: plain text = exact, or prefix with text*= / text~= / text/regex/.", 'O texto visível do elemento deve casar. Suporta a sintaxe de seletor de texto: texto puro = exato, ou prefixe com text*= / text~= / text/regex/.')}
+                hint={tt('Plain text = exact. Or text*=  text~=  text/regex/', 'Texto puro = exato. Ou text*=  text~=  text/regex/')}
               >
                 <input
                   type="text"
@@ -2824,11 +2835,11 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                   </div>
                   <div className="mt-0.5 text-text-tertiary">
                     {condResult.lost
-                      ? tt('The check timed out waiting for a reply. Check that Chrome and the TrueReplayer extension are still running.',
-                           'A checagem expirou esperando resposta. Confira se o Chrome e a extensão do TrueReplayer continuam rodando.')
+                      ? tt('Timed out. Is Chrome and the extension running?',
+                           'Expirou. O Chrome e a extensão estão rodando?')
                       : !condResult.connected
-                      ? tt('Could not ask the page. With the bridge down the replay reads this condition as NOT found instead of stopping.',
-                           'Não foi possível perguntar à página. Com a ponte fora, a reprodução lê esta condição como NÃO encontrado em vez de parar.')
+                      ? tt('Could not reach the page — reads as NOT found.',
+                           'Não foi possível alcançar a página — lê como NÃO encontrado.')
                       : condResult.negate
                         ? tt(`Element state: ${condResult.raw ? 'matched' : 'not matched'} · inverted by "Negate"`,
                              `Estado do elemento: ${condResult.raw ? 'casou' : 'não casou'} · invertido por "Negate"`)
@@ -2853,8 +2864,8 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
               }}
             >
               {isElse
-                ? tt('Else marks the FALSE branch of its If block. Configure the condition on the opening If row — nothing to set here.', 'Else marca o ramo FALSE do bloco If. Configure a condição na linha If de abertura — nada a definir aqui.')
-                : tt('End If closes the conditional block. Configure the condition on the opening If row — nothing to set here.', 'End If fecha o bloco condicional. Configure a condição na linha If de abertura — nada a definir aqui.')}
+                ? tt('The FALSE branch. Set the condition on the If row.', 'O ramo FALSE. Defina a condição na linha If.')
+                : tt('Closes the block. Set the condition on the If row.', 'Fecha o bloco. Defina a condição na linha If.')}
             </div>
           )}
 
@@ -2870,16 +2881,13 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
               }}
             >
               {actionType === 'EndLoop'
-                ? tt('End Loop closes the loop block and jumps back to its opening row. Configure the loop on the opening While / For Each Data Row — nothing to set here.',
-                     'End Loop fecha o bloco de loop e volta para a linha de abertura. Configure o loop na linha While / For Each Data Row de abertura — nada a definir aqui.')
+                ? tt('Closes the block. Set the loop on its opening row.', 'Fecha o bloco. Configure o loop na linha de abertura.')
                 : actionType === 'BreakLoop'
-                ? tt('Break Loop exits the innermost loop immediately — the run continues after its End Loop.',
-                     'Break Loop sai do loop mais interno imediatamente — a execução continua depois do End Loop dele.')
+                ? tt('Exits the innermost loop.', 'Sai do loop mais interno.')
                 : actionType === 'ContinueLoop'
-                ? tt('Next Iteration jumps back to the innermost loop’s opening row: a While re-checks its condition, a For Each Data Row moves to the next row.',
-                     'Next Iteration volta para a abertura do loop mais interno: um While volta a checar a condição, um For Each Data Row passa para a próxima linha.')
-                : tt('For Each Data Row runs its block once per row of the ACTIVE data table — {row:column} resolves from the current row inside. Empty table = the block is skipped.',
-                     'For Each Data Row roda o bloco uma vez por linha da tabela de dados ATIVA — {row:coluna} resolve da linha atual lá dentro. Tabela vazia = o bloco é pulado.')}
+                ? tt('Jumps back to the innermost loop’s opening row.', 'Volta para a abertura do loop mais interno.')
+                : tt('Runs its block once per row of the active data table. {row:column} reads the current row.',
+                     'Roda o bloco uma vez por linha da tabela de dados ativa. {row:coluna} lê a linha atual.')}
             </div>
           )}
 
@@ -2894,10 +2902,9 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
               }}
             >
               {actionType === 'Stop'
-                ? tt('Stop ends the whole run here as a normal finish — no error, no toast. Rows after it never run. Useful inside a conditional: "if the goal is reached, we are done."',
-                     'Stop encerra a execução inteira aqui como um término normal — sem erro, sem toast. As linhas depois dele nunca rodam. Útil dentro de um condicional: "se o objetivo foi alcançado, acabou."')
-                : tt('Return ends only the CURRENT pass — the remaining repeat passes or data rows still run. Rows after it in this pass never run.',
-                     'Return encerra só o passe ATUAL — os passes de repetição ou linhas de dados restantes continuam. As linhas depois dele neste passe nunca rodam.')}
+                ? tt('Ends the whole run here, with no error.', 'Encerra a execução inteira aqui, sem erro.')
+                : tt('Ends this pass only — remaining passes and data rows still run.',
+                     'Encerra só este passe — os passes e linhas de dados restantes continuam.')}
             </div>
           )}
 
@@ -2984,8 +2991,8 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                       {testMatchResult.found && (
                         <div className="mt-1 text-[10px] opacity-80">
                           {tt(
-                            'Search region set to a ±80 px rect around this match. Use the Search Region field below to fine-tune.',
-                            'Região de busca definida como um retângulo de ±80 px ao redor deste match. Ajuste fino no campo Search Region abaixo.',
+                            'Search region set around this match.',
+                            'Região de busca definida ao redor deste match.',
                           )}
                         </div>
                       )}
@@ -3004,12 +3011,12 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 <div className="flex-1 h-8 px-2 flex items-center text-[11px] font-mono bg-bg-input border border-border-default rounded text-text-secondary">
                   {waitImageSearchRegion
                     ? `${waitImageSearchRegion.x}, ${waitImageSearchRegion.y}  ·  ${waitImageSearchRegion.w} × ${waitImageSearchRegion.h}`
-                    : <span className="text-text-disabled italic">Full screen (default)</span>}
+                    : <span className="text-text-disabled italic">Full screen</span>}
                 </div>
                 <button
                   onClick={handleConfigureSearchRegion}
                   className="h-8 px-2.5 flex items-center gap-1.5 rounded text-xs font-medium border border-border-default bg-bg-elevated hover:bg-bg-card text-text-secondary hover:text-text-primary transition-colors"
-                  data-tip={tt('Limit matching to a screen region — faster, fewer false positives.', 'Limita a correspondência a uma região da tela — mais rápido, menos falsos positivos.')}
+                  data-tip={tt('Faster, fewer false positives.', 'Mais rápido, menos falsos positivos.')}
                 >
                   <Frame size={12} />
                   Configure
@@ -3031,7 +3038,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 wait behavior → test it". */}
             <Field
               label="Tolerance (%)"
-              hint={tt('Default 80%. Raise to ~95 for strict; drop below 70 for compressed UI.', 'Padrão 80%. Aumente para ~95 para estrito; abaixe de 70 para UI comprimida.')}
+              hint={tt('Higher = stricter.', 'Maior = mais estrito.')}
             >
               <Slider
                 value={parseInt(confidence, 10) || 80}
@@ -3087,8 +3094,8 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                   value={waitImageOnTimeout === 'Continue' ? 'Continue' : 'StopReplay'}
                   onChange={(v) => setWaitImageOnTimeout(v)}
                   options={[
-                    { value: 'StopReplay', label: 'Halt', tip: tt('Stop the replay', 'Interrompe a reprodução') },
-                    { value: 'Continue', label: 'Continue', tip: tt('Continue to the next action', 'Continua para a próxima ação') },
+                    { value: 'StopReplay', label: 'Halt' },
+                    { value: 'Continue', label: 'Continue' },
                   ]}
                 />
               </Field>
@@ -3225,7 +3232,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 who really want > 50 can still type it. */}
             <Field
               label="Tolerance (Per Channel)"
-              hint={tt('Try 5–15 for compressed UI colours.', 'Tente 5–15 para cores de UI comprimidas.')}
+              hint={tt('5–15 for compressed colours.', '5–15 para cores comprimidas.')}
             >
               <Slider
                 value={parseInt(pixelTolerance, 10) || 0}
@@ -3280,8 +3287,8 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                   value={pixelOnTimeout === 'Continue' ? 'Continue' : 'StopReplay'}
                   onChange={(v) => setPixelOnTimeout(v)}
                   options={[
-                    { value: 'StopReplay', label: 'Halt', tip: tt('Stop the replay', 'Interrompe a reprodução') },
-                    { value: 'Continue', label: 'Continue', tip: tt('Continue to the next action', 'Continua para a próxima ação') },
+                    { value: 'StopReplay', label: 'Halt' },
+                    { value: 'Continue', label: 'Continue' },
                   ]}
                 />
               </Field>
@@ -3389,7 +3396,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 >
                   <ShieldAlert size={13} className="shrink-0 mt-px" />
                   <span>
-                    {tt('No resume hotkey and no timeout — this Pause will be skipped at replay time.', 'Sem tecla de retomada e sem tempo limite — esta Pause será ignorada na reprodução.')}
+                    {tt('No hotkey and no timeout — this Pause is skipped.', 'Sem tecla e sem tempo limite — esta Pause é ignorada.')}
                   </span>
                 </div>
               );
@@ -3537,7 +3544,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
             {isBrowserNavigate && (
             <>
               <div className="label-micro text-text-tertiary">After Navigation</div>
-              <Field label="URL Pattern" hint={tt('Optional. Wait until URL matches glob (*) or /regex/. Useful for redirects.', 'Opcional. Espera até a URL corresponder a glob (*) ou /regex/. Útil para redirecionamentos.')}>
+              <Field label="URL Pattern" hint={tt('Glob (*) or /regex/.', 'Glob (*) ou /regex/.')}>
                 <input
                   type="text"
                   value={urlWaitPattern}
@@ -3546,7 +3553,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                   placeholder="*/dashboard*"
                 />
               </Field>
-              <Field label="Ready Element" hint={tt('Optional. Wait for element to appear after page load.', 'Opcional. Espera o elemento aparecer após o carregamento da página.')}>
+              <Field label="Ready Element">
                 <input
                   type="text"
                   value={postNavigateSelector}
@@ -3578,10 +3585,9 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                   />
                 </Suspense>
               </div>
-              {/* Chip palette — the 3 most-reached tokens on one row; everything else (Tab,
-                  Date, Time, and the rare keys) collapses behind the "⋯" expander. Names match
-                  the SendText dialog's vocabulary; insertText() drops the token at the cursor
-                  inside the Lexical editor and TokenAutoTransformPlugin turns it into a chip. */}
+              {/* Chip palette. Three chips, all visible — the "⋯" expander that used to hide
+                  fourteen more was removed because none of them were ever reached: any token
+                  can still be typed, and the full palette lives in the Insert Text editor. */}
               <div className="flex flex-wrap gap-1 mt-2">
                 {[
                   { var: '{Clipboard}', label: 'Clipboard' },
@@ -3597,51 +3603,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                     {item.label}
                   </button>
                 ))}
-                {/* "⋯" expander — accent "active" state while open mirrors the SendText
-                    Advanced chip's toggle affordance. */}
-                <button
-                  type="button"
-                  onClick={() => setShowMoreTypeChips(v => !v)}
-                  className={`h-6 px-2 inline-flex items-center text-[11px] font-mono border rounded transition-colors ${
-                    showMoreTypeChips
-                      ? 'text-accent-light bg-accent-solid/15 border-accent-solid/50'
-                      : 'bg-bg-surface border-border-subtle text-text-secondary hover:text-warning-ink hover:border-warning-ink/40'
-                  }`}
-                  data-tip={showMoreTypeChips ? tt('Hide extra tokens', 'Ocultar tokens extras') : tt('More tokens (Tab, Date, Time, Random, clipboard slot/history/next line, Escape, Backspace, Delete, arrows)', 'Mais tokens (Tab, Date, Time, Random, slot/histórico/próxima linha do clipboard, Escape, Backspace, Delete, setas)')}
-                >
-                  ⋯
-                </button>
               </div>
-              {/* Everything beyond the top 3 — collapsed by default. */}
-              {showMoreTypeChips && (
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {[
-                    { var: '{Tab}', label: 'Tab' },
-                    { var: '{Date}', label: 'Date' },
-                    { var: '{Time}', label: 'Time' },
-                    { var: '{Random:1-10}', label: 'Random' },
-                    { var: '{Clip:1}', label: 'Clip slot' },
-                    { var: '{WinClip:1}', label: 'Clip history' },
-                    { var: '{Clipboard:next}', label: 'Clip line (next)' },
-                    { var: '{Escape}', label: 'Escape' },
-                    { var: '{Backspace}', label: 'Backspace' },
-                    { var: '{Delete}', label: 'Delete' },
-                    { var: '{Up}', label: 'Up' },
-                    { var: '{Down}', label: 'Down' },
-                    { var: '{Left}', label: 'Left' },
-                    { var: '{Right}', label: 'Right' },
-                  ].map(item => (
-                    <button
-                      key={item.var}
-                      type="button"
-                      onClick={() => browserTextEditorRef.current?.insertText(item.var)}
-                      className="h-6 px-2 inline-flex items-center text-[11px] font-mono bg-bg-surface border border-border-subtle rounded text-text-secondary hover:text-warning-ink hover:border-warning-ink/40 transition-colors"
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              )}
             </Field>
             )}
 
@@ -3653,16 +3615,16 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 checked={typeAppend}
                 onChange={setTypeAppend}
                 label="Keep existing text"
-                title={tt('Add the new text to the end of whatever is already in the field. When unchecked (default), the field is cleared before typing.', 'Adiciona o novo texto ao final do que já estiver no campo. Quando desmarcado (padrão), o campo é limpo antes de digitar.')}
+                title={tt('Adds to what is already in the field.', 'Adiciona ao que já está no campo.')}
               />
               <Checkbox
                 checked={typePaste}
                 onChange={setTypePaste}
                 label="Paste"
-                title={tt('Use clipboard paste (instant) instead of typing char-by-char', 'Usa colagem da área de transferência (instantâneo) em vez de digitar caractere por caractere')}
+                title={tt('Instant, instead of typing character by character.', 'Instantâneo, em vez de digitar caractere a caractere.')}
               />
               <div className="flex items-center gap-2">
-                <label className="text-xs text-text-secondary" data-tip={tt('Delay between characters in ms (typing only). 0 = instant, blank = auto.', 'Atraso entre caracteres em ms (apenas digitação). 0 = instantâneo, vazio = automático.')}>Char delay</label>
+                <label className="text-xs text-text-secondary">Char delay</label>
                 <NumberInput
                   // typeDelay '' = "auto" (engine picks a default per text length). Pass
                   // null so the placeholder shows; user clearing the field via onClear
@@ -3693,7 +3655,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                   placeholder below then teaches the expected format). */}
               <Field
                 label="Match By"
-                hint={tt('Only works on native <select> elements. For React-Select / Select2 use Click Element.', 'Só funciona em elementos <select> nativos. Para React-Select / Select2 use Click Element.')}
+                hint={tt('Native <select> only.', 'Só <select> nativo.')}
               >
                 <SegmentedControl<'text' | 'value' | 'index'>
                   ariaLabel="Option match mode"
@@ -3701,9 +3663,9 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                   value={selectMatchMode}
                   onChange={setSelectMatchMode}
                   options={[
-                    { value: 'text', label: 'Text', tip: tt('Match the visible label (default)', 'Casa pelo rótulo visível (padrão)') },
-                    { value: 'value', label: 'Value', tip: tt("Match the option's value attribute", 'Casa pelo atributo value da opção') },
-                    { value: 'index', label: 'Index', tip: tt('Match by 0-based position', 'Casa pela posição (base 0)') },
+                    { value: 'text', label: 'Text', tip: tt('The visible label', 'O rótulo visível') },
+                    { value: 'value', label: 'Value', tip: tt('The value attribute', 'O atributo value') },
+                    { value: 'index', label: 'Index', tip: tt('0-based position', 'Posição (base 0)') },
                   ]}
                 />
               </Field>
@@ -3727,10 +3689,10 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 onChange={(e) => setWaitMode(e.target.value)}
                 className="w-full h-8 px-2 text-ui bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid"
               >
-                <option value="appears">{isBrowserAssert ? 'Is present (default)' : 'Appears (default)'}</option>
+                <option value="appears">{isBrowserAssert ? 'Is present' : 'Appears'}</option>
                 <option value="disappears">{isBrowserAssert ? 'Is NOT present' : 'Disappears'}</option>
                 <option value="enabled">{isBrowserAssert ? 'Is enabled' : 'Enabled'}</option>
-                <option value="text-match">Text matches (uses Text Match field)</option>
+                <option value="text-match">Text matches</option>
               </select>
               {/* Foot-gun warning: text-match mode needs an actual Text Match string.
                   Without it, the effective selector falls back to the raw CSS key
@@ -3747,7 +3709,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                   }}
                 >
                   <ShieldAlert size={13} className="shrink-0 mt-px" />
-                  <span>{tt('Text-match mode needs a value in the Text Match field. Otherwise this Wait will time out.', 'O modo Text Match precisa de um valor no campo Text Match. Caso contrário, este Wait vai expirar.')}</span>
+                  <span>{tt('Text Pattern is empty — this Wait will time out.', 'Text Pattern está vazio — este Wait vai expirar.')}</span>
                 </div>
               )}
             </Field>
@@ -3764,9 +3726,9 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 value={assertOnFail}
                 onChange={setAssertOnFail}
                 options={[
-                  { value: 'Halt', label: 'Halt', tip: tt('Stop the replay and report when the assertion is not met.', 'Para o replay e reporta quando a asserção não é satisfeita.') },
-                  { value: 'Continue', label: 'Continue', tip: tt('Log and continue to the next action even if the assertion fails.', 'Registra e segue para a próxima ação mesmo se a asserção falhar.') },
-                  { value: 'StopReplay', label: 'Stop quietly', tip: tt('End the run with no error — like pressing Stop yourself.', 'Encerra a execução sem erro — como apertar Stop você mesmo.') },
+                  { value: 'Halt', label: 'Halt' },
+                  { value: 'Continue', label: 'Continue' },
+                  { value: 'StopReplay', label: 'Stop quietly' },
                 ]}
               />
             </Field>
@@ -3916,8 +3878,8 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                   // saved key change drops the formatting (bridge nulls KeyHtml). Point the
                   // user at the Insert Text dialog for formatted editing.
                   <div className="mt-1 text-[10px] text-warning-ink leading-snug">
-                    {tt('Formatted text — saving a change here converts it to plain. Use the row’s Insert Text editor to keep formatting.',
-                        'Texto formatado — salvar uma mudança aqui converte para texto puro. Use o editor Insert Text da linha para manter a formatação.')}
+                    {tt('Saving here drops the formatting.',
+                        'Salvar aqui perde a formatação.')}
                   </div>
                 )}
               </>
@@ -3931,10 +3893,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
             <>
               <Field
                 label="Variable Name"
-                hint={tt(
-                  'Letters, digits and underscore. Read it back anywhere with {var:name} — matching is case-insensitive.',
-                  'Letras, dígitos e underscore. Leia com {var:name} em qualquer texto — sem diferenciar maiúsculas.'
-                )}
+                hint={tt('Read it back with {var:name}.', 'Leia de volta com {var:name}.')}
               >
                 <input
                   type="text"
@@ -3952,22 +3911,16 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                   value={variableMode}
                   onChange={setVariableMode}
                   options={[
-                    { value: 'set', label: 'Set', tip: tt('Store the resolved value as-is on every execution.', 'Grava o valor resolvido como está, em toda execução.') },
-                    { value: 'cycle', label: 'Cycle', tip: tt('Value is a LIST (one item per line): each execution stores the NEXT line, wrapping around. The position survives between runs — pressing the hotkey repeatedly walks the list. Resets when the app restarts.', 'O valor é uma LISTA (um item por linha): cada execução grava a PRÓXIMA linha, voltando ao início no fim. A posição sobrevive entre execuções — apertar o hotkey repetidamente percorre a lista. Zera ao reiniciar o app.') },
+                    { value: 'set', label: 'Set' },
+                    { value: 'cycle', label: 'Cycle' },
                   ]}
                 />
               </Field>
               <Field
                 label={variableMode === 'cycle' ? 'List (one item per line)' : 'Value'}
                 hint={variableMode === 'cycle'
-                  ? tt(
-                      'Each run of this action stores the NEXT line under the name above. Tokens resolve first — a value of just {clipboard} cycles through the clipboard’s lines.',
-                      'Cada execução desta ação grava a PRÓXIMA linha no nome acima. Tokens resolvem antes — um valor com só {clipboard} percorre as linhas da área de transferência.'
-                    )
-                  : tt(
-                      'Tokens like {clipboard}, {date} or {var:other} resolve when this action runs. Saving an empty value deletes the variable.',
-                      'Tokens como {clipboard}, {date} ou {var:other} resolvem quando a ação executa. Salvar valor vazio apaga a variável.'
-                    )}
+                  ? tt('One line per run, then back to the first.', 'Uma linha por execução, depois volta à primeira.')
+                  : tt('Tokens resolve here. Empty deletes the variable.', 'Tokens resolvem aqui. Vazio apaga a variável.')}
               >
                 <textarea
                   rows={variableMode === 'cycle' ? 4 : 2}
@@ -3993,22 +3946,16 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                   value={slotMode}
                   onChange={setSlotMode}
                   options={[
-                    { value: 'capture', label: 'Capture', tip: tt('Copy the focused app’s current selection into this slot.', 'Copia a seleção atual do app em foco para este slot.') },
-                    { value: 'clear', label: 'Clear', tip: tt('Empty this slot — or leave the name blank to clear all slots (1–9) and reset the capture cursor. Nothing is typed.', 'Esvazia este slot — ou deixe o nome vazio para limpar todos (1–9) e zerar o cursor de captura. Nada é digitado.') },
+                    { value: 'capture', label: 'Capture' },
+                    { value: 'clear', label: 'Clear' },
                   ]}
                 />
               </Field>
               <Field
                 label="Slot"
                 hint={slotMode === 'clear'
-                  ? tt(
-                      'Which slot to empty. Leave BLANK to clear all slots (1–9) and reset the capture hotkey back to slot 1.',
-                      'Qual slot esvaziar. Deixe VAZIO para limpar todos os slots (1–9) e voltar o hotkey de captura ao slot 1.'
-                    )
-                  : tt(
-                      'Letters, digits and underscore. Read the capture back anywhere with {clip:slot} — matching is case-insensitive.',
-                      'Letras, dígitos e underscore. Leia a captura com {clip:slot} em qualquer texto — sem diferenciar maiúsculas.'
-                    )}
+                  ? tt('Blank clears all slots.', 'Vazio limpa todos os slots.')
+                  : tt('Read it back with {clip:slot}.', 'Leia de volta com {clip:slot}.')}
               >
                 <input
                   type="text"
@@ -4019,20 +3966,6 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                   className="w-full h-8 px-2 text-ui font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid"
                 />
               </Field>
-              <div
-                className="border-l-2 rounded px-2.5 py-2 text-[11px] leading-relaxed text-text-tertiary"
-                style={{ borderColor: 'var(--color-border-subtle)' }}
-              >
-                {slotMode === 'clear'
-                  ? tt(
-                      'Empties the slot above — or ALL slots (1–9) if the name is blank, also resetting the capture hotkey to slot 1. Nothing is typed or pasted, and the clipboard is untouched.',
-                      'Esvazia o slot acima — ou TODOS os slots (1–9) se o nome estiver vazio, voltando também o hotkey de captura para o slot 1. Nada é digitado ou colado, e a área de transferência não é tocada.'
-                    )
-                  : tt(
-                      'Copies the CURRENT SELECTION of the focused app (sends Ctrl+C) into this slot, then restores your clipboard. Slots survive between runs — capture several, paste them with {clip:…} tokens.',
-                      'Copia a SELEÇÃO ATUAL do app em foco (envia Ctrl+C) para este slot e restaura sua área de transferência. Slots sobrevivem entre execuções — capture vários e cole com tokens {clip:…}.'
-                    )}
-              </div>
             </>
           )}
 
@@ -4045,7 +3978,6 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 Minimize / Close act on the existing window (no launch, no focus). */}
             <Field
               label="Action"
-              hint={tt('Activate = bring to front. Maximize/Minimize/Close act on the matched window (Close asks the app to close).', 'Activate = trazer para frente. Maximize/Minimize/Close agem na janela casada (Close pede pro app fechar).')}
             >
               <SegmentedControl<'Activate' | 'Maximize' | 'Minimize' | 'Close'>
                 ariaLabel="Window action"
@@ -4069,13 +4001,13 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 if (p.windowTitle !== undefined) setWindowTitle(p.windowTitle);
                 if (p.titleMatchMode !== undefined) setWindowTitleMatchMode(p.titleMatchMode);
               }}
-              processHint={tt('".exe" assumed when omitted. Empty = match by title only.', '".exe" assumido se omitido. Vazio = casar só pelo título.')}
-              titleHint={tt('Case-insensitive. UWP apps: match by title (process is ApplicationFrameHost.exe).', 'Sem diferenciar maiúsculas. Apps UWP: case pelo título (processo é ApplicationFrameHost.exe).')}
+              processHint={tt('Empty = match by title only.', 'Vazio = casar só pelo título.')}
+              titleHint={tt('Case-insensitive.', 'Sem diferenciar maiúsculas.')}
             />
             {/* nth-match — pick the Nth matching window (1-based, Z-order front→back). */}
             <Field
               label="Match #"
-              hint={tt('When several windows match, act on the Nth (1 = frontmost).', 'Quando várias janelas casam, age na N-ésima (1 = a da frente).')}
+              hint={tt('1 = frontmost.', '1 = a da frente.')}
             >
               <NumberInput
                 value={parseInt(matchIndex, 10) || 1}
@@ -4090,7 +4022,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
             <div className="label-micro text-text-tertiary">Launch</div>
             <Field
               label="Path"
-              hint={tt('Program, URL, document or shortcut — opened only when no window matches. Empty = just wait & focus.', 'Programa, URL, documento ou atalho — aberto só quando nenhuma janela casa. Vazio = só esperar e focar.')}
+              hint={tt('Opened only when no window matches.', 'Aberto só quando nenhuma janela casa.')}
             >
               <div className="flex items-center gap-1.5">
                 <input
@@ -4124,107 +4056,58 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
             </>
             )}
 
-            {/* Placement — section label + the two independent toggle chips on ONE compact
-                row (Position and Size aren't an exclusive choice, so plain chips, not a
-                track). Full positional caveat lives on the label tooltip + the bottom card.
+            {/* Placement — ONE block, nothing to expand. It used to be two toggle chips that
+                each revealed their own pair of fields and a capture button that only appeared
+                once one of them was on: three clicks in three places to reach four numbers that
+                are always read and written together. Now both rows are always on screen, the
+                checkbox says what gets applied, and the capture that fills all four sits at the
+                top of the block where it belongs.
                 Activate verb only — Maximize is its own placement; Minimize/Close don't place. */}
             {windowVerb === 'Activate' && (
-            <>
-            <div className="flex items-center justify-between">
-              <span
-                className="label-micro text-text-tertiary cursor-help"
-                data-tip={tt('Move and/or resize the window after activating it. Positional only — clicks still resolve against the profile target; for clicks relative to THIS window, use a sub-profile + Run Profile.', 'Move e/ou redimensiona a janela depois de ativá-la. Só posicional — cliques ainda resolvem contra o target do perfil; para cliques relativos a ESTA janela, use um sub-perfil + Run Profile.')}
-                data-tip-pos="left"
-              >
-                Placement
-              </span>
-              <div className="flex gap-1">
-                <button
-                  type="button"
-                  onClick={() => setRestorePosition(!restorePosition)}
-                  className={`h-6 px-2.5 rounded text-[10px] font-medium border transition-colors ${
-                    restorePosition
-                      ? 'text-accent border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)] bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)]'
-                      : 'text-text-tertiary border-border-subtle bg-bg-card hover:text-text-secondary'
-                  }`}
-                >
-                  Position
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRestoreSize(!restoreSize)}
-                  className={`h-6 px-2.5 rounded text-[10px] font-medium border transition-colors ${
-                    restoreSize
-                      ? 'text-accent border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)] bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)]'
-                      : 'text-text-tertiary border-border-subtle bg-bg-card hover:text-text-secondary'
-                  }`}
-                >
-                  Size
-                </button>
-              </div>
-            </div>
-            {restorePosition && (
-              <div className="flex gap-1.5">
-                <Field label="X" className="flex-1 min-w-0">
-                  <NumberInput
-                    value={parseInt(windowX, 10) || 0}
-                    onChange={(n) => setWindowX(String(n))}
-                    inputWidth="w-full" inputHeight="h-8" className="w-full"
-                  />
-                </Field>
-                <Field label="Y" className="flex-1 min-w-0">
-                  <NumberInput
-                    value={parseInt(windowY, 10) || 0}
-                    onChange={(n) => setWindowY(String(n))}
-                    inputWidth="w-full" inputHeight="h-8" className="w-full"
-                  />
-                </Field>
-              </div>
-            )}
-            {restoreSize && (
-              <div className="flex gap-1.5">
-                <Field label="Width" className="flex-1 min-w-0">
-                  <NumberInput
-                    value={parseInt(windowWidth, 10) || 0}
-                    onChange={(n) => setWindowWidth(String(Math.max(0, n)))}
-                    min={0}
-                    inputWidth="w-full" inputHeight="h-8" className="w-full"
-                  />
-                </Field>
-                <Field label="Height" className="flex-1 min-w-0">
-                  <NumberInput
-                    value={parseInt(windowHeight, 10) || 0}
-                    onChange={(n) => setWindowHeight(String(Math.max(0, n)))}
-                    min={0}
-                    inputWidth="w-full" inputHeight="h-8" className="w-full"
-                  />
-                </Field>
-              </div>
-            )}
-            {(restorePosition || restoreSize) && (
-              <div>
+            <div className="rounded border border-border-subtle bg-bg-card px-2.5 py-2 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="label-micro text-text-tertiary">Placement</span>
                 <button
                   type="button"
                   onClick={handleCaptureGeometry}
                   disabled={captureGeoRequestId !== null || (!windowProcessName.trim() && !windowTitle.trim())}
-                  data-tip={tt('Reads the current position and size of the matched window — place it by hand first, then capture.', 'Lê a posição e o tamanho atuais da janela casada — posicione-a à mão primeiro, depois capture.')}
-                  data-tip-pos="left"
-                  className="w-full h-8 flex items-center justify-center gap-1.5 px-2.5 rounded text-xs font-medium border border-border-default bg-bg-input hover:bg-[rgba(127,127,127,0.14)] text-text-secondary transition-colors disabled:opacity-60"
+                  className="shrink-0 h-6 px-2 flex items-center gap-1.5 rounded text-[11px] font-medium border border-border-default bg-bg-input hover:bg-[rgba(127,127,127,0.14)] text-text-secondary transition-colors disabled:opacity-60"
                 >
-                  <Frame size={13} />
-                  {captureGeoRequestId ? 'Capturing…' : 'Capture from window'}
+                  <Frame size={12} />
+                  {captureGeoRequestId ? 'Reading…' : 'Read from window'}
                 </button>
-                {captureGeoError && (
-                  <div className="mt-1.5 px-2 py-1.5 rounded text-[11px] border" style={resultCardStyle(false)}>
-                    <div className="flex items-center gap-1.5">
-                      <X size={11} />
-                      <span>{captureGeoError}</span>
-                    </div>
-                  </div>
-                )}
               </div>
-            )}
-            </>
+
+              {/* Two groups, identical shape: the checkbox is the group's heading and says what
+                  gets applied; its pair of inputs sits on the line below. The inputs stay MOUNTED
+                  and go disabled with the checkbox — values survive a toggle and nothing reflows.
+                  Two lines per group rather than one: at 340 px the panel cannot fit a word-label
+                  column and two steppers on the same row without squeezing a 4-digit coordinate
+                  into ~40 px. */}
+              <div className="space-y-1.5">
+                <Checkbox checked={restorePosition} onChange={setRestorePosition} label="Position" />
+                <div className="flex items-center gap-2">
+                  <AxisInput axis="X" value={windowX} onChange={setWindowX} disabled={!restorePosition} />
+                  <AxisInput axis="Y" value={windowY} onChange={setWindowY} disabled={!restorePosition} />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Checkbox checked={restoreSize} onChange={setRestoreSize} label="Size" />
+                <div className="flex items-center gap-2">
+                  <AxisInput axis="W" value={windowWidth} onChange={setWindowWidth} disabled={!restoreSize} min={0} />
+                  <AxisInput axis="H" value={windowHeight} onChange={setWindowHeight} disabled={!restoreSize} min={0} />
+                </div>
+              </div>
+
+              {captureGeoError && (
+                <div className="px-2 py-1.5 rounded text-[11px] border" style={resultCardStyle(false)}>
+                  <div className="flex items-center gap-1.5">
+                    <X size={11} />
+                    <span>{captureGeoError}</span>
+                  </div>
+                </div>
+              )}
+            </div>
             )}
 
             {/* Test (exists-anywhere probe) + result card, then Timeout + On Timeout. */}
@@ -4279,8 +4162,8 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                   value={activateOnTimeout}
                   onChange={setActivateOnTimeout}
                   options={[
-                    { value: 'Halt', label: 'Halt', tip: tt('Stop the replay when the window cannot be found or focused — keyboard actions follow the focused window, so continuing would type into the wrong app.', 'Para o replay quando a janela não é encontrada ou focada — ações de teclado seguem a janela em foco, então continuar digitaria no app errado.') },
-                    { value: 'Continue', label: 'Continue', tip: tt('Log and move on to the next action even if the window was not found or focused.', 'Registra e segue para a próxima ação mesmo se a janela não foi encontrada ou focada.') },
+                    { value: 'Halt', label: 'Halt' },
+                    { value: 'Continue', label: 'Continue' },
                   ]}
                 />
               </Field>
@@ -4296,8 +4179,8 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 style={{ borderColor: 'var(--color-border-subtle)' }}
               >
                 {tt(
-                  "Coordinates keep following the profile's Window Target — for multi-window macros leave the profile target empty, or split per-window steps into sub-profiles with their own targets (Run Profile).",
-                  'As coordenadas continuam seguindo o Window Target do perfil — para macros multi-janela, deixe o target do perfil vazio ou divida os passos por janela em sub-perfis com seus próprios targets (Run Profile).'
+                  'Clicks still follow the profile’s Window Target, not this window.',
+                  'Os cliques continuam seguindo o Window Target do perfil, não esta janela.'
                 )}
               </div>
             )}
@@ -4406,7 +4289,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
             <div className="flex flex-col gap-2.5">
               <div className="label-micro text-text-tertiary">Repeat</div>
               <div className="flex items-center justify-between gap-3">
-                <label className="text-[12px] font-medium text-text-secondary">Times to repeat</label>
+                <label className="text-[12px] font-medium text-text-secondary">Times</label>
                 <NumberInput
                   value={repeatCount}
                   onChange={(n) => setRepeatCount(clampRepeatCount(n))}
@@ -4422,10 +4305,10 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 <label
                   className={`text-[12px] font-medium transition-colors ${repeatCount > 1 ? 'text-text-secondary' : 'text-text-tertiary'}`}
                   data-tip={baseActionType === 'DoubleClick'
-                    ? tt('Time between double-clicks. Keep it above your system double-click speed (~½ s) so each repeat registers as a distinct double-click, not one long burst.', 'Tempo entre duplos-cliques. Mantenha acima da velocidade de duplo-clique do sistema (~½ s) para cada repetição contar como um duplo-clique distinto, não uma rajada só.')
+                    ? tt('Keep it above your system double-click speed (~½ s).', 'Mantenha acima da velocidade de duplo-clique do sistema (~½ s).')
                     : undefined}
                 >
-                  {baseActionType === 'DoubleClick' ? 'Gap between double-clicks' : 'Gap between clicks'}
+                  {'Gap'}
                 </label>
                 <NumberInput
                   value={repeatGapMs}
@@ -4581,7 +4464,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
               className="h-8 px-3.5 inline-flex items-center gap-1.5 rounded text-xs font-medium whitespace-nowrap bg-accent-solid text-[color:var(--color-accent-ink)] hover:bg-accent-solid/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Check size={14} />
-              Save Changes
+              Save
             </button>
           </div>
         </div>
