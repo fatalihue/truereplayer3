@@ -28,9 +28,19 @@ function buildCloserOf(actions: ActionItem[]): Map<number, number> {
 }
 
 // Block-snap a selection: if it TOUCHES a structural marker, expand every selected index
-// to its whole enclosing block span — for nested blocks, every enclosing span — so a marker
-// can never be operated on as a half-block and orphaned. A PURE body-row selection is returned
-// untouched (referentially identical), so deleting/moving plain actions stays granular.
+// to the INNERMOST block span that encloses it, so a marker can never be operated on as a
+// half-block and orphaned. A PURE body-row selection is returned untouched (referentially
+// identical), so deleting/moving plain actions stays granular.
+//
+// INNERMOST, not "every enclosing span" — that was the original rule and it was wrong in exactly
+// the case nesting exists for. Selecting the inner `If` of [If][If][ElseIf][EndIf][EndIf] returned
+// all five rows, so deleting/duplicating/dragging an inner block took the outer one with it. The
+// inner span is balanced on its own: removing or moving [1..3] leaves the outer If…EndIf intact,
+// which is precisely why the grid's lone-opener path (ActionTable.handleDuplicate) has always used
+// `closerOf.get(opener)` — its own closer, never the enclosing one. This makes the shared rule
+// agree with it. The spans are properly nested by construction (the stack walk in buildCloserOf
+// only pairs a closer with the top of the stack), so among the spans containing an index the one
+// with the GREATEST opener is the smallest — no width comparison needed.
 //
 // This is the single source of truth for the "only snap when a marker is involved" rule shared
 // by the grid (ActionTable: delete / drag / bulk Move / duplicate) and the global Alt+↑/↓ reorder
@@ -42,9 +52,15 @@ export function snapIndicesToBlocks(indices: number[], actions: ActionItem[]): n
   const set = new Set(indices);
   const closerOf = buildCloserOf(actions);
   for (const sel of indices) {
+    let bestOpen = -1;
+    let bestClose = -1;
     for (const [openIdx, closeIdx] of closerOf) {
-      if (openIdx <= sel && sel <= closeIdx) for (let i = openIdx; i <= closeIdx; i++) set.add(i);
+      if (openIdx <= sel && sel <= closeIdx && openIdx > bestOpen) {
+        bestOpen = openIdx;
+        bestClose = closeIdx;
+      }
     }
+    if (bestOpen >= 0) for (let i = bestOpen; i <= bestClose; i++) set.add(i);
   }
   return Array.from(set).sort((a, b) => a - b);
 }

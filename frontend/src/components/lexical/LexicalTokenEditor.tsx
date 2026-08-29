@@ -149,23 +149,28 @@ interface LexicalTokenEditorProps {
 function buildNodesFromText(text: string): LexicalNode[] {
   return splitTokenSegments(text).map((seg) => {
     if (seg.kind !== 'token') return $createTextNode(seg.value);
-    // Chip when EITHER condition holds, and the pair is what keeps this purely additive:
+    // EVERY token the engine resolves comes back as a chip. What differs is whether the node is
+    // allowed to REWRITE it on the way in:
     //
-    //   1. The typing grammar already accepted it. Those have always chipped and have always
-    //      been head-normalised on the way in, so nothing changes for them.
-    //   2. Chipping cannot rewrite anything, i.e. the token is ALREADY in normalised form.
+    //   • the typing grammar accepted it, or it is already in canonical form → normal node.
+    //     Those have always been head-normalised here ({enter} → {Enter}) and still are.
+    //   • anything else → VERBATIM node, whose bytes are preserved exactly (TokenNode.__verbatim).
     //
-    // Why (2) rather than "chip whatever splitTokenSegments found": TokenNode normalises
-    // whatever it is handed and OnChangePlugin writes the editor's serialisation straight back,
-    // so chipping a token whose normalised form DIFFERS edits a payload the user never touched —
-    // it marks an untouched action dirty, and for a token the engine cannot resolve at all
+    // The rewrite is the whole hazard, not the chipping: TokenNode normalises whatever it is
+    // handed and OnChangePlugin writes the editor's serialisation straight back, so a rewritten
+    // token marks an untouched action dirty, and for a token the engine cannot resolve
     // ({var:Ação}, {row:First Name}: their regexes demand [A-Za-z0-9_]) it changes what the macro
-    // TYPES, because those are typed out verbatim.
+    // TYPES. Preserving the bytes removes it, so the gate no longer has to choose between
+    // rewriting the payload and forgetting that a token is a token.
     //
-    // Tokens this app built are stored already-normalised, so the case this widening exists for —
-    // a delimiter holding a space or a colon — still comes back as a chip.
-    const safeToChip = TOKEN_REGEX_WHOLE.test(seg.value) || normalizeToken(seg.value) === seg.value;
-    return safeToChip ? $createTokenNode(seg.value) : $createTextNode(seg.value);
+    // Measured: EVERY shape that reached this function and lost its chip differed from its
+    // canonical form in the HEAD CASE ALONE — {clipboard:after: - }, {clipboard:join: - },
+    // {clipboard:line:@i}, {rownext:Coluna: - }, {input:…}, {pick:…}, {row:First Name}. That is
+    // what the builders emit (clipboardModifiers joins a lower-case head) and what the manual
+    // shows, so it is also what a paste carries. They chipped in the grid preview and ran in the
+    // engine while the editor alone drew them as raw text.
+    const canonical = TOKEN_REGEX_WHOLE.test(seg.value) || normalizeToken(seg.value) === seg.value;
+    return $createTokenNode(seg.value, !canonical);
   });
 }
 

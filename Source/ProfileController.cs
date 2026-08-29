@@ -144,16 +144,23 @@ namespace TrueReplayer.Controllers
         /// The TTL is generous on purpose. A picker legitimately stays open while someone walks a
         /// network share; the sweep here is a leak backstop, not a policy.
         /// </summary>
-        private static Task<string?> ShowFileDialogAsync(WinForms.FileDialog dialog, string what)
+        private async Task<string?> ShowFileDialogAsync(WinForms.FileDialog dialog, string what)
         {
-            var interaction = Services.InteractionScope.EnterExclusive($"file picker: {what}", TimeSpan.FromMinutes(20));
+            // Reclaiming, not just claiming: the exclusive slot is shared with the nine capture
+            // overlays, and one of those that cannot close used to take save / load / import /
+            // export down with it — silently, since a refusal returned null and null is what a
+            // cancel returns. Asking the holder to close first turns that into a brief pause; a
+            // holder that still will not answer is now SAID OUT LOUD instead of looking like the
+            // user's own Escape key.
+            var interaction = await Services.InteractionScope.EnterExclusiveAsync($"file picker: {what}", TimeSpan.FromMinutes(20));
             if (interaction == null)
             {
+                OnAlert?.Invoke($"Can't open the file dialog: \"{Services.InteractionScope.ExclusiveOwner}\" is still open and didn't respond. Press Esc or right-click on it, then try again.");
                 // Disposing here is not tidiness — the dialog's usual disposal lives in the
                 // thread's finally, and that thread is never going to start. Skipping it leaks the
                 // native dialog's resources on every refusal.
                 dialog.Dispose();
-                return Task.FromResult<string?>(null);
+                return null;
             }
 
             var tcs = new TaskCompletionSource<string?>();
@@ -178,7 +185,7 @@ namespace TrueReplayer.Controllers
             thread.SetApartmentState(ApartmentState.STA);
             thread.IsBackground = true;
             thread.Start();
-            return tcs.Task;
+            return await tcs.Task;
         }
 
         /// <summary>

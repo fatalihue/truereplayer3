@@ -737,7 +737,11 @@ export type IncomingMessage =
   | { type: 'replay:report'; payload: RunReport }
   // Reply to automation:captureImage (region overlay). imagePath is the saved PNG's
   // per-profile relative path, ready to store on the trigger config.
-  | { type: 'automation:imageCaptured'; payload: { requestId: string; cancelled: boolean; imagePath?: string; imageBase64?: string } }
+  // refused/busyOwner ride along with cancelled (never instead of it — every existing branch
+  // clears its pending state on cancelled): the capture surfaces share ONE global exclusive slot,
+  // and reaching a refusal now means the holder was asked to close and did not answer. busyOwner
+  // names it. The backend also raises alert:show, so nothing has to subscribe to these to be told.
+  | { type: 'automation:imageCaptured'; payload: { requestId: string; cancelled: boolean; refused?: boolean; busyOwner?: string; imagePath?: string; imageBase64?: string } }
   // Reply to automation:testFire. `detail` is already user-facing prose (the TriggerFireResult
   // rendered), because the interesting answers are the SKIPS and each needs its own wording.
   | { type: 'automation:testFireResult'; payload: { requestId: string; fired: boolean; detail: string } }
@@ -812,8 +816,8 @@ export type IncomingMessage =
   // Clicker pickers repaint through settings:loaded like every other settings write, so the
   // reply was never subscribed to on either branch. The sibling pickers below DO have
   // subscribers (SheetPanel) and stay.
-  | { type: 'mouse:positionPicked'; payload: { requestId: string; cancelled: boolean; x?: number; y?: number } }
-  | { type: 'pixel:colorPicked'; payload: { requestId: string; cancelled: boolean; x?: number; y?: number; hex?: string } }
+  | { type: 'mouse:positionPicked'; payload: { requestId: string; cancelled: boolean; refused?: boolean; busyOwner?: string; x?: number; y?: number } }
+  | { type: 'pixel:colorPicked'; payload: { requestId: string; cancelled: boolean; refused?: boolean; busyOwner?: string; x?: number; y?: number; hex?: string } }
   | { type: 'pixel:testMatchResult'; payload: { requestId: string; matches: boolean; sampledHex?: string | null; error?: string } }
   // Fired by the backend after a capture-first insert (Wait Image / Wait Pixel)
   // to auto-open the row's editor. The user just told us where the thing lives;

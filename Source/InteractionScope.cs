@@ -42,6 +42,15 @@ namespace TrueReplayer.Services
         private static int _exclusive;
         private static string _exclusiveOwner = "";
 
+        /// Which scope id holds exclusivity. Needed the moment a claim can be RECLAIMED from a
+        /// live holder (see <see cref="EnterExclusiveAsync"/>): the old holder's entry is still in
+        /// <see cref="_live"/> when the new one takes the flag, so its later, perfectly ordinary
+        /// Dispose would otherwise clear exclusivity out from under the new holder — and the next
+        /// claimant would be let in alongside it, which is the stacked-overlay case the whole
+        /// exclusive mode exists to prevent. Removal from _live is NOT the guard here: unlike the
+        /// sweep race the Close comment describes, this holder's entry is very much still there.
+        private static long _exclusiveId;
+
         private static readonly Dictionary<long, Entry> _live = new();
         private static readonly object _lock = new();
         private static long _nextId;
@@ -71,6 +80,16 @@ namespace TrueReplayer.Services
             /// fixed number, so a renewed scope is still force-closed within one ttl of the probe
             /// going false — renewal delays the backstop, it never disables it.
             public TimeSpan Ttl;
+
+            /// Cancel route for an EXCLUSIVE holder, or null. See <see cref="EnterExclusiveAsync"/>.
+            /// Never invoked under <see cref="_lock"/> — it posts to another thread's message loop.
+            public Action<string>? ForceClose;
+        }
+
+        /// <summary>Name of the exclusive holder, or "" — diagnostics and refusal messages.</summary>
+        public static string ExclusiveOwner
+        {
+            get { lock (_lock) return _exclusiveOwner; }
         }
 
         /// <summary>True while at least one interaction scope is open. Bare field read.</summary>
@@ -160,6 +179,87 @@ namespace TrueReplayer.Services
             => Open(owner, ttl, keepAlive, exclusive: true);
 
         /// <summary>
+        /// Claims the exclusive slot; if another holder has it, ASKS THAT HOLDER TO CLOSE and
+        /// retries for a moment before giving up. Returns null only when the holder could not be
+        /// cleared — then, and only then, is the caller genuinely refused.
+        ///
+        /// This exists because of what a refusal cost on 2026-08-24. The slot is global, not
+        /// per-owner: ten call sites share it — the nine capture overlays and EVERY file picker
+        /// (save / load / import / export) — and holding it also makes <see cref="IsAnyOpen"/>
+        /// true, which drives SuppressAllHotkeys. So one overlay that could not close refused
+        /// twelve later requests in silence, killed save/load with them, and took all 33 hotkeys
+        /// and 12 hotstrings down for two minutes fifty-four seconds, ending with the user killing
+        /// the process. The holder was unreachable by construction (see ScreenOverlayForm's
+        /// reachability watchdog) and nothing in the app could ask it to go away.
+        ///
+        /// Taking the slot from the holder is safe precisely BECAUSE these surfaces are
+        /// full-screen and modal: if the holder were reachable, the user could not have got to a
+        /// button to make this second claim in the first place. A second claim is therefore
+        /// evidence about the first one, not a race between two live windows.
+        /// </summary>
+        /// <param name="forceClose">
+        /// How to ask this claim's own surface to close, for whoever claims next. Receives the
+        /// reason, for the log. Must be safe to call from any thread and must not block.
+        /// </param>
+        /// <summary>
+        /// Same reclaim, for a surface that has neither a liveness probe nor a cancel route of its
+        /// own — the file pickers. It cannot be reclaimed FROM (a native dialog offers no handle to
+        /// post a close to), but it can still reclaim from a stuck overlay, which is the direction
+        /// that matters: a wedged overlay used to kill save, load, import and export too.
+        /// </summary>
+        public static System.Threading.Tasks.Task<IDisposable?> EnterExclusiveAsync(string owner, TimeSpan? ttl = null)
+            => EnterExclusiveAsync(owner, null, null, ttl);
+
+        public static async System.Threading.Tasks.Task<IDisposable?> EnterExclusiveAsync(
+            string owner, Func<bool>? keepAlive, Action<string>? forceClose, TimeSpan? ttl = null)
+        {
+            var scope = Open(owner, ttl, keepAlive, exclusive: true, forceClose);
+            if (scope != null) return scope;
+
+            Action<string>? holderCancel;
+            string holderName;
+            lock (_lock)
+            {
+                holderName = _exclusiveOwner;
+                holderCancel = FindExclusiveForceClose();
+            }
+            if (holderCancel == null)
+            {
+                DiagnosticLog.Warn($"Interaction refused ('{owner}'): '{holderName}' is already open and offers no cancel route.");
+                return null;
+            }
+
+            DiagnosticLog.Warn($"Interaction '{owner}' found '{holderName}' still holding the exclusive slot — asking it to close.");
+            try { holderCancel($"superseded by '{owner}'"); }
+            catch (Exception ex) { DiagnosticLog.Warn($"Cancel route for '{holderName}' threw ({ex.Message})."); }
+
+            // The holder has to close its window AND let its own handler unwind to the `using` that
+            // disposes the scope, so this waits for the whole release, not just the close. 2.5 s is
+            // generous for that and still short enough to read as a hesitation, not a hang. Retries
+            // are quiet — one refusal line per claim, not twenty-five.
+            for (int i = 0; i < 25; i++)
+            {
+                await System.Threading.Tasks.Task.Delay(100).ConfigureAwait(false);
+                scope = Open(owner, ttl, keepAlive, exclusive: true, forceClose, quiet: true);
+                if (scope != null)
+                {
+                    DiagnosticLog.Info($"Interaction '{owner}' took the exclusive slot after '{holderName}' closed.");
+                    return scope;
+                }
+            }
+            DiagnosticLog.Error($"Interaction refused ('{owner}'): '{holderName}' did not close when asked — its thread is not processing messages.");
+            return null;
+        }
+
+        /// Caller must hold <see cref="_lock"/>. Addressed by id, not by owner name: two scopes can
+        /// share a name, and the holder is a specific entry.
+        private static Action<string>? FindExclusiveForceClose()
+        {
+            if (_exclusive == 0) return null;
+            return _live.TryGetValue(_exclusiveId, out var entry) ? entry.ForceClose : null;
+        }
+
+        /// <summary>
         /// Opens a scope that also claims exclusivity: returns null when another EXCLUSIVE scope is
         /// already open, and the caller must then take its own cancel path without showing
         /// anything. For surfaces where a second instance is not merely redundant but harmful —
@@ -170,14 +270,15 @@ namespace TrueReplayer.Services
         /// </summary>
         public static IDisposable? EnterExclusive(string owner, TimeSpan? ttl = null) => Open(owner, ttl, null, exclusive: true);
 
-        private static IDisposable? Open(string owner, TimeSpan? ttl, Func<bool>? keepAlive, bool exclusive)
+        private static IDisposable? Open(string owner, TimeSpan? ttl, Func<bool>? keepAlive, bool exclusive,
+                                        Action<string>? forceClose = null, bool quiet = false)
         {
             var token = new Token(exclusive);
             lock (_lock)
             {
                 if (exclusive && _exclusive != 0)
                 {
-                    DiagnosticLog.Info($"Interaction refused ('{owner}'): '{_exclusiveOwner}' is already open.");
+                    if (!quiet) DiagnosticLog.Info($"Interaction refused ('{owner}'): '{_exclusiveOwner}' is already open.");
                     return null;
                 }
 
@@ -189,9 +290,10 @@ namespace TrueReplayer.Services
                     Deadline = DateTime.UtcNow + effectiveTtl,
                     KeepAlive = keepAlive,
                     Ttl = effectiveTtl,
+                    ForceClose = forceClose,
                 };
                 Volatile.Write(ref _count, _live.Count);
-                if (exclusive) { _exclusive = 1; _exclusiveOwner = _live[token.Id].Owner; }
+                if (exclusive) { _exclusive = 1; _exclusiveOwner = _live[token.Id].Owner; _exclusiveId = token.Id; }
 
                 // Armed on first use rather than at type-init: an app that never opens a scope
                 // should not carry a timer waking the process every 30 s forever.
@@ -209,7 +311,9 @@ namespace TrueReplayer.Services
                 // legitimately claimed it after the sweep let go.
                 if (!_live.Remove(id)) return;
                 Volatile.Write(ref _count, _live.Count);
-                if (exclusive) { _exclusive = 0; _exclusiveOwner = ""; }
+                // Only the CURRENT holder may release exclusivity — a reclaimed predecessor disposing
+                // late must not hand the slot to the next claimant while the new holder still has it.
+                if (exclusive && _exclusiveId == id) { _exclusive = 0; _exclusiveOwner = ""; _exclusiveId = 0; }
             }
         }
 
@@ -259,7 +363,7 @@ namespace TrueReplayer.Services
             }
 
             List<string>? renewed = null;
-            List<string>? expired = null;
+            List<(string Owner, Action<string>? ForceClose)>? expired = null;
             lock (_lock)
             {
                 foreach (var (id, owner, alive) in verdicts)
@@ -275,13 +379,13 @@ namespace TrueReplayer.Services
                         continue;
                     }
                     _live.Remove(id);
-                    (expired ??= new()).Add(owner);
+                    (expired ??= new()).Add((owner, entry.ForceClose));
                 }
                 Volatile.Write(ref _count, _live.Count);
                 // An exclusive scope that leaked would otherwise refuse every future exclusive
                 // claim for the life of the process — the same permanent-death failure the sweep
                 // exists to end, one level up.
-                if (_live.Count == 0) { _exclusive = 0; _exclusiveOwner = ""; }
+                if (_live.Count == 0) { _exclusive = 0; _exclusiveOwner = ""; _exclusiveId = 0; }
             }
 
             if (renewed != null)
@@ -295,8 +399,18 @@ namespace TrueReplayer.Services
             }
             if (expired != null)
             {
-                foreach (var owner in expired)
+                foreach (var (owner, forceClose) in expired)
+                {
                     DiagnosticLog.Warn($"Interaction scope '{owner}' expired and was force-closed — it was never disposed. Hotkeys are live again.");
+                    // Take the SURFACE down with the scope where one offers a route. Dropping the
+                    // scope alone is what re-arms hotkeys under a window that is still on screen —
+                    // the exact harm the keep-alive probe was written to prevent, arriving through
+                    // the door the probe cannot cover: a probe that answered FALSE while the window
+                    // somehow outlives it. Outside the lock, and never fatal to the sweep.
+                    if (forceClose == null) continue;
+                    try { forceClose("its interaction scope expired"); }
+                    catch (Exception ex) { DiagnosticLog.Warn($"Cancel route for expired scope '{owner}' threw ({ex.Message})."); }
+                }
             }
         }
 

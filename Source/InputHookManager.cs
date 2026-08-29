@@ -675,10 +675,16 @@ namespace TrueReplayer
                     TrueReplayer.Services.DiagnosticLog.Error(
                         $"SetKeyboardHook failed — keyboard hook not installed (all hotkeys/hotstrings/recording disabled). Win32 error {Marshal.GetLastWin32Error()}.");
             }
+            ArmWatchdog();
         }
 
         public static void Stop()
         {
+            // Disarmed FIRST: Stop is also the shutdown/update path, and a watchdog tick that
+            // slipped in behind it would reinstall the hooks the app is trying to let go of.
+            // Recovery re-arms by going through Start() at the end of the same reinstall.
+            _watchdogArmed = false;
+
             if (_mouseHookId != IntPtr.Zero)
             {
                 // UnhookWindowsHookEx returns false if the handle was already invalid or the
@@ -723,6 +729,245 @@ namespace TrueReplayer
             lock (_captureOwnersLock) _captureOwners.Clear();
         }
 
+        #region Hook watchdog
+
+        // Windows removes a low-level hook WITHOUT TELLING ANYONE when its callback overruns
+        // LowLevelHooksTimeout (300 ms by default, HKCU\Control Panel\Desktop). Nothing in this app
+        // noticed: every hotkey, hotstring and recording is dead, the tray still reports
+        // "N automations armed", and the symptom — keys do nothing — is indistinguishable from the
+        // stranded-modifier defect fixed in 2.26.1. That is why this hypothesis could never be
+        // ruled in or out for a report; it had no support at all, only the after-the-fact
+        // `captured=0` on "Recording stopped".
+        //
+        // Silence cannot be the detector: a hook that has seen nothing for a minute is what an
+        // idle machine looks like. So the watchdog ASKS. It injects one inert event and checks
+        // whether the callback ran. Injected input DOES traverse low-level hooks — it arrives
+        // flagged LLKHF_INJECTED, which is precisely why every gate in this file already ignores
+        // it, and why the probe is invisible to recording, hotkeys, remaps and hotstrings alike.
+        //
+        // START() ALONE CANNOT RECOVER. Both installs are guarded by `if (id == IntPtr.Zero)` and
+        // the removed hook's handle is still sitting in that field, so Start() on a dead hook is a
+        // no-op. Recovery has to route through Stop(), which is what zeroes the ids — and which
+        // also resets the transient key state, so the new session starts clean instead of
+        // inheriting a "held" key nobody is holding.
+
+        // Written by the hook callbacks before ANY gate; read by the probe. Not a lock: a stale
+        // read costs one extra probe, and the mouse hook writes this on every WM_MOUSEMOVE.
+        private static long _keyboardBeat;
+        private static long _mouseBeat;
+
+        private static System.Threading.Timer? _watchdog;
+        private static volatile bool _watchdogArmed;
+        private static int _keyboardStrikes;
+        private static int _mouseStrikes;
+        private static int _watchdogBusy;
+        private static bool _watchdogProved;
+
+        // Self-limiting. A probe that this OS or configuration never delivers is indistinguishable
+        // from a dead hook, and the watchdog would then reinstall the hooks every minute forever —
+        // which is worse than the failure it watches for, because it fights the user's input stack
+        // for no reason. This is what the first live run did, before the mouse probe was fixed.
+        //
+        // Counted per hook and reset by any answered probe, so a genuine reinstall that WORKS never
+        // approaches the cap: the next probe is answered and the count goes back to zero. Reaching
+        // the cap means the probe itself is not arriving, and that arm turns itself off, loudly and
+        // once. Deliberately NOT reset by ArmWatchdog — the recovery path calls Start(), so
+        // resetting there would make the cap unreachable by construction.
+        private static int _keyboardReinstalls, _mouseReinstalls;
+        private static bool _keyboardProbeOff, _mouseProbeOff;
+        private const int MaxReinstallsWithoutProof = 3;
+
+        // The thread the hooks were installed from. A low-level hook's callback is delivered to
+        // the installing thread and needs its message pump, so a reinstall from the timer thread
+        // would produce a handle that never fires — worse than the dead hook it replaced.
+        private static Microsoft.UI.Dispatching.DispatcherQueue? _installDispatcher;
+
+        private const int WatchdogIntervalMs = 30_000;
+        // Below this, the hook has DEMONSTRABLY run — no probe needed, and no injection while the
+        // user is typing.
+        private const int WatchdogQuietMs = 20_000;
+        private const int WatchdogProbeWaitMs = 250;
+        // Two, not one. The callback runs on the UI thread, so a single unanswered probe can just
+        // mean that thread was busy for a moment; two misses 30 s apart is a dead hook.
+        private const int WatchdogStrikesToReinstall = 2;
+
+        // VK_NONAME — defined by Windows as a key with no name and no meaning. Nothing maps it,
+        // nothing acts on it.
+        private const ushort VK_NONAME = 0xFC;
+
+        private static void ArmWatchdog()
+        {
+            _installDispatcher ??= Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+            if (_installDispatcher == null)
+                TrueReplayer.Services.DiagnosticLog.Warn(
+                    "Hook watchdog armed without a UI dispatcher — a dead hook will be reported but cannot be reinstalled.");
+
+            long now = Environment.TickCount64;
+            System.Threading.Volatile.Write(ref _keyboardBeat, now);
+            System.Threading.Volatile.Write(ref _mouseBeat, now);
+            _keyboardStrikes = 0;
+            _mouseStrikes = 0;
+            _watchdogArmed = true;
+            _watchdogProved = false;
+            // Held in a static for the same reason InteractionScope holds its sweeper: a collected
+            // timer is indistinguishable from one that never finds anything.
+            _watchdog ??= new System.Threading.Timer(_ => WatchdogTick(), null, WatchdogIntervalMs, WatchdogIntervalMs);
+        }
+
+        private static void WatchdogTick()
+        {
+            if (!_watchdogArmed) return;
+            // The probe sleeps, so a tick must never overlap the previous one.
+            if (System.Threading.Interlocked.Exchange(ref _watchdogBusy, 1) == 1) return;
+            try { RunWatchdogProbe(); }
+            catch (Exception ex) { TrueReplayer.Services.DiagnosticLog.Warn($"Hook watchdog probe failed: {ex.Message}"); }
+            finally { System.Threading.Interlocked.Exchange(ref _watchdogBusy, 0); }
+        }
+
+        private static void RunWatchdogProbe()
+        {
+            // Never inject while the app is handling input of its own: during recording the probe
+            // would be a captured event, and during replay it interleaves with the engine's own
+            // SendInput stream. Both hooks are provably alive in those states anyway — they are
+            // what delivers the events.
+            if (IsReplayingAction || IsCaptureDialogOpen) return;
+            if (MainController.Instance != null && MainController.Instance.IsRecording()) return;
+
+            long now = Environment.TickCount64;
+            long kbBefore = System.Threading.Volatile.Read(ref _keyboardBeat);
+            long msBefore = System.Threading.Volatile.Read(ref _mouseBeat);
+            bool kbQuiet = now - kbBefore >= WatchdogQuietMs && !_keyboardProbeOff;
+            bool msQuiet = now - msBefore >= WatchdogQuietMs && !_mouseProbeOff;
+            // Recent real traffic is a better answer than any probe could be.
+            if (!kbQuiet) _keyboardStrikes = 0;
+            if (!msQuiet) _mouseStrikes = 0;
+            if (!kbQuiet && !msQuiet) return;
+
+            if (kbQuiet) SendKeyboardProbe();
+            if (msQuiet) SendMouseProbe();
+            System.Threading.Thread.Sleep(WatchdogProbeWaitMs);
+
+            bool kbDead = kbQuiet && System.Threading.Volatile.Read(ref _keyboardBeat) == kbBefore;
+            bool msDead = msQuiet && System.Threading.Volatile.Read(ref _mouseBeat) == msBefore;
+            if (kbQuiet) { _keyboardStrikes = kbDead ? _keyboardStrikes + 1 : 0; if (!kbDead) _keyboardReinstalls = 0; }
+            if (msQuiet) { _mouseStrikes = msDead ? _mouseStrikes + 1 : 0; if (!msDead) _mouseReinstalls = 0; }
+
+            if (_keyboardStrikes >= WatchdogStrikesToReinstall || _mouseStrikes >= WatchdogStrikesToReinstall)
+            {
+                ReinstallHooks(_keyboardStrikes >= WatchdogStrikesToReinstall, _mouseStrikes >= WatchdogStrikesToReinstall);
+                return;
+            }
+            if (kbDead || msDead)
+            {
+                TrueReplayer.Services.DiagnosticLog.Warn(
+                    $"Hook watchdog: probe unanswered (keyboard strikes={_keyboardStrikes}, mouse strikes={_mouseStrikes}) — one more and the hooks are reinstalled.");
+                return;
+            }
+            // One line, once per session, the first time a probe comes back. Silence is the normal
+            // state of this watchdog, and silence cannot distinguish "every probe was answered"
+            // from "the probe never ran" — which is the same trap the whole mechanism exists to
+            // escape. This is the line that says the detector itself is working.
+            if (!_watchdogProved)
+            {
+                _watchdogProved = true;
+                TrueReplayer.Services.DiagnosticLog.Info(
+                    $"Hook watchdog: liveness probe answered ({(kbQuiet ? "keyboard ok" : "keyboard busy")}, {(msQuiet ? "mouse ok" : "mouse busy")}).");
+            }
+        }
+
+        private static void ReinstallHooks(bool keyboardDead, bool mouseDead)
+        {
+            _keyboardStrikes = 0;
+            _mouseStrikes = 0;
+            if (keyboardDead) _keyboardReinstalls++;
+            if (mouseDead) _mouseReinstalls++;
+
+            // Cap reached: the reinstall keeps "working" and the probe keeps going unanswered, so
+            // the probe is what is broken. Turn that arm off rather than reinstall forever.
+            if (keyboardDead && _keyboardReinstalls > MaxReinstallsWithoutProof)
+            {
+                _keyboardProbeOff = true;
+                TrueReplayer.Services.DiagnosticLog.Error(
+                    $"Hook watchdog: the keyboard probe has gone unanswered through {MaxReinstallsWithoutProof} reinstalls — " +
+                    "it is not being delivered on this system, so keyboard-hook monitoring is off for this session.");
+                return;
+            }
+            if (mouseDead && _mouseReinstalls > MaxReinstallsWithoutProof)
+            {
+                _mouseProbeOff = true;
+                TrueReplayer.Services.DiagnosticLog.Error(
+                    $"Hook watchdog: the mouse probe has gone unanswered through {MaxReinstallsWithoutProof} reinstalls — " +
+                    "it is not being delivered on this system, so mouse-hook monitoring is off for this session.");
+                return;
+            }
+
+            string which = keyboardDead && mouseDead ? "keyboard and mouse hooks"
+                         : keyboardDead ? "keyboard hook" : "mouse hook";
+            TrueReplayer.Services.DiagnosticLog.Error(
+                $"Hook watchdog: the {which} stopped answering — Windows dropped it (low-level hook timeout). " +
+                "Reinstalling. Hotkeys, hotstrings and recording were dead until now.");
+
+            var dispatcher = _installDispatcher;
+            if (dispatcher == null)
+            {
+                TrueReplayer.Services.DiagnosticLog.Error("Hook watchdog: no UI dispatcher to reinstall from — restart the app to recover.");
+                return;
+            }
+            // Stop() then Start(), in that order and on the installing thread. Stop() is the half
+            // that matters: it is the only thing that zeroes the stale ids Start() checks.
+            bool queued = dispatcher.TryEnqueue(() =>
+            {
+                try
+                {
+                    Stop();
+                    Start();
+                    TrueReplayer.Services.DiagnosticLog.Info(
+                        $"Hook watchdog: hooks reinstalled (mouse={( _mouseHookId != IntPtr.Zero ? "ok" : "FAILED")}, " +
+                        $"keyboard={(_keyboardHookId != IntPtr.Zero ? "ok" : "FAILED")}).");
+                }
+                catch (Exception ex) { TrueReplayer.Services.DiagnosticLog.Error("Hook watchdog reinstall threw", ex); }
+            });
+            if (!queued)
+                TrueReplayer.Services.DiagnosticLog.Error("Hook watchdog: the UI thread refused the reinstall — restart the app to recover.");
+        }
+
+        // A lone key-UP for a key nothing has down, so nothing sees a release. KEYEVENTF_KEYUP
+        // only: a DOWN would be a keystroke, and this must never be one.
+        private static void SendKeyboardProbe()
+        {
+            var input = new NativeMethods.INPUT { type = NativeMethods.INPUT_KEYBOARD };
+            input.U.ki = new NativeMethods.KEYBDINPUT { wVk = VK_NONAME, dwFlags = NativeMethods.KEYEVENTF_KEYUP };
+            NativeMethods.SendInput(1, ref input, Marshal.SizeOf<NativeMethods.INPUT>());
+        }
+
+        // One pixel right, one pixel back, in a single atomic SendInput call.
+        //
+        // A relative move of (0,0) was the obvious probe and it DOES NOT WORK: Windows discards a
+        // no-op move before the hook chain, so the callback never runs and a perfectly healthy
+        // mouse hook reads as dead. Measured, not reasoned — the first live run of this watchdog
+        // reinstalled the hooks every 60 s on an idle machine while the keyboard probe (which is
+        // delivered) answered every time. A probe that cannot distinguish a dead hook from a
+        // filtered event is not a probe.
+        //
+        // The pair nets to zero, so the cursor ends exactly where it started; the SetCursorPos
+        // below only exists for the case where the second move is itself dropped. The visible cost
+        // is a 1-px excursion lasting microseconds, and only ever on a machine whose mouse has not
+        // moved for twenty seconds — any real movement answers the question for free and skips the
+        // probe entirely.
+        private static void SendMouseProbe()
+        {
+            NativeMethods.GetCursorPos(out var before);
+            var inputs = new NativeMethods.INPUT[2];
+            inputs[0].type = NativeMethods.INPUT_MOUSE;
+            inputs[0].U.mi = new NativeMethods.MOUSEINPUT { dx = 1, dy = 0, dwFlags = NativeMethods.MOUSEEVENTF_MOVE };
+            inputs[1].type = NativeMethods.INPUT_MOUSE;
+            inputs[1].U.mi = new NativeMethods.MOUSEINPUT { dx = -1, dy = 0, dwFlags = NativeMethods.MOUSEEVENTF_MOVE };
+            NativeMethods.SendInput(2, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
+            if (NativeMethods.GetCursorPos(out var after) && (after.x != before.x || after.y != before.y))
+                NativeMethods.SetCursorPos(before.x, before.y);
+        }
+
+        #endregion
 
         public static void RegisterProfileHotkeys(Dictionary<string, string> profileHotkeys)
         {
@@ -1126,6 +1371,10 @@ namespace TrueReplayer
 
         private static IntPtr MouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
         {
+            // Watchdog heartbeat, written before ANY gate — including the nCode<0 pass-through in
+            // Core. "The hook ran" is the one fact this must record, and no policy inside the hook
+            // may be able to make a live hook look dead.
+            System.Threading.Volatile.Write(ref _mouseBeat, Environment.TickCount64);
             // A low-level hook must never let an exception escape — it can unhook itself or crash
             // the process. Run the real handler guarded; on failure log and pass the event through.
             try { return MouseHookCallbackCore(nCode, wParam, lParam); }
@@ -1939,6 +2188,9 @@ namespace TrueReplayer
 
         private static IntPtr KeyboardHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
         {
+            // Watchdog heartbeat — see the mouse callback. Above every gate, so a suppressed or
+            // swallowed key still proves the hook is installed.
+            System.Threading.Volatile.Write(ref _keyboardBeat, Environment.TickCount64);
             // A low-level hook must never let an exception escape — it can unhook itself or crash
             // the process. Run the real handler guarded; on failure log and pass the event through.
             try { return KeyboardHookCallbackCore(nCode, wParam, lParam); }

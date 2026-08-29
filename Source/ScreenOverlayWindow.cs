@@ -212,6 +212,196 @@ namespace TrueReplayer.Services
 
         public Task<RegionSelectionResult?> GetSelectionAsync() => _tcs.Task;
 
+        // ── Reachability ─────────────────────────────────────────────────────────
+        // Until 2.28.0 this form had exactly THREE exits and all three were input: Esc, a left
+        // click in pointPick mode, and a drag of at least 10x10. It never activated itself, while
+        // the flow that opens it minimises the main window 400 ms earlier and hands the foreground
+        // to whatever was behind it. A form that is neither focused nor clicked has no way to
+        // close — and because every picker holds the GLOBAL exclusive InteractionScope, one that
+        // never closes refuses every later capture AND every file picker, and keeps
+        // SuppressAllHotkeys true, so all 33 hotkeys and 12 hotstrings die with it. That is the
+        // 2026-08-24 incident: 12 silent refusals over 2 min 54 s, ended by killing the process.
+        //
+        // Three exits are added here, and any ONE of them would have ended it: self-activation on
+        // Shown, a right click, and this watchdog. The watchdog is the one that covers the case
+        // where the window is not reachable AT ALL — no focus, no input of any kind.
+        private System.Windows.Forms.Timer? _reachTimer;
+        private int _quietTicks;
+        private bool _provenReachable;
+        private long _shownAtTicks;
+        private string _closeReason = "not closed";
+
+        private const int ReachTickMs = 1000;
+        // Twelve quiet seconds. The cost of being wrong is one re-click of the pick button, logged
+        // and announced; the cost of NOT closing is the whole app, silently, until it is killed.
+        private const int QuietTicksToCancel = 12;
+
+        /// Why this overlay closed — for the host's lifecycle log. Never blank: OnFormClosed runs
+        /// for every route out, including Alt+F4 and teardown after a paint exception.
+        public string CloseReason => _closeReason;
+
+        /// Asks the overlay to cancel itself from ANOTHER thread. This is the route
+        /// <see cref="InteractionScope"/> hands out so a second exclusive claimant can clear a
+        /// stuck holder instead of the user killing the process. Posted, not run inline: the form
+        /// belongs to its own STA thread. A thread that is not pumping cannot answer, and that is
+        /// reported honestly rather than papered over — the claim simply stays refused.
+        public void RequestCancel(string reason)
+        {
+            try
+            {
+                if (IsDisposed || !IsHandleCreated) return;
+                BeginInvoke(new Action(() => CancelAndClose(reason)));
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Warn($"Capture overlay could not be asked to cancel ({reason}): {ex.Message}");
+            }
+        }
+
+        // Idempotent, and that is load-bearing for the LOG rather than for the close: Close() raises
+        // Deactivate on the way out, so without this guard every successful pick would be recorded
+        // as "deactivated" — the reason line would describe the teardown instead of the cause.
+        private bool _closing;
+
+        private void CancelAndClose(string reason)
+        {
+            if (_closing) return;
+            _closing = true;
+            _closeReason = reason;
+            _tcs.TrySetResult(null);
+            Close();
+        }
+
+        private bool IsForegroundWindow()
+            => IsHandleCreated && NativeMethods.GetForegroundWindow() == Handle;
+
+        // Real input arrived, or the window reached the foreground: it is reachable, so the
+        // watchdog retires for good. Mouse MOVES deliberately do not land here — a fullscreen
+        // overlay collects moves just by existing under the pointer, which says it is painted,
+        // not that it can be dismissed. They only reset the quiet counter (see OnMouseMove).
+        private void MarkReachable(string how)
+        {
+            if (_provenReachable) return;
+            _provenReachable = true;
+            StopReachTimer();
+            DiagnosticLog.Info($"Capture overlay is reachable ({how}) — watchdog off.");
+        }
+
+        private void StopReachTimer()
+        {
+            if (_reachTimer == null) return;
+            _reachTimer.Stop();
+            _reachTimer.Tick -= OnReachTick;
+            _reachTimer.Dispose();
+            _reachTimer = null;
+        }
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            _shownAtTicks = Environment.TickCount64;
+            // The opening of an overlay was not logged at all before, which is why the incident
+            // produced no line describing it — only the refusals it caused. Bounds and visibility
+            // are here because "no full-screen overlay was covering the screen" was the observation
+            // nothing in the log could confirm or deny.
+            DiagnosticLog.Info(
+                $"Capture overlay shown — bounds {Bounds.X},{Bounds.Y} {Bounds.Width}x{Bounds.Height}, " +
+                $"visible={Visible}, foreground={IsForegroundWindow()}, pointPick={_pointPick}, regionOnly={_regionOnly}.");
+
+            _reachTimer = new System.Windows.Forms.Timer { Interval = ReachTickMs };
+            _reachTimer.Tick += OnReachTick;
+            _reachTimer.Start();
+            _ = SelfActivateAsync();
+        }
+
+        // Take the foreground deliberately instead of hoping to inherit it. The full stack
+        // (AttachThreadInput + the foreground-lock timeout) is reused rather than a bare
+        // SetForegroundWindow, because this call is made from a background process whose main
+        // window was just minimised — precisely the situation Windows' focus-steal prevention
+        // refuses a naked SetForegroundWindow in.
+        private async Task SelfActivateAsync()
+        {
+            try
+            {
+                bool ok = await TrueReplayer.Helpers.WindowActivation.ActivateAsync(Handle);
+                if (ok) MarkReachable("self-activated");
+                else DiagnosticLog.Warn("Capture overlay could not put itself in the foreground — the watchdog will cancel it if nothing reaches it.");
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Error("Capture overlay self-activation failed", ex);
+            }
+        }
+
+        private void OnReachTick(object? sender, EventArgs e)
+        {
+            if (_provenReachable) { StopReachTimer(); return; }
+            if (IsForegroundWindow()) { MarkReachable("foreground"); return; }
+
+            _quietTicks++;
+            // Two more attempts, spread out: focus-steal prevention can refuse the first one while
+            // the desktop is still settling from the main window's minimise animation.
+            if (_quietTicks == 2 || _quietTicks == 5)
+            {
+                NativeMethods.BringWindowToTop(Handle);
+                NativeMethods.SetForegroundWindow(Handle);
+                return;
+            }
+            if (_quietTicks >= QuietTicksToCancel)
+            {
+                DiagnosticLog.Warn(
+                    $"Capture overlay received no input and never reached the foreground for {QuietTicksToCancel}s — " +
+                    "cancelling it so the exclusive interaction slot is released and hotkeys come back.");
+                CancelAndClose("unreachable");
+            }
+        }
+
+        // Losing activation cancels, the way every screen picker on this platform behaves — but not
+        // on the spot. Gated three ways, because a false cancel here destroys a capture the user
+        // was in the middle of:
+        //
+        //   • only once the form has actually BEEN reachable (one that never got focus cannot lose
+        //     it, and the activation dance above can emit a Deactivate of its own while it runs),
+        //   • only past a settle window after Shown, and
+        //   • only if the window is STILL not in the foreground a moment later.
+        //
+        // The third is the one that matters. A notification toast, the tail of the main window's
+        // minimise animation, or any momentary focus blip raises Deactivate and gives the focus
+        // straight back; cancelling on the raw event would throw the capture away for that. The
+        // re-check costs 700 ms of nothing and turns "lost focus" into "the user went somewhere
+        // else", which is the condition actually worth cancelling on.
+        private System.Windows.Forms.Timer? _deactivateTimer;
+        private const int DeactivateGraceMs = 700;
+
+        protected override void OnDeactivate(EventArgs e)
+        {
+            base.OnDeactivate(e);
+            if (_closing || !_provenReachable) return;
+            if (Environment.TickCount64 - _shownAtTicks < 500) return;
+            if (_deactivateTimer != null) return;
+            _deactivateTimer = new System.Windows.Forms.Timer { Interval = DeactivateGraceMs };
+            _deactivateTimer.Tick += OnDeactivateGraceElapsed;
+            _deactivateTimer.Start();
+        }
+
+        private void OnDeactivateGraceElapsed(object? sender, EventArgs e)
+        {
+            StopDeactivateTimer();
+            if (_closing) return;
+            if (IsForegroundWindow()) return;   // it came back — nothing happened
+            DiagnosticLog.Info("Capture overlay lost focus and did not get it back — cancelling.");
+            CancelAndClose("deactivated");
+        }
+
+        private void StopDeactivateTimer()
+        {
+            if (_deactivateTimer == null) return;
+            _deactivateTimer.Stop();
+            _deactivateTimer.Tick -= OnDeactivateGraceElapsed;
+            _deactivateTimer.Dispose();
+            _deactivateTimer = null;
+        }
+
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
             // Guarantee the awaiting caller is always released, even when the form is closed by a
@@ -219,6 +409,8 @@ namespace TrueReplayer.Services
             // menu, or teardown after a paint exception). Without this the caller would block forever
             // on .Result. TrySetResult is idempotent, so a normal completion already set is unaffected.
             _tcs.TrySetResult(null);
+            StopReachTimer();
+            StopDeactivateTimer();
             base.OnFormClosed(e);
         }
 
@@ -346,10 +538,11 @@ namespace TrueReplayer.Services
 
         private void OnKeyDown(object? sender, KeyEventArgs e)
         {
+            // A keystroke reached the form, so it holds focus — the watchdog has nothing to guard.
+            MarkReachable("key input");
             if (e.KeyCode == Keys.Escape)
             {
-                _tcs.TrySetResult(null);
-                Close();
+                CancelAndClose("esc");
             }
             // Shift press/release only drives the badge repaint promptly — OnMouseMove reads
             // the live modifier state itself, so a missed key event can't strand the mode.
@@ -406,6 +599,20 @@ namespace TrueReplayer.Services
             // remove. Outside precision mode the two are identical.
             var loc = _precisionActive && _hasCursor ? _cursorPoint : e.Location;
 
+            // A button reached the form: it is on screen and taking input, whatever the foreground
+            // window is. Marked before the branch so a right-click counts too.
+            MarkReachable("mouse input");
+
+            // Right-click cancels. It used to be a plain no-op, which cost nothing while the form
+            // was reliably focusable and cost the whole app when it was not: a click needs no
+            // focus, so this is the one manual exit that still works on an overlay Windows refuses
+            // to activate. Symmetric with Esc — same "cancelled" answer, same null result.
+            if (e.Button == MouseButtons.Right)
+            {
+                CancelAndClose("right-click");
+                return;
+            }
+
             if (e.Button == MouseButtons.Left)
             {
                 if (_pointPick)
@@ -434,6 +641,8 @@ namespace TrueReplayer.Services
                         Height = 0,
                         PickedColor = pickedColor,
                     });
+                    _closeReason = "point picked";
+                    _closing = true;
                     Close();
                     return;
                 }
@@ -446,6 +655,12 @@ namespace TrueReplayer.Services
 
         private void OnMouseMove(object? sender, MouseEventArgs e)
         {
+            // A move says the form is painted under the pointer — enough to hold the watchdog off,
+            // not enough to retire it: an unfocusable overlay collects moves and still cannot be
+            // dismissed with Esc. Right-click remains its manual exit, and the counter restarts
+            // the moment the pointer stops.
+            _quietTicks = 0;
+
             var loc = e.Location;
 
             // Resync off the live modifier state rather than trusting the key events alone: if
@@ -872,6 +1087,8 @@ namespace TrueReplayer.Services
                 };
 
                 _tcs.TrySetResult(result);
+                _closeReason = "region selected";
+                _closing = true;
                 Close();
             }
         }
