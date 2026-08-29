@@ -136,18 +136,23 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
   // Conflict resolutions on the DS SegmentedControl (the hand-rolled ResolutionChips
   // predated it). Each option carries its CONSEQUENCE as the tooltip — "Rename" alone
   // never said the import lands as "Name (2)", nor "Overwrite" that it destroys yours.
-  const resolutionOptions = (iconSize: number): SegmentOption<ImportConflictResolution>[] => [
+  //
+  // WITH TIPS ONLY ON THE BANNER. The same three words appear once at the top and again
+  // on every conflicting row, so tipping all of them repeats one explanation N+1 times for
+  // a meaning that does not change per row. The banner is where the choice is read first
+  // and where it is explained; the row controls are the same three labels, now silent.
+  const resolutionOptions = (iconSize: number, withTips = false): SegmentOption<ImportConflictResolution>[] => [
     {
       value: 'rename', label: 'Rename', icon: <Pencil size={iconSize} />,
-      tip: tt("Imports as 'Name (2)' — keeps yours untouched.", "Importa como 'Nome (2)' — mantém o seu intacto."),
+      tip: withTips ? tt("Imports as 'Name (2)' — keeps yours untouched.", "Importa como 'Nome (2)' — mantém o seu intacto.") : undefined,
     },
     {
       value: 'overwrite', label: 'Overwrite', icon: <Replace size={iconSize} />,
-      tip: tt('Replaces your local profile with the incoming one.', 'Substitui o seu perfil local pelo que está chegando.'),
+      tip: withTips ? tt('Replaces your local profile with the incoming one.', 'Substitui o seu perfil local pelo que está chegando.') : undefined,
     },
     {
       value: 'skip', label: 'Skip', icon: <Ban size={iconSize} />,
-      tip: tt('Not imported — the row stays checked but is skipped.', 'Não importa — a linha continua marcada mas é pulada.'),
+      tip: withTips ? tt('Not imported — the row stays checked but is skipped.', 'Não importa — a linha continua marcada mas é pulada.') : undefined,
     },
   ];
 
@@ -251,7 +256,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
               {selectedConflictNames.length} name conflict{selectedConflictNames.length === 1 ? '' : 's'} — apply to all:
             </span>
             <SegmentedControl
-              options={resolutionOptions(12)}
+              options={resolutionOptions(12, true)}
               value={bulkResolution}
               onChange={applyBulkResolution}
               ariaLabel="Resolve all name conflicts"

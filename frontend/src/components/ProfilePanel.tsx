@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, lazy, Suspense } from 'react';
-import { Search, SearchX, X, Pencil, Copy, Trash2, FolderOpen, FolderMinus, Keyboard, Crosshair, ArrowLeftRight, Type, Ban, ChevronsLeft, ChevronsRight, ChevronsDownUp, ChevronsUpDown, Pin, PinOff, FolderPlus, FilePlus, ChevronRight, ChevronDown, Palette, ArrowRightFromLine, Zap, Repeat, Repeat2, Hourglass, ArrowUpFromDot, ExternalLink, Info, MoreHorizontal, Hash, Upload, Download, Check } from 'lucide-react';
+import { Search, SearchX, X, Pencil, Copy, Trash2, FolderOpen, FolderMinus, Keyboard, Crosshair, ArrowLeftRight, ArrowDownUp, Type, Ban, ChevronsLeft, ChevronsRight, ChevronsDownUp, ChevronsUpDown, Pin, PinOff, FolderPlus, FilePlus, ChevronRight, ChevronDown, Palette, ArrowRightFromLine, Zap, Repeat, Repeat2, Hourglass, ArrowUpFromDot, ExternalLink, Info, MoreHorizontal, Hash, Upload, Download, Check } from 'lucide-react';
 import type { ProfileEntry, ImportPreviewPayload, ImportResultPayload, ImportConflictResolution, TriggerMode } from '../bridge/messageTypes';
 import { useAppState } from '../state/AppStateContext';
 import { carriesConditionProbe } from '../utils/conditionalBlocks';
@@ -1876,14 +1876,20 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
         <div className="flex items-center justify-between px-2 pt-2 pb-1">
           <span className="label-micro text-text-tertiary">PROFILES</span>
           {/* Grouped by function (2026-07 reorg), Toolbar divider idiom: panel chrome
-              (collapse) | library utilities (open folder, export, import) | creation
-              (new folder, new profile — hottest spot, at the end). Export uses Upload,
-              the same glyph the Command Palette uses for "Export All Profiles"; Import
-              is its mirror (Download, the palette's Import glyph) — it used to live
-              ONLY inside the Export dialog's footer, where nobody looking to import
-              would think to open it. The old ArrowLeftRight read as "convert/swap"
-              (it still marks the coordinate converters in the context menu, where
-              that meaning is right). */}
+              (collapse) | library utilities (open folder, import/export) | creation
+              (new folder, new profile — hottest spot, at the end).
+              ONE button for both directions, because the dialog it opens already does
+              both: Export Profiles picks what to ship out AND carries the Import link in
+              its footer. Two icons for one dialog was a distinction the UI made and the
+              dialog then ignored — this row is short enough that a seventh target has to
+              earn itself.
+              ArrowDownUp is the union of the two glyphs it replaces (Upload ↑ / Download
+              ↓, still the Command Palette's pair for these same two commands), so the
+              row reads as the same family; it is also directionless, which a button that
+              does both has to be. Not ArrowLeftRight — that was tried here, read as
+              "convert/swap", and still means exactly that on the coordinate converters in
+              this panel's own context menu. Not a sort glyph by accident either: this
+              toolbar has no sort control for ↓↑ to be mistaken for. */}
           <div className="flex items-center">
             <button onClick={onToggleCollapse} className="w-6 h-6 flex items-center justify-center rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary transition-colors" data-tip={tt('Collapse panel', 'Colapsar painel')}>
               <ChevronsLeft size={14} />
@@ -1914,11 +1920,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             <button onClick={handleOpenProfilesFolder} className="w-6 h-6 flex items-center justify-center rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary transition-colors" data-tip={tt('Open profiles folder', 'Abrir pasta de perfis')}>
               <ExternalLink size={14} />
             </button>
-            <button onClick={handleExportClick} className="w-6 h-6 flex items-center justify-center rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary transition-colors" data-tip={tt('Export profiles', 'Exportar perfis')}>
-              <Upload size={14} />
-            </button>
-            <button onClick={handleImportClick} className="w-6 h-6 flex items-center justify-center rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary transition-colors" data-tip={tt('Import profiles', 'Importar perfis')}>
-              <Download size={14} />
+            <button onClick={handleExportClick} className="w-6 h-6 flex items-center justify-center rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary transition-colors" data-tip={tt('Import / Export', 'Importar / Exportar')}>
+              <ArrowDownUp size={14} />
             </button>
             <div className="w-px h-3.5 bg-border-subtle mx-0.5" />
             <button onClick={handleCreateFolder} className="w-6 h-6 flex items-center justify-center rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary transition-colors" data-tip={tt('New folder', 'Nova pasta')}>
@@ -2888,15 +2891,20 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             // Import Preview dialog.
             closeOnBackdrop={false}
             footerHint={
-              // The Import cross-link rides the LEFT slot, a ghost far away from the
-              // Cancel/Export pair — it used to sit flush against them, where a misclick
-              // silently discarded a curated multi-profile selection.
+              // The Import cross-link rides the LEFT slot, far from the Cancel/Export pair
+              // — it used to sit flush against them, where a misclick silently discarded a
+              // curated multi-profile selection. That distance is what keeps it safe, so it
+              // no longer has to be a borderless ghost to stay out of the way: as a ghost it
+              // read as loose text in the footer's hint slot, with nothing saying it could be
+              // clicked — and this is now the only route to Import from the panel, so it must
+              // look like a control. `secondary` is the Cancel weight, one step below the
+              // primary Export, plus the same Download glyph the palette uses for importing.
               <span className="flex items-center gap-3">
                 <Button
-                  variant="ghost"
+                  variant="secondary"
                   onClick={() => { handleImportClick(); setShowExportDialog(false); }}
-                  data-tip={tt('Opens a file picker — closes this dialog.', 'Abre um seletor de arquivo — fecha este diálogo.')}
                 >
+                  <Download size={12} />
                   Import…
                 </Button>
                 <span>
