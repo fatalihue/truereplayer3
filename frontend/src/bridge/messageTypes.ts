@@ -36,6 +36,12 @@ export interface ActionItem {
   // (e.g. a Roblox text field at minimum window size) actually receives focus. Shown as a
   // small icon in the Action pill (no grid column); toggled from the row context menu.
   isFocusClick?: boolean;
+  // When true, the click ignores its stored x/y and fires wherever the OS cursor is at replay
+  // time, read once per repeat cycle. Combined clicks only (Left/Right/Middle/Double/Triple) —
+  // the C# side clears it on a switch to any other type. The stored x/y is kept untouched, so
+  // switching back to "This point" restores the original coordinate; both surfaces hide the
+  // coordinates while it is on rather than showing a number the run never reads.
+  atCursor?: boolean;
   repeatCount?: number;
   // RunProfile, data-loop Phase C: run the called profile once per row of ITS OWN Data
   // table ({row:col} resolves per row inside the sub). Replaces Repeat while on.

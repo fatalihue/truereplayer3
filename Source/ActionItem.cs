@@ -409,6 +409,29 @@ namespace TrueReplayer.Models
         [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
         public bool IsFocusClick { get; set; }
 
+        // When true, the click IGNORES its stored X/Y and fires wherever the OS cursor happens to
+        // be at REPLAY time (GetCursorPos), read ONCE per repeat cycle — never per press/release,
+        // or a hand-nudge between the down and the up turns the click into a DRAG. For the target
+        // to be knowable only at run time is the whole point: the previous step parked the mouse,
+        // or the user is holding it there. Honoured ONLY by the combined click cases
+        // (see IsCombinedClickType); a paired Down/Up half must never carry it, because its replay
+        // case doesn't read the flag and would silently fall back to the stale stored point —
+        // ActionModeConverter.ToPaired refuses to split an at-cursor click for that reason.
+        // The stored X/Y is left untouched, so turning this back off restores the original point.
+        // Same bool + WhenWritingDefault shape as IsFocusClick/IsSkipped (there is no third state
+        // to distinguish, unlike the nullable Repeat* fields), so a pre-feature profile stays
+        // byte-identical.
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+        public bool AtCursor { get; set; }
+
+        // The five COMBINED click types — one row = press + release. The single source for
+        // "is this a click row that owns a whole click", shared by the replay engine, the
+        // WebViewBridge edit/bulk handlers and the ProfileCompatibility pin, so a sixth click
+        // type can never teach one gate and miss another. Paired halves (*ClickDown/*ClickUp)
+        // are deliberately NOT here — they are fragments, not clicks.
+        internal static bool IsCombinedClickType(string? t) =>
+            t is "LeftClick" or "RightClick" or "MiddleClick" or "DoubleClick" or "TripleClick";
+
         // RunProfile action: how many times to invoke the called profile back-to-back.
         // Keystroke action: how many press-cycles (down→up) to emit consecutively, so a
         // user can express "press Enter 5×" as ONE row instead of 5 Down/Up pairs.
@@ -439,8 +462,11 @@ namespace TrueReplayer.Models
         // frontend dialog can all reference the same value via the messages they exchange.
         public const int DefaultRepeatDelayMs = 30;
 
-        // DoubleClick × N uses a LARGER default gap than single clicks. Each DoubleClick is
-        // itself two clicks ~50 ms apart (DoubleClickGapMs); for the OS to register consecutive
+        // MULTI-click × N (DoubleClick and TripleClick) uses a LARGER default gap than single
+        // clicks. The name says Double for history — the value is keyed on GetDoubleClickTime,
+        // not on the number of pairs, so a triple needs exactly the same clearance and reuses it
+        // rather than growing a second constant that would drift the first time one is tuned.
+        // Each multi-click is itself 2-3 clicks ~50 ms apart (DoubleClickGapMs); to register consecutive
         // repeats as DISTINCT double-clicks (rather than blurring them into one long multi-click
         // burst) the gap BETWEEN repeats must clear the system double-click window — typically
         // GetDoubleClickTime() ≈ 500 ms. 600 ms sits comfortably above the default so "double-
@@ -581,7 +607,14 @@ namespace TrueReplayer.Models
             "While", "EndLoop", "BreakLoop", "ContinueLoop", "ForEachRow"
         };
 
-        private bool HideCoordinates => NoCoordinateActionTypes.Contains(ActionType ?? "");
+        // Type-level (the set above) OR row-level: an at-cursor click HAS an X/Y on disk, but the
+        // replay never reads it, so showing it would be a phantom coordinate — exactly what the
+        // no-coord set exists to prevent. This half is per-ROW, which is why AtCursor can't live
+        // in the set itself. Gated on IsCombinedClickType so an inert flag left on some other row
+        // can never blank a coordinate that IS used.
+        private bool HideCoordinates =>
+            NoCoordinateActionTypes.Contains(ActionType ?? "")
+            || (AtCursor && IsCombinedClickType(ActionType));
 
         // Compact day-of-week label for the If-Time grid display. Bitmask Sun=1<<0 … Sat=1<<6.
         // 0 or all-7 → "" (every day, no need to show). Collapses Mon–Fri to a range where it
@@ -880,6 +913,7 @@ namespace TrueReplayer.Models
             AssertOnFail = AssertOnFail,
             IsSkipped = IsSkipped,
             IsFocusClick = IsFocusClick,
+            AtCursor = AtCursor,
             RepeatCount = RepeatCount,
             RunOverData = RunOverData,
             RepeatDelayMs = RepeatDelayMs,

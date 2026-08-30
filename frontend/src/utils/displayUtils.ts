@@ -63,6 +63,17 @@ function showsPixelCoords(item: ActionItem): boolean {
     || (carriesConditionProbe(item.actionType) && item.conditionType === 'PixelColorMatch');
 }
 
+// The five combined click types — mirrors ActionItem.IsCombinedClickType on the C# side.
+// Only these read the at-cursor flag, so only these may blank their coordinates because of it.
+const COMBINED_CLICK_TYPES = new Set(['LeftClick', 'RightClick', 'MiddleClick', 'DoubleClick', 'TripleClick']);
+
+// An at-cursor click HAS an x/y on disk, but the replay resolves its point from the live mouse
+// and never reads them — showing the stored numbers would be a phantom coordinate, the exact
+// thing NO_COORD_TYPES exists to prevent. This half is per-ROW, which is why it can't live in
+// that set. Mirrors the `AtCursor && IsCombinedClickType` half of C# ActionItem.HideCoordinates.
+const hidesCoordsForCursor = (item: ActionItem): boolean =>
+  !!item.atCursor && COMBINED_CLICK_TYPES.has(item.actionType);
+
 export function getDisplayX(item: ActionItem): string {
   // Pixel probes (WaitPixelColor / IF PixelColorMatch) borrow the pixel coords
   // for display — mirrors the C# ActionItem.DisplayX override. Image conditions
@@ -70,6 +81,7 @@ export function getDisplayX(item: ActionItem): string {
   if (showsPixelCoords(item)) {
     return item.pixelX != null ? String(item.pixelX) : '';
   }
+  if (hidesCoordsForCursor(item)) return '';
   return NO_COORD_TYPES.has(item.actionType) ? '' : String(item.x);
 }
 
@@ -77,6 +89,7 @@ export function getDisplayY(item: ActionItem): string {
   if (showsPixelCoords(item)) {
     return item.pixelY != null ? String(item.pixelY) : '';
   }
+  if (hidesCoordsForCursor(item)) return '';
   return NO_COORD_TYPES.has(item.actionType) ? '' : String(item.y);
 }
 

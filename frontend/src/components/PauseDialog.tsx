@@ -233,11 +233,13 @@ export function PauseDialog({ initialKey, initialTimeoutMs, onConfirm, onClose }
                 ariaLabel="Pause timeout in milliseconds"
               />
             </div>
+            {/* No infinityTip: the row spells out "No timeout" in words, and the strip below
+                states the resulting behaviour in full — a tooltip repeating either would be a
+                third copy of the same sentence. */}
             <DurationChips
               presets={TIMEOUT_PRESETS}
               value={timeoutMs}
               onSelect={setTimeoutMs}
-              infinityTip={tt('No timeout — resume by hotkey only', 'Sem tempo limite — retoma apenas pela tecla de atalho')}
             />
           </div>
 
@@ -247,22 +249,41 @@ export function PauseDialog({ initialKey, initialTimeoutMs, onConfirm, onClose }
               tone, and Add/Save stays disabled. */}
           {(() => {
             const tone = canConfirm ? 'var(--color-action-pause-fg)' : 'var(--color-recording)';
+            // All four sentences are ALWAYS rendered, stacked in one grid cell with only the
+            // live one visible, so the strip is as tall as its tallest message in every state
+            // and the dialog never changes height. The warning wraps to two lines where
+            // "Waits 1.000 ms then continues." takes one — measured at an 18 px jump, which
+            // re-centres the whole dialog under the user's cursor mid-edit.
+            // Reserved BY CONSTRUCTION, not by a min-height estimate: add or reword a message
+            // and the reserve follows on its own, in whichever language is active. Same
+            // gridArea overlay the Send Keystroke dialog uses for its Press/Hold bodies, and
+            // the same doctrine as common/FieldError.
+            const messages = [
+              tt('Resumes on the hotkey or after the timeout — whichever comes first.', 'Retoma pelo atalho ou após o tempo limite — o que vier primeiro.'),
+              tt('Waits until the hotkey is pressed.', 'Aguarda até o atalho ser pressionado.'),
+              tt(`Waits ${timeoutLabel} then continues.`, `Aguarda ${timeoutLabel} e continua.`),
+              tt('Set a hotkey or a timeout — with neither, this Pause is skipped at replay.', 'Defina um atalho ou um tempo limite — sem nenhum dos dois, esta Pausa é pulada no replay.'),
+            ];
+            const active = captured && timeoutMs > 0 ? 0 : captured ? 1 : timeoutMs > 0 ? 2 : 3;
             return (
               <div
-                className="border-l-2 rounded px-2.5 py-2 text-[11px] leading-relaxed"
+                className="border-l-2 rounded px-2.5 py-2 text-[11px] leading-relaxed grid"
                 style={{
                   background: `color-mix(in srgb, ${tone} 8%, transparent)`,
                   borderColor: tone,
                   color: tone,
                 }}
               >
-                {captured && timeoutMs > 0
-                  ? tt('Resumes on the hotkey or after the timeout — whichever comes first.', 'Retoma pelo atalho ou após o tempo limite — o que vier primeiro.')
-                  : captured
-                    ? tt('Waits until the hotkey is pressed.', 'Aguarda até o atalho ser pressionado.')
-                    : timeoutMs > 0
-                      ? tt(`Waits ${timeoutLabel} then continues.`, `Aguarda ${timeoutLabel} e continua.`)
-                      : tt('Set a hotkey or a timeout — with neither, this Pause is skipped at replay.', 'Defina um atalho ou um tempo limite — sem nenhum dos dois, esta Pausa é pulada no replay.')}
+                {messages.map((m, i) => (
+                  <span
+                    key={i}
+                    style={{ gridArea: '1 / 1' }}
+                    className={i === active ? undefined : 'invisible'}
+                    aria-hidden={i !== active}
+                  >
+                    {m}
+                  </span>
+                ))}
               </div>
             );
           })()}

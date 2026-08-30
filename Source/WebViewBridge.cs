@@ -266,7 +266,7 @@ namespace TrueReplayer
         private static readonly HashSet<string> KnownActionTypes =
             new(StringComparer.Ordinal)
             {
-                "LeftClick", "RightClick", "MiddleClick", "DoubleClick",
+                "LeftClick", "RightClick", "MiddleClick", "DoubleClick", "TripleClick",
                 "LeftClickDown", "LeftClickUp",
                 "RightClickDown", "RightClickUp",
                 "MiddleClickDown", "MiddleClickUp",
@@ -1082,6 +1082,10 @@ namespace TrueReplayer
                 newTab = a.NewTab,
                 isSkipped = a.IsSkipped,
                 isFocusClick = a.IsFocusClick,
+                // Click-at-cursor. MUST be projected: this literal is the frontend's only source
+                // of action data, so an unprojected field reads as undefined in the editor and the
+                // next plain Save writes the flag back off.
+                atCursor = a.AtCursor,
                 repeatCount = a.RepeatCount,
                 // RunProfile data-loop Phase C — projected as a plain bool (null = false)
                 // so the editor toggle and grid detail render without null-juggling.
@@ -3375,7 +3379,14 @@ namespace TrueReplayer
             var action = actions[index];
             switch (field)
             {
-                case "actionType": action.ActionType = value; break;
+                case "actionType":
+                    action.ActionType = value;
+                    // AtCursor is only honoured by the combined click cases. Switching a row to
+                    // anything else (a paired half, a keystroke, a Browser action) must drop it,
+                    // or the row keeps an inert flag that still blanks its coordinates in the grid
+                    // and the Sheet. One enforcement point here covers every caller.
+                    if (!ActionItem.IsCombinedClickType(value)) action.AtCursor = false;
+                    break;
                 case "key":
                     action.Key = value;
                     // INVALIDATION CONTRACT (ActionItem.KeyHtml): a plain-text edit of a SendText
@@ -3405,6 +3416,10 @@ namespace TrueReplayer
                 case "postNavigateSelector": action.PostNavigateSelector = string.IsNullOrEmpty(value) ? null : value; break;
                 case "typeAppend": action.TypeAppend = value == "true"; break;
                 case "typePaste": action.TypePaste = value == "true"; break;
+                // Click at cursor. Ungated here on purpose: the type gate lives in "actionType"
+                // above (which clears it on any switch away from a combined click) and in the
+                // ProfileCompatibility predicate, so this stays a plain field write like the rest.
+                case "atCursor": action.AtCursor = value == "true"; break;
                 case "typeDelay":
                     if (string.IsNullOrEmpty(value)) action.TypeDelay = null;
                     else if (int.TryParse(value, out int td)) action.TypeDelay = Math.Max(0, td);
@@ -3835,7 +3850,12 @@ namespace TrueReplayer
                 .Where(idx => idx >= 0 && idx < actions.Count)
                 .Select(idx => actions[idx])
                 .Where(a => a.ActionType is "LeftClickDown" or "LeftClickUp" or "RightClickDown" or "RightClickUp" or "MiddleClickDown" or "MiddleClickUp"
-                    or "LeftClick" or "RightClick" or "MiddleClick" or "DoubleClick")
+                    or "LeftClick" or "RightClick" or "MiddleClick" or "DoubleClick" or "TripleClick")
+                // An at-cursor click's X/Y is inert — the replay never reads it. Counting those
+                // rows would report "X set on 12 actions" for rows where the number changes
+                // nothing, and would quietly rewrite a point the user can still restore by
+                // switching the row back to This point.
+                .Where(a => !a.AtCursor)
                 .ToList();
 
             if (targets.Count == 0)
@@ -7686,7 +7706,7 @@ namespace TrueReplayer
 
             PushUndoState();
 
-            var clickTypes = new HashSet<string> { "LeftClickDown", "LeftClickUp", "RightClickDown", "RightClickUp", "MiddleClickDown", "MiddleClickUp", "LeftClick", "RightClick", "MiddleClick", "DoubleClick" };
+            var clickTypes = new HashSet<string> { "LeftClickDown", "LeftClickUp", "RightClickDown", "RightClickUp", "MiddleClickDown", "MiddleClickUp", "LeftClick", "RightClick", "MiddleClick", "DoubleClick", "TripleClick" };
             int converted = 0;
 
             // Sign of the translation: subtract window origin to go absolute→relative,
@@ -7695,7 +7715,11 @@ namespace TrueReplayer
 
             foreach (var action in actions)
             {
-                if (clickTypes.Contains(action.ActionType))
+                // An at-cursor click is skipped and NOT counted: its stored X/Y is dormant (the
+                // replay resolves an absolute point from the live cursor and never translates),
+                // so translating it would drift a coordinate nothing reads — and the user would
+                // get a wrong point the moment they switched the row back to This point.
+                if (clickTypes.Contains(action.ActionType) && !action.AtCursor)
                 {
                     action.X += sign * rect.Left;
                     action.Y += sign * rect.Top;

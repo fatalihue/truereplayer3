@@ -1331,7 +1331,11 @@ namespace TrueReplayer.Services
                 // the way Windows itself pairs clicks. Skipped in capture mode (capture
                 // flows count actions and complete after exactly one click). The merged
                 // row keeps the FIRST click's coords/delay; tracking resets after a
-                // merge so a triple-click records DoubleClick + LeftClick.
+                // merge so a triple-click records DoubleClick + LeftClick. That stays true on
+                // purpose now that a TripleClick action type EXISTS: the type is authored in the
+                // Sheet (switch an existing click's type), never escalated by the recorder —
+                // extending the chain here would silently change what every existing fast-clicking
+                // recording produces, which is not a change to make as a side effect of adding a type.
                 if (RecordCombined && button == "Left"
                     && _captureType == CaptureType.None
                     && _lastCombinedLeftClick != null
@@ -1491,25 +1495,94 @@ namespace TrueReplayer.Services
         public static int FocusClickOffsetPx = 5;
         public static int FocusClickGapMs = 60;
 
-        // Gap between the two press/release pairs of a DoubleClick replay. 50 ms sits
-        // comfortably below any system double-click time (default 500 ms, minimum 200)
-        // while still letting slower apps process the first click. Static so a future
-        // settings knob can tune it.
+        // Gap between consecutive press/release pairs of a MULTI-click replay — DoubleClick's two
+        // and TripleClick's three. 50 ms sits comfortably below any system double-click time
+        // (default 500 ms, minimum 200) while still letting slower apps process the previous
+        // click. ONE constant for both on purpose: GetDoubleClickTime governs every hop of a
+        // multi-click chain, not just the second, so a separate triple knob would be a second
+        // name for the same OS quantity and would drift the first time either is tuned. Static so
+        // a future settings knob can tune it.
         public static int DoubleClickGapMs = 50;
 
         // Fires the second "focus" click for an IsFocusClick combined click: a short pause, then
         // a full press/release FocusClickOffsetPx down-right of the recorded point. Skips if the
         // replay was cancelled mid-sequence (mirrors how the primary click's release is gated).
-        private void FocusTap(int x, int y, uint down, uint up, CancellationToken token)
+        // coordsAreProfileSpace is threaded from the caller, not defaulted at the call site: an
+        // at-cursor click resolves an ABSOLUTE point, and translating the tap while leaving the
+        // primary click untranslated would land the two in different coordinate spaces.
+        private void FocusTap(int x, int y, uint down, uint up, CancellationToken token,
+                              bool coordsAreProfileSpace = true)
         {
             if (FocusClickGapMs > 0) Thread.Sleep(FocusClickGapMs);
             if (token.IsCancellationRequested) return;
             int fx = x + FocusClickOffsetPx, fy = y + FocusClickOffsetPx;
             // The focus tap is a deliberate few-px settle off the primary click, never a jump — opt it
             // out of fast approach so a tiny SettleDistancePx can't turn this nudge into a teleport.
-            SimulateMouse(fx, fy, down, allowFastApproach: false);
+            SimulateMouse(fx, fy, down, coordsAreProfileSpace: coordsAreProfileSpace, allowFastApproach: false);
             if (!token.IsCancellationRequested)
-                SimulateMouse(fx, fy, up, allowFastApproach: false);
+                SimulateMouse(fx, fy, up, coordsAreProfileSpace: coordsAreProfileSpace, allowFastApproach: false);
+        }
+
+        // N full left press/release pairs at ONE point, each hop under DoubleClickGapMs so the
+        // target chains them: 2 = double-click, 3 = triple-click (select-a-paragraph, which two
+        // separate DoubleClick rows can NOT produce — their inter-repeat gap is deliberately 600 ms
+        // so they read as distinct double-clicks). The cursor travels once: every later pair's move
+        // is a no-op because SimulateMouse sees it is already on target, which is also what keeps
+        // all pairs inside the SM_CX/CYDOUBLECLK rectangle the OS pairs them by.
+        // Cancellation is checked at every boundary — including BEFORE the first press, which the
+        // hand-rolled DoubleClick body this replaced did not do (it emitted one orphan press that
+        // only StartAsync's ResetMouseState cleaned up).
+        private void MultiClickPairs(int cx, int cy, int pairs, CancellationToken token,
+                                     bool coordsAreProfileSpace = true)
+        {
+            for (int p = 0; p < pairs; p++)
+            {
+                if (token.IsCancellationRequested) return;
+                if (p > 0 && DoubleClickGapMs > 0) Thread.Sleep(DoubleClickGapMs);
+                if (token.IsCancellationRequested) return;
+                SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_LEFTDOWN, coordsAreProfileSpace: coordsAreProfileSpace);
+                if (token.IsCancellationRequested) return;
+                SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_LEFTUP, coordsAreProfileSpace: coordsAreProfileSpace);
+            }
+        }
+
+        // Resolves the point ONE repeat cycle uses, plus whether that point still needs the
+        // profile-space (window-relative) translation SimulateMouse applies.
+        //
+        // AtCursor reads the live cursor ONCE, here — never per press/release. Re-reading between
+        // the down and the up turns a hand-nudge into a DRAG, and for a Double/TripleClick it
+        // would scatter the pairs out of the SM_CX/CYDOUBLECLK rectangle and break the chain.
+        // The returned point is ALREADY absolute virtual-screen, so profileSpace is false — same
+        // reasoning as WaitImage's click-on-match and the pixel one, which also hand SimulateMouse
+        // a computed absolute point. Consequence, and it is correct: an at-cursor click never
+        // reaches TryResolveRelativeOffset, so it does NOT abort the run via
+        // ReportMissingTargetWindow — it does not depend on the target window at all.
+        //
+        // Position jitter is deliberately NOT applied to a cursor point. SimulateMouse carries
+        // MOUSEEVENTF_MOVE, so cycle 1 would move the cursor to cursor+offset and cycle 2 would
+        // read THAT as the live cursor — a random walk whose displacement grows with the square
+        // root of the repeat count. That is verbatim the bug the Clicker fixed with anchored
+        // jitter, and the anchor+re-detect machinery is disproportionate inside a per-action
+        // lambda. The Sheet disables the field and writes 0 to match.
+        private static (int x, int y, bool profileSpace) ResolveClickPoint(ActionItem a, int jx, int jy)
+        {
+            if (a.AtCursor)
+            {
+                NativeMethods.GetCursorPos(out var live);
+                return (live.x, live.y, false);
+            }
+            return (a.X + jx, a.Y + jy, true);
+        }
+
+        // Stamps the run-report row with the point an at-cursor click ACTUALLY resolved, so the
+        // report proves where it landed instead of echoing a stored coordinate the run ignored —
+        // this is what makes the feature verifiable through replay:report rather than by eye.
+        // No-op for a normal click (DescribeStepDetail already printed its X/Y) and once the
+        // report is full, matching every other Detail write in this loop. With RepeatCount > 1 the
+        // last cycle wins, which reads correctly as "where the last click landed".
+        private void StampCursorPoint(RunStepRecord rec, ActionItem a, int cx, int cy)
+        {
+            if (a.AtCursor && !_runStepsFull) rec.Detail = $"at cursor → {cx}, {cy}";
         }
 
         private readonly ObservableCollection<ActionItem> _actions;
@@ -1826,7 +1899,12 @@ namespace TrueReplayer.Services
                 case "RightClick":
                 case "MiddleClick":
                 case "DoubleClick":
-                    return $"{a.X}, {a.Y}";
+                case "TripleClick":
+                    // At-cursor rows have no meaningful stored point — printing X/Y here would
+                    // report a coordinate the run never used. The replay body overwrites this
+                    // with the point it actually resolved, so a completed step reads
+                    // "at cursor → 812, 344"; this string is what an in-flight row shows.
+                    return a.AtCursor ? "at cursor" : $"{a.X}, {a.Y}";
                 case "Keystroke":
                 case "KeyDown":
                 case "KeyUp":
@@ -2516,7 +2594,7 @@ namespace TrueReplayer.Services
         // Shared "× N" repeat driver for the inline-repeat actions (Keystroke and the
         // combined-mode clicks). Runs <paramref name="body"/> RepeatCount times (clamped
         // 1..999) with RepeatDelayMs between cycles (clamped 0..5000; default 30 ms, or
-        // 600 ms for DoubleClick — see defaultGap below),
+        // 600 ms for a multi-click, Double or Triple — see defaultGap below),
         // applying the optional ±% per-cycle gap jitter so a burst isn't a fixed-interval
         // metronome — a constant gap is the single clearest "this is a bot" tell. The jitter
         // is re-rolled EVERY cycle (a single up-front roll would just shift the whole burst
@@ -2540,9 +2618,13 @@ namespace TrueReplayer.Services
         private async Task ExecuteRepeated(ActionItem action, CancellationToken token, Action<int, int> body)
         {
             int repeats = Math.Max(1, Math.Min(999, action.RepeatCount));
-            // DoubleClick × N falls back to a larger default gap (see DefaultDoubleClickRepeatDelayMs)
-            // so repeats register as DISTINCT double-clicks; single clicks / Keystroke use 30 ms.
-            int defaultGap = string.Equals(action.ActionType, "DoubleClick", StringComparison.Ordinal)
+            // A MULTI-click (Double/Triple) × N falls back to a larger default gap (see
+            // DefaultDoubleClickRepeatDelayMs) so repeats register as DISTINCT multi-clicks rather
+            // than blurring into one long chain; single clicks / Keystroke use 30 ms. The constant
+            // is named for DoubleClick only for history — it is keyed on GetDoubleClickTime, not on
+            // the number of pairs, so a triple needs the identical clearance.
+            // Constant patterns match ordinally, preserving the StringComparison.Ordinal this used.
+            int defaultGap = action.ActionType is "DoubleClick" or "TripleClick"
                 ? ActionItem.DefaultDoubleClickRepeatDelayMs
                 : ActionItem.DefaultRepeatDelayMs;
             int gap = Math.Max(0, Math.Min(5000, action.RepeatDelayMs ?? defaultGap));
@@ -3427,39 +3509,48 @@ namespace TrueReplayer.Services
                         // driver. RepeatCount == 1 (every recorded/existing click) runs the body once
                         // — byte-identical to the pre-feature single-shot. The focus tap, when on,
                         // fires once per cycle so each click still lands on a small target. Paired
-                        // halves keep their single-shot cases below; DoubleClick repeats via its own
-                        // wrapped case (each cycle keeps the fixed ×2 timing). (jx, jy) is the
+                        // halves keep their single-shot cases below; Double/TripleClick repeat via
+                        // their own wrapped cases (each cycle keeps the fixed ×2 / ×3 internal
+                        // timing, which MultiClickPairs owns). (jx, jy) is the
                         // cycle's position-jitter offset (0,0 unless Position jitter is on and
                         // Times > 1) — applied ONCE per cycle to a local point so the down, the
                         // up and the focus tap all land together instead of turning into a drag.
+                        // ResolveClickPoint yields the cycle's point and whether it still needs the
+                        // profile-space translation: a normal click is the stored X/Y plus this
+                        // cycle's jitter (profile space), an AtCursor click is the LIVE cursor read
+                        // ONCE here (already absolute — see the helper for why re-reading per
+                        // press/release would be a drag).
                         case "LeftClick":
                             await ExecuteRepeated(action, token, (jx, jy) => {
-                                int cx = action.X + jx, cy = action.Y + jy;
-                                SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_LEFTDOWN);
+                                var (cx, cy, ps) = ResolveClickPoint(action, jx, jy);
+                                StampCursorPoint(stepRec, action, cx, cy);
+                                SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_LEFTDOWN, coordsAreProfileSpace: ps);
                                 if (!token.IsCancellationRequested)
-                                    SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_LEFTUP);
+                                    SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_LEFTUP, coordsAreProfileSpace: ps);
                                 if (action.IsFocusClick && !token.IsCancellationRequested)
-                                    FocusTap(cx, cy, NativeMethods.MOUSEEVENTF_LEFTDOWN, NativeMethods.MOUSEEVENTF_LEFTUP, token);
+                                    FocusTap(cx, cy, NativeMethods.MOUSEEVENTF_LEFTDOWN, NativeMethods.MOUSEEVENTF_LEFTUP, token, ps);
                             });
                             break;
                         case "RightClick":
                             await ExecuteRepeated(action, token, (jx, jy) => {
-                                int cx = action.X + jx, cy = action.Y + jy;
-                                SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_RIGHTDOWN);
+                                var (cx, cy, ps) = ResolveClickPoint(action, jx, jy);
+                                StampCursorPoint(stepRec, action, cx, cy);
+                                SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_RIGHTDOWN, coordsAreProfileSpace: ps);
                                 if (!token.IsCancellationRequested)
-                                    SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_RIGHTUP);
+                                    SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_RIGHTUP, coordsAreProfileSpace: ps);
                                 if (action.IsFocusClick && !token.IsCancellationRequested)
-                                    FocusTap(cx, cy, NativeMethods.MOUSEEVENTF_RIGHTDOWN, NativeMethods.MOUSEEVENTF_RIGHTUP, token);
+                                    FocusTap(cx, cy, NativeMethods.MOUSEEVENTF_RIGHTDOWN, NativeMethods.MOUSEEVENTF_RIGHTUP, token, ps);
                             });
                             break;
                         case "MiddleClick":
                             await ExecuteRepeated(action, token, (jx, jy) => {
-                                int cx = action.X + jx, cy = action.Y + jy;
-                                SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_MIDDLEDOWN);
+                                var (cx, cy, ps) = ResolveClickPoint(action, jx, jy);
+                                StampCursorPoint(stepRec, action, cx, cy);
+                                SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_MIDDLEDOWN, coordsAreProfileSpace: ps);
                                 if (!token.IsCancellationRequested)
-                                    SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_MIDDLEUP);
+                                    SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_MIDDLEUP, coordsAreProfileSpace: ps);
                                 if (action.IsFocusClick && !token.IsCancellationRequested)
-                                    FocusTap(cx, cy, NativeMethods.MOUSEEVENTF_MIDDLEDOWN, NativeMethods.MOUSEEVENTF_MIDDLEUP, token);
+                                    FocusTap(cx, cy, NativeMethods.MOUSEEVENTF_MIDDLEDOWN, NativeMethods.MOUSEEVENTF_MIDDLEUP, token, ps);
                             });
                             break;
                         // Two full left press/release pairs at the SAME point with a gap well
@@ -3468,31 +3559,37 @@ namespace TrueReplayer.Services
                         // is a no-op because SimulateMouse sees it's already on target, which
                         // also keeps the clicks inside the SM_CX/CYDOUBLECLK rectangle.
                         // IsFocusClick is intentionally ignored here (a focus tap after a
-                        // double-click would read as a triple-click to the target).
+                        // double-click would read as a triple-click to the target — and now that
+                        // TripleClick is a real type, that accident must stay unreachable).
                         // RepeatCount > 1 → replay the WHOLE double-click N times via ExecuteRepeated;
                         // the inter-repeat gap defaults larger (DefaultDoubleClickRepeatDelayMs) so the
-                        // OS reads distinct double-clicks. The internal two-pair / DoubleClickGapMs
-                        // timing is untouched — the body below is verbatim the pre-repeat unit, so
-                        // RepeatCount == 1 stays byte-identical. Position jitter (jx, jy) offsets
+                        // OS reads distinct double-clicks. Position jitter (jx, jy) offsets
                         // the WHOLE double-click by one point per cycle — deliberately NOT per
                         // pair: the two pairs must stay inside the SM_CX/CYDOUBLECLK rectangle or
                         // the OS stops reading them as a double-click at all.
+                        // The pair loop lives in MultiClickPairs, shared with TripleClick so the two
+                        // cannot drift. It is the pre-existing body except that cancellation is now
+                        // also checked BEFORE the first press (previously that press was
+                        // unconditional, leaving an orphan for ResetMouseState to clean up).
                         case "DoubleClick":
                             await ExecuteRepeated(action, token, (jx, jy) => {
-                                int cx = action.X + jx, cy = action.Y + jy;
-                                SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_LEFTDOWN);
-                                if (!token.IsCancellationRequested)
-                                    SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_LEFTUP);
-                                if (!token.IsCancellationRequested)
-                                {
-                                    if (DoubleClickGapMs > 0) Thread.Sleep(DoubleClickGapMs);
-                                    if (!token.IsCancellationRequested)
-                                    {
-                                        SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_LEFTDOWN);
-                                        if (!token.IsCancellationRequested)
-                                            SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_LEFTUP);
-                                    }
-                                }
+                                var (cx, cy, ps) = ResolveClickPoint(action, jx, jy);
+                                StampCursorPoint(stepRec, action, cx, cy);
+                                MultiClickPairs(cx, cy, 2, token, ps);
+                            });
+                            break;
+                        // Three full left press/release pairs at the SAME point — the target reads a
+                        // real triple-click (select-a-paragraph), which two DoubleClick rows can NOT
+                        // produce: their inter-repeat gap is deliberately 600 ms so the OS reads them
+                        // as distinct double-clicks rather than chaining them.
+                        // Everything the DoubleClick comment above says applies verbatim, and one
+                        // thing more strongly: IsFocusClick is ignored because a focus tap after
+                        // three pairs would read as a FOURTH click and restart the chain.
+                        case "TripleClick":
+                            await ExecuteRepeated(action, token, (jx, jy) => {
+                                var (cx, cy, ps) = ResolveClickPoint(action, jx, jy);
+                                StampCursorPoint(stepRec, action, cx, cy);
+                                MultiClickPairs(cx, cy, 3, token, ps);
                             });
                             break;
                         case "ScrollUp": SimulateScroll(120); break;

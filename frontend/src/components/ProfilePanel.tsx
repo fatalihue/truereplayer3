@@ -59,8 +59,10 @@ const CONVERTIBLE_CLICK_TYPES = new Set([
   'LeftClickDown', 'LeftClickUp',
   'RightClickDown', 'RightClickUp',
   'MiddleClickDown', 'MiddleClickUp',
-  // Combined-mode single clicks carry coordinates too.
-  'LeftClick', 'RightClick', 'MiddleClick',
+  // Combined-mode clicks carry coordinates too — single AND multi. Double/Triple were missing
+  // here while the backend's clickTypes set has always converted DoubleClick, so this count
+  // under-reported on any profile using one; adding both closes that.
+  'LeftClick', 'RightClick', 'MiddleClick', 'DoubleClick', 'TripleClick',
 ]);
 
 // Alphabetical section ordering. Module scope because it closes over nothing — as a function
@@ -88,7 +90,10 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
   // HandleConvertCoordinates filter (clicks + WaitImage with search region + WaitPixel
   // with pixel set) — change both together if the filter ever changes.
   const convertibleActionCount = useMemo(() => actions.reduce((n, a) => {
-    if (CONVERTIBLE_CLICK_TYPES.has(a.actionType)) return n + 1;
+    // At-cursor clicks are skipped on BOTH sides: the backend leaves their dormant x/y alone
+    // (translating it would hand back a wrong point if the user switched the row back to
+    // "This point"), so counting them here would promise conversions that never happen.
+    if (CONVERTIBLE_CLICK_TYPES.has(a.actionType)) return a.atCursor ? n : n + 1;
     // Mirror the backend's HandleConvertCoordinates which translates both WaitImage
     // and IF Image rows with a set search region, and both WaitPixelColor and IF
     // Pixel rows with set coords. Without these branches the dialog under-reports

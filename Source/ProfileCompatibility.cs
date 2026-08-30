@@ -393,7 +393,10 @@ namespace TrueReplayer.Services
             // silent behavioural divergence (a "click 5×" quietly becomes 1). Property-level Detect
             // so plain single/double clicks keep their existing floor. The gap-jitter pin above
             // already covers a click carrying RepeatDelayJitterPct; this adds the plain-count case.
-            // Introduced in 2.9.6.
+            // Introduced in 2.9.6. TripleClick is deliberately ABSENT from this list: any profile
+            // holding one already pins ≥ 2.31.0 through the "Triple click" row below, and
+            // ComputeMinVersion takes the MAX — so a term here could never change a result. It
+            // would be a check that looks like it does work and does not.
             (p => p.Actions.Any(a => a.RepeatCount > 1 &&
                 (string.Equals(a.ActionType, "LeftClick", StringComparison.OrdinalIgnoreCase) ||
                  string.Equals(a.ActionType, "RightClick", StringComparison.OrdinalIgnoreCase) ||
@@ -414,6 +417,24 @@ namespace TrueReplayer.Services
             // older builds have no replay switch case and would silently skip it.
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "DoubleClick", StringComparison.OrdinalIgnoreCase)),
                 new Version(2, 5, 4), "Double click"),
+
+            // TripleClick (three press/release pairs replayed as one row, so the target reads a
+            // real triple-click — select-a-paragraph, which two DoubleClick rows cannot produce).
+            // Older builds have no replay switch case, and the switch has NO default, so the row
+            // is a silent no-op. Introduced in 2.31.0.
+            (p => p.Actions.Any(a => string.Equals(a.ActionType, "TripleClick", StringComparison.OrdinalIgnoreCase)),
+                new Version(2, 31, 0), "Triple click"),
+
+            // Click at cursor (AtCursor — the click ignores its stored X/Y and fires at the LIVE
+            // cursor position). This is WORSE than a missing-type no-op: an older build HAS the
+            // click's replay case, so the row runs — it just drops the unknown property and clicks
+            // the STORED coordinate, somewhere else entirely, silently. And with no
+            // [JsonExtensionData] anywhere in this codebase that build also ERASES the flag on its
+            // next save. Property-level Detect gated on the click types that actually read it, so
+            // an inert flag on any other row keeps that row's own floor — same shape as the focus
+            // click pin above. Introduced in 2.31.0.
+            (p => p.Actions.Any(a => a.AtCursor && ActionItem.IsCombinedClickType(a.ActionType)),
+                new Version(2, 31, 0), "Click at cursor"),
 
             // ActivateWindow (launch/wait/focus a window mid-run) — older builds have no
             // replay switch case and would silently skip the row, leaving the following
