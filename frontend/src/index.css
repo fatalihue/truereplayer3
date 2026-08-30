@@ -677,6 +677,52 @@ html[data-animations="true"] .drop-gap-slot {
   animation: none;
 }
 
+/* Replay program counter — the row the engine is executing right now.
+   Owned by CSS and driven by ReplayRowMarker writing one attribute, NOT by the
+   row's className: the grid is an inline actions.map() with no memo boundary, so
+   feeding the highlight index through React re-rendered all ~2300 grid nodes on
+   every executed action (19.5 ms median at 87 rows) to change three of them.
+   An attribute the marker sets costs the same at 2 rows and at 200.
+
+   Specificity is load-bearing. The base rules are (0,1,2) so they outrank the
+   single bg-* utility the row still carries from the selected / structural /
+   striping cascade, and the :hover rules are (0,2,2) so they outrank that
+   cascade's hover:bg-* variants — otherwise pointing at the executing row would
+   wipe the tint that says where the engine is. */
+tbody tr[data-replay="running"] {
+  background-color: color-mix(in srgb, var(--color-replay) 10%, transparent);
+  box-shadow: inset 3px 0 0 var(--color-replay);
+}
+
+tbody tr[data-replay="running"]:hover {
+  background-color: var(--color-bg-elevated);
+}
+
+/* Paused-here uses the pause-action colour instead of the replay green, plus a
+   soft pulse mirroring the status bar's PAUSED indicator. It deliberately keeps
+   its wash on hover (the running row does not): a parked engine is a state the
+   user is looking AT, so pointing at it must not erase the signal. */
+tbody tr[data-replay="paused"],
+tbody tr[data-replay="paused"]:hover {
+  background-color: color-mix(in srgb, var(--color-action-pause-fg) 18%, transparent);
+  box-shadow: inset 3px 0 0 var(--color-action-pause-fg);
+  animation: replay-row-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Own keyframes rather than Tailwind's `pulse`: that name only exists in the
+   output while some component still uses the animate-pulse utility, and this
+   rule must not break the day the last one is refactored away. */
+@keyframes replay-row-pulse {
+  50% { opacity: 0.5; }
+}
+
+/* Second channel for the executing row (colour alone collapses toward the
+   selection tint in several themes): the row number gives way to the filled
+   play / pause glyph the marker portals into the slot beside it. */
+tbody tr[data-replay] [data-rownum-value] {
+  display: none;
+}
+
 /* Micro-label — THE one recipe for section headers / group captions app-wide
    (SettingsPanel sections, ProfilePanel PINNED/UNGROUPED, toolbar flyout headers,
    sheet sections…). Replaces four drifted dialects of the same role; 11px is the

@@ -6,10 +6,11 @@ import type { CollisionDetection, DragStartEvent, DragEndEvent } from '@dnd-kit/
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { CSS } from '@dnd-kit/utilities';
-import { Mouse, MousePointerClick, Keyboard, ArrowUp, ArrowDown, Zap, Type, Trash2, ChevronRight, ChevronDown, ChevronsDownUp, ChevronsUpDown, Plus, Pencil, ScanSearch, Pipette, Globe, CheckCheck, Check, Code2, Files, Hourglass, Repeat2, ExternalLink, Crosshair, Link, GripVertical, Timer, GitBranch, ArrowRightLeft, Combine, Split, MoreHorizontal, Focus, Braces, AppWindow, Clipboard, ClipboardCopy, Play, Pause, EyeOff, RotateCcw, Dice5, Cpu, FileCheck, Clock, ShieldCheck, CircleStop, CornerDownLeft, IterationCw, ChevronUp, ArrowRightFromLine, SkipForward, Table2 } from 'lucide-react';
+import { Mouse, MousePointerClick, Keyboard, ArrowUp, ArrowDown, Zap, Type, Trash2, ChevronRight, ChevronDown, ChevronsDownUp, ChevronsUpDown, Plus, Pencil, ScanSearch, Pipette, Globe, CheckCheck, Check, Code2, Files, Hourglass, Repeat2, ExternalLink, Crosshair, Link, GripVertical, Timer, GitBranch, ArrowRightLeft, Combine, Split, MoreHorizontal, Focus, Braces, AppWindow, Clipboard, ClipboardCopy, EyeOff, RotateCcw, Dice5, Cpu, FileCheck, Clock, ShieldCheck, CircleStop, CornerDownLeft, IterationCw, ChevronUp, ArrowRightFromLine, SkipForward, Table2 } from 'lucide-react';
 import { canCollapse, canExpand, expandKeystroke } from '../utils/keyRepeat';
 import type { ActionItem } from '../bridge/messageTypes';
-import { useAppState, useHighlightedAction } from '../state/AppStateContext';
+import { useAppState } from '../state/AppStateContext';
+import { ReplayRowMarker } from './ReplayRowMarker';
 import { useBridge } from '../bridge/BridgeContext';
 import { useTt, useLanguage } from '../state/LanguageContext';
 import type { Language } from '../state/LanguageContext';
@@ -495,17 +496,19 @@ interface ActionTableProps {
 }
 
 export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: ActionTableProps) {
-  const { actions, buttonStates, activeProfile, pauseState, dataTable } = useAppState();
-  // Separate context on purpose: the highlight advances once per executed action during a
-  // replay, and keeping it out of AppState is what stops every useAppState() consumer
-  // re-rendering at that cadence. This grid renders it, so it pays the price by design.
-  const highlightedActionIndex = useHighlightedAction();
+  // pauseState is not read here any more: its only use was the paused-here row treatment,
+  // which needs the replay index to be meaningful — both now live in ReplayRowMarker.
+  const { actions, buttonStates, activeProfile, dataTable } = useAppState();
+  // The replay highlight is deliberately NOT read here. It advances once per executed action,
+  // and this grid is an inline actions.map() with no memo boundary, so subscribing to it made
+  // every push re-render all ~2300 grid nodes (19.5 ms median at 87 rows) to change three of
+  // them. ReplayRowMarker owns it instead: it marks the row with data-replay and index.css
+  // paints it, at a cost that no longer scales with row count.
   const { send } = useBridge();
   const tt = useTt();
   const { language } = useLanguage();
   const selectionRef = useSelectionRef();
   const scrollRef = useRef<HTMLDivElement>(null);
-  const highlightedRowRef = useRef<HTMLTableRowElement>(null);
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -735,20 +738,9 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
     }
   }, [buttonStates.replayActive]);
 
-  // Auto-scroll to highlighted row during replay.
-  //
-  // `behavior: 'auto'` (instant jump) is intentional here despite feeling less
-  // polished than smooth scrolling. At higher replay speeds (10+ actions/sec)
-  // smooth scrolls queue up faster than they complete — the animation never
-  // catches the latest row, the grid visibly lags, and the main thread is
-  // occupied with overlapping scroll tweens instead of paint work. Auto-scroll
-  // costs nothing per call and keeps the highlight visually tied to the
-  // currently-executing action even at burst rates.
-  useEffect(() => {
-    if (highlightedActionIndex !== null && highlightedRowRef.current) {
-      highlightedRowRef.current.scrollIntoView({ block: 'nearest', behavior: 'auto' });
-    }
-  }, [highlightedActionIndex]);
+  // Auto-scroll to the highlighted row lives in ReplayRowMarker now — it is the only thing
+  // that knows the index, and keeping the scroll next to the mark is what lets this component
+  // stay off the per-action re-render path entirely.
 
   // Preserve scroll position across action list updates (undo/redo, edits, bulk ops)
   const savedScrollTop = useRef(0);
@@ -1834,12 +1826,10 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
           <tbody ref={tbodyRef}>
             {actions.map((action, idx) => {
               const colors = getActionTypeColors(action.actionType);
-              const isHighlighted = highlightedActionIndex === idx;
-              // While the replay engine is awaiting a Pause action's resume condition, the
-              // highlighted row IS the paused action — flag it so the row treatment can swap
-              // from the accent-blue "running" tint to the pause-purple "waiting" tint. This
-              // is the only "where am I?" cue the user needs without leaving the grid.
-              const isPausedHere = isHighlighted && pauseState.isPaused && action.actionType === 'Pause';
+              // No isHighlighted / isPausedHere here on purpose. Both used to be derived per
+              // row from the replay index, which is what dragged the whole map onto the
+              // per-action re-render path. ReplayRowMarker writes data-replay="running" |
+              // "paused" on the one row that needs it and index.css does the rest.
               const isSelected = selectedIndices.has(idx);
               const displayKey = action.actionType === 'WaitImage'
                 ? ''
@@ -2133,21 +2123,24 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                   // breaking highlight state and replaying entrance animations on rows
                   // that didn't actually change. Falls back to idx for the brief window
                   // between an old-profile backend push (no id yet) and the next refresh
-                  // after migration runs.
-
-                  // Combined ref: dnd-kit needs the node for measuring/transforms, and
-                  // the highlighted row keeps its scroll-into-view ref.
-                  ref={(el) => {
-                    sortable.setNodeRef(el);
-                    if (isHighlighted) {
-                      (highlightedRowRef as React.MutableRefObject<HTMLTableRowElement | null>).current = el;
-                    }
-                  }}
+                  // after migration runs. It also keeps the replay mark honest: the
+                  // data-replay attribute rides the DOM node, so a keyed row carries it
+                  // to wherever the row moved instead of stranding it on a stale slot.
+                  //
+                  // setNodeRef passed straight through rather than wrapped in an arrow: a
+                  // fresh closure each render makes React detach (ref(null)) and reattach
+                  // dnd-kit's node on EVERY row render, which is work for nothing.
+                  ref={sortable.setNodeRef}
                   // data-row-id feeds the FLIP-on-drop measurement (see the
                   // pendingFlipRects layout effect). Only rows with a real backend
                   // id participate — index-keyed fallbacks can't be tracked across
                   // a reorder.
                   data-row-id={action.id ?? undefined}
+                  // data-row-index is how ReplayRowMarker finds the executing row without this
+                  // component ever knowing which one it is. It has to be an attribute and not a
+                  // positional lookup: the tbody also holds the "+ Add Else" ghost rows and the
+                  // drag drop-gap row, so nth-child would drift off by one inside any block.
+                  data-row-index={idx}
                   aria-selected={isSelected}
                   {...sortable.listeners}
                   onClick={(e) => handleRowClick(idx, e)}
@@ -2165,17 +2158,14 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                     setHoverBlock({ open, close, level: blockInfo.depth[open] ?? 0 });
                   } : undefined}
                   onMouseLeave={isStructural ? () => setHoverBlock(null) : undefined}
-                  // Paused rows use the pause-action colour (purple by default) instead of
-                  // the accent-blue "running" tint, plus a soft pulse to mirror the status-bar
-                  // PAUSED indicator. The transform/transition pair is dnd-kit's live
-                  // slide for row reorder; the profileShift branch reuses the same
-                  // language for profiles dragged over the grid (rows at/below the
-                  // insert point slide down one slot to open space).
+                  // The transform/transition pair is dnd-kit's live slide for row reorder;
+                  // the profileShift branch reuses the same language for profiles dragged
+                  // over the grid (rows at/below the insert point slide down one slot to
+                  // open space).
                   style={{
                     // Per-level block colour, consumed by the bg + hover classes below and
                     // inherited by the scope rails' container. Level 0 === the IF colour.
                     ['--row-block-color' as string]: rowBlockColor,
-                    ...(isPausedHere ? { backgroundColor: 'color-mix(in srgb, var(--color-action-pause-fg) 18%, transparent)' } : null),
                     transform: sortable.transform
                       ? CSS.Translate.toString(sortable.transform)
                       : (profileShift ? 'translateY(var(--ui-row-height))' : undefined),
@@ -2195,32 +2185,29 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                   } ${
                     isSkipped ? 'opacity-40' : ''
                   } ${
-                    isPausedHere
-                      ? 'animate-pulse shadow-[inset_3px_0_0_var(--color-action-pause-fg)]'
-                      : isHighlighted
-                        // Executing row = a PROGRAM COUNTER, not a selection lookalike:
-                        // replay-green wash + solid inset bar (+ the ▶ glyph in the #
-                        // cell) instead of the old accent tint that sat 4% away from
-                        // the selection tint.
-                        ? 'bg-[color-mix(in_srgb,var(--color-replay)_10%,transparent)] shadow-[inset_3px_0_0_var(--color-replay)] hover:bg-bg-elevated'
-                        : isSelected
-                          ? 'bg-[color-mix(in_srgb,var(--color-accent)_8%,transparent)] hover:bg-bg-elevated'
-                          : isStructural
-                            // Structural row tint replaces the odd/even striping so the
-                            // whole IF / ELSE / ENDIF row group reads as a cohesive scope
-                            // marker, distinct from the body rows it brackets. The hue comes
-                            // from --row-block-color (per nesting level), so a nested block
-                            // reads in a different colour from its parent. Hovering mixes that
-                            // hue into the elevated colour so the block tint survives the hover.
-                            ? 'bg-[color-mix(in_srgb,var(--row-block-color)_6%,transparent)] hover:bg-[color-mix(in_srgb,var(--row-block-color)_10%,var(--color-bg-elevated))]'
-                            : isInBlock
-                              ? 'bg-[color-mix(in_srgb,var(--row-block-color)_3%,transparent)] hover:bg-[color-mix(in_srgb,var(--row-block-color)_7%,var(--color-bg-elevated))]'
-                              : idx % 2 === 0
-                                ? 'bg-bg-surface hover:bg-bg-elevated'
-                                // Odd-row stripe: a whisper of text-primary instead of a
-                                // fixed white overlay — follows the theme (darkens on
-                                // light themes) and keeps the zebra extra-subtle (1%).
-                                : 'bg-[color-mix(in_srgb,var(--color-text-primary)_1%,transparent)] hover:bg-bg-elevated'
+                    // The executing row (replay-green wash + inset bar) and the paused-here row
+                    // (pause colour + pulse) used to sit at the head of this cascade. They moved
+                    // to index.css under tr[data-replay=...], written by ReplayRowMarker — the
+                    // rules there are specific enough to override whichever branch below wins,
+                    // hover variants included. See the note above the row map.
+                    isSelected
+                      ? 'bg-[color-mix(in_srgb,var(--color-accent)_8%,transparent)] hover:bg-bg-elevated'
+                      : isStructural
+                        // Structural row tint replaces the odd/even striping so the
+                        // whole IF / ELSE / ENDIF row group reads as a cohesive scope
+                        // marker, distinct from the body rows it brackets. The hue comes
+                        // from --row-block-color (per nesting level), so a nested block
+                        // reads in a different colour from its parent. Hovering mixes that
+                        // hue into the elevated colour so the block tint survives the hover.
+                        ? 'bg-[color-mix(in_srgb,var(--row-block-color)_6%,transparent)] hover:bg-[color-mix(in_srgb,var(--row-block-color)_10%,var(--color-bg-elevated))]'
+                        : isInBlock
+                          ? 'bg-[color-mix(in_srgb,var(--row-block-color)_3%,transparent)] hover:bg-[color-mix(in_srgb,var(--row-block-color)_7%,var(--color-bg-elevated))]'
+                          : idx % 2 === 0
+                            ? 'bg-bg-surface hover:bg-bg-elevated'
+                            // Odd-row stripe: a whisper of text-primary instead of a
+                            // fixed white overlay — follows the theme (darkens on
+                            // light themes) and keeps the zebra extra-subtle (1%).
+                            : 'bg-[color-mix(in_srgb,var(--color-text-primary)_1%,transparent)] hover:bg-bg-elevated'
                   }`}
                 >
                   {/* Checkbox — the entire row is the drag target (handleRowMouseDown);
@@ -2301,17 +2288,19 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                     </div>
                   </td>
 
-                  {/* Row number — swaps to the program-counter glyph while the replay
+                  {/* Row number — gives way to the program-counter glyph while the replay
                       engine is ON this row (▶ running / ❚❚ paused-here), the second
-                      channel that keeps the executing row from reading as a selection. */}
+                      channel that keeps the executing row from reading as a selection.
+
+                      Both halves are always rendered: the number carries data-rownum-value
+                      so index.css can hide it under tr[data-replay], and the empty slot is
+                      where ReplayRowMarker portals the glyph. A dedicated slot rather than
+                      portalling into this <td> directly — the slot has no React children of
+                      its own, so nothing the marker appends can collide with this cell's
+                      reconciliation. */}
                   <td className="pl-3">
-                    {isHighlighted ? (
-                      isPausedHere
-                        ? <Pause size={10} className="inline-block translate-y-[-1px]" style={{ color: 'var(--color-action-pause-fg)' }} fill="currentColor" />
-                        : <Play size={10} className="inline-block translate-y-[-1px]" style={{ color: 'var(--color-replay-fg)' }} fill="currentColor" />
-                    ) : (
-                      <span className="inline-block text-[11px] font-mono text-text-disabled leading-none translate-y-[-2px]">{action.rowNumber}</span>
-                    )}
+                    <span data-rownum-value className="inline-block text-[11px] font-mono text-text-disabled leading-none translate-y-[-2px]">{action.rowNumber}</span>
+                    <span data-replay-slot />
                   </td>
 
                   {/* Action type pill */}
@@ -2643,6 +2632,12 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
         {/* Empty state */}
         {actions.length === 0 && <MacroEmptyState />}
       </div>
+
+      {/* The replay highlight, as a leaf. Mounted AFTER the table on purpose: layout effects
+          run in tree order, so by the time the marker looks for tr[data-row-index] the tbody
+          it queries is already in the DOM. Renders null (or one portalled glyph), so a
+          re-render at replay cadence costs nothing here — which is the whole point. */}
+      <ReplayRowMarker tbodyRef={tbodyRef} />
 
       {/* Drag ghost — a translucent replica of the grabbed row with a lifted-card
           shadow and a slight tilt, Sortable style. Multi-row drags add a "+N"
