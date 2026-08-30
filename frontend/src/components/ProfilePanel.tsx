@@ -2106,7 +2106,20 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                         // list with coloured anchors instead of ten stacked colour bands. The
                         // 3 px bar and the chevron still carry the folder colour at full strength.
                         style={{ background: `linear-gradient(90deg, color-mix(in srgb, ${folder.color} 10%, transparent), transparent 55%)` }}
-                        className={`w-full flex items-center gap-1 px-1.5 py-1.5 text-left transition-colors group cursor-grab active:cursor-grabbing select-none ${folder.collapsed ? 'rounded-md' : 'rounded-t-md border-b border-border-subtle'}`}
+                        // border-border-subtle is STATIC; only the WIDTH is conditional. Expanding
+                        // used to add `border-b border-border-subtle` together, so the width went
+                        // 0 → 1px instantly while the colour changed from the 0-width default
+                        // (currentColor — near-white text-primary) to the subtle token. index.css
+                        // transitions border-color on EVERY element for 180 ms so theme switches
+                        // don't snap, and it caught that change: a bright hairline appeared under
+                        // the folder name and faded out on every expand.
+                        //
+                        // Declaring the colour up front leaves the global rule nothing to animate —
+                        // it is already the subtle token while the border is invisible at 0 px, so
+                        // the width flip is instant and silent. Fixing it at the class that toggles
+                        // rather than by opting this element out of the global transition: that rule
+                        // is the theme-change fade, and it should keep applying here.
+                        className={`w-full flex items-center gap-1 px-1.5 py-1.5 text-left border-border-subtle group cursor-grab active:cursor-grabbing select-none ${folder.collapsed ? 'rounded-md' : 'rounded-t-md border-b'}`}
                         onMouseDown={(e) => handleFolderMouseDown(e, folder.name)}
                         // The whole header collapses the folder, not just the 12 px chevron —
                         // the convention every file explorer already taught, on a 218 px target
