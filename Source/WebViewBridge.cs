@@ -790,7 +790,6 @@ namespace TrueReplayer
                     case "pixel:pickColor": _ = HandlePixelColorPickAsync(payload); break;
                     case "pixel:testMatch": HandlePixelColorTestMatch(payload); break;
                     case "actions:addBrowserAction": HandleAddBrowserAction(payload); break;
-                    case "browser:toggleRecording": HandleBrowserToggleRecording(payload); break;
                     case "browser:pickElement": HandlePickElement(payload); break;
                     case "browser:cancelPick": browserBridge?.CancelPickElement(); break;
                     case "browser:testAction": _ = HandleBrowserTestAction(payload); break;
@@ -805,12 +804,10 @@ namespace TrueReplayer
                     case "profile:removeHotkey": HandleProfileRemoveHotkey(payload); break;
                     case "profile:assignHotstring": HandleProfileAssignHotstring(payload); break;
                     case "profile:removeHotstring": HandleProfileRemoveHotstring(payload); break;
+                    // The four target flags and the trigger mode have no message of their own:
+                    // they ride profile:setWindowTarget and profile:assignHotkey, which is what
+                    // makes each flag atomic with the target/hotkey it qualifies.
                     case "profile:setWindowTarget": HandleProfileSetWindowTarget(payload); break;
-                    case "profile:setRelativeCoordinates": HandleSetRelativeCoordinates(payload); break;
-                    case "profile:setBringToFocus": HandleSetBringToFocus(payload); break;
-                    case "profile:setRestorePosition": HandleProfileSetRestorePosition(payload); break;
-                    case "profile:setRestoreSize": HandleProfileSetRestoreSize(payload); break;
-                    case "profile:setTriggerMode": HandleProfileSetTriggerMode(payload); break;
                     case "profile:removeWindowTarget": HandleProfileRemoveWindowTarget(payload); break;
                     case "profile:setFolderWindowTarget": HandleSetFolderWindowTarget(payload); break;
                     case "profile:removeFolderWindowTarget": HandleRemoveFolderWindowTarget(payload); break;
@@ -2357,6 +2354,29 @@ namespace TrueReplayer
         }
 
         /// <summary>
+        /// Replay pre-flight warning: the run that just started has rows needing the Chrome
+        /// extension and the bridge is down. Deliberately NOT routed through PushStatusChange's
+        /// "error:" prefix — that turns the status into "ready", which at kickoff would report a
+        /// run that had barely begun as already over.
+        /// </summary>
+        public void PushBrowserExtensionMissing(int rowCount)
+        {
+            // 'info', not 'error': nothing has failed and the run is proceeding. The severity
+            // this deserves lives in the sentence, which names the actual consequence rather
+            // than the state — "not connected" alone reads as a status line worth ignoring.
+            SendMessage("alert:show", new
+            {
+                message = rowCount == 1
+                    ? "Chrome extension not connected — 1 browser row will not work. Browser conditions read as \"not found\", so the macro can take the wrong branch without erroring."
+                    : $"Chrome extension not connected — {rowCount} browser rows will not work. Browser conditions read as \"not found\", so the macro can take the wrong branch without erroring.",
+                type = "info",
+                // Longer than the default: this lands as the user is switching away to the
+                // target window, and it is the one chance to catch the run before it misbehaves.
+                duration = 9000,
+            });
+        }
+
+        /// <summary>
         /// Checks for unsaved changes and prompts Save/Discard/Cancel.
         /// Returns true if the caller should proceed, false to cancel.
         /// </summary>
@@ -2726,6 +2746,13 @@ namespace TrueReplayer
             // Apply saved window settings that require the window handle
             if (UserProfile.Current.AlwaysOnTop)
                 window.UpdateAlwaysOnTop(true);
+
+            // Seed the extension's connection state. browser:status is otherwise pushed only on
+            // CHANGE (BrowserBridgeService raises ConnectionChanged when the pipe opens or ends),
+            // so a UI that mounts while the extension is already connected — the normal case —
+            // would never hear anything and could only show "unknown" until the first flap. One
+            // message at boot is what makes the indicator honest from the first frame.
+            SendMessage("browser:status", new { connected = browserBridge?.IsConnected ?? false });
 
             // Check for updates in the background after UI is ready
             _ = CheckForUpdateAsync();
@@ -3488,10 +3515,19 @@ namespace TrueReplayer
                     action.PixelClickOnMatch = value == "true";
                     break;
                 case "conditionType":
-                    // null/empty resets the field. Otherwise pass-through — the Sheet
-                    // only ever sends "ImageFound" or "PixelColorMatch", but a future
-                    // value ("WindowExists", "WindowFocused") would land here cleanly
-                    // without needing a bridge update.
+                    // Nothing sends this today: the condition type is chosen when the row is
+                    // INSERTED (actions:insertConditional / insertAssert / addElseIfBranch) and
+                    // the Sheet offers no way to change it afterwards. Kept as the landing spot
+                    // for a future type switcher, which is why it is a pass-through rather than
+                    // a closed set.
+                    //
+                    // A switcher must not stop here, though: this only overwrites the type and
+                    // leaves the OUTGOING probe's payload behind — ImagePath, pixel coords and
+                    // colour, clipboard pattern. That matters most for images, whose file
+                    // lifecycle keys off CarriesConditionProbe + ConditionType == "ImageFound"
+                    // (see ProfileController's carry/cleanup): flipping away from ImageFound with
+                    // ImagePath still set strands the PNG. Clear the old probe's fields in the
+                    // same edit.
                     action.ConditionType = string.IsNullOrEmpty(value) ? null : value;
                     break;
                 case "conditionNegate":
@@ -6324,12 +6360,6 @@ namespace TrueReplayer
             }
         }
 
-        private void HandleBrowserToggleRecording(JsonElement payload)
-        {
-            bool enabled = payload.TryGetProperty("enabled", out var enEl) && enEl.GetBoolean();
-            browserBridge?.SetRecordingMode(enabled);
-        }
-
         private async void HandlePickElement(JsonElement payload)
         {
             // Echo the frontend's requestId back on every reply branch so the editor can match the
@@ -7889,105 +7919,6 @@ namespace TrueReplayer
                 HasUnsavedChanges = true;
             }
             SendMessage("alert:show", new { message = $"Window geometry captured: {w}×{hgt} @ ({rect.Left}, {rect.Top})" });
-        }
-
-        private async void HandleProfileSetRestorePosition(JsonElement payload)
-        {
-            string name = payload.GetProperty("name").GetString() ?? "";
-            bool enabled = payload.GetProperty("enabled").GetBoolean();
-            if (string.IsNullOrEmpty(name)) return;
-
-            var profile = await profileController.LoadProfileByNameAsync(name);
-            if (profile == null) return;
-
-            profile.RestorePosition = enabled;
-            await profileController.SaveProfileByNameAsync(name, profile);
-            var entry = profileController.ProfileEntries.FirstOrDefault(p => p.Name == name);
-            if (entry != null) entry.RestorePosition = enabled;
-            if (CurrentProfileName == name)
-                UserProfile.Current.RestorePosition = enabled;
-            PushProfilesUpdate();
-        }
-
-        private async void HandleProfileSetRestoreSize(JsonElement payload)
-        {
-            string name = payload.GetProperty("name").GetString() ?? "";
-            bool enabled = payload.GetProperty("enabled").GetBoolean();
-            if (string.IsNullOrEmpty(name)) return;
-
-            var profile = await profileController.LoadProfileByNameAsync(name);
-            if (profile == null) return;
-
-            profile.RestoreSize = enabled;
-            await profileController.SaveProfileByNameAsync(name, profile);
-            var entry = profileController.ProfileEntries.FirstOrDefault(p => p.Name == name);
-            if (entry != null) entry.RestoreSize = enabled;
-            if (CurrentProfileName == name)
-                UserProfile.Current.RestoreSize = enabled;
-            PushProfilesUpdate();
-        }
-
-        private async void HandleProfileSetTriggerMode(JsonElement payload)
-        {
-            string name = payload.GetProperty("name").GetString() ?? "";
-            string modeStr = payload.GetProperty("mode").GetString() ?? "onPress";
-            if (string.IsNullOrEmpty(name)) return;
-
-            var mode = TriggerModeFromString(modeStr);
-            var profile = await profileController.LoadProfileByNameAsync(name);
-            if (profile == null) return;
-
-            profile.TriggerMode = mode;
-            await profileController.SaveProfileByNameAsync(name, profile);
-            var entry = profileController.ProfileEntries.FirstOrDefault(p => p.Name == name);
-            if (entry != null) entry.TriggerMode = mode;
-            if (CurrentProfileName == name)
-                UserProfile.Current.TriggerMode = mode;
-
-            // Re-register so the hook sees the new mode immediately
-            InputHookManager.RegisterProfileTriggerModes(profileController.GetProfileTriggerModes());
-            PushProfilesUpdate();
-        }
-
-        private async void HandleSetRelativeCoordinates(JsonElement payload)
-        {
-            string name = payload.GetProperty("name").GetString() ?? "";
-            bool enabled = payload.GetProperty("enabled").GetBoolean();
-            if (string.IsNullOrEmpty(name)) return;
-
-            var profile = await profileController.LoadProfileByNameAsync(name);
-            if (profile != null)
-            {
-                profile.UseRelativeCoordinates = enabled;
-                await profileController.SaveProfileByNameAsync(name, profile);
-                // Update cached entry directly (avoid RefreshProfileListAsync which resets IsActive)
-                var entry = profileController.ProfileEntries.FirstOrDefault(p => p.Name == name);
-                if (entry != null) entry.UseRelativeCoordinates = enabled;
-                if (CurrentProfileName == name)
-                    UserProfile.Current.UseRelativeCoordinates = enabled;
-                PushProfilesUpdate();
-            }
-        }
-
-        private async void HandleSetBringToFocus(JsonElement payload)
-        {
-            string name = payload.GetProperty("name").GetString() ?? "";
-            bool enabled = payload.GetProperty("enabled").GetBoolean();
-            if (string.IsNullOrEmpty(name)) return;
-
-            var profile = await profileController.LoadProfileByNameAsync(name);
-            if (profile != null)
-            {
-                profile.BringToFocus = enabled;
-                await profileController.SaveProfileByNameAsync(name, profile);
-                var entry = profileController.ProfileEntries.FirstOrDefault(p => p.Name == name);
-                if (entry != null) entry.BringToFocus = enabled;
-                if (CurrentProfileName == name)
-                    UserProfile.Current.BringToFocus = enabled;
-                // Re-register so IsForegroundWindowMatch skips check for bring-to-focus profiles
-                InputHookManager.RegisterProfileWindowTargets(profileController.GetProfileWindowTargets(), profileController.GetBringToFocusProfiles());
-                PushProfilesUpdate();
-            }
         }
 
         private async void HandleSetFolderWindowTarget(JsonElement payload)

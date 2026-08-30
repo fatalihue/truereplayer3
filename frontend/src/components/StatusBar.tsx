@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Play, Pause as PauseIcon, MousePointerClick, Folder, List, Gauge, Clock, Repeat } from 'lucide-react';
+import { Play, Pause as PauseIcon, MousePointerClick, Folder, List, Gauge, Clock, Repeat, Unplug, Chrome } from 'lucide-react';
 import { useAppState, useClickerLive, useHighlightedAction } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
 import { usePauseTick } from '../hooks/usePauseTick';
+import { useBrowserConnection } from '../hooks/useBrowserConnection';
+import { useTt } from '../state/LanguageContext';
 import { formatClickerStats, formatRate, targetCps } from '../utils/clickerFormat';
 import { APP_VERSION } from '../appVersion';
 
@@ -16,6 +18,10 @@ export function StatusBar() {
   // panel re-rendering at those cadences.
   const { clickerStats, loopProgress, chainStep } = useClickerLive();
   const highlightedActionIndex = useHighlightedAction();
+  // Debounced on the way DOWN only — see the hook. Read here rather than in AppState so a
+  // reconnect can't re-render every consumer of the store.
+  const browserConnection = useBrowserConnection();
+  const tt = useTt();
   const { send } = useBridge();
   const isReplaying = status === 'replaying';
   const isClicker = settings.useCursorClick;
@@ -276,6 +282,44 @@ export function StatusBar() {
       {/* Spacer only when the replay progress row isn't already using flex-1 — otherwise
           two flex-1 elements would split the space and squeeze the chain label. */}
       {!(isReplaying && !isClicker) && <div className="flex-1" />}
+
+      {/* Chrome extension — a pilot light, the same grammar the ActionBar uses: at rest it is
+          the quietest mark on the bar, and only the failure state gets ink and words. Gated on
+          the Browser Actions setting, because the extension is irrelevant to someone who never
+          uses it and a permanent icon they can't act on is just furniture.
+
+          'unknown' draws nothing: the backend seeds the real state right after state:init, so
+          this is a sub-frame condition, and guessing "connected" there would be a lie the one
+          time it mattered. Two channels on the failure (icon AND label), never colour alone —
+          the replay/recording hues already prove colour alone doesn't survive 37 themes. */}
+      {settings.browserSelectorEnabled && browserConnection !== 'unknown' && (
+        browserConnection === 'connected' ? (
+          <Chrome
+            size={11}
+            className="shrink-0 ml-3 text-text-disabled"
+            // Icon-only, so the tooltip is its ONLY label — the case the tooltip policy keeps.
+            data-tip={tt('Chrome extension connected', 'Extensão do Chrome conectada')}
+          />
+        ) : (
+          <span
+            className="flex items-center gap-1.5 shrink-0 ml-3 text-[11px] font-medium whitespace-nowrap"
+            // --color-warning-ink, not raw --color-warning: the ink rung is the one mixed
+            // toward the theme's text to clear 4.5:1, and this is TEXT on the bar's surface.
+            style={{ color: 'var(--color-warning-ink)' }}
+            // Kept even though the label already reads "Extension disconnected": what the tooltip
+            // adds is the CONSEQUENCE the label can't fit — that conditions fail silently rather
+            // than loudly — plus what to do about it.
+            data-tip={tt(
+              'Browser actions will fail, and browser conditions read as "not found" — so a macro can take the wrong branch without erroring. Open Chrome with the TrueReplayer extension enabled.',
+              'Ações de browser vão falhar, e condições de browser leem "não encontrado" — então a macro pode pegar o caminho errado sem dar erro. Abra o Chrome com a extensão do TrueReplayer ativa.',
+            )}
+          >
+            <Unplug size={11} className="shrink-0" />
+            Extension disconnected
+          </span>
+        )
+      )}
+
       <span className="text-[11px] text-text-secondary shrink-0 ml-3">{APP_VERSION}</span>
     </div>
   );

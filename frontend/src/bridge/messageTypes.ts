@@ -915,13 +915,12 @@ export type OutgoingMessage =
       // path so save + conversion land atomically (no race with a separate
       // convertCoordinates message dispatched alongside this one).
       convertDirection?: 'toRelative' | 'toAbsolute' } }
-  | { type: 'profile:setRelativeCoordinates'; payload: { name: string; enabled: boolean } }
   | { type: 'profile:convertCoordinates'; payload: { direction: 'toRelative' | 'toAbsolute' } }
   | { type: 'profile:updateWindowSize'; payload: { name?: string; folderName?: string; processName?: string; windowTitle?: string; titleMatchMode?: string } }
-  | { type: 'profile:setBringToFocus'; payload: { name: string; enabled: boolean } }
-  | { type: 'profile:setRestorePosition'; payload: { name: string; enabled: boolean } }
-  | { type: 'profile:setRestoreSize'; payload: { name: string; enabled: boolean } }
-  | { type: 'profile:setTriggerMode'; payload: { name: string; mode: TriggerMode } }
+  // The four target flags (relativeCoordinates / bringToFocus / restorePosition / restoreSize)
+  // and the trigger mode each used to have a message of their own. They ride profile:
+  // setWindowTarget and profile:assignHotkey now, which is what makes them atomic with the
+  // thing they qualify — nothing has sent the singles since, so they are gone.
   | { type: 'profile:removeWindowTarget'; payload: { name: string } }
   | { type: 'profile:setFolderWindowTarget'; payload: { folderName: string; processName: string; windowTitle: string; titleMatchMode: string; relativeCoordinates?: boolean; bringToFocus?: boolean; restorePosition?: boolean; restoreSize?: boolean } }
   | { type: 'profile:removeFolderWindowTarget'; payload: { folderName: string } }
@@ -1078,7 +1077,9 @@ export type OutgoingMessage =
   | { type: 'update:apply'; payload: Record<string, never> }
   | { type: 'logs:openFolder'; payload: Record<string, never> }
   | { type: 'actions:addBrowserAction'; payload: { actionType: string; selector: string; browserText?: string; newTab?: boolean; insertIndex?: number } }
-  | { type: 'browser:toggleRecording'; payload: { enabled: boolean } }
+  // No browser:toggleRecording: the extension's recording mode is driven from the app side
+  // (the recording status change and the Browser Actions setting both call SetRecordingMode),
+  // never from a message, so the frontend has nothing to toggle.
   | { type: 'browser:pickElement'; payload: { requestId: string } }
   | { type: 'browser:cancelPick'; payload: Record<string, never> }
   | { type: 'browser:testAction'; payload: { requestId: string; actionType: string; key: string; browserText?: string; newTab?: boolean; timeout: number; waitMode?: string | null; urlWaitPattern?: string | null; postNavigateSelector?: string | null; typeAppend?: boolean; typePaste?: boolean; typeDelay?: number | null; selectMatchMode?: string | null; alternatives?: SelectorAlternative[] | null } }

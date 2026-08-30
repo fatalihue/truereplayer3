@@ -346,6 +346,14 @@ namespace TrueReplayer
                 bridge?.ArmDataLapNotice(rows);
             };
 
+            // Replay pre-flight: the run needs the Chrome extension and the bridge is down.
+            // Straight to the toast rather than through the run-end cue the lap notice waits
+            // for — this is worth acting on NOW, not when the run finishes.
+            replayService.OnBrowserExtensionMissing = rows =>
+            {
+                bridge?.PushBrowserExtensionMissing(rows);
+            };
+
             this.Closed += (_, _) =>
             {
                 Services.DiagnosticLog.Info("Window closing — disposing bridge and controllers");

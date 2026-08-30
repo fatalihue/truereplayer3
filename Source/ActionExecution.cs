@@ -194,6 +194,10 @@ namespace TrueReplayer.Services
             // information rather than an error.
             replayer.OnDataLapCompleted = rows => dispatcherQueue.TryEnqueue(
                 () => OnDataLapCompleted?.Invoke(rows));
+            // Same marshalling and the same reasoning as the lap notice above: raised from the
+            // replay task, presented as information.
+            replayer.OnBrowserExtensionMissing = rows => dispatcherQueue.TryEnqueue(
+                () => OnBrowserExtensionMissing?.Invoke(rows));
             replayer.OnReplayResumed += () =>
             {
                 OnReplayResumed?.Invoke();
@@ -454,6 +458,12 @@ namespace TrueReplayer.Services
         // cursor mode (data table present, "loop over data" OFF) when a run consumes the
         // last row. Arg = the table's row count.
         public Action<int>? OnDataLapCompleted;
+
+        // Replay pre-flight — re-exposed from the inner ActionReplayer. Fires at kickoff when
+        // the run has rows that need the Chrome extension and the bridge is down. Arg = how
+        // many. Every replay entry point (button, hotkey, automation, RunProfile chain) funnels
+        // through StartAsync, which is why the check lives there and not on the button.
+        public Action<int>? OnBrowserExtensionMissing;
 
         // Clicker scheduling bounds. MinClickPeriodMs is the floor the engine will honour;
         // anything below it is unreachable anyway (Task.Delay quantises to the system timer
@@ -1849,6 +1859,13 @@ namespace TrueReplayer.Services
         // renders as a red error toast.
         public Action<int>? OnDataLapCompleted;
 
+        // Pre-flight: this run needs the Chrome extension and the bridge is down (arg = how many
+        // rows need it). Its own channel for the same reason OnDataLapCompleted has one, plus a
+        // second: OnReplayError routes through PushStatusChange, which turns any "error:" into
+        // status "ready" — raising it at KICKOFF would tell the frontend the run had already
+        // ended. Warning only; the run proceeds.
+        public Action<int>? OnBrowserExtensionMissing;
+
         // {input:Label} Ask-Input modal round-trip, raised from the token resolver. OnInputRequested
         // asks the host to show the prompt; the host later calls CompleteInput with the answer.
         // OnInputDismissed tells the host to close a still-open prompt (on cancel / Stop).
@@ -2058,6 +2075,31 @@ namespace TrueReplayer.Services
 
             // Snapshot the actions list to avoid crashes from concurrent modifications
             var snapshot = _actions.ToList();
+
+            // Pre-flight for the Chrome extension. Browser ACTIONS already fail loudly when the
+            // bridge is down (ExecuteBrowserCommandAsync throws "Browser extension is not
+            // connected"), but browser CONDITIONS do not: ProbeBrowserElementStateAsync returns
+            // false, which is indistinguishable from the element genuinely being absent, so an
+            // If/While takes the ELSE arm and the macro walks a path the user never chose —
+            // silently, with a run report full of green. Said once, at kickoff, while there is
+            // still time to act; the indicator in the status bar is the standing half of this.
+            //
+            // Counted off the SNAPSHOT (what will actually run), not the live list. Warning only:
+            // a probe deliberately used as "is Chrome even there" is a legitimate macro, so this
+            // must not decide the run is wrong — only that the user should know.
+            int browserRows = snapshot.Count(a =>
+                (a.ActionType?.StartsWith("Browser", StringComparison.OrdinalIgnoreCase) ?? false)
+                || (a.CarriesConditionProbe
+                    && string.Equals(a.ConditionType, "BrowserElementState", StringComparison.OrdinalIgnoreCase)));
+            if (browserRows > 0 && _browserBridge?.IsConnected != true)
+            {
+                Services.DiagnosticLog.Warn(
+                    $"Replay pre-flight: {browserRows} row(s) need the Chrome extension and the bridge is not connected.");
+                // Raised raw, like OnDataLapCompleted: the ReplayService forwarder is what
+                // marshals to the dispatcher. Enqueueing here too would just cost a second hop.
+                OnBrowserExtensionMissing?.Invoke(browserRows);
+            }
+
             bool raisedTimerRes = false;
 
             try

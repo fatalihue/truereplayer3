@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, RefreshCw, Crosshair, Copy, ClipboardPaste, ShieldCheck, ShieldAlert, ShieldQuestion, PlayCircle, Pipette, Check, X, Frame, FolderOpen } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Crosshair, Copy, ClipboardPaste, ShieldCheck, ShieldAlert, ShieldQuestion, PlayCircle, Pipette, Check, X, Frame, FolderOpen, Maximize } from 'lucide-react';
 import { ActionIcon } from './ActionTable';
 import { useBridge } from '../bridge/BridgeContext';
 import { useAppState } from '../state/AppStateContext';
@@ -3003,15 +3003,43 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
             </Field>
 
             {/* Search Region (ROI) — placed right under the Test result so the auto-set
-                feedback sits next to the field it just modified. Label + display row carry
-                the meaning; Configure button's title attribute keeps the discovery hint
-                on hover. */}
-            <Field label="Search Region">
+                feedback sits next to the field it just modified.
+
+                No region is the EXPENSIVE default, and it used to be drawn like an absence:
+                "Full screen" in disabled italic, the visual language of "nothing here", with
+                the only reason to care parked in the Configure button's hover tooltip — a
+                gesture nobody makes on a button they have no reason to touch. Measured, a
+                full-screen tick costs ~440 ms against a 500 ms poll (a 400x300 region: ~4 ms),
+                so the cadence the user configured silently doubles and a 30 s wait pegs a core
+                while it is supposed to be idling.
+
+                So the empty state states the cost instead of hiding it, on two channels (ink
+                AND icon, never colour alone), and the reason moved out of the hover into the
+                Field's own hint line — the same mechanism Tolerance uses right below. Both go
+                quiet the moment a region exists: this is a nudge toward a better setup, not a
+                scold to live with. */}
+            <Field
+              label="Search Region"
+              hint={waitImageSearchRegion
+                ? undefined
+                // False positives lead: a wrong match somewhere else on the desktop makes the
+                // macro CLICK in the wrong place, which is damage the user sees. Slowness is
+                // the second argument, not the first.
+                : tt(
+                    'Searching the whole screen can match the wrong thing — and costs ~440 ms per check instead of ~4 ms.',
+                    'Buscar na tela inteira pode casar com a coisa errada — e custa ~440 ms por verificação em vez de ~4 ms.',
+                  )}
+            >
               <div className="flex items-center gap-2.5">
                 <div className="flex-1 h-8 px-2 flex items-center text-[11px] font-mono bg-bg-input border border-border-default rounded text-text-secondary">
                   {waitImageSearchRegion
                     ? `${waitImageSearchRegion.x}, ${waitImageSearchRegion.y}  ·  ${waitImageSearchRegion.w} × ${waitImageSearchRegion.h}`
-                    : <span className="text-text-disabled italic">Full screen</span>}
+                    : (
+                      <span className="flex items-center gap-1.5" style={{ color: 'var(--color-warning-ink)' }}>
+                        <Maximize size={11} className="shrink-0" />
+                        Full screen
+                      </span>
+                    )}
                 </div>
                 <button
                   onClick={handleConfigureSearchRegion}
