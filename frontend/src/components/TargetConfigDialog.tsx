@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Crosshair } from 'lucide-react';
+import { AppWindow } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
 import { useTt } from '../state/LanguageContext';
 import { Toggle } from './common/Toggle';
@@ -291,7 +291,7 @@ export function TargetConfigDialog({
 
   return (
     <DialogShell
-      icon={<Crosshair size={14} className="shrink-0 text-text-tertiary" />}
+      icon={<AppWindow size={14} className="shrink-0 text-text-tertiary" />}
       title={header}
       widthClass="w-[380px]"
       onClose={handleCancel}

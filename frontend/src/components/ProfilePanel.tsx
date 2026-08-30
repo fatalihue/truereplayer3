@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, lazy, Suspense } from 'react';
-import { Search, SearchX, X, Pencil, Copy, Trash2, FolderOpen, FolderMinus, Keyboard, Crosshair, ArrowLeftRight, ArrowDownUp, Type, Ban, Power, FolderInput, ChevronsLeft, ChevronsRight, ChevronsDownUp, ChevronsUpDown, Pin, PinOff, FolderPlus, FilePlus, Plus, ChevronRight, ChevronDown, Palette, Zap, Repeat, Repeat2, Hourglass, ArrowUpFromDot, ExternalLink, Info, MoreHorizontal, Hash, Upload, Download, Check } from 'lucide-react';
+import { Search, SearchX, X, Pencil, Copy, Trash2, FolderOpen, FolderMinus, Keyboard, AppWindow, ArrowLeftRight, ArrowDownUp, Type, Ban, Power, FolderInput, ChevronsLeft, ChevronsRight, ChevronsDownUp, ChevronsUpDown, Pin, PinOff, FolderPlus, FilePlus, Plus, ChevronRight, ChevronDown, Palette, Zap, Repeat, Repeat2, Hourglass, ArrowUpFromDot, ExternalLink, Info, MoreHorizontal, Hash, Upload, Download, Check } from 'lucide-react';
 import type { ProfileEntry, ImportPreviewPayload, ImportResultPayload, ImportConflictResolution, TriggerMode } from '../bridge/messageTypes';
 import { useAppState } from '../state/AppStateContext';
 import { carriesConditionProbe } from '../utils/conditionalBlocks';
@@ -1590,11 +1590,25 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               tip={targetLabel(p.windowTargetProcessName, p.windowTargetWindowTitle)}
               onRemove={(e) => { e.stopPropagation(); setConfirmRemoval({ kind: 'profileTarget', name: p.name, label: `window target (${targetLabel(p.windowTargetProcessName, p.windowTargetWindowTitle)})` }); }}
             >
-              <span><Crosshair size={11} className="text-text-tertiary" /></span>
+              {/* AppWindow, not Crosshair, for the WINDOW TARGET — here and at the four other sites in
+                this file (the folder header chip, the inherited-target chip, both context menus)
+                plus TargetConfigDialog's own header icon.
+
+                Why: the label already says "target", so a crosshair spends the icon on the word
+                that is written and leaves "window" — the half that separates this from a
+                COORDINATE target — undrawn. And Crosshair was carrying both meanings, which
+                collided inside SheetPanel: the same cross marked the target window on one row
+                and "pick a point on screen" on another.
+
+                Crosshair now means ONLY "pick a point / a coordinate" — ActionTable's Pick from
+                screen and Copy Coordinates, BulkActionBar's Set X/Y, SheetPanel's element and
+                position pickers, and the Clicker's Target section in Settings, which is a click
+                POINT (position jitter / area / fixed), not a window. */}
+            <span><AppWindow size={11} className="text-text-tertiary" /></span>
             </RemovableChip>
           )}
           {!p.appIconBase64 && !p.hasWindowTarget && p.hasEffectiveTarget && p.effectiveTargetSource === 'folder' && (
-            <span className="opacity-50 flex"><Crosshair size={11} className="text-text-tertiary" /></span>
+            <span className="opacity-50 flex"><AppWindow size={11} className="text-text-tertiary" /></span>
           )}
           {/* Armed automation — this profile fires with no hotkey. Corner badge rather
               than a column of its own; the ring keeps it readable over the row hover. */}
@@ -2151,7 +2165,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                             onRemove={(e) => { e.stopPropagation(); setConfirmRemoval({ kind: 'folderTarget', name: folder.name, label: `folder target (${targetLabel(folder.windowTargetProcessName, folder.windowTargetWindowTitle)})` }); }}
                           >
                             <span>
-                              <Crosshair size={10} className="text-text-tertiary" />
+                              <AppWindow size={10} className="text-text-tertiary" />
                             </span>
                           </RemovableChip>
                         )}
@@ -2350,7 +2364,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             onClick={() => handleSetWindowTarget(contextMenu.profileName)}
             className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
           >
-            <Crosshair size={13} className="text-text-tertiary" />
+            <AppWindow size={13} className="text-text-tertiary" />
             Window target…
           </button>
 
@@ -2584,7 +2598,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             }}
             className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
           >
-            <Crosshair size={13} className="text-text-tertiary" />
+            <AppWindow size={13} className="text-text-tertiary" />
             Window target…
           </button>
 
