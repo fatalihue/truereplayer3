@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, lazy, Suspense } from 'react';
-import { Search, SearchX, X, Pencil, Copy, Trash2, FolderOpen, FolderMinus, Keyboard, Crosshair, ArrowLeftRight, ArrowDownUp, Type, Ban, ChevronsLeft, ChevronsRight, ChevronsDownUp, ChevronsUpDown, Pin, PinOff, FolderPlus, FilePlus, Plus, ChevronRight, ChevronDown, Palette, ArrowRightFromLine, Zap, Repeat, Repeat2, Hourglass, ArrowUpFromDot, ExternalLink, Info, MoreHorizontal, Hash, Upload, Download, Check } from 'lucide-react';
+import { Search, SearchX, X, Pencil, Copy, Trash2, FolderOpen, FolderMinus, Keyboard, Crosshair, ArrowLeftRight, ArrowDownUp, Type, Ban, CircleCheck, FolderInput, ChevronsLeft, ChevronsRight, ChevronsDownUp, ChevronsUpDown, Pin, PinOff, FolderPlus, FilePlus, Plus, ChevronRight, ChevronDown, Palette, Zap, Repeat, Repeat2, Hourglass, ArrowUpFromDot, ExternalLink, Info, MoreHorizontal, Hash, Upload, Download, Check } from 'lucide-react';
 import type { ProfileEntry, ImportPreviewPayload, ImportResultPayload, ImportConflictResolution, TriggerMode } from '../bridge/messageTypes';
 import { useAppState } from '../state/AppStateContext';
 import { carriesConditionProbe } from '../utils/conditionalBlocks';
@@ -2279,7 +2279,11 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             <button
               className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
             >
-              <ArrowRightFromLine size={13} className="text-text-tertiary" />
+              {/* FolderInput, not an arrow leaving a line: this puts the profile INTO a folder,
+                  and an arrow exiting reads as send-away / export. It also pairs with the
+                  FolderMinus on this submenu's own "Remove from folder" — one family, opposite
+                  directions, so the pair is legible without reading either label. */}
+              <FolderInput size={13} className="text-text-tertiary" />
               Move to folder
               <ChevronRight size={12} className="ml-auto text-text-tertiary" />
             </button>
@@ -2366,7 +2370,12 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             onClick={() => handleToggleDisable(contextMenu.profileName)}
             className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
           >
-            <Ban size={13} className="text-text-tertiary" />
+            {/* The glyph flips with the label, the way Pin / PinOff two rows down already does.
+                A fixed Ban sat next to "Enable" saying the opposite of the word beside it —
+                circle-slash means blocked, and the item's whole job there is to unblock. */}
+            {profile?.isDisabled
+              ? <CircleCheck size={13} className="text-text-tertiary" />
+              : <Ban size={13} className="text-text-tertiary" />}
             {profile?.isDisabled ? 'Enable' : 'Disable'}
           </button>
 
@@ -2590,12 +2599,20 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             }}
             className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
           >
-            <Ban size={13} className="text-text-tertiary" />
             {(() => {
+              // One computation drives BOTH the glyph and the label — they cannot drift apart
+              // into a Ban sitting next to the word "Enable all". Same flip as the profile menu.
               const folder = (profileOrder?.folders ?? []).find(f => f.name === folderContextMenu.folderName);
               const items = folder?.items ?? [];
               const allDisabled = items.length > 0 && items.every(n => profiles.find(p => p.name === n)?.isDisabled);
-              return allDisabled ? 'Enable all' : 'Disable all';
+              return (
+                <>
+                  {allDisabled
+                    ? <CircleCheck size={13} className="text-text-tertiary" />
+                    : <Ban size={13} className="text-text-tertiary" />}
+                  {allDisabled ? 'Enable all' : 'Disable all'}
+                </>
+              );
             })()}
           </button>
 
