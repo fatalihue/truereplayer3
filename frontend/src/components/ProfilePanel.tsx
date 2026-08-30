@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, lazy, Suspense } from 'react';
-import { Search, SearchX, X, Pencil, Copy, Trash2, FolderOpen, FolderMinus, Keyboard, Crosshair, ArrowLeftRight, ArrowDownUp, Type, Ban, CircleCheck, FolderInput, ChevronsLeft, ChevronsRight, ChevronsDownUp, ChevronsUpDown, Pin, PinOff, FolderPlus, FilePlus, Plus, ChevronRight, ChevronDown, Palette, Zap, Repeat, Repeat2, Hourglass, ArrowUpFromDot, ExternalLink, Info, MoreHorizontal, Hash, Upload, Download, Check } from 'lucide-react';
+import { Search, SearchX, X, Pencil, Copy, Trash2, FolderOpen, FolderMinus, Keyboard, Crosshair, ArrowLeftRight, ArrowDownUp, Type, Ban, Power, FolderInput, ChevronsLeft, ChevronsRight, ChevronsDownUp, ChevronsUpDown, Pin, PinOff, FolderPlus, FilePlus, Plus, ChevronRight, ChevronDown, Palette, Zap, Repeat, Repeat2, Hourglass, ArrowUpFromDot, ExternalLink, Info, MoreHorizontal, Hash, Upload, Download, Check } from 'lucide-react';
 import type { ProfileEntry, ImportPreviewPayload, ImportResultPayload, ImportConflictResolution, TriggerMode } from '../bridge/messageTypes';
 import { useAppState } from '../state/AppStateContext';
 import { carriesConditionProbe } from '../utils/conditionalBlocks';
@@ -2372,9 +2372,11 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
           >
             {/* The glyph flips with the label, the way Pin / PinOff two rows down already does.
                 A fixed Ban sat next to "Enable" saying the opposite of the word beside it —
-                circle-slash means blocked, and the item's whole job there is to unblock. */}
+                circle-slash means blocked, and the item's whole job there is to unblock.
+                Power for the enable side is not a fresh pick: it is already this app's glyph for
+                exactly this state, on the Automation panel's master enable. */}
             {profile?.isDisabled
-              ? <CircleCheck size={13} className="text-text-tertiary" />
+              ? <Power size={13} className="text-text-tertiary" />
               : <Ban size={13} className="text-text-tertiary" />}
             {profile?.isDisabled ? 'Enable' : 'Disable'}
           </button>
@@ -2608,7 +2610,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               return (
                 <>
                   {allDisabled
-                    ? <CircleCheck size={13} className="text-text-tertiary" />
+                    ? <Power size={13} className="text-text-tertiary" />
                     : <Ban size={13} className="text-text-tertiary" />}
                   {allDisabled ? 'Enable all' : 'Disable all'}
                 </>
