@@ -130,7 +130,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
   const [showHotstringDialog, setShowHotstringDialog] = useState<string | null>(null);
   const [hotstringValue, setHotstringValue] = useState('');
   const [hotstringInstant, setHotstringInstant] = useState(false);
-  // Target Configuration dialogs — the inputs/flags/detection state are now owned by
+  // Window Target dialogs — the inputs/flags/detection state are now owned by
   // <TargetConfigDialog>. ProfilePanel only tracks which profile/folder is being configured.
   const [showWindowTargetDialog, setShowWindowTargetDialog] = useState<string | null>(null);
   const [showExportDialog, setShowExportDialog] = useState(false);
@@ -2239,8 +2239,15 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
         // occasional → destructive, so reading top-to-bottom matches the
         // "create a profile and configure it" flow:
         //
-        //   - Identity     → Rename · Move to folder ▸
-        //   - Triggers     → Assign hotkey… · Assign hotstring… · Window target…
+        //   - Identity     → Rename… · Move to folder ▸
+        //   - Triggers     → Hotkey… · Hotstring… · Window target…
+        //
+        // The trigger group is three NOUNS, no verb. "Assign" carried nothing that the
+        // menu's own scope and the trailing ellipsis do not already say, and it made the
+        // two longest items start with the same word — you had to read past it to tell
+        // them apart. The ellipsis is the rule for the whole menu: it marks the items that
+        // open a dialog asking for input, which is why Rename has one and Delete, whose
+        // dialog only confirms, does not.
         //   - State        → Pin / Unpin · Disable / Enable
         //   - Advanced     → Duplicate · Open in Explorer
         //   - Destructive  → Delete
@@ -2260,7 +2267,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
           >
             <Pencil size={13} className="text-text-tertiary" />
-            Rename
+            Rename…
           </button>
 
           {/* Move to Folder submenu */}
@@ -2326,14 +2333,14 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
           >
             <Keyboard size={13} className="text-text-tertiary" />
-            Assign hotkey…
+            Hotkey…
           </button>
           <button
             onClick={() => handleAssignHotstring(contextMenu.profileName)}
             className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
           >
             <Type size={13} className="text-text-tertiary" />
-            Assign hotstring…
+            Hotstring…
           </button>
           <button
             onClick={() => handleSetWindowTarget(contextMenu.profileName)}
@@ -2419,7 +2426,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                     <ExternalLink size={13} className="text-text-tertiary" />
                     Open in Explorer
                   </button>
-                  {/* Convert action coordinates — relocated from Target Configuration (rarely
+                  {/* Convert action coordinates — relocated from the Window Target dialog (rarely
                       used). The backend convert is ACTIVE-profile scoped (HandleConvertCoordinates
                       → ExecuteConvertCoordinates rewrites the loaded profile), and HandleProfileClick
                       sets CurrentProfileName only AFTER its awaits — so a click+convert burst would
@@ -2498,7 +2505,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
           >
             <Pencil size={13} className="text-text-tertiary" />
-            Rename
+            Rename…
           </button>
           <div
             className="relative"
@@ -2558,7 +2565,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               "Window target…" is inherited by every profile inside the folder
               unless that profile overrides it. Setup-time configuration of how
               children fire. The trailing ellipsis indicates a dialog opens
-              (matches the profile menu's "Assign hotkey…" etc). */}
+              (matches the profile menu's "Hotkey…" etc). */}
           <button
             onClick={() => {
               setShowFolderTargetDialog(folderContextMenu.folderName);

@@ -911,7 +911,7 @@ export type OutgoingMessage =
   | { type: 'profile:removeHotstring'; payload: { name: string } }
   | { type: 'profile:setWindowTarget'; payload: { name: string; processName: string; windowTitle: string; titleMatchMode: string; relativeCoordinates?: boolean; bringToFocus?: boolean; restorePosition?: boolean; restoreSize?: boolean; keepInheritedTarget?: boolean;
       // When set, the backend chains ExecuteConvertCoordinates after the target save
-      // completes. Used by the Target Configuration dialog's "Apply target & convert"
+      // completes. Used by the Window Target dialog's "Apply target & convert"
       // path so save + conversion land atomically (no race with a separate
       // convertCoordinates message dispatched alongside this one).
       convertDirection?: 'toRelative' | 'toAbsolute' } }

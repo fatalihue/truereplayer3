@@ -280,7 +280,11 @@ export function TargetConfigDialog({
   // is false the saved target hasn't changed, so a plain convert is enough.
   const convertAlsoApplies = edited && hasTargetInFields;
   const isProfile = scope === 'profile';
-  const header = isProfile ? 'Target Configuration' : 'Folder Target Configuration';
+  // Named after the menu item that opens it. It used to say "Target Configuration" while the
+  // item said "Window target…" and the removal confirmations said "window target" — three names
+  // for one thing. Title Case here, sentence case in the menu: that split is per-surface and
+  // consistent across the app, and it does not change the NAME.
+  const header = isProfile ? 'Window Target' : 'Folder Window Target';
   const description = isProfile
     ? <>Configure target window for <span className="text-text-primary font-medium">'{targetLabel}'</span></>
     : <>Configure target for all profiles in <span className="text-text-primary font-medium">'{targetLabel}'</span>. Profiles with their own target override this.</>;
