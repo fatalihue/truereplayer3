@@ -41,7 +41,12 @@ namespace TrueReplayer.Services
         // themselves (<b>/<code>/…) carry the formatting.
         private static readonly Dictionary<string, HashSet<string>> AllowedAttributes = new(StringComparer.OrdinalIgnoreCase)
         {
-            ["span"] = new(StringComparer.OrdinalIgnoreCase) { "data-token" },       // TokenNode marker (re-chips on import)
+            // TokenNode markers (re-chip on import). `data-token-verbatim` says the token's bytes
+            // must be preserved rather than re-normalised — dropping it here would have made an
+            // export/import round trip silently rewrite a rich payload's token ({clipboard:after: - }
+            // → {Clipboard:after: - }), which is the exact edit the flag exists to prevent. It is a
+            // bare marker we emit ourselves: no URL, no style, no script — nothing to launder.
+            ["span"] = new(StringComparer.OrdinalIgnoreCase) { "data-token", "data-token-verbatim" },
             ["a"]    = new(StringComparer.OrdinalIgnoreCase) { "href", "target", "rel", "title" },
             ["ul"]   = new(StringComparer.OrdinalIgnoreCase) { "dir", "__lexicallisttype" },
             ["ol"]   = new(StringComparer.OrdinalIgnoreCase) { "dir", "start", "__lexicallisttype" },
