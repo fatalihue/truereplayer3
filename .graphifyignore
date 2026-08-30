@@ -1,0 +1,11 @@
+# Build-time icon/asset images — not semantic content. Decision recorded 2026-08-02
+# (see reference-graphify-install.md): a vision agent per PNG here is pure cost with
+# no graph value. Do NOT re-include without asking the owner.
+Assets/*.png
+Assets/*.ico
+ChromeExtension/icons/*.png
+frontend/public/app-icon.png
+tools/IconGen/preview/*.png
+TrueReplayer.ico
+TrueReplayerPurple.ico
+TrueReplayerRed.ico
