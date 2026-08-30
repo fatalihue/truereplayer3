@@ -154,7 +154,6 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
   // Profile context-menu "More ▸" submenu (Edit info / Duplicate / Open in Explorer).
   const [showProfileMoreMenu, setShowProfileMoreMenu] = useState<string | null>(null);
   const [folderContextMenu, setFolderContextMenu] = useState<{ x: number; y: number; folderName: string } | null>(null);
-  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [showFolderColorPicker, setShowFolderColorPicker] = useState<string | null>(null);
   const [dragProfile, setDragProfile] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null); // folder name or '__ungrouped__'
@@ -2093,15 +2092,28 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                         // list with coloured anchors instead of ten stacked colour bands. The
                         // 3 px bar and the chevron still carry the folder colour at full strength.
                         style={{ background: `linear-gradient(90deg, color-mix(in srgb, ${folder.color} 10%, transparent), transparent 55%)` }}
-                        className={`w-full flex items-center gap-1 px-1.5 py-1.5 text-left transition-colors group cursor-grab active:cursor-grabbing select-none ${folder.collapsed ? 'rounded-md' : 'rounded-t-md border-b border-border-subtle'} ${selectedFolder === folder.name ? 'ring-1 ring-accent-solid/30' : ''}`}
+                        className={`w-full flex items-center gap-1 px-1.5 py-1.5 text-left transition-colors group cursor-grab active:cursor-grabbing select-none ${folder.collapsed ? 'rounded-md' : 'rounded-t-md border-b border-border-subtle'}`}
                         onMouseDown={(e) => handleFolderMouseDown(e, folder.name)}
-                        onClick={() => { if (!folderDragActive.current) setSelectedFolder(prev => prev === folder.name ? null : folder.name); }}
+                        // The whole header collapses the folder, not just the 12 px chevron —
+                        // the convention every file explorer already taught, on a 218 px target
+                        // instead of a glyph. This click used to toggle a `selectedFolder` ring
+                        // that decided where a new profile was created; now that the destination
+                        // comes from the button pressed, nothing read that state and the ring lit
+                        // up for nothing, so it went and the click was free.
+                        // Safe to put here: every interactive child of the header (the chevron,
+                        // the window-target chip's remove) already stops propagation, and the drag
+                        // guard below is the same one the chevron uses.
+                        onClick={() => { if (!folderDragActive.current) handleToggleFolderCollapse(folder.name); }}
                         onContextMenu={(e) => handleFolderContextMenu(e, folder.name)}
                       >
+                        {/* The chevron is the AFFORDANCE for the collapse, not a second handler
+                            for it: the header above now owns that click, and this sits inside it.
+                            Its own onClick + stopPropagation were what made a 12 px glyph the only
+                            way in; keeping both would leave a trap where deleting the
+                            stopPropagation silently toggles twice and looks like nothing happened. */}
                         <span
                           style={{ color: folder.color }}
-                          className="shrink-0 cursor-pointer hover:opacity-70"
-                          onClick={(e) => { e.stopPropagation(); if (!folderDragActive.current) handleToggleFolderCollapse(folder.name); }}
+                          className="shrink-0"
                         >
                           {folder.collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
                         </span>
