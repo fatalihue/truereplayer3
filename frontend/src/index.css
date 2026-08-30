@@ -259,6 +259,11 @@ select:focus-visible,
   font-weight: 400;
   line-height: 1.4;
   white-space: normal;
+  /* Normal wrapping only breaks at spaces, so a single long token — the URL inside a SendText
+     payload, a CSS selector, a file path — cannot wrap and paints straight out past max-width.
+     break-word (not anywhere) keeps ordinary prose wrapping at spaces exactly as before and
+     only splits a token that would otherwise overflow on its own. */
+  overflow-wrap: break-word;
   color: var(--color-text-primary);
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-default);
