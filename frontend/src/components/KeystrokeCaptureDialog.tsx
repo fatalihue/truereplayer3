@@ -21,7 +21,7 @@ import { useWindowFocused } from '../hooks/useWindowFocused';
  *
  *   Hold mode:
  *     • Press a single key, keep it down for the configured duration
- *     • Preset chips for common holds (100 ms tap → 5 s long press)
+ *     • Preset chips for common holds (100 ms tap → 30 s, the same ladder Insert Pause uses)
  *     • Modifier keys are stripped on save — backend SimulateKey only handles
  *       single keys; the warning chip surfaces this whenever the captured value
  *       contains a "+", so the user is never surprised.
