@@ -130,7 +130,12 @@ namespace TrueReplayer.Services
                         // leaves an unsplit click untouched, so the round-trip stays stable and the
                         // ×N badge keeps showing in paired mode. Plain single clicks (RepeatCount 1)
                         // split as before.
-                        if (a.RepeatCount > 1) { result.Add(a.Clone()); break; }
+                        //
+                        // AtCursor is the same shape of loss for the same reason: the paired-half
+                        // replay cases read action.X/Y directly and never consult the flag, so a
+                        // split at-cursor click would SILENTLY revert to the stale stored point —
+                        // a click somewhere else entirely, with no error. Pass it through whole.
+                        if (a.RepeatCount > 1 || a.AtCursor) { result.Add(a.Clone()); break; }
                         string btn = a.ActionType[..^"Click".Length]; // "LeftClick" → "Left"
                         var down = a.Clone(); down.ActionType = btn + "ClickDown";
                         var up = a.Clone(); up.ActionType = btn + "ClickUp"; up.Delay = 0; up.Comment = "";
@@ -139,12 +144,14 @@ namespace TrueReplayer.Services
                         break;
                     }
                     case "DoubleClick":
+                    case "TripleClick":
                         // INTENTIONAL passthrough — do NOT expand to Down/Up/Down/Up.
-                        // A DoubleClick is a single semantic unit (replayed directly by
+                        // A Double/TripleClick is a single semantic unit (replayed directly by
                         // the engine in any mode). Expanding it would be LOSSY on a
                         // round-trip: ToCombined re-merges each Down+Up pair into ONE
-                        // LeftClick, so a DoubleClick → 4 rows → 2 LeftClicks, silently
-                        // losing the double-click. Leaving it whole keeps the round-trip
+                        // LeftClick, so a DoubleClick → 4 rows → 2 LeftClicks (and a
+                        // TripleClick → 6 rows → 3 LeftClicks), silently
+                        // losing the multi-click. Leaving it whole keeps the round-trip
                         // exact and it still replays correctly under paired mode.
                         result.Add(a);
                         break;

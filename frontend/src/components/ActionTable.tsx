@@ -6,7 +6,7 @@ import type { CollisionDetection, DragStartEvent, DragEndEvent } from '@dnd-kit/
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { CSS } from '@dnd-kit/utilities';
-import { Mouse, MousePointerClick, Keyboard, ArrowUp, ArrowDown, Zap, Type, Trash2, ChevronRight, ChevronDown, ChevronsDownUp, ChevronsUpDown, Plus, Pencil, ScanSearch, Pipette, Globe, CheckCheck, Check, Code2, Files, Hourglass, Repeat2, ExternalLink, Crosshair, Link, GripVertical, Timer, GitBranch, ArrowRightLeft, Combine, Split, MoreHorizontal, Focus, Braces, AppWindow, Clipboard, ClipboardCopy, EyeOff, RotateCcw, Dice5, Cpu, FileCheck, Clock, ShieldCheck, CircleStop, CornerDownLeft, IterationCw, ChevronUp, ArrowRightFromLine, SkipForward, Table2 } from 'lucide-react';
+import { Mouse, MousePointerClick, MousePointer2, Keyboard, ArrowUp, ArrowDown, Zap, Type, Trash2, ChevronRight, ChevronDown, ChevronsDownUp, ChevronsUpDown, Plus, Pencil, ScanSearch, Pipette, Globe, CheckCheck, Check, Code2, Files, Hourglass, Repeat2, ExternalLink, Crosshair, Link, GripVertical, Timer, GitBranch, ArrowRightLeft, Combine, Split, MoreHorizontal, Focus, Braces, AppWindow, Clipboard, ClipboardCopy, EyeOff, RotateCcw, Dice5, Cpu, FileCheck, Clock, ShieldCheck, CircleStop, CornerDownLeft, IterationCw, ChevronUp, ArrowRightFromLine, SkipForward, Table2 } from 'lucide-react';
 import { canCollapse, canExpand, expandKeystroke } from '../utils/keyRepeat';
 import type { ActionItem } from '../bridge/messageTypes';
 import { useAppState } from '../state/AppStateContext';
@@ -201,6 +201,7 @@ function actionPillLabel(action: ActionItem): string {
     case 'CopyToSlot': return 'Copy to Slot';
     case 'ActivateWindow': return 'Activate Window';
     case 'DoubleClick': return 'Double Click';
+    case 'TripleClick': return 'Triple Click';
     // Conditional labels are intentionally lowercase to read as "code keywords".
     // The IF pill is uniform ("if") regardless of probe family — the image-vs-pixel
     // distinction (and its payload) lives in the Details cell via ProbeDetails, so
@@ -2338,7 +2339,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                           NOT
                         </span>
                       )}
-                      {/* Repeat indicator — Keystroke press-cycles, click × N (single + double),
+                      {/* Repeat indicator — Keystroke press-cycles, click × N (single + multi),
                           and RunProfile sub-call counts. Lives inside the Action pill instead of
                           the Key column because long profile names used to push "×N" past the Key
                           col's truncation point and hide the repetition from the user. Paired
@@ -2346,7 +2347,8 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                           when count > 1 (default 1 = no badge). */}
                       {(action.actionType === 'Keystroke' || action.actionType === 'RunProfile'
                         || action.actionType === 'LeftClick' || action.actionType === 'RightClick'
-                        || action.actionType === 'MiddleClick' || action.actionType === 'DoubleClick')
+                        || action.actionType === 'MiddleClick' || action.actionType === 'DoubleClick'
+                        || action.actionType === 'TripleClick')
                         && (action.repeatCount ?? 1) > 1 && !action.runOverData && (
                           <span className="ml-0.5 opacity-75">×{action.repeatCount}</span>
                         )}
@@ -2362,6 +2364,20 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                       {action.isFocusClick
                         && /^(Left|Right|Middle)Click$/.test(action.actionType) && (
                           <Focus size={11} className="ml-0.5 opacity-80" />
+                        )}
+                      {/* At-cursor indicator — same treatment as the focus-click icon (inside the
+                          pill, never a new column). It carries real weight here: the Details cell
+                          renders NOTHING for these rows, so without the icon a coordinate-less
+                          click is indistinguishable from one whose coords just aren't set. Two
+                          channels: the icon AND the conspicuous absence of the numbers. */}
+                      {action.atCursor
+                        && /^(Left|Right|Middle|Double|Triple)Click$/.test(action.actionType) && (
+                          <MousePointer2
+                            size={11}
+                            className="ml-0.5 opacity-80"
+                            data-tip={tt('Clicks at the mouse position when this step runs.',
+                                         'Clica na posição do mouse quando este passo rodar.')}
+                          />
                         )}
                     </span>
                     {isSkipped && (
@@ -2966,7 +2982,10 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
               Sits right under Edit per user request. */}
           {(() => {
             const row = actions[contextMenu.rowIndex];
-            if (!row || !/^((?:Left|Right|Middle|Double)Click)(Down|Up)?$/.test(row.actionType ?? '')) return null;
+            if (!row || !/^((?:Left|Right|Middle|Double|Triple)Click)(Down|Up)?$/.test(row.actionType ?? '')) return null;
+            // An at-cursor row has nowhere to put a picked point — the replay resolves its own.
+            // Offering the pick would run the whole overlay round-trip and write nothing.
+            if (row.atCursor) return null;
             return (
               <button
                 onMouseEnter={() => setActiveSubmenu(null)}
@@ -3185,6 +3204,9 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                   {(() => {
                     const row = actions[contextMenu.rowIndex];
                     if (!row || !/^(Left|Right|Middle)Click(Down|Up)?$/.test(row.actionType ?? '')) return null;
+                    // Nothing worth copying off an at-cursor row: its stored x/y is dormant, so
+                    // the clipboard would carry a point the run never uses.
+                    if (row.atCursor) return null;
                     return (
                       <button
                         onClick={() => {

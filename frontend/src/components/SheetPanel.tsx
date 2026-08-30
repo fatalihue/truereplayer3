@@ -54,19 +54,29 @@ interface SheetPanelProps {
 // to switch to, so currentFamily simply returns null for it.
 type ActionFamily = 'click' | 'key' | 'scroll';
 const familyTypes: Record<ActionFamily, { value: string; label: string }[]> = {
+  // ORDER IS THE GROUPING. The picker renders these into a fixed 3-column grid, so the array
+  // order decides which chips share a row — the three real BUTTONS first, then the left-button
+  // MULTI-CLICK variants on their own row. Two axes are folded into this one list (which button
+  // vs how many clicks) and only the ordering keeps them legible: Double/Triple are both
+  // left-button actions, so listing them between Left and Right made them read as siblings of
+  // Right Click, which they are not. Do not interleave them again.
   click: [
     { value: 'LeftClick', label: 'Left Click' },
-    { value: 'DoubleClick', label: 'Double Click' },
     { value: 'RightClick', label: 'Right Click' },
     { value: 'MiddleClick', label: 'Middle Click' },
+    { value: 'DoubleClick', label: 'Double Click' },
+    { value: 'TripleClick', label: 'Triple Click' },
   ],
+  // Labels are Title Case with a space, matching the click family — they exist ONLY in this
+  // picker (the grid pill and the drawer header derive their own text), so the spelling here is
+  // free to read as prose rather than echo the stored actionType.
   key: [
-    { value: 'KeyDown', label: 'KeyDown' },
-    { value: 'KeyUp', label: 'KeyUp' },
+    { value: 'KeyDown', label: 'Key Down' },
+    { value: 'KeyUp', label: 'Key Up' },
   ],
   scroll: [
-    { value: 'ScrollUp', label: 'ScrollUp ↑' },
-    { value: 'ScrollDown', label: 'ScrollDown ↓' },
+    { value: 'ScrollUp', label: 'Scroll Up ↑' },
+    { value: 'ScrollDown', label: 'Scroll Down ↓' },
   ],
 };
 
@@ -80,22 +90,29 @@ const noCoordTypes = new Set(['Assert', 'KeyDown', 'KeyUp', 'Keystroke', 'HoldKe
 const persistAssertPolicy = (p: string | null | undefined): string =>
   p === 'Continue' || p === 'StopReplay' ? p : '';
 
-// Click × N inline repeat — mirrors the Send Keystroke dialog's Press body. Combined single
-// clicks (Left/Right/Middle) AND DoubleClick repeat; paired halves (they'd double-fire one edge)
-// are excluded. Clamps mirror the C# ranges (RepeatCount 1..999, gap 0..5000 ms, jitter 1..100 %).
+// The five COMBINED click types — one row = press + release. Mirrors
+// ActionItem.IsCombinedClickType on the C# side. ONE set, two derived booleans
+// (isRepeatableClick, isAtCursorEligible): both literally mean "is a combined click row", and
+// keeping them as separate lists is how one learns a new click type and the other doesn't.
+// Paired halves are excluded — they'd double-fire one edge under × N, and their replay cases
+// read x/y directly so they can't honour at-cursor.
+// Clamps mirror the C# ranges (RepeatCount 1..999, gap 0..5000 ms, jitter 1..100 %).
 // Off by default: RepeatCount stays 1 so existing rows persist nothing and replay unchanged.
-const REPEATABLE_CLICKS = new Set(['LeftClick', 'RightClick', 'MiddleClick', 'DoubleClick']);
+const COMBINED_CLICKS = new Set(['LeftClick', 'RightClick', 'MiddleClick', 'DoubleClick', 'TripleClick']);
 const DEFAULT_CLICK_GAP_MS = 30;         // matches ActionItem.DefaultRepeatDelayMs on the C# side
-const DEFAULT_DOUBLECLICK_GAP_MS = 600;  // matches ActionItem.DefaultDoubleClickRepeatDelayMs — a
-                                         // DoubleClick needs a gap above the OS double-click window
-                                         // so repeats register as DISTINCT double-clicks, not a blur
+const DEFAULT_MULTICLICK_GAP_MS = 600;   // matches ActionItem.DefaultDoubleClickRepeatDelayMs — a
+                                         // Double/TripleClick needs a gap above the OS double-click
+                                         // window so repeats register as DISTINCT multi-clicks, not
+                                         // a blur. One value for both: it is keyed on
+                                         // GetDoubleClickTime, not on the number of pairs.
 const DEFAULT_CLICK_JITTER_PCT = 20;     // seeded into the input when the user turns jitter ON
 const DEFAULT_CLICK_POS_JITTER_PX = 3;   // seeded when the user turns POSITION jitter ON — a few px
                                          // keeps the burst inside any real target; the cap is 500
                                          // (MAX_POSITION_PX, the Clicker's own position ceiling)
 // Per-type default gap so the C# null-fallback and this input agree (else a "leave at default"
 // round-trips to the wrong value). Keep in lockstep with ExecuteRepeated's defaultGap on the C# side.
-const clickDefaultGap = (type: string) => type === 'DoubleClick' ? DEFAULT_DOUBLECLICK_GAP_MS : DEFAULT_CLICK_GAP_MS;
+const clickDefaultGap = (type: string) =>
+  (type === 'DoubleClick' || type === 'TripleClick') ? DEFAULT_MULTICLICK_GAP_MS : DEFAULT_CLICK_GAP_MS;
 const clampRepeatCount = (v: number) => Math.max(1, Math.min(999, Math.floor(v)));
 const clampRepeatGap = (v: number) => Math.max(0, Math.min(5000, Math.floor(v)));
 const clampRepeatJitter = (v: number) => Math.max(1, Math.min(100, Math.floor(v)));
@@ -238,7 +255,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   // mirroring Keystroke × N (which has no position axis).
   // Held locally during edit; persisted via actions:edit on Save. Jitter is two-track (on/off + %)
   // like the Keystroke dialog so toggling off and back on restores the last %. Only surfaced for
-  // the repeatable clicks — Left/Right/Middle + DoubleClick (see isRepeatableClick).
+  // the combined clicks — Left/Right/Middle + Double/Triple (see isRepeatableClick).
   const [repeatCount, setRepeatCount] = useState(1);
   const [repeatGapMs, setRepeatGapMs] = useState(DEFAULT_CLICK_GAP_MS);
   const [jitterOn, setJitterOn] = useState(false);
@@ -248,6 +265,10 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   // on restores the last px value.
   const [posJitterOn, setPosJitterOn] = useState(false);
   const [posJitterPx, setPosJitterPx] = useState(DEFAULT_CLICK_POS_JITTER_PX);
+  // Click at cursor — the row resolves its point from the LIVE mouse at replay time instead of
+  // from its stored X/Y. Held locally during edit and persisted via actions:edit on Save, like
+  // every other field here. Mutually exclusive with Position jitter (see the Position control).
+  const [atCursor, setAtCursor] = useState(false);
   const [timeout, setTimeout_] = useState('');
   const [confidence, setConfidence] = useState('');
   const [browserText, setBrowserText] = useState('');
@@ -679,6 +700,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       setJitterPct(action.repeatDelayJitterPct && action.repeatDelayJitterPct > 0 ? action.repeatDelayJitterPct : DEFAULT_CLICK_JITTER_PCT);
       setPosJitterOn((action.repeatPositionJitterPx ?? 0) > 0);
       setPosJitterPx(action.repeatPositionJitterPx && action.repeatPositionJitterPx > 0 ? action.repeatPositionJitterPx : DEFAULT_CLICK_POS_JITTER_PX);
+      setAtCursor(action.atCursor || false);
       // Timeout edited in milliseconds (matches the grid + dialogs). Pause defaults
       // to 0 (infinite); other actions default to 5000ms.
       setTimeout_(action.actionType === 'Pause'
@@ -881,14 +903,14 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       send({ type: 'actions:edit', payload: { index: actionIndex, field: 'comment', value: comment } });
     }
 
-    // Click × N — persist Times/Gap/Gap-jitter for the repeatable clicks (Left/Right/Middle +
-    // DoubleClick). Gated on the CURRENT actionType (re-derived here; isRepeatableClick is declared
-    // further down, a forward reference) so switching the picker to a NON-repeatable type (a paired
-    // half) before Save never writes a repeat onto it. Diff-based like every field above (unchanged
-    // → no message → clean profile); the gap default is per-type (DoubleClick = 600 ms). Both
-    // jitters collapse to 0 when off or Times <= 1; the bridge stores 0 as null (schema-clean),
-    // matching a pre-feature single click byte-for-byte.
-    if (REPEATABLE_CLICKS.has(actionType)) {
+    // Click × N — persist Times/Gap/Gap-jitter (plus the at-cursor flag) for the combined clicks
+    // (Left/Right/Middle + Double/Triple). Gated on the CURRENT actionType (re-derived here;
+    // isRepeatableClick is declared further down, a forward reference) so switching the picker to a
+    // NON-combined type (a paired half) before Save never writes a repeat onto it. Diff-based like
+    // every field above (unchanged → no message → clean profile); the gap default is per-type
+    // (multi-click = 600 ms). Both jitters collapse to 0 when off or Times <= 1; the bridge stores
+    // 0 as null (schema-clean), matching a pre-feature single click byte-for-byte.
+    if (COMBINED_CLICKS.has(actionType)) {
       const effRepeat = clampRepeatCount(repeatCount);
       if (effRepeat !== (action.repeatCount ?? 1)) {
         send({ type: 'actions:edit', payload: { index: actionIndex, field: 'repeat', value: String(effRepeat) } });
@@ -901,9 +923,16 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       if (effJitter !== (action.repeatDelayJitterPct ?? 0)) {
         send({ type: 'actions:edit', payload: { index: actionIndex, field: 'repeatDelayJitterPct', value: String(effJitter) } });
       }
-      const effPosJitter = posJitterOn && effRepeat > 1 ? clampRepeatPosJitter(posJitterPx) : 0;
+      // Position jitter collapses to 0 under at-cursor as well: the engine ignores it there (a
+      // jittered cursor point would feed its own offset back on the next cycle — a random walk),
+      // so persisting a value would leave a dead knob stored AND pin the profile to 2.9.9 for a
+      // setting that does nothing.
+      const effPosJitter = posJitterOn && effRepeat > 1 && !atCursor ? clampRepeatPosJitter(posJitterPx) : 0;
       if (effPosJitter !== (action.repeatPositionJitterPx ?? 0)) {
         send({ type: 'actions:edit', payload: { index: actionIndex, field: 'repeatPositionJitterPx', value: String(effPosJitter) } });
+      }
+      if (atCursor !== (action.atCursor ?? false)) {
+        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'atCursor', value: String(atCursor) } });
       }
     }
 
@@ -1324,7 +1353,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     // from actionType + action.conditionType which are already in the array, so the
     // callback rebinds whenever those change. Listing the derived flags would also
     // be a forward-reference error (they're declared further down the component body).
-  }, [actionIndex, action, actionType, key, textMatch, textMode, x, y, delay, comment, repeatCount, repeatGapMs, jitterOn, jitterPct, posJitterOn, posJitterPx, timeout, confidence, browserText, variableValue, variableMode, slotMode, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, waitImageOnTimeout, waitImageInvert, waitImageClickOnMatch, waitImageSearchRegion, pixelX, pixelY, pixelColor, pixelTolerance, pixelOnTimeout, pixelInvert, pixelClickOnMatch, conditionNegate, ifOnProbeError, conditionTimeout, loopMaxIterations, windowProcessName, windowTitle, windowTitleMatchMode, windowMatchForegroundOnly, clipboardPatternType, clipboardPattern, randomPercent, conditionOperator, conditionOperand, filePath, timeStart, timeEnd, daysOfWeek, launchPath, launchArgs, activateOnTimeout, restorePosition, restoreSize, windowX, windowY, windowWidth, windowHeight, windowVerb, matchIndex, assertOnFail, alternatives, pickedThisSession, send, onClose]);
+  }, [actionIndex, action, actionType, key, textMatch, textMode, x, y, delay, comment, repeatCount, repeatGapMs, jitterOn, jitterPct, posJitterOn, posJitterPx, atCursor, timeout, confidence, browserText, variableValue, variableMode, slotMode, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, waitImageOnTimeout, waitImageInvert, waitImageClickOnMatch, waitImageSearchRegion, pixelX, pixelY, pixelColor, pixelTolerance, pixelOnTimeout, pixelInvert, pixelClickOnMatch, conditionNegate, ifOnProbeError, conditionTimeout, loopMaxIterations, windowProcessName, windowTitle, windowTitleMatchMode, windowMatchForegroundOnly, clipboardPatternType, clipboardPattern, randomPercent, conditionOperator, conditionOperand, filePath, timeStart, timeEnd, daysOfWeek, launchPath, launchArgs, activateOnTimeout, restorePosition, restoreSize, windowX, windowY, windowWidth, windowHeight, windowVerb, matchIndex, assertOnFail, alternatives, pickedThisSession, send, onClose]);
 
   // Are there edits the Save-Changes button would persist? MIRRORS handleSave's diffs
   // exactly (same guards/normalisation), returning true on the first field that differs —
@@ -1363,15 +1392,16 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
 
     // Click × N — mirror the handleSave diffs (same guards/clamps/per-type gap default) so a
     // reflexive Esc arms the dirty warning instead of silently dropping a Times/Gap/Jitter edit.
-    if (REPEATABLE_CLICKS.has(actionType)) {
+    if (COMBINED_CLICKS.has(actionType)) {
       const effRepeat = clampRepeatCount(repeatCount);
       if (effRepeat !== (action.repeatCount ?? 1)) return true;
       const effGap = clampRepeatGap(repeatGapMs);
       if (effGap !== (action.repeatDelayMs ?? clickDefaultGap(actionType))) return true;
       const effJitter = jitterOn && effRepeat > 1 ? clampRepeatJitter(jitterPct) : 0;
       if (effJitter !== (action.repeatDelayJitterPct ?? 0)) return true;
-      const effPosJitter = posJitterOn && effRepeat > 1 ? clampRepeatPosJitter(posJitterPx) : 0;
+      const effPosJitter = posJitterOn && effRepeat > 1 && !atCursor ? clampRepeatPosJitter(posJitterPx) : 0;
       if (effPosJitter !== (action.repeatPositionJitterPx ?? 0)) return true;
+      if (atCursor !== (action.atCursor ?? false)) return true;
     }
 
     if (actionType === 'WaitImage' || _isIfImage) {
@@ -1578,7 +1608,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     }
 
     return false;
-  }, [actionIndex, action, actionType, key, textMatch, textMode, x, y, delay, comment, repeatCount, repeatGapMs, jitterOn, jitterPct, posJitterOn, posJitterPx, timeout, confidence, browserText, variableValue, variableMode, slotMode, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, waitImageOnTimeout, waitImageInvert, waitImageClickOnMatch, waitImageSearchRegion, pixelX, pixelY, pixelColor, pixelTolerance, pixelOnTimeout, pixelInvert, pixelClickOnMatch, conditionNegate, ifOnProbeError, conditionTimeout, loopMaxIterations, windowProcessName, windowTitle, windowTitleMatchMode, windowMatchForegroundOnly, clipboardPatternType, clipboardPattern, randomPercent, conditionOperator, conditionOperand, filePath, timeStart, timeEnd, daysOfWeek, launchPath, launchArgs, activateOnTimeout, restorePosition, restoreSize, windowX, windowY, windowWidth, windowHeight, windowVerb, matchIndex, assertOnFail, alternatives, pickedThisSession]);
+  }, [actionIndex, action, actionType, key, textMatch, textMode, x, y, delay, comment, repeatCount, repeatGapMs, jitterOn, jitterPct, posJitterOn, posJitterPx, atCursor, timeout, confidence, browserText, variableValue, variableMode, slotMode, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, waitImageOnTimeout, waitImageInvert, waitImageClickOnMatch, waitImageSearchRegion, pixelX, pixelY, pixelColor, pixelTolerance, pixelOnTimeout, pixelInvert, pixelClickOnMatch, conditionNegate, ifOnProbeError, conditionTimeout, loopMaxIterations, windowProcessName, windowTitle, windowTitleMatchMode, windowMatchForegroundOnly, clipboardPatternType, clipboardPattern, randomPercent, conditionOperator, conditionOperand, filePath, timeStart, timeEnd, daysOfWeek, launchPath, launchArgs, activateOnTimeout, restorePosition, restoreSize, windowX, windowY, windowWidth, windowHeight, windowVerb, matchIndex, assertOnFail, alternatives, pickedThisSession]);
 
   // Key capture handler — focusing the field switches it to capture mode (empty + "New
   // key..." + pulse), the next non-modifier key is stored, and the input auto-blurs so
@@ -2137,19 +2167,26 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   // right button, and clickHalfSuffix (null for a combined click) preserves the press/release
   // half when switching between click types. The optional-suffix regex matches both shapes, so
   // isClickHalf here means "is a click row" (coords + Pick/Copy/Paste buttons apply to both).
-  // Double is in the button alternation so DoubleClick joins the click family
+  // Double and Triple are in the button alternation so they join the click family
   // (picker chips + coords/Pick/Copy/Paste). A "DoubleClickDown" never exists,
-  // so the optional suffix simply never matches for it.
-  const clickHalfMatch = actionType.match(/^((?:Left|Right|Middle|Double)Click)(Down|Up)?$/);
+  // so the optional suffix simply never matches for them.
+  const clickHalfMatch = actionType.match(/^((?:Left|Right|Middle|Double|Triple)Click)(Down|Up)?$/);
   const isClickHalf = clickHalfMatch !== null;
   const clickHalfBase = clickHalfMatch ? clickHalfMatch[1] : null;
   const clickHalfSuffix = clickHalfMatch?.[2] ? (clickHalfMatch[2] as 'Down' | 'Up') : null;
   const baseActionType = clickHalfBase ?? actionType;
 
-  // A single click (LeftClick/RightClick/MiddleClick) or a DoubleClick supports the inline
+  // A single click (LeftClick/RightClick/MiddleClick) or a Double/TripleClick supports the inline
   // "× N" repeat cluster. Paired halves (a Down/Up would double-fire one edge) are excluded —
-  // so gate on "repeatable base AND no Down/Up suffix" (DoubleClick has no suffix, so it passes).
-  const isRepeatableClick = !clickHalfSuffix && REPEATABLE_CLICKS.has(baseActionType);
+  // so gate on "combined base AND no Down/Up suffix" (a multi-click has no suffix, so it passes).
+  const isRepeatableClick = !clickHalfSuffix && COMBINED_CLICKS.has(baseActionType);
+  // Same set gates the Position control: only a whole click can resolve its own point at replay
+  // time. Identical predicate on purpose — see COMBINED_CLICKS.
+  const isAtCursorEligible = isRepeatableClick;
+  // Double/Triple: several press/release pairs in ONE row, so the inter-repeat Gap has to clear
+  // the system multi-click window (see DEFAULT_MULTICLICK_GAP_MS) — that is what the Gap guidance
+  // below is about, and it applies to both equally.
+  const isMultiClick = baseActionType === 'DoubleClick' || baseActionType === 'TripleClick';
 
   // Detect which family the current action belongs to, so the picker can offer only
   // meaningful in-family transitions (see familyTypes comment). SendText returns null —
@@ -2163,7 +2200,19 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
         : null;
   // Skip rendering the picker when there's nothing useful to switch to (single-option family).
   const familyOptions = currentFamily ? familyTypes[currentFamily] : [];
-  const showTypePicker = familyOptions.length > 1;
+  // Editing a paired half (Down/Up)? Drop Double/Triple Click — they are combined-only units;
+  // converting just one half would orphan its twin. Filtered HERE rather than inline in the JSX
+  // because the grid's column count is decided from the visible count.
+  const visibleFamilyOptions = familyOptions.filter(
+    t => !(clickHalfSuffix && (t.value === 'DoubleClick' || t.value === 'TripleClick'))
+  );
+  const showTypePicker = visibleFamilyOptions.length > 1;
+  // 3 columns for the click family (5 chips → buttons row + multi-click row; 3 when a paired half
+  // hides the multi-clicks, so still exactly one full row), 2 for the key/scroll pairs so they
+  // split the width evenly instead of leaving a hole. Fixed columns are the point: with
+  // flex-wrap the break landed wherever the label widths happened to put it, so the grouping was
+  // an accident of text measurement and would reflow on any label edit.
+  const chipGridCols = visibleFamilyOptions.length >= 3 ? 'grid-cols-3' : 'grid-cols-2';
 
   // Human-readable action name — defined once, used as the header headline (and reusable
   // for tooltips). Replaces the inline 17-branch ternary that used to live in the header.
@@ -2294,11 +2343,8 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
               record a new action — it's faster and avoids leaving half-filled fields behind. */}
           {!isWaitImage && !isBrowser && !isPause && showTypePicker && (
           <Field label="Action Type">
-            <div className="flex flex-wrap gap-1.5">
-              {familyOptions
-                // Editing a paired half (Down/Up)? Don't offer Double Click — it's a
-                // combined-only unit; converting just one half would orphan its twin.
-                .filter(t => !(clickHalfSuffix && t.value === 'DoubleClick'))
+            <div className={`grid gap-1.5 ${chipGridCols}`}>
+              {visibleFamilyOptions
                 .map(t => {
                 // When editing a click half (LeftClickDown / LeftClickUp / etc.), picking
                 // another click type must preserve the suffix so the engine still dispatches
@@ -2314,18 +2360,20 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                   <button
                     key={t.value}
                     onClick={() => {
-                      // Repeat-gap default is per-type (DoubleClick 600 ms vs single click 30 ms).
+                      // Repeat-gap default is per-type (multi-click 600 ms vs single click 30 ms).
                       // When switching between click types whose defaults differ, if the Gap is
                       // still at the OLD type's default (untouched) follow the NEW type's default —
                       // otherwise the switch strands, and Save silently persists, the wrong gap (a
-                      // DoubleClick × N blurred at 30 ms, or a single click stuck at 600 ms). A gap
+                      // multi-click × N blurred at 30 ms, or a single click stuck at 600 ms). A gap
                       // the user actually changed is preserved. See clickDefaultGap.
                       const fromGap = clickDefaultGap(baseActionType);
                       const toGap = clickDefaultGap(t.value);
                       if (fromGap !== toGap) setRepeatGapMs(g => g === fromGap ? toGap : g);
                       setActionType(nextValue);
                     }}
-                    className={`px-2.5 py-1 rounded text-[11px] font-medium border transition-colors ${
+                    // Grid cells stretch, so every chip is the same width — nowrap + centre keeps
+                    // a long label (Middle Click) on one line so the two rows stay level.
+                    className={`px-2.5 py-1 rounded text-[11px] font-medium border transition-colors text-center whitespace-nowrap ${
                       isActive
                         ? 'text-accent border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)] bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)]'
                         : 'text-text-secondary border-border-default bg-bg-elevated hover:bg-bg-card'
@@ -4215,10 +4263,48 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
           </>
           )}
 
+          {/* POSITION — where this click resolves its point. A SegmentedControl rather than a
+              switch because the choice is between two named PLACES, not an on/off attribute of a
+              value: a bare "At cursor" toggle leaves the OFF state unnamed and makes the X/Y block
+              vanishing below read as a bug. Combined clicks only (isAtCursorEligible) — a paired
+              half's replay case reads X/Y directly and can't honour it. */}
+          {isAtCursorEligible && (
+            <Field
+              label="Position"
+              hint={atCursor
+                ? tt('Uses the mouse position at the moment this step runs, so it needs no coordinates.',
+                     'Usa a posição do mouse no momento em que este passo roda, então não precisa de coordenadas.')
+                : undefined}
+            >
+              <SegmentedControl<'point' | 'cursor'>
+                value={atCursor ? 'cursor' : 'point'}
+                onChange={(v) => setAtCursor(v === 'cursor')}
+                ariaLabel="Click position source"
+                grow
+                options={[
+                  {
+                    value: 'point',
+                    label: 'This point',
+                    tip: tt('Clicks the X / Y below.', 'Clica no X / Y abaixo.'),
+                  },
+                  {
+                    value: 'cursor',
+                    label: 'At cursor',
+                    tip: tt('Clicks wherever the mouse is when this step runs.',
+                            'Clica onde o mouse estiver quando este passo rodar.'),
+                  },
+                ]}
+              />
+            </Field>
+          )}
+
           {/* X / Y — Pick button (only on click halves, since scroll actions don't really
               use X/Y but happen to live in showCoords). Lets the user click somewhere on
-              screen to fill both coords without manual typing or re-recording. */}
-          {showCoords && (
+              screen to fill both coords without manual typing or re-recording.
+              Hidden entirely under At cursor — two dead numeric inputs plus a Pick button that
+              writes nothing is exactly the phantom-coordinate state showCoords exists to prevent.
+              The stored X/Y is never written while hidden, so switching back restores it. */}
+          {showCoords && !atCursor && (
             <div className="space-y-2.5">
               {/* Row 1: X / Y at full width — no longer squeezed by the action buttons. */}
               <div className="flex gap-2.5">
@@ -4307,10 +4393,11 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
 
           {/* Click × N — inline repeat of THIS click (a step in the sequence, distinct from the
               auto-Clicker's spam mode), mirroring Keystroke × N. Single clicks (Left/Right/Middle)
-              AND DoubleClick reach here (isRepeatableClick); paired halves are excluded. The replay
-              engine loops the whole click (down→up + focus tap if on, or the full double-click)
-              Times times with the Gap between cycles, applying the optional ±% gap jitter and ±px
-              position jitter. DoubleClick defaults to a larger Gap so repeats stay distinct. Reuses
+              AND Double/TripleClick reach here (isRepeatableClick); paired halves are excluded. The
+              replay engine loops the whole click (down→up + focus tap if on, or the full
+              multi-click) Times times with the Gap between cycles, applying the optional ±% gap
+              jitter and ±px position jitter (the latter inert under At cursor — see the Position
+              control). A multi-click defaults to a larger Gap so repeats stay distinct. Reuses
               the Send Keystroke dialog's exact NumberInput + enable-dot pattern. Gap and both
               jitters dim until Times > 1. */}
           {isRepeatableClick && (
@@ -4332,7 +4419,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
               <div className="flex items-center justify-between gap-3">
                 <label
                   className={`text-[12px] font-medium transition-colors ${repeatCount > 1 ? 'text-text-secondary' : 'text-text-tertiary'}`}
-                  data-tip={baseActionType === 'DoubleClick'
+                  data-tip={isMultiClick
                     ? tt('Keep it above your system double-click speed (~½ s).', 'Mantenha acima da velocidade de duplo-clique do sistema (~½ s).')
                     : undefined}
                 >
@@ -4348,7 +4435,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                   suffix="ms" suffixInside
                   inputWidth="w-24"
                   inputHeight="h-8"
-                  ariaLabel={baseActionType === 'DoubleClick' ? 'Gap between double-clicks (ms)' : 'Gap between clicks (ms)'}
+                  ariaLabel={isMultiClick ? 'Gap between multi-clicks (ms)' : 'Gap between clicks (ms)'}
                 />
               </div>
               {/* Gap jitter — OFF by default (hollow dot). Adds a random ±% to each gap so a
@@ -4391,22 +4478,30 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                   every cycle, so "click × 3" lands on three nearby pixels of the same target
                   instead of hammering one exact coordinate — scattering only the timing still
                   leaves a perfectly fixed position, which is the other half of the bot signature.
-                  OFF by default: pure desktop automation wants the exact point. */}
+                  OFF by default: pure desktop automation wants the exact point.
+                  Inert under At cursor as well, and the tip says why: every event carries
+                  MOUSEEVENTF_MOVE, so an offset cycle would move the cursor and the NEXT cycle
+                  would read that moved cursor as its own origin — a random walk instead of a
+                  scatter. Disabled rather than hidden: this cluster is a fixed four-row block and
+                  dropping a row mid-block makes the drawer jump. */}
               <div className="flex items-center justify-between gap-3">
                 <button
                   type="button"
                   onClick={() => setPosJitterOn(v => !v)}
-                  disabled={repeatCount <= 1}
-                  aria-pressed={posJitterOn}
+                  disabled={repeatCount <= 1 || atCursor}
+                  aria-pressed={posJitterOn && !atCursor}
                   className="flex items-center gap-1.5 disabled:cursor-not-allowed"
-                  data-tip={tt('Random ±px on the click point — less robotic.', 'Variação ±px aleatória no ponto do clique — menos robótico.')}
+                  data-tip={atCursor
+                    ? tt('Not available at cursor — the scatter would drag the cursor it reads from.',
+                         'Indisponível no cursor — o desvio arrastaria o próprio cursor que ele lê.')
+                    : tt('Random ±px on the click point — less robotic.', 'Variação ±px aleatória no ponto do clique — menos robótico.')}
                 >
-                  <span className={`text-[12px] font-medium transition-colors ${posJitterOn && repeatCount > 1 ? 'text-text-secondary' : 'text-text-tertiary'}`}>
+                  <span className={`text-[12px] font-medium transition-colors ${posJitterOn && repeatCount > 1 && !atCursor ? 'text-text-secondary' : 'text-text-tertiary'}`}>
                     Position jitter
                   </span>
                   <span
                     className="w-2 h-2 rounded-full block shrink-0 transition-colors"
-                    style={posJitterOn && repeatCount > 1
+                    style={posJitterOn && repeatCount > 1 && !atCursor
                       ? chipDotOn
                       : chipDotOff}
                   />
@@ -4416,7 +4511,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                   onChange={(n) => setPosJitterPx(clampRepeatPosJitter(n))}
                   min={1}
                   max={500}
-                  disabled={!posJitterOn || repeatCount <= 1}
+                  disabled={!posJitterOn || repeatCount <= 1 || atCursor}
                   suffix="px" suffixInside
                   inputWidth="w-24"
                   inputHeight="h-8"
