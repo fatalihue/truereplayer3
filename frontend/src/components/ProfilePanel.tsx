@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, lazy, Suspense } from 'react';
-import { Search, SearchX, X, Pencil, Copy, Trash2, FolderOpen, FolderMinus, Keyboard, Crosshair, ArrowLeftRight, ArrowDownUp, Type, Ban, ChevronsLeft, ChevronsRight, ChevronsDownUp, ChevronsUpDown, Pin, PinOff, FolderPlus, FilePlus, ChevronRight, ChevronDown, Palette, ArrowRightFromLine, Zap, Repeat, Repeat2, Hourglass, ArrowUpFromDot, ExternalLink, Info, MoreHorizontal, Hash, Upload, Download, Check } from 'lucide-react';
+import { Search, SearchX, X, Pencil, Copy, Trash2, FolderOpen, FolderMinus, Keyboard, Crosshair, ArrowLeftRight, ArrowDownUp, Type, Ban, ChevronsLeft, ChevronsRight, ChevronsDownUp, ChevronsUpDown, Pin, PinOff, FolderPlus, FilePlus, Plus, ChevronRight, ChevronDown, Palette, ArrowRightFromLine, Zap, Repeat, Repeat2, Hourglass, ArrowUpFromDot, ExternalLink, Info, MoreHorizontal, Hash, Upload, Download, Check } from 'lucide-react';
 import type { ProfileEntry, ImportPreviewPayload, ImportResultPayload, ImportConflictResolution, TriggerMode } from '../bridge/messageTypes';
 import { useAppState } from '../state/AppStateContext';
 import { carriesConditionProbe } from '../utils/conditionalBlocks';
@@ -510,16 +510,26 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
     setContextMenu({ x: e.clientX, y: e.clientY, profileName: name });
   }, []);
 
-  const handleCreate = useCallback(() => {
+  // WHERE the profile is created is decided by WHICH control was pressed, and nothing else.
+  // The toolbar / rail / empty-state buttons pass null (root); a folder's own "+ New profile"
+  // row passes its name. It used to come from `selectedFolder` — the folder you last clicked —
+  // which nothing ever cleared: one click on a folder header, made for any reason, silently sent
+  // every profile created afterwards into it, with the dialog never naming a destination.
+  // Callers must pass explicitly, so an onClick handler cannot leak its event in as a folder.
+  const [createFolder, setCreateFolder] = useState<string | null>(null);
+  const handleCreate = useCallback((folder: string | null) => {
     setContextMenu(null);
+    setFolderContextMenu(null);
     setDialogValue('');
+    setCreateFolder(folder);
     setShowCreateDialog(true);
   }, []);
 
   // Listen for command palette triggers
   useEffect(() => {
-    window.addEventListener('cmd:newprofile', handleCreate);
-    return () => window.removeEventListener('cmd:newprofile', handleCreate);
+    const onCmd = () => handleCreate(null);
+    window.addEventListener('cmd:newprofile', onCmd);
+    return () => window.removeEventListener('cmd:newprofile', onCmd);
   }, [handleCreate]);
 
   useEffect(() => {
@@ -824,7 +834,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
     // Block duplicate names client-side (mirrors the backend File.Exists guard, case-insensitive
     // like the Windows file system) so the dialog stays open for a quick fix.
     if (profiles.some(p => p.name.toLowerCase() === name.toLowerCase())) return;
-    send({ type: 'profile:create', payload: { name, folder: selectedFolder || undefined } });
+    send({ type: 'profile:create', payload: { name, folder: createFolder || undefined } });
     setShowCreateDialog(false);
   };
 
@@ -1756,7 +1766,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             </div>
             <div className="flex flex-col items-center gap-1 pt-2 pb-2 shrink-0">
               <button
-                onClick={handleCreate}
+                onClick={() => handleCreate(null)}
                 className="w-7 h-7 flex items-center justify-center rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary transition-colors"
                 data-tip={tt('New profile', 'Novo profile')}
                 data-tip-pos="right"
@@ -1927,7 +1937,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             <button onClick={handleCreateFolder} className="w-6 h-6 flex items-center justify-center rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary transition-colors" data-tip={tt('New folder', 'Nova pasta')}>
               <FolderPlus size={14} />
             </button>
-            <button onClick={handleCreate} className="w-6 h-6 flex items-center justify-center rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary transition-colors" data-tip={tt('New profile', 'Novo perfil')}>
+            <button onClick={() => handleCreate(null)} className="w-6 h-6 flex items-center justify-center rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary transition-colors" data-tip={tt('New profile', 'Novo perfil')}>
               <FilePlus size={14} />
             </button>
           </div>
@@ -1992,7 +2002,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               <span className="text-xs font-medium text-text-secondary">No profiles yet</span>
               <span className="text-[11px] text-text-tertiary leading-snug">Record a macro and save it, or create an empty profile to start.</span>
               <button
-                onClick={handleCreate}
+                onClick={() => handleCreate(null)}
                 className="mt-1 px-3 py-1 rounded text-[11px] text-white bg-accent-solid hover:bg-accent-solid/85 transition-colors"
               >
                 + New profile
@@ -2015,6 +2025,10 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               {/* Folder Sections */}
               {folderSections.map((folder, folderIdx) => {
                 const hasVisibleProfiles = folder.profiles.length > 0;
+                // No create button while a search is running: `folder.profiles` is the FILTERED
+                // list there, so a folder with no match looks empty without being empty — and
+                // searching is a find mode, not an authoring one.
+                const showFolderAdd = !trimmedQuery;
                 const isDragOver = dropTarget === folder.name && dragProfile !== null;
                 const isFolderDragging = dragFolder === folder.name && folderDragActive.current;
                 // Visually mark the folder as disabled when every profile inside is disabled,
@@ -2064,7 +2078,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                       // unconditionally and adding bg-accent-solid/20 for the drag state put
                       // both in the same layer at the same specificity, so the one printed
                       // later in the bundle won and the drop fill never appeared — dead class.
-                      className={`border rounded-md my-1 transition-colors ${
+                      className={`group/folder border rounded-md my-1 transition-colors ${
                         isDragOver
                           ? 'bg-accent-solid/20 border-accent-solid/50 ring-2 ring-accent-solid/50'
                           : `bg-bg-card ${folder.collapsed ? 'border-border-subtle' : 'border-border-default'}`
@@ -2130,11 +2144,44 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                           </RemovableChip>
                         )}
                       </div>
-                      {!folder.collapsed && hasVisibleProfiles && (
+                      {!folder.collapsed && (hasVisibleProfiles || showFolderAdd) && (
                         // The card border is the containment now, so the old coloured left
                         // rail is gone — two nested separators for one group read as noise.
                         <div className="px-0.5 pb-0.5 pt-px">
                           {folder.profiles.map(renderProfileRow)}
+                          {showFolderAdd && (
+                            // The folder's own create button, and the only place that says out
+                            // loud where a new profile lands.
+                            //
+                            // ITS HEIGHT IS ALWAYS RESERVED, its ink is not: the row exists in the
+                            // layout whenever the folder is open, and only fades in on hover. A row
+                            // that mounted on hover would shove every folder below it down 24 px
+                            // the moment the pointer crossed one — with ~90 profiles the list would
+                            // twitch under the cursor all the way down. At rest the reserved strip
+                            // reads as the folder's bottom padding.
+                            //
+                            // Empty folder: `hasVisibleProfiles` is false, so this row IS the body —
+                            // and it stays inked (group-hover would leave a blank rectangle, which
+                            // is exactly what an empty folder used to be). It also gives the folder
+                            // a body to render at all, which it never had before.
+                            //
+                            // Safe against the drag layer without doing anything: profile drops
+                            // hit-test the WHOLE folder rect (folderRefs), so this adds no new drop
+                            // target, and reordering walks [data-drag-item^="profile:"], which this
+                            // row deliberately does not carry.
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); handleCreate(folder.name); }}
+                              aria-label={`New profile in ${folder.name}`}
+                              className={`w-full mx-0.5 h-6 px-1.5 flex items-center gap-1.5 rounded text-[11px] text-left
+                                text-text-tertiary hover:text-text-secondary hover:bg-bg-elevated
+                                transition-[opacity,color,background-color] duration-150
+                                ${hasVisibleProfiles ? 'opacity-0 group-hover/folder:opacity-100 focus-visible:opacity-100' : 'opacity-100'}`}
+                            >
+                              <Plus size={12} style={{ color: folder.color, opacity: 0.85 }} className="shrink-0" />
+                              New profile
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -2555,7 +2602,23 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
       {showCreateDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="w-[340px] bg-bg-card border border-border-default rounded-lg p-5 shadow-xl">
-            <h3 className="text-sm font-semibold text-text-primary mb-3">Create Profile</h3>
+            {/* The destination rides the TITLE rather than a line of its own: it is one fact,
+                and a dialog reached from two different buttons has to say which one opened it.
+                One name for one action, everywhere — the toolbar tooltip, this title and the
+                folder row all read "New profile" (it used to be "New profile" / "Create Profile"
+                / nothing, for the same thing). */}
+            <h3 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-1.5 flex-wrap">
+              New profile
+              {createFolder && (
+                <span
+                  className="inline-flex items-center gap-1 text-xs font-medium"
+                  style={{ color: (profileOrder?.folders ?? []).find(f => f.name === createFolder)?.color ?? 'var(--color-text-secondary)' }}
+                >
+                  <FolderOpen size={11} />
+                  in {createFolder}
+                </span>
+              )}
+            </h3>
             <input
               ref={dialogInputRef}
               type="text"
