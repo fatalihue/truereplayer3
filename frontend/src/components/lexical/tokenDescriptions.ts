@@ -58,33 +58,49 @@ const BY_NAME: Record<KnownTokenName, TokenDescription> = {
   delay: { tip: ['Pause typing for N ms', 'Pausa a digitação por N ms'] },
   random: { tip: ['Fresh random number each run', 'Número aleatório novo a cada execução'] },
   pick: {
-    tip: ['Types ONE of the options, chosen at random each run', 'Digita UMA das opções, sorteada a cada execução'],
-    paletteTip: ['Types ONE of the options, chosen at random each run — click the chip to edit the list', 'Digita UMA das opções, sorteada a cada execução — clique no chip para editar a lista'],
+    tip: ['Types ONE of the options, drawn each run', 'Digita UMA das opções, sorteada a cada execução'],
+    // {pick} is not chain-bearing, so the name prompt has no Advanced… button for it — the chip
+    // really is the only way to edit the list, and the palette has to say so.
+    paletteTip: ['Types ONE of the options, drawn each run. Click the chip to edit the list.', 'Digita UMA das opções, sorteada a cada execução. Clique no chip para editar.'],
   },
   var: { tip: ['Value stored by a Set Variable action', 'Valor gravado por uma action Set Variable'] },
   counter: { tip: ['Current loop iteration (1, 2, 3…)', 'Iteração atual do loop (1, 2, 3…)'] },
   // Bare {row}. The {row:Column} form is a different token entirely — see ROW_COLUMN below.
   row: { tip: ["Current action's grid row number (not the data table)", 'Número da linha da action na grade (não é a tabela de dados)'] },
+  // No paletteTip: the name prompt for {rownext:} now offers an Advanced… button, so the old
+  // "click the chip after inserting to add transforms" is advice for a route that is no longer
+  // the only one.
   rownext: {
-    tip: ['Auto-advancing: each use pulls the NEXT data row for the column (1st action → row 1, 2nd → row 2…). Resets each run — swap the list, keep the fields.', 'Auto-avança: cada uso pega a PRÓXIMA linha da tabela para a coluna (1ª action → linha 1, 2ª → linha 2…). Reinicia a cada execução — troque a lista, mantenha os campos.'],
-    paletteTip: ['Auto-advancing: each use pulls the NEXT data row for the column (1st action → row 1, 2nd → row 2…). Resets each run — swap the list, keep the fields. Click the chip after inserting to add transforms.', 'Auto-avança: cada uso pega a PRÓXIMA linha da tabela para a coluna (1ª action → linha 1, 2ª → linha 2…). Reinicia a cada execução — troque a lista, mantenha os campos. Clique no chip depois de inserir para adicionar transformações.'],
+    tip: ['Each use pulls the NEXT data row. Resets each run.', 'Cada uso pega a PRÓXIMA linha de dados. Reinicia a cada execução.'],
   },
-  clip: { tip: ['Selection captured by a Copy to Slot action or the capture hotkey', 'Seleção capturada por uma action Copy to Slot ou pelo hotkey de captura'] },
+  clip: { tip: ['Selection captured by Copy to Slot or the capture hotkey', 'Seleção capturada por Copy to Slot ou pelo hotkey'] },
+  // The "can hold anything recently copied, including passwords" caution is NOT lost by trimming
+  // here — it lives in full in ClipboardSurface's IDENTITY_HINTS, which is the surface you are
+  // looking at when you actually pick an item. A hover tip is the wrong place for a paragraph.
   winclip: {
-    tip: ['Windows Win+V history — {winclip:1} is the last thing copied. Needs clipboard history on; may hold anything recently copied, including passwords.', 'Histórico do Windows (Win+V) — {winclip:1} é a última coisa copiada. Precisa do histórico ligado; pode conter qualquer coisa copiada recentemente, inclusive senhas.'],
-    paletteTip: ['Windows Win+V history — {winclip:1} is the last thing copied (click the chip to change which item). Needs clipboard history on; may hold anything recently copied, including passwords.', 'Histórico do Windows (Win+V) — {winclip:1} é a última coisa copiada (clique no chip para trocar o item). Precisa do histórico ligado; pode conter qualquer coisa copiada recentemente, inclusive senhas.'],
+    tip: ['Win+V history (must be enabled) — 1 is the most recent', 'Histórico do Win+V (precisa estar ligado) — 1 é o mais recente'],
+    // {winclip:N} is a direct-insert chip with no name prompt, so the chip really is the only
+    // way to change the index.
+    paletteTip: ['Win+V history (must be enabled) — 1 is the most recent. Click the chip to change the item.', 'Histórico do Win+V (precisa estar ligado) — 1 é o mais recente. Clique no chip para trocar o item.'],
   },
   input: { tip: ['Prompt for a value at replay time (pauses the run)', 'Pergunta um valor durante a execução (pausa o replay)'] },
 };
 
 const CLIPBOARD_NEXT: TokenDescription = {
-  tip: ['Auto-advancing: each use takes the NEXT line of the clipboard instead of the whole thing (1st use → line 1, 2nd → line 2…). Copy something new and it starts over; past the last line it resolves empty. Blank lines are skipped.', 'Auto-avança: cada uso pega a PRÓXIMA linha do clipboard em vez do conteúdo inteiro (1º uso → linha 1, 2º → linha 2…). Copiou algo novo, recomeça; depois da última linha resolve vazio. Linhas em branco são puladas.'],
-  paletteTip: ['Auto-advancing: each use takes the NEXT line of the clipboard instead of the whole thing (1st use → line 1, 2nd → line 2…). Copy something new and it starts over; past the last line it resolves empty. Blank lines are skipped. Click the chip after inserting to add transforms.', 'Auto-avança: cada uso pega a PRÓXIMA linha do clipboard em vez do conteúdo inteiro (1º uso → linha 1, 2º → linha 2…). Copiou algo novo, recomeça; depois da última linha resolve vazio. Linhas em branco são puladas. Clique no chip depois de inserir para adicionar transformações.'],
+  tip: ['Each use takes the NEXT line; copying something new starts over', 'Cada uso pega a PRÓXIMA linha; copiar algo novo recomeça'],
+  // {clipboard:next} is a direct-insert chip, and the palette's Advanced… button opens on a
+  // PLAIN {clipboard}, so the chip is still the only route to a chain on this one.
+  paletteTip: ['Each use takes the NEXT line; copying something new starts over. Click the chip to add transforms.', 'Cada uso pega a PRÓXIMA linha; copiar algo novo recomeça. Clique no chip para transformar.'],
 };
 
+// No "(loop over data)" qualifier and no paletteTip.
+//
+// The qualifier was WRONG, and a real replay proved it: with the toggle OFF the engine still
+// substitutes a row — it uses a cursor that advances between runs (Model B). Saying "loop over
+// data" implied the token needs that setting to work at all. The name prompt also offers an
+// Advanced… button now, so the old "click the chip to add transforms" is no longer the only route.
 const ROW_COLUMN: TokenDescription = {
-  tip: ['Data table column of the current row (loop over data)', 'Coluna da tabela de dados na linha atual (loop over data)'],
-  paletteTip: ['Data table column of the current row (loop over data) — click the chip after inserting to add transforms (trim, UPPERCASE…)', 'Coluna da tabela de dados na linha atual (loop over data) — clique no chip depois de inserir para adicionar transformações (trim, MAIÚSCULAS…)'],
+  tip: ['Data table column of the current row', 'Coluna da tabela de dados na linha atual'],
 };
 
 // Tokens whose ARGUMENT changes what they mean. Checked before BY_NAME; first match wins.

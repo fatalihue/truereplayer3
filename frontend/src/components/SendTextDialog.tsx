@@ -933,10 +933,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
           </React.Fragment>
         ) : (
           <React.Fragment key="main">
-            <div
-              className="mr-auto flex items-center gap-1.5"
-              data-tip={tt('How your formatting reaches the target.', 'Como a formatação chega ao alvo.')}
-            >
+            <div className="mr-auto flex items-center gap-1.5">
               <span className="text-[10px] uppercase tracking-wide text-text-tertiary">Delivery</span>
               <SegmentedControl<SendMode>
                 ariaLabel="Delivery mode"
@@ -1028,15 +1025,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
               options={[
                 { value: 'insert', label: 'Insert', icon: <Braces size={12} /> },
                 { value: 'emoji', label: 'Emoji', icon: <Smile size={12} /> },
-                {
-                  value: 'preview',
-                  label: 'Preview',
-                  icon: <Eye size={12} />,
-                  tip: tt(
-                    'The message with its tokens resolved, and a labelled placeholder for every one that cannot be.',
-                    'A mensagem com os tokens resolvidos, e um marcador nomeado para cada um que não dá para resolver.',
-                  ),
-                },
+                { value: 'preview', label: 'Preview', icon: <Eye size={12} /> },
               ]}
               value={railTab}
               onChange={setRailTab}
@@ -1158,7 +1147,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                       type="button"
                       onClick={() => snippetFileRef.current?.click()}
                       className="w-6 h-6 flex items-center justify-center rounded text-text-tertiary hover:text-accent-light hover:bg-bg-card transition-colors"
-                      data-tip={tt('Load snippets from a file — they are ADDED to the ones you have', 'Carregar snippets de um arquivo — eles são SOMADOS aos que você já tem')}
+                      data-tip={tt('Load from a file — ADDED to the ones you have', 'Carregar de um arquivo — SOMADOS aos que você já tem')}
                     >
                       <Upload size={13} />
                     </button>
