@@ -104,11 +104,12 @@ interface ClipboardSurfaceProps {
 // underneath never unmounts (undo stack, caret and selection all survive a
 // round-trip through this surface).
 //
-// The six config sections are laid out in the BACKEND PIPELINE ORDER
-// (sequence → trim → lines → extract → limit → case — see clipboardModifiers.ts header),
-// each with a step badge that lights up while its step is active, so the UI
-// reads as the data flow it actually is. Serialization stays exclusively in
-// buildClipboardToken — this component emits no token strings of its own.
+// The NINE config sections are laid out in the BACKEND PIPELINE ORDER
+// (sequence → trim → split → drop count → lines → extract → limit → clean up → case — see the
+// clipboardModifiers.ts header), each with a step badge that lights up while its step is
+// active, so the UI reads as the data flow it actually is. sn() renumbers when the head is not
+// the clipboard, because a gap at the top would say nothing true. Serialization stays
+// exclusively in buildClipboardToken — this component emits no token strings of its own.
 export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onBack, onReset, originalToken }: ClipboardSurfaceProps) {
   const tt = useTt();
   const { clipRaw, clipReady, refresh } = useClipboardContent();

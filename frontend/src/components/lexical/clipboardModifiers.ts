@@ -3,11 +3,16 @@
 // popovers (clipboard + data-row cell — both run the SAME backend modifier pipeline).
 //
 // Modifier order in the emitted chain MUST match the backend pipeline:
-// next → trim → before/after → range/lines → sort → dedupe → reverse → join → words →
-// line/word → first/last → upper/lower/sentence/title. ('next' picks WHICH text the rest sees
-// and is handled in ResolveClipboardTokensAsync, ahead of ApplyClipboardModifiers; the split
-// cuts the RAW text at a delimiter, list ops then narrow/reshape the multiline content, words
-// takes a span and line/word a single piece, limit and case finish.)
+// next → trim → before/after(+last) → dropnum → range/lines → sort → dedupe → reverse → join →
+// words → line/word → first/last → noaccents → digits → upper/lower/sentence/title.
+// ('next' picks WHICH text the rest sees and is handled in ResolveClipboardTokensAsync, ahead
+// of ApplyClipboardModifiers; the split cuts the RAW text at a delimiter, dropnum strips a
+// leading count, list ops then narrow/reshape the multiline content, words takes a span and
+// line/word a single piece, limit slices, the character-class filters clean, case finishes.)
+//
+// This list is the ground truth the two editing UIs order themselves by, so it has to stay in
+// lockstep with buildModifierParts below — it was stale once already, missing `dropnum` and the
+// `noaccents`/`digits` pair that ship between the limit and the case steps.
 
 export type CaseTransform = 'none' | 'upper' | 'lower' | 'sentence' | 'title';
 export type Extract = 'none' | 'line' | 'word' | 'words';

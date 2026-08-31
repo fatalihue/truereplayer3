@@ -54,6 +54,45 @@ interface Snippet {
 
 const SNIPPETS_KEY = 'trueplayer_snippets';
 
+// Key name follows the app's `tr-` prefix for small UI prefs ('tr-language', 'tr-livevars').
+// SNIPPETS_KEY above and themes.ts's 'truereplay-*' are older spellings — do not copy those.
+const MORE_OPEN_KEY = 'tr-sendtext-more';
+
+/** The three palette disclosures. One key, one JSON blob — three keys would be three writes
+ *  per toggle for state that is always read together. */
+type MoreOpen = { keys: boolean; clipboard: boolean; rows: boolean };
+const MORE_OPEN_DEFAULT: MoreOpen = { keys: false, clipboard: false, rows: false };
+
+function loadMoreOpen(): MoreOpen {
+  try {
+    const raw = localStorage.getItem(MORE_OPEN_KEY);
+    if (!raw) return MORE_OPEN_DEFAULT;
+    const parsed = JSON.parse(raw);
+    // Same corrupt-value guard as loadSnippets: a hand-edited or legacy value that is not a
+    // plain object would feed `undefined` into three booleans and render the chevrons from
+    // undefined state. Null and arrays are objects to typeof, so both are excluded explicitly.
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return MORE_OPEN_DEFAULT;
+    // `=== true`, not truthiness: a stored "yes"/1 must read as closed, not as open.
+    return {
+      keys: parsed.keys === true,
+      clipboard: parsed.clipboard === true,
+      rows: parsed.rows === true,
+    };
+  } catch {
+    return MORE_OPEN_DEFAULT;
+  }
+}
+
+function saveMoreOpen(next: MoreOpen) {
+  // QuotaExceededError guard, exactly as saveSnippets: swallow + log so the palette stays
+  // usable; the disclosure just won't survive the next restart.
+  try {
+    localStorage.setItem(MORE_OPEN_KEY, JSON.stringify(next));
+  } catch (err) {
+    console.warn('[SendTextDialog] Failed to save palette disclosures:', err);
+  }
+}
+
 // Relative luminance (WCAG) of a #rgb/#rrggbb hex, 0 = black … 1 = white.
 // Inlined because themes.ts doesn't export a helper; used to pick the emoji
 // picker's light/dark variant from the active theme's base surface. Returns 0
@@ -402,11 +441,11 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
   const [editingSnippetId, setEditingSnippetId] = useState<string | null>(null);
   const [deletingSnippetId, setDeletingSnippetId] = useState<string | null>(null);
   const [snippetFilter, setSnippetFilter] = useState('');
-  // Every "More …" row starts collapsed — rare chips only show on demand, and the
-  // state is per-open (no persistence), same as "More keys" has always been.
-  const [moreKeysOpen, setMoreKeysOpen] = useState(false);
-  const [moreClipboardOpen, setMoreClipboardOpen] = useState(false);
-  const [moreRowsOpen, setMoreRowsOpen] = useState(false);
+  // The three "More …" disclosures persist across opens and restarts. They used to reset to
+  // collapsed every time, which cost two clicks per dialog to anyone who reaches for the arrow
+  // keys or {winclip:N} daily. Lazy initializer — pass the FUNCTION, so localStorage is read
+  // once and not on every render (same shape as useState(loadSnippets) above).
+  const [moreOpen, setMoreOpen] = useState<MoreOpen>(loadMoreOpen);
   // Clipboard Surface (full-body overlay). TransformState is lifted HERE so the
   // DialogShell footer (swapped while the surface is open) can build the token.
   const [surface, setSurface] = useState<SurfaceSession | null>(null);
@@ -638,6 +677,18 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
     <div className="label-micro text-text-tertiary px-3 pt-2.5 pb-1">{label}</div>
   );
 
+  // Persist on the toggle itself, not in an effect — an effect would rewrite storage on every
+  // mount for a user who never touched a disclosure. A plain function, deliberately not a
+  // useCallback: no dependency array means it cannot produce an exhaustive-deps finding, and
+  // the lint gate's baseline is zero.
+  const toggleMore = (k: keyof MoreOpen) => {
+    setMoreOpen((prev) => {
+      const next = { ...prev, [k]: !prev[k] };
+      saveMoreOpen(next);
+      return next;
+    });
+  };
+
   // Disclosure row for a section's rare chips. Reads like a section label so an
   // unopened one is quiet, and the chevron is the only affordance that moves.
   const moreRow = (label: string, open: boolean, toggle: () => void) => (
@@ -832,8 +883,8 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                 <div className="flex flex-wrap gap-1 px-3 pb-1">
                   {KEY_CHIPS.map((c) => renderChip(c))}
                 </div>
-                {moreRow('More keys', moreKeysOpen, () => setMoreKeysOpen((v) => !v))}
-                {moreKeysOpen && (
+                {moreRow('More keys', moreOpen.keys, () => toggleMore('keys'))}
+                {moreOpen.keys && (
                   <div className="grid grid-cols-3 gap-1 px-3 pb-2">
                     {MORE_KEY_CHIPS.map((c) => renderChip(c, 'justify-center'))}
                   </div>
@@ -862,8 +913,8 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                   </button>
                   {CLIPBOARD_CHIPS.map((c) => renderChip(c))}
                 </div>
-                {moreRow('More clipboard', moreClipboardOpen, () => setMoreClipboardOpen((v) => !v))}
-                {moreClipboardOpen && (
+                {moreRow('More clipboard', moreOpen.clipboard, () => toggleMore('clipboard'))}
+                {moreOpen.clipboard && (
                   <div className="flex flex-wrap gap-1 px-3 pb-2">
                     {MORE_CLIPBOARD_CHIPS.map((c) => renderChip(c))}
                   </div>
@@ -873,8 +924,8 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                 <div className="flex flex-wrap gap-1 px-3 pb-1">
                   {RUN_STATE_CHIPS.map((c) => renderChip(c))}
                 </div>
-                {moreRow('More rows', moreRowsOpen, () => setMoreRowsOpen((v) => !v))}
-                {moreRowsOpen && (
+                {moreRow('More rows', moreOpen.rows, () => toggleMore('rows'))}
+                {moreOpen.rows && (
                   <div className="flex flex-wrap gap-1 px-3 pb-2">
                     {MORE_ROW_CHIPS.map((c) => renderChip(c))}
                   </div>

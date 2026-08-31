@@ -281,6 +281,10 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   // Imperative handle to the Lexical-based BrowserType editor — used by the chip
   // buttons to insertText at the current cursor position instead of always appending.
   const browserTextEditorRef = useRef<LexicalEditorHandle | null>(null);
+  // Imperative handle to the Lexical-based SendText editor (the `key` payload). Separate ref
+  // from browserTextEditorRef: only one of the two surfaces is ever mounted, but a shared ref
+  // would leave a stale handle behind after a type change under an open sheet.
+  const sendTextEditorRef = useRef<LexicalEditorHandle | null>(null);
   const [textMatch, setTextMatch] = useState('');
   const [textMode, setTextMode] = useState<TextMode>('exact');
   const [newTab, setNewTab] = useState(false);
@@ -3653,8 +3657,15 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                     /* Key by actionIndex so opening a different action re-initialises the
                        editor with that action's text. Without this the Lexical state
                        would persist across action switches and the displayed content
-                       wouldn't match the action's browserText. */
-                    key={actionIndex ?? -1}
+                       wouldn't match the action's browserText.
+                       The id + payload are in the key for the same reason the SendText surface
+                       above carries them: this panel stays open across actions:updated pushes,
+                       so an EXTERNAL change to THIS row (an undo while the sheet is open)
+                       re-seeds the browserText state without remounting the editor, and
+                       InitialContentPlugin's didInit guard means the editor would keep drawing
+                       the pre-undo text. action.browserText is the DISK value, so it does not
+                       change while the user types and this does not remount per keystroke. */
+                    key={`bt:${actionIndex ?? -1}:${action?.id ?? ''}:${action?.browserText ?? ''}`}
                     initialText={browserText}
                     onChange={setBrowserText}
                     apiRef={browserTextEditorRef}
@@ -3915,7 +3926,16 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
           {/* Key — only for KeyDown/KeyUp and SendText. For KeyDown/KeyUp the input is
               read-only and consumes keydown events to capture the key directly; the visible
               value goes through getDisplayKey() so it matches the grid's display rules
-              (e.g. raw `D3` shows as `3`, raw `162` shows as `Ctrl`). */}
+              (e.g. raw `D3` shows as `3`, raw `162` shows as `Ctrl`).
+
+              A SendText row does NOT reach here through any OPEN path — ActionTable's
+              openEditorForRow sends it to the Insert Text dialog, the type picker has no text
+              family, and no sheet:openIndex site in WebViewBridge.cs inserts a SendText. It
+              reaches here only when the row at actionIndex TURNS INTO a SendText under an
+              already-open panel: the [action] seed effect above re-runs on every
+              actions:updated push, and undo/redo, Ctrl+V and Alt+arrow are window-level
+              keydown listeners the backdrop does not stop. Narrow, but live — and the bridge
+              nulls KeyHtml for exactly the save this branch performs. Not dead code. */}
           {showKey && (
           <Field label={isSendText ? 'Text' : 'Key'}>
             {isKeyAction ? (
@@ -3940,19 +3960,57 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 }`}
               />
             ) : (
-              // SendText payload — a textarea so long / multi-line text doesn't clip in a
-              // single-line box. Only reached when !isKeyAction (showKey ⇒ isSendText here).
+              // SendText payload. Same Lexical editor the BrowserType field mounts below, so the
+              // app's two text surfaces stop diverging: tokens ({Clipboard}, {Enter}, …) render
+              // as inline chips instead of raw braces. Plain mode ONLY (no richMode): this edit
+              // persists through actions:edit field 'key', which the bridge treats as a
+              // plain-text edit and which nulls KeyHtml — so the warning below stays true.
               <>
-                <textarea
-                  rows={2}
-                  value={key}
-                  onChange={(e) => setKey(e.target.value)}
-                  className="w-full min-h-[3.25rem] px-2 py-1.5 text-ui font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid resize-y"
-                />
+                <div className="min-h-[3.25rem] bg-bg-input border border-border-default rounded focus-within:border-accent-solid text-ui font-mono">
+                  <Suspense fallback={null}>
+                    <LexicalTokenEditor
+                      /* Remount key. actionIndex alone is NOT enough here: this panel stays open
+                         across actions:updated pushes and re-seeds from the row (see the [action]
+                         effect above), which is the only way a SendText row reaches this branch
+                         at all. InitialContentPlugin reads initialText ONCE behind a didInit
+                         guard, so without id + payload in the key the editor would keep drawing
+                         the previous row's text while `key` state had already moved on.
+                         action.key is the DISK value — it does not change while the user types,
+                         so this does not remount per keystroke. */
+                      key={`st:${actionIndex ?? -1}:${action?.id ?? ''}:${action?.key ?? ''}`}
+                      initialText={key}
+                      onChange={setKey}
+                      apiRef={sendTextEditorRef}
+                      contentClassName="w-full min-h-[3.25rem] px-2 py-1.5 text-ui leading-[1.5] outline-none whitespace-pre-wrap break-words text-text-primary overflow-auto"
+                      placeholderClassName="absolute top-1.5 left-2 text-ui text-text-disabled pointer-events-none select-none"
+                    />
+                  </Suspense>
+                </div>
+                {/* Chip palette — same three tokens and the same recipe as the BrowserType
+                    palette below. The full palette stays in the Insert Text dialog; any other
+                    token can still be typed and chips on the fly. */}
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {[
+                    { var: '{Clipboard}', label: 'Clipboard' },
+                    { var: '{Enter}', label: 'Enter' },
+                    { var: '{DateTime}', label: 'DateTime' },
+                  ].map(item => (
+                    <button
+                      key={item.var}
+                      type="button"
+                      onClick={() => sendTextEditorRef.current?.insertText(item.var)}
+                      className="h-6 px-2 inline-flex items-center text-[11px] font-mono bg-bg-surface border border-border-subtle rounded text-text-secondary hover:text-warning-ink hover:border-warning-ink/40 transition-colors"
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
                 {action?.keyHtml && (
-                  // Rich payload warning: this textarea edits only the PLAIN flavor, and a
-                  // saved key change drops the formatting (bridge nulls KeyHtml). Point the
-                  // user at the Insert Text dialog for formatted editing.
+                  // Rich payload warning — unchanged and still correct: this surface edits only
+                  // the PLAIN flavor, and a saved key change drops the formatting (the bridge
+                  // nulls KeyHtml). Kept a plain hint, NOT common/FieldError: this is not a
+                  // validation line, and action.keyHtml cannot flip while the panel is open
+                  // without the remount key above firing anyway, so it cannot cause a jump.
                   <div className="mt-1 text-[10px] text-warning-ink leading-snug">
                     {tt('Saving here drops the formatting.',
                         'Salvar aqui perde a formatação.')}
