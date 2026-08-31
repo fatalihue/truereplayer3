@@ -3,6 +3,7 @@ import { ChevronLeft, RefreshCw, RotateCcw, Wand2 } from 'lucide-react';
 import { SegmentedControl } from '../common/SegmentedControl';
 import { NumberInput } from '../common/NumberInput';
 import { CheckboxBox } from '../Checkbox';
+import { FieldError } from '../common/FieldError';
 import { useTt } from '../../state/LanguageContext';
 import { ArgInput } from './popoverAtoms';
 import { useClipboardContent } from './useClipboardContent';
@@ -11,6 +12,10 @@ import {
   previewIsRuntimeDependent,
   argRefIsUnfinished,
   buildChainToken,
+  chainHeadIsUsable,
+  linesStepActive,
+  splitStepActive,
+  dropNumStepActive,
   type CaseTransform,
   type ChainHead,
   type Extract,
@@ -174,15 +179,16 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
 
   const set = (patch: Partial<TransformState>) => onStateChange((s) => ({ ...s, ...patch }));
 
-  const linesActive =
-    state.listPick !== 'none' || state.sort || state.dedupe || state.reverse || state.join;
+  // The three multi-field step predicates are hoisted into clipboardModifiers so the compact
+  // popover ladder lights the same badges from the same rules.
+  const linesActive = linesStepActive(state);
 
   // A split with no delimiter emits nothing and does nothing, so the badge must not claim
   // the step is doing work.
-  const splitActive = state.split !== 'none' && state.splitDelim.length > 0;
+  const splitActive = splitStepActive(state);
 
   // Same rule for dropnum: an empty suffix is never emitted, so the badge stays dark.
-  const dropNumActive = state.dropNumSuffix.length > 0;
+  const dropNumActive = dropNumStepActive(state);
 
   // `next` is clipboard-only: the other heads have no cursor, so offering the control would
   // promise a behaviour their runtime never performs (the same rule ClipboardModifierBody's
@@ -306,6 +312,19 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
               <div className="text-[11px] text-text-tertiary mt-1.5 leading-snug">
                 {IDENTITY_HINTS[head.kind](tt)}
               </div>
+              {/* Reserved validation line — ALWAYS mounted, so emptying the field cannot grow the
+                  identity block. An empty name builds a broken token ({clip:}), which the footer's
+                  Insert already refuses; this is what says WHY. English, like every other
+                  FieldError call site. winclip never shows it — chainHeadIsUsable is true for it. */}
+              <FieldError
+                show={!chainHeadIsUsable(head)}
+                className="text-[11px] mt-1.5"
+                style={{ color: 'var(--color-recording-fg)' }}
+              >
+                {head.kind === 'row' || head.kind === 'rownext'
+                  ? 'Name the column to build this token'
+                  : 'Name it to build this token'}
+              </FieldError>
             </div>
           )}
 

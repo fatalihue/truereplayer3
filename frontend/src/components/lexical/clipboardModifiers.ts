@@ -455,6 +455,17 @@ function sliceWords(content: string, from: number, to: number): string {
  *  asking about the reference field there would answer about a leftover from another mode. */
 const extractUsesRef = (s: TransformState): boolean => s.extract === 'line' || s.extract === 'word';
 
+/** Is a step doing work? A split with no delimiter emits nothing (see buildModifierParts), so a
+ *  badge must not claim it runs. Same rule for dropnum's empty suffix. Shared by ClipboardSurface
+ *  and ClipboardModifierBody so the two ladders can never disagree about what is lit. */
+export const splitStepActive = (s: TransformState): boolean => s.split !== 'none' && s.splitDelim.length > 0;
+export const dropNumStepActive = (s: TransformState): boolean => s.dropNumSuffix.length > 0;
+/** Unlike the two above, this is NOT a mirror of an emit gate — the Lines step emits through
+ *  several independent gates. It answers the narrower question the badge asks: is any control in
+ *  this step set to something other than its default? */
+export const linesStepActive = (s: TransformState): boolean =>
+  s.listPick !== 'none' || s.sort || s.dedupe || s.reverse || s.join;
+
 export const previewIsRuntimeDependent = (s: TransformState): boolean =>
   (extractUsesRef(s) && isArgRef(s.extractRef)) || (s.limit !== 'none' && isArgRef(s.limitRef));
 

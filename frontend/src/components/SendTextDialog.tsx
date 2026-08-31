@@ -290,11 +290,14 @@ function NamePromptPopover({
   kind,
   anchor,
   onInsert,
+  onAdvanced,
   onClose,
 }: {
   kind: 'var' | 'row' | 'rownext' | 'clip' | 'input';
   anchor: HTMLElement;
   onInsert: (token: string) => void;
+  /** Skip the bare token and go straight to the chain builder with this head. */
+  onAdvanced?: (head: ChainHead) => void;
   onClose: () => void;
 }) {
   const tt = useTt();
@@ -365,6 +368,17 @@ function NamePromptPopover({
     onClose();
   };
 
+  // The four chain-bearing prompt kinds ({var:}, {clip:}, {row:}, {rownext:}) can go straight to
+  // the chain builder instead of inserting a bare token and then discovering, from a tooltip,
+  // that clicking the chip is how you add transforms. 'input' is not chain-bearing —
+  // chainHeadKind() returns null for it and ChainHead has no such member — so it gets no button.
+  const advanced = () => {
+    const n = name.trim();
+    if (!n || !onAdvanced) return;
+    onAdvanced(kind === 'row' || kind === 'rownext' ? { kind, column: n } : { kind: kind as 'var' | 'clip', name: n });
+    onClose();
+  };
+
   const visibilityStyle: React.CSSProperties = pos
     ? { visibility: 'visible', left: pos.left, top: pos.top }
     : { visibility: 'hidden', left: 0, top: 0 };
@@ -414,7 +428,25 @@ function NamePromptPopover({
             : tt("Column header from the profile's Data table.", 'Cabeçalho de coluna da tabela Data do profile.')}
         </div>
       </div>
-      <div className="flex justify-end px-3 py-2 bg-bg-card border-t border-border-subtle">
+      {/* Two buttons, no fifth palette section: the chain builder gets an entry point for the
+          other heads right where their identity is already being typed. The `<span />` keeps
+          justify-between pinning Insert to the right when there is no Advanced button, so the
+          footer never shifts between kinds. */}
+      <div className="flex items-center justify-between gap-2 px-3 py-2 bg-bg-card border-t border-border-subtle">
+        {kind !== 'input' && onAdvanced ? (
+          <button
+            type="button"
+            onClick={advanced}
+            disabled={!name.trim()}
+            className="flex items-center gap-1 h-7 px-2 text-[11px] rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            data-tip={tt('Open the chain builder for this token — trim, split, lines, case…', 'Abrir o construtor de cadeia para este token — trim, corte, linhas, maiúsculas…')}
+          >
+            <Wand2 size={11} className="shrink-0" />
+            Advanced…
+          </button>
+        ) : (
+          <span />
+        )}
         <Button variant="primary" size="sm" onClick={commit} disabled={!name.trim()}>
           Insert
         </Button>
@@ -513,6 +545,17 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
   const openInsertSurface = useCallback(() => {
     setClipState(DEFAULT_TRANSFORM); // fresh every time, as the old popover did
     setClipHead({ kind: 'clipboard' });
+    setClipDirty(false);
+    setSurface({ mode: 'insert' });
+  }, []);
+
+  // Same insert session, arbitrary head. Reached from the name prompt's Advanced… button, so the
+  // identity is already non-empty and chainHeadIsUsable(head) holds on arrival; the surface still
+  // renders its own identity field and it can be emptied there, which is what the disabled
+  // Insert and the reserved error line inside the surface cover.
+  const openInsertSurfaceForHead = useCallback((head: ChainHead) => {
+    setClipState(DEFAULT_TRANSFORM);
+    setClipHead(head);
     setClipDirty(false);
     setSurface({ mode: 'insert' });
   }, []);
@@ -812,7 +855,10 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
             <Button
               variant="primary"
               onClick={handleSurfaceConfirm}
-              disabled={surface.mode === 'edit' && !clipDirty}
+              // Mirrors the guard that actually runs inside handleSurfaceConfirm, so an unusable
+              // head reads as blocked instead of as a button that does nothing. The guard itself
+              // stays: Ctrl+Enter routes through onCardKeyDown and never consults `disabled`.
+              disabled={!chainHeadIsUsable(clipHead) || (surface.mode === 'edit' && !clipDirty)}
             >
               {surface.mode === 'insert' ? 'Insert' : 'Apply'}
             </Button>
@@ -1187,6 +1233,9 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
         <NamePromptPopover
           kind={namePrompt.kind}
           anchor={namePrompt.anchor}
+          // Clear the prompt FIRST: the Esc router checks namePrompt before surface, so leaving
+          // both open would make one Esc close a prompt that is already off screen.
+          onAdvanced={(head) => { setNamePrompt(null); openInsertSurfaceForHead(head); }}
           onInsert={(token) => lexicalApiRef.current?.insertToken(token)}
           onClose={() => setNamePrompt(null)}
         />
