@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffe
 import ReactDOM from 'react-dom';
 import {
   Smile, Braces, BookmarkPlus, Trash2, ChevronRight, Wand2, Pencil, Search, Check, X, Type,
+  TriangleAlert,
 } from 'lucide-react';
 import EmojiPicker, { Theme } from 'emoji-picker-react';
 import type { EmojiClickData } from 'emoji-picker-react';
@@ -15,6 +16,9 @@ import {
   type LexicalEditorHandle,
 } from './lexical/LexicalTokenEditor';
 import type { ClipboardChipEditRequest } from './lexical/TokenChip';
+import { richFlavorSurvives } from './lexical/tokenNormalize';
+import { FieldError } from './common/FieldError';
+import { pickStatusNote } from '../utils/sendTextStatus';
 import { ClipboardSurface } from './lexical/ClipboardSurface';
 import {
   buildChainToken,
@@ -385,6 +389,11 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
   // Delivery mode: Rich (HTML where accepted) · Markdown (*bold* as plain text, for
   // WhatsApp/chat) · Plain. Formatting stays authored regardless; the mode picks the flavor.
   const [sendMode, setSendMode] = useState<SendMode>(initialMode);
+  // "Does the doc carry deliberate formatting?" — pushed by the editor on every non-selection
+  // change (onFormattingChange). The seed is REQUIRED, not defensive: OnChangePlugin skips its
+  // callback while `prevEditorState.isEmpty()`, so InitialContentPlugin's seeding update does
+  // NOT reach us and a reopened rich action would read as unformatted until the first edit.
+  const [hasFormatting, setHasFormatting] = useState<boolean>(() => initialHtml != null);
   // Rail: Insert (palette + snippets) is the default tab; Emoji is the other.
   const [railTab, setRailTab] = useState<'insert' | 'emoji'>('insert');
   const [snippets, setSnippets] = useState<Snippet[]>(loadSnippets);
@@ -562,6 +571,28 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
   const tokenCount = useMemo(() => countKnownTokens(text), [text]);
   const lineCount = text.length === 0 ? 0 : text.split('\n').length;
 
+  // Rich degradation: the engine attaches the HTML flavor only when the resolved payload is
+  // EXACTLY ONE text run (ActionExecution.cs:7163), so an {Enter}/{Tab}/{Delay:N} with text on
+  // both sides makes this action paste plain. Fires only when all three legs hold: there IS a
+  // rich flavor to lose, rich is the chosen delivery, and the payload is not one run.
+  // Markdown/Discord are deliberately excluded — they send KeyMarkdown as PLAIN text with
+  // sendHtml = null (ActionExecution.cs:3603-3609), so the ==1 gate never touches them.
+  // `sendMode === 'rich'` is a safe strict test because every caller normalises before us:
+  // ActionTable.tsx:924 passes `rowAction.sendMode ?? 'rich'`, and the Toolbar's add path takes
+  // the prop default. A null never reaches this state.
+  const richWillDegrade = useMemo(
+    () => hasFormatting && sendMode === 'rich' && !richFlavorSurvives(text),
+    [hasFormatting, sendMode, text],
+  );
+
+  // Right slot of the status strip — one line, first match wins. See utils/sendTextStatus.
+  // `tt` IS a dep: useTt returns a useCallback keyed on the language, so this recomputes when
+  // the user switches PT-BR/EN and exhaustive-deps stays satisfied.
+  const statusNote = useMemo(
+    () => pickStatusNote({ sendMode, hasFormatting, tokenCount, richWillDegrade }, tt),
+    [sendMode, hasFormatting, tokenCount, richWillDegrade, tt],
+  );
+
   // ── Esc router — ONE capture-phase priority ladder for every sub-layer:
   // name prompt → clipboard surface → snippet sub-form. DialogShell's card
   // handler (dialog close) only sees Esc when no layer is open. Chip popovers
@@ -715,7 +746,11 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
               initialText={initialText}
               initialHtml={initialHtml}
               richMode
+              // Plain is the ONLY mode that delivers nothing of the formatting; markdown and
+              // discord bake it into the text as literal markers (ActionExecution.cs:3603-3609).
+              formattingDelivered={sendMode !== 'plain'}
               onChange={setText}
+              onFormattingChange={setHasFormatting}
               onSubmit={handleConfirm}
               apiRef={lexicalApiRef}
               contentClassName="w-full h-full px-4 py-3 text-sm leading-[1.6] outline-none whitespace-pre-wrap break-words text-text-primary overflow-auto"
@@ -727,9 +762,26 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
             <span className="text-[11px] text-text-tertiary tabular-nums whitespace-nowrap">
               {text.length} chars · {tokenCount} token{tokenCount === 1 ? '' : 's'} · {lineCount} line{lineCount === 1 ? '' : 's'}
             </span>
-            <span className="text-[10px] text-text-tertiary truncate">
-              {tt('Click any chip in the editor to edit its parameters', 'Clique em qualquer chip no editor para editar seus parâmetros')}
-            </span>
+            {/* Right slot — ONE line, always mounted, message chosen by the ladder in
+                utils/sendTextStatus. FieldError gives the reserve (&nbsp; at rest), the truncate,
+                the aria-live=polite and the portal tip in one component; its className is fully
+                overridden because the default carries mt-2 + the recording ink, which belong to
+                form validation, not to a status strip. `min-w-0` is load-bearing: a flex child
+                will not shrink below its content, so without it the truncate never fires and the
+                counts on the left get pushed out instead.
+                warning-ink is LEGAL here and only here: this strip paints on bg-bg-card, one of
+                the three surfaces --color-warning-ink is resolved against. Do NOT lift this ink
+                into the editor body, which paints on bg-bg-input and is not in that list. */}
+            <FieldError
+              show={statusNote !== null}
+              className={`min-w-0 text-right text-[10px] ${statusNote?.tone === 'warn' ? 'text-warning-ink' : 'text-text-tertiary'}`}
+              tip={statusNote?.tip}
+            >
+              {statusNote?.tone === 'warn' && (
+                <TriangleAlert size={11} className="inline-block align-[-1px] mr-1 shrink-0" />
+              )}
+              {statusNote?.text}
+            </FieldError>
           </div>
         </div>
 

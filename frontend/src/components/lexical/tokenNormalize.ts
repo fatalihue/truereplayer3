@@ -207,3 +207,174 @@ export function splitTokenSegments(text: string): TokenSegment[] {
   if (lastIndex < text.length) segments.push({ kind: 'text', value: text.slice(lastIndex) });
   return segments;
 }
+
+// ── Will the RICH flavor survive this payload? ───────────────────────────────
+// SimulateClipboardPaste attaches the HTML flavor only when the resolved plain text
+// produced EXACTLY ONE non-empty text segment (Source/ActionExecution.cs:7163):
+//
+//     if (!string.IsNullOrEmpty(html) && segments.Count(s => !string.IsNullOrEmpty(s.Text)) == 1)
+//
+// so an {Enter}/{Tab}/{Delay:N} with text on BOTH sides silently downgrades the whole action
+// to a plain paste — and so does a payload of nothing BUT keys, since 0 is not 1 either.
+// Keys at the BORDERS are fine: their marker spans are stripped from the html by
+// PrepareRichHtmlForSend (ActionExecution.cs:7104-7120) and they act at the segment level,
+// around the paste.
+//
+// ORDERING — read this before touching the walk. ResolveTokens runs FIRST, over the whole
+// string (ActionExecution.cs:7141), and ParseSendTextSegments runs over its OUTPUT (:7150).
+// So {date}, {clipboard}, {var:x}, {random:1-10}, {pick:a|b} are already TEXT by the time the
+// segment walk happens and can never split. Neither can their VALUES: that resolve pass is
+// called with escapeBracesInSubstitution: true, which rewrites '{' / '}' inside substituted
+// values to the private-use sentinels below (EscapeBracesForParser, :8136), and the walk emits
+// sentinels as literal text. A clipboard holding "{enter}" therefore stays text.
+//
+// THIS PREDICTS THE AUTHORED PAYLOAD, AND THE ENGINE JUDGES THE RESOLVED ONE. They differ, in
+// BOTH directions, and neither error is hypothetical — do not "simplify" this to a guarantee:
+//
+//   * OVER-warn — a token that resolves to the EMPTY string between two splitters collapses a
+//     predicted 2-run payload to 1 run at replay. At least four paths resolve empty: an unset
+//     {var:x}, {random:a-b} with unparsable bounds (:6867), {pick:} with no usable option
+//     (:6884-6886), and {input:Label} on the static Test-Action path where InputProvider is
+//     null (:6767-6768).
+//   * UNDER-warn — the same empty resolution can collapse a predicted 1-run payload to 0 runs,
+//     and `== 1` rejects 0 as well: `{clip:sig}{Enter}` counts 1 here and pastes plain when the
+//     slot is empty. Deletion can also CREATE a splitter: `a{en{var:x}ter}b` with x unset
+//     resolves to `a{enter}b`, which is 2 runs at replay and 1 run here.
+//
+// So this is a statement about STRUCTURE, which is the actionable part and the overwhelmingly
+// common case, not a proof about a particular run. Callers must word themselves accordingly:
+// the grid badge keeps asserting the configured delivery and carries the doubt in its colour
+// and tooltip, rather than asserting an outcome this cannot actually guarantee.
+
+// Ported key-for-key from SpecialKeyPlaceholders (ActionExecution.cs:7994-8010) WITHOUT the
+// braces — the walk re-wraps the bare name exactly as the C# lookup does — plus 'delay', whose
+// branch sits immediately above the key branch in ParseSendTextSegments. A STRICT SUBSET of
+// KNOWN_TOKEN_NAMES above: every name here also resolves, but not every name there splits.
+// ('delay' is in the set for completeness; the delay branch below returns before the set is
+// consulted, mirroring the C#'s branch order.)
+export const SEGMENTING_TOKEN_NAMES: ReadonlySet<string> = new Set([
+  'delay',
+  'enter', 'tab', 'space', 'backspace', 'delete', 'escape', 'esc',
+  'home', 'end', 'pageup', 'pagedown', 'up', 'down', 'left', 'right',
+]);
+
+// ActionExecution.cs:8016-8017 — OpenBraceSentinel / CloseBraceSentinel. Runtime-only (nothing
+// the user can author contains them), ported anyway so the walk is comparable line for line.
+// Written as escapes on purpose: the C# source holds the RAW U+0001/U+0002 control characters,
+// and a copy-paste of those into this file is invisible in every diff and editor.
+const OPEN_BRACE_SENTINEL = '\u0001';
+const CLOSE_BRACE_SENTINEL = '\u0002';
+
+// int.TryParse(s, out n) under the default NumberStyles.Integer: AllowLeadingSign plus
+// AllowLeadingWhite/AllowTrailingWhite, no group separators, and FAILURE outside Int32.
+// The whitespace class is spelled out rather than written as \s: JS \s also matches U+00A0,
+// U+FEFF, U+1680, U+2000-200A, U+2028/9, U+202F, U+205F and U+3000, none of which C# accepts —
+// it allows only U+0009-U+000D and U+0020. With \s, `{enter: 5}` would repeat 5 times here
+// and once in the engine.
+function tryParseInt32(s: string): number | null {
+  if (!/^[ \t\n\v\f\r]*[+-]?[0-9]+[ \t\n\v\f\r]*$/.test(s)) return null;
+  const n = Number(s.replace(/^[ \t\n\v\f\r]+|[ \t\n\v\f\r]+$/g, ''));
+  if (!Number.isSafeInteger(n) || n < -2147483648 || n > 2147483647) return null;
+  return n;
+}
+
+export type SendTextSegment =
+  | { kind: 'text'; text: string }
+  | { kind: 'key'; name: string; count: number }
+  | { kind: 'delay'; ms: number };
+
+/** Line-by-line port of ParseSendTextSegments (ActionExecution.cs:8026-8117). */
+export function parseSendTextSegments(text: string): SendTextSegment[] {
+  const segments: SendTextSegment[] = [];
+  let i = 0;
+
+  // AppendTextChar (ActionExecution.cs:8120-8132) — extends the last segment when it is a text
+  // segment, otherwise starts a new one. This merging is what creates the RUNS the ==1 test
+  // counts, so it is the load-bearing half of the port.
+  const appendTextChar = (c: string) => {
+    const last = segments[segments.length - 1];
+    if (last && last.kind === 'text') last.text += c;
+    else segments.push({ kind: 'text', text: c });
+  };
+
+  while (i < text.length) {
+    const ch = text[i];
+
+    // Sentinels stand in for literal '{' / '}' from placeholder substitution — plain text.
+    if (ch === OPEN_BRACE_SENTINEL) { appendTextChar('{'); i++; continue; }
+    if (ch === CLOSE_BRACE_SENTINEL) { appendTextChar('}'); i++; continue; }
+
+    if (ch === '{') {
+      // Find closing brace (skip sentinel close-braces — they belong to substituted text).
+      let closeBrace = -1;
+      for (let j = i + 1; j < text.length; j++) {
+        if (text[j] === '}') { closeBrace = j; break; }
+        // Sentinel inside what looked like a placeholder — bail out, treat '{' as literal.
+        if (text[j] === OPEN_BRACE_SENTINEL || text[j] === CLOSE_BRACE_SENTINEL) break;
+      }
+      if (closeBrace === -1) { appendTextChar(ch); i++; continue; }
+
+      const inner = text.slice(i + 1, closeBrace); // e.g. "enter", "enter:5", "delay:500"
+      let name = inner;
+      const colonIdx = inner.indexOf(':');
+      let hasValidParam = false;
+      let paramValue = 0;
+      if (colonIdx >= 0) {
+        name = inner.slice(0, colonIdx);
+        const n = tryParseInt32(inner.slice(colonIdx + 1));
+        if (n !== null && n > 0) { hasValidParam = true; paramValue = n; }
+      }
+
+      // Both C# lookups are OrdinalIgnoreCase (the Equals and the dictionary's comparer).
+      const lower = name.toLowerCase();
+
+      // {delay:N} — invalid/missing N → 500 ms, not a 1 ms no-op. Cap 60 s.
+      if (lower === 'delay') {
+        segments.push({ kind: 'delay', ms: hasValidParam ? Math.min(paramValue, 60000) : 500 });
+        i = closeBrace + 1;
+        continue;
+      }
+
+      // {key} or {key:N} — C#: SpecialKeyPlaceholders.TryGetValue("{" + name + "}", ...).
+      if (SEGMENTING_TOKEN_NAMES.has(lower)) {
+        // The C# pushes `count` SEPARATE key segments; carrying the count on one segment is the
+        // ONE representational difference in this port, and it cannot move the answer: the ==1
+        // test counts segments whose Text is non-empty, and no key segment has Text.
+        segments.push({ kind: 'key', name: lower, count: hasValidParam ? Math.min(paramValue, 100) : 1 });
+        i = closeBrace + 1;
+        continue;
+      }
+
+      // Unknown placeholder, treat '{' as regular text. Note i++ and NOT closeBrace + 1: the
+      // scan re-anchors one char in, so `{x{enter}` still finds the {enter} — the same
+      // re-anchor rule 3 of splitTokenSegments above describes.
+      appendTextChar(ch);
+      i++;
+    } else {
+      appendTextChar(ch);
+      i++;
+    }
+  }
+
+  return segments;
+}
+
+/**
+ * The engine's own count, verbatim: `segments.Count(s => !string.IsNullOrEmpty(s.Text))`.
+ * IsNullOrEmpty, NOT IsNullOrWhiteSpace — a run of only spaces still counts.
+ */
+export function countSendTextTextSegments(text: string): number {
+  let count = 0;
+  for (const s of parseSendTextSegments(text)) if (s.kind === 'text' && s.text.length > 0) count++;
+  return count;
+}
+
+/**
+ * Will a rich (HTML) flavor attached to this payload actually be sent?
+ * Mirrors `... == 1` at ActionExecution.cs:7163 — note EXACTLY one, so 0 is a drop too.
+ * Answers only the segmentation half; the caller supplies "is there a rich flavor at all".
+ * Read the banner above for the two ways this can disagree with a particular run.
+ */
+export function richFlavorSurvives(text: string): boolean {
+  return countSendTextTextSegments(text) === 1;
+}

@@ -46,6 +46,7 @@ import { $dfs } from '@lexical/utils';
 import {
   Bold, Italic, Underline, Strikethrough, Code, List, ListOrdered, Link2, Check, X,
 } from 'lucide-react';
+import { useTt } from '../../state/LanguageContext';
 import { TokenNode, $createTokenNode, $isTokenNode } from './TokenNode';
 import { ClipboardChipEditContext, type ClipboardChipEditRequest } from './TokenChip';
 // The whitelist of names the backend resolves, and the walker that finds them the way the
@@ -115,6 +116,14 @@ export interface LexicalEditorHandle {
 interface LexicalTokenEditorProps {
   initialText: string;
   onChange: (text: string) => void;
+  /**
+   * Rich mode only: fires with the answer to "does the doc carry DELIBERATE formatting?"
+   * on every non-selection change — i.e. the same bit getHtml()/getMarkdown() gate on
+   * ($hasDeliberateFormatting). It is the GATE only: $generateHtmlFromNodes stays on demand
+   * at confirm/snippet time, so the per-keystroke HTML export this component deliberately
+   * avoids is NOT reintroduced. Omit the prop and nothing extra is computed.
+   */
+  onFormattingChange?: (hasFormatting: boolean) => void;
   onSubmit?: () => void;
   apiRef: React.MutableRefObject<LexicalEditorHandle | null>;
   /** ContentEditable classes. Default = the compact SheetPanel look; the Insert
@@ -128,6 +137,18 @@ interface LexicalTokenEditorProps {
   /** Rich-text authoring (Insert Text dialog only): RichTextPlugin + formatting
    *  toolbar + list/link nodes. The SheetPanel browserText surface stays plain. */
   richMode?: boolean;
+  /**
+   * Rich mode only: does the ACTIVE delivery mode carry the formatting to the target at all?
+   * false = Plain (ActionExecution.cs:3608 nulls KeyHtml), and the toolbar renders its
+   * "authored, not sent" treatment. markdown/discord pass TRUE — they drop the HTML too, but
+   * they still deliver the formatting, as literal *bold* markers baked into the text.
+   *
+   * A separate prop, NOT a widening of richMode: richMode picks initialConfig.nodes and
+   * RichTextPlugin-vs-PlainTextPlugin, which LexicalComposer reads once at build time, so
+   * making it track the delivery mode would remount the editor and destroy the document the
+   * user authored. Default true, so SheetPanel's plain call site stays byte-identical.
+   */
+  formattingDelivered?: boolean;
   /** Rich mode: rebuild the document from a saved KeyHtml fragment instead of
    *  the plain initialText (token marker spans re-chip via TokenNode.importDOM). */
   initialHtml?: string | null;
@@ -625,8 +646,9 @@ const AUTO_LINK_MATCHERS = [
 // collapses the editor selection they act on. Active states track the selection
 // via an update listener. The link flow is a tiny inline URL input — apply on
 // Enter, cancel on Esc; '{' is rejected (tokens inside link URLs are unsupported).
-function RichToolbarPlugin() {
+function RichToolbarPlugin({ formattingDelivered }: { formattingDelivered: boolean }) {
   const [editor] = useLexicalComposerContext();
+  const tt = useTt();
   const [formats, setFormats] = useState({
     bold: false, italic: false, underline: false, strikethrough: false, code: false,
     link: false, ul: false, ol: false,
@@ -716,6 +738,13 @@ function RichToolbarPlugin() {
 
   return (
     <div className="flex items-center gap-0.5 px-1.5 py-1 border-b border-border-subtle shrink-0">
+      {/* CHANNEL 1 of 2 — the whole control group dims. The buttons stay ENABLED and fully
+          functional: the formatting is still authored, still exported by getHtml(), and comes
+          straight back the moment the user leaves Plain. Disabling them would make the dialog
+          lie in the other direction. Hover lifts the group so it never reads as dead. */}
+      <div className={`flex items-center gap-0.5 transition-opacity ${
+        formattingDelivered ? '' : 'opacity-45 hover:opacity-75'
+      }`}>
       {fmtBtn('bold', formats.bold, Bold, 'Bold (Ctrl+B)')}
       {fmtBtn('italic', formats.italic, Italic, 'Italic (Ctrl+I)')}
       {fmtBtn('underline', formats.underline, Underline, 'Underline (Ctrl+U)')}
@@ -786,6 +815,27 @@ function RichToolbarPlugin() {
           </button>
         </div>
       )}
+      </div>
+
+      {/* CHANNEL 2 of 2 — a literal LABEL, not a colour. A dim alone is not a signal: the
+          accent-vs-tertiary gap falls under 3:1 in a large share of the presets, and this app's
+          locked rule is that an on/off state gets ink AND a second channel. Text survives every
+          theme.
+          The pill supplies its OWN bg-bg-card: this row paints on bg-bg-input, and a derived
+          token is only valid on the surfaces it was RESOLVED against — tertiary ink on bg-card
+          is a pairing used app-wide, tertiary ink on bg-input is not one this app has measured.
+          Visible label stays ENGLISH; the explanation is tt(en, ptBr) through the portal. */}
+      {!formattingDelivered && (
+        <span
+          className="ml-2 shrink-0 inline-flex items-center h-5 px-1.5 rounded bg-bg-card border border-border-default text-[10px] font-semibold uppercase tracking-wide text-text-tertiary whitespace-nowrap"
+          data-tip={tt(
+            'Plain delivery types raw text — this formatting is not sent. It stays saved with the action and comes back when you pick Rich, Markdown or Discord.',
+            'A entrega Plain digita texto cru — esta formatação não é enviada. Ela continua salva na action e volta quando você escolher Rich, Markdown ou Discord.',
+          )}
+        >
+          Not sent in Plain
+        </span>
+      )}
     </div>
   );
 }
@@ -817,7 +867,9 @@ export function LexicalTokenEditor({
   contentClassName = 'w-full h-full px-3 py-2 text-sm leading-[1.5] outline-none whitespace-pre-wrap break-words text-text-primary overflow-auto',
   placeholderClassName = 'absolute top-2 left-3 text-sm text-text-disabled pointer-events-none select-none',
   onClipboardChipEdit,
+  onFormattingChange,
   richMode = false,
+  formattingDelivered = true,
   initialHtml = null,
 }: LexicalTokenEditorProps) {
   const initialConfig = {
@@ -871,7 +923,7 @@ export function LexicalTokenEditor({
       {/* Context flows through Lexical's decorator portals, so TokenChip sees it. */}
       <ClipboardChipEditContext.Provider value={onClipboardChipEdit ?? null}>
       <div className={richMode ? 'w-full h-full flex flex-col' : 'relative w-full h-full'}>
-        {richMode && <RichToolbarPlugin />}
+        {richMode && <RichToolbarPlugin formattingDelivered={formattingDelivered} />}
         <div className="relative flex-1 min-h-0">
           {richMode ? (
             <RichTextPlugin
@@ -902,6 +954,13 @@ export function LexicalTokenEditor({
               // Rich mode uses the single-newline block serializer (see
               // $serializePlainForSend); plain mode stays byte-identical to 2.8.0.
               onChange(richMode ? $serializePlainForSend() : $getRoot().getTextContent());
+              // Same read, one more walk: $hasDeliberateFormatting is a $dfs().some() with an
+              // early exit on the first formatted node, against a $serializePlainForSend that
+              // already walks the whole tree on this very tick. What is NOT added here is
+              // $generateHtmlFromNodes — the HTML export stays on demand (getHtml, above).
+              // A format-only toggle still reaches us: OnChangePlugin fires whenever
+              // dirtyElements/dirtyLeaves is non-empty, and toggling bold dirties the TextNode.
+              if (richMode && onFormattingChange) onFormattingChange($hasDeliberateFormatting());
             });
           }}
         />
