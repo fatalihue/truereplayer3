@@ -541,7 +541,12 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
     const raf = requestAnimationFrame(() => {
       const api = lexicalApiRef.current;
       if (!api) return;
-      baselineRef.current = { text: initialText, html: api.getHtml() };
+      // BOTH legs come from the editor's own export. Using the initialText PROP for the text leg
+      // compared a prop against an export: LexicalComposer seeds a paragraph before
+      // InitialContentPlugin runs, so a doc whose payload ends in a newline (or any case where
+      // $serializePlainForSend does not round-trip the prop byte for byte) reported a freshly
+      // opened Edit dialog as dirty and prompted on every Esc.
+      baselineRef.current = { text: api.getText(), html: api.getHtml() };
     });
     return () => cancelAnimationFrame(raf);
   }, [initialText]);
@@ -1373,7 +1378,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
           className="w-[380px] rounded-lg border border-border-subtle bg-bg-surface p-4 shadow-xl"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="text-[13px] text-text-primary font-medium mb-1.5">Unsaved text</div>
+          <div className="text-[13px] text-text-primary font-medium mb-1.5">{tt('Unsaved text', 'Texto não salvo')}</div>
           <div className="text-[12px] text-text-secondary leading-relaxed mb-4">
             {tt('This message has changes that were never applied. Closing now discards the text, its formatting and the delivery mode.',
                 'Esta mensagem tem alterações que nunca foram aplicadas. Fechar agora descarta o texto, a formatação e o modo de entrega.')}
@@ -1383,11 +1388,11 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                 delete row where React REUSED the node and autoFocus never fired. */}
             <Button variant="ghost" size="sm" autoFocus
               onClick={() => { setConfirmDiscard(false); lexicalApiRef.current?.focus(); }}>
-              Keep editing
+              {tt('Keep editing', 'Continuar editando')}
             </Button>
             <Button variant="secondary" size="sm"
               onClick={() => { setConfirmDiscard(false); onClose(); }}>
-              Discard
+              {tt('Discard', 'Descartar')}
             </Button>
             {/* Repeats the footer's own gate and label so it cannot fire handleConfirm's
                 early-return branch on a whitespace-only payload. */}

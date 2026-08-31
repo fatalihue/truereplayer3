@@ -16,10 +16,13 @@
 //      {date:x}, {counter:5} and {clipboard:} are literal too because those resolvers match an
 //      exact string or require a non-empty modifier group. Previewing them as resolved would
 //      print a value replay never pastes. TOKEN_ARG_GATE below re-classifies them.
-//   2. {row:col} DEPENDS ON THE RUN, NOT THE TABLE. runCtx.RowData is populated only inside a
-//      data loop; outside one, every {row:col} resolves to EMPTY at replay no matter what the
-//      table holds. So the cell is shown only when the profile actually loops over data, and
-//      even then it is labelled as the FIRST row rather than "the" row.
+//   2. {row:col} DEPENDS ON THE RUN, NOT THE TABLE — and "loop over data off" does NOT mean
+//      "no row". With the toggle ON the engine runs one iteration per row, so the first
+//      iteration is row 1 and previewing it is honest, labelled as the FIRST row rather than
+//      "the" row. With it OFF the engine uses Model B, a cursor that persists BETWEEN runs and
+//      advances each time (ActionExecution.cs:2299-2330; the Data panel says the same in as many
+//      words), so a row IS substituted — just not one this editor can know. Only an empty table
+//      is a knowable nothing.
 //   3. STATE FROM THE LAST RUN IS NOT STATE FROM THIS ONE. Variables are cleared at the start of
 //      every run, so a {var:x} value is historical and says so. Slots survive across runs, so
 //      they do not.
@@ -28,7 +31,7 @@
 // surface's field holds a bare "@" while the token still carries a number. This module parses a
 // token STRING, and parseModifierParts only sets those fields when the argument already passes
 // isArgRef — so a branch for it would be dead code wearing the costume of diligence.
-import { splitTokenSegments, SEGMENTING_TOKEN_NAMES } from './tokenNormalize';
+import { splitTokenSegments, parseSendTextSegments, SEGMENTING_TOKEN_NAMES } from './tokenNormalize';
 import {
   applyTransformPreview,
   parseChainToken,
@@ -48,7 +51,8 @@ export type PendingReason =
   | 'runtime-clipreading' // the clipboard read has not come back yet
   | 'runtime-counter'    // loop iteration — no value outside a run
   | 'runtime-row'        // the action's own grid row — no value outside a run
-  | 'runtime-norowloop'  // {row:col} in a profile that does not loop over data
+  | 'runtime-rowcursor'  // {row:col} with loop-over-data OFF — the row comes from the run cursor
+  | 'runtime-norows'     // {row:col} against a Data table with no rows at all
   | 'runtime-cursor'     // an auto-advancing read whose cursor lives in the run
   | 'unmodeled-chain'    // a chain this builder cannot model, so it will not guess
   | 'unknown-column'     // no such column in the data table
@@ -63,7 +67,8 @@ export interface PreviewSources {
   /** Current clipboard text, and whether the read has come back. */
   clipRaw: string;
   clipReady: boolean;
-  /** The profile's data table. `loopOverData` decides whether {row:col} resolves at all. */
+  /** The profile's data table. `loopOverData` picks WHICH row the engine uses, not whether
+   *  it uses one at all — see the banner. */
   dataTable: { headers: string[]; rows: string[][]; loopOverData: boolean };
   /** Live run-state snapshot: variables are cleared each run, slots survive. */
   variables: Record<string, string>;
@@ -84,14 +89,21 @@ const TOKEN_ARG_GATE: Record<string, RegExp> = {
   // ClipboardTokenRegex: \{clipboard(?::([^}]+))?\} — the modifier group needs at least one
   // character, so `{clipboard:}` is literal.
   clipboard: /^clipboard(:[^}]+)?$/i,
-  // The four name-first regexes require the tight name charset, then an optional chain.
-  var: new RegExp(`^var:${NAME_ARG}(:.*)?$`, 'i'),
-  clip: new RegExp(`^clip:${NAME_ARG}(:.*)?$`, 'i'),
-  rownext: new RegExp(`^rownext:${NAME_ARG}(:.*)?$`, 'i'),
+  // The four name-first regexes require the tight name charset, then an optional chain. The
+  // chain is spelled (?::([^}]+))? — at least ONE character — so a trailing bare colon
+  // ({var:x:}) does not match and the engine pastes it literally.
+  var: new RegExp(`^var:${NAME_ARG}(:[^}]+)?$`, 'i'),
+  clip: new RegExp(`^clip:${NAME_ARG}(:[^}]+)?$`, 'i'),
+  rownext: new RegExp(`^rownext:${NAME_ARG}(:[^}]+)?$`, 'i'),
   // Bare {row} is a literal Replace; {row:Column[:chain]} is the regex.
-  row: new RegExp(`^row(:${NAME_ARG}(:.*)?)?$`, 'i'),
-  // WinClipTokenRegex requires digits, with a (?![0-9]) guard after them.
-  winclip: /^winclip:[0-9]+$/i,
+  row: new RegExp(`^row(:${NAME_ARG}(:[^}]+)?)?$`, 'i'),
+  // WinClipTokenRegex is \{winclip(?::(\d+))?(?::((?![0-9])[^}]+))?\} — BOTH groups optional, so
+  // {winclip} (index defaults to 1), {winclip:upper} and {winclip:2:upper} all resolve. Gating on
+  // a mandatory digit run made every chain buildWinClipToken emits preview as "literal" — i.e.
+  // the panel told the user a token the chip popover had just built would paste verbatim.
+  // The negative lookahead is what keeps {winclip:2-4} and a trailing bare colon literal on both
+  // sides, so it has to be carried over too.
+  winclip: /^winclip(:[0-9]+)?(:(?![0-9])[^}]+)?$/i,
   // RandomTokenRegex: \{random:(\d+)-(\d+)\}
   random: /^random:[0-9]+-[0-9]+$/i,
   // PickTokenRegex: \{pick:([^}]+)\}
@@ -113,6 +125,16 @@ function engineAccepts(token: string): boolean {
 
 function arg(token: string, n = 1): string {
   return token.slice(1, -1).split(':')[n] ?? '';
+}
+
+// {input:...} needs its OWN accessor: InputTokenRegex is \{input:([^}|]+)(?:\|menu:([^}]*))?\},
+// so the label runs to the first '|' and MAY CONTAIN COLONS. Splitting on ':' like arg() does
+// turns {input:Enviar|menu:sim,nao} into the label "Enviar|menu" and {input:Hora (HH:MM)} into
+// "Hora (HH" — which then also becomes the wrong key in askedThisMessage, so the {var:Enviar}
+// that reads the answer back is not recognised as shadowed.
+function inputLabel(token: string): string {
+  const m = /^input:([^}|]+)/i.exec(token.slice(1, -1));
+  return m ? m[1].trim() : '';
 }
 
 // int.TryParse plus the engine's `n > 0` test — the same shape parseSendTextSegments uses.
@@ -153,16 +175,30 @@ function clockNow(kind: 'date' | 'time' | 'datetime', now: Date): string {
  */
 export function resolveMessagePreview(text: string, src: PreviewSources, now: Date): PreviewPiece[] {
   const out: PreviewPiece[] = [];
-  // {input:Label} answers land in the run's variable store under Label, so a later {var:Label}
-  // in the same payload must NOT be previewed from the last run's value.
+  const segments = splitTokenSegments(text);
+
+  // {input:Label} answers land in the run's variable store under Label, so a {var:Label} in the
+  // same payload must NOT be previewed from the last run's value.
+  //
+  // A PRE-PASS, not an as-encountered set: ResolveTokensAsync runs ResolveInputTokensAsync as a
+  // WHOLE-STRING pass before ResolveRunStateTokens ever sees the text, so the engine does not
+  // care which came first. Collecting left-to-right would leave "{var:X} … {input:X}" previewing
+  // the last run's value for a variable the current run is about to overwrite.
   const askedThisMessage = new Set<string>();
+  for (const seg of segments) {
+    if (seg.kind !== 'token') continue;
+    if (seg.value.slice(1, -1).split(':')[0].toLowerCase() !== 'input') continue;
+    if (!engineAccepts(seg.value)) continue;
+    askedThisMessage.add(inputLabel(seg.value).toLowerCase());
+  }
+
   const push = (p: PreviewPiece) => {
     const last = out[out.length - 1];
     if (p.kind === 'text' && last && last.kind === 'text') last.text += p.text;
     else out.push(p);
   };
 
-  for (const seg of splitTokenSegments(text)) {
+  for (const seg of segments) {
     if (seg.kind !== 'token') { push({ kind: 'text', text: seg.value }); continue; }
     const token = seg.value;
     const name = token.slice(1, -1).split(':')[0].toLowerCase();
@@ -175,7 +211,12 @@ export function resolveMessagePreview(text: string, src: PreviewSources, now: Da
 
     // Keys and delays are not text at all.
     if (name === 'delay') {
-      push({ kind: 'pending', token, label: `pause ${arg(token) || '500'} ms`, reason: 'delay' });
+      // Through the ported walk, never the raw argument: the engine falls back to 500 ms on an
+      // unparsable parameter and clamps at 60 s, so {Delay:1500000} is a sixty-second pause and
+      // {Delay:abc} is half a second — echoing the text would have said 1500000 and "abc".
+      const first = parseSendTextSegments(token)[0];
+      const ms = first && first.kind === 'delay' ? first.ms : 500;
+      push({ kind: 'pending', token, label: `pause ${ms} ms`, reason: 'delay' });
       continue;
     }
     if (SEGMENTING_TOKEN_NAMES.has(name)) {
@@ -204,13 +245,18 @@ export function resolveMessagePreview(text: string, src: PreviewSources, now: Da
         continue;
       }
       case 'input':
-        // The answer is stored in the run's variable store under this label, so a {var:Label}
-        // LATER in the same message reads the fresh answer, not the previous run's value.
-        askedThisMessage.add(arg(token).trim().toLowerCase());
-        push({ kind: 'pending', token, label: arg(token), reason: 'ask' });
+        push({ kind: 'pending', token, label: inputLabel(token), reason: 'ask' });
         continue;
       case 'winclip':
-        push({ kind: 'pending', token, label: `history item ${arg(token)}`, reason: 'runtime' });
+        // The index is optional and defaults to 1 (ActionExecution.cs:6715). Read it off the
+        // gate's own shape rather than arg(), which would return a chain segment for
+        // {winclip:upper}. Engine-only either way — there is nothing here to resolve against.
+        push({
+          kind: 'pending',
+          token,
+          label: `history item ${/^winclip:([0-9]+)/i.exec(token.slice(1, -1))?.[1] ?? '1'}`,
+          reason: 'runtime',
+        });
         continue;
       default:
         break;
@@ -257,15 +303,26 @@ export function resolveMessagePreview(text: string, src: PreviewSources, now: Da
         push({ kind: 'pending', token, label: `next row of ${head.column}`, reason: 'runtime-cursor' });
         continue;
       case 'row': {
-        // RowData is populated ONLY inside a data loop. Without one, replay pastes empty
-        // regardless of what the table holds — so showing a cell here would be a fabrication.
-        if (!src.dataTable.loopOverData) {
-          push({ kind: 'pending', token, label: head.column, reason: 'runtime-norowloop' });
-          continue;
-        }
         const idx = findColumn(src.dataTable.headers, head.column);
         if (idx < 0) {
           push({ kind: 'pending', token, label: head.column, reason: 'unknown-column' });
+          continue;
+        }
+        // An empty table is the ONE case where the answer is knowable and negative: RowData is
+        // built from a row that does not exist, so replay pastes nothing.
+        if (src.dataTable.rows.length === 0) {
+          push({ kind: 'pending', token, label: head.column, reason: 'runtime-norows' });
+          continue;
+        }
+        // WHICH row depends on the run, and there are two modes. Loop ON ("batch"): one
+        // iteration per row, so the first iteration is row 1 and previewing it is honest.
+        // Loop OFF is NOT "no row" — it is Model B, the cursor: the engine still stamps
+        // _currentRowData, from a row position that persists BETWEEN runs in RunCursorService
+        // and advances each time (ActionExecution.cs:2299-2330, and the Data panel says so:
+        // "Loop off: each run advances one row"). The editor cannot see that cursor, so the
+        // only honest answer is to name the mode instead of showing row 1.
+        if (!src.dataTable.loopOverData) {
+          push({ kind: 'pending', token, label: head.column, reason: 'runtime-rowcursor' });
           continue;
         }
         raw = src.dataTable.rows[0]?.[idx] ?? '';

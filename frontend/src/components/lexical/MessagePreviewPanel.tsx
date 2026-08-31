@@ -33,9 +33,13 @@ const REASON_TIP: Record<PendingReason, [string, string]> = {
   'runtime-clipreading': ['Reading the clipboard…', 'Lendo a área de transferência…'],
   'runtime-counter': ['The loop iteration — there is no value outside a run.', 'A iteração do loop — não existe valor fora de uma execução.'],
   'runtime-row': ["The action's own grid row — there is no value outside a run.", 'A linha da action na grade — não existe valor fora de uma execução.'],
-  'runtime-norowloop': [
-    'This profile does not loop over data, so the engine resolves this to nothing at replay no matter what the Data table holds. Turn on "loop over data" to use it.',
-    'Este profile não percorre a tabela de dados, então o motor resolve isto como vazio no replay, não importa o que a tabela tenha. Ligue "loop over data" para usar.',
+  'runtime-rowcursor': [
+    'Loop over data is off, so each run uses the NEXT row of the Data table and advances. Which row that is carries over between runs, so the editor cannot show it.',
+    'O loop sobre dados está desligado, então cada execução usa a PRÓXIMA linha da tabela e avança. Qual linha é isso continua de uma execução para a outra, então o editor não tem como mostrar.',
+  ],
+  'runtime-norows': [
+    'The Data table has no rows, so this resolves to nothing at replay.',
+    'A tabela de dados não tem linhas, então isto resolve como vazio no replay.',
   ],
   'runtime-cursor': [
     'Auto-advancing: which line it takes depends on how many times it has already run, and that position lives in the run.',

@@ -116,11 +116,6 @@ export function mergeSnippets(existing: Snippet[], incoming: Snippet[]): Snippet
   return [...existing, ...added];
 }
 
-/** Replace the library outright, re-minting any id that is missing or duplicated in the file. */
-export function replaceSnippets(incoming: Snippet[]): Snippet[] {
-  return mergeSnippets([], incoming);
-}
-
 /** Filename for the saved file — same slug shape ThemeEditor uses. */
 export function snippetExportFilename(now: Date): string {
   const p = (n: number) => (n < 10 ? `0${n}` : String(n));

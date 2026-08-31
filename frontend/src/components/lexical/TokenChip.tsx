@@ -1,7 +1,10 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import { useLexicalNodeSelection } from '@lexical/react/useLexicalNodeSelection';
-import { $getNodeByKey, createCommand, COMMAND_PRIORITY_LOW, type LexicalCommand, type NodeKey } from 'lexical';
+import {
+  $getNodeByKey, $getSelection, $isNodeSelection, createCommand, COMMAND_PRIORITY_LOW,
+  type LexicalCommand, type NodeKey,
+} from 'lexical';
 import { useTt } from '../../state/LanguageContext';
 import { TokenNode } from './TokenNode';
 import { TokenChipPopover } from './TokenChipPopover';
@@ -55,7 +58,17 @@ export function TokenChip({ nodeKey, token }: { nodeKey: NodeKey; token: string 
   // Lexical's own selection model IS the keyboard affordance — arrowing onto an inline, isolated,
   // keyboard-selectable decorator already builds a NodeSelection on it. All this does is mirror
   // that into a class, which is the half that was missing: the state existed and was invisible.
-  const [isSelected] = useLexicalNodeSelection(nodeKey);
+  //
+  // Gated on a NODE selection, not on useLexicalNodeSelection alone. That hook answers
+  // LexicalNode.isSelected(), which is true for ANY selection containing the node — so a
+  // Ctrl+A or a drag across the text would light every chip in the document with the same
+  // treatment that means "Enter opens this one", which Enter would then not do.
+  const [isNodeSelected] = useLexicalNodeSelection(nodeKey);
+  const [selectionIsNodeKind, setSelectionIsNodeKind] = useState(false);
+  useEffect(() => editor.registerUpdateListener(({ editorState }) => {
+    setSelectionIsNodeKind(editorState.read(() => $isNodeSelection($getSelection())));
+  }), [editor]);
+  const isSelected = isNodeSelected && selectionIsNodeKind;
 
   // Resync the live ref when the chip's token changes externally (other edits,
   // undo). Without this, opening the popover after such a change would commit

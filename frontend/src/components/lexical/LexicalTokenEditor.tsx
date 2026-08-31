@@ -115,6 +115,14 @@ export interface LexicalEditorHandle {
    * (default: *bold* _italic_ ~strike~ `code`) or 'discord' (**bold** _italic_ ~~strike~~ `code`).
    */
   getMarkdown: (variant?: 'whatsapp' | 'discord') => string | null;
+  /**
+   * The plain payload exactly as onChange would report it. The dialog's unsaved-work baseline
+   * needs this rather than the initialText prop: the seeding round-trip is not guaranteed
+   * byte-identical (rich mode serializes through $serializePlainForSend, and a saved KeyHtml is
+   * re-imported and re-exported), so a prop-vs-export comparison reports a freshly opened Edit
+   * dialog as dirty and prompts on every Esc. Compare export against export.
+   */
+  getText: () => string;
 }
 
 interface LexicalTokenEditorProps {
@@ -393,8 +401,11 @@ function InitialContentPlugin({ initialText, initialHtml }: { initialText: strin
 // Exposes imperative methods to the parent via apiRef.
 function ImperativeAPIPlugin({
   apiRef,
+  richMode,
 }: {
   apiRef: React.MutableRefObject<LexicalEditorHandle | null>;
+  /** Picks the same serializer onChange uses, so getText() and the reported text agree. */
+  richMode: boolean;
 }) {
   const [editor] = useLexicalComposerContext();
 
@@ -435,6 +446,15 @@ function ImperativeAPIPlugin({
         return $generateNodesFromDOM(editor, dom);
       }),
       focus: () => editor.focus(),
+      // Exactly what OnChangePlugin reports, so a baseline taken here and a later `text` state
+      // are the same kind of value.
+      getText: () => {
+        let out = '';
+        editor.getEditorState().read(() => {
+          out = richMode ? $serializePlainForSend() : $getRoot().getTextContent();
+        });
+        return out;
+      },
       // On-demand HTML export (confirm-time, not per-keystroke). null when the doc
       // has no formatting, so unformatted actions stay plain on disk.
       getHtml: () => {
@@ -457,7 +477,7 @@ function ImperativeAPIPlugin({
     return () => {
       apiRef.current = null;
     };
-  }, [editor, apiRef]);
+  }, [editor, apiRef, richMode]);
 
   return null;
 }
@@ -1015,7 +1035,7 @@ export function LexicalTokenEditor({
           }}
         />
         <InitialContentPlugin initialText={initialText} initialHtml={richMode ? initialHtml : null} />
-        <ImperativeAPIPlugin apiRef={apiRef} />
+        <ImperativeAPIPlugin apiRef={apiRef} richMode={richMode} />
         <TokenPastePlugin richMode={richMode} />
         <TokenAutoTransformPlugin />
         <ChipKeyboardPlugin />

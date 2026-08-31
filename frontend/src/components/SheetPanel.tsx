@@ -285,6 +285,17 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   // from browserTextEditorRef: only one of the two surfaces is ever mounted, but a shared ref
   // would leave a stale handle behind after a type change under an open sheet.
   const sendTextEditorRef = useRef<LexicalEditorHandle | null>(null);
+  // Bumped by the [action] seed effect below, and part of BOTH Lexical editors' remount keys.
+  //
+  // Those editors are UNCONTROLLED after their one-shot seed, while every other field here is a
+  // controlled input. So when the seed effect re-runs — it does on every actions:updated push,
+  // which is the deliberate liveness the effect's own comment describes — a controlled field
+  // visibly snaps back to the stored value, but a Lexical surface would keep showing what the
+  // user had typed while `key` / `browserText` had already been reset underneath it. Save then
+  // writes the stored value and the typed text is gone with nothing on screen having changed.
+  // Keying the editors on this nonce puts them back in step: whatever the seed writes is what
+  // the editor redraws, so what you see stays what Save will write.
+  const [seedNonce, setSeedNonce] = useState(0);
   const [textMatch, setTextMatch] = useState('');
   const [textMode, setTextMode] = useState<TextMode>('exact');
   const [newTab, setNewTab] = useState(false);
@@ -673,6 +684,9 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (action) {
+      // Every re-seed remounts the two Lexical surfaces so they cannot drift from the state
+      // this effect is about to overwrite — see seedNonce's declaration.
+      setSeedNonce((n) => n + 1);
       setActionType(action.actionType);
       // #1 — Detect any text= prefix variant and split into mode + raw value.
       // Gated on selector-carrying types: a SendText payload starting with "text=" is
@@ -3665,7 +3679,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                        InitialContentPlugin's didInit guard means the editor would keep drawing
                        the pre-undo text. action.browserText is the DISK value, so it does not
                        change while the user types and this does not remount per keystroke. */
-                    key={`bt:${actionIndex ?? -1}:${action?.id ?? ''}:${action?.browserText ?? ''}`}
+                    key={`bt:${actionIndex ?? -1}:${seedNonce}`}
                     initialText={browserText}
                     onChange={setBrowserText}
                     apiRef={browserTextEditorRef}
@@ -3977,7 +3991,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                          the previous row's text while `key` state had already moved on.
                          action.key is the DISK value — it does not change while the user types,
                          so this does not remount per keystroke. */
-                      key={`st:${actionIndex ?? -1}:${action?.id ?? ''}:${action?.key ?? ''}`}
+                      key={`st:${actionIndex ?? -1}:${seedNonce}`}
                       initialText={key}
                       onChange={setKey}
                       apiRef={sendTextEditorRef}
