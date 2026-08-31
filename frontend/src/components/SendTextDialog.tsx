@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffe
 import ReactDOM from 'react-dom';
 import {
   Smile, Braces, BookmarkPlus, Trash2, ChevronRight, Wand2, Pencil, Search, Check, X, Type,
-  TriangleAlert,
+  TriangleAlert, Eye, Download, Upload,
 } from 'lucide-react';
 import EmojiPicker, { Theme } from 'emoji-picker-react';
 import type { EmojiClickData } from 'emoji-picker-react';
@@ -21,6 +21,13 @@ import { tokenTip } from './lexical/tokenDescriptions';
 import { FieldError } from './common/FieldError';
 import { pickStatusNote } from '../utils/sendTextStatus';
 import { ClipboardSurface } from './lexical/ClipboardSurface';
+import { MessagePreviewPanel } from './lexical/MessagePreviewPanel';
+import {
+  buildSnippetExport,
+  parseSnippetImport,
+  mergeSnippets,
+  snippetExportFilename,
+} from './lexical/snippetTransfer';
 import {
   buildChainToken,
   parseChainToken,
@@ -44,6 +51,9 @@ interface SendTextDialogProps {
 }
 
 type SendMode = 'rich' | 'markdown' | 'plain' | 'discord';
+
+// Insert (the token palette + snippets) | Emoji | Preview (the resolved message).
+type RailTab = 'insert' | 'emoji' | 'preview';
 
 interface Snippet {
   id: string;
@@ -473,13 +483,16 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
   // NOT reach us and a reopened rich action would read as unformatted until the first edit.
   const [hasFormatting, setHasFormatting] = useState<boolean>(() => initialHtml != null);
   // Rail: Insert (palette + snippets) is the default tab; Emoji is the other.
-  const [railTab, setRailTab] = useState<'insert' | 'emoji'>('insert');
+  const [railTab, setRailTab] = useState<RailTab>('insert');
   const [snippets, setSnippets] = useState<Snippet[]>(loadSnippets);
   const [snippetName, setSnippetName] = useState('');
   const [savingSnippet, setSavingSnippet] = useState(false);
   const [editingSnippetId, setEditingSnippetId] = useState<string | null>(null);
   const [deletingSnippetId, setDeletingSnippetId] = useState<string | null>(null);
   const [snippetFilter, setSnippetFilter] = useState('');
+  // One-line outcome for the last export/import, in a reserved slot so it cannot push the list.
+  const [snippetTransferNote, setSnippetTransferNote] = useState('');
+  const snippetFileRef = useRef<HTMLInputElement>(null);
   // The three "More …" disclosures persist across opens and restarts. They used to reset to
   // collapsed every time, which cost two clicks per dialog to anyone who reaches for the arrow
   // keys or {winclip:N} daily. Lazy initializer — pass the FUNCTION, so localStorage is read
@@ -663,6 +676,56 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
       s.name.toLowerCase().includes(q) || s.text.toLowerCase().includes(q),
     );
   }, [snippets, snippetFilter]);
+
+  // ── Snippet export / import ──
+  // Browser mechanism, matching ThemeEditor: a Blob + a.download to save, a hidden file input +
+  // FileReader to load. WebView2 handles downloads through its own DownloadStarting flow, which
+  // the app's deny-all permission handler deliberately does not touch.
+  const handleExportSnippets = useCallback(() => {
+    if (snippets.length === 0) return;
+    const blob = new Blob([JSON.stringify(buildSnippetExport(snippets), null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = snippetExportFilename(new Date());
+    a.click();
+    URL.revokeObjectURL(url);
+    setSnippetTransferNote(tt(`Saved ${snippets.length} snippets`, `${snippets.length} snippets salvos`));
+  }, [snippets, tt]);
+
+  const handleImportSnippets = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Reset the input straight away so picking the SAME file twice still fires onChange.
+    e.target.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onerror = () => setSnippetTransferNote(tt('Could not read that file', 'Não foi possível ler esse arquivo'));
+    reader.onload = () => {
+      const result = parseSnippetImport(String(reader.result ?? ''));
+      if (!result.ok) {
+        // Each reason is a DIFFERENT statement — "not a snippet file" is fixable by picking
+        // another file, "unsupported version" is not.
+        const REASONS: Record<typeof result.reason, [string, string]> = {
+          'not-json': ['That file is not valid JSON', 'Esse arquivo não é um JSON válido'],
+          'not-a-snippet-file': ['That is not a snippets file', 'Esse arquivo não é de snippets'],
+          'unsupported-version': ['That file is from a newer version', 'Esse arquivo é de uma versão mais nova'],
+          'no-snippets': ['No usable snippets in that file', 'Nenhum snippet aproveitável nesse arquivo'],
+        };
+        setSnippetTransferNote(tt(REASONS[result.reason][0], REASONS[result.reason][1]));
+        return;
+      }
+      // ADD, never replace: the file is one library and what is on screen is another, and there
+      // is no undo here. Ids that collide are re-minted by mergeSnippets.
+      const merged = mergeSnippets(snippets, result.snippets);
+      setSnippets(merged);
+      saveSnippets(merged);
+      const n = result.snippets.length;
+      setSnippetTransferNote(result.skipped > 0
+        ? tt(`Added ${n}, skipped ${result.skipped} incomplete`, `${n} adicionados, ${result.skipped} incompletos ignorados`)
+        : tt(`Added ${n} snippets`, `${n} snippets adicionados`));
+    };
+    reader.readAsText(file);
+  }, [snippets, tt]);
 
   const handleInsertSnippet = useCallback((snippet: Snippet) => {
     // Rich snippets re-enter as formatted nodes; pre-rich ones as plain text+chips.
@@ -951,22 +1014,33 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
           </div>
         </div>
 
-        {/* ── Rail: Insert (palette + snippets) | Emoji ── */}
+        {/* ── Rail: Insert (palette + snippets) | Emoji | Preview ── */}
         <div className="w-[30%] min-w-[300px] max-w-[440px] shrink-0 border-l border-border-subtle flex flex-col min-h-0">
           <div className="p-2 pb-1.5 shrink-0">
-            <SegmentedControl<'insert' | 'emoji'>
+            <SegmentedControl<RailTab>
               grow
               ariaLabel="Insert panel"
               options={[
                 { value: 'insert', label: 'Insert', icon: <Braces size={12} /> },
                 { value: 'emoji', label: 'Emoji', icon: <Smile size={12} /> },
+                {
+                  value: 'preview',
+                  label: 'Preview',
+                  icon: <Eye size={12} />,
+                  tip: tt(
+                    'The message with its tokens resolved, and a labelled placeholder for every one that cannot be.',
+                    'A mensagem com os tokens resolvidos, e um marcador nomeado para cada um que não dá para resolver.',
+                  ),
+                },
               ]}
               value={railTab}
               onChange={setRailTab}
             />
           </div>
 
-          {railTab === 'emoji' ? (
+          {railTab === 'preview' ? (
+            <MessagePreviewPanel text={text} />
+          ) : railTab === 'emoji' ? (
             <div className="flex-1 min-h-0 overflow-hidden">
               <EmojiPicker
                 onEmojiClick={handleEmojiClick}
@@ -1062,15 +1136,56 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
               <div className="flex-1 min-h-[140px] flex flex-col border-t border-border-subtle">
                 <div className="px-3 py-2 flex items-center justify-between shrink-0">
                   <span className="label-micro text-text-tertiary">Snippets</span>
-                  <button
-                    type="button"
-                    onClick={() => setSavingSnippet(true)}
-                    disabled={!text.trim()}
-                    className="w-6 h-6 flex items-center justify-center rounded text-text-tertiary hover:text-accent-light hover:bg-bg-card transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                    data-tip={tt('Save current text as a snippet', 'Salvar o texto atual como snippet')}
+                  <div className="flex items-center gap-0.5">
+                    {/* Export / import. The library lived in localStorage and nowhere else, so a
+                        reinstall or cleared site data lost it silently — profiles and themes both
+                        export, snippets did not. Same browser mechanism ThemeEditor uses. */}
+                    <button
+                      type="button"
+                      onClick={handleExportSnippets}
+                      disabled={snippets.length === 0}
+                      className="w-6 h-6 flex items-center justify-center rounded text-text-tertiary hover:text-accent-light hover:bg-bg-card transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      data-tip={tt('Save all snippets to a file', 'Salvar todos os snippets em um arquivo')}
+                    >
+                      <Download size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => snippetFileRef.current?.click()}
+                      className="w-6 h-6 flex items-center justify-center rounded text-text-tertiary hover:text-accent-light hover:bg-bg-card transition-colors"
+                      data-tip={tt('Load snippets from a file — they are ADDED to the ones you have', 'Carregar snippets de um arquivo — eles são SOMADOS aos que você já tem')}
+                    >
+                      <Upload size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSavingSnippet(true)}
+                      disabled={!text.trim()}
+                      className="w-6 h-6 flex items-center justify-center rounded text-text-tertiary hover:text-accent-light hover:bg-bg-card transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      data-tip={tt('Save current text as a snippet', 'Salvar o texto atual como snippet')}
+                    >
+                      <BookmarkPlus size={13} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Hidden picker — the file input is never shown; the Upload button clicks it. */}
+                <input
+                  ref={snippetFileRef}
+                  type="file"
+                  accept="application/json,.json"
+                  className="hidden"
+                  onChange={handleImportSnippets}
+                />
+
+                {/* Import outcome — reserved line, so a message appearing cannot push the list. */}
+                <div className="px-3 shrink-0">
+                  <FieldError
+                    show={snippetTransferNote !== ''}
+                    className="text-[10px] text-text-tertiary"
                   >
-                    <BookmarkPlus size={13} />
-                  </button>
+                    {snippetTransferNote}
+                  </FieldError>
                 </div>
 
                 {savingSnippet && (
@@ -1148,6 +1263,9 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                             onClick={() => handleInsertSnippet(s)}
                             disabled={deletingSnippetId === s.id}
                             className="flex-1 text-left min-w-0 disabled:cursor-default"
+                            // The row shows two clamped lines; the tip carries the whole snippet,
+                            // which is the only way to tell two long ones apart before inserting.
+                            data-tip={s.text}
                           >
                             <div className="text-xs font-medium text-text-primary truncate">{s.name}</div>
                             <div className="text-[11px] text-text-tertiary line-clamp-2 mt-0.5">{s.text}</div>
