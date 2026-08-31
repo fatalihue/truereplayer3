@@ -466,6 +466,16 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
   // {Variable…}/{Row column…} name prompt.
   const [namePrompt, setNamePrompt] = useState<{ kind: 'var' | 'row' | 'rownext' | 'clip' | 'input'; anchor: HTMLElement } | null>(null);
   const lexicalApiRef = useRef<LexicalEditorHandle | null>(null);
+  // Unsaved-work gate. Rendered as a SIBLING of DialogShell (see the end of this file) and
+  // reached ONLY through DialogShell.canClose — never through onClose, which the shell calls
+  // after it has already committed to leaving.
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  // Dirty baseline. Compared against what the editor EXPORTS, never against the incoming props:
+  // initialHtml is re-imported and re-serialized by Lexical ($generateNodesFromDOM →
+  // $generateHtmlFromNodes) and rich mode serializes plain text through $serializePlainForSend,
+  // so neither round-trip is guaranteed byte-identical — comparing to the props would report a
+  // freshly opened Edit dialog as dirty and prompt on every Esc. Same reasoning as clipDirty.
+  const baselineRef = useRef<{ text: string; html: string | null } | null>(null);
 
   // Pick the emoji picker's built-in LIGHT/DARK variant from the ACTIVE theme's
   // base surface — NOT Theme.AUTO (the app theme is user-picked, not OS-driven).
@@ -476,7 +486,20 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
 
   useEffect(() => {
     lexicalApiRef.current?.focus();
-  }, []);
+    // Baseline on the NEXT frame, not synchronously: InitialContentPlugin seeds the document
+    // inside editor.update() and Lexical commits the pending editor state in a microtask, so a
+    // same-tick getHtml() can still read the empty document. rAF runs after microtasks, so the
+    // snapshot is always of the seeded doc. Reading `initialText` (a prop) rather than the
+    // `text` state keeps this suppression-free — closing over the state would put it in the dep
+    // array and re-snapshot the baseline on every keystroke, which would make the guard never
+    // fire. Both call sites mount this dialog fresh, so the prop is stable for its lifetime.
+    const raf = requestAnimationFrame(() => {
+      const api = lexicalApiRef.current;
+      if (!api) return;
+      baselineRef.current = { text: initialText, html: api.getHtml() };
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [initialText]);
 
   const insertAtCursor = useCallback((insertText: string) => {
     lexicalApiRef.current?.insertText(insertText);
@@ -613,6 +636,24 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
     onConfirm(text, lexicalApiRef.current?.getHtml() ?? null, lexicalApiRef.current?.getMarkdown(sendMode === 'discord' ? 'discord' : 'whatsapp') ?? null, sendMode);
   };
 
+  // Is there work a close would destroy? Evaluated LAZILY — only on a dismissal attempt —
+  // because getHtml() walks the whole document through the serializer, which is exactly why the
+  // flavors are exported at confirm time and not per keystroke (see handleConfirm above).
+  // A plain function, not a useCallback: no dependency array, no exhaustive-deps surface.
+  const isDirty = (): boolean => {
+    if (sendMode !== initialMode) return true;
+    const base = baselineRef.current;
+    if (!base) {
+      // Baseline never taken (the rAF has not run yet — no user input is possible in that
+      // window). Fall back to the props: never worse than the previous no-guard behaviour.
+      return text !== initialText;
+    }
+    if (text !== base.text) return true;
+    // Formatting-only edits (bold applied to existing words) do not move the plain text at all,
+    // so the HTML flavor is the only witness for them.
+    return (lexicalApiRef.current?.getHtml() ?? null) !== base.html;
+  };
+
   // Status strip counts. Lines: 0 for an empty payload, else newline count + 1.
   const tokenCount = useMemo(() => countKnownTokens(text), [text]);
   const lineCount = text.length === 0 ? 0 : text.split('\n').length;
@@ -640,12 +681,14 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
   );
 
   // ── Esc router — ONE capture-phase priority ladder for every sub-layer:
-  // name prompt → clipboard surface → snippet sub-form. DialogShell's card
+  // confirm prompt → name prompt → clipboard surface → snippet sub-form. DialogShell's card
   // handler (dialog close) only sees Esc when no layer is open. Chip popovers
   // (TokenChipPopover) own their Esc via their own capture listener — when one
   // is open (data-token-popover marker) this router stands down entirely.
+  // The confirm prompt is the TOP rung because it is the visually topmost layer (z-[60] over
+  // the shell's z-50) and it can legitimately be open at the same time as a snippet sub-form.
   const escLayerActive =
-    namePrompt !== null || surface !== null ||
+    confirmDiscard || namePrompt !== null || surface !== null ||
     savingSnippet || deletingSnippetId !== null || editingSnippetId !== null;
   useEffect(() => {
     if (!escLayerActive) return;
@@ -654,7 +697,8 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
       if (document.querySelector('[data-token-popover]')) return;
       e.preventDefault();
       e.stopPropagation();
-      if (namePrompt) setNamePrompt(null);
+      if (confirmDiscard) { setConfirmDiscard(false); lexicalApiRef.current?.focus(); }
+      else if (namePrompt) setNamePrompt(null);
       else if (surface) closeSurface();
       else if (savingSnippet) setSavingSnippet(false);
       else if (deletingSnippetId !== null) setDeletingSnippetId(null);
@@ -662,7 +706,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
     };
     document.addEventListener('keydown', onEsc, true);
     return () => document.removeEventListener('keydown', onEsc, true);
-  }, [escLayerActive, namePrompt, surface, savingSnippet, deletingSnippetId, editingSnippetId, closeSurface]);
+  }, [escLayerActive, confirmDiscard, namePrompt, surface, savingSnippet, deletingSnippetId, editingSnippetId, closeSurface]);
 
   // ── Palette chip renderer ──
   const renderChip = (chip: PaletteChip, extraClass = '') => (
@@ -713,6 +757,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
   );
 
   return (
+    <>
     <DialogShell
       icon={<Type size={14} style={{ color: 'var(--color-action-sendtext-fg)' }} />}
       title={mode === 'add' ? 'Insert Text' : 'Edit Text'}
@@ -722,6 +767,20 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
       // Text-entry dialog: a stray scrim click must not discard typed text —
       // dismissal is Esc or Cancel only.
       closeOnBackdrop={false}
+      // Pre-close VETO, not an onClose that declines: DialogShell's onClose runs after the shell
+      // has committed to leaving (leaving=true plus a fallback timer), so refusing there fades
+      // the dialog out and leaves it mounted — an invisible modal over the whole app. Same shape
+      // as AutomationPanel's.
+      // No sub-layer check is needed: every sub-layer owns Esc on a capture-phase listener that
+      // stopPropagation()s (the router above; TokenChipPopover's own), so the shell can only
+      // reach here when nothing else owns the key — and the only other route in is the footer
+      // Cancel, which is rendered only while the clipboard surface is CLOSED.
+      canClose={() => {
+        if (confirmDiscard) return false;  // the prompt already up owns the decision
+        if (!isDirty()) return true;
+        setConfirmDiscard(true);
+        return false;
+      }}
       footerHint={
         surface ? (
           <span className="flex items-center gap-3">
@@ -741,7 +800,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
           <>{tt('Ctrl+Enter to confirm · Esc to cancel', 'Ctrl+Enter para confirmar · Esc para cancelar')}</>
         )
       }
-      footer={
+      footer={(requestClose) => (
         // Keyed fragments so the two footers never reconcile against each other. Unkeyed,
         // React matched them by position: child[1] is the PRIMARY "Insert" here and the
         // SECONDARY "Cancel" below, both <Button>, so the same node was reused and its
@@ -777,13 +836,13 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                 ]}
               />
             </div>
-            <Button variant="secondary" onClick={onClose}>Cancel</Button>
+            <Button variant="secondary" onClick={requestClose}>Cancel</Button>
             <Button variant="primary" onClick={handleConfirm} disabled={!text.trim()}>
               {mode === 'add' ? 'Add' : 'Save'}
             </Button>
           </React.Fragment>
         )
-      }
+      )}
       onCardKeyDown={(e) => {
         // Ctrl+Enter routes by surface: clipboard surface open → Insert/Apply;
         // otherwise confirm the dialog (incl. from inside the editor, whose
@@ -847,7 +906,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
         </div>
 
         {/* ── Rail: Insert (palette + snippets) | Emoji ── */}
-        <div className="w-[300px] shrink-0 border-l border-border-subtle flex flex-col min-h-0">
+        <div className="w-[30%] min-w-[300px] max-w-[440px] shrink-0 border-l border-border-subtle flex flex-col min-h-0">
           <div className="p-2 pb-1.5 shrink-0">
             <SegmentedControl<'insert' | 'emoji'>
               grow
@@ -884,11 +943,17 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
               />
             </div>
           ) : (
-            <div className="flex-1 min-h-0 flex flex-col">
+            <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
               {/* Palette — four real sections, most-used first. Values carries no
                   disclosure, so the two fixed-height sections sit above the two that
-                  can grow and expanding one never displaces a chip you were aiming at. */}
-              <div className="shrink-0 overflow-y-auto pb-1">
+                  can grow and expanding one never displaces a chip you were aiming at.
+                  Scrolls only when it has to: natural height while there is room, and it is
+                  the side that gives ground when there isn't. It used to be `shrink-0` with
+                  no max-height, which made its own overflow-y-auto unreachable — a box sized
+                  to its own content never overflows — so the squeeze landed on the snippets
+                  list below instead, and with all three "More …" rows open in a short window
+                  that list collapsed to nothing. */}
+              <div className="min-h-0 overflow-y-auto pb-1">
                 {sectionLabel('Keys & timing')}
                 <div className="flex flex-wrap gap-1 px-3 pb-1">
                   {KEY_CHIPS.map((c) => renderChip(c))}
@@ -941,8 +1006,14 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                 )}
               </div>
 
-              {/* Snippets — permanently visible below the palette. */}
-              <div className="flex-1 min-h-0 flex flex-col border-t border-border-subtle">
+              {/* Snippets — permanently visible below the palette, and it keeps a FLOOR: the
+                  palette above is the side that gives ground and scrolls. Without the floor,
+                  `flex: 1 1 0%` here means basis 0 — it absorbs no shrink, it simply never
+                  receives any growth once the palette is as tall as the column. 140px is the
+                  header row + the search row + one full snippet row; px is safe in this subtree
+                  because nothing here reads --ui-font-size (label-micro, the chips and the
+                  snippet rows are all hardcoded 11-12px). */}
+              <div className="flex-1 min-h-[140px] flex flex-col border-t border-border-subtle">
                 <div className="px-3 py-2 flex items-center justify-between shrink-0">
                   <span className="label-micro text-text-tertiary">Snippets</span>
                   <button
@@ -1121,5 +1192,46 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
         />
       )}
     </DialogShell>
+    {/* Unsaved-text gate. A SIBLING of the shell, not a child: the card's Tab trap and its own
+        Esc handler must not own a prompt that asks whether to leave that card. Reached only via
+        canClose; "Discard" then calls onClose DIRECTLY, because by that point the decision is a
+        completed user action. No native confirm() — window.confirm races the shell's Escape
+        handling, which is why the in-panel overlay pattern exists. */}
+    {confirmDiscard && (
+      <div
+        className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
+        onClick={() => { setConfirmDiscard(false); lexicalApiRef.current?.focus(); }}
+      >
+        <div
+          className="w-[380px] rounded-lg border border-border-subtle bg-bg-surface p-4 shadow-xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="text-[13px] text-text-primary font-medium mb-1.5">Unsaved text</div>
+          <div className="text-[12px] text-text-secondary leading-relaxed mb-4">
+            {tt('This message has changes that were never applied. Closing now discards the text, its formatting and the delivery mode.',
+                'Esta mensagem tem alterações que nunca foram aplicadas. Fechar agora descarta o texto, a formatação e o modo de entrega.')}
+          </div>
+          <div className="flex justify-end gap-2">
+            {/* autoFocus is safe here: this overlay mounts fresh every time, unlike the snippet
+                delete row where React REUSED the node and autoFocus never fired. */}
+            <Button variant="ghost" size="sm" autoFocus
+              onClick={() => { setConfirmDiscard(false); lexicalApiRef.current?.focus(); }}>
+              Keep editing
+            </Button>
+            <Button variant="secondary" size="sm"
+              onClick={() => { setConfirmDiscard(false); onClose(); }}>
+              Discard
+            </Button>
+            {/* Repeats the footer's own gate and label so it cannot fire handleConfirm's
+                early-return branch on a whitespace-only payload. */}
+            <Button variant="primary" size="sm" disabled={!text.trim()}
+              onClick={() => { setConfirmDiscard(false); handleConfirm(); }}>
+              {mode === 'add' ? 'Add' : 'Save'}
+            </Button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

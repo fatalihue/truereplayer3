@@ -25,7 +25,8 @@ import { uiZoom } from '../utils/zoomSpace';
 // SendTextDialog uses that package's Theme/EmojiStyle enums as runtime VALUES, so importing those
 // statically would keep the package in the entry chunk anyway.
 const SendTextDialog = lazy(() => import('./SendTextDialog').then(m => ({ default: m.SendTextDialog })));
-import { SendTextPreview, sendTextDeliveryBadge } from './SendTextPreview';
+import { SendTextPreview } from './SendTextPreview';
+import { sendTextDeliveryBadge } from './lexical/deliveryBadge';
 import { RunProfileDialog } from './RunProfileDialog';
 import { KeystrokeCaptureDialog } from './KeystrokeCaptureDialog';
 import { PauseDialog } from './PauseDialog';
