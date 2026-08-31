@@ -17,6 +17,7 @@ import {
 } from './lexical/LexicalTokenEditor';
 import type { ClipboardChipEditRequest } from './lexical/TokenChip';
 import { richFlavorSurvives } from './lexical/tokenNormalize';
+import { tokenTip } from './lexical/tokenDescriptions';
 import { FieldError } from './common/FieldError';
 import { pickStatusNote } from '../utils/sendTextStatus';
 import { ClipboardSurface } from './lexical/ClipboardSurface';
@@ -205,39 +206,45 @@ interface PaletteChip {
   label: string;
   insert?: string;                                       // direct-insert seed (byte-identical to 2.7.x)
   prompt?: 'var' | 'row' | 'rownext' | 'clip' | 'input'; // opens the name/label prompt instead
-  tip: [string, string];                      // tt(en, ptBr)
 }
 
+// The token a palette chip stands for. Descriptions used to live inline on every chip, one copy
+// each, and they vanished the moment the token BECAME a chip in the editor; they now come from
+// the one shared table in lexical/tokenDescriptions. Direct chips ARE their seed; a prompt chip
+// has no seed yet, so a synthetic one carries the right NAME — and, for {row:x}, lands on the
+// data-column VARIANT rather than the bare action-row counter, which is what that chip means.
+const paletteToken = (chip: PaletteChip): string => chip.insert ?? `{${chip.prompt}:x}`;
+
 const VALUE_CHIPS: PaletteChip[] = [
-  { label: 'Date', insert: '{date}', tip: ['Current date (dd/MM/yyyy)', 'Data atual (dd/MM/aaaa)'] },
-  { label: 'Time', insert: '{time}', tip: ['Current time (HH:mm:ss)', 'Hora atual (HH:mm:ss)'] },
-  { label: 'DateTime', insert: '{datetime}', tip: ['Current date and time', 'Data e hora atuais'] },
-  { label: 'Random', insert: '{random:1-10}', tip: ['Fresh random number each run', 'Número aleatório novo a cada execução'] },
+  { label: 'Date', insert: '{date}' },
+  { label: 'Time', insert: '{time}' },
+  { label: 'DateTime', insert: '{datetime}' },
+  { label: 'Random', insert: '{random:1-10}' },
   // Seed is PRE-normalized ({Pick:...}, args verbatim) — direct chips insert as text and only
   // a normalization fixed point survives the load gate as a chip. Click the chip to edit the
   // options one-per-line in its popover.
-  { label: 'Pick', insert: '{Pick:a|b|c}', tip: ['Types ONE of the options, chosen at random each run — click the chip to edit the list', 'Digita UMA das opções, sorteada a cada execução — clique no chip para editar a lista'] },
+  { label: 'Pick', insert: '{Pick:a|b|c}' },
 ];
 
 const KEY_CHIPS: PaletteChip[] = [
-  { label: 'Enter', insert: '{enter}', tip: ['Press Enter', 'Pressiona Enter'] },
-  { label: 'Tab', insert: '{tab}', tip: ['Press Tab', 'Pressiona Tab'] },
-  { label: 'Delay', insert: '{delay:500}', tip: ['Pause typing for N ms', 'Pausa a digitação por N ms'] },
+  { label: 'Enter', insert: '{enter}' },
+  { label: 'Tab', insert: '{tab}' },
+  { label: 'Delay', insert: '{delay:500}' },
 ];
 
 const MORE_KEY_CHIPS: PaletteChip[] = [
-  { label: 'Space', insert: '{space}', tip: ['Press Space', 'Pressiona Espaço'] },
-  { label: 'Backspace', insert: '{backspace}', tip: ['Press Backspace', 'Pressiona Backspace'] },
-  { label: 'Delete', insert: '{delete}', tip: ['Press Delete', 'Pressiona Delete'] },
-  { label: 'Escape', insert: '{escape}', tip: ['Press Escape', 'Pressiona Esc'] },
-  { label: 'Home', insert: '{home}', tip: ['Press Home', 'Pressiona Home'] },
-  { label: 'End', insert: '{end}', tip: ['Press End', 'Pressiona End'] },
-  { label: 'PageUp', insert: '{pageup}', tip: ['Press Page Up', 'Pressiona Page Up'] },
-  { label: 'PageDown', insert: '{pagedown}', tip: ['Press Page Down', 'Pressiona Page Down'] },
-  { label: 'Up', insert: '{up}', tip: ['Press Up arrow', 'Pressiona seta ↑'] },
-  { label: 'Down', insert: '{down}', tip: ['Press Down arrow', 'Pressiona seta ↓'] },
-  { label: 'Left', insert: '{left}', tip: ['Press Left arrow', 'Pressiona seta ←'] },
-  { label: 'Right', insert: '{right}', tip: ['Press Right arrow', 'Pressiona seta →'] },
+  { label: 'Space', insert: '{space}' },
+  { label: 'Backspace', insert: '{backspace}' },
+  { label: 'Delete', insert: '{delete}' },
+  { label: 'Escape', insert: '{escape}' },
+  { label: 'Home', insert: '{home}' },
+  { label: 'End', insert: '{end}' },
+  { label: 'PageUp', insert: '{pageup}' },
+  { label: 'PageDown', insert: '{pagedown}' },
+  { label: 'Up', insert: '{up}' },
+  { label: 'Down', insert: '{down}' },
+  { label: 'Left', insert: '{left}' },
+  { label: 'Right', insert: '{right}' },
 ];
 
 // Clipboard-sourced tokens — grouped under the Clipboard section next to {clipboard}
@@ -245,29 +252,29 @@ const MORE_KEY_CHIPS: PaletteChip[] = [
 // Clip slot stays inline: it is the consumer end of the Copy to Slot action and the
 // capture hotkey, so hiding it here would hide half of that feature.
 const CLIPBOARD_CHIPS: PaletteChip[] = [
-  { label: 'Clip slot…', prompt: 'clip', tip: ['Selection captured by a Copy to Slot action or the capture hotkey', 'Seleção capturada por uma action Copy to Slot ou pelo hotkey de captura'] },
+  { label: 'Clip slot…', prompt: 'clip' },
 ];
 
 // Collapsed: {clipboard:next} is a niche auto-advancing read, and {winclip:N} depends
 // on a Windows setting being on and can surface anything recently copied.
 const MORE_CLIPBOARD_CHIPS: PaletteChip[] = [
-  { label: 'Clipboard line (next)', insert: '{clipboard:next}', tip: ['Auto-advancing: each use takes the NEXT line of the clipboard instead of the whole thing (1st use → line 1, 2nd → line 2…). Copy something new and it starts over; past the last line it resolves empty. Blank lines are skipped. Click the chip after inserting to add transforms.', 'Auto-avança: cada uso pega a PRÓXIMA linha do clipboard em vez do conteúdo inteiro (1º uso → linha 1, 2º → linha 2…). Copiou algo novo, recomeça; depois da última linha resolve vazio. Linhas em branco são puladas. Clique no chip depois de inserir para adicionar transformações.'] },
-  { label: 'Clipboard history', insert: '{winclip:1}', tip: ['Windows Win+V history — {winclip:1} is the last thing copied (click the chip to change which item). Needs clipboard history on; may hold anything recently copied, including passwords.', 'Histórico do Windows (Win+V) — {winclip:1} é a última coisa copiada (clique no chip para trocar o item). Precisa do histórico ligado; pode conter qualquer coisa copiada recentemente, inclusive senhas.'] },
+  { label: 'Clipboard line (next)', insert: '{clipboard:next}' },
+  { label: 'Clipboard history', insert: '{winclip:1}' },
 ];
 
 const RUN_STATE_CHIPS: PaletteChip[] = [
-  { label: 'Variable…', prompt: 'var', tip: ['Value stored by a Set Variable action', 'Valor gravado por uma action Set Variable'] },
-  { label: 'Counter', insert: '{counter}', tip: ['Current loop iteration (1, 2, 3…)', 'Iteração atual do loop (1, 2, 3…)'] },
-  { label: 'Ask input…', prompt: 'input', tip: ['Prompt for a value at replay time (pauses the run)', 'Pergunta um valor durante a execução (pausa o replay)'] },
+  { label: 'Variable…', prompt: 'var' },
+  { label: 'Counter', insert: '{counter}' },
+  { label: 'Ask input…', prompt: 'input' },
 ];
 
 // Collapsed: every one of these is row-addressed, and the two data-table ones only
 // resolve to anything in a profile that loops over data. They also carry the longest
 // labels in the palette, so parking them keeps Run state to a single line.
 const MORE_ROW_CHIPS: PaletteChip[] = [
-  { label: 'Action row #', insert: '{row}', tip: ["Current action's grid row number (not the data table)", 'Número da linha da action na grade (não é a tabela de dados)'] },
-  { label: 'Row column…', prompt: 'row', tip: ["Data table column of the current row (loop over data) — click the chip after inserting to add transforms (trim, UPPERCASE…)", 'Coluna da tabela de dados na linha atual (loop over data) — clique no chip depois de inserir para adicionar transformações (trim, MAIÚSCULAS…)'] },
-  { label: 'Row column (next)…', prompt: 'rownext', tip: ["Auto-advancing: each use pulls the NEXT data row for the column (1st action → row 1, 2nd → row 2…). Resets each run — swap the list, keep the fields. Click the chip after inserting to add transforms.", 'Auto-avança: cada uso pega a PRÓXIMA linha da tabela para a coluna (1ª action → linha 1, 2ª → linha 2…). Reinicia a cada execução — troque a lista, mantenha os campos. Clique no chip depois de inserir para adicionar transformações.'] },
+  { label: 'Action row #', insert: '{row}' },
+  { label: 'Row column…', prompt: 'row' },
+  { label: 'Row column (next)…', prompt: 'rownext' },
 ];
 
 // One chip recipe everywhere (SheetPanel parity): neutral surface, gold hover.
@@ -667,7 +674,10 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
         else if (chip.insert) insertAtCursor(chip.insert);
       }}
       className={`${CHIP_CLASS} ${extraClass}`}
-      data-tip={tt(chip.tip[0], chip.tip[1])}
+      // From the shared table, in its PALETTE voice (the "click the chip after inserting"
+      // advice that would be nonsense on the chip itself) and without the raw token, because a
+      // palette chip is a generic SEED and not the user's token.
+      data-tip={tokenTip(paletteToken(chip), tt, { palette: true, withRaw: false })}
     >
       {chip.label}
     </button>
@@ -728,7 +738,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
             <span>{tt('Steps apply in the runtime pipeline order', 'As etapas seguem a ordem do pipeline de execução')}</span>
           </span>
         ) : (
-          <>Ctrl+Enter to confirm · Esc to cancel</>
+          <>{tt('Ctrl+Enter to confirm · Esc to cancel', 'Ctrl+Enter para confirmar · Esc para cancelar')}</>
         )
       }
       footer={
@@ -900,7 +910,6 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                   {renderChip({
                     label: 'Clipboard',
                     insert: '{clipboard}',
-                    tip: ['Paste the clipboard text', 'Cola o texto da área de transferência'],
                   })}
                   <button
                     type="button"
@@ -995,11 +1004,11 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                 <div className="flex-1 min-h-0 overflow-y-auto border-t border-border-subtle">
                   {snippets.length === 0 ? (
                     <div className="px-3 py-4 text-center text-[11px] text-text-disabled">
-                      No saved snippets yet
+                      {tt('No saved snippets yet', 'Nenhum snippet salvo ainda')}
                     </div>
                   ) : filteredSnippets.length === 0 ? (
                     <div className="px-3 py-4 text-center text-[11px] text-text-disabled">
-                      No snippets match “{snippetFilter}”
+                      {tt('No snippets match', 'Nenhum snippet corresponde a')} “{snippetFilter}”
                     </div>
                   ) : (
                     filteredSnippets.map((s) =>

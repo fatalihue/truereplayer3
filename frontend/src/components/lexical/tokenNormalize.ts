@@ -100,7 +100,7 @@ export function normalizeToken(token: string): string {
 // digits) is counted and drawn here but pastes literally at replay. Narrowing it per
 // name would split the preview from the chip pipeline again — the very divergence
 // this set exists to close — so that is a separate finding, not a silent difference.
-export const KNOWN_TOKEN_NAMES: ReadonlySet<string> = new Set([
+export const KNOWN_TOKEN_NAME_LIST = [
   'clipboard',
   'date',
   'time',
@@ -154,7 +154,16 @@ export const KNOWN_TOKEN_NAMES: ReadonlySet<string> = new Set([
   // Random text choice: {pick:a|b|c} draws one '|'-separated option per use. Options are
   // free text (VERBATIM_ARG_NAMES), so like {input} it chips via insertToken / on load.
   'pick',
-]);
+] as const;
+
+/** Every token NAME the engine resolves, as a union — the key type of the description table
+ *  in tokenDescriptions.ts, so tsc fails if this whitelist gains a name and that table does
+ *  not gain an entry. */
+export type KnownTokenName = typeof KNOWN_TOKEN_NAME_LIST[number];
+
+// Unchanged in type and contents; every existing consumer (splitTokenSegments below,
+// LexicalTokenEditor's TokenAutoTransformPlugin) keeps asking the same ReadonlySet<string>.
+export const KNOWN_TOKEN_NAMES: ReadonlySet<string> = new Set<string>(KNOWN_TOKEN_NAME_LIST);
 
 export interface TokenSegment {
   kind: 'text' | 'token';

@@ -16,10 +16,12 @@ import {
   $setSelection,
   $insertNodes,
   $isRangeSelection,
+  $isNodeSelection,
   $isTextNode,
   $isElementNode,
   $createTextNode,
   $createParagraphNode,
+  $getNearestNodeFromDOMNode,
   type BaseSelection,
   type ElementNode,
   COMMAND_PRIORITY_LOW,
@@ -27,6 +29,8 @@ import {
   PASTE_COMMAND,
   KEY_BACKSPACE_COMMAND,
   KEY_DELETE_COMMAND,
+  KEY_ENTER_COMMAND,
+  KEY_SPACE_COMMAND,
   TextNode,
   type LexicalNode,
   type TextFormatType,
@@ -42,13 +46,13 @@ import {
 } from '@lexical/list';
 import { LinkNode, AutoLinkNode, $isLinkNode, $isAutoLinkNode, $createLinkNode, $toggleLink, TOGGLE_LINK_COMMAND } from '@lexical/link';
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from '@lexical/html';
-import { $dfs } from '@lexical/utils';
+import { $dfs, mergeRegister } from '@lexical/utils';
 import {
   Bold, Italic, Underline, Strikethrough, Code, List, ListOrdered, Link2, Check, X,
 } from 'lucide-react';
 import { useTt } from '../../state/LanguageContext';
 import { TokenNode, $createTokenNode, $isTokenNode } from './TokenNode';
-import { ClipboardChipEditContext, type ClipboardChipEditRequest } from './TokenChip';
+import { ClipboardChipEditContext, OPEN_TOKEN_CHIP_COMMAND, type ClipboardChipEditRequest } from './TokenChip';
 // The whitelist of names the backend resolves, and the walker that finds them the way the
 // ENGINE does, both live in tokenNormalize — see the "What the ENGINE calls a token" banner
 // there. They are imported rather than restated because the grid's SendTextPreview needs the
@@ -465,6 +469,17 @@ function ChipKeyboardPlugin() {
   const [editor] = useLexicalComposerContext();
 
   useEffect(() => {
+    // A keydown that originates INSIDE a chip still reaches here. Lexical binds keydown on the
+    // ROOT element and keydown bubbles, so anything focusable a decorator ever renders — a
+    // popover trigger, a future inline control — dispatches KEY_BACKSPACE/KEY_DELETE while
+    // $getSelection() is still the RangeSelection the caret had somewhere else. Acting on that
+    // deletes the WRONG chip. @lexical/rich-text guards its own backspace/delete handlers with
+    // the same test for exactly this; that guard cannot save us, because this plugin registers
+    // at COMMAND_PRIORITY_LOW and the dispatch loop walks priorities 4 → 0, so we run BEFORE
+    // rich-text's COMMAND_PRIORITY_EDITOR and would have already returned true.
+    const targetIsInsideChip = (target: EventTarget | null): boolean =>
+      target instanceof Node && $isTokenNode($getNearestNodeFromDOMNode(target));
+
     const removeBackward = (): boolean => {
       const selection = $getSelection();
       if (!$isRangeSelection(selection) || !selection.isCollapsed()) return false;
@@ -512,6 +527,7 @@ function ChipKeyboardPlugin() {
     const u1 = editor.registerCommand(
       KEY_BACKSPACE_COMMAND,
       (event: KeyboardEvent) => {
+        if (targetIsInsideChip(event.target)) return false;
         if (removeBackward()) {
           event.preventDefault();
           return true;
@@ -523,6 +539,7 @@ function ChipKeyboardPlugin() {
     const u2 = editor.registerCommand(
       KEY_DELETE_COMMAND,
       (event: KeyboardEvent) => {
+        if (targetIsInsideChip(event.target)) return false;
         if (removeForward()) {
           event.preventDefault();
           return true;
@@ -745,18 +762,18 @@ function RichToolbarPlugin({ formattingDelivered }: { formattingDelivered: boole
       <div className={`flex items-center gap-0.5 transition-opacity ${
         formattingDelivered ? '' : 'opacity-45 hover:opacity-75'
       }`}>
-      {fmtBtn('bold', formats.bold, Bold, 'Bold (Ctrl+B)')}
-      {fmtBtn('italic', formats.italic, Italic, 'Italic (Ctrl+I)')}
-      {fmtBtn('underline', formats.underline, Underline, 'Underline (Ctrl+U)')}
-      {fmtBtn('strikethrough', formats.strikethrough, Strikethrough, 'Strikethrough')}
-      {fmtBtn('code', formats.code, Code, 'Inline code')}
+      {fmtBtn('bold', formats.bold, Bold, tt('Bold (Ctrl+B)', 'Negrito (Ctrl+B)'))}
+      {fmtBtn('italic', formats.italic, Italic, tt('Italic (Ctrl+I)', 'Itálico (Ctrl+I)'))}
+      {fmtBtn('underline', formats.underline, Underline, tt('Underline (Ctrl+U)', 'Sublinhado (Ctrl+U)'))}
+      {fmtBtn('strikethrough', formats.strikethrough, Strikethrough, tt('Strikethrough', 'Tachado'))}
+      {fmtBtn('code', formats.code, Code, tt('Inline code', 'Código inline'))}
       <div className="w-px h-4 mx-1 bg-border-subtle" />
       <button
         type="button"
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => editor.dispatchCommand(formats.ul ? REMOVE_LIST_COMMAND : INSERT_UNORDERED_LIST_COMMAND, undefined)}
         className={btnClass(formats.ul)}
-        data-tip="Bullet list"
+        data-tip={tt('Bullet list', 'Lista com marcadores')}
       >
         <List size={13} />
       </button>
@@ -765,7 +782,7 @@ function RichToolbarPlugin({ formattingDelivered }: { formattingDelivered: boole
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => editor.dispatchCommand(formats.ol ? REMOVE_LIST_COMMAND : INSERT_ORDERED_LIST_COMMAND, undefined)}
         className={btnClass(formats.ol)}
-        data-tip="Numbered list"
+        data-tip={tt('Numbered list', 'Lista numerada')}
       >
         <ListOrdered size={13} />
       </button>
@@ -783,7 +800,7 @@ function RichToolbarPlugin({ formattingDelivered }: { formattingDelivered: boole
           }
         }}
         className={btnClass(formats.link || linkInputOpen)}
-        data-tip={formats.link ? 'Remove link' : 'Link'}
+        data-tip={formats.link ? tt('Remove link', 'Remover link') : tt('Link', 'Inserir link')}
       >
         <Link2 size={13} />
       </button>
@@ -802,14 +819,14 @@ function RichToolbarPlugin({ formattingDelivered }: { formattingDelivered: boole
             spellCheck={false}
             className="h-6 w-52 px-1.5 text-[11px] font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid"
           />
-          <button type="button" onClick={applyLink} className={btnClass(false)} data-tip="Apply link">
+          <button type="button" onClick={applyLink} className={btnClass(false)} data-tip={tt('Apply link', 'Aplicar link')}>
             <Check size={13} />
           </button>
           <button
             type="button"
             onClick={() => { setLinkInputOpen(false); setLinkUrl(''); editor.focus(); }}
             className={btnClass(false)}
-            data-tip="Cancel"
+            data-tip={tt('Cancel', 'Cancelar')}
           >
             <X size={13} />
           </button>
@@ -838,6 +855,39 @@ function RichToolbarPlugin({ formattingDelivered }: { formattingDelivered: boole
       )}
     </div>
   );
+}
+
+// Enter / Space on a selected chip opens its parameter editor — the keyboard equivalent of
+// clicking it. Nothing here creates the selection: Lexical already does. TokenNode is inline,
+// isolated and isKeyboardSelectable, so arrowing ←/→ onto it makes a NodeSelection on the chip.
+// Until now that selection had no visual and no action, which is why the chips read as
+// keyboard-inert — the state existed and did nothing. TokenChip paints the selection and
+// answers OPEN_TOKEN_CHIP_COMMAND for its own key.
+//
+// COMMAND_PRIORITY_LOW puts this ahead of @lexical/rich-text's COMMAND_PRIORITY_EDITOR handlers
+// (the dispatch loop runs 4 → 0). Both of those bail on a non-RangeSelection anyway, so returning
+// true here takes nothing away.
+function ChipActivationPlugin() {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    const openSelectedChip = (event: KeyboardEvent | null): boolean => {
+      const selection = $getSelection();
+      if (!$isNodeSelection(selection)) return false;
+      const nodes = selection.getNodes();
+      if (nodes.length !== 1 || !$isTokenNode(nodes[0])) return false;
+      // Space would otherwise scroll the editor; Enter would fall through to the paragraph split.
+      event?.preventDefault();
+      editor.dispatchCommand(OPEN_TOKEN_CHIP_COMMAND, nodes[0].getKey());
+      return true;
+    };
+    return mergeRegister(
+      editor.registerCommand(KEY_ENTER_COMMAND, openSelectedChip, COMMAND_PRIORITY_LOW),
+      editor.registerCommand(KEY_SPACE_COMMAND, openSelectedChip, COMMAND_PRIORITY_LOW),
+    );
+  }, [editor]);
+
+  return null;
 }
 
 // Ctrl+Enter submit forwarded to parent so the same shortcut behaves the same.
@@ -969,6 +1019,7 @@ export function LexicalTokenEditor({
         <TokenPastePlugin richMode={richMode} />
         <TokenAutoTransformPlugin />
         <ChipKeyboardPlugin />
+        <ChipActivationPlugin />
         <SubmitPlugin onSubmit={onSubmit} />
       </div>
       </ClipboardChipEditContext.Provider>

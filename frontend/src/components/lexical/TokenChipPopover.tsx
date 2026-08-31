@@ -18,6 +18,8 @@ import {
 } from './clipboardModifiers';
 import { NumInput, Section } from './popoverAtoms';
 import { normalizeToken } from './tokenNormalize';
+import { tokenTip } from './tokenDescriptions';
+import { useTt } from '../../state/LanguageContext';
 import { useAppState } from '../../state/AppStateContext';
 import { uiZoom, rectToLayout, viewportInLayout } from '../../utils/zoomSpace';
 
@@ -269,22 +271,34 @@ export function TokenChipPopover({
 }
 
 function Header({ token, onClose }: { token: string; onClose: () => void }) {
+  const tt = useTt();
+  // The KEYBOARD-reachable copy of the chip's hover tip. TooltipLayer is hover-only — it listens
+  // on mouseover/mouseout with no focusin path — so a user who reached this popover with
+  // Enter/Space has no way to read the chip's data-tip. Always mounted, never conditional: the
+  // popover re-places itself on token change and a line that appears and disappears would make
+  // it hop. Unknown names fall back rather than collapsing the row.
+  // withRaw:false because the header already prints the raw token on the line above.
+  const tip = tokenTip(token, tt, { withRaw: false })
+    || tt('Token substituted while replaying.', 'Token substituído durante a execução.');
   return (
-    <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-border-subtle bg-bg-card shrink-0">
-      <Wand2 size={14} className="text-accent-light shrink-0" />
-      <div
-        className="text-xs font-mono flex-1 truncate"
-        style={{ color: 'var(--color-action-sendtext-fg)' }}
-      >
-        {token}
+    <div className="px-3.5 py-2.5 border-b border-border-subtle bg-bg-card shrink-0">
+      <div className="flex items-center gap-2">
+        <Wand2 size={14} className="text-accent-light shrink-0" />
+        <div
+          className="text-xs font-mono flex-1 truncate"
+          style={{ color: 'var(--color-action-sendtext-fg)' }}
+        >
+          {token}
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-text-tertiary hover:text-text-primary text-sm leading-none px-1"
+        >
+          ✕
+        </button>
       </div>
-      <button
-        type="button"
-        onClick={onClose}
-        className="text-text-tertiary hover:text-text-primary text-sm leading-none px-1"
-      >
-        ✕
-      </button>
+      <div className="text-[10px] text-text-tertiary leading-relaxed mt-1">{tip}</div>
     </div>
   );
 }

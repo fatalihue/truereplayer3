@@ -630,6 +630,17 @@ export function parseClipboardToken(token: string): TransformState {
 // join separator that happens to be the word "next" ({clipboard:join:next}) is left alone — the
 // backend treats it as a separator, and the two sides must agree or the chip rewrites the token
 // into something that behaves differently.
+// True when the token carries the standalone `next` modifier — i.e. {clipboard:next}, the
+// auto-advancing line read, as opposed to a plain {clipboard} with a chain. Exported so the
+// description table can tell the two apart without restating the walk: {clipboard:join:next}
+// is a join whose SEPARATOR is the word "next", and a naive parts[1] === 'next' test would
+// describe it as the auto-advancing read. findNextModifier steps over arguments exactly as the
+// backend's next-walk does, so this can never disagree with the engine.
+export function hasNextModifier(token: string): boolean {
+  if (token.length < 3 || token[0] !== '{' || token[token.length - 1] !== '}') return false;
+  return findNextModifier(token.slice(1, -1).split(':'), 1) >= 0;
+}
+
 function findNextModifier(parts: string[], from: number): number {
   for (let i = from; i < parts.length; ) {
     // Only a segment the walk LANDS on is a modifier — one it steps over is somebody's argument.
