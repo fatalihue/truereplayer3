@@ -1,3 +1,5 @@
+import type { SendMode, SendMethod } from '../utils/sendTextTypes';
+
 // ── Data Models ──
 
 export interface ActionItem {
@@ -17,7 +19,12 @@ export interface ActionItem {
   // 'discord' = markdown-as-plain, 'plain' = clean text.
   keyHtml?: string | null;
   keyMarkdown?: string | null;
-  sendMode?: 'rich' | 'markdown' | 'plain' | 'discord' | null;
+  sendMode?: SendMode | null;
+  /** Delivery METHOD — orthogonal to sendMode. undefined/'paste' = clipboard + Ctrl+V;
+   *  'type' = typed key by key via SendInput; the clipboard is read but never written. */
+  sendMethod?: SendMethod | null;
+  /** Per-character pause (and key-hold) for sendMethod 'type'. null/0 = unpaced. */
+  sendCharDelay?: number | null;
   x: number;
   y: number;
   delay: number;
@@ -958,8 +965,8 @@ export type OutgoingMessage =
   | { type: 'profile:reset'; payload: Record<string, never> }
   | { type: 'settings:change'; payload: { key: string; value: string | boolean | number | object | null } }
   | { type: 'actions:convertMode'; payload: { direction: 'toCombined' | 'toPaired' } }
-  | { type: 'actions:addSendText'; payload: { text: string; html?: string; markdown?: string; mode?: string; insertIndex?: number } }
-  | { type: 'actions:editSendText'; payload: { index: number; text: string; html?: string; markdown?: string; mode?: string } }
+  | { type: 'actions:addSendText'; payload: { text: string; html?: string; markdown?: string; mode?: string; method?: string; charDelayMs?: number | null; insertIndex?: number } }
+  | { type: 'actions:editSendText'; payload: { index: number; text: string; html?: string; markdown?: string; mode?: string; method?: string; charDelayMs?: number | null } }
   | { type: 'actions:bulkUpdateDelay'; payload: { indices: number[]; delay: number } }
   | { type: 'actions:bulkUpdateCoord'; payload: { indices: number[]; axis: 'x' | 'y'; value: string } }
   | { type: 'actions:bulkUpdateComment'; payload: { indices: number[]; comment: string } }

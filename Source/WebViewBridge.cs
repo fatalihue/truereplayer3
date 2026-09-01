@@ -1010,6 +1010,8 @@ namespace TrueReplayer
                 keyHtml = a.KeyHtml,
                 keyMarkdown = a.KeyMarkdown,
                 sendMode = a.SendMode,
+                sendMethod = a.SendMethod,
+                sendCharDelay = a.SendCharDelay,
                 x = a.X,
                 y = a.Y,
                 delay = a.Delay,
@@ -3393,6 +3395,12 @@ namespace TrueReplayer
                     // payload without fresh HTML must drop the stale rich flavor, or replay would
                     // paste the OLD formatted content over the new text. Rich edits go through
                     // actions:editSendText, which supplies both flavors together.
+                    // SendMethod / SendCharDelay are deliberately ABSENT from this reset. The three
+                    // fields below are DERIVED from the text being replaced; a transport choice is
+                    // not. Nulling them would flip a Type row back to Paste on every SheetPanel text
+                    // edit — and Type is chosen precisely because the target ignores Ctrl+V, so that
+                    // silent reset means the macro stops delivering. If you add a field here, ask
+                    // first whether the TEXT determines it.
                     if (action.ActionType == "SendText") { action.KeyHtml = null; action.KeyMarkdown = null; action.SendMode = null; }
                     break;
                 case "x": if (int.TryParse(value, out int x)) action.X = x; break;
@@ -4042,12 +4050,18 @@ namespace TrueReplayer
             string? html = payload.TryGetProperty("html", out var hEl) && hEl.ValueKind == JsonValueKind.String ? hEl.GetString() : null;
             string? markdown = payload.TryGetProperty("markdown", out var mdEl) && mdEl.ValueKind == JsonValueKind.String ? mdEl.GetString() : null;
             string? mode = payload.TryGetProperty("mode", out var mEl) && mEl.ValueKind == JsonValueKind.String ? mEl.GetString() : null;
+            string? method = payload.TryGetProperty("method", out var mtEl) && mtEl.ValueKind == JsonValueKind.String ? mtEl.GetString() : null;
+            int? charDelay = payload.TryGetProperty("charDelayMs", out var cdEl) && cdEl.ValueKind == JsonValueKind.Number
+                ? Math.Clamp(cdEl.GetInt32(), 0, 200) : (int?)null;
             var action = new ActionItem
             {
                 ActionType = "SendText", Key = text, Delay = delay,
                 KeyHtml = string.IsNullOrEmpty(html) ? null : html,
                 KeyMarkdown = string.IsNullOrEmpty(markdown) ? null : markdown,
                 SendMode = NormalizeSendMode(mode),
+                SendMethod = NormalizeSendMethod(method),
+                // 0 is the default and carries no information — keep it out of the JSON.
+                SendCharDelay = charDelay is > 0 ? charDelay : null,
             };
 
             if (payload.TryGetProperty("insertIndex", out var idxEl) && idxEl.ValueKind == JsonValueKind.Number)
@@ -4088,6 +4102,15 @@ namespace TrueReplayer
             actions[index].KeyMarkdown = string.IsNullOrEmpty(editMarkdown) ? null : editMarkdown;
             if (payload.TryGetProperty("mode", out var mEl) && mEl.ValueKind == JsonValueKind.String)
                 actions[index].SendMode = NormalizeSendMode(mEl.GetString());
+            // Presence-gated like "mode" (not unconditional like html/markdown): the dialog always
+            // sends both, but a hand-built payload must not clear a field it never mentioned.
+            if (payload.TryGetProperty("method", out var mtEl))
+                actions[index].SendMethod = NormalizeSendMethod(mtEl.ValueKind == JsonValueKind.String ? mtEl.GetString() : null);
+            if (payload.TryGetProperty("charDelayMs", out var cdEl))
+            {
+                int cd = cdEl.ValueKind == JsonValueKind.Number ? Math.Clamp(cdEl.GetInt32(), 0, 200) : 0;
+                actions[index].SendCharDelay = cd > 0 ? cd : null;
+            }
             HasUnsavedChanges = true;
             PushActionsUpdate();
         }
@@ -4095,11 +4118,21 @@ namespace TrueReplayer
         // Only the known non-default modes persist; anything else (or "rich") collapses to null so
         // the default stays out of the JSON and older builds see no unknown value (they degrade to a
         // plain paste of Key, a safe fallback). "discord" is a markdown flavor with Discord marks.
+        // That "safe fallback" claim is true of the FLAVOR axis only — the transport axis is pinned
+        // in ProfileCompatibility precisely because it is not true of it.
         private static string? NormalizeSendMode(string? mode)
             => string.Equals(mode, "markdown", StringComparison.OrdinalIgnoreCase) ? "markdown"
              : string.Equals(mode, "discord", StringComparison.OrdinalIgnoreCase) ? "discord"
              : string.Equals(mode, "plain", StringComparison.OrdinalIgnoreCase) ? "plain"
              : null;
+
+        // Sibling of NormalizeSendMode, deliberately NOT merged with it: flavor and transport are
+        // orthogonal axes, and one function returning one string for both would make "plain" mean
+        // two things. Whitelist — anything but "type" collapses to null so the default stays out of
+        // the JSON. A future second typing strategy adds a value HERE **and** a matching row in
+        // ProfileCompatibility; without both, the toggle silently fails to persist.
+        private static string? NormalizeSendMethod(string? method)
+            => string.Equals(method, "type", StringComparison.OrdinalIgnoreCase) ? "type" : null;
 
         // ── Profile chaining: insert / edit a RunProfile action ──
 
@@ -7715,11 +7748,19 @@ namespace TrueReplayer
 
             foreach (var action in actions)
             {
-                // An at-cursor click is skipped and NOT counted: its stored X/Y is dormant (the
-                // replay resolves an absolute point from the live cursor and never translates),
-                // so translating it would drift a coordinate nothing reads — and the user would
-                // get a wrong point the moment they switched the row back to This point.
-                if (clickTypes.Contains(action.ActionType) && !action.AtCursor)
+                // An at-cursor click IS translated and IS counted, and the reasoning that used to
+                // skip it had the consequence exactly backwards. Its stored X/Y is DORMANT, not
+                // absent: it is still stamped in whichever space it was written in, and the row
+                // remembers it so that turning "At cursor" back off restores the point. Skipping
+                // is what breaks that promise — absolute (1000,500), flag on, Convert to Relative,
+                // flag off, and the replay now adds the window origin to a coordinate that was
+                // never relativized, clicking 200 px away with no error and no toast.
+                // Translating is free while the flag is on, because ResolveClickPoint does not read
+                // X/Y at all in that mode; the conversion is inobservable until it is needed, which
+                // is the definition of the right time to do it.
+                // NOT the same call as the bulk coordinate edit (HandleActionsBulkUpdateCoord),
+                // which writes a value the user CHOSE and must keep taking the row at its word.
+                if (clickTypes.Contains(action.ActionType))
                 {
                     action.X += sign * rect.Left;
                     action.Y += sign * rect.Top;

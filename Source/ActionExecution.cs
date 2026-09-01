@@ -1510,8 +1510,19 @@ namespace TrueReplayer.Services
         // coordsAreProfileSpace is threaded from the caller, not defaulted at the call site: an
         // at-cursor click resolves an ABSOLUTE point, and translating the tap while leaving the
         // primary click untranslated would land the two in different coordinate spaces.
+        // restoreAnchor: put the cursor back where it started once the tap is done. Only the
+        // at-cursor rows pass true, and for them it is not cosmetic — it is what stops a repeat
+        // burst from WALKING. Those rows resolve their point by reading the LIVE cursor
+        // (ResolveClickPoint), so the tap's +5 px becomes cycle n+1's origin, and a Times = 8 burst
+        // ends 35 px away from the small target the focus click exists to hit, reporting "ok" the
+        // whole way (StampCursorPoint records only the last cycle). Same class as the jitter walk
+        // 2.31.0 already forbade — "a point read from the cursor cannot take an offset that moves
+        // the cursor" — surfacing on the second path that moves it.
+        // SetCursorPos and not SendInput on purpose: a move INPUT would publish a Raw-Input delta
+        // to the target, and this restore must be invisible to it. Same reasoning as the fast-
+        // approach teleport. Absolute because at-cursor points always are (profileSpace: false).
         private void FocusTap(int x, int y, uint down, uint up, CancellationToken token,
-                              bool coordsAreProfileSpace = true)
+                              bool coordsAreProfileSpace = true, bool restoreAnchor = false)
         {
             if (FocusClickGapMs > 0) Thread.Sleep(FocusClickGapMs);
             if (token.IsCancellationRequested) return;
@@ -1521,6 +1532,9 @@ namespace TrueReplayer.Services
             SimulateMouse(fx, fy, down, coordsAreProfileSpace: coordsAreProfileSpace, allowFastApproach: false);
             if (!token.IsCancellationRequested)
                 SimulateMouse(fx, fy, up, coordsAreProfileSpace: coordsAreProfileSpace, allowFastApproach: false);
+            // Outside the cancellation guard: a run stopped between the tap's down and up must
+            // still leave the cursor where it was found, not 5 px adrift.
+            if (restoreAnchor && !coordsAreProfileSpace) NativeMethods.SetCursorPos(x, y);
         }
 
         // N full left press/release pairs at ONE point, each hop under DoubleClickGapMs so the
@@ -2676,11 +2690,15 @@ namespace TrueReplayer.Services
         //   1. Waiting on a state — WaitImage, WaitPixelColor, Pause, RunProfile, HoldKey and
         //      Browser* (pipe round-trip), plus a timed If/Assert polling window.
         //   2. Handing work to ANOTHER app and letting it settle. At record time no such
-        //      handoff happened, so the recorded gap cannot contain it: SendText pastes via the
-        //      clipboard and sleeps 50 ms twice (settle, Ctrl+V, ingest); ActivateWindow polls
-        //      up to its Timeout for the window to come up; CopyToSlot fires Ctrl+C and polls
-        //      up to 750 ms for the target to render the copy. Field-reported on SendText →
-        //      click macros, and it needs no LARGE text — the settle cost is fixed.
+        //      handoff happened, so the recorded gap cannot contain it: SendText hands the payload
+        //      to another app either through the clipboard (settle 50 ms, Ctrl+V, ingest 50 ms — a
+        //      FIXED cost, no large text needed) or by TYPING it character by character, whose cost
+        //      is unbounded in the payload length and is really a family-3 authored duration rather
+        //      than a family-2 handoff; ActivateWindow polls up to its Timeout for the window to
+        //      come up; CopyToSlot fires Ctrl+C and polls up to 750 ms for the target to render the
+        //      copy. Field-reported on SendText → click macros. Both SendText transports fail the
+        //      recorded-gap test, so the type-level entry below is right for both and this set
+        //      needs no per-row knowledge.
         //   3. Durations authored AFTER recording. A repeat burst (Times > 1) spends
         //      (N-1) × RepeatDelayMs between cycles, but the recording held ONE click, so that
         //      time was never in the gap either. Found on real game macros whose bursts burn
@@ -3528,7 +3546,7 @@ namespace TrueReplayer.Services
                                 if (!token.IsCancellationRequested)
                                     SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_LEFTUP, coordsAreProfileSpace: ps);
                                 if (action.IsFocusClick && !token.IsCancellationRequested)
-                                    FocusTap(cx, cy, NativeMethods.MOUSEEVENTF_LEFTDOWN, NativeMethods.MOUSEEVENTF_LEFTUP, token, ps);
+                                    FocusTap(cx, cy, NativeMethods.MOUSEEVENTF_LEFTDOWN, NativeMethods.MOUSEEVENTF_LEFTUP, token, ps, restoreAnchor: action.AtCursor);
                             });
                             break;
                         case "RightClick":
@@ -3539,7 +3557,7 @@ namespace TrueReplayer.Services
                                 if (!token.IsCancellationRequested)
                                     SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_RIGHTUP, coordsAreProfileSpace: ps);
                                 if (action.IsFocusClick && !token.IsCancellationRequested)
-                                    FocusTap(cx, cy, NativeMethods.MOUSEEVENTF_RIGHTDOWN, NativeMethods.MOUSEEVENTF_RIGHTUP, token, ps);
+                                    FocusTap(cx, cy, NativeMethods.MOUSEEVENTF_RIGHTDOWN, NativeMethods.MOUSEEVENTF_RIGHTUP, token, ps, restoreAnchor: action.AtCursor);
                             });
                             break;
                         case "MiddleClick":
@@ -3550,7 +3568,7 @@ namespace TrueReplayer.Services
                                 if (!token.IsCancellationRequested)
                                     SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_MIDDLEUP, coordsAreProfileSpace: ps);
                                 if (action.IsFocusClick && !token.IsCancellationRequested)
-                                    FocusTap(cx, cy, NativeMethods.MOUSEEVENTF_MIDDLEDOWN, NativeMethods.MOUSEEVENTF_MIDDLEUP, token, ps);
+                                    FocusTap(cx, cy, NativeMethods.MOUSEEVENTF_MIDDLEDOWN, NativeMethods.MOUSEEVENTF_MIDDLEUP, token, ps, restoreAnchor: action.AtCursor);
                             });
                             break;
                         // Two full left press/release pairs at the SAME point with a gap well
@@ -3596,18 +3614,8 @@ namespace TrueReplayer.Services
                         case "ScrollDown": SimulateScroll(-120); break;
                         case "SendText":
                         {
-                            // Delivery mode picks the flavor: "plain" → clean Key only; "markdown"
-                            // (WhatsApp) / "discord" → the pre-serialized KeyMarkdown pasted as plain
-                            // text (no HTML) — the flavor's marks are already baked in frontend-side;
-                            // default/"rich" → Key + KeyHtml dual-format (target negotiates).
-                            var mode = action.SendMode;
-                            bool markdownMode = string.Equals(mode, "markdown", StringComparison.OrdinalIgnoreCase)
-                                || string.Equals(mode, "discord", StringComparison.OrdinalIgnoreCase);
-                            string sendText = markdownMode && !string.IsNullOrEmpty(action.KeyMarkdown)
-                                ? action.KeyMarkdown : action.Key;
-                            string? sendHtml = string.IsNullOrEmpty(mode) || string.Equals(mode, "rich", StringComparison.OrdinalIgnoreCase)
-                                ? action.KeyHtml : null;
-                            await SimulateClipboardPaste(sendText, sendHtml, token);
+                            var d = ResolveSendTextDelivery(action);
+                            await SendTextPayload(d.Text, d.Html, d.Type, d.CharDelayMs, token);
                             break;
                         }
                         case "SetVariable": await ExecuteSetVariable(action); break;
@@ -7120,7 +7128,42 @@ namespace TrueReplayer.Services
             });
         }
 
-        private async Task SimulateClipboardPaste(string text, string? html, CancellationToken token)
+        /// <summary>
+        /// THE single place the two SendText axes are read. Everything downstream consumes this
+        /// tuple and never re-derives from action.SendMode / action.SendMethod, so "type + rich"
+        /// can only ever mean one thing.
+        ///
+        /// FLAVOR (SendMode) picks the STRING: "markdown"/"discord" → the pre-serialized
+        /// KeyMarkdown, whose marks are already literal characters; everything else → Key.
+        /// METHOD (SendMethod) picks the TRANSPORT — and forces Html to null when typing, which is
+        /// the structural guarantee that the ==1 rich gate below can never fire on a typed payload.
+        /// The grid badge (deliveryBadge.ts) and the status ladder (sendTextStatus.ts) MIRROR this
+        /// rule; they must never re-derive it.
+        /// </summary>
+        private static (string Text, string? Html, bool Type, int CharDelayMs) ResolveSendTextDelivery(ActionItem action)
+        {
+            var mode = action.SendMode;
+            bool markdownMode = string.Equals(mode, "markdown", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(mode, "discord", StringComparison.OrdinalIgnoreCase);
+            bool type = string.Equals(action.SendMethod, "type", StringComparison.OrdinalIgnoreCase);
+
+            string text = markdownMode && !string.IsNullOrEmpty(action.KeyMarkdown)
+                ? action.KeyMarkdown : action.Key;
+
+            string? html = type
+                ? null
+                : (string.IsNullOrEmpty(mode) || string.Equals(mode, "rich", StringComparison.OrdinalIgnoreCase))
+                    ? action.KeyHtml : null;
+
+            // Clamped HERE, once, so the sink stays a dumb emitter. 200 ms/char is already absurd
+            // (a 500-char message = 100 s of typing, doubled by the down/up split); the cap exists
+            // so a hand-edited profile cannot wedge a run for an hour.
+            int charDelay = type ? Math.Clamp(action.SendCharDelay ?? 0, 0, 200) : 0;
+
+            return (text, html, type, charDelay);
+        }
+
+        private async Task SendTextPayload(string text, string? html, bool typeMode, int charDelayMs, CancellationToken token)
         {
             if (string.IsNullOrEmpty(text)) return;
 
@@ -7129,6 +7172,9 @@ namespace TrueReplayer.Services
             // CF_HTML can stall on delayed-render owners like Excel — don't pay that cost for
             // plain pastes, which never clobber the HTML flavor's source text anyway... they do
             // replace the package, so when we're about to paste rich we save/restore both).
+            // Typed delivery still READS: originalClipboard.Text feeds token resolution below, so
+            // {clipboard[:mods]} resolves identically. It just never WRITES and never restores —
+            // includeHtml is already false there, because ResolveSendTextDelivery nulled html.
             var originalClipboard = await ReadClipboardSnapshotAsync(dispatcherQueue, includeHtml: !string.IsNullOrEmpty(html));
 
             // Resolve {clipboard[:mods]} + {datetime}/{date}/{time} in one pass via the unified
@@ -7142,7 +7188,7 @@ namespace TrueReplayer.Services
 
             if (string.IsNullOrEmpty(text) || token.IsCancellationRequested)
             {
-                RestoreOriginalClipboard(originalClipboard);
+                if (!typeMode) RestoreOriginalClipboard(originalClipboard);
                 return;
             }
 
@@ -7159,6 +7205,8 @@ namespace TrueReplayer.Services
             // own segments — their marker spans are stripped from the html by the pre-process);
             // a key press in the MIDDLE of the text downgrades the whole action to plain —
             // splitting markup at placeholder boundaries is Phase 2.
+            // Unreachable under Type — ResolveSendTextDelivery already nulled html, so there is no
+            // second flavor to keep in sync and the TokenFlavorSync replay queue is never built.
             string? resolvedHtml = null;
             if (!string.IsNullOrEmpty(html) && segments.Count(s => !string.IsNullOrEmpty(s.Text)) == 1)
             {
@@ -7196,16 +7244,26 @@ namespace TrueReplayer.Services
                     }
                     else if (!string.IsNullOrEmpty(segment.Text))
                     {
-                        // Text: paste via clipboard. Restore '{' / '}' that the resolver escaped.
+                        // Restore '{' / '}' that the resolver escaped, then hand the literal to the
+                        // chosen transport. THIS IS THE ONLY LINE THAT DIFFERS between Paste and
+                        // Type: {enter}/{tab}/{delay:N} were already split into VkCode/DelayMs
+                        // segments by ParseSendTextSegments BEFORE any transport decision exists,
+                        // and both of those arms were always keystrokes and sleeps — so they are
+                        // bit-identical either way.
                         var literal = UnescapeBraceSentinels(segment.Text);
-                        await PasteTextViaClipboard(literal, resolvedHtml, token);
+                        if (typeMode) await TypeTextViaSendInput(literal, charDelayMs, token);
+                        else await PasteTextViaClipboard(literal, resolvedHtml, token);
                     }
                 }
             }
             finally
             {
-                // Always restore the user's original clipboard, even if cancelled mid-paste.
-                RestoreOriginalClipboard(originalClipboard);
+                // Always restore the user's original clipboard, even if cancelled mid-paste — but
+                // ONLY when we wrote it. Typing never does, and RestoreOriginalClipboard's else
+                // branch is a Clipboard.Clear() when the snapshot held neither flavor (an image, a
+                // file list). "Restoring" here would let the one mode that promises never to touch
+                // your clipboard WIPE what you copied while the macro ran.
+                if (!typeMode) RestoreOriginalClipboard(originalClipboard);
             }
         }
 
@@ -8184,6 +8242,292 @@ namespace TrueReplayer.Services
                 new() { type = NativeMethods.INPUT_KEYBOARD, U = new NativeMethods.InputUnion { ki = new NativeMethods.KEYBDINPUT { wVk = effectiveVk, wScan = scan, dwFlags = upFlags } } },
             };
             NativeMethods.SendInput((uint)inputs.Length, inputs, NativeMethods.InputSize);
+        }
+
+        // Events per SendInput batch on the unpaced path. SendInput's documented non-interleave
+        // guarantee ("not interspersed with other keyboard or mouse input events inserted either
+        // by the user or by other calls to SendInput") is per CALL, which matters here because the
+        // clicker runs on its own thread and shares _simInputLock. ~256 events keeps whole words
+        // atomic while still letting Stop land within a few ms on a long payload.
+        private const int TypeBatchEvents = 256;
+
+        /// <summary>
+        /// Types <paramref name="text"/> as real keystrokes — no clipboard, no Ctrl+V. The
+        /// transport for SendText rows with SendMethod == "type".
+        ///
+        /// SCANCODE FIRST, KEYEVENTF_UNICODE only as the per-character fallback. Every other
+        /// injection site in this app sends KEYEVENTF_SCANCODE, and that is the mechanism a target
+        /// reading Raw Input / DirectInput actually sees; a unicode packet sets wVk = 0 and puts a
+        /// CHARACTER in wScan, becoming text only after the target calls TranslateMessage — right
+        /// for Notepad and browsers, potentially invisible to the target class this feature exists
+        /// for. The packet path covers what a layout cannot produce at all (emoji, →, é on a US
+        /// layout), where it is the only option.
+        ///
+        /// LAYOUT: resolved against the FOREGROUND window's layout, not ours. We emit a scancode
+        /// and the target re-interprets it through ITS layout, so resolving against
+        /// KeyUtils.ActiveLayout would type ç as \ whenever the two differ. (KeyUtils' own "the
+        /// layout has to be ours" rule is about resolving RECORDED input — the opposite direction.)
+        ///
+        /// KeyUtils.CharToVkCurrentLayout is deliberately NOT reused: it does
+        /// vk = (ushort)(result &amp; 0xFF), masking off VkKeyScanEx's high byte — the SHIFT STATE —
+        /// so it cannot tell 'H' from 'h' and would type every capital in lower case.
+        ///
+        /// NEWLINES ARE NOT TYPED. WM_CHAR 0x0A does not break a line in a classic Win32 EDIT (the
+        /// typing-side twin of PasteTextViaClipboard's LF→CRLF normalization) and browsers handle
+        /// Enter on keydown, not on char. Every \r\n / \r / \n becomes a real VK_RETURN press
+        /// through SimulateKeyPress — which also means a multi-line typed message SENDS N times in
+        /// a chat box, where a pasted one sends once.
+        ///
+        /// EVERY OTHER C0 CONTROL CHARACTER (&lt; 0x20) GOES OUT AS A UNICODE PACKET, never through
+        /// VkKeyScanEx. This is not a preference, it is a correctness gate: VkKeyScanEx resolves
+        /// them to their CONTROL-KEY origin, so the layout would hand back a real chord and the
+        /// text would execute instead of being typed. Measured — \t → VK_TAB (moves focus out of
+        /// the field, so the rest of the payload lands in the WRONG control), \b → VK_BACK (erases
+        /// what was already typed), \x1B → VK_ESCAPE (closes the dialog being filled), \v → Ctrl+K,
+        /// \x1A → Ctrl+Z. These reach a payload through {clipboard}/{var}/{row:col}, not through
+        /// the editor: a tab-separated row copied out of a spreadsheet is the everyday case.
+        ///
+        /// What the packet then does is the TARGET's business, and it is not always nothing —
+        /// measured against a real Win32 EDIT: "Nome\tValor\tTotal" arrives with the tabs as
+        /// LITERAL CHARACTERS and focus never leaves the field (which is the whole win), while
+        /// "ab\bcd" arrives as "acd" because that control interprets WM_CHAR 0x08 as a backspace.
+        /// So the promise this gate makes is precise and narrow: typing never fires the control
+        /// KEY. It does not promise the character is inert. A payload that wants a real Tab
+        /// keystroke has the explicit {tab} chip. (The brace sentinels U+0001/U+0002 never arrive
+        /// here — UnescapeBraceSentinels runs on the segment before this is called.)
+        /// </summary>
+        private async Task TypeTextViaSendInput(string text, int charDelayMs, CancellationToken token)
+        {
+            if (string.IsNullOrEmpty(text)) return;
+
+            IntPtr hkl = ForegroundKeyboardLayout();
+            var batch = new List<NativeMethods.INPUT>(TypeBatchEvents + 8);
+
+            for (int i = 0; i < text.Length; i++)
+            {
+                if (token.IsCancellationRequested) { FlushTypedInputs(batch); return; }
+                char ch = text[i];
+
+                if (ch == '\r' || ch == '\n')
+                {
+                    FlushTypedInputs(batch);                       // ordering: never reorder a run
+                    SimulateKeyPress(0x0D);                        // VK_RETURN. Deliberately NOT in
+                    if (ch == '\r' && i + 1 < text.Length && text[i + 1] == '\n') i++;  // Extended-
+                    await Task.Delay(30, token);                   // VkCodes: the E0 twin is NUMPAD.
+                    continue;                                      // 30 ms mirrors the VkCode arm.
+                }
+
+                // Control characters never reach the layout: see the C0 paragraph in the docblock.
+                // Gated BEFORE TryResolveTypedKey rather than inside it, because that helper answers
+                // "can this layout produce the character" — and for \t the honest answer is yes,
+                // via a key whose EFFECT is to leave the field. The refusal is this sink's policy,
+                // not the layout's fact, so it belongs here, where the alternative (packet) exists.
+                // Written as a statement rather than `ch >= 0x20 && TryResolve(...)`: `out` values
+                // from a short-circuited && are only definitely assigned when the whole expression
+                // is TRUE, so the terse form does not compile.
+                ushort vk = 0;
+                bool shift = false, ctrl = false, alt = false;
+                bool resolved = ch >= 0x20 && TryResolveTypedKey(ch, hkl, out vk, out shift, out ctrl, out alt);
+
+                if (charDelayMs > 0)
+                {
+                    // PACED: the delay is BOTH the key-hold and the gap, so a frame-sampled target
+                    // can observe the press. The up half is in a finally — this is the only path
+                    // where a cancellation can land between down and up, and a stuck modifier is
+                    // the one thing a typing run must never leave behind.
+                    FlushTypedInputs(batch);
+                    var down = new List<NativeMethods.INPUT>(8);
+                    var up = new List<NativeMethods.INPUT>(8);
+                    if (resolved)
+                    {
+                        if (shift) AppendScanKey(down, 0x10, false, hkl);
+                        if (ctrl)  AppendScanKey(down, 0x11, false, hkl);
+                        if (alt)   AppendScanKey(down, 0x12, false, hkl);
+                        AppendScanKey(down, vk, false, hkl);
+                        AppendScanKey(up, vk, true, hkl);
+                        if (alt)   AppendScanKey(up, 0x12, true, hkl);
+                        if (ctrl)  AppendScanKey(up, 0x11, true, hkl);
+                        if (shift) AppendScanKey(up, 0x10, true, hkl);
+                    }
+                    else { AppendPacket(down, ch, false); AppendPacket(up, ch, true); }
+
+                    try
+                    {
+                        FlushTypedInputs(down);
+                        await Task.Delay(charDelayMs, token);      // never Thread.Sleep here
+                    }
+                    finally { FlushTypedInputs(up); }
+                    await Task.Delay(charDelayMs, token);
+                    continue;
+                }
+
+                // UNPACED: down+up ride the same array, so nothing can ever be left held and none
+                // of this needs _simulatedKeysDown bookkeeping — the same safety property that lets
+                // SimulateKeyPress skip the tracker.
+                if (resolved)
+                {
+                    if (shift) AppendScanKey(batch, 0x10, false, hkl);
+                    if (ctrl)  AppendScanKey(batch, 0x11, false, hkl);
+                    if (alt)   AppendScanKey(batch, 0x12, false, hkl);
+                    AppendScanKey(batch, vk, false, hkl);
+                    AppendScanKey(batch, vk, true, hkl);
+                    if (alt)   AppendScanKey(batch, 0x12, true, hkl);
+                    if (ctrl)  AppendScanKey(batch, 0x11, true, hkl);
+                    if (shift) AppendScanKey(batch, 0x10, true, hkl);
+                }
+                else
+                {
+                    // TWO events per UTF-16 CODE UNIT, not per rune: a non-BMP character (emoji) is
+                    // a surrogate pair and each half is its own INPUT, in order. C# strings are
+                    // already UTF-16, so the naive char loop is the CORRECT one here and a
+                    // Rune/StringInfo-aware version would be the broken one.
+                    AppendPacket(batch, ch, false);
+                    AppendPacket(batch, ch, true);
+                }
+
+                if (batch.Count >= TypeBatchEvents)
+                {
+                    FlushTypedInputs(batch);
+                    await Task.Yield();   // let the target's message pump drain between batches
+                }
+            }
+            FlushTypedInputs(batch);
+        }
+
+        // The foreground window's keyboard layout, falling back to our own thread's. We emit
+        // scancodes; the TARGET decides what character they produce.
+        private static IntPtr ForegroundKeyboardLayout()
+        {
+            try
+            {
+                IntPtr hwnd = NativeMethods.GetForegroundWindow();
+                if (hwnd != IntPtr.Zero)
+                {
+                    uint tid = NativeMethods.GetWindowThreadProcessId(hwnd, out _);
+                    if (tid != 0)
+                    {
+                        IntPtr hkl = NativeMethods.GetKeyboardLayout(tid);
+                        if (hkl != IntPtr.Zero) return hkl;
+                    }
+                }
+            }
+            catch { /* fall through to our own layout */ }
+            // Fully qualified: this file's namespace is TrueReplayer.Services and it does not (and
+            // should not) pull in all of TrueReplayer.Helpers for one property.
+            return TrueReplayer.Helpers.KeyUtils.ActiveLayout;
+        }
+
+        // True when the character exists on the target's layout as a key press. VkKeyScanEx returns
+        // the vk in the LOW byte and the shift state in the HIGH byte (1 = Shift, 2 = Ctrl,
+        // 4 = Alt; Ctrl+Alt together is the AltGr signature — see KeyUtils.LayoutHasAltGr). -1
+        // means "not on this layout"; anything in the high byte beyond Shift/Ctrl/Alt is a layout
+        // state this app does not drive (Hankaku, Kana), so we packet it rather than guess.
+        //
+        // THE -1 CHECK IS NOT ENOUGH, and believing it was is a silent-corruption bug.
+        // A character the layout cannot produce can still come back as a perfectly valid mapping —
+        // for a DIFFERENT character. Measured 2026-09-01: U+D83D and U+DE00 (the halves of an
+        // emoji) and U+2192 '→' each returned 0x01BF, which is Shift+VK_OEM_2 = '?'. Trusting that
+        // would type "?" for every such character and the packet fallback, the whole reason it
+        // exists, would NEVER fire.
+        //
+        // The 0x01BF above was BEST-FIT ANSI SUBSTITUTION, and the mechanism is worth naming
+        // precisely because the first diagnosis here blamed the wrong layer: it is the P/Invoke
+        // MARSHALLER, not the API. NativeMethods.VkKeyScanEx now declares CharSet.Unicode and so
+        // binds VkKeyScanExW, which answers 0xFFFF for those three; before that it bound the ANSI
+        // entry point, the char was best-fitted to '?' on the way in, and the API faithfully
+        // scanned the '?' it was handed. The round-trip below is what caught it and is what still
+        // guards it — do not delete it now that the CharSet is right: a layout can legitimately map
+        // two different characters through one key (dead keys, AltGr chords), so "VkKeyScanEx
+        // answered" has never implied "answered about the character we asked for".
+        //
+        // So the answer is ROUND-TRIP VERIFIED against the same layout: press the resolved key with
+        // the resolved modifiers and confirm the layout hands back the character we asked for.
+        // wFlags bit 2 (0x4) is "do not modify keyboard state" — without it this call would consume
+        // and re-arm the layout's dead-key latch as a side effect of merely asking a question.
+        private static bool TryResolveTypedKey(char ch, IntPtr hkl, out ushort vk, out bool shift, out bool ctrl, out bool alt)
+        {
+            vk = 0; shift = ctrl = alt = false;
+            short r;
+            try { r = NativeMethods.VkKeyScanEx(ch, hkl); } catch { return false; }
+            if (r == -1) return false;
+            int state = (r >> 8) & 0xFF;
+            if ((state & ~0x07) != 0) return false;
+            ushort candidate = (ushort)(r & 0xFF);
+            if (candidate == 0) return false;
+            bool s = (state & 0x01) != 0, c = (state & 0x02) != 0, a = (state & 0x04) != 0;
+
+            var keyState = new byte[256];
+            if (s) keyState[0x10] = 0x80;   // VK_SHIFT
+            if (c) keyState[0x11] = 0x80;   // VK_CONTROL
+            if (a) keyState[0x12] = 0x80;   // VK_MENU
+            var buf = new System.Text.StringBuilder(8);
+            int n;
+            try
+            {
+                n = NativeMethods.ToUnicodeEx(candidate, NativeMethods.MapVirtualKeyEx(candidate, 0, hkl),
+                                              keyState, buf, buf.Capacity, 0x4, hkl);
+            }
+            catch { return false; }
+            // n < 0 is a dead key (é on an international layout is two keystrokes, not one); n == 0
+            // is no translation. Both mean "not a single key press", which is all this path can emit.
+            if (n != 1 || buf.Length < 1 || buf[0] != ch) return false;
+
+            vk = candidate; shift = s; ctrl = c; alt = a;
+            return true;
+        }
+
+        // hkl is the TARGET's layout, and passing it is the whole point: the VK handed in was
+        // resolved against that layout (VkKeyScanEx + the ToUnicodeEx round-trip), so translating
+        // it back to a scancode against OURS would break the chain the moment the two differ.
+        // Measured with a de-DE target: 4 characters come out wrong, 'z' types as 'y'; fr-FR: 10,
+        // 'a' types as 'q'. Both layouts are QWERTZ/AZERTY — every QWERTY layout (en-US, pt-BR
+        // ABNT2) agrees on these codes, which is why the bug was invisible here.
+        // SimulateKeyPress deliberately keeps the layout-free MapVirtualKey: it serves the whole
+        // app, where the VK is a NAMED key ({enter}, a hotkey) rather than one resolved against a
+        // foreign layout, and there our own layout is the right frame.
+        private static void AppendScanKey(List<NativeMethods.INPUT> list, ushort vk, bool up, IntPtr hkl)
+        {
+            ushort scan = (ushort)NativeMethods.MapVirtualKeyEx(vk, 0, hkl);
+            bool isExtended = ExtendedVkCodes.Contains(vk);
+            uint flags = NativeMethods.KEYEVENTF_SCANCODE;
+            if (isExtended) flags |= NativeMethods.KEYEVENTF_EXTENDEDKEY;
+            if (up) flags |= NativeMethods.KEYEVENTF_KEYUP;
+            ushort effectiveVk = isExtended ? (ushort)0 : vk;   // mirrors SimulateKeyPress exactly
+            list.Add(new NativeMethods.INPUT
+            {
+                type = NativeMethods.INPUT_KEYBOARD,
+                U = new NativeMethods.InputUnion { ki = new NativeMethods.KEYBDINPUT { wVk = effectiveVk, wScan = scan, dwFlags = flags } }
+            });
+        }
+
+        private static void AppendPacket(List<NativeMethods.INPUT> list, char unit, bool up)
+        {
+            uint flags = NativeMethods.KEYEVENTF_UNICODE | (up ? NativeMethods.KEYEVENTF_KEYUP : 0u);
+            list.Add(new NativeMethods.INPUT
+            {
+                type = NativeMethods.INPUT_KEYBOARD,
+                // wVk MUST be 0 for KEYEVENTF_UNICODE, and the flag must never be OR'd with
+                // KEYEVENTF_SCANCODE — do not "harmonize" this with AppendScanKey.
+                U = new NativeMethods.InputUnion { ki = new NativeMethods.KEYBDINPUT { wVk = 0, wScan = unit, dwFlags = flags } }
+            });
+        }
+
+        // Shares _simInputLock with the clicker thread and ResetKeyState, but registers NOTHING in
+        // _simulatedKeysDown: on the unpaced path down+up ride one array, and on the paced path the
+        // up half is in a finally. SendInput's return is discarded at every other site here; it is
+        // read on this one because a typed run is long and a rejected batch is otherwise
+        // indistinguishable from success. A NONZERO return is NOT proof of delivery — measured
+        // 2026-08-08, SendInput returned 1 against an elevated foreground window and the event
+        // never entered the input stream.
+        private void FlushTypedInputs(List<NativeMethods.INPUT> batch)
+        {
+            if (batch.Count == 0) return;
+            var arr = batch.ToArray();
+            uint sent;
+            lock (_simInputLock) sent = NativeMethods.SendInput((uint)arr.Length, arr, NativeMethods.InputSize);
+            if (sent != arr.Length)
+                DiagnosticLog.Warn($"Typed text: SendInput accepted {sent}/{arr.Length} events (blocked input, or a higher-integrity foreground window)");
+            batch.Clear();
         }
 
         private async Task PasteTextViaClipboard(string text, string? html, CancellationToken token)

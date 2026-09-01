@@ -13,17 +13,22 @@
 // Insert Text editor now ask the SAME walker (grammar ported from the engine's own matchers)
 // instead of each keeping a private copy of the rule.
 import { splitTokenSegments } from './lexical/tokenNormalize';
-import type { DeliveryBadge } from './lexical/deliveryBadge';
+import type { DeliveryBadge, DeliveryBadgeTip } from './lexical/deliveryBadge';
 
 interface SendTextPreviewProps {
   text: string;
   /** Tiny delivery badge shown before the text — see sendTextDeliveryBadge. Null for plain rows. */
   badge?: DeliveryBadge | null;
-  /** Portal tooltip for a DEGRADED badge. Built at the call site because tt() is a hook. */
-  badgeTip?: string;
+  /**
+   * Portal tooltips for a DEGRADED badge, keyed by REASON — a row can be degraded because the
+   * payload splits (rich-split) or because typing cannot carry formatting at all
+   * (type-drops-rich), and the two need different advice. Built at the call site because tt()
+   * is a hook.
+   */
+  badgeTips?: Partial<Record<DeliveryBadgeTip, string>>;
 }
 
-export function SendTextPreview({ text, badge = null, badgeTip }: SendTextPreviewProps) {
+export function SendTextPreview({ text, badge = null, badgeTips }: SendTextPreviewProps) {
   if (!text) return null;
   // "Hello{Enter}World" → [text "Hello", token "{Enter}", text "World"]. Unclosed `{`
   // and unknown names both fall through as literal text, matching what replay does
@@ -48,7 +53,7 @@ export function SendTextPreview({ text, badge = null, badgeTip }: SendTextPrevie
               ? 'text-warning-ink border border-dashed border-[color-mix(in_srgb,var(--color-warning-ink)_60%,transparent)]'
               : 'text-accent bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)] border border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)]'
           }`}
-          data-tip={badge.degraded ? badgeTip : undefined}
+          data-tip={badge.degraded && badge.tip ? badgeTips?.[badge.tip] : undefined}
         >
           {badge.degraded && <span aria-hidden="true">!</span>}
           {badge.label}

@@ -20,6 +20,8 @@ import { richFlavorSurvives } from './lexical/tokenNormalize';
 import { tokenTip } from './lexical/tokenDescriptions';
 import { FieldError } from './common/FieldError';
 import { pickStatusNote } from '../utils/sendTextStatus';
+import type { SendMode, SendMethod } from '../utils/sendTextTypes';
+import { NumberInput } from './common/NumberInput';
 import { ClipboardSurface } from './lexical/ClipboardSurface';
 import { MessagePreviewPanel } from './lexical/MessagePreviewPanel';
 import {
@@ -45,12 +47,26 @@ interface SendTextDialogProps {
   initialHtml?: string | null;
   /** Saved delivery mode (SendMode); 'rich' default. */
   initialMode?: SendMode;
-  /** html/markdown are null when the doc carries no formatting → the action stays plain. */
-  onConfirm: (text: string, html: string | null, markdown: string | null, mode: SendMode) => void;
+  /** Saved transport (SendMethod); paste is the default. */
+  initialMethod?: SendMethod;
+  /** Saved per-character pause for the typed transport; null/0 = unpaced. */
+  initialCharDelayMs?: number | null;
+  /**
+   * html/markdown are null when the doc carries no formatting → the action stays plain.
+   * A RESULT OBJECT, not positional args: six of them, three nullable strings among them, is
+   * past the point where a caller can get the order right by reading — and the neighbouring
+   * KeystrokeCaptureDialog already confirms this way.
+   */
+  onConfirm: (r: {
+    text: string;
+    html: string | null;
+    markdown: string | null;
+    mode: SendMode;
+    method: SendMethod;
+    charDelayMs: number | null;
+  }) => void;
   onClose: () => void;
 }
-
-type SendMode = 'rich' | 'markdown' | 'plain' | 'discord';
 
 // Insert (the token palette + snippets) | Emoji | Preview (the resolved message).
 type RailTab = 'insert' | 'emoji' | 'preview';
@@ -471,12 +487,22 @@ type SurfaceSession =
   | { mode: 'insert' }
   | { mode: 'edit'; token: string; commit: (next: string) => void; remove: () => void };
 
-export function SendTextDialog({ mode, initialText = '', initialHtml = null, initialMode = 'rich', onConfirm, onClose }: SendTextDialogProps) {
+export function SendTextDialog({ mode, initialText = '', initialHtml = null, initialMode = 'rich', initialMethod = 'paste', initialCharDelayMs = null, onConfirm, onClose }: SendTextDialogProps) {
   const tt = useTt();
   const [text, setText] = useState(initialText);
   // Delivery mode: Rich (HTML where accepted) · Markdown (*bold* as plain text, for
   // WhatsApp/chat) · Plain. Formatting stays authored regardless; the mode picks the flavor.
   const [sendMode, setSendMode] = useState<SendMode>(initialMode);
+  // Delivery METHOD — the orthogonal axis: Paste (clipboard + Ctrl+V) or Type (keystrokes, no
+  // clipboard). It never rewrites sendMode: flip to Type and back and the Rich choice must
+  // survive, so the incompatible cell is WARNED about, never forced away.
+  const [sendMethod, setSendMethod] = useState<SendMethod>(initialMethod);
+  // 0, never null. NumberInput hides its inside-unit while the field is BLANK (so a field whose
+  // empty state means "auto" reads cleanly), and here empty means nothing — 0 IS the default, and
+  // a bare "0" with no unit does not say what it is. Seeding 0 and clearing back to 0 keeps the
+  // field non-blank, so it always reads "0 ms". Persistence is unaffected: 0 is falsy and
+  // handleConfirm already maps it to null, which keeps it out of the JSON.
+  const [charDelay, setCharDelay] = useState<number>(initialCharDelayMs ?? 0);
   // "Does the doc carry deliberate formatting?" — pushed by the editor on every non-selection
   // change (onFormattingChange). The seed is REQUIRED, not defensive: OnChangePlugin skips its
   // callback while `prevEditorState.isEmpty()`, so InitialContentPlugin's seeding update does
@@ -744,7 +770,17 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
     if (!text.trim()) return;
     // Flavors exported on demand at confirm (not per keystroke); null = no formatting
     // in the doc → the action persists as a plain SendText, exactly as pre-rich.
-    onConfirm(text, lexicalApiRef.current?.getHtml() ?? null, lexicalApiRef.current?.getMarkdown(sendMode === 'discord' ? 'discord' : 'whatsapp') ?? null, sendMode);
+    // The flavors are exported under Type too: it suppresses DELIVERY, never AUTHORSHIP, so
+    // switching back to Paste brings the formatting back intact.
+    onConfirm({
+      text,
+      html: lexicalApiRef.current?.getHtml() ?? null,
+      markdown: lexicalApiRef.current?.getMarkdown(sendMode === 'discord' ? 'discord' : 'whatsapp') ?? null,
+      mode: sendMode,
+      method: sendMethod,
+      // 0 is the default; null keeps it out of the JSON. Paste rows never send a delay.
+      charDelayMs: sendMethod === 'type' && charDelay ? charDelay : null,
+    });
   };
 
   // Is there work a close would destroy? Evaluated LAZILY — only on a dismissal attempt —
@@ -753,6 +789,14 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
   // A plain function, not a useCallback: no dependency array, no exhaustive-deps surface.
   const isDirty = (): boolean => {
     if (sendMode !== initialMode) return true;
+    // Both transport axes count as work: without these a lone Paste→Type flip would close with
+    // no discard prompt and the choice would be gone silently.
+    if (sendMethod !== initialMethod) return true;
+    // Compare what CONFIRM WOULD WRITE, not what the control holds. Under Paste the delay is
+    // discarded (handleConfirm sends null), so flipping to Type, typing 50, and flipping back is a
+    // no-op on disk — and prompting there accuses the user of unsaved work over a field that is by
+    // then not even on screen.
+    if ((sendMethod === 'type' && charDelay ? charDelay : null) !== (initialCharDelayMs || null)) return true;
     const base = baselineRef.current;
     if (!base) {
       // Baseline never taken (the rAF has not run yet — no user input is possible in that
@@ -776,7 +820,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
   // Markdown/Discord are deliberately excluded — they send KeyMarkdown as PLAIN text with
   // sendHtml = null (ActionExecution.cs:3603-3609), so the ==1 gate never touches them.
   // `sendMode === 'rich'` is a safe strict test because every caller normalises before us:
-  // ActionTable.tsx:924 passes `rowAction.sendMode ?? 'rich'`, and the Toolbar's add path takes
+  // ActionTable.tsx:930 passes `rowAction.sendMode ?? 'rich'`, and the Toolbar's add path takes
   // the prop default. A null never reaches this state.
   const richWillDegrade = useMemo(
     () => hasFormatting && sendMode === 'rich' && !richFlavorSurvives(text),
@@ -784,9 +828,58 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
   );
 
   // Parked on the right of the formatting toolbar (LexicalTokenEditor's toolbarExtra), beside the
-  // B/I/U buttons whose fate it decides. No "Delivery" caption: the four names are self-describing
+  // B/I/U buttons whose fate it decides. No "Delivery" caption: the names are self-describing
   // and the toolbar is a narrow row that also has to fit the link URL input.
+  //
+  // TWO axes, TWO controls, one toolbarExtra slot. Transport goes LEFTMOST because it gates
+  // whether the flavor matters at all. Segmented and not a Toggle: Paste and Type are PEERS, not
+  // an enable ("Type: off" is not a thing a user thinks, "Paste" is). A segmented control also
+  // satisfies the two-channel rule intrinsically — the lit segment is a tint AND a position — and
+  // keeps both names readable at all times, which a toggle only manages by adding a label that
+  // costs MORE width than the second segment.
+  //
+  // NOT a fifth flavor segment: it is a 2×4, not a 1×5 — "typed Markdown" and "typed Discord" are
+  // the LOSSLESS cells and the ones the warning copy points at, and a 1×5 cannot express them.
+  //
+  // The ms field renders only while Type is lit, so the Paste toolbar is byte-identical to 2.32.0.
   const deliveryControl = (
+    <div className="flex items-center gap-1">
+      <SegmentedControl<SendMethod>
+        dense
+        ariaLabel="Send method"
+        value={sendMethod}
+        onChange={setSendMethod}
+        options={[
+          // One short sentence each, and they contrast: what it does, and the one fact that
+          // decides between them. The rest (no clipboard write, line breaks becoming Enter)
+          // lives in the status rung and the manual, which is where a reader who needs it looks.
+          { value: 'paste', label: 'Paste', tip: tt(
+            'Ctrl+V via the clipboard. The only mode that sends formatting.',
+            'Ctrl+V pela área de transferência. Único modo que envia formatação.') },
+          { value: 'type', label: 'Type', tip: tt(
+            'Types key by key. For targets that ignore Ctrl+V.',
+            'Digita tecla por tecla. Para alvos que ignoram Ctrl+V.') },
+        ]}
+      />
+      {sendMethod === 'type' && (
+        <NumberInput
+          value={charDelay}
+          onChange={setCharDelay}
+          // Clearing the text lands on 0, not blank — see the state's comment: blank would drop
+          // the "ms" and leave an unlabelled empty box where the default should be readable.
+          onClear={() => setCharDelay(0)}
+          min={0}
+          max={200}
+          suffix="ms"
+          suffixInside
+          inputWidth="w-14"
+          inputHeight="h-6"
+          ariaLabel="Per-character delay in milliseconds"
+          className="shrink-0"
+        />
+      )}
+      {/* The toolbar's own divider recipe, so six segments never read as one control. */}
+      <div className="w-px h-4 mx-0.5 bg-border-subtle" />
     <SegmentedControl<SendMode>
       dense
       ariaLabel="Delivery mode"
@@ -799,14 +892,15 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
         { value: 'plain', label: 'Plain', tip: tt('Raw text, no formatting.', 'Texto cru, sem formatação.') },
       ]}
     />
+    </div>
   );
 
   // Right slot of the status strip — one line, first match wins. See utils/sendTextStatus.
   // `tt` IS a dep: useTt returns a useCallback keyed on the language, so this recomputes when
   // the user switches PT-BR/EN and exhaustive-deps stays satisfied.
   const statusNote = useMemo(
-    () => pickStatusNote({ sendMode, hasFormatting, tokenCount, richWillDegrade }, tt),
-    [sendMode, hasFormatting, tokenCount, richWillDegrade, tt],
+    () => pickStatusNote({ sendMode, sendMethod, hasFormatting, tokenCount, richWillDegrade }, tt),
+    [sendMode, sendMethod, hasFormatting, tokenCount, richWillDegrade, tt],
   );
 
   // ── Esc router — ONE capture-phase priority ladder for every sub-layer:
@@ -988,7 +1082,10 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
               richMode
               // Plain is the ONLY mode that delivers nothing of the formatting; markdown and
               // discord bake it into the text as literal markers (ActionExecution.cs:3603-3609).
-              formattingDelivered={sendMode !== 'plain'}
+              // Read it as a rule, not an exception list: formatting is delivered unless the MODE
+              // drops it (Plain) or the TRANSPORT cannot carry it (Type + Rich — no clipboard, so
+              // no CF_HTML). Markdown/Discord under Type still count: their marks are characters.
+              formattingDelivered={sendMode !== 'plain' && !(sendMethod === 'type' && sendMode === 'rich')}
               toolbarExtra={deliveryControl}
               onChange={setText}
               onFormattingChange={setHasFormatting}
@@ -1043,7 +1140,11 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
           </div>
 
           {railTab === 'preview' ? (
-            <MessagePreviewPanel text={text} />
+            <MessagePreviewPanel
+              text={text}
+              method={sendMethod}
+              marksAdded={(sendMode === 'markdown' || sendMode === 'discord') && hasFormatting}
+            />
           ) : railTab === 'emoji' ? (
             <div className="flex-1 min-h-0 overflow-hidden">
               <EmojiPicker
@@ -1379,8 +1480,8 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
         >
           <div className="text-[13px] text-text-primary font-medium mb-1.5">{tt('Unsaved text', 'Texto não salvo')}</div>
           <div className="text-[12px] text-text-secondary leading-relaxed mb-4">
-            {tt('This message has changes that were never applied. Closing now discards the text, its formatting and the delivery mode.',
-                'Esta mensagem tem alterações que nunca foram aplicadas. Fechar agora descarta o texto, a formatação e o modo de entrega.')}
+            {tt('This message has changes that were never applied. Closing now discards the text, its formatting and the delivery settings.',
+                'Esta mensagem tem alterações que nunca foram aplicadas. Fechar agora descarta o texto, a formatação e os ajustes de entrega.')}
           </div>
           <div className="flex justify-end gap-2">
             {/* autoFocus is safe here: this overlay mounts fresh every time, unlike the snippet

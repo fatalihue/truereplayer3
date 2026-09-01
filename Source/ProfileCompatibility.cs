@@ -492,6 +492,27 @@ namespace TrueReplayer.Services
             (p => p.Actions.Any(a => !string.IsNullOrEmpty(a.KeyHtml) || !string.IsNullOrEmpty(a.KeyMarkdown)),
                 new Version(2, 8, 1), "Rich text (SendText)"),
 
+            // SendText typed delivery (SendMethod non-null — the payload is typed key by key via
+            // SendInput instead of clipboard + Ctrl+V). An older build HAS the SendText replay case,
+            // so the row RUNS — it just drops the unknown property and pastes. The reason the author
+            // turned this on is that the target IGNORES Ctrl+V (a game chat, a terminal, an
+            // anti-paste field), so that build delivers NOTHING and a following {enter} fires on an
+            // empty box: whole content lost, not just formatting, which makes this strictly worse
+            // than the rich-text pin above. It also clobbers-and-restores the clipboard the flag
+            // exists to leave alone, and with no [JsonExtensionData] it ERASES the flag on save.
+            //
+            // Predicate is on the FIELD (any non-null SendMethod), not on the value "type": a second
+            // typing strategy must add its OWN row at its own floor, because a 2.33.0 build
+            // understands "type" and would silently paste anything else. Also gated on the
+            // ActionType that reads it — actions:edit "actionType" does not clear the SendText
+            // fields, so an inert flag on a row switched away from SendText must not raise that
+            // profile's floor (the field-only rich pin above over-pins exactly that way; do not
+            // copy it). SendCharDelay needs no row of its own: it only means anything when
+            // SendMethod is set, and ComputeMinVersion takes the MAX. Introduced in 2.33.0.
+            (p => p.Actions.Any(a => string.Equals(a.ActionType, "SendText", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrEmpty(a.SendMethod)),
+                new Version(2, 33, 0), "Typed text delivery (SendText)"),
+
             // SetVariable base action ('set' mode, VariableMode null) shipped in 2.6.12.
             // Builds < 2.6.12 have no "SetVariable" case in the replay switch (which has NO
             // default) → silently skip the row → the variable is never written → downstream

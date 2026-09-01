@@ -4,8 +4,9 @@ import { useAppState } from '../../state/AppStateContext';
 import { useClipboardContent } from './useClipboardContent';
 import { useRunStateSnapshot } from './useRunStateSnapshot';
 import { resolveMessagePreview, type PendingReason, type PreviewPiece } from './messagePreview';
+import type { SendMethod } from '../../utils/sendTextTypes';
 
-// Third rail tab: the message as it will actually paste. Everything this panel cannot resolve for
+// Third rail tab: the message as it will actually be sent. Everything this panel cannot resolve for
 // certain is drawn as a labelled placeholder, never as a value — the discipline the Advanced
 // Clipboard surface set for its own preview.
 //
@@ -15,12 +16,12 @@ import { resolveMessagePreview, type PendingReason, type PreviewPiece } from './
 
 const REASON_TIP: Record<PendingReason, [string, string]> = {
   literal: [
-    'The engine will paste this verbatim, braces and all — the name is one it resolves, but the argument is not a shape it accepts.',
-    'O motor vai colar isso literalmente, chaves e tudo — o nome ele resolve, mas o argumento não está numa forma que ele aceita.',
+    'The engine sends this verbatim, braces and all — the name is one it resolves, but the argument is not a shape it accepts.',
+    'O motor envia isso literalmente, chaves e tudo — o nome ele resolve, mas o argumento não está numa forma que ele aceita.',
   ],
   'key-press': [
-    'Sent as a key press, not as typed text. It is dispatched between the pasted blocks rather than inside one.',
-    'Enviado como uma tecla, não como texto digitado. Ele é disparado entre os blocos colados, não dentro de um.',
+    'Sent as its own key press, not as characters inside the text — it is dispatched between the text blocks, never inside one.',
+    'Enviado como uma tecla própria, não como caracteres dentro do texto — é disparado entre os blocos de texto, nunca dentro de um.',
   ],
   delay: ['A pause in the typing, not text.', 'Uma pausa na digitação, não texto.'],
   random: ['Drawn fresh every run.', 'Sorteado a cada execução.'],
@@ -68,7 +69,13 @@ const NOTE_TIP: Record<string, [string, string]> = {
   ],
 };
 
-export function MessagePreviewPanel({ text }: { text: string }) {
+export function MessagePreviewPanel({ text, method, marksAdded = false }: {
+  text: string;
+  method: SendMethod;
+  /** Delivery is Markdown/Discord AND the document carries formatting — so the engine will send
+   *  KeyMarkdown, which is this text plus literal marks the panel cannot render. */
+  marksAdded?: boolean;
+}) {
   const tt = useTt();
   const { clipRaw, clipReady } = useClipboardContent();
   const { dataTable } = useAppState();
@@ -95,8 +102,23 @@ export function MessagePreviewPanel({ text }: { text: string }) {
     <div className="flex-1 min-h-0 flex flex-col">
       <div className="px-3 pt-2 pb-1 shrink-0">
         <div className="label-micro text-text-tertiary">
-          {tt('What this will paste', 'O que isto vai colar')}
+          {method === 'type'
+            ? tt('What this will type', 'O que isto vai digitar')
+            : tt('What this will paste', 'O que isto vai colar')}
         </div>
+        {/* This panel renders the PLAIN payload — the same string the engine resolves — and it has
+            no way to render the markdown flavor, which is exported imperatively from the editor at
+            confirm time (getMarkdown), not derivable from `text`. Under Markdown/Discord with
+            formatting present the engine sends KeyMarkdown: this exact text PLUS literal marks.
+            Rather than silently show a payload one step short of the truth, say so. Gated on
+            hasFormatting because with none the two flavors are identical and the note would be
+            noise. */}
+        {marksAdded && (
+          <div className="text-[10px] leading-snug text-text-tertiary mt-0.5">
+            {tt('Formatting marks (*bold*) are added on send and are not shown here.',
+                'As marcas de formatação (*negrito*) são acrescentadas no envio e não aparecem aqui.')}
+          </div>
+        )}
       </div>
       <div className="flex-1 min-h-0 overflow-auto px-3 pb-3">
         <div

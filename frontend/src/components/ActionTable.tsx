@@ -27,6 +27,7 @@ import { uiZoom } from '../utils/zoomSpace';
 const SendTextDialog = lazy(() => import('./SendTextDialog').then(m => ({ default: m.SendTextDialog })));
 import { SendTextPreview } from './SendTextPreview';
 import { sendTextDeliveryBadge } from './lexical/deliveryBadge';
+import type { SendMode, SendMethod } from '../utils/sendTextTypes';
 import { RunProfileDialog } from './RunProfileDialog';
 import { KeystrokeCaptureDialog } from './KeystrokeCaptureDialog';
 import { PauseDialog } from './PauseDialog';
@@ -545,7 +546,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
   const prevActionsLength = useRef(actions.length);
   const prevProfileRef = useRef(activeProfile);
   const wasRecording = useRef(false);
-  const [sendTextEdit, setSendTextEdit] = useState<{ index: number; text: string; html?: string | null; mode?: 'rich' | 'markdown' | 'plain' | 'discord' } | null>(null);
+  const [sendTextEdit, setSendTextEdit] = useState<{ index: number; text: string; html?: string | null; mode?: SendMode; method?: SendMethod; charDelayMs?: number | null } | null>(null);
   const [runProfileEdit, setRunProfileEdit] = useState<{ index: number; profileName: string; repeatCount: number; runOverData: boolean } | null>(null);
   // Editing a Keystroke OR HoldKey row reopens the unified KeystrokeCaptureDialog —
   // these two ActionTypes share the same edit surface now that Press/Hold is a mode
@@ -927,7 +928,17 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
     const rowAction = actions[idx];
     if (!rowAction) return;
     if (rowAction.actionType === 'SendText') {
-      setSendTextEdit({ index: idx, text: rowAction.key, html: rowAction.keyHtml, mode: rowAction.sendMode ?? 'rich' });
+      // Every axis is seeded from the row. Omitting one is not a cosmetic miss: the dialog would
+      // reopen showing the DEFAULT, and the next Save writes that default back over the row's
+      // real choice (the failure WebViewBridge's projection comment warns about).
+      setSendTextEdit({
+        index: idx,
+        text: rowAction.key,
+        html: rowAction.keyHtml,
+        mode: rowAction.sendMode ?? 'rich',
+        method: rowAction.sendMethod ?? 'paste',
+        charDelayMs: rowAction.sendCharDelay ?? null,
+      });
     } else if (rowAction.actionType === 'RunProfile') {
       setRunProfileEdit({
         index: idx,
@@ -2502,10 +2513,16 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                           ? <SendTextPreview
                               text={action.key}
                               badge={sendTextDeliveryBadge(action)}
-                              badgeTip={tt(
-                                'Delivery is Rich, but a key or delay token splits the text — the engine attaches formatting only when the payload is ONE text run, so replay pastes this as PLAIN. Move the token to the start or the end, split the action in two, or switch Delivery to Markdown/Discord.',
-                                'O Delivery está em Rich, mas um token de tecla ou delay divide o texto — o motor só anexa formatação quando o texto forma UM bloco, então o replay cola como TEXTO PURO. Mova o token para o início ou o fim, divida a ação em duas, ou troque o Delivery para Markdown/Discord.',
-                              )}
+                              badgeTips={{
+                                'rich-split': tt(
+                                  'Delivery is Rich, but a key or delay token splits the text — the engine attaches formatting only when the payload is ONE text run, so replay pastes this as PLAIN. Move the token to the start or the end, split the action in two, or switch Delivery to Markdown/Discord.',
+                                  'O Delivery está em Rich, mas um token de tecla ou delay divide o texto — o motor só anexa formatação quando o texto forma UM bloco, então o replay cola como TEXTO PURO. Mova o token para o início ou o fim, divida a ação em duas, ou troque o Delivery para Markdown/Discord.',
+                                ),
+                                'type-drops-rich': tt(
+                                  'This row is set to Type, which sends keystrokes with no clipboard — so the formatting it carries is not sent. The formatting stays saved: switch to Paste to send it, or switch Delivery to Markdown/Discord, whose marks are typed as literal characters.',
+                                  'Esta linha está em Type, que envia teclas sem passar pela área de transferência — então a formatação que ela carrega não é enviada. A formatação continua salva: troque para Paste para enviá-la, ou troque o Delivery para Markdown/Discord, cujas marcas são digitadas como caracteres literais.',
+                                ),
+                              }}
                             />
                           // Pause / HoldKey embed a "<n> ms" duration in displayKey;
                           // render it in the Delay column's format (thousands-separated
@@ -2723,8 +2740,21 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
             initialText={sendTextEdit.text}
             initialHtml={sendTextEdit.html}
             initialMode={sendTextEdit.mode}
-            onConfirm={(text, html, markdown, mode) => {
-              send({ type: 'actions:editSendText', payload: { index: sendTextEdit.index, text, html: html ?? undefined, markdown: markdown ?? undefined, mode } });
+            initialMethod={sendTextEdit.method}
+            initialCharDelayMs={sendTextEdit.charDelayMs}
+            onConfirm={(r) => {
+              send({
+                type: 'actions:editSendText',
+                payload: {
+                  index: sendTextEdit.index,
+                  text: r.text,
+                  html: r.html ?? undefined,
+                  markdown: r.markdown ?? undefined,
+                  mode: r.mode,
+                  method: r.method,
+                  charDelayMs: r.charDelayMs,
+                },
+              });
               setSendTextEdit(null);
             }}
             onClose={() => setSendTextEdit(null)}

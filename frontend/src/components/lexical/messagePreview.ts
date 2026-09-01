@@ -137,15 +137,16 @@ function inputLabel(token: string): string {
   return m ? m[1].trim() : '';
 }
 
-// int.TryParse plus the engine's `n > 0` test — the same shape parseSendTextSegments uses.
+// How many presses the ENGINE will emit for a {key:N}. Delegated to the ported walk rather than
+// re-derived, for the same reason the delay branch below delegates: a second implementation of
+// int.TryParse is a second chance to disagree with it, and this one did. `Number.isSafeInteger`
+// accepts values int.TryParse rejects by OVERFLOW — {enter:3000000000} was previewed as "×100"
+// (clamped) while the engine parses nothing, falls through, and emits ONE press.
+// parseSendTextSegments is the line-by-line port and is fuzz-tested against the real C# (61,716
+// cases, 0 mismatches), so counting its output is exact by construction.
 function repeatCount(token: string): number {
-  const inner = token.slice(1, -1);
-  const c = inner.indexOf(':');
-  if (c < 0) return 1;
-  const raw = inner.slice(c + 1);
-  if (!/^[ \t\n\v\f\r]*[+-]?[0-9]+[ \t\n\v\f\r]*$/.test(raw)) return 1;
-  const n = Number(raw.trim());
-  return Number.isSafeInteger(n) && n > 0 ? Math.min(n, 100) : 1;
+  const first = parseSendTextSegments(token)[0];
+  return first && first.kind === 'key' ? first.count : 1;
 }
 
 // BuildRowDict: trim + case-insensitive, and the LAST duplicate header wins.
