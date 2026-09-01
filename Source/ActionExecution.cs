@@ -3765,7 +3765,22 @@ namespace TrueReplayer.Services
                         case "ActivateWindow": await ExecuteActivateWindow(action, token); break;
                         case "WaitImage": await ExecuteWaitImage(action, token); break;
                         case "WaitPixelColor": await ExecuteWaitPixelColor(action, token); break;
-                        case "RunProfile": await HandleRunProfile(action, token); break;
+                        case "RunProfile": {
+                            // A refusal (disabled target, cycle, over-depth, missing profile, …)
+                            // is a deliberate non-fatal no-op, and until now it reported "ok".
+                            // Status is set BEFORE the finally, whose promotion only fires on
+                            // "running", so this sticks. See HandleRunProfile for why "skipped"
+                            // rather than "failed".
+                            var runProfileSkip = await HandleRunProfile(action, token);
+                            if (runProfileSkip != null)
+                            {
+                                stepRec.Status = "skipped";
+                                if (!_runStepsFull)
+                                    stepRec.Detail = (stepRec.Detail is { Length: > 0 } d ? d + " — " : "")
+                                        + runProfileSkip;
+                            }
+                            break;
+                        }
                         case "Pause": await ExecutePause(action, token); break;
                         case "BrowserAssert": {
                             bool quietStopped = await ExecuteBrowserAssert(action, token);
@@ -4066,13 +4081,38 @@ namespace TrueReplayer.Services
         /// sub-profile's window context (if it has one), executes its actions N times, then
         /// restores the caller's context.
         /// </summary>
-        private async Task HandleRunProfile(ActionItem action, CancellationToken token)
+        /// <summary>
+        /// Runs a RunProfile row. Returns null when the sub-profile actually executed, otherwise a
+        /// SHORT human-readable reason it did not — which the caller writes into the row's run-report
+        /// step (Status "skipped" + the reason in Detail).
+        ///
+        /// Why the return value exists: every one of the seven refusals below is a deliberate,
+        /// non-fatal no-op that only logged. The step record the action switch files defaults to
+        /// "running" and its finally promotes that to "ok", so the report showed
+        /// "RunProfile · name · ok · 2 ms" for a call that executed nothing at all — the exact lie
+        /// the Status field's own comment was written to stop ("green ticks with 0 ms … including
+        /// the step that was hanging, which is the one the panel gets opened to diagnose"), and the
+        /// one case that had been left out. ForEachRow over an empty table already does this right.
+        ///
+        /// All seven map to "skipped", never "failed", including "not found". The panel paints
+        /// failed rows red and counts them in the header, and claiming a failure here would
+        /// contradict the engine's own decision that these are survivable — it keeps going on
+        /// purpose. The Detail carries the actionable half; that is what answers "why did nothing
+        /// happen?". Same choice ForEachRow's "no data rows" makes.
+        ///
+        /// The other doors to the same silent no-op are already shut elsewhere, which is why this
+        /// is a small fix: a rename rewrites every reference (ScanRunProfileReferencesAsync), a
+        /// delete counts the dangling ones, and RunProfileDialog's picker drops self-references and
+        /// disabled profiles. What is left — and what this reports — is a profile disabled AFTER the
+        /// row was authored, and a cycle or over-depth chain introduced by later editing.
+        /// </summary>
+        private async Task<string?> HandleRunProfile(ActionItem action, CancellationToken token)
         {
             var targetName = action.Key?.Trim();
             if (string.IsNullOrEmpty(targetName))
             {
                 DiagnosticLog.Info("[Chain] RunProfile with empty profile name — skipped.");
-                return;
+                return "no profile selected";
             }
 
             // Cycle detection: refuse if the target is already on the active call stack.
@@ -4080,20 +4120,21 @@ namespace TrueReplayer.Services
             {
                 var path = string.Join(" → ", _callStack) + " → " + targetName;
                 DiagnosticLog.Info($"[Chain] Cycle detected, aborting sub-call: {path}");
-                return;
+                // The PATH, not just "cycle": which loop it is, is the whole diagnosis.
+                return $"cycle blocked ({path})";
             }
 
             // Hard depth cap as a defensive belt-and-suspenders even when cycle detection passes.
             if (_callStack.Count >= MaxCallDepth)
             {
                 DiagnosticLog.Info($"[Chain] Max depth {MaxCallDepth} exceeded at '{targetName}', aborting.");
-                return;
+                return $"chain deeper than {MaxCallDepth} levels";
             }
 
             if (_profileLookup == null)
             {
                 DiagnosticLog.Info("[Chain] Profile lookup not configured — RunProfile is a no-op.");
-                return;
+                return "profile lookup unavailable";
             }
 
             Models.UserProfile? subProfile;
@@ -4104,13 +4145,13 @@ namespace TrueReplayer.Services
             catch (Exception ex)
             {
                 DiagnosticLog.Info($"[Chain] Profile lookup threw for '{targetName}': {ex.Message}");
-                return;
+                return $"could not load profile ({ex.Message})";
             }
 
             if (subProfile == null)
             {
                 DiagnosticLog.Info($"[Chain] Profile '{targetName}' not found, skipping.");
-                return;
+                return "profile not found";
             }
 
             // Disabled sub-profiles are skipped at replay time — same rule as direct hotkey
@@ -4119,7 +4160,7 @@ namespace TrueReplayer.Services
             if (subProfile.IsDisabled)
             {
                 DiagnosticLog.Info($"[Chain] Profile '{targetName}' is disabled, skipping.");
-                return;
+                return "profile is disabled";
             }
 
             // Push and update chain status BEFORE applying sub context so the user sees the
@@ -4267,6 +4308,10 @@ namespace TrueReplayer.Services
                 if (_callStack.Count > 0) _callStack.RemoveAt(_callStack.Count - 1);
                 NotifyChainChanged();
             }
+
+            // Reached only after the sub-profile actually ran (any number of its own rows may have
+            // been skipped inside it — that is the sub's own report, not this row's).
+            return null;
         }
 
         /// <summary>
