@@ -1155,10 +1155,23 @@ export function Toolbar(_props: ToolbarProps) {
         <Suspense fallback={null}>
           <SendTextDialog
             mode="add"
-            onConfirm={(text, html, markdown, mode) => {
+            // No initialMethod: the add path takes the dialog's 'paste' default, so a brand-new
+            // row is byte-identical on disk to one authored before this feature.
+            onConfirm={(r) => {
               const sel = selectionRef.current;
               const insertIndex = sel.size > 0 ? Math.min(...sel) : undefined;
-              send({ type: 'actions:addSendText', payload: { text, html: html ?? undefined, markdown: markdown ?? undefined, mode, insertIndex } });
+              send({
+                type: 'actions:addSendText',
+                payload: {
+                  text: r.text,
+                  html: r.html ?? undefined,
+                  markdown: r.markdown ?? undefined,
+                  mode: r.mode,
+                  method: r.method,
+                  charDelayMs: r.charDelayMs,
+                  insertIndex,
+                },
+              });
               setShowSendTextDialog(false);
             }}
             onClose={() => setShowSendTextDialog(false)}

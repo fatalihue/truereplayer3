@@ -309,6 +309,42 @@ namespace TrueReplayer.Models
         [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
         public string? SendMode { get; set; }
 
+        // Delivery METHOD for a SendText, orthogonal to SendMode above (which picks the FLAVOR).
+        // null/"paste" = today's behavior: the payload goes on the clipboard and the engine sends
+        // Ctrl+V. "type" = the payload is typed character by character via SendInput; the clipboard
+        // is READ (so {clipboard} still resolves) but never written and never restored.
+        // Exists because many targets ignore or refuse a paste — game chat boxes, some terminals,
+        // some legacy Win32 controls, anti-paste web fields — and because paste clobbers and
+        // restores a clipboard the user never offered.
+        //
+        // TYPE + RICH IS THE ONE INCOMPATIBLE CELL: there is no clipboard, so there is no CF_HTML
+        // to attach. The rich flavor is dropped STRUCTURALLY in ResolveSendTextDelivery
+        // (ActionExecution.cs) and never re-derived downstream. Markdown/Discord type perfectly:
+        // their marks are already literal characters inside KeyMarkdown.
+        //
+        // A nullable STRING, not a bool, so a second typing strategy can land as another value
+        // ("typeunicode", forcing VK_PACKET for a target that mangles injected scancodes) without
+        // a schema change — and so the default stays OUT of the JSON.
+        //
+        // NOT invalidated by a plain Key edit (WebViewBridge case "key"), unlike KeyHtml /
+        // KeyMarkdown / SendMode: those are DERIVED from the text being replaced, a transport
+        // choice is not. Nulling it there would flip a Type row back to Paste on every SheetPanel
+        // text edit — and Type is chosen precisely because the target ignores Ctrl+V, so that
+        // reset means the macro silently stops delivering.
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        public string? SendMethod { get; set; }
+
+        // Per-character pause for SendMethod == "type", in ms. null/0 = the default: one batched
+        // SendInput per text run, no pacing.
+        // When set it is BOTH the key-hold and the inter-character gap: the key-down and key-up
+        // are split by it. A frame-sampled game reads key STATE once per frame, so a down+up that
+        // ship in the same SendInput batch can be a zero-duration press it never observes — a gap
+        // between CHARACTERS would not fix that, a hold does. Deliberately NOT ActionItem.TypeDelay
+        // (BrowserType's field): there null means "auto = 5 ms", here it means 0, and one field
+        // with two defaults is discoverable only by reading the ActionType.
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        public int? SendCharDelay { get; set; }
+
         // Write-only migration shim: an older (unreleased) build persisted `sendPlainOnly: true`.
         // Map it to SendMode == "plain" on load; never serialized (no getter) so it disappears on
         // the next save. Guarded so an explicit sendMode already read from JSON wins.
@@ -842,6 +878,8 @@ namespace TrueReplayer.Models
             KeyHtml = KeyHtml,
             KeyMarkdown = KeyMarkdown,
             SendMode = SendMode,
+            SendMethod = SendMethod,
+            SendCharDelay = SendCharDelay,
             X = X,
             Y = Y,
             Delay = Delay,

@@ -22,6 +22,14 @@ namespace TrueReplayer.Interop
         public const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
         public const uint KEYEVENTF_KEYUP = 0x0002;
         public const uint KEYEVENTF_SCANCODE = 0x0008;
+        // KEYEVENTF_UNICODE: wScan carries a UTF-16 CODE UNIT and wVk MUST be 0. The system
+        // synthesizes a VK_PACKET (0xE7) keystroke that the target's TranslateMessage turns into
+        // WM_CHAR. Per the KEYBDINPUT contract it combines ONLY with KEYEVENTF_KEYUP — never with
+        // KEYEVENTF_SCANCODE, which every other injection site in this app sets. Do not copy
+        // SimulateKeyPress's flag expression here; write the flags fresh.
+        // Used ONLY as the per-character fallback in TypeTextViaSendInput, for characters the
+        // target's layout cannot produce at all (emoji, →, é on a US layout).
+        public const uint KEYEVENTF_UNICODE = 0x0004;
 
         public const int WH_MOUSE_LL = 14;
         public const int WH_KEYBOARD_LL = 13;
