@@ -3,11 +3,16 @@
 // popovers (clipboard + data-row cell — both run the SAME backend modifier pipeline).
 //
 // Modifier order in the emitted chain MUST match the backend pipeline:
-// next → trim → before/after → range/lines → sort → dedupe → reverse → join → words →
-// line/word → first/last → upper/lower/sentence/title. ('next' picks WHICH text the rest sees
-// and is handled in ResolveClipboardTokensAsync, ahead of ApplyClipboardModifiers; the split
-// cuts the RAW text at a delimiter, list ops then narrow/reshape the multiline content, words
-// takes a span and line/word a single piece, limit and case finish.)
+// next → trim → before/after(+last) → dropnum → range/lines → sort → dedupe → reverse → join →
+// words → line/word → first/last → noaccents → digits → upper/lower/sentence/title.
+// ('next' picks WHICH text the rest sees and is handled in ResolveClipboardTokensAsync, ahead
+// of ApplyClipboardModifiers; the split cuts the RAW text at a delimiter, dropnum strips a
+// leading count, list ops then narrow/reshape the multiline content, words takes a span and
+// line/word a single piece, limit slices, the character-class filters clean, case finishes.)
+//
+// This list is the ground truth the two editing UIs order themselves by, so it has to stay in
+// lockstep with buildModifierParts below — it was stale once already, missing `dropnum` and the
+// `noaccents`/`digits` pair that ship between the limit and the case steps.
 
 export type CaseTransform = 'none' | 'upper' | 'lower' | 'sentence' | 'title';
 export type Extract = 'none' | 'line' | 'word' | 'words';
@@ -450,6 +455,17 @@ function sliceWords(content: string, from: number, to: number): string {
  *  asking about the reference field there would answer about a leftover from another mode. */
 const extractUsesRef = (s: TransformState): boolean => s.extract === 'line' || s.extract === 'word';
 
+/** Is a step doing work? A split with no delimiter emits nothing (see buildModifierParts), so a
+ *  badge must not claim it runs. Same rule for dropnum's empty suffix. Shared by ClipboardSurface
+ *  and ClipboardModifierBody so the two ladders can never disagree about what is lit. */
+export const splitStepActive = (s: TransformState): boolean => s.split !== 'none' && s.splitDelim.length > 0;
+export const dropNumStepActive = (s: TransformState): boolean => s.dropNumSuffix.length > 0;
+/** Unlike the two above, this is NOT a mirror of an emit gate — the Lines step emits through
+ *  several independent gates. It answers the narrower question the badge asks: is any control in
+ *  this step set to something other than its default? */
+export const linesStepActive = (s: TransformState): boolean =>
+  s.listPick !== 'none' || s.sort || s.dedupe || s.reverse || s.join;
+
 export const previewIsRuntimeDependent = (s: TransformState): boolean =>
   (extractUsesRef(s) && isArgRef(s.extractRef)) || (s.limit !== 'none' && isArgRef(s.limitRef));
 
@@ -625,6 +641,17 @@ export function parseClipboardToken(token: string): TransformState {
 // join separator that happens to be the word "next" ({clipboard:join:next}) is left alone — the
 // backend treats it as a separator, and the two sides must agree or the chip rewrites the token
 // into something that behaves differently.
+// True when the token carries the standalone `next` modifier — i.e. {clipboard:next}, the
+// auto-advancing line read, as opposed to a plain {clipboard} with a chain. Exported so the
+// description table can tell the two apart without restating the walk: {clipboard:join:next}
+// is a join whose SEPARATOR is the word "next", and a naive parts[1] === 'next' test would
+// describe it as the auto-advancing read. findNextModifier steps over arguments exactly as the
+// backend's next-walk does, so this can never disagree with the engine.
+export function hasNextModifier(token: string): boolean {
+  if (token.length < 3 || token[0] !== '{' || token[token.length - 1] !== '}') return false;
+  return findNextModifier(token.slice(1, -1).split(':'), 1) >= 0;
+}
+
 function findNextModifier(parts: string[], from: number): number {
   for (let i = from; i < parts.length; ) {
     // Only a segment the walk LANDS on is a modifier — one it steps over is somebody's argument.

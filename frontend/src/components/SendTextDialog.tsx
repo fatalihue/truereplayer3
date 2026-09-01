@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffe
 import ReactDOM from 'react-dom';
 import {
   Smile, Braces, BookmarkPlus, Trash2, ChevronRight, Wand2, Pencil, Search, Check, X, Type,
+  TriangleAlert, Eye, Download, Upload,
 } from 'lucide-react';
 import EmojiPicker, { Theme } from 'emoji-picker-react';
 import type { EmojiClickData } from 'emoji-picker-react';
@@ -15,7 +16,18 @@ import {
   type LexicalEditorHandle,
 } from './lexical/LexicalTokenEditor';
 import type { ClipboardChipEditRequest } from './lexical/TokenChip';
+import { richFlavorSurvives } from './lexical/tokenNormalize';
+import { tokenTip } from './lexical/tokenDescriptions';
+import { FieldError } from './common/FieldError';
+import { pickStatusNote } from '../utils/sendTextStatus';
 import { ClipboardSurface } from './lexical/ClipboardSurface';
+import { MessagePreviewPanel } from './lexical/MessagePreviewPanel';
+import {
+  buildSnippetExport,
+  parseSnippetImport,
+  mergeSnippets,
+  snippetExportFilename,
+} from './lexical/snippetTransfer';
 import {
   buildChainToken,
   parseChainToken,
@@ -40,6 +52,9 @@ interface SendTextDialogProps {
 
 type SendMode = 'rich' | 'markdown' | 'plain' | 'discord';
 
+// Insert (the token palette + snippets) | Emoji | Preview (the resolved message).
+type RailTab = 'insert' | 'emoji' | 'preview';
+
 interface Snippet {
   id: string;
   name: string;
@@ -49,6 +64,45 @@ interface Snippet {
 }
 
 const SNIPPETS_KEY = 'trueplayer_snippets';
+
+// Key name follows the app's `tr-` prefix for small UI prefs ('tr-language', 'tr-livevars').
+// SNIPPETS_KEY above and themes.ts's 'truereplay-*' are older spellings — do not copy those.
+const MORE_OPEN_KEY = 'tr-sendtext-more';
+
+/** The three palette disclosures. One key, one JSON blob — three keys would be three writes
+ *  per toggle for state that is always read together. */
+type MoreOpen = { keys: boolean; clipboard: boolean; rows: boolean };
+const MORE_OPEN_DEFAULT: MoreOpen = { keys: false, clipboard: false, rows: false };
+
+function loadMoreOpen(): MoreOpen {
+  try {
+    const raw = localStorage.getItem(MORE_OPEN_KEY);
+    if (!raw) return MORE_OPEN_DEFAULT;
+    const parsed = JSON.parse(raw);
+    // Same corrupt-value guard as loadSnippets: a hand-edited or legacy value that is not a
+    // plain object would feed `undefined` into three booleans and render the chevrons from
+    // undefined state. Null and arrays are objects to typeof, so both are excluded explicitly.
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return MORE_OPEN_DEFAULT;
+    // `=== true`, not truthiness: a stored "yes"/1 must read as closed, not as open.
+    return {
+      keys: parsed.keys === true,
+      clipboard: parsed.clipboard === true,
+      rows: parsed.rows === true,
+    };
+  } catch {
+    return MORE_OPEN_DEFAULT;
+  }
+}
+
+function saveMoreOpen(next: MoreOpen) {
+  // QuotaExceededError guard, exactly as saveSnippets: swallow + log so the palette stays
+  // usable; the disclosure just won't survive the next restart.
+  try {
+    localStorage.setItem(MORE_OPEN_KEY, JSON.stringify(next));
+  } catch (err) {
+    console.warn('[SendTextDialog] Failed to save palette disclosures:', err);
+  }
+}
 
 // Relative luminance (WCAG) of a #rgb/#rrggbb hex, 0 = black … 1 = white.
 // Inlined because themes.ts doesn't export a helper; used to pick the emoji
@@ -162,39 +216,45 @@ interface PaletteChip {
   label: string;
   insert?: string;                                       // direct-insert seed (byte-identical to 2.7.x)
   prompt?: 'var' | 'row' | 'rownext' | 'clip' | 'input'; // opens the name/label prompt instead
-  tip: [string, string];                      // tt(en, ptBr)
 }
 
+// The token a palette chip stands for. Descriptions used to live inline on every chip, one copy
+// each, and they vanished the moment the token BECAME a chip in the editor; they now come from
+// the one shared table in lexical/tokenDescriptions. Direct chips ARE their seed; a prompt chip
+// has no seed yet, so a synthetic one carries the right NAME — and, for {row:x}, lands on the
+// data-column VARIANT rather than the bare action-row counter, which is what that chip means.
+const paletteToken = (chip: PaletteChip): string => chip.insert ?? `{${chip.prompt}:x}`;
+
 const VALUE_CHIPS: PaletteChip[] = [
-  { label: 'Date', insert: '{date}', tip: ['Current date (dd/MM/yyyy)', 'Data atual (dd/MM/aaaa)'] },
-  { label: 'Time', insert: '{time}', tip: ['Current time (HH:mm:ss)', 'Hora atual (HH:mm:ss)'] },
-  { label: 'DateTime', insert: '{datetime}', tip: ['Current date and time', 'Data e hora atuais'] },
-  { label: 'Random', insert: '{random:1-10}', tip: ['Fresh random number each run', 'Número aleatório novo a cada execução'] },
+  { label: 'Date', insert: '{date}' },
+  { label: 'Time', insert: '{time}' },
+  { label: 'DateTime', insert: '{datetime}' },
+  { label: 'Random', insert: '{random:1-10}' },
   // Seed is PRE-normalized ({Pick:...}, args verbatim) — direct chips insert as text and only
   // a normalization fixed point survives the load gate as a chip. Click the chip to edit the
   // options one-per-line in its popover.
-  { label: 'Pick', insert: '{Pick:a|b|c}', tip: ['Types ONE of the options, chosen at random each run — click the chip to edit the list', 'Digita UMA das opções, sorteada a cada execução — clique no chip para editar a lista'] },
+  { label: 'Pick', insert: '{Pick:a|b|c}' },
 ];
 
 const KEY_CHIPS: PaletteChip[] = [
-  { label: 'Enter', insert: '{enter}', tip: ['Press Enter', 'Pressiona Enter'] },
-  { label: 'Tab', insert: '{tab}', tip: ['Press Tab', 'Pressiona Tab'] },
-  { label: 'Delay', insert: '{delay:500}', tip: ['Pause typing for N ms', 'Pausa a digitação por N ms'] },
+  { label: 'Enter', insert: '{enter}' },
+  { label: 'Tab', insert: '{tab}' },
+  { label: 'Delay', insert: '{delay:500}' },
 ];
 
 const MORE_KEY_CHIPS: PaletteChip[] = [
-  { label: 'Space', insert: '{space}', tip: ['Press Space', 'Pressiona Espaço'] },
-  { label: 'Backspace', insert: '{backspace}', tip: ['Press Backspace', 'Pressiona Backspace'] },
-  { label: 'Delete', insert: '{delete}', tip: ['Press Delete', 'Pressiona Delete'] },
-  { label: 'Escape', insert: '{escape}', tip: ['Press Escape', 'Pressiona Esc'] },
-  { label: 'Home', insert: '{home}', tip: ['Press Home', 'Pressiona Home'] },
-  { label: 'End', insert: '{end}', tip: ['Press End', 'Pressiona End'] },
-  { label: 'PageUp', insert: '{pageup}', tip: ['Press Page Up', 'Pressiona Page Up'] },
-  { label: 'PageDown', insert: '{pagedown}', tip: ['Press Page Down', 'Pressiona Page Down'] },
-  { label: 'Up', insert: '{up}', tip: ['Press Up arrow', 'Pressiona seta ↑'] },
-  { label: 'Down', insert: '{down}', tip: ['Press Down arrow', 'Pressiona seta ↓'] },
-  { label: 'Left', insert: '{left}', tip: ['Press Left arrow', 'Pressiona seta ←'] },
-  { label: 'Right', insert: '{right}', tip: ['Press Right arrow', 'Pressiona seta →'] },
+  { label: 'Space', insert: '{space}' },
+  { label: 'Backspace', insert: '{backspace}' },
+  { label: 'Delete', insert: '{delete}' },
+  { label: 'Escape', insert: '{escape}' },
+  { label: 'Home', insert: '{home}' },
+  { label: 'End', insert: '{end}' },
+  { label: 'PageUp', insert: '{pageup}' },
+  { label: 'PageDown', insert: '{pagedown}' },
+  { label: 'Up', insert: '{up}' },
+  { label: 'Down', insert: '{down}' },
+  { label: 'Left', insert: '{left}' },
+  { label: 'Right', insert: '{right}' },
 ];
 
 // Clipboard-sourced tokens — grouped under the Clipboard section next to {clipboard}
@@ -202,29 +262,29 @@ const MORE_KEY_CHIPS: PaletteChip[] = [
 // Clip slot stays inline: it is the consumer end of the Copy to Slot action and the
 // capture hotkey, so hiding it here would hide half of that feature.
 const CLIPBOARD_CHIPS: PaletteChip[] = [
-  { label: 'Clip slot…', prompt: 'clip', tip: ['Selection captured by a Copy to Slot action or the capture hotkey', 'Seleção capturada por uma action Copy to Slot ou pelo hotkey de captura'] },
+  { label: 'Clip slot…', prompt: 'clip' },
 ];
 
 // Collapsed: {clipboard:next} is a niche auto-advancing read, and {winclip:N} depends
 // on a Windows setting being on and can surface anything recently copied.
 const MORE_CLIPBOARD_CHIPS: PaletteChip[] = [
-  { label: 'Clipboard line (next)', insert: '{clipboard:next}', tip: ['Auto-advancing: each use takes the NEXT line of the clipboard instead of the whole thing (1st use → line 1, 2nd → line 2…). Copy something new and it starts over; past the last line it resolves empty. Blank lines are skipped. Click the chip after inserting to add transforms.', 'Auto-avança: cada uso pega a PRÓXIMA linha do clipboard em vez do conteúdo inteiro (1º uso → linha 1, 2º → linha 2…). Copiou algo novo, recomeça; depois da última linha resolve vazio. Linhas em branco são puladas. Clique no chip depois de inserir para adicionar transformações.'] },
-  { label: 'Clipboard history', insert: '{winclip:1}', tip: ['Windows Win+V history — {winclip:1} is the last thing copied (click the chip to change which item). Needs clipboard history on; may hold anything recently copied, including passwords.', 'Histórico do Windows (Win+V) — {winclip:1} é a última coisa copiada (clique no chip para trocar o item). Precisa do histórico ligado; pode conter qualquer coisa copiada recentemente, inclusive senhas.'] },
+  { label: 'Clipboard line (next)', insert: '{clipboard:next}' },
+  { label: 'Clipboard history', insert: '{winclip:1}' },
 ];
 
 const RUN_STATE_CHIPS: PaletteChip[] = [
-  { label: 'Variable…', prompt: 'var', tip: ['Value stored by a Set Variable action', 'Valor gravado por uma action Set Variable'] },
-  { label: 'Counter', insert: '{counter}', tip: ['Current loop iteration (1, 2, 3…)', 'Iteração atual do loop (1, 2, 3…)'] },
-  { label: 'Ask input…', prompt: 'input', tip: ['Prompt for a value at replay time (pauses the run)', 'Pergunta um valor durante a execução (pausa o replay)'] },
+  { label: 'Variable…', prompt: 'var' },
+  { label: 'Counter', insert: '{counter}' },
+  { label: 'Ask input…', prompt: 'input' },
 ];
 
 // Collapsed: every one of these is row-addressed, and the two data-table ones only
 // resolve to anything in a profile that loops over data. They also carry the longest
 // labels in the palette, so parking them keeps Run state to a single line.
 const MORE_ROW_CHIPS: PaletteChip[] = [
-  { label: 'Action row #', insert: '{row}', tip: ["Current action's grid row number (not the data table)", 'Número da linha da action na grade (não é a tabela de dados)'] },
-  { label: 'Row column…', prompt: 'row', tip: ["Data table column of the current row (loop over data) — click the chip after inserting to add transforms (trim, UPPERCASE…)", 'Coluna da tabela de dados na linha atual (loop over data) — clique no chip depois de inserir para adicionar transformações (trim, MAIÚSCULAS…)'] },
-  { label: 'Row column (next)…', prompt: 'rownext', tip: ["Auto-advancing: each use pulls the NEXT data row for the column (1st action → row 1, 2nd → row 2…). Resets each run — swap the list, keep the fields. Click the chip after inserting to add transforms.", 'Auto-avança: cada uso pega a PRÓXIMA linha da tabela para a coluna (1ª action → linha 1, 2ª → linha 2…). Reinicia a cada execução — troque a lista, mantenha os campos. Clique no chip depois de inserir para adicionar transformações.'] },
+  { label: 'Action row #', insert: '{row}' },
+  { label: 'Row column…', prompt: 'row' },
+  { label: 'Row column (next)…', prompt: 'rownext' },
 ];
 
 // One chip recipe everywhere (SheetPanel parity): neutral surface, gold hover.
@@ -240,11 +300,14 @@ function NamePromptPopover({
   kind,
   anchor,
   onInsert,
+  onAdvanced,
   onClose,
 }: {
   kind: 'var' | 'row' | 'rownext' | 'clip' | 'input';
   anchor: HTMLElement;
   onInsert: (token: string) => void;
+  /** Skip the bare token and go straight to the chain builder with this head. */
+  onAdvanced?: (head: ChainHead) => void;
   onClose: () => void;
 }) {
   const tt = useTt();
@@ -315,6 +378,17 @@ function NamePromptPopover({
     onClose();
   };
 
+  // The four chain-bearing prompt kinds ({var:}, {clip:}, {row:}, {rownext:}) can go straight to
+  // the chain builder instead of inserting a bare token and then discovering, from a tooltip,
+  // that clicking the chip is how you add transforms. 'input' is not chain-bearing —
+  // chainHeadKind() returns null for it and ChainHead has no such member — so it gets no button.
+  const advanced = () => {
+    const n = name.trim();
+    if (!n || !onAdvanced) return;
+    onAdvanced(kind === 'row' || kind === 'rownext' ? { kind, column: n } : { kind: kind as 'var' | 'clip', name: n });
+    onClose();
+  };
+
   const visibilityStyle: React.CSSProperties = pos
     ? { visibility: 'visible', left: pos.left, top: pos.top }
     : { visibility: 'hidden', left: 0, top: 0 };
@@ -364,7 +438,25 @@ function NamePromptPopover({
             : tt("Column header from the profile's Data table.", 'Cabeçalho de coluna da tabela Data do profile.')}
         </div>
       </div>
-      <div className="flex justify-end px-3 py-2 bg-bg-card border-t border-border-subtle">
+      {/* Two buttons, no fifth palette section: the chain builder gets an entry point for the
+          other heads right where their identity is already being typed. The `<span />` keeps
+          justify-between pinning Insert to the right when there is no Advanced button, so the
+          footer never shifts between kinds. */}
+      <div className="flex items-center justify-between gap-2 px-3 py-2 bg-bg-card border-t border-border-subtle">
+        {kind !== 'input' && onAdvanced ? (
+          <button
+            type="button"
+            onClick={advanced}
+            disabled={!name.trim()}
+            className="flex items-center gap-1 h-7 px-2 text-[11px] rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            data-tip={tt('Open the chain builder for this token — trim, split, lines, case…', 'Abrir o construtor de cadeia para este token — trim, corte, linhas, maiúsculas…')}
+          >
+            <Wand2 size={11} className="shrink-0" />
+            Advanced…
+          </button>
+        ) : (
+          <span />
+        )}
         <Button variant="primary" size="sm" onClick={commit} disabled={!name.trim()}>
           Insert
         </Button>
@@ -385,19 +477,27 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
   // Delivery mode: Rich (HTML where accepted) · Markdown (*bold* as plain text, for
   // WhatsApp/chat) · Plain. Formatting stays authored regardless; the mode picks the flavor.
   const [sendMode, setSendMode] = useState<SendMode>(initialMode);
+  // "Does the doc carry deliberate formatting?" — pushed by the editor on every non-selection
+  // change (onFormattingChange). The seed is REQUIRED, not defensive: OnChangePlugin skips its
+  // callback while `prevEditorState.isEmpty()`, so InitialContentPlugin's seeding update does
+  // NOT reach us and a reopened rich action would read as unformatted until the first edit.
+  const [hasFormatting, setHasFormatting] = useState<boolean>(() => initialHtml != null);
   // Rail: Insert (palette + snippets) is the default tab; Emoji is the other.
-  const [railTab, setRailTab] = useState<'insert' | 'emoji'>('insert');
+  const [railTab, setRailTab] = useState<RailTab>('insert');
   const [snippets, setSnippets] = useState<Snippet[]>(loadSnippets);
   const [snippetName, setSnippetName] = useState('');
   const [savingSnippet, setSavingSnippet] = useState(false);
   const [editingSnippetId, setEditingSnippetId] = useState<string | null>(null);
   const [deletingSnippetId, setDeletingSnippetId] = useState<string | null>(null);
   const [snippetFilter, setSnippetFilter] = useState('');
-  // Every "More …" row starts collapsed — rare chips only show on demand, and the
-  // state is per-open (no persistence), same as "More keys" has always been.
-  const [moreKeysOpen, setMoreKeysOpen] = useState(false);
-  const [moreClipboardOpen, setMoreClipboardOpen] = useState(false);
-  const [moreRowsOpen, setMoreRowsOpen] = useState(false);
+  // One-line outcome for the last export/import, in a reserved slot so it cannot push the list.
+  const [snippetTransferNote, setSnippetTransferNote] = useState('');
+  const snippetFileRef = useRef<HTMLInputElement>(null);
+  // The three "More …" disclosures persist across opens and restarts. They used to reset to
+  // collapsed every time, which cost two clicks per dialog to anyone who reaches for the arrow
+  // keys or {winclip:N} daily. Lazy initializer — pass the FUNCTION, so localStorage is read
+  // once and not on every render (same shape as useState(loadSnippets) above).
+  const [moreOpen, setMoreOpen] = useState<MoreOpen>(loadMoreOpen);
   // Clipboard Surface (full-body overlay). TransformState is lifted HERE so the
   // DialogShell footer (swapped while the surface is open) can build the token.
   const [surface, setSurface] = useState<SurfaceSession | null>(null);
@@ -411,6 +511,16 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
   // {Variable…}/{Row column…} name prompt.
   const [namePrompt, setNamePrompt] = useState<{ kind: 'var' | 'row' | 'rownext' | 'clip' | 'input'; anchor: HTMLElement } | null>(null);
   const lexicalApiRef = useRef<LexicalEditorHandle | null>(null);
+  // Unsaved-work gate. Rendered as a SIBLING of DialogShell (see the end of this file) and
+  // reached ONLY through DialogShell.canClose — never through onClose, which the shell calls
+  // after it has already committed to leaving.
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  // Dirty baseline. Compared against what the editor EXPORTS, never against the incoming props:
+  // initialHtml is re-imported and re-serialized by Lexical ($generateNodesFromDOM →
+  // $generateHtmlFromNodes) and rich mode serializes plain text through $serializePlainForSend,
+  // so neither round-trip is guaranteed byte-identical — comparing to the props would report a
+  // freshly opened Edit dialog as dirty and prompt on every Esc. Same reasoning as clipDirty.
+  const baselineRef = useRef<{ text: string; html: string | null } | null>(null);
 
   // Pick the emoji picker's built-in LIGHT/DARK variant from the ACTIVE theme's
   // base surface — NOT Theme.AUTO (the app theme is user-picked, not OS-driven).
@@ -421,7 +531,25 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
 
   useEffect(() => {
     lexicalApiRef.current?.focus();
-  }, []);
+    // Baseline on the NEXT frame, not synchronously: InitialContentPlugin seeds the document
+    // inside editor.update() and Lexical commits the pending editor state in a microtask, so a
+    // same-tick getHtml() can still read the empty document. rAF runs after microtasks, so the
+    // snapshot is always of the seeded doc. Reading `initialText` (a prop) rather than the
+    // `text` state keeps this suppression-free — closing over the state would put it in the dep
+    // array and re-snapshot the baseline on every keystroke, which would make the guard never
+    // fire. Both call sites mount this dialog fresh, so the prop is stable for its lifetime.
+    const raf = requestAnimationFrame(() => {
+      const api = lexicalApiRef.current;
+      if (!api) return;
+      // BOTH legs come from the editor's own export. Using the initialText PROP for the text leg
+      // compared a prop against an export: LexicalComposer seeds a paragraph before
+      // InitialContentPlugin runs, so a doc whose payload ends in a newline (or any case where
+      // $serializePlainForSend does not round-trip the prop byte for byte) reported a freshly
+      // opened Edit dialog as dirty and prompted on every Esc.
+      baselineRef.current = { text: api.getText(), html: api.getHtml() };
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [initialText]);
 
   const insertAtCursor = useCallback((insertText: string) => {
     lexicalApiRef.current?.insertText(insertText);
@@ -435,6 +563,17 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
   const openInsertSurface = useCallback(() => {
     setClipState(DEFAULT_TRANSFORM); // fresh every time, as the old popover did
     setClipHead({ kind: 'clipboard' });
+    setClipDirty(false);
+    setSurface({ mode: 'insert' });
+  }, []);
+
+  // Same insert session, arbitrary head. Reached from the name prompt's Advanced… button, so the
+  // identity is already non-empty and chainHeadIsUsable(head) holds on arrival; the surface still
+  // renders its own identity field and it can be emptied there, which is what the disabled
+  // Insert and the reserved error line inside the surface cover.
+  const openInsertSurfaceForHead = useCallback((head: ChainHead) => {
+    setClipState(DEFAULT_TRANSFORM);
+    setClipHead(head);
     setClipDirty(false);
     setSurface({ mode: 'insert' });
   }, []);
@@ -543,6 +682,56 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
     );
   }, [snippets, snippetFilter]);
 
+  // ── Snippet export / import ──
+  // Browser mechanism, matching ThemeEditor: a Blob + a.download to save, a hidden file input +
+  // FileReader to load. WebView2 handles downloads through its own DownloadStarting flow, which
+  // the app's deny-all permission handler deliberately does not touch.
+  const handleExportSnippets = useCallback(() => {
+    if (snippets.length === 0) return;
+    const blob = new Blob([JSON.stringify(buildSnippetExport(snippets), null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = snippetExportFilename(new Date());
+    a.click();
+    URL.revokeObjectURL(url);
+    setSnippetTransferNote(tt(`Saved ${snippets.length} snippets`, `${snippets.length} snippets salvos`));
+  }, [snippets, tt]);
+
+  const handleImportSnippets = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Reset the input straight away so picking the SAME file twice still fires onChange.
+    e.target.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onerror = () => setSnippetTransferNote(tt('Could not read that file', 'Não foi possível ler esse arquivo'));
+    reader.onload = () => {
+      const result = parseSnippetImport(String(reader.result ?? ''));
+      if (!result.ok) {
+        // Each reason is a DIFFERENT statement — "not a snippet file" is fixable by picking
+        // another file, "unsupported version" is not.
+        const REASONS: Record<typeof result.reason, [string, string]> = {
+          'not-json': ['That file is not valid JSON', 'Esse arquivo não é um JSON válido'],
+          'not-a-snippet-file': ['That is not a snippets file', 'Esse arquivo não é de snippets'],
+          'unsupported-version': ['That file is from a newer version', 'Esse arquivo é de uma versão mais nova'],
+          'no-snippets': ['No usable snippets in that file', 'Nenhum snippet aproveitável nesse arquivo'],
+        };
+        setSnippetTransferNote(tt(REASONS[result.reason][0], REASONS[result.reason][1]));
+        return;
+      }
+      // ADD, never replace: the file is one library and what is on screen is another, and there
+      // is no undo here. Ids that collide are re-minted by mergeSnippets.
+      const merged = mergeSnippets(snippets, result.snippets);
+      setSnippets(merged);
+      saveSnippets(merged);
+      const n = result.snippets.length;
+      setSnippetTransferNote(result.skipped > 0
+        ? tt(`Added ${n}, skipped ${result.skipped} incomplete`, `${n} adicionados, ${result.skipped} incompletos ignorados`)
+        : tt(`Added ${n} snippets`, `${n} snippets adicionados`));
+    };
+    reader.readAsText(file);
+  }, [snippets, tt]);
+
   const handleInsertSnippet = useCallback((snippet: Snippet) => {
     // Rich snippets re-enter as formatted nodes; pre-rich ones as plain text+chips.
     if (snippet.html && lexicalApiRef.current) lexicalApiRef.current.insertHtml(snippet.html);
@@ -558,17 +747,77 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
     onConfirm(text, lexicalApiRef.current?.getHtml() ?? null, lexicalApiRef.current?.getMarkdown(sendMode === 'discord' ? 'discord' : 'whatsapp') ?? null, sendMode);
   };
 
+  // Is there work a close would destroy? Evaluated LAZILY — only on a dismissal attempt —
+  // because getHtml() walks the whole document through the serializer, which is exactly why the
+  // flavors are exported at confirm time and not per keystroke (see handleConfirm above).
+  // A plain function, not a useCallback: no dependency array, no exhaustive-deps surface.
+  const isDirty = (): boolean => {
+    if (sendMode !== initialMode) return true;
+    const base = baselineRef.current;
+    if (!base) {
+      // Baseline never taken (the rAF has not run yet — no user input is possible in that
+      // window). Fall back to the props: never worse than the previous no-guard behaviour.
+      return text !== initialText;
+    }
+    if (text !== base.text) return true;
+    // Formatting-only edits (bold applied to existing words) do not move the plain text at all,
+    // so the HTML flavor is the only witness for them.
+    return (lexicalApiRef.current?.getHtml() ?? null) !== base.html;
+  };
+
   // Status strip counts. Lines: 0 for an empty payload, else newline count + 1.
   const tokenCount = useMemo(() => countKnownTokens(text), [text]);
   const lineCount = text.length === 0 ? 0 : text.split('\n').length;
 
+  // Rich degradation: the engine attaches the HTML flavor only when the resolved payload is
+  // EXACTLY ONE text run (ActionExecution.cs:7163), so an {Enter}/{Tab}/{Delay:N} with text on
+  // both sides makes this action paste plain. Fires only when all three legs hold: there IS a
+  // rich flavor to lose, rich is the chosen delivery, and the payload is not one run.
+  // Markdown/Discord are deliberately excluded — they send KeyMarkdown as PLAIN text with
+  // sendHtml = null (ActionExecution.cs:3603-3609), so the ==1 gate never touches them.
+  // `sendMode === 'rich'` is a safe strict test because every caller normalises before us:
+  // ActionTable.tsx:924 passes `rowAction.sendMode ?? 'rich'`, and the Toolbar's add path takes
+  // the prop default. A null never reaches this state.
+  const richWillDegrade = useMemo(
+    () => hasFormatting && sendMode === 'rich' && !richFlavorSurvives(text),
+    [hasFormatting, sendMode, text],
+  );
+
+  // Parked on the right of the formatting toolbar (LexicalTokenEditor's toolbarExtra), beside the
+  // B/I/U buttons whose fate it decides. No "Delivery" caption: the four names are self-describing
+  // and the toolbar is a narrow row that also has to fit the link URL input.
+  const deliveryControl = (
+    <SegmentedControl<SendMode>
+      dense
+      ariaLabel="Delivery mode"
+      value={sendMode}
+      onChange={setSendMode}
+      options={[
+        { value: 'rich', label: 'Rich', tip: tt('Real formatting where the target accepts it (Gmail, Crisp, Word).', 'Formatação real onde o alvo aceita (Gmail, Crisp, Word).') },
+        { value: 'markdown', label: 'Markdown', tip: tt('*bold* / _italic_ as text — for WhatsApp.', '*negrito* / _itálico_ como texto — para WhatsApp.') },
+        { value: 'discord', label: 'Discord', tip: tt('**bold** / ~~strike~~ as text — for Discord.', '**negrito** / ~~tachado~~ como texto — para Discord.') },
+        { value: 'plain', label: 'Plain', tip: tt('Raw text, no formatting.', 'Texto cru, sem formatação.') },
+      ]}
+    />
+  );
+
+  // Right slot of the status strip — one line, first match wins. See utils/sendTextStatus.
+  // `tt` IS a dep: useTt returns a useCallback keyed on the language, so this recomputes when
+  // the user switches PT-BR/EN and exhaustive-deps stays satisfied.
+  const statusNote = useMemo(
+    () => pickStatusNote({ sendMode, hasFormatting, tokenCount, richWillDegrade }, tt),
+    [sendMode, hasFormatting, tokenCount, richWillDegrade, tt],
+  );
+
   // ── Esc router — ONE capture-phase priority ladder for every sub-layer:
-  // name prompt → clipboard surface → snippet sub-form. DialogShell's card
+  // confirm prompt → name prompt → clipboard surface → snippet sub-form. DialogShell's card
   // handler (dialog close) only sees Esc when no layer is open. Chip popovers
   // (TokenChipPopover) own their Esc via their own capture listener — when one
   // is open (data-token-popover marker) this router stands down entirely.
+  // The confirm prompt is the TOP rung because it is the visually topmost layer (z-[60] over
+  // the shell's z-50) and it can legitimately be open at the same time as a snippet sub-form.
   const escLayerActive =
-    namePrompt !== null || surface !== null ||
+    confirmDiscard || namePrompt !== null || surface !== null ||
     savingSnippet || deletingSnippetId !== null || editingSnippetId !== null;
   useEffect(() => {
     if (!escLayerActive) return;
@@ -577,7 +826,8 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
       if (document.querySelector('[data-token-popover]')) return;
       e.preventDefault();
       e.stopPropagation();
-      if (namePrompt) setNamePrompt(null);
+      if (confirmDiscard) { setConfirmDiscard(false); lexicalApiRef.current?.focus(); }
+      else if (namePrompt) setNamePrompt(null);
       else if (surface) closeSurface();
       else if (savingSnippet) setSavingSnippet(false);
       else if (deletingSnippetId !== null) setDeletingSnippetId(null);
@@ -585,7 +835,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
     };
     document.addEventListener('keydown', onEsc, true);
     return () => document.removeEventListener('keydown', onEsc, true);
-  }, [escLayerActive, namePrompt, surface, savingSnippet, deletingSnippetId, editingSnippetId, closeSurface]);
+  }, [escLayerActive, confirmDiscard, namePrompt, surface, savingSnippet, deletingSnippetId, editingSnippetId, closeSurface]);
 
   // ── Palette chip renderer ──
   const renderChip = (chip: PaletteChip, extraClass = '') => (
@@ -597,7 +847,10 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
         else if (chip.insert) insertAtCursor(chip.insert);
       }}
       className={`${CHIP_CLASS} ${extraClass}`}
-      data-tip={tt(chip.tip[0], chip.tip[1])}
+      // From the shared table, in its PALETTE voice (the "click the chip after inserting"
+      // advice that would be nonsense on the chip itself) and without the raw token, because a
+      // palette chip is a generic SEED and not the user's token.
+      data-tip={tokenTip(paletteToken(chip), tt, { palette: true, withRaw: false })}
     >
       {chip.label}
     </button>
@@ -606,6 +859,18 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
   const sectionLabel = (label: string) => (
     <div className="label-micro text-text-tertiary px-3 pt-2.5 pb-1">{label}</div>
   );
+
+  // Persist on the toggle itself, not in an effect — an effect would rewrite storage on every
+  // mount for a user who never touched a disclosure. A plain function, deliberately not a
+  // useCallback: no dependency array means it cannot produce an exhaustive-deps finding, and
+  // the lint gate's baseline is zero.
+  const toggleMore = (k: keyof MoreOpen) => {
+    setMoreOpen((prev) => {
+      const next = { ...prev, [k]: !prev[k] };
+      saveMoreOpen(next);
+      return next;
+    });
+  };
 
   // Disclosure row for a section's rare chips. Reads like a section label so an
   // unopened one is quiet, and the chevron is the only affordance that moves.
@@ -621,6 +886,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
   );
 
   return (
+    <>
     <DialogShell
       icon={<Type size={14} style={{ color: 'var(--color-action-sendtext-fg)' }} />}
       title={mode === 'add' ? 'Insert Text' : 'Edit Text'}
@@ -630,6 +896,20 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
       // Text-entry dialog: a stray scrim click must not discard typed text —
       // dismissal is Esc or Cancel only.
       closeOnBackdrop={false}
+      // Pre-close VETO, not an onClose that declines: DialogShell's onClose runs after the shell
+      // has committed to leaving (leaving=true plus a fallback timer), so refusing there fades
+      // the dialog out and leaves it mounted — an invisible modal over the whole app. Same shape
+      // as AutomationPanel's.
+      // No sub-layer check is needed: every sub-layer owns Esc on a capture-phase listener that
+      // stopPropagation()s (the router above; TokenChipPopover's own), so the shell can only
+      // reach here when nothing else owns the key — and the only other route in is the footer
+      // Cancel, which is rendered only while the clipboard surface is CLOSED.
+      canClose={() => {
+        if (confirmDiscard) return false;  // the prompt already up owns the decision
+        if (!isDirty()) return true;
+        setConfirmDiscard(true);
+        return false;
+      }}
       footerHint={
         surface ? (
           <span className="flex items-center gap-3">
@@ -646,10 +926,10 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
             <span>{tt('Steps apply in the runtime pipeline order', 'As etapas seguem a ordem do pipeline de execução')}</span>
           </span>
         ) : (
-          <>Ctrl+Enter to confirm · Esc to cancel</>
+          <>{tt('Ctrl+Enter to confirm · Esc to cancel', 'Ctrl+Enter para confirmar · Esc para cancelar')}</>
         )
       }
-      footer={
+      footer={(requestClose) => (
         // Keyed fragments so the two footers never reconcile against each other. Unkeyed,
         // React matched them by position: child[1] is the PRIMARY "Insert" here and the
         // SECONDARY "Cancel" below, both <Button>, so the same node was reused and its
@@ -661,37 +941,28 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
             <Button
               variant="primary"
               onClick={handleSurfaceConfirm}
-              disabled={surface.mode === 'edit' && !clipDirty}
+              // Mirrors the guard that actually runs inside handleSurfaceConfirm, so an unusable
+              // head reads as blocked instead of as a button that does nothing. The guard itself
+              // stays: Ctrl+Enter routes through onCardKeyDown and never consults `disabled`.
+              disabled={!chainHeadIsUsable(clipHead) || (surface.mode === 'edit' && !clipDirty)}
             >
               {surface.mode === 'insert' ? 'Insert' : 'Apply'}
             </Button>
           </React.Fragment>
         ) : (
           <React.Fragment key="main">
-            <div
-              className="mr-auto flex items-center gap-1.5"
-              data-tip={tt('How your formatting reaches the target.', 'Como a formatação chega ao alvo.')}
-            >
-              <span className="text-[10px] uppercase tracking-wide text-text-tertiary">Delivery</span>
-              <SegmentedControl<SendMode>
-                ariaLabel="Delivery mode"
-                value={sendMode}
-                onChange={setSendMode}
-                options={[
-                  { value: 'rich', label: 'Rich', tip: tt('Real formatting where the target accepts it (Gmail, Crisp, Word).', 'Formatação real onde o alvo aceita (Gmail, Crisp, Word).') },
-                  { value: 'markdown', label: 'Markdown', tip: tt('*bold* / _italic_ as text — for WhatsApp.', '*negrito* / _itálico_ como texto — para WhatsApp.') },
-                  { value: 'discord', label: 'Discord', tip: tt('**bold** / ~~strike~~ as text — for Discord.', '**negrito** / ~~tachado~~ como texto — para Discord.') },
-                  { value: 'plain', label: 'Plain', tip: tt('Raw text, no formatting.', 'Texto cru, sem formatação.') },
-                ]}
-              />
-            </div>
-            <Button variant="secondary" onClick={onClose}>Cancel</Button>
+            {/* Delivery used to live here, between the two buttons that CLOSE the dialog. It is a
+                property of the message, not an exit, and it governs a toolbar three hundred pixels
+                away — so it moved up into that toolbar (deliveryControl). The keyed fragments stay:
+                they exist because React reconciled the primary "Insert" here against the secondary
+                "Cancel" in the surface footer and cross-faded accent into grey. */}
+            <Button variant="secondary" onClick={requestClose}>Cancel</Button>
             <Button variant="primary" onClick={handleConfirm} disabled={!text.trim()}>
               {mode === 'add' ? 'Add' : 'Save'}
             </Button>
           </React.Fragment>
         )
-      }
+      )}
       onCardKeyDown={(e) => {
         // Ctrl+Enter routes by surface: clipboard surface open → Insert/Apply;
         // otherwise confirm the dialog (incl. from inside the editor, whose
@@ -715,7 +986,12 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
               initialText={initialText}
               initialHtml={initialHtml}
               richMode
+              // Plain is the ONLY mode that delivers nothing of the formatting; markdown and
+              // discord bake it into the text as literal markers (ActionExecution.cs:3603-3609).
+              formattingDelivered={sendMode !== 'plain'}
+              toolbarExtra={deliveryControl}
               onChange={setText}
+              onFormattingChange={setHasFormatting}
               onSubmit={handleConfirm}
               apiRef={lexicalApiRef}
               contentClassName="w-full h-full px-4 py-3 text-sm leading-[1.6] outline-none whitespace-pre-wrap break-words text-text-primary overflow-auto"
@@ -727,28 +1003,48 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
             <span className="text-[11px] text-text-tertiary tabular-nums whitespace-nowrap">
               {text.length} chars · {tokenCount} token{tokenCount === 1 ? '' : 's'} · {lineCount} line{lineCount === 1 ? '' : 's'}
             </span>
-            <span className="text-[10px] text-text-tertiary truncate">
-              {tt('Click any chip in the editor to edit its parameters', 'Clique em qualquer chip no editor para editar seus parâmetros')}
-            </span>
+            {/* Right slot — ONE line, always mounted, message chosen by the ladder in
+                utils/sendTextStatus. FieldError gives the reserve (&nbsp; at rest), the truncate,
+                the aria-live=polite and the portal tip in one component; its className is fully
+                overridden because the default carries mt-2 + the recording ink, which belong to
+                form validation, not to a status strip. `min-w-0` is load-bearing: a flex child
+                will not shrink below its content, so without it the truncate never fires and the
+                counts on the left get pushed out instead.
+                warning-ink is LEGAL here and only here: this strip paints on bg-bg-card, one of
+                the three surfaces --color-warning-ink is resolved against. Do NOT lift this ink
+                into the editor body, which paints on bg-bg-input and is not in that list. */}
+            <FieldError
+              show={statusNote !== null}
+              className={`min-w-0 text-right text-[10px] ${statusNote?.tone === 'warn' ? 'text-warning-ink' : 'text-text-tertiary'}`}
+              tip={statusNote?.tip}
+            >
+              {statusNote?.tone === 'warn' && (
+                <TriangleAlert size={11} className="inline-block align-[-1px] mr-1 shrink-0" />
+              )}
+              {statusNote?.text}
+            </FieldError>
           </div>
         </div>
 
-        {/* ── Rail: Insert (palette + snippets) | Emoji ── */}
-        <div className="w-[300px] shrink-0 border-l border-border-subtle flex flex-col min-h-0">
+        {/* ── Rail: Insert (palette + snippets) | Emoji | Preview ── */}
+        <div className="w-[30%] min-w-[300px] max-w-[440px] shrink-0 border-l border-border-subtle flex flex-col min-h-0">
           <div className="p-2 pb-1.5 shrink-0">
-            <SegmentedControl<'insert' | 'emoji'>
+            <SegmentedControl<RailTab>
               grow
               ariaLabel="Insert panel"
               options={[
                 { value: 'insert', label: 'Insert', icon: <Braces size={12} /> },
                 { value: 'emoji', label: 'Emoji', icon: <Smile size={12} /> },
+                { value: 'preview', label: 'Preview', icon: <Eye size={12} /> },
               ]}
               value={railTab}
               onChange={setRailTab}
             />
           </div>
 
-          {railTab === 'emoji' ? (
+          {railTab === 'preview' ? (
+            <MessagePreviewPanel text={text} />
+          ) : railTab === 'emoji' ? (
             <div className="flex-1 min-h-0 overflow-hidden">
               <EmojiPicker
                 onEmojiClick={handleEmojiClick}
@@ -771,17 +1067,23 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
               />
             </div>
           ) : (
-            <div className="flex-1 min-h-0 flex flex-col">
+            <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
               {/* Palette — four real sections, most-used first. Values carries no
                   disclosure, so the two fixed-height sections sit above the two that
-                  can grow and expanding one never displaces a chip you were aiming at. */}
-              <div className="shrink-0 overflow-y-auto pb-1">
+                  can grow and expanding one never displaces a chip you were aiming at.
+                  Scrolls only when it has to: natural height while there is room, and it is
+                  the side that gives ground when there isn't. It used to be `shrink-0` with
+                  no max-height, which made its own overflow-y-auto unreachable — a box sized
+                  to its own content never overflows — so the squeeze landed on the snippets
+                  list below instead, and with all three "More …" rows open in a short window
+                  that list collapsed to nothing. */}
+              <div className="min-h-0 overflow-y-auto pb-1">
                 {sectionLabel('Keys & timing')}
                 <div className="flex flex-wrap gap-1 px-3 pb-1">
                   {KEY_CHIPS.map((c) => renderChip(c))}
                 </div>
-                {moreRow('More keys', moreKeysOpen, () => setMoreKeysOpen((v) => !v))}
-                {moreKeysOpen && (
+                {moreRow('More keys', moreOpen.keys, () => toggleMore('keys'))}
+                {moreOpen.keys && (
                   <div className="grid grid-cols-3 gap-1 px-3 pb-2">
                     {MORE_KEY_CHIPS.map((c) => renderChip(c, 'justify-center'))}
                   </div>
@@ -797,7 +1099,6 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                   {renderChip({
                     label: 'Clipboard',
                     insert: '{clipboard}',
-                    tip: ['Paste the clipboard text', 'Cola o texto da área de transferência'],
                   })}
                   <button
                     type="button"
@@ -810,8 +1111,8 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                   </button>
                   {CLIPBOARD_CHIPS.map((c) => renderChip(c))}
                 </div>
-                {moreRow('More clipboard', moreClipboardOpen, () => setMoreClipboardOpen((v) => !v))}
-                {moreClipboardOpen && (
+                {moreRow('More clipboard', moreOpen.clipboard, () => toggleMore('clipboard'))}
+                {moreOpen.clipboard && (
                   <div className="flex flex-wrap gap-1 px-3 pb-2">
                     {MORE_CLIPBOARD_CHIPS.map((c) => renderChip(c))}
                   </div>
@@ -821,27 +1122,74 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                 <div className="flex flex-wrap gap-1 px-3 pb-1">
                   {RUN_STATE_CHIPS.map((c) => renderChip(c))}
                 </div>
-                {moreRow('More rows', moreRowsOpen, () => setMoreRowsOpen((v) => !v))}
-                {moreRowsOpen && (
+                {moreRow('More rows', moreOpen.rows, () => toggleMore('rows'))}
+                {moreOpen.rows && (
                   <div className="flex flex-wrap gap-1 px-3 pb-2">
                     {MORE_ROW_CHIPS.map((c) => renderChip(c))}
                   </div>
                 )}
               </div>
 
-              {/* Snippets — permanently visible below the palette. */}
-              <div className="flex-1 min-h-0 flex flex-col border-t border-border-subtle">
+              {/* Snippets — permanently visible below the palette, and it keeps a FLOOR: the
+                  palette above is the side that gives ground and scrolls. Without the floor,
+                  `flex: 1 1 0%` here means basis 0 — it absorbs no shrink, it simply never
+                  receives any growth once the palette is as tall as the column. 140px is the
+                  header row + the search row + one full snippet row; px is safe in this subtree
+                  because nothing here reads --ui-font-size (label-micro, the chips and the
+                  snippet rows are all hardcoded 11-12px). */}
+              <div className="flex-1 min-h-[140px] flex flex-col border-t border-border-subtle">
                 <div className="px-3 py-2 flex items-center justify-between shrink-0">
                   <span className="label-micro text-text-tertiary">Snippets</span>
-                  <button
-                    type="button"
-                    onClick={() => setSavingSnippet(true)}
-                    disabled={!text.trim()}
-                    className="w-6 h-6 flex items-center justify-center rounded text-text-tertiary hover:text-accent-light hover:bg-bg-card transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                    data-tip={tt('Save current text as a snippet', 'Salvar o texto atual como snippet')}
+                  <div className="flex items-center gap-0.5">
+                    {/* Export / import. The library lived in localStorage and nowhere else, so a
+                        reinstall or cleared site data lost it silently — profiles and themes both
+                        export, snippets did not. Same browser mechanism ThemeEditor uses. */}
+                    <button
+                      type="button"
+                      onClick={handleExportSnippets}
+                      disabled={snippets.length === 0}
+                      className="w-6 h-6 flex items-center justify-center rounded text-text-tertiary hover:text-accent-light hover:bg-bg-card transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      data-tip={tt('Save all snippets to a file', 'Salvar todos os snippets em um arquivo')}
+                    >
+                      <Download size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => snippetFileRef.current?.click()}
+                      className="w-6 h-6 flex items-center justify-center rounded text-text-tertiary hover:text-accent-light hover:bg-bg-card transition-colors"
+                      data-tip={tt('Load from a file — ADDED to the ones you have', 'Carregar de um arquivo — SOMADOS aos que você já tem')}
+                    >
+                      <Upload size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSavingSnippet(true)}
+                      disabled={!text.trim()}
+                      className="w-6 h-6 flex items-center justify-center rounded text-text-tertiary hover:text-accent-light hover:bg-bg-card transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      data-tip={tt('Save current text as a snippet', 'Salvar o texto atual como snippet')}
+                    >
+                      <BookmarkPlus size={13} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Hidden picker — the file input is never shown; the Upload button clicks it. */}
+                <input
+                  ref={snippetFileRef}
+                  type="file"
+                  accept="application/json,.json"
+                  className="hidden"
+                  onChange={handleImportSnippets}
+                />
+
+                {/* Import outcome — reserved line, so a message appearing cannot push the list. */}
+                <div className="px-3 shrink-0">
+                  <FieldError
+                    show={snippetTransferNote !== ''}
+                    className="text-[10px] text-text-tertiary"
                   >
-                    <BookmarkPlus size={13} />
-                  </button>
+                    {snippetTransferNote}
+                  </FieldError>
                 </div>
 
                 {savingSnippet && (
@@ -892,11 +1240,11 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                 <div className="flex-1 min-h-0 overflow-y-auto border-t border-border-subtle">
                   {snippets.length === 0 ? (
                     <div className="px-3 py-4 text-center text-[11px] text-text-disabled">
-                      No saved snippets yet
+                      {tt('No saved snippets yet', 'Nenhum snippet salvo ainda')}
                     </div>
                   ) : filteredSnippets.length === 0 ? (
                     <div className="px-3 py-4 text-center text-[11px] text-text-disabled">
-                      No snippets match “{snippetFilter}”
+                      {tt('No snippets match', 'Nenhum snippet corresponde a')} “{snippetFilter}”
                     </div>
                   ) : (
                     filteredSnippets.map((s) =>
@@ -919,6 +1267,9 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                             onClick={() => handleInsertSnippet(s)}
                             disabled={deletingSnippetId === s.id}
                             className="flex-1 text-left min-w-0 disabled:cursor-default"
+                            // The row shows two clamped lines; the tip carries the whole snippet,
+                            // which is the only way to tell two long ones apart before inserting.
+                            data-tip={s.text}
                           >
                             <div className="text-xs font-medium text-text-primary truncate">{s.name}</div>
                             <div className="text-[11px] text-text-tertiary line-clamp-2 mt-0.5">{s.text}</div>
@@ -1004,10 +1355,54 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
         <NamePromptPopover
           kind={namePrompt.kind}
           anchor={namePrompt.anchor}
+          // Clear the prompt FIRST: the Esc router checks namePrompt before surface, so leaving
+          // both open would make one Esc close a prompt that is already off screen.
+          onAdvanced={(head) => { setNamePrompt(null); openInsertSurfaceForHead(head); }}
           onInsert={(token) => lexicalApiRef.current?.insertToken(token)}
           onClose={() => setNamePrompt(null)}
         />
       )}
     </DialogShell>
+    {/* Unsaved-text gate. A SIBLING of the shell, not a child: the card's Tab trap and its own
+        Esc handler must not own a prompt that asks whether to leave that card. Reached only via
+        canClose; "Discard" then calls onClose DIRECTLY, because by that point the decision is a
+        completed user action. No native confirm() — window.confirm races the shell's Escape
+        handling, which is why the in-panel overlay pattern exists. */}
+    {confirmDiscard && (
+      <div
+        className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
+        onClick={() => { setConfirmDiscard(false); lexicalApiRef.current?.focus(); }}
+      >
+        <div
+          className="w-[380px] rounded-lg border border-border-subtle bg-bg-surface p-4 shadow-xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="text-[13px] text-text-primary font-medium mb-1.5">{tt('Unsaved text', 'Texto não salvo')}</div>
+          <div className="text-[12px] text-text-secondary leading-relaxed mb-4">
+            {tt('This message has changes that were never applied. Closing now discards the text, its formatting and the delivery mode.',
+                'Esta mensagem tem alterações que nunca foram aplicadas. Fechar agora descarta o texto, a formatação e o modo de entrega.')}
+          </div>
+          <div className="flex justify-end gap-2">
+            {/* autoFocus is safe here: this overlay mounts fresh every time, unlike the snippet
+                delete row where React REUSED the node and autoFocus never fired. */}
+            <Button variant="ghost" size="sm" autoFocus
+              onClick={() => { setConfirmDiscard(false); lexicalApiRef.current?.focus(); }}>
+              {tt('Keep editing', 'Continuar editando')}
+            </Button>
+            <Button variant="secondary" size="sm"
+              onClick={() => { setConfirmDiscard(false); onClose(); }}>
+              {tt('Discard', 'Descartar')}
+            </Button>
+            {/* Repeats the footer's own gate and label so it cannot fire handleConfirm's
+                early-return branch on a whitespace-only payload. */}
+            <Button variant="primary" size="sm" disabled={!text.trim()}
+              onClick={() => { setConfirmDiscard(false); handleConfirm(); }}>
+              {mode === 'add' ? 'Add' : 'Save'}
+            </Button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

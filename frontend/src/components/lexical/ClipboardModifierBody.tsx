@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Section, CheckRow, RadioRow, RadioGroup, NumInput, ArgInput } from './popoverAtoms';
+import { StepSection, CheckRow, RadioRow, RadioGroup, NumInput, ArgInput } from './popoverAtoms';
 import { CheckboxBox } from '../Checkbox';
 import { SegmentedControl } from '../common/SegmentedControl';
 import { useTt } from '../../state/LanguageContext';
@@ -8,6 +8,9 @@ import {
   previewIsRuntimeDependent,
   argRefIsUnfinished,
   buildClipboardToken,
+  linesStepActive,
+  splitStepActive,
+  dropNumStepActive,
   type Extract,
   type Limit,
   type ListPick,
@@ -69,6 +72,19 @@ export function ClipboardModifierBody({
   const toggleCase = (v: 'upper' | 'lower' | 'sentence' | 'title') =>
     setState((s) => ({ ...s, case: s.case === v ? 'none' : v }));
 
+  // Step-badge activity, from the same predicates ClipboardSurface lights its ladder with — the
+  // two UIs must never disagree about which step is doing work.
+  const linesActive = linesStepActive(state);
+  const splitActive = splitStepActive(state);
+  const dropNumActive = dropNumStepActive(state);
+
+  // `next` is clipboard-only (see showNext), so five of the six heads have no step 1 and the
+  // ladder has to RENUMBER rather than start at 2 — the numbers exist to communicate pipeline
+  // order, and a gap at the top says nothing true. Identical rule and identical arithmetic to
+  // ClipboardSurface's sn(); the two gates agree because ClipboardEditor is the only caller that
+  // passes showNext, and it is the clipboard head.
+  const sn = (clipboardStep: number) => (showNext ? clipboardStep : clipboardStep - 1);
+
   const setExtract = (v: Extract) => setState((s) => ({ ...s, extract: v }));
   const setLimit = (v: Limit) => setState((s) => ({ ...s, limit: v }));
   const setExtractN = (n: number) => setState((s) => ({ ...s, extractN: Math.max(1, n) }));
@@ -120,10 +136,11 @@ export function ClipboardModifierBody({
 
   return (
     <>
-      {/* Sequential consumption. Sits ABOVE Transform because that is the order the backend
-          runs it in — pick the line first, then transform that line. Clipboard-only (showNext). */}
+      {/* Step 1 because the backend applies it first — it picks WHICH text the rest of the
+          ladder then transforms. Clipboard-only (showNext), which is why every step below
+          renumbers through sn(). */}
       {showNext && (
-        <Section label="Sequence">
+        <StepSection n={1} label="Sequence" active={state.next}>
           <CheckRow
             checked={state.next}
             onChange={() => setState((s) => ({ ...s, next: !s.next }))}
@@ -137,57 +154,24 @@ export function ClipboardModifierBody({
                 )
               : tt('Pastes the whole clipboard.', 'Cola a área de transferência inteira.')}
           </div>
-        </Section>
+        </StepSection>
       )}
 
-      {/* Transform case — 2-col grid (column-flow). Case options share a single
-          radio-style state, so combinations like UPPERCASE + Sentence case are
-          impossible by construction. Trim is orthogonal (whitespace, not case). */}
-      <Section label="Transform">
-        {/* grid-rows-4 since the two text filters joined Trim: they are orthogonal cleanup
-            toggles like Trim, NOT part of the case radio cluster below. */}
-        <div className="grid grid-flow-col grid-rows-4 gap-x-3">
-          <CheckRow
-            checked={state.trim}
-            onChange={() => setState((s) => ({ ...s, trim: !s.trim }))}
-            label="Trim"
-          />
-          <CheckRow
-            checked={state.noAccents}
-            onChange={() => setState((s) => ({ ...s, noAccents: !s.noAccents }))}
-            label="Remove accents"
-          />
-          <CheckRow
-            checked={state.digitsOnly}
-            onChange={() => setState((s) => ({ ...s, digitsOnly: !s.digitsOnly }))}
-            label="Digits only"
-          />
-          <CheckRow
-            checked={state.case === 'upper'}
-            onChange={() => toggleCase('upper')}
-            label="UPPERCASE"
-          />
-          <CheckRow
-            checked={state.case === 'lower'}
-            onChange={() => toggleCase('lower')}
-            label="lowercase"
-          />
-          <CheckRow
-            checked={state.case === 'sentence'}
-            onChange={() => toggleCase('sentence')}
-            label="Sentence case"
-          />
-          <CheckRow
-            checked={state.case === 'title'}
-            onChange={() => toggleCase('title')}
-            label="Title Case"
-          />
-        </div>
-      </Section>
+      {/* Trim is its own step, at its own place in the pipeline. It used to be the first row of
+          a lumped "Transform" group that also held the accent/digit filters and the whole case
+          cluster — three different pipeline stages drawn as one, at the TOP, when case is the
+          LAST thing the backend applies. */}
+      <StepSection n={sn(2)} label="Trim" active={state.trim}>
+        <CheckRow
+          checked={state.trim}
+          onChange={() => setState((s) => ({ ...s, trim: !s.trim }))}
+          label="Trim whitespace"
+        />
+      </StepSection>
 
-      {/* Cut at a delimiter. Sits next to Trim because it reshapes the RAW text — in the
-          emitted chain it runs right after trim, ahead of every line op. */}
-      <Section label="Split at">
+      {/* Cuts the RAW text at a delimiter — in the emitted chain it runs right after trim,
+          ahead of every line op. */}
+      <StepSection n={sn(3)} label="Split at" active={splitActive}>
         <div className="py-0.5">
           <SegmentedControl<Split>
             dense
@@ -232,11 +216,10 @@ export function ClipboardModifierBody({
             <span>Last match</span>
           </button>
         </div>
-      </Section>
+      </StepSection>
 
-      {/* Strip a leading "<digits><suffix>" — runs right after the split in the emitted chain.
-          Filled = on, empty = off, the same rule the split delimiter follows. */}
-      <Section label="Drop count">
+      {/* Strip a leading "<digits><suffix>" — runs right after the split in the emitted chain. */}
+      <StepSection n={sn(4)} label="Drop count" active={dropNumActive}>
         <div className="flex items-center gap-2 py-0.5">
           <input
             type="text"
@@ -251,90 +234,11 @@ export function ClipboardModifierBody({
             className="h-7 w-[104px] px-1.5 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid disabled:opacity-50"
           />
         </div>
-      </Section>
+      </StepSection>
 
-      <Section label="Extract">
-        <RadioGroup label="Extract">
-          <RadioRow
-            checked={state.extract === 'none'}
-            onChange={() => setExtract('none')}
-            label="Everything"
-          />
-          <RadioRow
-            checked={state.extract === 'line'}
-            onChange={() => setExtract('line')}
-            label="Line #"
-            input={
-              <ArgInput
-                value={state.extractN}
-                onChange={setExtractN}
-                refValue={state.extractRef}
-                onRefChange={setExtractRef}
-                disabled={state.extract !== 'line'}
-                min={1}
-                refTip={refTip}
-                numTip={numTip}
-              />
-            }
-          />
-          <RadioRow
-            checked={state.extract === 'word'}
-            onChange={() => setExtract('word')}
-            label="Word #"
-            input={
-              <ArgInput
-                value={state.extractN}
-                onChange={setExtractN}
-                refValue={state.extractRef}
-                onRefChange={setExtractRef}
-                disabled={state.extract !== 'word'}
-                min={1}
-                refTip={refTip}
-                numTip={numTip}
-              />
-            }
-          />
-          <RadioRow
-            checked={state.extract === 'words'}
-            onChange={() => setExtract('words')}
-            label="Words"
-            input={
-              <span
-                className="flex items-center gap-1"
-                data-tip={tt(
-                  'A span of words, kept with the original spacing. Leave a side blank for an open end.',
-                  'Um intervalo de palavras, com o espaçamento original. Deixe um lado em branco para não ter limite.',
-                )}
-              >
-                <NumInput
-                  value={state.wordsFrom}
-                  onChange={(n) => setSpan('wordsFrom', n)}
-                  onClear={() => setSpan('wordsFrom', null)}
-                  disabled={state.extract !== 'words'}
-                  min={1}
-                  placeholder="1"
-                  ariaLabel="First word"
-                />
-                <span className="text-[11px] text-text-tertiary">–</span>
-                <NumInput
-                  value={state.wordsTo}
-                  onChange={(n) => setSpan('wordsTo', n)}
-                  onClear={() => setSpan('wordsTo', null)}
-                  disabled={state.extract !== 'words'}
-                  min={1}
-                  placeholder="end"
-                  ariaLabel="Last word"
-                />
-              </span>
-            }
-          />
-        </RadioGroup>
-      </Section>
-
-      {/* List ops — operate on the content as LINES, before the single-line Extract
-          above narrows it down. Order in the emitted token mirrors the backend
-          pipeline: range/lines → sort → dedupe → reverse → join. */}
-      <Section label="Lines">
+      {/* List ops — they operate on the content as LINES, and the backend applies them BEFORE
+          the single-line Extract below. They used to be drawn after it. */}
+      <StepSection n={sn(5)} label="Lines" active={linesActive}>
         <RadioGroup label="Lines">
           <RadioRow
             checked={state.listPick === 'none'}
@@ -432,9 +336,87 @@ export function ClipboardModifierBody({
             className="h-7 w-[70px] px-1.5 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid disabled:opacity-50"
           />
         </div>
-      </Section>
+      </StepSection>
 
-      <Section label="Limit length">
+      <StepSection n={sn(6)} label="Extract" active={state.extract !== 'none'}>
+        <RadioGroup label="Extract">
+          <RadioRow
+            checked={state.extract === 'none'}
+            onChange={() => setExtract('none')}
+            label="Everything"
+          />
+          <RadioRow
+            checked={state.extract === 'line'}
+            onChange={() => setExtract('line')}
+            label="Line #"
+            input={
+              <ArgInput
+                value={state.extractN}
+                onChange={setExtractN}
+                refValue={state.extractRef}
+                onRefChange={setExtractRef}
+                disabled={state.extract !== 'line'}
+                min={1}
+                refTip={refTip}
+                numTip={numTip}
+              />
+            }
+          />
+          <RadioRow
+            checked={state.extract === 'word'}
+            onChange={() => setExtract('word')}
+            label="Word #"
+            input={
+              <ArgInput
+                value={state.extractN}
+                onChange={setExtractN}
+                refValue={state.extractRef}
+                onRefChange={setExtractRef}
+                disabled={state.extract !== 'word'}
+                min={1}
+                refTip={refTip}
+                numTip={numTip}
+              />
+            }
+          />
+          <RadioRow
+            checked={state.extract === 'words'}
+            onChange={() => setExtract('words')}
+            label="Words"
+            input={
+              <span
+                className="flex items-center gap-1"
+                data-tip={tt(
+                  'A span of words, kept with the original spacing. Leave a side blank for an open end.',
+                  'Um intervalo de palavras, com o espaçamento original. Deixe um lado em branco para não ter limite.',
+                )}
+              >
+                <NumInput
+                  value={state.wordsFrom}
+                  onChange={(n) => setSpan('wordsFrom', n)}
+                  onClear={() => setSpan('wordsFrom', null)}
+                  disabled={state.extract !== 'words'}
+                  min={1}
+                  placeholder="1"
+                  ariaLabel="First word"
+                />
+                <span className="text-[11px] text-text-tertiary">–</span>
+                <NumInput
+                  value={state.wordsTo}
+                  onChange={(n) => setSpan('wordsTo', n)}
+                  onClear={() => setSpan('wordsTo', null)}
+                  disabled={state.extract !== 'words'}
+                  min={1}
+                  placeholder="end"
+                  ariaLabel="Last word"
+                />
+              </span>
+            }
+          />
+        </RadioGroup>
+      </StepSection>
+
+      <StepSection n={sn(7)} label="Limit length" active={state.limit !== 'none'}>
         <RadioGroup label="Limit length">
           <RadioRow
             checked={state.limit === 'none'}
@@ -476,7 +458,52 @@ export function ClipboardModifierBody({
             }
           />
         </RadioGroup>
-      </Section>
+      </StepSection>
+
+      {/* Character-class filters over the value at THIS point of the chain — the builder emits
+          them after the slice/limit steps and before Case. */}
+      <StepSection n={sn(8)} label="Clean up" active={state.noAccents || state.digitsOnly}>
+        <div className="grid grid-flow-col grid-rows-1 gap-x-3">
+          <CheckRow
+            checked={state.noAccents}
+            onChange={() => setState((s) => ({ ...s, noAccents: !s.noAccents }))}
+            label="Remove accents"
+          />
+          <CheckRow
+            checked={state.digitsOnly}
+            onChange={() => setState((s) => ({ ...s, digitsOnly: !s.digitsOnly }))}
+            label="Digits only"
+          />
+        </div>
+      </StepSection>
+
+      {/* LAST, because the backend applies case last. The four options share one radio-style
+          state, so UPPERCASE + Sentence case is impossible by construction. 2x2 grid keeps the
+          step to two rows in a popover this narrow. */}
+      <StepSection n={sn(9)} label="Case" active={state.case !== 'none'}>
+        <div className="grid grid-flow-col grid-rows-2 gap-x-3">
+          <CheckRow
+            checked={state.case === 'upper'}
+            onChange={() => toggleCase('upper')}
+            label="UPPERCASE"
+          />
+          <CheckRow
+            checked={state.case === 'lower'}
+            onChange={() => toggleCase('lower')}
+            label="lowercase"
+          />
+          <CheckRow
+            checked={state.case === 'sentence'}
+            onChange={() => toggleCase('sentence')}
+            label="Sentence case"
+          />
+          <CheckRow
+            checked={state.case === 'title'}
+            onChange={() => toggleCase('title')}
+            label="Title Case"
+          />
+        </div>
+      </StepSection>
 
       <div className="px-3.5 py-1.5 bg-bg-surface border-b border-border-subtle">
         <div className="text-[9px] uppercase tracking-wide text-text-tertiary mb-0.5">{sourceLabel}</div>

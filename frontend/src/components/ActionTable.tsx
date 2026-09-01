@@ -26,6 +26,7 @@ import { uiZoom } from '../utils/zoomSpace';
 // statically would keep the package in the entry chunk anyway.
 const SendTextDialog = lazy(() => import('./SendTextDialog').then(m => ({ default: m.SendTextDialog })));
 import { SendTextPreview } from './SendTextPreview';
+import { sendTextDeliveryBadge } from './lexical/deliveryBadge';
 import { RunProfileDialog } from './RunProfileDialog';
 import { KeystrokeCaptureDialog } from './KeystrokeCaptureDialog';
 import { PauseDialog } from './PauseDialog';
@@ -194,6 +195,11 @@ function actionPillLabel(action: ActionItem): string {
     case 'Assert': return 'Assert';
     case 'BrowserWaitElement': return 'Wait Element';
     case 'BrowserNavigate': return 'Open URL';
+    // The one type whose raw enum name reached the grid as a label. Every other multi-word
+    // action here is prose ("Set Variable", "Copy to Slot", "Double Click"), so "SendText" sat
+    // in the same column reading like a symbol. The click/scroll/key families still fall
+    // through to `default` by deliberate choice — spacing them is a separate, wider change.
+    case 'SendText': return 'Send Text';
     case 'RunProfile': return 'Run Profile';
     case 'Pause': return 'Pause';
     case 'HoldKey': return 'Hold Key';
@@ -2493,7 +2499,14 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                             what the editor shows. Other action types keep the plain
                             displayKey text — they don't have token syntax. */}
                         {action.actionType === 'SendText'
-                          ? <SendTextPreview text={action.key} badge={action.keyHtml && action.sendMode !== 'plain' ? (action.sendMode === 'markdown' || action.sendMode === 'discord' ? 'md' : 'rich') : undefined} />
+                          ? <SendTextPreview
+                              text={action.key}
+                              badge={sendTextDeliveryBadge(action)}
+                              badgeTip={tt(
+                                'Delivery is Rich, but a key or delay token splits the text — the engine attaches formatting only when the payload is ONE text run, so replay pastes this as PLAIN. Move the token to the start or the end, split the action in two, or switch Delivery to Markdown/Discord.',
+                                'O Delivery está em Rich, mas um token de tecla ou delay divide o texto — o motor só anexa formatação quando o texto forma UM bloco, então o replay cola como TEXTO PURO. Mova o token para o início ou o fim, divida a ação em duas, ou troque o Delivery para Markdown/Discord.',
+                              )}
+                            />
                           // Pause / HoldKey embed a "<n> ms" duration in displayKey;
                           // render it in the Delay column's format (thousands-separated
                           // number + quiet "ms" suffix). All other types stay plain.

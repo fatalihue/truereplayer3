@@ -5,6 +5,43 @@ import { CheckboxBox } from '../Checkbox';
 // Small UI primitives shared by the Advanced Clipboard insert popover and the
 // chip click-to-edit popover. Pure presentational — no business logic here.
 
+// Section + step badge — the popover-scale twin of ClipboardSurface's `Step` (that one is
+// dialog-scale: a w-4 h-4 badge, text-[9px], a pl-6 indent and a 1.5-unit gap). Here the badge is
+// 14px and rides INSIDE the existing label row, so numbering the ladder costs zero vertical px in
+// a popover that is only 260-300px wide. Colours are the same tokens the surface's badge uses.
+//
+// Section itself is deliberately untouched: the identity and parameter blocks in the chip editors
+// are NOT pipeline steps and must not acquire numbers.
+export function StepSection({
+  n,
+  label,
+  active,
+  children,
+}: {
+  n: number;
+  label: string;
+  active: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="px-3.5 py-1.5 border-b border-border-subtle">
+      <div className="flex items-center gap-1.5 mb-1">
+        <span
+          className={`w-3.5 h-3.5 rounded-full text-[8px] font-semibold flex items-center justify-center border transition-colors shrink-0 ${
+            active
+              ? 'text-accent-light bg-accent-solid/15 border-accent-solid/40'
+              : 'text-text-tertiary bg-bg-surface border-border-subtle'
+          }`}
+        >
+          {n}
+        </span>
+        <div className="text-[10px] uppercase tracking-wide font-semibold text-text-tertiary">{label}</div>
+      </div>
+      {children}
+    </div>
+  );
+}
+
 export function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="px-3.5 py-1.5 border-b border-border-subtle">

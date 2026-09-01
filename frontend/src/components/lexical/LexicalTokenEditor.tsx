@@ -16,10 +16,12 @@ import {
   $setSelection,
   $insertNodes,
   $isRangeSelection,
+  $isNodeSelection,
   $isTextNode,
   $isElementNode,
   $createTextNode,
   $createParagraphNode,
+  $getNearestNodeFromDOMNode,
   type BaseSelection,
   type ElementNode,
   COMMAND_PRIORITY_LOW,
@@ -27,6 +29,8 @@ import {
   PASTE_COMMAND,
   KEY_BACKSPACE_COMMAND,
   KEY_DELETE_COMMAND,
+  KEY_ENTER_COMMAND,
+  KEY_SPACE_COMMAND,
   TextNode,
   type LexicalNode,
   type TextFormatType,
@@ -42,12 +46,13 @@ import {
 } from '@lexical/list';
 import { LinkNode, AutoLinkNode, $isLinkNode, $isAutoLinkNode, $createLinkNode, $toggleLink, TOGGLE_LINK_COMMAND } from '@lexical/link';
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from '@lexical/html';
-import { $dfs } from '@lexical/utils';
+import { $dfs, mergeRegister } from '@lexical/utils';
 import {
   Bold, Italic, Underline, Strikethrough, Code, List, ListOrdered, Link2, Check, X,
 } from 'lucide-react';
+import { useTt } from '../../state/LanguageContext';
 import { TokenNode, $createTokenNode, $isTokenNode } from './TokenNode';
-import { ClipboardChipEditContext, type ClipboardChipEditRequest } from './TokenChip';
+import { ClipboardChipEditContext, OPEN_TOKEN_CHIP_COMMAND, type ClipboardChipEditRequest } from './TokenChip';
 // The whitelist of names the backend resolves, and the walker that finds them the way the
 // ENGINE does, both live in tokenNormalize — see the "What the ENGINE calls a token" banner
 // there. They are imported rather than restated because the grid's SendTextPreview needs the
@@ -110,11 +115,27 @@ export interface LexicalEditorHandle {
    * (default: *bold* _italic_ ~strike~ `code`) or 'discord' (**bold** _italic_ ~~strike~~ `code`).
    */
   getMarkdown: (variant?: 'whatsapp' | 'discord') => string | null;
+  /**
+   * The plain payload exactly as onChange would report it. The dialog's unsaved-work baseline
+   * needs this rather than the initialText prop: the seeding round-trip is not guaranteed
+   * byte-identical (rich mode serializes through $serializePlainForSend, and a saved KeyHtml is
+   * re-imported and re-exported), so a prop-vs-export comparison reports a freshly opened Edit
+   * dialog as dirty and prompts on every Esc. Compare export against export.
+   */
+  getText: () => string;
 }
 
 interface LexicalTokenEditorProps {
   initialText: string;
   onChange: (text: string) => void;
+  /**
+   * Rich mode only: fires with the answer to "does the doc carry DELIBERATE formatting?"
+   * on every non-selection change — i.e. the same bit getHtml()/getMarkdown() gate on
+   * ($hasDeliberateFormatting). It is the GATE only: $generateHtmlFromNodes stays on demand
+   * at confirm/snippet time, so the per-keystroke HTML export this component deliberately
+   * avoids is NOT reintroduced. Omit the prop and nothing extra is computed.
+   */
+  onFormattingChange?: (hasFormatting: boolean) => void;
   onSubmit?: () => void;
   apiRef: React.MutableRefObject<LexicalEditorHandle | null>;
   /** ContentEditable classes. Default = the compact SheetPanel look; the Insert
@@ -128,6 +149,25 @@ interface LexicalTokenEditorProps {
   /** Rich-text authoring (Insert Text dialog only): RichTextPlugin + formatting
    *  toolbar + list/link nodes. The SheetPanel browserText surface stays plain. */
   richMode?: boolean;
+  /**
+   * Rich mode only: does the ACTIVE delivery mode carry the formatting to the target at all?
+   * false = Plain (ActionExecution.cs:3608 nulls KeyHtml), and the toolbar renders its
+   * "authored, not sent" treatment. markdown/discord pass TRUE — they drop the HTML too, but
+   * they still deliver the formatting, as literal *bold* markers baked into the text.
+   *
+   * A separate prop, NOT a widening of richMode: richMode picks initialConfig.nodes and
+   * RichTextPlugin-vs-PlainTextPlugin, which LexicalComposer reads once at build time, so
+   * making it track the delivery mode would remount the editor and destroy the document the
+   * user authored. Default true, so SheetPanel's plain call site stays byte-identical.
+   */
+  formattingDelivered?: boolean;
+  /**
+   * Rich mode only: a node parked on the RIGHT of the formatting toolbar. The Insert Text dialog
+   * puts its Delivery control here so the switch that decides whether the formatting travels sits
+   * beside the buttons that create it. A SLOT, not a coupling — SheetPanel passes nothing and its
+   * toolbar is byte-identical.
+   */
+  toolbarExtra?: React.ReactNode;
   /** Rich mode: rebuild the document from a saved KeyHtml fragment instead of
    *  the plain initialText (token marker spans re-chip via TokenNode.importDOM). */
   initialHtml?: string | null;
@@ -368,8 +408,11 @@ function InitialContentPlugin({ initialText, initialHtml }: { initialText: strin
 // Exposes imperative methods to the parent via apiRef.
 function ImperativeAPIPlugin({
   apiRef,
+  richMode,
 }: {
   apiRef: React.MutableRefObject<LexicalEditorHandle | null>;
+  /** Picks the same serializer onChange uses, so getText() and the reported text agree. */
+  richMode: boolean;
 }) {
   const [editor] = useLexicalComposerContext();
 
@@ -410,6 +453,15 @@ function ImperativeAPIPlugin({
         return $generateNodesFromDOM(editor, dom);
       }),
       focus: () => editor.focus(),
+      // Exactly what OnChangePlugin reports, so a baseline taken here and a later `text` state
+      // are the same kind of value.
+      getText: () => {
+        let out = '';
+        editor.getEditorState().read(() => {
+          out = richMode ? $serializePlainForSend() : $getRoot().getTextContent();
+        });
+        return out;
+      },
       // On-demand HTML export (confirm-time, not per-keystroke). null when the doc
       // has no formatting, so unformatted actions stay plain on disk.
       getHtml: () => {
@@ -432,7 +484,7 @@ function ImperativeAPIPlugin({
     return () => {
       apiRef.current = null;
     };
-  }, [editor, apiRef]);
+  }, [editor, apiRef, richMode]);
 
   return null;
 }
@@ -444,6 +496,17 @@ function ChipKeyboardPlugin() {
   const [editor] = useLexicalComposerContext();
 
   useEffect(() => {
+    // A keydown that originates INSIDE a chip still reaches here. Lexical binds keydown on the
+    // ROOT element and keydown bubbles, so anything focusable a decorator ever renders — a
+    // popover trigger, a future inline control — dispatches KEY_BACKSPACE/KEY_DELETE while
+    // $getSelection() is still the RangeSelection the caret had somewhere else. Acting on that
+    // deletes the WRONG chip. @lexical/rich-text guards its own backspace/delete handlers with
+    // the same test for exactly this; that guard cannot save us, because this plugin registers
+    // at COMMAND_PRIORITY_LOW and the dispatch loop walks priorities 4 → 0, so we run BEFORE
+    // rich-text's COMMAND_PRIORITY_EDITOR and would have already returned true.
+    const targetIsInsideChip = (target: EventTarget | null): boolean =>
+      target instanceof Node && $isTokenNode($getNearestNodeFromDOMNode(target));
+
     const removeBackward = (): boolean => {
       const selection = $getSelection();
       if (!$isRangeSelection(selection) || !selection.isCollapsed()) return false;
@@ -491,6 +554,7 @@ function ChipKeyboardPlugin() {
     const u1 = editor.registerCommand(
       KEY_BACKSPACE_COMMAND,
       (event: KeyboardEvent) => {
+        if (targetIsInsideChip(event.target)) return false;
         if (removeBackward()) {
           event.preventDefault();
           return true;
@@ -502,6 +566,7 @@ function ChipKeyboardPlugin() {
     const u2 = editor.registerCommand(
       KEY_DELETE_COMMAND,
       (event: KeyboardEvent) => {
+        if (targetIsInsideChip(event.target)) return false;
         if (removeForward()) {
           event.preventDefault();
           return true;
@@ -625,8 +690,9 @@ const AUTO_LINK_MATCHERS = [
 // collapses the editor selection they act on. Active states track the selection
 // via an update listener. The link flow is a tiny inline URL input — apply on
 // Enter, cancel on Esc; '{' is rejected (tokens inside link URLs are unsupported).
-function RichToolbarPlugin() {
+function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDelivered: boolean; toolbarExtra?: React.ReactNode }) {
   const [editor] = useLexicalComposerContext();
+  const tt = useTt();
   const [formats, setFormats] = useState({
     bold: false, italic: false, underline: false, strikethrough: false, code: false,
     link: false, ul: false, ol: false,
@@ -715,19 +781,30 @@ function RichToolbarPlugin() {
   );
 
   return (
-    <div className="flex items-center gap-0.5 px-1.5 py-1 border-b border-border-subtle shrink-0">
-      {fmtBtn('bold', formats.bold, Bold, 'Bold (Ctrl+B)')}
-      {fmtBtn('italic', formats.italic, Italic, 'Italic (Ctrl+I)')}
-      {fmtBtn('underline', formats.underline, Underline, 'Underline (Ctrl+U)')}
-      {fmtBtn('strikethrough', formats.strikethrough, Strikethrough, 'Strikethrough')}
-      {fmtBtn('code', formats.code, Code, 'Inline code')}
+    // flex-wrap is load-bearing now that the row carries a slot on the right. Measured at an
+    // 800px window: the buttons plus the delivery control fit with ZERO slack, and opening the
+    // link URL input overflowed the row by 249px. Wrapping drops the slot to a second line
+    // instead of pushing it out of sight; gap-y keeps the two lines from touching.
+    <div className="flex flex-wrap items-center gap-x-0.5 gap-y-1 px-1.5 py-1 border-b border-border-subtle shrink-0">
+      {/* CHANNEL 1 of 2 — the whole control group dims. The buttons stay ENABLED and fully
+          functional: the formatting is still authored, still exported by getHtml(), and comes
+          straight back the moment the user leaves Plain. Disabling them would make the dialog
+          lie in the other direction. Hover lifts the group so it never reads as dead. */}
+      <div className={`flex flex-wrap items-center gap-x-0.5 gap-y-1 min-w-0 transition-opacity ${
+        formattingDelivered ? '' : 'opacity-45 hover:opacity-75'
+      }`}>
+      {fmtBtn('bold', formats.bold, Bold, tt('Bold (Ctrl+B)', 'Negrito (Ctrl+B)'))}
+      {fmtBtn('italic', formats.italic, Italic, tt('Italic (Ctrl+I)', 'Itálico (Ctrl+I)'))}
+      {fmtBtn('underline', formats.underline, Underline, tt('Underline (Ctrl+U)', 'Sublinhado (Ctrl+U)'))}
+      {fmtBtn('strikethrough', formats.strikethrough, Strikethrough, tt('Strikethrough', 'Tachado'))}
+      {fmtBtn('code', formats.code, Code, tt('Inline code', 'Código inline'))}
       <div className="w-px h-4 mx-1 bg-border-subtle" />
       <button
         type="button"
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => editor.dispatchCommand(formats.ul ? REMOVE_LIST_COMMAND : INSERT_UNORDERED_LIST_COMMAND, undefined)}
         className={btnClass(formats.ul)}
-        data-tip="Bullet list"
+        data-tip={tt('Bullet list', 'Lista com marcadores')}
       >
         <List size={13} />
       </button>
@@ -736,7 +813,7 @@ function RichToolbarPlugin() {
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => editor.dispatchCommand(formats.ol ? REMOVE_LIST_COMMAND : INSERT_ORDERED_LIST_COMMAND, undefined)}
         className={btnClass(formats.ol)}
-        data-tip="Numbered list"
+        data-tip={tt('Numbered list', 'Lista numerada')}
       >
         <ListOrdered size={13} />
       </button>
@@ -754,7 +831,7 @@ function RichToolbarPlugin() {
           }
         }}
         className={btnClass(formats.link || linkInputOpen)}
-        data-tip={formats.link ? 'Remove link' : 'Link'}
+        data-tip={formats.link ? tt('Remove link', 'Remover link') : tt('Link', 'Inserir link')}
       >
         <Link2 size={13} />
       </button>
@@ -771,23 +848,66 @@ function RichToolbarPlugin() {
             placeholder="https://…"
             autoFocus
             spellCheck={false}
-            className="h-6 w-52 px-1.5 text-[11px] font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid"
+            className="h-6 w-52 min-w-[7rem] shrink px-1.5 text-[11px] font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid"
           />
-          <button type="button" onClick={applyLink} className={btnClass(false)} data-tip="Apply link">
+          <button type="button" onClick={applyLink} className={btnClass(false)} data-tip={tt('Apply link', 'Aplicar link')}>
             <Check size={13} />
           </button>
           <button
             type="button"
             onClick={() => { setLinkInputOpen(false); setLinkUrl(''); editor.focus(); }}
             className={btnClass(false)}
-            data-tip="Cancel"
+            data-tip={tt('Cancel', 'Cancelar')}
           >
             <X size={13} />
           </button>
         </div>
       )}
+      </div>
+
+      {/* CHANNEL 2 of 2 — the delivery control itself, sitting right next to the buttons it
+          governs. A dim alone is not a signal (the accent-vs-tertiary gap falls under 3:1 in a
+          large share of the presets), and this app's locked rule is that an on/off state gets ink
+          AND a second channel. That second channel used to be a "Not sent in Plain" pill: a label
+          bridging the distance to a control in the FOOTER. With the control here, the lit "Plain"
+          segment beside the dimmed buttons is the second channel, and the pill is one less thing
+          on screen saying what a control already shows. */}
+      {toolbarExtra && <div className="ml-auto shrink-0">{toolbarExtra}</div>}
     </div>
   );
+}
+
+// Enter / Space on a selected chip opens its parameter editor — the keyboard equivalent of
+// clicking it. Nothing here creates the selection: Lexical already does. TokenNode is inline,
+// isolated and isKeyboardSelectable, so arrowing ←/→ onto it makes a NodeSelection on the chip.
+// Until now that selection had no visual and no action, which is why the chips read as
+// keyboard-inert — the state existed and did nothing. TokenChip paints the selection and
+// answers OPEN_TOKEN_CHIP_COMMAND for its own key.
+//
+// COMMAND_PRIORITY_LOW puts this ahead of @lexical/rich-text's COMMAND_PRIORITY_EDITOR handlers
+// (the dispatch loop runs 4 → 0). Both of those bail on a non-RangeSelection anyway, so returning
+// true here takes nothing away.
+function ChipActivationPlugin() {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    const openSelectedChip = (event: KeyboardEvent | null): boolean => {
+      const selection = $getSelection();
+      if (!$isNodeSelection(selection)) return false;
+      const nodes = selection.getNodes();
+      if (nodes.length !== 1 || !$isTokenNode(nodes[0])) return false;
+      // Space would otherwise scroll the editor; Enter would fall through to the paragraph split.
+      event?.preventDefault();
+      editor.dispatchCommand(OPEN_TOKEN_CHIP_COMMAND, nodes[0].getKey());
+      return true;
+    };
+    return mergeRegister(
+      editor.registerCommand(KEY_ENTER_COMMAND, openSelectedChip, COMMAND_PRIORITY_LOW),
+      editor.registerCommand(KEY_SPACE_COMMAND, openSelectedChip, COMMAND_PRIORITY_LOW),
+    );
+  }, [editor]);
+
+  return null;
 }
 
 // Ctrl+Enter submit forwarded to parent so the same shortcut behaves the same.
@@ -817,7 +937,10 @@ export function LexicalTokenEditor({
   contentClassName = 'w-full h-full px-3 py-2 text-sm leading-[1.5] outline-none whitespace-pre-wrap break-words text-text-primary overflow-auto',
   placeholderClassName = 'absolute top-2 left-3 text-sm text-text-disabled pointer-events-none select-none',
   onClipboardChipEdit,
+  onFormattingChange,
   richMode = false,
+  formattingDelivered = true,
+  toolbarExtra,
   initialHtml = null,
 }: LexicalTokenEditorProps) {
   const initialConfig = {
@@ -871,7 +994,7 @@ export function LexicalTokenEditor({
       {/* Context flows through Lexical's decorator portals, so TokenChip sees it. */}
       <ClipboardChipEditContext.Provider value={onClipboardChipEdit ?? null}>
       <div className={richMode ? 'w-full h-full flex flex-col' : 'relative w-full h-full'}>
-        {richMode && <RichToolbarPlugin />}
+        {richMode && <RichToolbarPlugin formattingDelivered={formattingDelivered} toolbarExtra={toolbarExtra} />}
         <div className="relative flex-1 min-h-0">
           {richMode ? (
             <RichTextPlugin
@@ -902,14 +1025,22 @@ export function LexicalTokenEditor({
               // Rich mode uses the single-newline block serializer (see
               // $serializePlainForSend); plain mode stays byte-identical to 2.8.0.
               onChange(richMode ? $serializePlainForSend() : $getRoot().getTextContent());
+              // Same read, one more walk: $hasDeliberateFormatting is a $dfs().some() with an
+              // early exit on the first formatted node, against a $serializePlainForSend that
+              // already walks the whole tree on this very tick. What is NOT added here is
+              // $generateHtmlFromNodes — the HTML export stays on demand (getHtml, above).
+              // A format-only toggle still reaches us: OnChangePlugin fires whenever
+              // dirtyElements/dirtyLeaves is non-empty, and toggling bold dirties the TextNode.
+              if (richMode && onFormattingChange) onFormattingChange($hasDeliberateFormatting());
             });
           }}
         />
         <InitialContentPlugin initialText={initialText} initialHtml={richMode ? initialHtml : null} />
-        <ImperativeAPIPlugin apiRef={apiRef} />
+        <ImperativeAPIPlugin apiRef={apiRef} richMode={richMode} />
         <TokenPastePlugin richMode={richMode} />
         <TokenAutoTransformPlugin />
         <ChipKeyboardPlugin />
+        <ChipActivationPlugin />
         <SubmitPlugin onSubmit={onSubmit} />
       </div>
       </ClipboardChipEditContext.Provider>
