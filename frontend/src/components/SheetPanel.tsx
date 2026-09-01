@@ -2978,7 +2978,15 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
               ImageFound (isIfImage). The probe internals (reference image, search
               region, confidence) are shared; the time-axis fields (Timeout, OnTimeout,
               Wait-for-disappear, Click-on-match) only apply to the polling WaitImage
-              action and are gated below with !isIf. */}
+              action and are gated below with !hasConditionFields.
+
+              hasConditionFields, NOT carriesConditionProbe: the two differ by exactly one row
+              type — Assert — and Assert is condition-bearing, so the engine ignores every one of
+              those four fields on it just as it does on an If. Gating on carriesConditionProbe
+              rendered them for an Assert/ImageFound row, i.e. four controls with no effect. That
+              row can only be reached by hand-editing a profile today (HandleActionsInsertAssert
+              deliberately refuses Image/Pixel), which is precisely why the gate was worth fixing
+              while it is still latent rather than after someone hits it. */}
           {(isWaitImage || isIfImage) && (
           <>
             {/* Thumbnail + Recapture + Test match — thumbnail is clickable to open the cropper
@@ -3146,7 +3154,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
 
             {/* WAIT UNTIL — WaitImage only. IF rows route "wait for absence" via the
                 CONDITION section's Found / NOT Found toggle. */}
-            {!carriesConditionProbe(actionType) && (
+            {!hasConditionFields(actionType) && (
             <Field label="Wait Until">
               <SegmentedControl<'appears' | 'disappears'>
                 ariaLabel="Wait until"
@@ -3165,7 +3173,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 shape to the Pixel editor's matching block. Edited in milliseconds
                 (min 1000 — the backend clamps non-Pause timeouts to ≥1s anyway), step
                 1000 so the +/- spinner moves a second at a time. */}
-            {!carriesConditionProbe(actionType) && (
+            {!hasConditionFields(actionType) && (
             <div className="flex gap-2.5">
               <Field label="Timeout" className="w-[124px] shrink-0">
                 <NumberInput
@@ -3200,7 +3208,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 meaning). Suppressed on IF rows (the user routes click via a regular
                 LeftClick in the TRUE branch) and when waiting for disappearance (no
                 found-location to click on). */}
-            {!carriesConditionProbe(actionType) && !waitImageInvert && (
+            {!hasConditionFields(actionType) && !waitImageInvert && (
               <Checkbox
                 checked={waitImageClickOnMatch}
                 onChange={setWaitImageClickOnMatch}
@@ -3340,7 +3348,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
             {/* WAIT UNTIL — WaitPixelColor only. Same shape (own row, dropdown) and
                 same label as the WaitImage editor above. IF rows express the same
                 concept via the CONDITION section's Found / NOT Found toggle. */}
-            {!carriesConditionProbe(actionType) && (
+            {!hasConditionFields(actionType) && (
             <Field label="Wait Until">
               <SegmentedControl<'matches' | 'stopsMatching'>
                 ariaLabel="Wait until"
@@ -3358,7 +3366,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
             {/* TIMEOUT + ON TIMEOUT — WaitPixelColor only. Side-by-side row identical
                 in shape to the WaitImage editor above. Edited in milliseconds (min 1000,
                 step 1000) — same unit as every other action duration. */}
-            {!carriesConditionProbe(actionType) && (
+            {!hasConditionFields(actionType) && (
             <div className="flex gap-2.5">
               <Field label="Timeout" className="w-[124px] shrink-0">
                 <NumberInput
@@ -3391,7 +3399,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
 
             {/* After Match — bare Checkbox (no Field wrapper). IF rows route click via
                 a regular LeftClick in the TRUE branch. */}
-            {!carriesConditionProbe(actionType) && !pixelInvert && (
+            {!hasConditionFields(actionType) && !pixelInvert && (
               <Checkbox
                 checked={pixelClickOnMatch}
                 onChange={setPixelClickOnMatch}
