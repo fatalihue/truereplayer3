@@ -17,6 +17,18 @@ namespace TrueReplayer.Services
     public static class ImageMatchingService
     {
         /// <summary>
+        /// Per-tick search-region resolver for <see cref="WaitForImageAsync"/>. Consulted before
+        /// EVERY match attempt, so a region anchored to a window that MOVES during the wait keeps
+        /// tracking it. <paramref name="region"/> null = no region (full virtual screen).
+        ///
+        /// Returning FALSE aborts the wait immediately: the caller's precondition for computing a
+        /// region no longer holds (its relative-coords target window vanished mid-wait). The wait
+        /// then returns null like a timeout, so a caller that needs to tell the two apart sets its
+        /// own flag inside the resolver before returning false.
+        /// </summary>
+        public delegate bool SearchRegionResolver(out System.Drawing.Rectangle? region);
+
+        /// <summary>
         /// Repeatedly captures the screen and searches for the template image.
         /// Returns the match details if the condition is met, or null on timeout.
         ///
@@ -35,19 +47,28 @@ namespace TrueReplayer.Services
             CancellationToken cancellationToken,
             bool waitForDisappear = false,
             System.Drawing.Rectangle? searchRegion = null,
-            int pollIntervalMs = 500)
+            int pollIntervalMs = 500,
+            SearchRegionResolver? searchRegionResolver = null)
         {
             using var templateMat = ScreenCaptureService.BitmapToMat(referenceImage);
             var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
 
-            // Only the FIRST poll may report an unusable search region. The region is fixed for
-            // the whole call, so the verdict can't change between iterations — without this a
-            // 30 s WaitImage polling at 500 ms would write the same warning 60 times.
+            // Only the FIRST poll may report an unusable search region — a 30 s wait polling at
+            // 500 ms would otherwise write the same warning 60 times. Kept first-tick-only even
+            // with a resolver: a region that only becomes unusable LATER stays quiet, which is
+            // exactly what the frozen-region code did too, so this is not a new blind spot.
             bool reportRegion = true;
 
             while (DateTime.UtcNow < deadline && !cancellationToken.IsCancellationRequested)
             {
-                var result = MatchOnce(templateMat, searchRegion, reportRegion);
+                // A resolver SUPERSEDES the fixed searchRegion argument and is asked every tick,
+                // so a window-anchored ROI follows a window that moves mid-wait. Returning false
+                // is the caller aborting (see SearchRegionResolver).
+                var region = searchRegion;
+                if (searchRegionResolver != null && !searchRegionResolver(out region))
+                    return null;
+
+                var result = MatchOnce(templateMat, region, reportRegion);
                 reportRegion = false;
                 bool matched = waitForDisappear
                     ? result.Score < confidenceThreshold
