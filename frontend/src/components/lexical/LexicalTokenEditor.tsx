@@ -161,6 +161,13 @@ interface LexicalTokenEditorProps {
    * user authored. Default true, so SheetPanel's plain call site stays byte-identical.
    */
   formattingDelivered?: boolean;
+  /**
+   * Rich mode only: a node parked on the RIGHT of the formatting toolbar. The Insert Text dialog
+   * puts its Delivery control here so the switch that decides whether the formatting travels sits
+   * beside the buttons that create it. A SLOT, not a coupling — SheetPanel passes nothing and its
+   * toolbar is byte-identical.
+   */
+  toolbarExtra?: React.ReactNode;
   /** Rich mode: rebuild the document from a saved KeyHtml fragment instead of
    *  the plain initialText (token marker spans re-chip via TokenNode.importDOM). */
   initialHtml?: string | null;
@@ -683,7 +690,7 @@ const AUTO_LINK_MATCHERS = [
 // collapses the editor selection they act on. Active states track the selection
 // via an update listener. The link flow is a tiny inline URL input — apply on
 // Enter, cancel on Esc; '{' is rejected (tokens inside link URLs are unsupported).
-function RichToolbarPlugin({ formattingDelivered }: { formattingDelivered: boolean }) {
+function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDelivered: boolean; toolbarExtra?: React.ReactNode }) {
   const [editor] = useLexicalComposerContext();
   const tt = useTt();
   const [formats, setFormats] = useState({
@@ -774,12 +781,16 @@ function RichToolbarPlugin({ formattingDelivered }: { formattingDelivered: boole
   );
 
   return (
-    <div className="flex items-center gap-0.5 px-1.5 py-1 border-b border-border-subtle shrink-0">
+    // flex-wrap is load-bearing now that the row carries a slot on the right. Measured at an
+    // 800px window: the buttons plus the delivery control fit with ZERO slack, and opening the
+    // link URL input overflowed the row by 249px. Wrapping drops the slot to a second line
+    // instead of pushing it out of sight; gap-y keeps the two lines from touching.
+    <div className="flex flex-wrap items-center gap-x-0.5 gap-y-1 px-1.5 py-1 border-b border-border-subtle shrink-0">
       {/* CHANNEL 1 of 2 — the whole control group dims. The buttons stay ENABLED and fully
           functional: the formatting is still authored, still exported by getHtml(), and comes
           straight back the moment the user leaves Plain. Disabling them would make the dialog
           lie in the other direction. Hover lifts the group so it never reads as dead. */}
-      <div className={`flex items-center gap-0.5 transition-opacity ${
+      <div className={`flex flex-wrap items-center gap-x-0.5 gap-y-1 min-w-0 transition-opacity ${
         formattingDelivered ? '' : 'opacity-45 hover:opacity-75'
       }`}>
       {fmtBtn('bold', formats.bold, Bold, tt('Bold (Ctrl+B)', 'Negrito (Ctrl+B)'))}
@@ -837,7 +848,7 @@ function RichToolbarPlugin({ formattingDelivered }: { formattingDelivered: boole
             placeholder="https://…"
             autoFocus
             spellCheck={false}
-            className="h-6 w-52 px-1.5 text-[11px] font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid"
+            className="h-6 w-52 min-w-[7rem] shrink px-1.5 text-[11px] font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid"
           />
           <button type="button" onClick={applyLink} className={btnClass(false)} data-tip={tt('Apply link', 'Aplicar link')}>
             <Check size={13} />
@@ -854,25 +865,14 @@ function RichToolbarPlugin({ formattingDelivered }: { formattingDelivered: boole
       )}
       </div>
 
-      {/* CHANNEL 2 of 2 — a literal LABEL, not a colour. A dim alone is not a signal: the
-          accent-vs-tertiary gap falls under 3:1 in a large share of the presets, and this app's
-          locked rule is that an on/off state gets ink AND a second channel. Text survives every
-          theme.
-          The pill supplies its OWN bg-bg-card: this row paints on bg-bg-input, and a derived
-          token is only valid on the surfaces it was RESOLVED against — tertiary ink on bg-card
-          is a pairing used app-wide, tertiary ink on bg-input is not one this app has measured.
-          Visible label stays ENGLISH; the explanation is tt(en, ptBr) through the portal. */}
-      {!formattingDelivered && (
-        <span
-          className="ml-2 shrink-0 inline-flex items-center h-5 px-1.5 rounded bg-bg-card border border-border-default text-[10px] font-semibold uppercase tracking-wide text-text-tertiary whitespace-nowrap"
-          data-tip={tt(
-            'Plain delivery types raw text — this formatting is not sent. It stays saved with the action and comes back when you pick Rich, Markdown or Discord.',
-            'A entrega Plain digita texto cru — esta formatação não é enviada. Ela continua salva na action e volta quando você escolher Rich, Markdown ou Discord.',
-          )}
-        >
-          Not sent in Plain
-        </span>
-      )}
+      {/* CHANNEL 2 of 2 — the delivery control itself, sitting right next to the buttons it
+          governs. A dim alone is not a signal (the accent-vs-tertiary gap falls under 3:1 in a
+          large share of the presets), and this app's locked rule is that an on/off state gets ink
+          AND a second channel. That second channel used to be a "Not sent in Plain" pill: a label
+          bridging the distance to a control in the FOOTER. With the control here, the lit "Plain"
+          segment beside the dimmed buttons is the second channel, and the pill is one less thing
+          on screen saying what a control already shows. */}
+      {toolbarExtra && <div className="ml-auto shrink-0">{toolbarExtra}</div>}
     </div>
   );
 }
@@ -940,6 +940,7 @@ export function LexicalTokenEditor({
   onFormattingChange,
   richMode = false,
   formattingDelivered = true,
+  toolbarExtra,
   initialHtml = null,
 }: LexicalTokenEditorProps) {
   const initialConfig = {
@@ -993,7 +994,7 @@ export function LexicalTokenEditor({
       {/* Context flows through Lexical's decorator portals, so TokenChip sees it. */}
       <ClipboardChipEditContext.Provider value={onClipboardChipEdit ?? null}>
       <div className={richMode ? 'w-full h-full flex flex-col' : 'relative w-full h-full'}>
-        {richMode && <RichToolbarPlugin formattingDelivered={formattingDelivered} />}
+        {richMode && <RichToolbarPlugin formattingDelivered={formattingDelivered} toolbarExtra={toolbarExtra} />}
         <div className="relative flex-1 min-h-0">
           {richMode ? (
             <RichTextPlugin

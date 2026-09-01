@@ -783,6 +783,24 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
     [hasFormatting, sendMode, text],
   );
 
+  // Parked on the right of the formatting toolbar (LexicalTokenEditor's toolbarExtra), beside the
+  // B/I/U buttons whose fate it decides. No "Delivery" caption: the four names are self-describing
+  // and the toolbar is a narrow row that also has to fit the link URL input.
+  const deliveryControl = (
+    <SegmentedControl<SendMode>
+      dense
+      ariaLabel="Delivery mode"
+      value={sendMode}
+      onChange={setSendMode}
+      options={[
+        { value: 'rich', label: 'Rich', tip: tt('Real formatting where the target accepts it (Gmail, Crisp, Word).', 'Formatação real onde o alvo aceita (Gmail, Crisp, Word).') },
+        { value: 'markdown', label: 'Markdown', tip: tt('*bold* / _italic_ as text — for WhatsApp.', '*negrito* / _itálico_ como texto — para WhatsApp.') },
+        { value: 'discord', label: 'Discord', tip: tt('**bold** / ~~strike~~ as text — for Discord.', '**negrito** / ~~tachado~~ como texto — para Discord.') },
+        { value: 'plain', label: 'Plain', tip: tt('Raw text, no formatting.', 'Texto cru, sem formatação.') },
+      ]}
+    />
+  );
+
   // Right slot of the status strip — one line, first match wins. See utils/sendTextStatus.
   // `tt` IS a dep: useTt returns a useCallback keyed on the language, so this recomputes when
   // the user switches PT-BR/EN and exhaustive-deps stays satisfied.
@@ -933,20 +951,11 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
           </React.Fragment>
         ) : (
           <React.Fragment key="main">
-            <div className="mr-auto flex items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-wide text-text-tertiary">Delivery</span>
-              <SegmentedControl<SendMode>
-                ariaLabel="Delivery mode"
-                value={sendMode}
-                onChange={setSendMode}
-                options={[
-                  { value: 'rich', label: 'Rich', tip: tt('Real formatting where the target accepts it (Gmail, Crisp, Word).', 'Formatação real onde o alvo aceita (Gmail, Crisp, Word).') },
-                  { value: 'markdown', label: 'Markdown', tip: tt('*bold* / _italic_ as text — for WhatsApp.', '*negrito* / _itálico_ como texto — para WhatsApp.') },
-                  { value: 'discord', label: 'Discord', tip: tt('**bold** / ~~strike~~ as text — for Discord.', '**negrito** / ~~tachado~~ como texto — para Discord.') },
-                  { value: 'plain', label: 'Plain', tip: tt('Raw text, no formatting.', 'Texto cru, sem formatação.') },
-                ]}
-              />
-            </div>
+            {/* Delivery used to live here, between the two buttons that CLOSE the dialog. It is a
+                property of the message, not an exit, and it governs a toolbar three hundred pixels
+                away — so it moved up into that toolbar (deliveryControl). The keyed fragments stay:
+                they exist because React reconciled the primary "Insert" here against the secondary
+                "Cancel" in the surface footer and cross-faded accent into grey. */}
             <Button variant="secondary" onClick={requestClose}>Cancel</Button>
             <Button variant="primary" onClick={handleConfirm} disabled={!text.trim()}>
               {mode === 'add' ? 'Add' : 'Save'}
@@ -980,6 +989,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
               // Plain is the ONLY mode that delivers nothing of the formatting; markdown and
               // discord bake it into the text as literal markers (ActionExecution.cs:3603-3609).
               formattingDelivered={sendMode !== 'plain'}
+              toolbarExtra={deliveryControl}
               onChange={setText}
               onFormattingChange={setHasFormatting}
               onSubmit={handleConfirm}
