@@ -1199,15 +1199,41 @@ namespace TrueReplayer
                 // Where the row cursor stands (0-based, the row the NEXT run consumes). -1 = this
                 // profile has never cursored, which the panel renders as row 0 — the same
                 // fallback StartAsync applies when the key is missing.
-                cursorRow = replayService.GetRowCursor(),
+                cursorRow = CursorRowForDisplay(),
             });
         }
 
         // Row cursor moved — one small message instead of re-pushing the whole table, which can
         // be thousands of cells none of which changed. Fires once per cursor-mode run.
+        //
+        // Not wrapped here, unlike CursorRowForDisplay below, because both callers already hand it
+        // an in-range row: OnRowCursorChanged passes (cur + 1) % rowN, and HandleActionsResetRow
+        // rejects anything outside the table before calling.
         public void PushRowCursor(int row)
         {
             SendMessage("data:cursor", new { row });
+        }
+
+        /// <summary>
+        /// The row cursor as the PANEL should draw it: wrapped into the current table.
+        ///
+        /// The stored cursor can sit past the end of a table that was later shortened — save a
+        /// 5-row list over a 10-row one and the cursor may still read 9. That has never been a
+        /// correctness problem, because StartAsync wraps with ((cv % rowN) + rowN) % rowN before
+        /// using it. It became a DISPLAY problem the moment the panel started drawing a marker:
+        /// an out-of-range value matches no row, so the chevron vanishes entirely and the status
+        /// strip names a row that neither exists nor is the one the next run will consume.
+        ///
+        /// Wrapped HERE, at the only two places the initial value is pushed, and deliberately not
+        /// in TypeScript: a second copy of the engine's arithmetic on the other side of the bridge
+        /// is precisely the mirror that drifts.
+        /// </summary>
+        private int CursorRowForDisplay()
+        {
+            int row = replayService.GetRowCursor();
+            if (row < 0) return row;   // never cursored — the panel renders the sentinel as row 0
+            int n = UserProfile.Current?.Data?.Rows?.Count ?? 0;
+            return n > 0 ? ((row % n) + n) % n : 0;
         }
 
         // Per-row error policy: only "skip" is meaningful; anything else normalizes to null
@@ -2588,7 +2614,7 @@ namespace TrueReplayer
                     loopOverData = UserProfile.Current?.Data?.LoopOverData ?? false,
                     onRowError = NormalizeOnRowError(UserProfile.Current?.Data?.OnRowError) ?? "halt",
                     notifyOnLapComplete = UserProfile.Current?.Data?.NotifyOnLapComplete != false,
-                    cursorRow = replayService.GetRowCursor(),   // MUST mirror PushDataTable
+                    cursorRow = CursorRowForDisplay(),   // MUST mirror PushDataTable
                 },
                 profiles = profileController.ProfileEntries.Select(p => new
                 {
