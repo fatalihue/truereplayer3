@@ -8017,6 +8017,12 @@ namespace TrueReplayer.Services
             if (InputTokenRegex.IsMatch(text)) return true;    // modal prompt (memoised per run, but still a prompt)
             if (WinClipTokenRegex.IsMatch(text)) return true;  // clipboard-history read
             if (RandomTokenRegex.IsMatch(text)) return true;   // re-rolls per resolution
+            // {pick:a|b|c} is {random}'s twin and its doc says so word for word — "each occurrence
+            // rolls independently ({random}'s contract)". Missing it here left the exact hole this
+            // predicate exists to close: a timed condition would draw a DIFFERENT option on every
+            // poll tick and compare the variable against a moving target. Found by re-reading the
+            // resolver rather than by trusting a review that had declared this case refuted.
+            if (PickTokenRegex.IsMatch(text)) return true;     // re-rolls per resolution
             if (RowNextTokenRegex.IsMatch(text)) return true;  // advances the per-column data cursor
             // {clipboard:next} ONLY — a plain {clipboard} or {clipboard:upper} is a pure read, and
             // `next` is legal anywhere in the modifier chain, so the chain is split the same way
