@@ -2740,6 +2740,26 @@ namespace TrueReplayer.Services
             // delays. 82 rows across 20 of the owner's real profiles; Tranquility alone lost
             // 1.28 s per run, with the settle after "click the search box" cut from 350 to ~264.
             || action.IsFocusClick
+            // TripleClick is family 3 for the same reason, and PROVENANCE is what puts it here.
+            // MultiClickPairs spends (pairs-1) x DoubleClickGapMs + pairs x 2 x MoveClickDelayMs:
+            // ~160 ms for three pairs against ~20 ms for a plain click, so it eats ~140 ms of the
+            // NEXT row's delay. With Delay = 120 ms after it, the next action fires with no gap at
+            // all; with 300, it fires 140 ms after the click instead of 300.
+            //
+            // DoubleClick is deliberately NOT here, and the difference is not size — it is where
+            // the row came from. The recorder MERGES two physical clicks into a DoubleClick row
+            // (ActionRecorder, "merged.ActionType = DoubleClick"), so on a recorded row the real
+            // double-click's duration WAS inside the gap that was recorded after it; resyncing
+            // would pay that time twice and slow down every profile that recorded one. A
+            // TripleClick row can never come from a recording — the merge deliberately produces
+            // DoubleClick + LeftClick, and the type is only ever AUTHORED in the Sheet, which is
+            // family 3's definition word for word ("durations authored AFTER recording").
+            //
+            // Measured before adding it: the owner's 108 profiles hold 1247 actions and ZERO
+            // DoubleClick and ZERO TripleClick rows, so this changes no existing profile's timing.
+            // It exists so the FIRST macro to use a triple-click does not silently lose the settle
+            // authored after it — the same failure the focus-click entry above was added for.
+            || string.Equals(action.ActionType, "TripleClick", StringComparison.OrdinalIgnoreCase)
             || (action.ConditionTimeout > 0
                 && string.Equals(action.ActionType, "Assert", StringComparison.OrdinalIgnoreCase));
 
