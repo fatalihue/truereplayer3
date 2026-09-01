@@ -7748,11 +7748,19 @@ namespace TrueReplayer
 
             foreach (var action in actions)
             {
-                // An at-cursor click is skipped and NOT counted: its stored X/Y is dormant (the
-                // replay resolves an absolute point from the live cursor and never translates),
-                // so translating it would drift a coordinate nothing reads — and the user would
-                // get a wrong point the moment they switched the row back to This point.
-                if (clickTypes.Contains(action.ActionType) && !action.AtCursor)
+                // An at-cursor click IS translated and IS counted, and the reasoning that used to
+                // skip it had the consequence exactly backwards. Its stored X/Y is DORMANT, not
+                // absent: it is still stamped in whichever space it was written in, and the row
+                // remembers it so that turning "At cursor" back off restores the point. Skipping
+                // is what breaks that promise — absolute (1000,500), flag on, Convert to Relative,
+                // flag off, and the replay now adds the window origin to a coordinate that was
+                // never relativized, clicking 200 px away with no error and no toast.
+                // Translating is free while the flag is on, because ResolveClickPoint does not read
+                // X/Y at all in that mode; the conversion is inobservable until it is needed, which
+                // is the definition of the right time to do it.
+                // NOT the same call as the bulk coordinate edit (HandleActionsBulkUpdateCoord),
+                // which writes a value the user CHOSE and must keep taking the row at its word.
+                if (clickTypes.Contains(action.ActionType))
                 {
                     action.X += sign * rect.Left;
                     action.Y += sign * rect.Top;

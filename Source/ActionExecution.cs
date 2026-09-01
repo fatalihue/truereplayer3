@@ -8262,8 +8262,25 @@ namespace TrueReplayer.Services
         /// typing-side twin of PasteTextViaClipboard's LF→CRLF normalization) and browsers handle
         /// Enter on keydown, not on char. Every \r\n / \r / \n becomes a real VK_RETURN press
         /// through SimulateKeyPress — which also means a multi-line typed message SENDS N times in
-        /// a chat box, where a pasted one sends once. TAB stays a literal character: paste inserts
-        /// a tab, so typing must too; the user who wants focus movement has the explicit {tab} chip.
+        /// a chat box, where a pasted one sends once.
+        ///
+        /// EVERY OTHER C0 CONTROL CHARACTER (&lt; 0x20) GOES OUT AS A UNICODE PACKET, never through
+        /// VkKeyScanEx. This is not a preference, it is a correctness gate: VkKeyScanEx resolves
+        /// them to their CONTROL-KEY origin, so the layout would hand back a real chord and the
+        /// text would execute instead of being typed. Measured — \t → VK_TAB (moves focus out of
+        /// the field, so the rest of the payload lands in the WRONG control), \b → VK_BACK (erases
+        /// what was already typed), \x1B → VK_ESCAPE (closes the dialog being filled), \v → Ctrl+K,
+        /// \x1A → Ctrl+Z. These reach a payload through {clipboard}/{var}/{row:col}, not through
+        /// the editor: a tab-separated row copied out of a spreadsheet is the everyday case.
+        ///
+        /// What the packet then does is the TARGET's business, and it is not always nothing —
+        /// measured against a real Win32 EDIT: "Nome\tValor\tTotal" arrives with the tabs as
+        /// LITERAL CHARACTERS and focus never leaves the field (which is the whole win), while
+        /// "ab\bcd" arrives as "acd" because that control interprets WM_CHAR 0x08 as a backspace.
+        /// So the promise this gate makes is precise and narrow: typing never fires the control
+        /// KEY. It does not promise the character is inert. A payload that wants a real Tab
+        /// keystroke has the explicit {tab} chip. (The brace sentinels U+0001/U+0002 never arrive
+        /// here — UnescapeBraceSentinels runs on the segment before this is called.)
         /// </summary>
         private async Task TypeTextViaSendInput(string text, int charDelayMs, CancellationToken token)
         {
@@ -8286,7 +8303,17 @@ namespace TrueReplayer.Services
                     continue;                                      // 30 ms mirrors the VkCode arm.
                 }
 
-                bool resolved = TryResolveTypedKey(ch, hkl, out ushort vk, out bool shift, out bool ctrl, out bool alt);
+                // Control characters never reach the layout: see the C0 paragraph in the docblock.
+                // Gated BEFORE TryResolveTypedKey rather than inside it, because that helper answers
+                // "can this layout produce the character" — and for \t the honest answer is yes,
+                // via a key whose EFFECT is to leave the field. The refusal is this sink's policy,
+                // not the layout's fact, so it belongs here, where the alternative (packet) exists.
+                // Written as a statement rather than `ch >= 0x20 && TryResolve(...)`: `out` values
+                // from a short-circuited && are only definitely assigned when the whole expression
+                // is TRUE, so the terse form does not compile.
+                ushort vk = 0;
+                bool shift = false, ctrl = false, alt = false;
+                bool resolved = ch >= 0x20 && TryResolveTypedKey(ch, hkl, out vk, out shift, out ctrl, out alt);
 
                 if (charDelayMs > 0)
                 {
@@ -8299,14 +8326,14 @@ namespace TrueReplayer.Services
                     var up = new List<NativeMethods.INPUT>(8);
                     if (resolved)
                     {
-                        if (shift) AppendScanKey(down, 0x10, false);
-                        if (ctrl)  AppendScanKey(down, 0x11, false);
-                        if (alt)   AppendScanKey(down, 0x12, false);
-                        AppendScanKey(down, vk, false);
-                        AppendScanKey(up, vk, true);
-                        if (alt)   AppendScanKey(up, 0x12, true);
-                        if (ctrl)  AppendScanKey(up, 0x11, true);
-                        if (shift) AppendScanKey(up, 0x10, true);
+                        if (shift) AppendScanKey(down, 0x10, false, hkl);
+                        if (ctrl)  AppendScanKey(down, 0x11, false, hkl);
+                        if (alt)   AppendScanKey(down, 0x12, false, hkl);
+                        AppendScanKey(down, vk, false, hkl);
+                        AppendScanKey(up, vk, true, hkl);
+                        if (alt)   AppendScanKey(up, 0x12, true, hkl);
+                        if (ctrl)  AppendScanKey(up, 0x11, true, hkl);
+                        if (shift) AppendScanKey(up, 0x10, true, hkl);
                     }
                     else { AppendPacket(down, ch, false); AppendPacket(up, ch, true); }
 
@@ -8325,14 +8352,14 @@ namespace TrueReplayer.Services
                 // SimulateKeyPress skip the tracker.
                 if (resolved)
                 {
-                    if (shift) AppendScanKey(batch, 0x10, false);
-                    if (ctrl)  AppendScanKey(batch, 0x11, false);
-                    if (alt)   AppendScanKey(batch, 0x12, false);
-                    AppendScanKey(batch, vk, false);
-                    AppendScanKey(batch, vk, true);
-                    if (alt)   AppendScanKey(batch, 0x12, true);
-                    if (ctrl)  AppendScanKey(batch, 0x11, true);
-                    if (shift) AppendScanKey(batch, 0x10, true);
+                    if (shift) AppendScanKey(batch, 0x10, false, hkl);
+                    if (ctrl)  AppendScanKey(batch, 0x11, false, hkl);
+                    if (alt)   AppendScanKey(batch, 0x12, false, hkl);
+                    AppendScanKey(batch, vk, false, hkl);
+                    AppendScanKey(batch, vk, true, hkl);
+                    if (alt)   AppendScanKey(batch, 0x12, true, hkl);
+                    if (ctrl)  AppendScanKey(batch, 0x11, true, hkl);
+                    if (shift) AppendScanKey(batch, 0x10, true, hkl);
                 }
                 else
                 {
@@ -8383,12 +8410,21 @@ namespace TrueReplayer.Services
         // state this app does not drive (Hankaku, Kana), so we packet it rather than guess.
         //
         // THE -1 CHECK IS NOT ENOUGH, and believing it was is a silent-corruption bug.
-        // VkKeyScanEx resolves through the layout's ANSI CODEPAGE, so a character outside that
-        // codepage is BEST-FIT converted before the scan and comes back as a perfectly valid
-        // mapping for the substitute. Measured 2026-09-01 on a US layout: U+D83D and U+DE00 (the
-        // halves of an emoji) and U+2192 '→' each returned 0x01BF — Shift+VK_OEM_2, which is '?'.
-        // Trusting that would type "?" for every such character and the packet fallback, the whole
-        // reason it exists, would NEVER fire.
+        // A character the layout cannot produce can still come back as a perfectly valid mapping —
+        // for a DIFFERENT character. Measured 2026-09-01: U+D83D and U+DE00 (the halves of an
+        // emoji) and U+2192 '→' each returned 0x01BF, which is Shift+VK_OEM_2 = '?'. Trusting that
+        // would type "?" for every such character and the packet fallback, the whole reason it
+        // exists, would NEVER fire.
+        //
+        // The 0x01BF above was BEST-FIT ANSI SUBSTITUTION, and the mechanism is worth naming
+        // precisely because the first diagnosis here blamed the wrong layer: it is the P/Invoke
+        // MARSHALLER, not the API. NativeMethods.VkKeyScanEx now declares CharSet.Unicode and so
+        // binds VkKeyScanExW, which answers 0xFFFF for those three; before that it bound the ANSI
+        // entry point, the char was best-fitted to '?' on the way in, and the API faithfully
+        // scanned the '?' it was handed. The round-trip below is what caught it and is what still
+        // guards it — do not delete it now that the CharSet is right: a layout can legitimately map
+        // two different characters through one key (dead keys, AltGr chords), so "VkKeyScanEx
+        // answered" has never implied "answered about the character we asked for".
         //
         // So the answer is ROUND-TRIP VERIFIED against the same layout: press the resolved key with
         // the resolved modifiers and confirm the layout hands back the character we asked for.
@@ -8426,9 +8462,18 @@ namespace TrueReplayer.Services
             return true;
         }
 
-        private static void AppendScanKey(List<NativeMethods.INPUT> list, ushort vk, bool up)
+        // hkl is the TARGET's layout, and passing it is the whole point: the VK handed in was
+        // resolved against that layout (VkKeyScanEx + the ToUnicodeEx round-trip), so translating
+        // it back to a scancode against OURS would break the chain the moment the two differ.
+        // Measured with a de-DE target: 4 characters come out wrong, 'z' types as 'y'; fr-FR: 10,
+        // 'a' types as 'q'. Both layouts are QWERTZ/AZERTY — every QWERTY layout (en-US, pt-BR
+        // ABNT2) agrees on these codes, which is why the bug was invisible here.
+        // SimulateKeyPress deliberately keeps the layout-free MapVirtualKey: it serves the whole
+        // app, where the VK is a NAMED key ({enter}, a hotkey) rather than one resolved against a
+        // foreign layout, and there our own layout is the right frame.
+        private static void AppendScanKey(List<NativeMethods.INPUT> list, ushort vk, bool up, IntPtr hkl)
         {
-            ushort scan = (ushort)NativeMethods.MapVirtualKey(vk, 0);
+            ushort scan = (ushort)NativeMethods.MapVirtualKeyEx(vk, 0, hkl);
             bool isExtended = ExtendedVkCodes.Contains(vk);
             uint flags = NativeMethods.KEYEVENTF_SCANCODE;
             if (isExtended) flags |= NativeMethods.KEYEVENTF_EXTENDEDKEY;

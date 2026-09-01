@@ -337,7 +337,14 @@ namespace TrueReplayer.Interop
             [Out, MarshalAs(UnmanagedType.LPWStr)] System.Text.StringBuilder pwszBuff,
             int cchBuff, uint wFlags, IntPtr dwhkl);
 
-        [DllImport("user32.dll")]
+        // CharSet.Unicode is LOAD-BEARING, not tidiness: the default (Ansi) binds VkKeyScanExA, and
+        // the marshaller then best-fits the char into the process ANSI codepage on the way in. A
+        // character outside that codepage arrives as '?' and the API faithfully answers about '?' —
+        // measured 2026-09-01, U+2192 returned 0x01BF (Shift+VK_OEM_2 = '?') through the ANSI entry
+        // point and 0xFFFF through the wide one. Callers that treat -1 as the only "not on this
+        // layout" signal would silently type the substitute. See TryResolveTypedKey, whose
+        // round-trip check exists to catch exactly that class and stays even with this fixed.
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         public static extern short VkKeyScanEx(char ch, IntPtr dwhkl);
 
         [DllImport("user32.dll")]
