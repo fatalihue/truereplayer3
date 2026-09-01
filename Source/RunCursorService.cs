@@ -96,9 +96,21 @@ namespace TrueReplayer.Services
             lock (_lock) return _row.TryGetValue(key, out value);
         }
 
-        public static void SetRow(string key, int value)
+        /// <summary>
+        /// Writes the row cursor. <paramref name="immediate"/> false (the replay path, once per
+        /// run) rides the debounce; true is for an EXPLICIT user action — "Set cursor here" — and
+        /// persists at once for the same reason <see cref="RemoveRow"/> does: a debounced write
+        /// means the user's placement followed by a kill resurrects the old position, which reads
+        /// as the click never happening.
+        /// </summary>
+        public static void SetRow(string key, int value, bool immediate = false)
         {
-            lock (_lock) { _row[key] = value; MarkDirtyLocked(); }
+            lock (_lock)
+            {
+                _row[key] = value;
+                if (immediate) { _dirty = true; SaveLocked(); }
+                else MarkDirtyLocked();
+            }
         }
 
         public static void RemoveRow(string key)

@@ -751,7 +751,7 @@ namespace TrueReplayer
                     case "actions:toggleSkip": HandleActionsToggleSkip(payload); break;
                     case "actions:toggleFocusClick": HandleActionsToggleFocusClick(payload); break;
                     case "actions:resetCycle": HandleActionsResetCycle(payload); break;
-                    case "actions:resetRow": HandleActionsResetRow(); break;
+                    case "actions:resetRow": HandleActionsResetRow(payload); break;
                     case "data:request": HandleDataRequest(); break;
                     case "data:save": HandleDataSave(payload); break;
                     case "automation:request": PushAutomationState(); break;
@@ -1196,7 +1196,18 @@ namespace TrueReplayer
                 // renders a checkbox, and leaving it undefined would seed it unchecked-looking
                 // on a table that has never opted out.
                 notifyOnLapComplete = d?.NotifyOnLapComplete != false,
+                // Where the row cursor stands (0-based, the row the NEXT run consumes). -1 = this
+                // profile has never cursored, which the panel renders as row 0 — the same
+                // fallback StartAsync applies when the key is missing.
+                cursorRow = replayService.GetRowCursor(),
             });
+        }
+
+        // Row cursor moved — one small message instead of re-pushing the whole table, which can
+        // be thousands of cells none of which changed. Fires once per cursor-mode run.
+        public void PushRowCursor(int row)
+        {
+            SendMessage("data:cursor", new { row });
         }
 
         // Per-row error policy: only "skip" is meaningful; anything else normalizes to null
@@ -2577,6 +2588,7 @@ namespace TrueReplayer
                     loopOverData = UserProfile.Current?.Data?.LoopOverData ?? false,
                     onRowError = NormalizeOnRowError(UserProfile.Current?.Data?.OnRowError) ?? "halt",
                     notifyOnLapComplete = UserProfile.Current?.Data?.NotifyOnLapComplete != false,
+                    cursorRow = replayService.GetRowCursor(),   // MUST mirror PushDataTable
                 },
                 profiles = profileController.ProfileEntries.Select(p => new
                 {
@@ -3973,15 +3985,36 @@ namespace TrueReplayer
             SendMessage("alert:show", new { message = $"Cycle '{action.Key}' reset to the first item", type = "success" });
         }
 
-        // Reset the data-loop row cursor (Model B) to the first row. Per-profile runtime
-        // state — no profile edit, no save. Only meaningful when the active profile has a
-        // data table (the context-menu entry is gated to cursor mode), but harmless
-        // otherwise, so it just no-ops when there are no rows to cursor through.
-        private void HandleActionsResetRow()
+        // Move the data-loop row cursor (Model B). No payload row = reset to the first row (the
+        // original "start over"); a row index = park it there ("Set cursor here" on a Data-panel
+        // row). Per-profile runtime state — no profile edit, no save.
+        //
+        // The indexed form is the recovery for the cursor advancing at the TOP of a run: a run
+        // the user Stops has already consumed its row, and until now the only way back was to
+        // reset to row 1 and re-walk the list. Out-of-range indices are ignored rather than
+        // clamped — a payload that disagrees with the table the user is looking at is a bug
+        // somewhere else, and silently parking the cursor on a different row than the one they
+        // clicked would hide it.
+        private void HandleActionsResetRow(JsonElement payload)
         {
             var data = UserProfile.Current?.Data;
-            if (data == null || (data.Rows?.Count ?? 0) == 0) return;
+            int rowCount = data?.Rows?.Count ?? 0;
+            if (data == null || rowCount == 0) return;
+
+            if (payload.ValueKind == JsonValueKind.Object
+                && payload.TryGetProperty("row", out var rEl)
+                && rEl.ValueKind == JsonValueKind.Number
+                && rEl.TryGetInt32(out int row))
+            {
+                if (row < 0 || row >= rowCount) return;
+                replayService.SetRowCursor(row);
+                PushRowCursor(row);
+                SendMessage("alert:show", new { message = $"Next run starts at row {row + 1}", type = "success" });
+                return;
+            }
+
             replayService.ResetRowCursor();
+            PushRowCursor(0);   // RemoveRow leaves no key; StartAsync then reads row 0
             SendMessage("alert:show", new { message = "Data-loop row position reset to the first row", type = "success" });
         }
 

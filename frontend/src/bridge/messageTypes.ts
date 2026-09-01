@@ -737,6 +737,14 @@ export interface ProfileDataTable {
   // row, i.e. the list finished a pass and the next run wraps to row 1. Default true; only
   // an explicit opt-out is persisted.
   notifyOnLapComplete: boolean;
+  // Cursor mode only: 0-based row the NEXT run will consume. RUNTIME state, not profile
+  // content — it is never saved with the table and never part of the dirty check. -1 from the
+  // backend means "this profile has never cursored", which behaves as row 0.
+  //
+  // Kept live (patched by data:cursor after every run) precisely because it is NOT editable
+  // content: the seed-once rule above exists to protect the user's unsaved GRID edits from a
+  // backend push, and a marker position has nothing to stomp.
+  cursorRow: number;
 }
 
 export type IncomingMessage =
@@ -744,6 +752,9 @@ export type IncomingMessage =
   | { type: 'status:changed'; payload: { status: AppState['status'] } }
   | { type: 'actions:updated'; payload: { actions: ActionItem[] } }
   | { type: 'data:table'; payload: ProfileDataTable }
+  // Row cursor moved (cursor mode): 0-based row the NEXT run consumes. Its own message rather
+  // than a data:table re-push — the table can be thousands of cells and none of them changed.
+  | { type: 'data:cursor'; payload: { row: number } }
   | { type: 'automation:state'; payload: AutomationState }
   // Tray "Automations…" clicked — restore + open the Automation panel.
   | { type: 'automation:open'; payload: Record<string, never> }
@@ -880,7 +891,9 @@ export type IncomingMessage =
 export type OutgoingMessage =
   | { type: 'ui:ready'; payload: Record<string, never> }
   | { type: 'data:request'; payload: Record<string, never> }
-  | { type: 'data:save'; payload: ProfileDataTable }
+  // cursorRow is RUNTIME state, not table content: it is never saved with the profile, so the
+  // save payload is the table minus it. Moving the cursor goes through actions:resetRow.
+  | { type: 'data:save'; payload: Omit<ProfileDataTable, 'cursorRow'> }
   | { type: 'replay:reportRequest'; payload: Record<string, never> }
   | { type: 'automation:request'; payload: Record<string, never> }
   // trigger=null removes the automation from the profile.
@@ -975,7 +988,9 @@ export type OutgoingMessage =
   // Reset a SetVariable cycle row to its first item (clears the in-memory cursor).
   | { type: 'actions:resetCycle'; payload: { index: number } }
   // Reset the data-loop row cursor (Model B) to the first row. Profile-level.
-  | { type: 'actions:resetRow'; payload: Record<string, never> }
+  // No row = reset the data-loop cursor to the first row. A row index = park it there
+  // ("Set cursor here"), the recovery for a run that consumed its row and then failed.
+  | { type: 'actions:resetRow'; payload: { row?: number } }
   | { type: 'actions:reorder'; payload: { indices: number[]; targetIndex: number } }
   | { type: 'actions:insertAction'; payload: { actionType: string; insertIndex: number } }
   // Pause insert (Pattern B normalization) — replaces the old "insertAction with
