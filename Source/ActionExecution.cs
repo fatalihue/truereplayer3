@@ -194,6 +194,8 @@ namespace TrueReplayer.Services
             // information rather than an error.
             replayer.OnDataLapCompleted = rows => dispatcherQueue.TryEnqueue(
                 () => OnDataLapCompleted?.Invoke(rows));
+            replayer.OnRowCursorChanged = row => dispatcherQueue.TryEnqueue(
+                () => OnRowCursorChanged?.Invoke(row));
             // Same marshalling and the same reasoning as the lap notice above: raised from the
             // replay task, presented as information.
             replayer.OnBrowserExtensionMissing = rows => dispatcherQueue.TryEnqueue(
@@ -298,6 +300,11 @@ namespace TrueReplayer.Services
         {
             replayer.ResetRowCursor();
         }
+
+        // Where the cursor stands / park it on a row — see ActionReplayer for both.
+        public int GetRowCursor() => replayer.GetRowCursor();
+
+        public void SetRowCursor(int rowIndex) => replayer.SetRowCursor(rowIndex);
 
         public void SetProfileLookup(Func<string, Task<Models.UserProfile?>> lookup)
         {
@@ -458,6 +465,11 @@ namespace TrueReplayer.Services
         // cursor mode (data table present, "loop over data" OFF) when a run consumes the
         // last row. Arg = the table's row count.
         public Action<int>? OnDataLapCompleted;
+
+        // Row-cursor movement — re-exposed from the inner ActionReplayer, marshalled to the UI
+        // thread by the forwarder in the constructor. Fires once per cursor-mode run, at the top,
+        // where the advance happens. Arg = the 0-based row the NEXT run will consume.
+        public Action<int>? OnRowCursorChanged;
 
         // Replay pre-flight — re-exposed from the inner ActionReplayer. Fires at kickoff when
         // the run has rows that need the Chrome extension and the bridge is down. Arg = how
@@ -1955,6 +1967,12 @@ namespace TrueReplayer.Services
         // renders as a red error toast.
         public Action<int>? OnDataLapCompleted;
 
+        // Cursor mode: the row cursor moved (arg = 0-based row the NEXT run will consume). Fires
+        // once per run, at the top, right where the advance happens. Its own channel rather than
+        // a re-push of the whole table: the table can be thousands of cells and none of them
+        // changed — only where the marker sits.
+        public Action<int>? OnRowCursorChanged;
+
         // Pre-flight: this run needs the Chrome extension and the bridge is down (arg = how many
         // rows need it). Its own channel for the same reason OnDataLapCompleted has one, plus a
         // second: OnReplayError routes through PushStatusChange, which turns any "error:" into
@@ -2006,6 +2024,28 @@ namespace TrueReplayer.Services
         {
             var profile = _getProfileName?.Invoke() ?? "default";
             RunCursorService.RemoveRow(profile);
+        }
+
+        // Where the row cursor stands: the 0-based row the NEXT run will consume. -1 = this
+        // profile has never cursored, which the UI renders the same as row 0 (StartAsync's read
+        // falls back to 0 on a missing key) — but the caller can tell the two apart.
+        public int GetRowCursor()
+        {
+            var profile = _getProfileName?.Invoke() ?? "default";
+            return RunCursorService.TryGetRow(profile, out int row) ? row : -1;
+        }
+
+        // Park the cursor on a specific row — the fine-grained twin of ResetRowCursor, which only
+        // ever means "back to row 1". It exists because the cursor advances at the TOP of a run:
+        // a run the user stops, or one that dies on its first action, has already consumed its
+        // row, and without this the only recovery was to reset to the top and walk the whole list
+        // again. Persisted immediately (see RunCursorService.SetRow) — this is a user gesture,
+        // not the replay's own bookkeeping.
+        public void SetRowCursor(int rowIndex)
+        {
+            if (rowIndex < 0) return;
+            var profile = _getProfileName?.Invoke() ?? "default";
+            RunCursorService.SetRow(profile, rowIndex, immediate: true);
         }
 
         public void SetProfileNameProvider(Func<string> getProfileName)
@@ -2321,7 +2361,21 @@ namespace TrueReplayer.Services
                     int rowN = _dataTable.Rows!.Count;
                     int cur = RunCursorService.TryGetRow(rowKey, out var cv) ? ((cv % rowN) + rowN) % rowN : 0;
                     cursorRowData = BuildRowDict(_dataTable, cur);
-                    RunCursorService.SetRow(rowKey, (cur + 1) % rowN); // advance for the next run
+                    // ADVANCE HAPPENS HERE, at the TOP of the run — before a single action has
+                    // executed. So one hotkey press consumes exactly one row no matter what
+                    // follows, including a run the user Stops and a run that dies on its first
+                    // action. That predictability is the point (and it matches {clipboard:next},
+                    // which also consumes at use rather than on success), but it does mean a
+                    // mis-fired run silently burns a row. The answer is NOT to move this to the
+                    // end and guess at "success" — the engine has no such boolean, and a repeated
+                    // row is the worse failure because the RECIPIENT sees it. The answer is that
+                    // the position is now visible in the Data panel and one click puts it back:
+                    // OnRowCursorChanged below pushes it, SetRowCursor moves it.
+                    int nextRow = (cur + 1) % rowN;
+                    RunCursorService.SetRow(rowKey, nextRow);
+                    // Raised raw; the ReplayService forwarder marshals to the UI thread (same
+                    // shape as OnDataLapCompleted right below).
+                    OnRowCursorChanged?.Invoke(nextRow);
                     // Lap complete = this run consumed the LAST row, so the next one wraps to
                     // the top. Detected HERE (not at the wrap) so the notice fires while it is
                     // still true — "that was the last one" — instead of after row 1 was already
@@ -3442,8 +3496,15 @@ namespace TrueReplayer.Services
                             Status = "ok",
                         });
                     }
-                    // (RE)ENTRY — the row count is RE-READ every pass: the Data panel edits
-                    // live, and a stale count would index past a shrunken table.
+                    // (RE)ENTRY — the row count is RE-READ every pass rather than captured at
+                    // activation. Today it CANNOT change: the Data panel's save replaces the whole
+                    // ProfileDataTable object (WebViewBridge: `UserProfile.Current.Data = table`)
+                    // and nothing mutates Rows in place, so _dataTable is an immutable snapshot
+                    // for the run's duration. (The comment here used to claim the panel "edits
+                    // live" — it does not, and believing that would suggest in-place mutation is
+                    // supported.) The re-read stays because it costs one field access and is the
+                    // correct code the day that invariant changes; indexing past a shrunken table
+                    // is what it protects against.
                     int rowCount = _dataTable?.Rows?.Count ?? 0;
                     if (fe.Cursor >= rowCount)
                     {
@@ -3930,6 +3991,7 @@ namespace TrueReplayer.Services
                 NativeMethods.ShowWindow(hwnd, NativeMethods.SW_RESTORE);
                 await Task.Delay(80, token);
             }
+            if (applyPos) (x, y) = ClampOnScreen(hwnd, x, y, width, height, applySize);
             uint flags = NativeMethods.SWP_NOZORDER;
             if (!applyPos) flags |= NativeMethods.SWP_NOMOVE;
             if (!applySize) flags |= NativeMethods.SWP_NOSIZE;
@@ -3937,6 +3999,66 @@ namespace TrueReplayer.Services
                 applyPos ? x : 0, applyPos ? y : 0,
                 applySize ? width : 0, applySize ? height : 0, flags);
             await Task.Delay(80, token);
+        }
+
+        // How much of the window has to stay reachable after a placement: enough title bar to
+        // grab with the mouse. Windows' own snap/restore logic uses a comparable margin.
+        private const int MinOnScreenX = 120;
+        private const int MinOnScreenY = 32;
+
+        /// <summary>
+        /// Keeps a placement's target position on the desktop that actually exists right now.
+        ///
+        /// Stored geometry is a snapshot of the machine it was captured on. Capture the target on
+        /// a secondary monitor at x=2560, replay on the laptop alone, and SetWindowPos happily
+        /// parks the window entirely off-screen — silently, and every click the macro makes after
+        /// that lands on nothing, so the failure surfaces as "the macro stopped working" with no
+        /// hint of where it went. Windows does not rescue this; nothing here did either.
+        ///
+        /// CLAMPS POSITION ONLY. An oversized window is ugly but reachable — the user can resize
+        /// it — while re-deriving a size would be rewriting what they authored. Same doctrine as
+        /// WarnRelativeGeometryDrift: notice the mismatch, do not silently rescale the macro's
+        /// intent. The move is still made, just to the nearest position that leaves a grabbable
+        /// strip on a real monitor, and the log says it happened so "why is my window not at
+        /// 2560?" has an answer.
+        ///
+        /// The window's own size comes from the placement when it is also setting the size, and
+        /// otherwise from the live rect — without it there is no way to know how far left a
+        /// window may hang while keeping its right edge visible.
+        /// </summary>
+        private static (int X, int Y) ClampOnScreen(IntPtr hwnd, int x, int y, int width, int height, bool applySize)
+        {
+            int w = width, h = height;
+            if (!applySize || w <= 0 || h <= 0)
+            {
+                if (!NativeMethods.GetWindowRect(hwnd, out var cur)) return (x, y);
+                w = cur.Right - cur.Left;
+                h = cur.Bottom - cur.Top;
+            }
+            if (w <= 0 || h <= 0) return (x, y);
+
+            var (vx, vy, vw, vh) = NativeMethods.VirtualScreen.Bounds;
+            if (vw <= 0 || vh <= 0) return (x, y);
+
+            // A window may hang off the LEFT as long as MinOnScreenX of its right edge is still
+            // on the desktop, and off the RIGHT as long as MinOnScreenX of its left edge is. The
+            // top is never allowed above the desktop: a title bar above the screen is the one
+            // position the user genuinely cannot recover with the mouse.
+            int minX = vx + MinOnScreenX - w;
+            int maxX = vx + vw - MinOnScreenX;
+            int minY = vy;
+            int maxY = vy + vh - MinOnScreenY;
+
+            int cx = Math.Clamp(x, Math.Min(minX, maxX), Math.Max(minX, maxX));
+            int cy = Math.Clamp(y, Math.Min(minY, maxY), Math.Max(minY, maxY));
+            if (cx != x || cy != y)
+            {
+                DiagnosticLog.Warn(
+                    $"Activate Window: placement ({x},{y}) is off the current desktop " +
+                    $"({vw}x{vh} at {vx},{vy}) for a {w}x{h} window — clamped to ({cx},{cy}). " +
+                    "The stored position probably came from a monitor that is no longer connected.");
+            }
+            return (cx, cy);
         }
 
         /// <summary>
@@ -4658,8 +4780,17 @@ namespace TrueReplayer.Services
 
             // Launch AT MOST once, and only when no window matched first — re-running
             // the program on every poll would spawn N copies of a slow-starting app.
+            //
+            // With matchN > 1 "no window matched" means "fewer than N matched", so this reads as
+            // "launch until there are N of them" rather than the "launch if missing" the field is
+            // named for. That is left as-is on purpose: for an app that opens a NEW window per
+            // invocation (most browsers) launching really is how you get to a second window, so
+            // gating it on matchN <= 1 would break a legitimate setup to tidy a surprising one.
+            // The log line is the fix — the surprising case is now diagnosable instead of silent.
             if (hwnd == IntPtr.Zero && path != null)
             {
+                if (matchN > 1)
+                    DiagnosticLog.Info($"Activate Window: fewer than {matchN} matching windows — launching '{path}'");
                 if (!TryLaunch(path, args, out var launchError))
                 {
                     HandleActivateWindowFailure(action, $"launch failed: {launchError}");

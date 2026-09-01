@@ -346,6 +346,15 @@ namespace TrueReplayer
                 bridge?.ArmDataLapNotice(rows);
             };
 
+            // Row-cursor marker (cursor mode). Pushed straight through rather than armed for the
+            // end-of-run cue like the lap notice above: this is not a notification, it is the Data
+            // panel's marker following the run that just consumed a row, and it should move when
+            // the row is consumed.
+            replayService.OnRowCursorChanged = row =>
+            {
+                bridge?.PushRowCursor(row);
+            };
+
             // Replay pre-flight: the run needs the Chrome extension and the bridge is down.
             // Straight to the toast rather than through the run-end cue the lap notice waits
             // for — this is worth acting on NOW, not when the run finishes.

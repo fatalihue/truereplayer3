@@ -78,7 +78,7 @@ const defaultSettings = {
 const initialState: AppState = {
   status: 'ready',
   actions: [],
-  dataTable: { headers: [], rows: [], loopOverData: false, onRowError: 'halt', notifyOnLapComplete: true },
+  dataTable: { headers: [], rows: [], loopOverData: false, onRowError: 'halt', notifyOnLapComplete: true, cursorRow: 0 },
   automation: { enabled: true, entries: [] },
   profiles: [],
   activeProfile: null,
@@ -138,6 +138,10 @@ function appStateReducer(state: AppState, message: IncomingMessage): AppState {
       return { ...state, actions: message.payload.actions };
     case 'data:table':
       return { ...state, dataTable: message.payload };
+    // Marker-only update: patch the cursor without touching headers/rows, so a run that moves
+    // the cursor cannot re-seed the grid the user may be editing.
+    case 'data:cursor':
+      return { ...state, dataTable: { ...state.dataTable, cursorRow: message.payload.row } };
     case 'automation:state':
       return { ...state, automation: message.payload ?? state.automation };
     case 'profiles:updated':

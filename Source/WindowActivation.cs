@@ -60,6 +60,14 @@ namespace TrueReplayer.Helpers
             // honours SetForegroundWindow from a background process even when the attach
             // trick alone isn't enough. The user's real value is saved and restored in
             // finally so this can't leak.
+            //
+            // The one gap the finally cannot cover is a HARD kill (Task Manager, the WebView2
+            // recovery restart) landing between the set and the restore, which leaves the
+            // machine at 0 — i.e. any app may steal focus — for the rest of the session. That
+            // is survivable and deliberately not defended: SPIF_SENDCHANGE without
+            // SPIF_UPDATEINIFILE does NOT write the registry, so nothing outlives the logon,
+            // and the exposed window is the two P/Invokes below. Do not "fix" this by adding
+            // SPIF_UPDATEINIFILE, which is what would make it permanent.
             uint prevLockTimeout = 0;
             bool lockTimeoutZeroed = false;
             try

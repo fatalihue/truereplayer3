@@ -2,7 +2,7 @@ import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, 
 import ReactDOM from 'react-dom';
 import {
   Table2, TriangleAlert, Repeat, Plus, Trash2, Wand2, Check, Copy,
-  MoreHorizontal, ClipboardPaste, FileUp, Search, X, Bell,
+  MoreHorizontal, ClipboardPaste, FileUp, Search, X, Bell, ChevronRight,
 } from 'lucide-react';
 import { DialogShell, PANEL_SIZE, PANEL_MAX_WIDTH } from './common/DialogShell';
 import { Button } from './common/Button';
@@ -278,6 +278,8 @@ const GridRow = memo(function GridRow({
   onCellDone,
   onDuplicate,
   onDelete,
+  isCursor,
+  onSetCursor,
 }: {
   row: string[];
   r: number;
@@ -290,7 +292,12 @@ const GridRow = memo(function GridRow({
   onCellDone: (r: number, c: number, value: string | null, nav?: 'down' | 'right' | 'left') => void;
   onDuplicate: (r: number) => void;
   onDelete: (r: number) => void;
+  // Cursor mode only. isCursor = the NEXT run starts here; onSetCursor null = not cursor mode
+  // (batch runs every row, so there is no "next row" to point at or move).
+  isCursor: boolean;
+  onSetCursor: ((r: number) => void) | null;
 }) {
+  const tt = useTt();
   return (
     <tr
       data-row={r}
@@ -298,8 +305,24 @@ const GridRow = memo(function GridRow({
         zebra ? 'bg-[color-mix(in_srgb,var(--color-text-primary)_1%,transparent)]' : ''
       }`}
     >
-      <td className="sticky left-0 z-[5] bg-bg-surface shadow-[inset_-1px_0_0_var(--color-border-subtle)] text-[10px] text-text-tertiary tabular-nums text-right pr-2 select-none">
-        {r + 1}
+      {/* Row number, and in cursor mode also the marker + the way to move it. TWO channels for
+          the marker, never colour alone (a chevron AND the replay ink), so it survives the
+          themes where the two inks land close together. */}
+      <td
+        onClick={onSetCursor ? () => onSetCursor(r) : undefined}
+        className={`sticky left-0 z-[5] bg-bg-surface shadow-[inset_-1px_0_0_var(--color-border-subtle)] text-[10px] tabular-nums text-right pr-2 select-none ${
+          onSetCursor ? 'cursor-pointer hover:text-text-primary' : ''
+        } ${isCursor ? 'font-semibold text-[color:var(--color-replay-fg)]' : 'text-text-tertiary'}`}
+        data-tip={onSetCursor
+          ? (isCursor
+              ? tt('The next run starts on this row', 'A próxima execução começa nesta linha')
+              : tt('Click to start the next run here', 'Clique para a próxima execução começar aqui'))
+          : undefined}
+      >
+        <span className="inline-flex items-center justify-end gap-0.5">
+          {isCursor && <ChevronRight size={9} className="shrink-0" />}
+          {r + 1}
+        </span>
       </td>
       {Array.from({ length: colCount }, (_, c) => {
         const editing = editingCol === c;
@@ -507,6 +530,18 @@ export function DataPanel({ onClose }: DataPanelProps) {
   const emptyGrid = grid.headers.length === 0 && grid.rows.length === 0;
   const willClear = emptyGrid && !!seedRef.current?.wasNonEmpty;
   const readOnly = grid.rows.length > READONLY_ROW_CAP;
+
+  // Row cursor (cursor mode). Read LIVE from the store, unlike everything the seed-once rule
+  // above governs: that rule protects the user's unsaved GRID edits from a backend push, and a
+  // marker position is runtime state with nothing to stomp — it has to follow the run that just
+  // moved it (data:cursor). -1 from the backend = never cursored, which behaves as row 0, the
+  // same fallback StartAsync applies on a missing key.
+  const cursorRow = Math.max(0, dataTable.cursorRow ?? 0);
+  // Park the cursor on a row. Allowed even in the read-only (row-cap) state: this is not an edit
+  // to the table, and a big list is exactly where re-walking from row 1 hurts most.
+  const handleSetCursor = useCallback((r: number) => {
+    send({ type: 'actions:resetRow', payload: { row: r } });
+  }, [send]);
 
   const headerMeta = useMemo(() => {
     const seen = new Map<string, number>();
@@ -865,7 +900,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
     if (escArmed) return <span className={`${cls} text-warning-ink`}>{tt('Unsaved changes — press Esc again to discard.', 'Alterações não salvas — pressione Esc de novo para descartar.')}</span>;
     if (readOnly) return <span className={`${cls} text-warning-ink`}>{tt('Large table — grid is read-only; edit via Paste / bulk edit.', 'Tabela grande — grade somente leitura; edite via Paste / bulk edit.')}</span>;
     if (grid.rows.length >= LARGE_TABLE_WARN) return <span className={`${cls} text-text-tertiary`}>{tt('Large table — the profile file grows with it.', 'Tabela grande — o arquivo do perfil cresce junto.')}</span>;
-    if (!loopOverData && !emptyGrid) return <span className={`${cls} text-text-tertiary`}>{tt('Loop off: each run uses the next row. Right-click → Reset row position.', 'Loop desligado: cada execução usa a próxima linha. Botão direito → Reset row position.')}</span>;
+    if (!loopOverData && !emptyGrid) return <span className={`${cls} text-text-tertiary`}>{tt(`Loop off: each run uses the next row — now row ${cursorRow + 1}. Click a row number to move the cursor.`, `Loop desligado: cada execução usa a próxima linha — agora a ${cursorRow + 1}. Clique num número de linha para mover o cursor.`)}</span>;
     return <span className={`${cls} text-text-tertiary`}>{tt('Click a cell to edit · Ctrl+Enter saves', 'Clique numa célula para editar · Ctrl+Enter salva')}</span>;
   })();
 
@@ -1048,6 +1083,8 @@ export function DataPanel({ onClose }: DataPanelProps) {
                       onCellDone={handleCellDone}
                       onDuplicate={handleDuplicateRow}
                       onDelete={handleDeleteRow}
+                      isCursor={!loopOverData && r === cursorRow}
+                      onSetCursor={loopOverData ? null : handleSetCursor}
                     />
                   ))}
                   {!readOnly && (
@@ -1122,8 +1159,8 @@ export function DataPanel({ onClose }: DataPanelProps) {
             ) : (
               <div className="border-l-2 border-border-subtle rounded px-2.5 py-2 text-[11px] leading-relaxed text-text-tertiary">
                 {tt(
-                  'Cursor mode: each run uses the next row and advances (wrapping). Right-click a row → Reset row position to start over.',
-                  'Modo cursor: cada execução usa a próxima linha e avança (dá a volta). Botão direito numa linha → Reset row position para recomeçar.',
+                  'Cursor mode: each run uses the next row and advances (wrapping). The row it will use is marked; click any row number to move the cursor there. The advance happens when the run STARTS, so a run you stop has still consumed its row — move the cursor back.',
+                  'Modo cursor: cada execução usa a próxima linha e avança (dá a volta). A linha que ela vai usar fica marcada; clique em qualquer número de linha para mover o cursor. O avanço acontece quando a execução COMEÇA, então uma execução que você parou já consumiu a linha — mova o cursor de volta.',
                 )}
               </div>
             )}

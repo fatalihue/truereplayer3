@@ -4161,9 +4161,17 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
               titleHint={tt('Case-insensitive.', 'Sem diferenciar maiúsculas.')}
             />
             {/* nth-match — pick the Nth matching window (1-based, Z-order front→back). */}
+            {/* The hint names the launch interaction above 1 because it is genuinely surprising:
+                "no window matched" means "fewer than N matched", so the Launch path below fires
+                whenever there are fewer than N — not only when there are none. Left as behaviour
+                (an app that opens a new window per invocation really does reach N that way) and
+                stated here instead. */}
             <Field
               label="Match #"
-              hint={tt('1 = frontmost.', '1 = a da frente.')}
+              hint={parseInt(matchIndex, 10) > 1
+                ? tt('Counted front→back. Above 1, Launch fires when FEWER than this many match.',
+                     'Contado da frente para trás. Acima de 1, o Launch dispara quando MENOS que isso casarem.')
+                : tt('1 = frontmost.', '1 = a da frente.')}
             >
               <NumberInput
                 value={parseInt(matchIndex, 10) || 1}
