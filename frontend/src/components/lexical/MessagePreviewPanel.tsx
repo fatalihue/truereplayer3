@@ -69,7 +69,13 @@ const NOTE_TIP: Record<string, [string, string]> = {
   ],
 };
 
-export function MessagePreviewPanel({ text, method }: { text: string; method: SendMethod }) {
+export function MessagePreviewPanel({ text, method, marksAdded = false }: {
+  text: string;
+  method: SendMethod;
+  /** Delivery is Markdown/Discord AND the document carries formatting — so the engine will send
+   *  KeyMarkdown, which is this text plus literal marks the panel cannot render. */
+  marksAdded?: boolean;
+}) {
   const tt = useTt();
   const { clipRaw, clipReady } = useClipboardContent();
   const { dataTable } = useAppState();
@@ -100,6 +106,19 @@ export function MessagePreviewPanel({ text, method }: { text: string; method: Se
             ? tt('What this will type', 'O que isto vai digitar')
             : tt('What this will paste', 'O que isto vai colar')}
         </div>
+        {/* This panel renders the PLAIN payload — the same string the engine resolves — and it has
+            no way to render the markdown flavor, which is exported imperatively from the editor at
+            confirm time (getMarkdown), not derivable from `text`. Under Markdown/Discord with
+            formatting present the engine sends KeyMarkdown: this exact text PLUS literal marks.
+            Rather than silently show a payload one step short of the truth, say so. Gated on
+            hasFormatting because with none the two flavors are identical and the note would be
+            noise. */}
+        {marksAdded && (
+          <div className="text-[10px] leading-snug text-text-tertiary mt-0.5">
+            {tt('Formatting marks (*bold*) are added on send and are not shown here.',
+                'As marcas de formatação (*negrito*) são acrescentadas no envio e não aparecem aqui.')}
+          </div>
+        )}
       </div>
       <div className="flex-1 min-h-0 overflow-auto px-3 pb-3">
         <div

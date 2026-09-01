@@ -89,10 +89,20 @@ export function pickStatusNote(
       tone: 'warn',
       text: tt('Plain delivery — formatting is kept, but not sent',
                'Entrega Plain — a formatação fica salva, mas não é enviada'),
-      tip: tt(
-        'The formatting stays saved with the action and comes back if you switch Delivery to Rich. It is simply not sent while Plain is selected — switch to Rich, Markdown or Discord to send it.',
-        'A formatação continua salva na action e volta se você trocar o Delivery para Rich. Ela apenas não é enviada enquanto Plain estiver selecionado — troque para Rich, Markdown ou Discord para enviá-la.',
-      ),
+      // The REMEDY is method-dependent even though the diagnosis is not: under Type, "switch to
+      // Rich" is advice that delivers nothing (rung 2 is the proof — typing has no clipboard, so
+      // there is no HTML flavor to attach). Rungs 1 and 2 got their method leg with the transport
+      // axis; this one is the third, and it needs it here rather than as a fourth rung because the
+      // CONDITION is genuinely method-independent — only the way out changes.
+      tip: sendMethod === 'type'
+        ? tt(
+          'The formatting stays saved with the action and comes back if you change Delivery. It is simply not sent while Plain is selected — and since this action TYPES, switch to Markdown or Discord: their marks are literal characters and are typed exactly as written. Rich cannot be typed at all.',
+          'A formatação continua salva na ação e volta se você trocar o Delivery. Ela apenas não é enviada enquanto Plain estiver selecionado — e como esta ação DIGITA, troque para Markdown ou Discord: as marcas deles são caracteres literais e são digitadas exatamente como estão. Rich não tem como ser digitado.',
+        )
+        : tt(
+          'The formatting stays saved with the action and comes back if you switch Delivery to Rich. It is simply not sent while Plain is selected — switch to Rich, Markdown or Discord to send it.',
+          'A formatação continua salva na action e volta se você trocar o Delivery para Rich. Ela apenas não é enviada enquanto Plain estiver selecionado — troque para Rich, Markdown ou Discord para enviá-la.',
+        ),
     };
   }
 

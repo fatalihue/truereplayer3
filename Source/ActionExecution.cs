@@ -1510,8 +1510,19 @@ namespace TrueReplayer.Services
         // coordsAreProfileSpace is threaded from the caller, not defaulted at the call site: an
         // at-cursor click resolves an ABSOLUTE point, and translating the tap while leaving the
         // primary click untranslated would land the two in different coordinate spaces.
+        // restoreAnchor: put the cursor back where it started once the tap is done. Only the
+        // at-cursor rows pass true, and for them it is not cosmetic — it is what stops a repeat
+        // burst from WALKING. Those rows resolve their point by reading the LIVE cursor
+        // (ResolveClickPoint), so the tap's +5 px becomes cycle n+1's origin, and a Times = 8 burst
+        // ends 35 px away from the small target the focus click exists to hit, reporting "ok" the
+        // whole way (StampCursorPoint records only the last cycle). Same class as the jitter walk
+        // 2.31.0 already forbade — "a point read from the cursor cannot take an offset that moves
+        // the cursor" — surfacing on the second path that moves it.
+        // SetCursorPos and not SendInput on purpose: a move INPUT would publish a Raw-Input delta
+        // to the target, and this restore must be invisible to it. Same reasoning as the fast-
+        // approach teleport. Absolute because at-cursor points always are (profileSpace: false).
         private void FocusTap(int x, int y, uint down, uint up, CancellationToken token,
-                              bool coordsAreProfileSpace = true)
+                              bool coordsAreProfileSpace = true, bool restoreAnchor = false)
         {
             if (FocusClickGapMs > 0) Thread.Sleep(FocusClickGapMs);
             if (token.IsCancellationRequested) return;
@@ -1521,6 +1532,9 @@ namespace TrueReplayer.Services
             SimulateMouse(fx, fy, down, coordsAreProfileSpace: coordsAreProfileSpace, allowFastApproach: false);
             if (!token.IsCancellationRequested)
                 SimulateMouse(fx, fy, up, coordsAreProfileSpace: coordsAreProfileSpace, allowFastApproach: false);
+            // Outside the cancellation guard: a run stopped between the tap's down and up must
+            // still leave the cursor where it was found, not 5 px adrift.
+            if (restoreAnchor && !coordsAreProfileSpace) NativeMethods.SetCursorPos(x, y);
         }
 
         // N full left press/release pairs at ONE point, each hop under DoubleClickGapMs so the
@@ -3532,7 +3546,7 @@ namespace TrueReplayer.Services
                                 if (!token.IsCancellationRequested)
                                     SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_LEFTUP, coordsAreProfileSpace: ps);
                                 if (action.IsFocusClick && !token.IsCancellationRequested)
-                                    FocusTap(cx, cy, NativeMethods.MOUSEEVENTF_LEFTDOWN, NativeMethods.MOUSEEVENTF_LEFTUP, token, ps);
+                                    FocusTap(cx, cy, NativeMethods.MOUSEEVENTF_LEFTDOWN, NativeMethods.MOUSEEVENTF_LEFTUP, token, ps, restoreAnchor: action.AtCursor);
                             });
                             break;
                         case "RightClick":
@@ -3543,7 +3557,7 @@ namespace TrueReplayer.Services
                                 if (!token.IsCancellationRequested)
                                     SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_RIGHTUP, coordsAreProfileSpace: ps);
                                 if (action.IsFocusClick && !token.IsCancellationRequested)
-                                    FocusTap(cx, cy, NativeMethods.MOUSEEVENTF_RIGHTDOWN, NativeMethods.MOUSEEVENTF_RIGHTUP, token, ps);
+                                    FocusTap(cx, cy, NativeMethods.MOUSEEVENTF_RIGHTDOWN, NativeMethods.MOUSEEVENTF_RIGHTUP, token, ps, restoreAnchor: action.AtCursor);
                             });
                             break;
                         case "MiddleClick":
@@ -3554,7 +3568,7 @@ namespace TrueReplayer.Services
                                 if (!token.IsCancellationRequested)
                                     SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_MIDDLEUP, coordsAreProfileSpace: ps);
                                 if (action.IsFocusClick && !token.IsCancellationRequested)
-                                    FocusTap(cx, cy, NativeMethods.MOUSEEVENTF_MIDDLEDOWN, NativeMethods.MOUSEEVENTF_MIDDLEUP, token, ps);
+                                    FocusTap(cx, cy, NativeMethods.MOUSEEVENTF_MIDDLEDOWN, NativeMethods.MOUSEEVENTF_MIDDLEUP, token, ps, restoreAnchor: action.AtCursor);
                             });
                             break;
                         // Two full left press/release pairs at the SAME point with a gap well

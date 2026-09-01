@@ -792,7 +792,11 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
     // Both transport axes count as work: without these a lone Paste→Type flip would close with
     // no discard prompt and the choice would be gone silently.
     if (sendMethod !== initialMethod) return true;
-    if (charDelay !== (initialCharDelayMs ?? 0)) return true;
+    // Compare what CONFIRM WOULD WRITE, not what the control holds. Under Paste the delay is
+    // discarded (handleConfirm sends null), so flipping to Type, typing 50, and flipping back is a
+    // no-op on disk — and prompting there accuses the user of unsaved work over a field that is by
+    // then not even on screen.
+    if ((sendMethod === 'type' && charDelay ? charDelay : null) !== (initialCharDelayMs || null)) return true;
     const base = baselineRef.current;
     if (!base) {
       // Baseline never taken (the rAF has not run yet — no user input is possible in that
@@ -1136,7 +1140,11 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
           </div>
 
           {railTab === 'preview' ? (
-            <MessagePreviewPanel text={text} method={sendMethod} />
+            <MessagePreviewPanel
+              text={text}
+              method={sendMethod}
+              marksAdded={(sendMode === 'markdown' || sendMode === 'discord') && hasFormatting}
+            />
           ) : railTab === 'emoji' ? (
             <div className="flex-1 min-h-0 overflow-hidden">
               <EmojiPicker
