@@ -1117,6 +1117,12 @@ export type OutgoingMessage =
   | { type: 'browser:testCondition'; payload: { requestId: string; key: string; waitMode?: string | null; browserText?: string | null; conditionNegate?: boolean; alternatives?: SelectorAlternative[] | null } }
   | { type: 'theme:colors'; payload: { bgSurface: string; bgCard: string; textPrimary: string; textSecondary: string; accentSolid: string; borderSubtle: string } }
   | { type: 'hotkey:suppress'; payload: { enabled: boolean } }
+  // The row editor holds edits that have not become `actions:edit` yet. Read ONLY by
+  // AutomationGuard, so an autonomous fire refuses (retriably, as SkippedModal) instead of
+  // swapping the profile out from under the open form. Deliberately not hotkey:suppress —
+  // that would take the user's own hotkeys down with it — and not the unsaved-changes flag,
+  // whose skip is terminal.
+  | { type: 'editor:pendingEdits'; payload: { pending: boolean } }
   // Activates the backend's low-level keyboard hook in capture mode: every keydown
   // gets composed via BuildComposedKey, emitted through 'hotkey:captured', and
   // swallowed before the OS shell sees it. This is what allows binding Win+letter
