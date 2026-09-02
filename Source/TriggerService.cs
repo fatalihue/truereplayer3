@@ -475,7 +475,19 @@ namespace TrueReplayer.Services
                 // costs the user half an hour because a replay happened to be running for two
                 // seconds. Retry within a window bounded by the interval itself, so a retry can
                 // never collide with the following tick.
-                var graceEnd = next + TimeSpan.FromSeconds(Math.Min(seconds / 2.0, 180));
+                // Anchored at the LATER of the tick and now. Anchoring it at the tick alone meant
+                // that after a suspend — where the sleep above breaks out deeply negative — the
+                // request was born already expired: the pump sweeps expirations before it picks a
+                // head, so it completed with the initial LastRefusal (SkippedBusy) without calling
+                // FireProfile even once, on a completely idle engine, and then credited the
+                // counter that is supposed to mean "the engine was busy".
+                //
+                // The invariant this window exists for is preserved. Let L be how late we woke.
+                // With L < period/2 the window ends at next + L + min(s/2,180) < next + period,
+                // the following tick. With L larger, the re-anchor below puts that tick at
+                // now + period while the window ends at now + min(s/2,180) <= now + period/2. A
+                // retry still cannot collide with the next tick in either case.
+                var graceEnd = Later(next, DateTime.Now) + TimeSpan.FromSeconds(Math.Min(seconds / 2.0, 180));
                 var result = await RequestFireAsync(name, stats, ct, dueAt: next, expiresAt: graceEnd);
                 // Anything but Fired/Failed/dirty means the queue held it to the deadline.
                 // SkippedDirty is excluded because it comes back immediately and already set a
@@ -553,7 +565,19 @@ namespace TrueReplayer.Services
                 // Queued on the OCCURRENCE time, so a schedule that landed on a busy minute keeps
                 // its place ahead of interval ticks that became due while it waited — the
                 // "deterministically never executes" case this grace window was written for.
-                var graceEnd = next.AddMinutes(3);
+                // Same anchoring fix as the interval loop, and here it cost a whole DAY rather than
+                // a period. ScheduleStaleAfter deliberately lets an occurrence up to 10 min late
+                // still run, and the comment on it says the 10 minutes were sized to "comfortably
+                // cover the busy-retry grace window (3 min)". The code delivered the opposite: a
+                // deadline of next + 3 min meant everything in the 3-to-10-minute band was born
+                // expired and got ZERO attempts. The band is reachable by exactly the case the
+                // staleness bound was written for — a laptop waking up — and the next chance was
+                // tomorrow, reported as "busy".
+                //
+                // No extra clamp against ScheduleStaleAfter is needed: the gate above already
+                // refused everything later than that, so this can never reach further than
+                // 3 minutes past a lateness the loop has already accepted.
+                var graceEnd = Later(next, DateTime.Now).AddMinutes(3);
                 var result = await RequestFireAsync(name, stats, ct, dueAt: next, expiresAt: graceEnd);
                 if (result is not (TriggerFireResult.Fired or TriggerFireResult.Failed or TriggerFireResult.SkippedDirty))
                 {
@@ -740,6 +764,10 @@ namespace TrueReplayer.Services
                 refImage?.Dispose();
             }
         }
+
+        /// The later of two moments. Exists so the two grace-window anchors read the same and stay
+        /// that way — they are the same fix and drifted apart once already.
+        private static DateTime Later(DateTime a, DateTime b) => a > b ? a : b;
 
         /// How long one clipboard copy stays actionable. It is the queue's grace window for this
         /// watcher, and also how long a copy the dirty gate refused is held for a retry — the same
