@@ -1811,7 +1811,16 @@ namespace TrueReplayer
             int h = payload.GetProperty("h").GetInt32();
 
             using var current = ImageStorageService.LoadReferenceImage(profileName, imagePath);
-            if (current == null) return;
+            if (current == null)
+            {
+                // The reply matters as much as the log — the same rule the capture path states and
+                // keeps. Returning in silence closed the cropper with nothing changed and nothing
+                // said, while the equivalent failure on the action-index sibling toasts.
+                DiagnosticLog.Warn($"Automation crop: reference image '{imagePath}' could not be loaded for '{profileName}'");
+                SendMessage("automation:imageCaptured", new { requestId, cancelled = true });
+                SendMessage("alert:show", new { message = "Could not open the reference image to crop it." });
+                return;
+            }
             // Clamp to the image bounds (belt-and-suspenders over the frontend clamp); reject tiny or
             // no-op (full-image) crops — same rules as HandleCropReference.
             x = Math.Max(0, Math.Min(current.Width - 1, x));
@@ -1830,6 +1839,8 @@ namespace TrueReplayer
             catch (Exception ex)
             {
                 DiagnosticLog.Warn($"Automation crop failed: {ex.Message}");
+                SendMessage("automation:imageCaptured", new { requestId, cancelled = true });
+                SendMessage("alert:show", new { message = $"Could not save the cropped image: {ex.Message}" });
                 return;
             }
             SendMessage("automation:imageCaptured", new { requestId, cancelled = false, imagePath = newPath, imageBase64 = GetImageBase64Cached(profileName, newPath) });

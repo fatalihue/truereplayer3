@@ -57,7 +57,11 @@ function defaultTrigger(): TriggerConfig {
     imageBase64: null,
     searchRegion: null,
     clipboardPattern: '',
-    cooldownSeconds: 30,
+    // 0 is the SENTINEL for "use the per-condition default", which is 5 s for ClipboardChanged and
+    // 30 s for everything else. Seeding a literal 30 silently overrode the clipboard default on
+    // every new automation — while defaultCooldownSec in this very file knows it is 5, and the
+    // field's own hint says so. pollIntervalMs already seeds the sentinel; this was the odd one out.
+    cooldownSeconds: 0,
     retrigger: 'edge',
     pollIntervalMs: 0,
   };
@@ -127,11 +131,29 @@ const inputCls =
   'h-8 px-2 rounded bg-bg-input border border-border-subtle text-[12px] text-text-primary ' +
   'focus:outline-none focus:border-accent-solid w-full';
 
+/**
+ * Time alone for today, day and month prepended otherwise.
+ *
+ * lastFiredAt is persisted in the sidecar and survives restarts, and nextDueAt reaches up to seven
+ * full days out (ComputeNextOccurrence scans the whole day mask). Showing only the clock therefore
+ * read "2× · 09:00:04 · next 09:00" on a Wednesday for a Monday-only schedule — as though it had
+ * already run today and would run again this morning. That defeats the question the persistence
+ * exists to answer: did this run while I was away?
+ *
+ * A weekday name is NOT enough: the next occurrence can be a full seven days out, so "Mon 09:00"
+ * is ambiguous with today. Only a date disambiguates.
+ */
 function fmtWhen(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '—';
-  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const now = new Date();
+  const sameDay = d.getFullYear() === now.getFullYear()
+    && d.getMonth() === now.getMonth()
+    && d.getDate() === now.getDate();
+  if (sameDay) return time;
+  return `${d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} ${time}`;
 }
 
 function kindSummary(t: TriggerConfig, tt: (en: string, pt: string) => string): string {
@@ -281,7 +303,12 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
     // imageBase64 is display-only (the on-disk PNG is the source) — the backend never parses it, so
     // send null instead of round-tripping the large derived blob across the bridge on every save.
     send({ type: 'automation:save', payload: { profile: selected, trigger: { ...draft, imageBase64: null, armed } } });
-    setDirty(false);
+    // Deliberately NOT clearing `dirty` here. The save can fail on the backend — a locked .json,
+    // antivirus, a full disk — and it rolls back and toasts. Clearing optimistically then left the
+    // panel claiming success: Save disabled (nothing dirty, so no way to retry without touching a
+    // field), "Run now" re-enabled and running the OLD config, and the canClose guard disarmed, so
+    // closing discarded the edits without asking. The echo effect below clears it on the state push
+    // that only arrives when the write actually landed.
     setSavedPendingEcho(true);
     // newDraftProfile stays set until the automation:state echo lands — clearing it now
     // would drop the row from the list (entries doesn't have it yet) and blank the editor.
@@ -452,6 +479,12 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
       // already committed to leaving, so refusing there fades the panel out and leaves it
       // mounted — an invisible modal over the whole app.
       canClose={() => {
+        // The prompt already owns the decision — the same guard navigateTo keeps, and for the
+        // same reason. Escape does NOT go through navigateTo (DialogShell calls this directly),
+        // so without it an Escape while the prompt is up silently rewrote the pending destination
+        // to 'close', and answering "Discard" or "Save and continue" closed the panel instead of
+        // going to the row that was clicked. Nothing was lost but the place.
+        if (pendingNav) return false;
         if (!hasUnsavedWork) return true;
         setPendingNav({ kind: 'close' });
         return false;
@@ -540,7 +573,16 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   role="button"
                   tabIndex={0}
                   onClick={() => navigateTo({ kind: 'row', name, asNewDraft: false })}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigateTo({ kind: 'row', name, asNewDraft: false }); } }}
+                  // Only when the ROW itself is focused — the same target guard the action grid
+                  // keeps. Without it the row swallowed Enter and Space aimed at the arm toggle
+                  // nested inside it, so the switch could not be operated from the keyboard at
+                  // all: aria-checked never moved, nothing was sent, and the row got selected
+                  // instead. The list toggle is the ONLY surface that arms an automation, which
+                  // the editor's own footer says, so that was the whole feature unreachable.
+                  onKeyDown={(e) => {
+                    if (e.target !== e.currentTarget) return;
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigateTo({ kind: 'row', name, asNewDraft: false }); }
+                  }}
                   className={`w-full text-left px-3 py-2 border-b border-border-subtle/60 transition-colors cursor-pointer ${
                     isSel ? 'bg-bg-elevated' : 'hover:bg-bg-elevated/50'
                   }`}
@@ -1067,7 +1109,25 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
     {pendingNav && (
       <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
         onClick={() => setPendingNav(null)}>
-        <div className="w-[380px] rounded-lg border border-border-subtle bg-bg-surface p-4 shadow-xl"
+        {/* A real dialog, not just a box that looks like one. As a bare div it was a SIBLING of
+            the DialogShell card, so the shell's focus trap — which only knows about the card —
+            never reached it: Tab could not get here, and Space on the armed toggle still behind
+            the scrim fired automation:setArmed, which persists immediately. Focusing on mount and
+            swallowing Escape here is what makes the overlay modal for the keyboard too; the
+            stopPropagation is also what keeps Escape from reaching DialogShell's canClose and
+            silently rewriting where this prompt was headed. */}
+        <div className="w-[380px] rounded-lg border border-border-subtle bg-bg-surface p-4 shadow-xl outline-none"
+          role="dialog"
+          aria-modal="true"
+          aria-label={tt('Unsaved automation', 'Automação não salva')}
+          tabIndex={-1}
+          ref={(el) => el?.focus()}
+          onKeyDown={(e) => {
+            if (e.key !== 'Escape') return;
+            e.preventDefault();
+            e.stopPropagation();
+            setPendingNav(null);
+          }}
           onClick={(e) => e.stopPropagation()}>
           <div className="text-[13px] text-text-primary font-medium mb-1.5">
             {tt('Unsaved automation', 'Automação não salva')}
