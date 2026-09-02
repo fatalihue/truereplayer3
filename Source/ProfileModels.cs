@@ -277,7 +277,10 @@ namespace TrueReplayer.Models
         public int? SearchRegionH { get; set; }
         public string? ClipboardPattern { get; set; }       // contains-filter; empty = any clipboard change
 
-        // Firing policy (condition kind): CooldownSeconds <= 0 = default 30 s between fires;
+        // Firing policy (condition kind): CooldownSeconds <= 0 = the PER-CONDITION default, which
+        // is 5 s for ClipboardChanged and 30 s for every other type. Reading "default 30 s" here is
+        // what made a hardcoded 30 look right in the editor's seed, quietly overriding the one
+        // default that differs — on the watcher that can fire in bursts;
         // Retrigger null/"edge" = must observe the condition false again before the next
         // fire, "level" = keep firing every cooldown while the condition stays true.
         public int CooldownSeconds { get; set; }
