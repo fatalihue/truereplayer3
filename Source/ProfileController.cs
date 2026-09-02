@@ -627,6 +627,21 @@ namespace TrueReplayer.Controllers
             return copy;
         }
 
+        /// <summary>
+        /// Every profile this app knows exists — the loaded ones AND the ones whose JSON failed to
+        /// parse on the last pass. This is the list TriggerService.Reload prunes fire stats
+        /// against, and the distinction is load-bearing: the prune is write-through to the sidecar,
+        /// so anything missing here is read as DELETED and has its history destroyed permanently.
+        /// A file that merely failed to parse is still on disk and usually readable next pass.
+        ///
+        /// Exists as one property because the two call sites that feed the prune drifted before —
+        /// getting the argument right in one place and wrong in the other is the failure mode.
+        /// Raw names, not the sanitized folder form of <see cref="FailedLoadFolders"/>: the daemon
+        /// keys its stats on the profile name.
+        /// </summary>
+        public IReadOnlyList<string> AllKnownProfileNames =>
+            ProfileEntries.Select(p => p.Name).Concat(_loadFailures).ToList();
+
         private async Task LoadProfileListAsync()
         {
             string profileDir = Path.Combine(
@@ -758,9 +773,16 @@ namespace TrueReplayer.Controllers
             // The second argument is EVERY profile name, not just the trigger-bearing ones: it is
             // what the daemon prunes stale fire stats against, and GetProfileTriggers() drops
             // disabled profiles — which would otherwise read as "deleted" and wipe their history.
-            TriggerService.Instance?.Reload(
-                GetProfileTriggers(),
-                ProfileEntries.Select(p => p.Name).ToList());
+            //
+            // ProfileEntries alone is not "every profile" though: a profile whose JSON failed to
+            // parse never makes it into the collection (see the Failed branch of the load loop
+            // above). The prune is write-through to the sidecar, so a single unreadable file — a
+            // half-flushed save, antivirus holding it, a disk hiccup — permanently destroyed that
+            // automation's fire history and its interval anchor, for a profile still sitting on
+            // disk and readable again on the next pass. Union in the failures, which were just
+            // refreshed a few lines up. They are raw profile names, which is what the daemon keys
+            // on; FailedLoadFolders is the sanitized FOLDER form and would not match.
+            TriggerService.Instance?.Reload(GetProfileTriggers(), AllKnownProfileNames);
 
             // Diagnostic snapshot of what's actually ARMED after a (re)load — answers "is my
             // hotkey even registered, and to which target?" without a repro. Fires on profile
