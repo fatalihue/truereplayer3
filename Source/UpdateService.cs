@@ -289,7 +289,18 @@ namespace TrueReplayer.Services
             // never leaves, which stalls the update instead of applying it.
             try { TrueReplayer.InputHookManager.Stop(); }
             catch (Exception ex) { DiagnosticLog.Error($"[UpdateService] InputHookManager.Stop() threw before update restart: {ex.Message}"); }
-            _manager.WaitExitThenApplyUpdates(_pendingUpdate.TargetFullRelease, silent: true, restart: true);
+            // Carry --startup across the restart, and ONLY that flag.
+            //
+            // It is produced exclusively by the Run registry key, and it is the sole input to the
+            // "start hidden in the tray" decision. So a machine that boots to the tray, updates,
+            // and restarts came back with the window open on top of whatever the user was doing —
+            // and with the window up, a pixel or ROI watcher it covers stops matching.
+            //
+            // Not the whole command line: forwarding --ui-recovery-relaunch=N would hand the
+            // post-update process a spent recovery budget, defeating the ladder that argument
+            // exists to bound.
+            string[]? restartArgs = TrueReplayer.App.HasStartupFlag() ? new[] { "--startup" } : null;
+            _manager.WaitExitThenApplyUpdates(_pendingUpdate.TargetFullRelease, silent: true, restart: true, restartArgs);
             Environment.Exit(0);
         }
     }

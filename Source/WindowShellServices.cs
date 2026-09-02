@@ -93,6 +93,18 @@ namespace TrueReplayer.Services
             if (!Shell_NotifyIcon(NIM_ADD, ref notifyIcon))
                 DiagnosticLog.Error($"Shell_NotifyIcon(NIM_ADD) failed (Win32 error {Marshal.GetLastWin32Error()}) — tray icon was not registered");
 
+            // Let the tray callback through UIPI.
+            //
+            // Relaunching the exe while this instance sits in the tray is how a user gets the
+            // window back when the icon is not reachable, and Program.cs does that by posting this
+            // very message. With RunAsAdmin on, that second process is NOT elevated (the mutex gate
+            // runs before self-elevation), so a medium-integrity PostMessage to this high-integrity
+            // window is dropped silently by User Interface Privilege Isolation — the relaunch would
+            // appear to do nothing at all, which is the state it is meant to rescue the user from.
+            // Best-effort: on a non-elevated instance the call is simply a no-op that returns true.
+            if (!ChangeWindowMessageFilterEx(hwnd, WM_USER + 1, MSGFLT_ALLOW, IntPtr.Zero))
+                DiagnosticLog.Warn($"ChangeWindowMessageFilterEx for the tray message failed (Win32 error {Marshal.GetLastWin32Error()}) — relaunching the exe may not restore the window while elevated");
+
             if (showNotification)
             {
                 ShowMinimizeBalloon();
@@ -128,7 +140,10 @@ namespace TrueReplayer.Services
 
         public static void ShowMinimizeBalloon() => ShowBalloon(
             "TrueReplayer is running in the background",
-            "Click the tray icon to restore the window.");
+            // Double-click, because that is what the WndProc actually answers: a single click is
+            // WM_LBUTTONUP and nothing handles it, so the old wording sent people clicking once at
+            // an icon that would not respond.
+            "Double-click the tray icon to restore the window.");
 
         /// <summary>
         /// Pop a tray balloon. The one notification surface that reaches the user while the
@@ -492,6 +507,8 @@ namespace TrueReplayer.Services
 
  TrackPopupMenu(IntPtr hMenu, uint uFlags, int x, int y, int nReserved, IntPtr hWnd, IntPtr prcRect);
         [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern bool Shell_NotifyIcon(uint dwMessage, ref NotifyIconData lpdata);
+        private const uint MSGFLT_ALLOW = 1;
+        [DllImport("user32.dll", SetLastError = true)] private static extern bool ChangeWindowMessageFilterEx(IntPtr hwnd, uint message, uint action, IntPtr pChangeFilterStruct);
         [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern IntPtr LoadImage(IntPtr hInst, string lpszName, uint uType, int cxDesired, int cyDesired, uint fuLoad);
         [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
         [DllImport("user32.dll")] private static extern bool DestroyIcon(IntPtr hIcon);
@@ -574,6 +591,7 @@ namespace TrueReplayer.Services
         private const int WM_RBUTTONUP = 0x0205;
         private const int WM_GETMINMAXINFO = 0x0024;
         private const int WM_DISPLAYCHANGE = 0x007E;
+        private const int WM_QUERYENDSESSION = 0x0011;
         private const int WM_INPUTLANGCHANGE = 0x0051;
         private const int WM_SIZING = 0x0214;
         private const int WM_ENTERSIZEMOVE = 0x0231;
@@ -766,6 +784,26 @@ namespace TrueReplayer.Services
                 // to the focused window, and TrueReplayer spends most of its life in the tray);
                 // the same idempotent check is what lets the next one it DOES receive re-sync.
                 RemapService.RepublishForLayoutChange();
+            }
+            else if (msg == WM_QUERYENDSESSION)
+            {
+                // Windows is shutting down, logging off or restarting. Nothing in the app noticed
+                // before this: there was no session-end handling anywhere, so the process was
+                // killed with both sidecars still holding debounced writes — up to two seconds of
+                // automation fire history and one of run cursors, thrown away on every reboot.
+                //
+                // Only the flushes, and then TRUE. Never an exit from here: the user can still
+                // cancel the shutdown, and a process that tore itself down on the question would
+                // be gone for a shutdown that never happened. The session manager also times
+                // these out, so this stays to two file writes and returns.
+                //
+                // A fire recorded but interrupted mid-replay is the right thing to keep, not a
+                // duplicate risk: LastFiredAt is stamped when the replay STARTS, so the next boot
+                // reading it is recovering an aborted run, not repeating a finished one.
+                Services.DiagnosticLog.Info("WM_QUERYENDSESSION — flushing automation stats and run cursors before session end");
+                try { RunCursorService.Flush(); } catch (Exception ex) { Services.DiagnosticLog.Warn($"Run-cursor flush at session end failed: {ex.Message}"); }
+                try { Services.TriggerService.Instance?.Flush(); } catch (Exception ex) { Services.DiagnosticLog.Warn($"Automation stats flush at session end failed: {ex.Message}"); }
+                return (IntPtr)1;
             }
             return HwndHookManager.CallOriginalWndProc(hwnd, msg, wParam, lParam);
         }

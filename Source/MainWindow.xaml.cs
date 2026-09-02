@@ -1840,13 +1840,24 @@ namespace TrueReplayer
                     Arguments = RelaunchArgPrefix + nextGeneration.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     UseShellExecute = true,
                 };
-                System.Diagnostics.Process.Start(startInfo);
-                Services.DiagnosticLog.Info($"Launched replacement process (recovery relaunch #{nextGeneration}), exiting current");
                 // Bypasses ForceExit — flush the debounced run cursors before the process dies,
                 // and BEFORE the replacement gets far enough to read the sidecar. Same for the
                 // debounced automation stats.
+                //
+                // These run BEFORE the launch, not after it. Each flush goes through MoveWithRetry,
+                // whose backoff ladder sleeps up to 3.81 s when the target is held — and the very
+                // conditions that drive the watchdog to a level-3 restart (antivirus scanning a
+                // freshly extracted folder, a stalled disk) are the same ones that make the move
+                // retry. Launching first therefore raced the child to the single-instance mutex
+                // across a window seconds wide; the child that wins sees createdNew false and exits
+                // in silence, and the parent then exits too. Zero TrueReplayer processes, no tray
+                // icon, no daemon, and a last log line reading "Launched replacement process".
+                //
+                // Flushing first also makes the sentence above literally true rather than a hope.
                 RunCursorService.Flush();
                 TriggerService.Instance?.Flush();
+                System.Diagnostics.Process.Start(startInfo);
+                Services.DiagnosticLog.Info($"Launched replacement process (recovery relaunch #{nextGeneration}), exiting current");
                 // The remap layer has been live since the constructor, and Stop() is the only
                 // caller of its release-the-held-keys path. Exit without it and any pairing
                 // still open leaves the injected TO key logically DOWN system-wide with no
