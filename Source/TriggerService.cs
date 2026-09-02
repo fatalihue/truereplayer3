@@ -993,9 +993,25 @@ namespace TrueReplayer.Services
             switch (cfg.ConditionType?.ToLowerInvariant())
             {
                 case "windowopen":
-                    return string.IsNullOrWhiteSpace(cfg.WindowProcessName) && string.IsNullOrWhiteSpace(cfg.WindowTitle)
-                        ? "no process name or window title set — this can never match"
-                        : null;
+                    if (string.IsNullOrWhiteSpace(cfg.WindowProcessName) && string.IsNullOrWhiteSpace(cfg.WindowTitle))
+                        return "no process name or window title set — this can never match";
+                    // A title regex that does not compile is swallowed into a null Regex, and a null
+                    // regex in regex mode rejects EVERY window — so a process name does not rescue
+                    // it. The editor never validated this field, and its own placeholder teaches a
+                    // syntax that is invalid halfway through typing it.
+                    //
+                    // Asked of the real .NET engine rather than mirrored: a JS RegExp check would
+                    // reject .NET-valid patterns like (?>ab)+ and accept C:\Users\Admin, which .NET
+                    // throws on.
+                    if (string.Equals(cfg.WindowTitleMatchMode, "regex", StringComparison.OrdinalIgnoreCase)
+                        && !string.IsNullOrWhiteSpace(cfg.WindowTitle))
+                    {
+                        var (_, compiled) = ActionReplayer.BuildWindowTarget(
+                            cfg.WindowProcessName, cfg.WindowTitle, cfg.WindowTitleMatchMode);
+                        if (compiled == null)
+                            return "the window-title regex does not compile — this can never match";
+                    }
+                    return null;
                 case "processrunning":
                     return string.IsNullOrWhiteSpace(cfg.WindowProcessName)
                         ? "no process name set — this can never match"
@@ -1004,8 +1020,29 @@ namespace TrueReplayer.Services
                     return string.IsNullOrWhiteSpace(cfg.FilePath)
                         ? "no file path set — this can never match"
                         : null;
-                default:
+                case "pixelcolormatch":
+                    // The editor's colour swatch accepts three-digit shorthand and renders #F00 as
+                    // solid red, actively telling the user the value is good — while ParseHex takes
+                    // six digits only and answers null, so the probe read false at 250 ms forever
+                    // with nothing on screen saying why. Asking ParseHex itself is what keeps this
+                    // honest for configs that never went through the editor at all: written by
+                    // hand, imported, or armed straight from the profile list.
+                    return PixelColorService.ParseHex(cfg.PixelColor) == null
+                        ? $"the pixel colour '{cfg.PixelColor}' is not a 6-digit hex value — this can never match"
+                        : null;
+                case "imagefound":
+                case "clipboardchanged":
                     return null;   // ImageFound reports its own missing reference below
+                case null:
+                case "":
+                    return "no condition type set — this can never match";
+                default:
+                    // Unknown type: ProbeCondition's own switch falls through to false, so this
+                    // watcher provably cannot fire — it armed, reported Running, polled at 1 Hz and
+                    // said nothing. The same asymmetry existed one level up, where an unknown Kind
+                    // IS reported (RunLoopSafeAsync). The case that will actually reach this is a
+                    // downgrade: a profile carrying a condition family a newer build introduced.
+                    return $"unknown condition type '{cfg.ConditionType}' — this version cannot watch for it";
             }
         }
 

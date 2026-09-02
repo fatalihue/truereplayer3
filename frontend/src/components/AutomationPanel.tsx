@@ -106,8 +106,16 @@ function whyCannotFire(t: TriggerConfig, tt: (en: string, pt: string) => string)
       return t.imagePath
         ? null
         : tt('Capture a reference image.', 'Capture uma imagem de referência.');
+    case 'PixelColorMatch':
+      // Mirrors PixelColorService.ParseHex: six hex digits, optional leading #. The default
+      // (#FFFFFF) and the eyedropper both produce that, so this only catches a hand-typed value —
+      // which is exactly the case that used to arm and never fire.
+      return /^#?[0-9A-Fa-f]{6}$/.test((t.pixelColor ?? '').trim())
+        ? null
+        : tt('Enter a 6-digit hex colour, like #FF0000 — shorthand such as #F00 is not accepted.',
+             'Informe uma cor hex de 6 dígitos, como #FF0000 — a forma curta #F00 não é aceita.');
     default:
-      return null;   // PixelColorMatch and ClipboardChanged are valid with their defaults
+      return null;   // ClipboardChanged is valid with its defaults
   }
 }
 
@@ -863,7 +871,11 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                           <div className="flex items-center gap-2">
                             {(() => {
                               const raw = (draft.pixelColor ?? '').trim();
-                              const validHex = /^#?(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(raw);
+                              // Six digits only, matching PixelColorService.ParseHex. Accepting
+                              // three made the swatch render #F00 as solid red — actively telling
+                              // the user the value was good — while the backend read it as "no
+                              // colour set" and the watcher polled false forever.
+                              const validHex = /^#?[0-9A-Fa-f]{6}$/.test(raw);
                               return (
                                 <span
                                   className={`w-8 h-8 rounded border shrink-0 ${validHex ? 'border-border-default' : 'border-dashed border-border-default'}`}

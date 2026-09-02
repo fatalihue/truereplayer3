@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { X, ChevronDown } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
 import { useTt } from '../state/LanguageContext';
@@ -58,6 +58,27 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
 }, ref) {
   const { send, subscribe } = useBridge();
   const tt = useTt();
+
+  // Regex-mode sanity check, computed HERE rather than left to each host.
+  //
+  // Three of the four hosts never passed titleError, so a title regex that does not compile was
+  // accepted in silence — and in the automation panel that is unsupervised: the backend swallows
+  // the compile failure into a null Regex, a null Regex in regex mode rejects every window, and
+  // the watcher polls forever without matching. The component's own placeholder teaches a syntax
+  // that is invalid halfway through typing it, which is the moment this needs to speak up.
+  //
+  // WARNING ONLY, never a gate. new RegExp is the JavaScript parser and the matcher is .NET: it
+  // rejects .NET-valid patterns like (?>ab)+ and (?'name'x), and accepts C:\Users\Admin, which
+  // .NET throws on. An explicit titleError from the host still wins — TargetConfigDialog gates its
+  // Save on its own copy and must keep deciding for itself.
+  const autoTitleError = useMemo(() => {
+    if (value.titleMatchMode !== 'regex') return null;
+    const pattern = (value.windowTitle ?? '').trim();
+    if (!pattern) return null;
+    try { new RegExp(pattern); return null; }
+    catch { return tt('This does not look like a valid regular expression.', 'Isto não parece uma expressão regular válida.'); }
+  }, [value.titleMatchMode, value.windowTitle, tt]);
+  const shownTitleError = titleError ?? autoTitleError;
 
   const [processList, setProcessList] = useState<{ name: string; title: string }[] | null>(null);
   const [showPicker, setShowPicker] = useState(false);
@@ -230,7 +251,7 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
             onChange={(e) => edit({ windowTitle: e.target.value })}
             placeholder={value.titleMatchMode === 'regex' ? 'e.g. (Chrome|Firefox)' : ''}
             spellCheck={false}
-            className={inputCls + (value.windowTitle ? ' pr-7' : '') + (titleError ? ' border-recording/60 focus:border-recording' : '')}
+            className={inputCls + (value.windowTitle ? ' pr-7' : '') + (shownTitleError ? ' border-recording/60 focus:border-recording' : '')}
           />
           {value.windowTitle && (
             <button
@@ -247,11 +268,11 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
             out per character — shifting everything below it, and re-centring the whole card in the
             dialog that hosts these fields. One line, truncated, full text on hover. */}
         <FieldError
-          show={!!titleError}
+          show={!!shownTitleError}
           className="text-[10px] text-recording mt-1 leading-tight"
-          tip={titleError ?? undefined}
+          tip={shownTitleError ?? undefined}
         >
-          {titleError}
+          {shownTitleError}
         </FieldError>
       </Field>
 

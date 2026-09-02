@@ -80,8 +80,13 @@ namespace TrueReplayer.Services
         /// any kind of malformed input — wrong length, non-hex chars, null/whitespace.
         /// WaitPixelColor treats null as "no target colour set", which surfaces as an
         /// immediate timeout instead of a crashed replay loop. Three-digit shorthand
-        /// (#FFF) is NOT supported — the editor always saves the expanded form so we
-        /// don't need lossy parsing here.
+        /// (#FFF) is NOT supported.
+        ///
+        /// The reason given here used to be "the editor always saves the expanded form", and that
+        /// was never true: both colour fields accept three digits and their swatch RENDERS #F00 as
+        /// solid red, so the UI confirms a value this rejects. Callers must therefore treat null as
+        /// a real, reachable answer — the automation daemon reports it through DescribeUnfireable
+        /// rather than polling forever on a colour that can never match.
         /// </summary>
         public static Color? ParseHex(string? hex)
         {
