@@ -323,6 +323,42 @@ namespace TrueReplayer.Services
             NotifyStateChanged();
         }
 
+        /// <summary>
+        /// The stored history for one profile, whether or not it currently has a live watcher.
+        ///
+        /// GetStatus projects <see cref="_lastConfigs"/>, which comes from GetProfileTriggers and
+        /// therefore drops DISABLED profiles — so disabling a profile made the panel show an
+        /// automation with 240 fires as though it had never run once. The data was never lost,
+        /// only the projection, and the fix belongs here rather than in _lastConfigs: that list
+        /// also drives which watchers get armed.
+        ///
+        /// Returns null when nothing has ever been recorded for the name.
+        /// </summary>
+        public AutomationStatusEntry? GetStatsFor(string name)
+        {
+            lock (_lock)
+            {
+                if (!_stats.TryGetValue(name, out var s)) return null;
+                return new AutomationStatusEntry
+                {
+                    Profile = name,
+                    Config = null!,
+                    // Everything live stays false/null on purpose: for a profile with no watcher,
+                    // zero IS the truth, and only the history carries over.
+                    Running = false,
+                    ConditionTrue = false,
+                    NextDueAt = null,
+                    LastFiredAt = s.LastFiredAt,
+                    FireCount = s.FireCount,
+                    SkippedBusy = s.SkippedBusy,
+                    SkippedDirty = s.SkippedDirty,
+                    SkippedModal = s.SkippedModal,
+                    SkippedSuppressed = s.SkippedSuppressed,
+                    LastResult = s.LastResult,
+                };
+            }
+        }
+
         /// <summary>Suppress clipboard-change fires for the next 2 s (capture-slot etc.).</summary>
         public void NotifyAppClipboardActivity()
             => Interlocked.Exchange(ref _clipboardSuppressUntilTicks, DateTime.UtcNow.AddSeconds(2).Ticks);

@@ -1531,6 +1531,20 @@ namespace TrueReplayer
                         return;
                     }
 
+                    // Belt and suspenders for an invariant the code asserts elsewhere but does not
+                    // guarantee: "the daemon can never fire a disabled profile, GetProfileTriggers
+                    // drops those". True only AFTER a reload, and the disable handlers did not do
+                    // one until this batch — so a stale watcher could reach here. Cheap, and it
+                    // makes the claim true regardless of who forgets to resync next.
+                    var disabledCheck = profileController.ProfileEntries
+                        .FirstOrDefault(p => string.Equals(p.Name, profileName, StringComparison.OrdinalIgnoreCase));
+                    if (disabledCheck is { IsDisabled: true })
+                    {
+                        Services.DiagnosticLog.Warn($"Automation '{profileName}': profile is disabled — fire refused");
+                        tcs.TrySetResult(TriggerFireResult.Failed);
+                        return;
+                    }
+
                     Services.DiagnosticLog.Info($"Automation dispatch: '{profileName}'");
                     var result = await RunProfileTriggerAsync(
                         profileName, forceInfiniteLoop: false, isWhilePressedHold: false, hotkeyKey: null, startOnly: true);

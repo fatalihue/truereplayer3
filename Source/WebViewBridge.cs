@@ -1332,6 +1332,12 @@ namespace TrueReplayer
                 {
                     TriggerService.AutomationStatusEntry? st = null;
                     byName?.TryGetValue(p.Name, out st);
+                    // No live entry does not mean no history. GetStatus only projects profiles
+                    // GetProfileTriggers returned, which drops disabled ones — so disabling a
+                    // profile made an automation with hundreds of fires read as though it had
+                    // never run. Fall back to the stored counters; the live fields stay zeroed,
+                    // which for a profile with no watcher is the truth rather than a guess.
+                    st ??= TriggerService.Instance?.GetStatsFor(p.Name);
                     return new
                     {
                         profile = p.Name,
@@ -1489,18 +1495,34 @@ namespace TrueReplayer
             // and this one is still there.
             if (trigger == null) TriggerService.Instance?.ClearStats(name);
 
-            // AllKnownProfileNames, not ProfileEntries: a profile whose JSON failed to parse is
-            // absent from the collection but very much still on disk, and the prune this feeds is
-            // write-through — see the property's own remarks.
-            TriggerService.Instance?.Reload(
-                profileController.GetProfileTriggers(),
-                profileController.AllKnownProfileNames);
-            PushAutomationState();
+            ResyncAutomationDaemon();
             // The sidebar's armed dot is fed by triggerArmed, which only ships in the
             // profiles:updated payload (see PushProfilesUpdate) — pushing only the automation
             // state left the dot showing the PREVIOUS arm state until something unrelated
             // happened to refresh the profile list. Arming is exactly when that dot matters.
             PushProfilesUpdate();
+        }
+
+        /// <summary>
+        /// Re-arm the watcher pool from what is now on disk, and refresh the two surfaces that
+        /// report it. Call after ANY handler that changes whether a profile's trigger should be
+        /// running — arming, deleting a trigger, disabling the profile that owns one.
+        ///
+        /// It exists as one method because the disable handlers did not do this at all, and the
+        /// only thing that eventually resynced them was the profile-list file watcher — whose
+        /// callback is DROPPED without rescheduling inside the 2 s suppression window that some
+        /// twenty call sites arm (ProfileController's refresh). Land a disable just after a
+        /// rename, a save or an import and the watcher for a profile the sidebar draws as disabled
+        /// kept running for the rest of the session, injecting mouse and keyboard.
+        ///
+        /// AllKnownProfileNames rather than ProfileEntries — see that property's remarks.
+        /// </summary>
+        private void ResyncAutomationDaemon()
+        {
+            TriggerService.Instance?.Reload(
+                profileController.GetProfileTriggers(),
+                profileController.AllKnownProfileNames);
+            PushAutomationState();
             TrayIconService.UpdateTrayIcon();
         }
 
@@ -6961,11 +6983,17 @@ namespace TrueReplayer
                 var hotstrings = profileController.GetProfileHotstrings();
                 InputHookManager.RegisterProfileHotstrings(hotstrings);
 
+                // Hotkeys were always re-registered here; the automation daemon was not, and the
+                // file watcher that eventually noticed can be suppressed at exactly this moment.
+                ResyncAutomationDaemon();
                 PushProfilesUpdate();
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[Bridge] Toggle-disable error: {ex.Message}");
+                // Debug.WriteLine does not exist in Release, so this handler failed in complete
+                // silence in the only build the owner runs — with a toast on screen and nothing
+                // written down to explain it.
+                Services.DiagnosticLog.Error($"Toggle-disable '{name}' failed", ex);
                 SendMessage("alert:show", new { message = $"Could not update \"{name}\": {ex.Message}" });
             }
         }
@@ -8817,6 +8845,9 @@ namespace TrueReplayer
             var hotstrings = profileController.GetProfileHotstrings();
             InputHookManager.RegisterProfileHotstrings(hotstrings);
             InputHookManager.RegisterProfileWindowTargets(profileController.GetProfileWindowTargets(), profileController.GetBringToFocusProfiles());
+            // Once, after the whole folder — a Reload per profile would tear down and rebuild every
+            // other watcher in the folder N times over.
+            ResyncAutomationDaemon();
         }
 
         private async void HandleSetFolderColor(JsonElement payload)

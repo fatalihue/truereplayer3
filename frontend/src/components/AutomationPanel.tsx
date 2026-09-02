@@ -769,7 +769,25 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                     <select
                       className={inputCls}
                       value={draft.conditionType ?? 'WindowOpen'}
-                      onChange={(e) => patch({ conditionType: e.target.value })}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        // Leaving ImageFound has to drop the reference image with it. Four
+                        // separate guards — the orphan sweep, the copy carry, the export
+                        // collector, the rename move — all ask `conditionType === 'ImageFound'`
+                        // before they protect a trigger's PNG, so a stale imagePath under another
+                        // condition type is a file nothing defends: the next startup sweep deletes
+                        // it. Switching back then left a config that passes validation (imagePath
+                        // is truthy) pointing at a file that no longer exists, and Save and Arm
+                        // both allowed it.
+                        //
+                        // Clearing here rather than loosening those guards on purpose: making the
+                        // PNG survive every condition type would make it immortal, against the
+                        // collection design documented at each of those four sites.
+                        const leavingImage = draft.conditionType === 'ImageFound' && next !== 'ImageFound';
+                        patch(leavingImage
+                          ? { conditionType: next, imagePath: null, imageBase64: null, searchRegion: null }
+                          : { conditionType: next });
+                      }}
                     >
                       {CONDITION_TYPES.map((c) => (
                         <option key={c.value} value={c.value}>{c.label}</option>
