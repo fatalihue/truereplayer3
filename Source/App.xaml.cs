@@ -75,8 +75,12 @@ namespace TrueReplayer
         /// <summary>
         /// Checks if the app was launched with the --startup flag
         /// (added to the Run registry key by SetRunOnStartup).
+        ///
+        /// internal rather than private because the update restart has to ask it too: the flag is
+        /// produced ONLY by the Run key, so a process that relaunches itself loses it and comes
+        /// back with the window open — see UpdateService.
         /// </summary>
-        private static bool HasStartupFlag()
+        internal static bool HasStartupFlag()
         {
             return Environment.GetCommandLineArgs()
                 .Any(a => a.Equals("--startup", StringComparison.OrdinalIgnoreCase));
