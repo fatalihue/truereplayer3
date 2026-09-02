@@ -687,6 +687,7 @@ namespace TrueReplayer.Services
                 if (wasTrue) NotifyStateChanged();
                 bool pending = false;
                 var pendingSince = DateTime.MinValue;
+                TriggerFireResult? lastRefusal = null;
                 DateTime CooldownUntil() { lock (_lock) return new DateTime(stats.CooldownUntilTicks); }
                 void StampCooldown() { lock (_lock) stats.CooldownUntilTicks = DateTime.Now.AddSeconds(cooldownSec).Ticks; }
 
@@ -732,17 +733,43 @@ namespace TrueReplayer.Services
                     if (DateTime.Now - pendingSince > pendingTtl)               // stale edge — don't ambush later
                     {
                         pending = false;
-                        SetLastResult(stats, "fire skipped (busy too long — edge expired)");
+                        // Name the blocker that actually held it. "busy too long" was asserted for
+                        // every non-terminal outcome, so a modal or a still-booting app — neither
+                        // of which is contention — were both reported as the engine being busy,
+                        // erasing the reason AutomationGuard went to the trouble of composing. This
+                        // line is the durable record of why last night's fire did not happen.
+                        SetLastResult(stats, lastRefusal switch
+                        {
+                            TriggerFireResult.SkippedModal =>
+                                $"fire skipped ({AutomationGuard.LastReason ?? "a dialog was open"} — edge expired)",
+                            TriggerFireResult.NotReady => "fire skipped (app was still starting — edge expired)",
+                            TriggerFireResult.SkippedDirty => "fire skipped (unsaved changes — edge expired)",
+                            _ => "fire skipped (busy too long — edge expired)",
+                        });
                         NotifyStateChanged();
                         continue;
                     }
                     if (DateTime.Now < CooldownUntil()) continue;
 
-                    // The queue holds the edge for exactly the TTL the loop already enforced, so
-                    // the "stale edge" branch above keeps its meaning; dueAt is when the edge was
-                    // observed, not now, so an old edge outranks a fresh one.
+                    // Bounded per ATTEMPT, so the loop gets back to probing — the same reasoning
+                    // the level branch above states, and it applies at least as strongly here.
+                    // Handing the queue the whole TTL parked this loop on the await for the entire
+                    // window, which made the two branches above unreachable for its duration: the
+                    // "cause vanished" check could not run, and the closing comment's promise that
+                    // "the loop re-probes" held only for the one refusal that is terminal. With a
+                    // long cooldown the TTL is the cooldown — the editor allows a day — so the
+                    // condition could appear, be blocked by a modal, disappear, and the macro would
+                    // still fire when the modal closed, clicking at something no longer there.
+                    //
+                    // The total budget is unchanged: the stale-edge branch above still owns it, and
+                    // clamping to it here keeps a slice from reaching past it.
+                    var totalDeadline = pendingSince + pendingTtl;
+                    var slice = DateTime.Now + EdgeAttemptWindow;
                     var result = await RequestFireAsync(name, stats, ct,
-                        dueAt: pendingSince, expiresAt: pendingSince + pendingTtl);
+                        // dueAt is when the edge was observed, not now, so an old edge outranks a
+                        // fresh one no matter how many slices it has been re-offered across.
+                        dueAt: pendingSince,
+                        expiresAt: slice < totalDeadline ? slice : totalDeadline);
                     if (result == TriggerFireResult.Fired)
                     {
                         pending = false;
@@ -752,8 +779,14 @@ namespace TrueReplayer.Services
                     {
                         pending = false;
                     }
-                    // Otherwise the edge stays pending and the loop re-probes: the cause may have
-                    // vanished, which the branches above must still be allowed to notice.
+                    else
+                    {
+                        // Remembered for the stale-edge message above, which otherwise has nothing
+                        // left to describe by the time it runs.
+                        lastRefusal = result;
+                    }
+                    // The edge stays pending and the loop re-probes: the cause may have vanished,
+                    // which the branches above must be allowed to notice — and now can.
                 }
             }
             finally
@@ -768,6 +801,11 @@ namespace TrueReplayer.Services
         /// The later of two moments. Exists so the two grace-window anchors read the same and stay
         /// that way — they are the same fix and drifted apart once already.
         private static DateTime Later(DateTime a, DateTime b) => a > b ? a : b;
+
+        /// How long a single edge-mode fire attempt may sit in the queue before the loop takes its
+        /// turn back to probe again. Matches the bound the level branch already uses, and for the
+        /// same reason: while this loop is awaiting, it cannot notice that the condition went away.
+        private static readonly TimeSpan EdgeAttemptWindow = TimeSpan.FromSeconds(30);
 
         /// How long one clipboard copy stays actionable. It is the queue's grace window for this
         /// watcher, and also how long a copy the dirty gate refused is held for a retry — the same
