@@ -758,6 +758,7 @@ namespace TrueReplayer
                     case "automation:save": HandleAutomationSave(payload); break;
                     case "automation:setArmed": HandleAutomationSetArmed(payload); break;
                     case "automation:setEnabled": HandleAutomationSetEnabled(payload); break;
+                    case "automation:resetCounters": HandleAutomationResetCounters(payload); break;
                     case "automation:captureImage": HandleAutomationCaptureImage(payload); break;
                     case "automation:cropReference": HandleAutomationCropReference(payload); break;
                     case "automation:testFire": HandleAutomationTestFire(payload); break;
@@ -1844,6 +1845,18 @@ namespace TrueReplayer
                 return;
             }
             SendMessage("automation:imageCaptured", new { requestId, cancelled = false, imagePath = newPath, imageBase64 = GetImageBase64Cached(profileName, newPath) });
+        }
+
+        /// <summary>
+        /// Zero one automation's tallies. The schedule position and the interval anchor survive —
+        /// see TriggerService.ResetCounters for why that is not an oversight.
+        /// </summary>
+        private void HandleAutomationResetCounters(JsonElement payload)
+        {
+            string name = payload.TryGetProperty("profile", out var pEl) ? (pEl.GetString() ?? "") : "";
+            if (string.IsNullOrEmpty(name)) return;
+            TriggerService.Instance?.ResetCounters(name);
+            PushAutomationState();
         }
 
         private void HandleAutomationSetEnabled(JsonElement payload)

@@ -1090,6 +1090,24 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   {tt('Clipboard changes ignored just after a replay', 'Mudanças de clipboard ignoradas logo após um replay')}: {selectedEntry.skippedSuppressed}
                 </div>
               )}
+
+              {/* The tallies are LIFETIME totals, so an afternoon of test-firing leaves a skip
+                  count stuck to an automation that has run cleanly ever since — and those numbers
+                  only mean anything as "how is this doing now". Offered only once there is
+                  something to clear. The next fire time is untouched: it is the interval's anchor,
+                  not a statistic. */}
+              {selectedEntry && (selectedEntry.fireCount > 0 || selectedEntry.skippedBusy > 0
+                || selectedEntry.skippedDirty > 0 || selectedEntry.skippedModal > 0
+                || selectedEntry.skippedSuppressed > 0) && (
+                <div className="pt-1">
+                  <Button variant="ghost" size="sm"
+                    onClick={() => send({ type: 'automation:resetCounters', payload: { profile: selectedEntry.profile } })}
+                    data-tip={tt('Zero the fire and skip counts. The next scheduled run is not affected.',
+                                 'Zera as contagens de disparo e de pulos. O próximo disparo agendado não muda.')}>
+                    {tt('Reset counters', 'Zerar contadores')}
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>

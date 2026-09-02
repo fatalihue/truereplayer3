@@ -359,6 +359,43 @@ namespace TrueReplayer.Services
             }
         }
 
+        /// <summary>
+        /// Zero the tallies for one profile, keeping its schedule position.
+        ///
+        /// The counters are lifetime totals, so an afternoon of testing leaves "12 busy" stuck to
+        /// an automation that has run cleanly ever since — diluting the only signal those numbers
+        /// carry, which is "how is this doing NOW".
+        ///
+        /// LastFiredAt is deliberately NOT cleared, and this is the whole design of the method:
+        /// it is the interval loop's ANCHOR (see RunIntervalLoopAsync), not a display field.
+        /// Nulling it would re-anchor the next tick to loop start, and on a profile the process
+        /// has not seen before that is the 15-second catch-up the cold-start work just finished
+        /// removing from every path a user can click. Same for LastScheduleOccurrenceTicks, which
+        /// is the schedule's double-fire guard: clearing it lets today's occurrence run twice.
+        ///
+        /// A caller that genuinely wants the anchor gone wants ClearStats, which drops the whole
+        /// record because the automation itself is gone.
+        /// </summary>
+        public void ResetCounters(string name)
+        {
+            lock (_lock)
+            {
+                if (!_stats.TryGetValue(name, out var s)) return;
+                s.FireCount = 0;
+                s.SkippedBusy = 0;
+                s.SkippedDirty = 0;
+                s.SkippedModal = 0;
+                s.SkippedSuppressed = 0;
+                s.LastResult = null;
+                // Also the log-dedupe key: it only exists to stop a blocked watcher writing the
+                // same line every few seconds, and after a reset the next outcome is worth a line
+                // again whatever it is.
+                _lastLoggedOutcome.Remove(name);
+            }
+            Flush();
+            NotifyStateChanged();
+        }
+
         /// <summary>Suppress clipboard-change fires for the next 2 s (capture-slot etc.).</summary>
         public void NotifyAppClipboardActivity()
             => Interlocked.Exchange(ref _clipboardSuppressUntilTicks, DateTime.UtcNow.AddSeconds(2).Ticks);

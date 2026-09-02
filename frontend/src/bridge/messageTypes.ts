@@ -1123,6 +1123,9 @@ export type OutgoingMessage =
   // that would take the user's own hotkeys down with it — and not the unsaved-changes flag,
   // whose skip is terminal.
   | { type: 'editor:pendingEdits'; payload: { pending: boolean } }
+  // Zero one automation's fire/skip tallies. The interval anchor (lastFiredAt) and the schedule's
+  // double-fire guard are kept — they are state, not history.
+  | { type: 'automation:resetCounters'; payload: { profile: string } }
   // Activates the backend's low-level keyboard hook in capture mode: every keydown
   // gets composed via BuildComposedKey, emitted through 'hotkey:captured', and
   // swallowed before the OS shell sees it. This is what allows binding Win+letter
