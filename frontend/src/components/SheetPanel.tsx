@@ -3329,7 +3329,11 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
             <Field label="Target Colour">
               <div className="flex items-center gap-2.5">
                 {(() => {
-                  const validHex = /^#?(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(pixelColor.trim());
+                  // Six digits only — PixelColorService.ParseHex rejects three-digit shorthand, so
+                  // a swatch that renders #F00 as red is confirming a value the backend will read
+                  // as "no colour set". Here the failure at least surfaces as a Wait timeout in the
+                  // run report; in the automation panel the same lie was silent.
+                  const validHex = /^#?[0-9A-Fa-f]{6}$/.test(pixelColor.trim());
                   return (
                     <span
                       className={`w-8 h-8 rounded border shrink-0 ${validHex ? 'border-border-default' : 'border-dashed border-border-default'}`}
