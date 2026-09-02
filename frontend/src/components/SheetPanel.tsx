@@ -1723,6 +1723,25 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   const hasUnsavedRef = useRef(false);
   hasUnsavedRef.current = hasUnsavedChanges;
 
+  // Declare those same pending edits to the backend, for automations only.
+  //
+  // The edits live in this component's state until Save Changes turns them into `actions:edit`,
+  // so the backend's unsaved-changes flag — which an autonomous fire DOES respect — is still
+  // false while a half-filled form is on screen. The fire then swaps the profile, the action list
+  // is replaced wholesale, and the seed effect above re-seeds these fields from the same-index row
+  // of a DIFFERENT profile. With fewer rows in the new profile the panel is left stranded: stale
+  // values, Save inert, nothing on screen having changed to explain it.
+  //
+  // Only AutomationGuard reads this, so hotkeys and hotstrings are untouched. Leak protection is
+  // on the backend (cleared on ui:ready, plus a TTL) because a WebView that dies with this panel
+  // open can never send the release.
+  const pendingEdits = actionIndex != null && hasUnsavedChanges;
+  useEffect(() => {
+    send({ type: 'editor:pendingEdits', payload: { pending: pendingEdits } });
+  }, [pendingEdits, send]);
+  // Unmount is not a value change, so the effect above never fires for it.
+  useEffect(() => () => { send({ type: 'editor:pendingEdits', payload: { pending: false } }); }, [send]);
+
   // Esc-to-close — global listener that closes the panel when the user presses Escape
   // outside of any capture mode. Key capture handlers (KeyDown/KeyUp Key field, Pause
   // Resume Hotkey, the grid Key column edit, Settings global hotkeys) all call

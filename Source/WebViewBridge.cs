@@ -876,6 +876,7 @@ namespace TrueReplayer
                         break;
                     case "clipboard:read": _ = HandleClipboardRead(); break;
                     case "hotkey:suppress": HandleHotkeySuppress(payload); break;
+                    case "editor:pendingEdits": HandleEditorPendingEdits(payload); break;
                     case "hotkey:capture": HandleHotkeyCapture(payload); break;
                     case "theme:colors": HandleThemeColors(payload); break;
                     default:
@@ -2555,6 +2556,13 @@ namespace TrueReplayer
             // the deferral below must never be mistaken for an unresponsive UI.
             window.CancelUIWatchdog();
 
+            // The React tree that could have claimed this is gone — a reload, a crash recovery, a
+            // DevTools refresh — so its release will never arrive. Unconditional on purpose: a
+            // freshly mounted UI has no row editor open, so clearing can never be wrong here, and
+            // this is the cheap half of the leak protection (AutomationGuard's TTL is the backstop
+            // for the case where ui:ready itself never comes).
+            Services.AutomationGuard.SetEditorBusy(false);
+
             // React sends ui:ready the instant it mounts, which on a cold start beats the startup
             // profile load. state:init REPLACES the frontend store wholesale (AppStateContext
             // spreads initialState and then the payload), so projecting ProfileEntries at this
@@ -3129,6 +3137,17 @@ namespace TrueReplayer
         {
             bool enabled = payload.GetProperty("enabled").GetBoolean();
             InputHookManager.SuppressAllHotkeys = enabled;
+        }
+
+        /// <summary>
+        /// The row editor telling us it holds edits that have not reached `actions:edit` yet.
+        /// Feeds AutomationGuard ONLY — see the field remarks there for why this does not go
+        /// through hotkey suppression or through HasUnsavedChanges.
+        /// </summary>
+        private void HandleEditorPendingEdits(JsonElement payload)
+        {
+            bool pending = payload.TryGetProperty("pending", out var el) && el.ValueKind == JsonValueKind.True;
+            Services.AutomationGuard.SetEditorBusy(pending);
         }
 
         private void HandleHotkeyCapture(JsonElement payload)
@@ -7109,8 +7128,11 @@ namespace TrueReplayer
 
                 if (refsUpdated > 0)
                 {
+                    // "in other profiles" was a lie: refsUpdated is the SUM of the on-disk scan and
+                    // the active profile's own in-memory rows, so a rename that only touched the
+                    // profile in front of the user still claimed to have edited someone else.
                     string plural = refsUpdated == 1 ? "reference" : "references";
-                    SendMessage("alert:show", new { message = $"Renamed to '{actualNewName}' and updated {refsUpdated} {plural} in other profiles." });
+                    SendMessage("alert:show", new { message = $"Renamed to '{actualNewName}' and updated {refsUpdated} RunProfile {plural}." });
                 }
             }
             catch (Exception ex)
@@ -7131,6 +7153,12 @@ namespace TrueReplayer
         private async Task<int> ScanRunProfileReferencesAsync(string targetName, string? rewriteTo)
         {
             int total = 0;
+
+            // Read ONCE, before anything below touches it: whether the grid already carried the
+            // user's unsaved work is what decides how the active profile's rewrite is persisted
+            // (see the long comment at the end of loop 2). Reading it afterwards would always
+            // answer "dirty", because this method is one of the writers.
+            bool gridWasDirty = HasUnsavedChanges;
 
             // 1. Every other profile on disk. Skip the renamed/deleted profile itself and the
             //    active one (whose source of truth is the in-memory `actions` list — saving
@@ -7179,8 +7207,50 @@ namespace TrueReplayer
                 }
                 if (inMemory > 0 && rewriteTo != null)
                 {
-                    HasUnsavedChanges = true;
                     PushActionsUpdate();
+
+                    // Marking the session dirty for OUR OWN bookkeeping rewrite is not free: the
+                    // flag is global, and an autonomous fire reads it as SkippedDirty, which is
+                    // TERMINAL — never retried (TriggerService.RunFirePumpAsync). So a rename the
+                    // user did in the sidebar silently parked every armed automation, on every
+                    // profile, until they happened to save something. Measured on the owner's own
+                    // sidecar: SkippedDirty = 14. Same failure mode the Export path hit; the long
+                    // comment in CheckUnsavedChangesAsync tells that story.
+                    //
+                    // With a CLEAN grid the on-disk copy is byte-identical to the list we just
+                    // rewrote, so the active profile is not special here: persist it exactly the
+                    // way loop 1 persists every other profile, and the session stays clean. Going
+                    // through the on-disk copy rather than CreateProfileFromState() is deliberate —
+                    // SaveProfileByNameAsync is what stamps UpdatedAt and keeps CreatedAt, which
+                    // that builder does not carry.
+                    bool persisted = false;
+                    if (!gridWasDirty)
+                    {
+                        try
+                        {
+                            var onDisk = await profileController.LoadProfileByNameAsync(CurrentProfileName);
+                            if (onDisk != null)
+                            {
+                                foreach (var act in onDisk.Actions)
+                                {
+                                    if (!string.Equals(act.ActionType, "RunProfile", StringComparison.OrdinalIgnoreCase)) continue;
+                                    if (!string.Equals(act.Key, targetName, StringComparison.OrdinalIgnoreCase)) continue;
+                                    act.Key = rewriteTo;
+                                }
+                                await profileController.SaveProfileByNameAsync(CurrentProfileName, onDisk);
+                                persisted = true;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Services.DiagnosticLog.Info($"[Chain] Persisting the active profile's rewritten refs failed: {ex.Message}");
+                        }
+                    }
+
+                    // Already-dirty grid, "No Profile" (nothing on disk to write), or a failed
+                    // write: the flag is then the honest answer, and what blocks the automation is
+                    // the user's own unsaved work — which is exactly what the gate was written for.
+                    if (!persisted) HasUnsavedChanges = true;
                 }
                 total += inMemory;
             }

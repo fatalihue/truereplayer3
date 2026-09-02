@@ -658,6 +658,11 @@ namespace TrueReplayer.Services
             }
         }
 
+        /// How long one clipboard copy stays actionable. It is the queue's grace window for this
+        /// watcher, and also how long a copy the dirty gate refused is held for a retry — the same
+        /// number on purpose, so no refusal path gets more patience than another.
+        private static readonly TimeSpan ClipboardHoldWindow = TimeSpan.FromSeconds(10);
+
         private async Task RunClipboardLoopAsync(string name, TriggerRuntime rt, TriggerStats stats, CancellationToken ct)
         {
             var cfg = rt.Config;
@@ -666,6 +671,9 @@ namespace TrueReplayer.Services
             uint lastSeq = NativeMethods.GetClipboardSequenceNumber();
             var cooldownUntil = DateTime.MinValue;
             var lastReplayActiveAt = DateTime.MinValue;
+            // A copy the DIRTY gate refused, kept for one hold window so the next ticks can ask
+            // again. MinValue = nothing held. See the refusal branch at the bottom of the loop.
+            var heldCopyAt = DateTime.MinValue;
 
             while (!ct.IsCancellationRequested)
             {
@@ -712,27 +720,58 @@ namespace TrueReplayer.Services
                     continue;
                 }
 
-                if (seq == lastSeq) continue;
-                lastSeq = seq;
+                bool isNewCopy = seq != lastSeq;
+                if (isNewCopy) lastSeq = seq;
 
-                if (DateTime.Now < cooldownUntil) continue;
+                // Nothing new on the clipboard. The one reason to carry on is a copy the dirty
+                // gate refused and we are still holding.
+                if (!isNewCopy && heldCopyAt == DateTime.MinValue) continue;
+                if (isNewCopy)
+                {
+                    // A fresh copy supersedes a held one — acting on the older one now is exactly
+                    // the stale ambush the hold window is bounded to prevent.
+                    heldCopyAt = DateTime.MinValue;
+                }
+                else if (DateTime.Now - heldCopyAt > ClipboardHoldWindow)
+                {
+                    heldCopyAt = DateTime.MinValue;
+                    continue;
+                }
+
+                if (DateTime.Now < cooldownUntil) { heldCopyAt = DateTime.MinValue; continue; }
 
                 if (!string.IsNullOrEmpty(cfg.ClipboardPattern))
                 {
                     string? text = await ActionReplayer.ReadClipboardTextAsync(dispatcherQueue);
                     if (text == null || !text.Contains(cfg.ClipboardPattern, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // The content cannot change while the sequence number does not, so a
+                        // mismatch is final for this copy — do not re-read it every tick.
+                        heldCopyAt = DateTime.MinValue;
                         continue;
+                    }
                 }
 
                 // A clipboard change is an EVENT, so it can't PEND indefinitely — but dropping it
                 // on the first busy tick was too harsh: the engine is often busy for a second or
                 // two, and the copy the user just made is exactly what they wanted acted on.
                 // Retry briefly, bounded so a stale copy can never ambush them later.
-                var copiedAt = DateTime.Now;
+                var copiedAt = isNewCopy ? DateTime.Now : heldCopyAt;
+                heldCopyAt = DateTime.MinValue;
                 var r = await RequestFireAsync(name, stats, ct,
-                    dueAt: copiedAt, expiresAt: copiedAt + TimeSpan.FromSeconds(10));
+                    dueAt: copiedAt, expiresAt: copiedAt + ClipboardHoldWindow);
                 if (r == TriggerFireResult.Fired)
                     cooldownUntil = DateTime.Now.AddSeconds(cooldownSec);
+                else if (r == TriggerFireResult.SkippedDirty)
+                {
+                    // Every other refusal already spent this window INSIDE the queue — the pump
+                    // held the request and retried until expiresAt. SkippedDirty is the exception:
+                    // it is terminal, so it comes back instantly, and the event was consumed on the
+                    // way in (lastSeq moved), so nothing re-offers it. The user's copy was simply
+                    // gone. Hold it here for the same window the others got, anchored to when they
+                    // actually copied so the deadline cannot be extended by retrying.
+                    heldCopyAt = copiedAt;
+                }
             }
         }
 
