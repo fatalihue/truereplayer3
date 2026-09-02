@@ -1482,6 +1482,13 @@ namespace TrueReplayer
                 throw;   // the callers report it; they also re-push after the rollback
             }
 
+            // The trigger is gone from disk, so its history has nothing left to describe. Done
+            // AFTER the write, deliberately: on the rollback path above the automation still
+            // exists, and clearing there would destroy the history of a deletion that failed.
+            // The Reload prune below cannot cover this — it only removes profiles that are GONE,
+            // and this one is still there.
+            if (trigger == null) TriggerService.Instance?.ClearStats(name);
+
             TriggerService.Instance?.Reload(
                 profileController.GetProfileTriggers(),
                 profileController.ProfileEntries.Select(p => p.Name).ToList());

@@ -42,10 +42,20 @@ namespace TrueReplayer.Services
         private readonly object _lock = new();
         private readonly Dictionary<string, TriggerRuntime> _runtimes = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, TriggerStats> _stats = new(StringComparer.OrdinalIgnoreCase);
-        // Profiles whose watcher loop has started at least once IN THIS PROCESS. Distinguishes a
-        // cold start (the app was closed, an overdue interval tick deserves a catch-up) from a
-        // Reload-driven restart (an edit or an arm toggle, where catching up would be an ambush).
-        private readonly HashSet<string> _coldStarted = new(StringComparer.OrdinalIgnoreCase);
+        // Profiles this process has SEEN in any reload — armed or not, enabled or not.
+        //
+        // This is the cold-start discriminator, and the distinction it draws is deliberately not
+        // "a watcher loop for this name has run". That was the old rule, and it read three
+        // ordinary user actions as "the app just started": arming a profile that booted disarmed,
+        // renaming an armed one, and flipping the master switch on when it booted off — each of
+        // which then took mouse and keyboard 15 s after the click, with the user still in the
+        // panel. In all three the profile was already on this process's books; only a genuine cold
+        // start has never been seen before.
+        //
+        // Seeded from allProfileNames as well as from the trigger list, because GetProfileTriggers
+        // drops DISABLED profiles: without that, re-enabling one would look like a first sighting
+        // and produce exactly the ambush this replaced.
+        private readonly HashSet<string> _everSeen = new(StringComparer.OrdinalIgnoreCase);
         // Last fire outcome actually written to the diagnostic log, per profile — so a blocked
         // watcher retrying every few seconds logs once, not forever. See RequestFireAsync.
         private readonly Dictionary<string, string?> _lastLoggedOutcome = new(StringComparer.OrdinalIgnoreCase);
@@ -84,6 +94,11 @@ namespace TrueReplayer.Services
             public CancellationTokenSource Cts = null!;
             public volatile bool ConditionTrue;           // last probe result (status display)
             public long NextDueTicks;                     // interval/schedule: next planned fire (DateTime ticks, local)
+            /// True when this loop was created by the reload that first showed us the profile —
+            /// i.e. the app had just started with it already armed on disk. Decided in Reload,
+            /// where the "have we seen this name before" answer actually lives, rather than by the
+            /// loop asking after the fact. See _everSeen.
+            public bool ColdStart;
         }
 
         private sealed class TriggerStats
@@ -153,6 +168,19 @@ namespace TrueReplayer.Services
             lock (_lock)
             {
                 _lastConfigs = configs;
+
+                // Which names this reload is showing us for the FIRST time. Computed before any
+                // loop is created, because creating one is what needs the answer. Note the order:
+                // the trigger list is consulted first so a profile that arrives armed on the very
+                // first reload still counts as first-seen, and allProfileNames then covers
+                // everything GetProfileTriggers drops (disabled profiles, unreadable JSON) so
+                // those cannot masquerade as a cold start later.
+                var firstSighting = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var (name, _) in configs)
+                    if (_everSeen.Add(name)) firstSighting.Add(name);
+                if (allProfileNames != null)
+                    foreach (var n in allProfileNames) _everSeen.Add(n);
+
                 var desired = new Dictionary<string, (string Key, ProfileTriggerConfig Config)>(StringComparer.OrdinalIgnoreCase);
                 if (_globalEnabled)
                 {
@@ -183,6 +211,7 @@ namespace TrueReplayer.Services
                         ConfigKey = d.Key,
                         Config = d.Config.Clone(),        // loop owns a snapshot — later edits can't mutate mid-poll
                         Cts = new CancellationTokenSource(),
+                        ColdStart = firstSighting.Contains(name),
                     };
                     _runtimes[name] = rt;
                     var stats = GetStatsLocked(name);
@@ -202,7 +231,7 @@ namespace TrueReplayer.Services
                         {
                             _stats.Remove(name);
                             _lastLoggedOutcome.Remove(name);
-                            _coldStarted.Remove(name);
+                            _everSeen.Remove(name);
                             prunedStats = true;
                         }
                 }
@@ -229,7 +258,21 @@ namespace TrueReplayer.Services
             NotifyStateChanged();
         }
 
-        /// <summary>Migrate per-profile fire stats across a profile rename.</summary>
+        /// <summary>
+        /// Migrate a profile's automation bookkeeping across a rename. ALL of it: the stats, the
+        /// log-dedupe key, and the cold-start sighting.
+        ///
+        /// Leaving the last two behind was not cosmetic. _everSeen decides whether an overdue
+        /// interval catches up 15 s after the loop starts, so a renamed profile looked like one
+        /// this process had never met — the rename itself became an ambush. And the orphaned keys
+        /// were unreachable afterwards: the prune only removes names the caller says are gone, and
+        /// the old name is gone from disk the moment the rename lands.
+        ///
+        /// Written through synchronously rather than via the 2 s debounce, matching the mirror in
+        /// RunCursorService.RenameCursor. A rename is a single deliberate act, not a stream of
+        /// updates, and a kill inside that window loses the fire history permanently — the next
+        /// launch's prune removes the old key, and the new one was never written.
+        /// </summary>
         public void RenameStats(string oldName, string newName)
         {
             lock (_lock)
@@ -239,8 +282,45 @@ namespace TrueReplayer.Services
                     _stats.Remove(oldName);
                     _stats[newName] = s;
                 }
+                if (_lastLoggedOutcome.TryGetValue(oldName, out var outcome))
+                {
+                    _lastLoggedOutcome.Remove(oldName);
+                    _lastLoggedOutcome[newName] = outcome;
+                }
+                if (_everSeen.Remove(oldName)) _everSeen.Add(newName);
             }
-            MarkStatsDirty();
+            Flush();
+            NotifyStateChanged();
+        }
+
+        /// <summary>
+        /// Forget a profile's automation bookkeeping entirely — for when its trigger is deleted
+        /// rather than renamed.
+        ///
+        /// Without this the stats outlived the automation: the sidecar on this machine still holds
+        /// FireCount 12 for a profile whose Triggers went null three weeks ago. A NEW automation
+        /// created in that profile then opened showing someone else's history, and — for an
+        /// interval trigger — inherited a LastFiredAt long past due, which is a live anchor. The
+        /// prune in Reload cannot reach this: it removes names that are GONE, and the profile is
+        /// still very much there.
+        ///
+        /// Call only AFTER the delete has actually been written, so a save that throws does not
+        /// take the history with it.
+        /// </summary>
+        public void ClearStats(string name)
+        {
+            bool removed;
+            lock (_lock)
+            {
+                removed = _stats.Remove(name);
+                _lastLoggedOutcome.Remove(name);
+                // _everSeen is deliberately NOT cleared: the profile still exists, and this process
+                // has still met it. Dropping it would make the next automation armed here look like
+                // a cold start and fire its catch-up 15 s after the click.
+            }
+            if (!removed) return;
+            Flush();
+            NotifyStateChanged();
         }
 
         /// <summary>Suppress clipboard-change fires for the next 2 s (capture-slot etc.).</summary>
@@ -349,8 +429,11 @@ namespace TrueReplayer.Services
             // gate, re-arming an automation whose period had elapsed would seize the mouse and
             // keyboard 15 s after the click, with the user still standing in the panel. Anchoring
             // to LastFiredAt is right; treating every restart as "the app was closed" is not.
-            bool coldStart;
-            lock (_lock) coldStart = _coldStarted.Add(name);
+            //
+            // Decided in Reload, which is the only place that can tell a boot from a re-arm: this
+            // loop starting is the SAME event in both cases, so asking here — as this used to, via
+            // "is this the first loop for this name" — could not separate them. See _everSeen.
+            bool coldStart = rt.ColdStart;
 
             DateTime? lastFired;
             lock (_lock) lastFired = stats.LastFiredAt;
@@ -1181,15 +1264,34 @@ namespace TrueReplayer.Services
             return System.IO.Path.Combine(dir, StatsFileName);
         }
 
+        /// <summary>
+        /// True once a load attempt has REACHED A VERDICT about the file — including the two
+        /// verdicts that leave the map empty on purpose (no file yet, or a file holding null).
+        /// False means we never found out what is on disk, and writing would be guessing.
+        ///
+        /// The mirror in RunCursorService has carried this guard from the start, with the reason
+        /// on the tin: never write before a load, or the file gets clobbered with {}. Here the
+        /// exposure is worse than it looks, because the map is not empty when the write happens:
+        /// Reload calls GetStatsLocked for every armed trigger, seeding ZEROED entries. So a load
+        /// that threw is followed by a perfectly plausible-looking save of counters that are all
+        /// zero, and the fire history is gone mid-session — before any exit path runs.
+        /// </summary>
+        /// volatile because the writer is the startup thread and the readers are the debounce
+        /// timer and the exit paths — the same discipline _globalEnabled uses.
+        private volatile bool _statsLoaded;
+
         /// <summary>Restore persisted fire stats. Call once, before the first Reload.</summary>
         public void LoadStats()
         {
             try
             {
                 var path = StatsPath();
-                if (!System.IO.File.Exists(path)) return;
+                // Both early returns are verdicts, not failures — a first launch has no file, and
+                // an empty map is a legitimate state. Marking them loaded is what keeps a brand
+                // new install from being unable to persist anything for the rest of its life.
+                if (!System.IO.File.Exists(path)) { _statsLoaded = true; return; }
                 var map = JsonSerializer.Deserialize<Dictionary<string, PersistedStats>>(System.IO.File.ReadAllText(path));
-                if (map == null) return;
+                if (map == null) { _statsLoaded = true; return; }
                 lock (_lock)
                 {
                     foreach (var (name, p) in map)
@@ -1210,12 +1312,17 @@ namespace TrueReplayer.Services
                         };
                     }
                 }
+                _statsLoaded = true;
             }
             catch (Exception ex)
             {
-                // Corrupt/unreadable stats must never stop the daemon — worst case we start at zero,
-                // which is exactly the old behaviour.
-                DiagnosticLog.Warn($"Automation stats load failed — starting from zero ({ex.Message})");
+                // Corrupt/unreadable stats must never stop the daemon — the session runs from zero.
+                // _statsLoaded stays FALSE, which is the part that matters: "worst case we start at
+                // zero" was only ever true of memory. On disk the worst case was destruction — the
+                // next save wrote the zeroed map over the very history this failed to read, so one
+                // transient read error (antivirus, OneDrive, a half-written file) permanently
+                // erased every automation's record. Now the session simply does not persist.
+                DiagnosticLog.Warn($"Automation stats load failed — running from zero, and NOT writing back ({ex.Message})");
             }
         }
 
@@ -1256,6 +1363,10 @@ namespace TrueReplayer.Services
         // the write costs nothing measurable.
         private void SaveStats()
         {
+            // The gate lives HERE and not in Flush(): every writer funnels through this method —
+            // the exit paths, the debounce timer, the prune's write-through — and a guard on one
+            // of them would simply let the others clobber the file instead.
+            if (!_statsLoaded) return;
             try
             {
                 lock (_lock)
