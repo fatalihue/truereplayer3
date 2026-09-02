@@ -1489,9 +1489,12 @@ namespace TrueReplayer
             // and this one is still there.
             if (trigger == null) TriggerService.Instance?.ClearStats(name);
 
+            // AllKnownProfileNames, not ProfileEntries: a profile whose JSON failed to parse is
+            // absent from the collection but very much still on disk, and the prune this feeds is
+            // write-through — see the property's own remarks.
             TriggerService.Instance?.Reload(
                 profileController.GetProfileTriggers(),
-                profileController.ProfileEntries.Select(p => p.Name).ToList());
+                profileController.AllKnownProfileNames);
             PushAutomationState();
             // The sidebar's armed dot is fed by triggerArmed, which only ships in the
             // profiles:updated payload (see PushProfilesUpdate) — pushing only the automation
