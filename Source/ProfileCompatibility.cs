@@ -564,11 +564,11 @@ namespace TrueReplayer.Services
             // carries no window, and a bare time on any kind is deliberately not a window (see
             // TriggerService.ParseActiveHours — profiles drafted as a schedule and switched to
             // condition keep one, and honouring it would silence them).
-            // Introduced after 2.34.0 — bump at release.
+            // Introduced in 2.35.0.
             (p => p.Triggers is { } t
                   && !string.Equals(t.Kind, "schedule", StringComparison.OrdinalIgnoreCase)
                   && TriggerService.ParseActiveHours(t.TimeOfDay) != null,
-                new Version(2, 34, 0), "Automation active hours"),
+                new Version(2, 35, 0), "Automation active hours"),
 
             // Per-profile loop count. Destroy-on-round-trip, same mechanism as the automation pins
             // above: an older build has no LoopCount on UserProfile (it was [JsonIgnore]d there and
