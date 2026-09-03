@@ -2506,7 +2506,7 @@ namespace TrueReplayer
             {
                 if (CurrentProfilePath != null)
                 {
-                    var profile = CreateProfileFromState();
+                    var profile = CreateProfileForSave();
                     await SettingsManager.SaveProfileAsync(CurrentProfilePath, profile);
                     // Every other successful-save path in this file clears the dirty flags right
                     // where the write lands. This call site used to skip that and lean on the
@@ -2610,7 +2610,45 @@ namespace TrueReplayer
                 // Automation trigger — preserved VERBATIM (incl. Armed): this is the local
                 // user's own save, not a copy/import (those disarm).
                 Triggers = UserProfile.Current.Triggers,
+                // Carried, not re-derived. Leaving them out wrote null over both on every save
+                // through this builder — the serializer has no ignore-null policy, so the field is
+                // emitted and the on-disk history is replaced by nothing. It shows in the profile
+                // folder on this machine: 75 of 110 profiles carry no dates at all, and another 23
+                // have CreatedAt exactly equal to UpdatedAt, which is the fingerprint of a
+                // CreatedAt that was lost and then re-stamped by SaveProfileByNameAsync. Both are
+                // user-visible, in the Info tab and the Import Preview.
+                //
+                // UpdatedAt is carried rather than stamped here because this builder is also used
+                // to READ current state (the close guard, the export path); the save sites stamp
+                // it, exactly as SaveProfileByNameAsync does.
+                CreatedAt = UserProfile.Current.CreatedAt,
+                UpdatedAt = UserProfile.Current.UpdatedAt,
             };
+        }
+
+        /// <summary>
+        /// Stamp the save timestamps on a profile built by <see cref="CreateProfileFromState"/>,
+        /// the same way ProfileController.SaveProfileByNameAsync does for the paths that go through
+        /// it: UpdatedAt always, CreatedAt only when it is missing so a pre-existing profile gains
+        /// one the first time it is saved rather than losing the one it had.
+        /// </summary>
+        private static void StampSaveTimestamps(UserProfile profile)
+        {
+            var nowUtc = DateTime.UtcNow;
+            profile.UpdatedAt = nowUtc;
+            profile.CreatedAt ??= nowUtc;
+        }
+
+        /// <summary>
+        /// The current state as a profile ABOUT TO BE WRITTEN: the builder plus the timestamps
+        /// every save owes. Save sites call this rather than the raw builder so a fourth one cannot
+        /// quietly go back to writing nulls — which is how all three of them were doing it.
+        /// </summary>
+        public UserProfile CreateProfileForSave()
+        {
+            var profile = CreateProfileFromState();
+            StampSaveTimestamps(profile);
+            return profile;
         }
 
         // ── Handler methods ──
@@ -9642,7 +9680,7 @@ namespace TrueReplayer
                 var choice = await profileController.ShowSaveOverwriteDialogAsync(CurrentProfileName);
                 if (choice == SaveDialogResult.Overwrite)
                 {
-                    var profile = CreateProfileFromState();
+                    var profile = CreateProfileForSave();
                     profile.CustomHotkey = UserProfile.Current.CustomHotkey;
                     await SettingsManager.SaveProfileAsync(CurrentProfilePath, profile);
                     // Re-read the list so the in-memory ProfileEntries mirror (and the caches
