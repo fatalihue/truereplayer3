@@ -3579,6 +3579,9 @@ namespace TrueReplayer.Services
                     // blocks below.
                     Detail = _runStepsFull ? null : DescribeStepDetail(action),
                 };
+                // Published so the auto-cancel paths can mark this step before they pull the run
+                // out from under it — see FailCurrentStep.
+                _currentStepRec = stepRec;
                 var stepWatch = System.Diagnostics.Stopwatch.StartNew();
                 // Appended on START, not on completion. RunStepRecord is a class and the catch /
                 // finally blocks below mutate this same instance in place, so reserving the slot
@@ -3923,6 +3926,7 @@ namespace TrueReplayer.Services
                     // finished step reading as still running. The catch blocks have already
                     // written failed/skipped by now, so this only ever fires for a clean pass.
                     if (stepRec.Status == "running") stepRec.Status = "ok";
+                    _currentStepRec = null;
                 }
 
                 // Wait-class actions legitimately consume wall time — that time is the whole
@@ -4768,6 +4772,7 @@ namespace TrueReplayer.Services
             }
             DiagnosticLog.Warn($"Replay aborted: relative-coords target window not found [{name} {_windowTarget?.WindowTitle}]".TrimEnd());
             OnReplayError?.Invoke($"Target window '{name}' not found — open it and retry");
+            FailCurrentStep($"target window '{name}' not found");
             try { _cts?.Cancel(); } catch (ObjectDisposedException) { }
         }
 
@@ -5116,6 +5121,7 @@ namespace TrueReplayer.Services
             }
             DiagnosticLog.Warn($"Replay aborted: Assert '{label}' — {reason}");
             OnReplayError?.Invoke($"Assert failed: '{label}' — {reason}");
+            FailCurrentStep($"Assert failed: '{label}' — {reason}");
             try { _cts?.Cancel(); } catch (ObjectDisposedException) { }
             return false;
         }
@@ -5145,6 +5151,7 @@ namespace TrueReplayer.Services
             }
             DiagnosticLog.Warn($"Replay aborted: Activate Window '{label}' — {reason}");
             OnReplayError?.Invoke($"Activate Window: '{label}' — {reason}");
+            FailCurrentStep($"Activate Window: '{label}' — {reason}");
             try { _cts?.Cancel(); } catch (ObjectDisposedException) { }
         }
 
@@ -7669,6 +7676,34 @@ namespace TrueReplayer.Services
         // replay halts cleanly mid-iteration, equivalent to pressing the Stop button. A debug
         // screenshot is dumped to %APPDATA%\TrueReplayer\Debug\ regardless, so the user can
         // diagnose why the match failed.
+        /// <summary>
+        /// The step record currently executing, or null between steps. Exists so the paths that end
+        /// a run by CANCELLING can still say which step ended it.
+        /// </summary>
+        private RunStepRecord? _currentStepRec;
+
+        /// <summary>
+        /// Mark the running step as failed, for an outcome that stops the run WITHOUT throwing.
+        ///
+        /// This is the honesty hole behind "the automation says it fired and nothing happened".
+        /// A Wait that times out under the Stop policy does not raise: WaitForImageAsync returns
+        /// null, the handler cancels the token and RETURNS, so the step exits its try normally and
+        /// the finally promotes running -> ok. The report therefore showed a green tick on the very
+        /// row that killed the run, and every later row as skipped — with nothing naming the cause.
+        /// The cancellation only surfaces as OperationCanceledException on the NEXT step, which is
+        /// why the existing catch never covered this.
+        ///
+        /// Deliberately does not touch a step that already has a verdict: a real exception carries
+        /// a better message than anything this could invent.
+        /// </summary>
+        private void FailCurrentStep(string reason)
+        {
+            var rec = _currentStepRec;
+            if (rec == null || rec.Status != "running") return;
+            rec.Status = "failed";
+            rec.ErrorMessage = reason;
+        }
+
         private void HandleWaitImageTimeout(ActionItem action)
         {
             // The screenshot is a DIAGNOSTIC for an unexpected miss, so it is taken only on the
@@ -7693,6 +7728,7 @@ namespace TrueReplayer.Services
                 FaultRow($"Wait Image timed out ({action.DisplayKey})");
                 return;
             }
+            FailCurrentStep($"Wait Image timed out ({action.DisplayKey})");
             // ObjectDisposedException possible if a new StartAsync swapped _cts out
             // from under us; swallow because this run was already over anyway.
             try { _cts?.Cancel(); } catch (ObjectDisposedException) { }
@@ -7829,6 +7865,7 @@ namespace TrueReplayer.Services
                 FaultRow($"Wait Pixel timed out ({action.PixelColor ?? "?"})");
                 return;
             }
+            FailCurrentStep($"Wait Pixel timed out ({action.PixelColor ?? "?"})");
             // Same swallow as HandleWaitImageTimeout — race with a fresh StartAsync.
             try { _cts?.Cancel(); } catch (ObjectDisposedException) { }
         }
