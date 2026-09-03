@@ -156,14 +156,29 @@ function fmtWhen(iso: string | null): string {
   return `${d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} ${time}`;
 }
 
+/** The active-hours window, ONLY when it is a range — mirrors TriggerService.ParseActiveHours, whose
+ *  remarks explain why a bare time must not count. */
+function activeHours(t: TriggerConfig): string | null {
+  if (t.kind === 'schedule') return null;          // there, timeOfDay is the fire time
+  const s = (t.timeOfDay ?? '').trim();
+  const dash = s.indexOf('-');
+  if (dash <= 0 || dash === s.length - 1) return null;
+  const from = s.slice(0, dash).trim();
+  const to = s.slice(dash + 1).trim();
+  return from && to && from !== to ? `${from}–${to}` : null;
+}
+
 function kindSummary(t: TriggerConfig, tt: (en: string, pt: string) => string): string {
+  const hours = activeHours(t);
+  const within = hours ? tt(`, ${hours}`, `, ${hours}`) : '';
   if (t.kind === 'interval') {
     const s = Math.max(5, t.intervalSeconds);
-    return s % 60 === 0 ? tt(`every ${s / 60} min`, `a cada ${s / 60} min`) : tt(`every ${s}s`, `a cada ${s}s`);
+    const every = s % 60 === 0 ? tt(`every ${s / 60} min`, `a cada ${s / 60} min`) : tt(`every ${s}s`, `a cada ${s}s`);
+    return every + within;
   }
   if (t.kind === 'schedule') return tt(`at ${t.timeOfDay ?? '--:--'}`, `às ${t.timeOfDay ?? '--:--'}`);
   const c = CONDITION_TYPES.find((x) => x.value === t.conditionType);
-  return tt(`when ${c?.label ?? t.conditionType ?? '?'}`, `quando ${c?.label ?? t.conditionType ?? '?'}`);
+  return tt(`when ${c?.label ?? t.conditionType ?? '?'}`, `quando ${c?.label ?? t.conditionType ?? '?'}`) + within;
 }
 
 export function AutomationPanel({ onClose }: { onClose: () => void }) {
@@ -771,6 +786,40 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   />
                 </Field>
               )}
+
+              {/* Active hours — interval and condition only, because for a schedule TimeOfDay IS
+                  the fire time. Two start-and-end inputs rather than one free-text box: they can
+                  only ever produce the range form the backend accepts, which is what keeps a bare
+                  "12:00" from ever being written here. (That value is not hypothetical — profiles
+                  drafted as a schedule and switched to condition carry it, and the backend ignores
+                  a bare time precisely so those keep firing.) */}
+              {draft.kind !== 'schedule' && (() => {
+                const parts = (draft.timeOfDay ?? '').split('-');
+                const from = parts.length === 2 ? parts[0].trim() : '';
+                const to = parts.length === 2 ? parts[1].trim() : '';
+                const write = (f: string, t: string) =>
+                  patch({ timeOfDay: f && t ? `${f}-${t}` : null });
+                return (
+                  <Field
+                    label="Active hours"
+                    hint={tt('Leave empty to run around the clock. An end before the start crosses midnight.',
+                             'Deixe vazio para rodar o tempo todo. Fim antes do início cruza a meia-noite.')}
+                  >
+                    <div className="flex items-center gap-2">
+                      <input type="time" className={`${inputCls} w-28`} value={from}
+                        onChange={(e) => write(e.target.value, to || '23:59')} />
+                      <span className="text-[12px] text-text-tertiary">{tt('to', 'até')}</span>
+                      <input type="time" className={`${inputCls} w-28`} value={to}
+                        onChange={(e) => write(from || '00:00', e.target.value)} />
+                      {(from || to) && (
+                        <Button variant="ghost" size="sm" onClick={() => patch({ timeOfDay: null })}>
+                          {tt('Clear', 'Limpar')}
+                        </Button>
+                      )}
+                    </div>
+                  </Field>
+                );
+              })()}
 
               {draft.kind === 'schedule' && (
                 <>

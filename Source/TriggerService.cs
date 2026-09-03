@@ -525,6 +525,8 @@ namespace TrueReplayer.Services
         private async Task RunIntervalLoopAsync(string name, TriggerRuntime rt, TriggerStats stats, CancellationToken ct)
         {
             int seconds = Math.Max(5, rt.Config.IntervalSeconds);
+            var activeHours = ParseActiveHours(rt.Config.TimeOfDay);
+            bool outsideHours = false;
             var period = TimeSpan.FromSeconds(seconds);
 
             // Anchor the FIRST tick to the last real fire, not to loop start. Anchoring to loop
@@ -597,6 +599,17 @@ namespace TrueReplayer.Services
                 // the following tick. With L larger, the re-anchor below puts that tick at
                 // now + period while the window ends at now + min(s/2,180) <= now + period/2. A
                 // retry still cannot collide with the next tick in either case.
+                // Active hours, when the user set some. The tick is SKIPPED, not deferred: an
+                // interval means "this often while I am working", so a backlog released at 09:00
+                // would be a burst of everything the night withheld. The re-anchor below keeps the
+                // cadence on the clock either way.
+                if (HoldForActiveHours(activeHours, stats, ref outsideHours, rt.Config.TimeOfDay ?? ""))
+                {
+                    next += period;
+                    if (next <= DateTime.Now) next = DateTime.Now + period;
+                    continue;
+                }
+
                 var graceEnd = Later(next, DateTime.Now) + TimeSpan.FromSeconds(Math.Min(seconds / 2.0, 180));
                 var result = await RequestFireAsync(name, stats, ct, dueAt: next, expiresAt: graceEnd);
                 // Anything but Fired/Failed/dirty means the queue held it to the deadline.
@@ -721,6 +734,8 @@ namespace TrueReplayer.Services
             var cfg = rt.Config;
             bool levelMode = string.Equals(cfg.Retrigger, "level", StringComparison.OrdinalIgnoreCase);
             int cooldownSec = cfg.CooldownSeconds > 0 ? cfg.CooldownSeconds : 30;
+            var activeHours = ParseActiveHours(cfg.TimeOfDay);
+            bool outsideHours = false;
             var pendingTtl = TimeSpan.FromSeconds(Math.Max(cooldownSec, 30));
             int pollMs = PollCadenceMs(cfg);
 
@@ -851,10 +866,16 @@ namespace TrueReplayer.Services
                         NotifyStateChanged();
                     }
 
+                    // Evaluated once per tick, and deliberately NOT in place of the edge bookkeeping
+                    // below: wasTrue has to keep tracking the condition while the window is shut, or
+                    // a condition that stayed true all night would look like a fresh edge the moment
+                    // the window opens — which is the ambush edge mode exists to prevent.
+                    bool holding = HoldForActiveHours(activeHours, stats, ref outsideHours, cfg.TimeOfDay ?? "");
+
                     if (levelMode)
                     {
                         wasTrue = isTrue;
-                        if (isTrue && DateTime.Now >= CooldownUntil())
+                        if (isTrue && !holding && DateTime.Now >= CooldownUntil())
                         {
                             // Bounded so the loop gets back to PROBING: in level mode the condition
                             // going false is meaningful, and a request parked at the head of the
@@ -909,6 +930,10 @@ namespace TrueReplayer.Services
                         continue;
                     }
                     if (DateTime.Now < CooldownUntil()) continue;
+                    // Placed AFTER the stale-edge branch above on purpose: an edge raised just
+                    // before closing time still ages out on schedule instead of being frozen and
+                    // released hours later, which is the same ambush by a slower route.
+                    if (holding) continue;
 
                     // Bounded per ATTEMPT, so the loop gets back to probing — the same reasoning
                     // the level branch above states, and it applies at least as strongly here.
@@ -962,6 +987,70 @@ namespace TrueReplayer.Services
         private static DateTime Later(DateTime a, DateTime b) => a > b ? a : b;
 
         /// <summary>
+        /// The hours an interval/condition/clipboard watcher is allowed to fire in, read from
+        /// <c>TimeOfDay</c> as a RANGE — "09:00-18:00". Null when there is no window.
+        ///
+        /// Reusing TimeOfDay rather than adding a property is what keeps this off the pin list:
+        /// ProfileTriggerConfig has no [JsonExtensionData], so a genuinely new field is dropped by
+        /// an older build on any save. A string it already knows survives the round trip untouched
+        /// and is simply ignored there — degradation instead of destruction.
+        ///
+        /// A RANGE is required, and that is the safety property, not a parsing detail. TimeOfDay is
+        /// the schedule kind's fire time, so a profile that was once drafted as a schedule and then
+        /// switched to condition keeps a bare "12:00" hanging off it — both of the automations on
+        /// this machine do. Honouring a bare time here would have silenced them at 12:01 with
+        /// nothing on screen to explain it. Only a value that could never be a schedule time counts.
+        /// </summary>
+        internal static (TimeSpan Start, TimeSpan End)? ParseActiveHours(string? timeOfDay)
+        {
+            if (string.IsNullOrWhiteSpace(timeOfDay)) return null;
+            var s = timeOfDay.Trim();
+            int dash = s.IndexOf('-');
+            if (dash <= 0 || dash == s.Length - 1) return null;   // bare time, or malformed
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            if (!TimeSpan.TryParse(s.Substring(0, dash).Trim(), inv, out var start)) return null;
+            if (!TimeSpan.TryParse(s.Substring(dash + 1).Trim(), inv, out var end)) return null;
+            if (start == end) return null;   // a zero-width window would mean "never" — treat as unset
+            return (start, end);
+        }
+
+        /// <summary>
+        /// Whether <paramref name="now"/> falls inside the window. Handles a window that WRAPS
+        /// midnight ("22:00-06:00"), which is the overnight case a macro user actually wants; the
+        /// end is exclusive so 09:00-18:00 stops at 17:59:59 rather than firing once at 18:00.
+        /// </summary>
+        private static bool InsideActiveHours((TimeSpan Start, TimeSpan End) w, DateTime now)
+        {
+            var t = now.TimeOfDay;
+            return w.Start < w.End
+                ? t >= w.Start && t < w.End
+                : t >= w.Start || t < w.End;
+        }
+
+        /// <summary>
+        /// True when a fire must be held because the watcher is outside its active hours.
+        ///
+        /// Reports on the TRANSITION only. A window changes state twice a day while the loops ask
+        /// several times a SECOND, so writing the reason per tick would rewrite the sidecar and push
+        /// the panel at the poll rate — the same shape as the level-mode re-request the audit found.
+        /// Coming back inside deliberately does not overwrite LastResult: the last thing that
+        /// actually happened ("fired", or why it did not) is worth more than "we are open again".
+        /// </summary>
+        private bool HoldForActiveHours((TimeSpan Start, TimeSpan End)? window, TriggerStats stats,
+                                        ref bool wasOutside, string label)
+        {
+            if (window is not { } w) return false;
+            bool outside = !InsideActiveHours(w, DateTime.Now);
+            if (outside != wasOutside)
+            {
+                wasOutside = outside;
+                if (outside) SetLastResult(stats, $"outside active hours ({label})");
+                NotifyStateChanged();
+            }
+            return outside;
+        }
+
+        /// <summary>
         /// Trim a retained cooldown deadline to what the CURRENT setting could have produced.
         ///
         /// The deadline is stored as an absolute instant so it survives the loop restarts a config
@@ -996,6 +1085,8 @@ namespace TrueReplayer.Services
         {
             var cfg = rt.Config;
             int cooldownSec = cfg.CooldownSeconds > 0 ? cfg.CooldownSeconds : 5;
+            var activeHours = ParseActiveHours(cfg.TimeOfDay);
+            bool outsideHours = false;
             int pollMs = PollCadenceMs(cfg);
             // Seeded, not read raw: zero means the clipboard was unreadable (no access to the
             // window station), not "sequence zero". Taking it at face value made the first REAL
@@ -1084,6 +1175,11 @@ namespace TrueReplayer.Services
                 }
 
                 if (DateTime.Now < CooldownUntil()) { heldCopyAt = DateTime.MinValue; continue; }
+                // Outside the active hours the copy is DROPPED, not held: a clipboard event is
+                // already the shortest-lived of the three, and releasing this evening's copy
+                // tomorrow morning is the staleness the hold window exists to bound.
+                if (HoldForActiveHours(activeHours, stats, ref outsideHours, cfg.TimeOfDay ?? ""))
+                { heldCopyAt = DateTime.MinValue; continue; }
 
                 if (!string.IsNullOrEmpty(cfg.ClipboardPattern))
                 {
