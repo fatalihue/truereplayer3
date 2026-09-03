@@ -3212,6 +3212,10 @@ namespace TrueReplayer
         private void HandleEditorPendingEdits(JsonElement payload)
         {
             bool pending = payload.TryGetProperty("pending", out var el) && el.ValueKind == JsonValueKind.True;
+            // Logged because this channel is otherwise INVISIBLE: it has no UI of its own, and its
+            // only effect is a refusal that names a different gate when it is not working. A state
+            // change, not a stream — the panel sends it on transitions, so this cannot flood.
+            Services.DiagnosticLog.Info($"Row editor pending edits: {(pending ? "YES — autonomous fires held" : "no")}");
             Services.AutomationGuard.SetEditorBusy(pending);
         }
 

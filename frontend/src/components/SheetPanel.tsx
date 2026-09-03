@@ -1735,7 +1735,23 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   // Only AutomationGuard reads this, so hotkeys and hotstrings are untouched. Leak protection is
   // on the backend (cleared on ui:ready, plus a TTL) because a WebView that dies with this panel
   // open can never send the release.
-  const pendingEdits = actionIndex != null && hasUnsavedChanges;
+  // LATCHED, not derived — and the difference is the whole fix.
+  //
+  // hasUnsavedChanges is a diff against the STORE, and the store is replaced by any
+  // actions:updated push, including the one an autonomous fire causes. Deriving the flag from it
+  // meant the seed effect above cleared it at the exact moment the danger arrived: a live test
+  // caught YES and no four milliseconds apart, with the fire going through in between. The
+  // protection depended on the state that the unprotected event destroys.
+  //
+  // So the flag answers "has the user touched this editor", which a re-seed cannot un-answer. It
+  // resets when the editor moves to another row or closes — the two moments the user is done with
+  // it. Erring long is deliberate: holding an autonomous fire for a few extra seconds costs a
+  // deferral, while releasing it early costs the edits.
+  const [editorTouched, setEditorTouched] = useState(false);
+  useEffect(() => { if (hasUnsavedChanges) setEditorTouched(true); }, [hasUnsavedChanges]);
+  useEffect(() => { setEditorTouched(false); }, [actionIndex]);
+
+  const pendingEdits = actionIndex != null && editorTouched;
   useEffect(() => {
     send({ type: 'editor:pendingEdits', payload: { pending: pendingEdits } });
   }, [pendingEdits, send]);
