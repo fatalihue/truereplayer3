@@ -60,6 +60,12 @@ export interface ThemeUISettings {
   // rather than "sendtext gold" (#d4a020). The token is consumed by the conditional
   // row pill + rail + ghost "+ Add Else" button.
   actionIfColor: string;
+  // Loop (While / EndLoop / Break / Next / ForEachRow), flow leaves (Stop / Return) and
+  // ActivateWindow. displayUtils already reads these with a fallback to If / Pause / RunProfile,
+  // so a config written before they existed keeps exactly the colours it had.
+  actionLoopColor: string;
+  actionFlowColor: string;
+  actionActivateWindowColor: string;
   fontMono: string;
   // When true, auto-switch between darkPresetId / lightPresetId based on the OS
   // prefers-color-scheme media query. ThemeContext listens to changes and updates
@@ -133,6 +139,30 @@ export const DEFAULT_UI_SETTINGS: ThemeUISettings = {
   // v2→v3 migration swaps the old #fbbf24 default for anyone who never
   // customised the colour.
   actionIfColor: '#2dd4bf',
+  // The three tokens below fill molds that displayUtils has consumed with a fallback since
+  // they were introduced (`var(--color-action-loop-fg, var(--color-action-if-fg))` and friends).
+  // They were left unfilled because "a dedicated token would have to be added to all 48 theme
+  // presets" — that premise is no longer true: action hues live in uiSettings, which is GLOBAL,
+  // so filling one costs a default here and a row in the editor, not 37 palette edits.
+  //
+  // Each stays in its family on purpose, because the sharing was a deliberate reading and not an
+  // oversight: a While IS a condition row, Stop/Return IS a quiet leaf, ActivateWindow IS a
+  // window op. So they are separated the way Scroll mint is separated from Replay green — one
+  // step along the same branch, not a new hue slot.
+  //
+  // Picked by measurement, not by eye: each candidate was scored by its smallest CIEDE2000
+  // distance against every other pill AFTER the per-theme ink solve, across two dark and three
+  // light presets. The worst EXISTING pair on that sample is setvariable/waitimage at ΔE 4.6, so
+  // that is the bar a new hue must clear to avoid making the worst case worse.
+  //
+  // Emerald — one step deeper along the If teal. ΔE 7.8 minimum (nearest: Scroll).
+  actionLoopColor: '#059669',
+  // Stone — the Pause neutral shifted warm and darker, so "ending" reads as kin to "waiting"
+  // without being a second cool grey. ΔE 9.0 minimum, the best-separated of the three.
+  actionFlowColor: '#78716c',
+  // Indigo — adjacent to RunProfile's blue, the open slot between it and Mouse's violet.
+  // ΔE 7.5 minimum (nearest: Mouse).
+  actionActivateWindowColor: '#4f46e5',
   fontMono: 'Consolas',
   matchSystemTheme: false,
   darkPresetId: 'lavender-coal',
@@ -1109,7 +1139,7 @@ export const DEFAULT_THEME_ID = 'lavender-coal';
 // loadThemeConfig so a stored id keeps resolving to something familiar instead of
 // snapping to the default. Custom presets can't collide — their ids are
 // 'custom-'-prefixed by makeCustomPresetId.
-const REMOVED_THEME_FALLBACKS: Record<string, string> = {
+export const REMOVED_THEME_FALLBACKS: Record<string, string> = {
   'carbon': 'lavender-coal',
   'sakura': 'rose-pine',
   'copper': 'gruvbox-dark',
@@ -1409,7 +1439,24 @@ export function loadCustomPresets(): CustomThemePreset[] {
     if (!raw) return [];
     const arr = JSON.parse(raw);
     if (!Array.isArray(arr)) return [];
-    return arr.filter(p => p && typeof p.id === 'string' && p.colors);
+    // A stored preset is UNTRUSTED in exactly the way an imported file is, and it feeds the same
+    // two sinks: root.style.cssText, and the editor's swatch grid. The old shape check (`id` is a
+    // string and `colors` is truthy) let both of those crash on a partial record — a missing key
+    // makes toHex(undefined) throw on .startsWith, and a missing `preview` throws on .map, which
+    // in the editor takes the whole app down to the error boundary rather than one dialog.
+    // So: every colour key must be present AND safe, and the preview is rebuilt when unusable.
+    return arr.filter((p: unknown): p is CustomThemePreset => {
+      if (!p || typeof p !== 'object') return false;
+      const c = p as Record<string, unknown>;
+      if (typeof c.id !== 'string' || !c.colors || typeof c.colors !== 'object') return false;
+      const colors = c.colors as Record<string, unknown>;
+      for (const key of THEME_COLOR_KEYS) if (!isSafeCssColor(colors[key])) return false;
+      if (typeof c.name !== 'string' || !c.name) c.name = c.id;
+      if (!Array.isArray(c.preview) || c.preview.length !== 4 || !c.preview.every(isSafeCssColor)) {
+        c.preview = [colors['bg-base'], colors['bg-card'], colors.accent, colors['text-primary']];
+      }
+      return true;
+    });
   } catch {
     return [];
   }
@@ -1501,6 +1548,9 @@ export function loadThemeConfig(): ThemeConfig {
         ui.lightPresetId = REMOVED_THEME_FALLBACKS[ui.lightPresetId] ?? ui.lightPresetId;
       }
 
+      // Runs AFTER the migrations so a value a migration just wrote is checked too.
+      const dropped = sanitizeStoredConfig(merged);
+      if (dropped) console.warn(`[themes] Dropped ${dropped} unsafe colour value(s) from stored config`);
       return merged;
     }
   } catch {
@@ -1661,9 +1711,31 @@ export function applyThemeConfig(colors: ThemeColors, uiSettings: ThemeUISetting
     ['runprofile', uiSettings.actionRunProfileColor],
     ['pause', uiSettings.actionPauseColor],
     ['if', uiSettings.actionIfColor],
+    // Same `??` guard as setvariable above: applyThemeConfig is also called with uiSettings that
+    // did not come through loadThemeConfig's spread (the editor's live preview), so a config
+    // written before these three existed must not emit `undefined` into the declaration.
+    ['loop', uiSettings.actionLoopColor ?? DEFAULT_UI_SETTINGS.actionLoopColor],
+    ['flow', uiSettings.actionFlowColor ?? DEFAULT_UI_SETTINGS.actionFlowColor],
+    ['activatewindow', uiSettings.actionActivateWindowColor ?? DEFAULT_UI_SETTINGS.actionActivateWindowColor],
   ];
   for (const [key, hue] of actionHues) {
-    parts.push(`--color-action-${key}-fg: color-mix(in srgb, ${hue} 72%, ${colors['text-primary']});`);
+    // The ink goes through the SAME per-theme solve as recording/replay/clicker above, and for
+    // the same measured reason. The old recipe was a FIXED `color-mix(hue 72%, text-primary)`,
+    // which is tuned for dark themes: 72 % of a bright pastel stays bright, so on a light
+    // preset the pill's own label washes out against the row. Measured across all 37 presets,
+    // 122 of the 407 pill/theme combinations sat below the 3:1 floor — and every one of the 14
+    // affected themes was one of the 14 LIGHT presets, four of them with all 11 pills failing
+    // (worst 1.50:1). Routing them through deriveHueInk takes that to 0 for 0.47 ms per apply.
+    //
+    // Target is 3, NOT 4.5, and that is the whole judgement call. The pill is a label with an
+    // icon beside it, so it lives under the graphic floor like the three semantic hues, not the
+    // body-text floor. 4.5 was measured too: it clears more contrast but drops light-theme chroma
+    // to 51 % and collapses two hues onto the SAME colour in three light presets — the exact
+    // failure that got the `-text` rung rejected in 2026-08-19. At 3 the chroma retained is 74 %.
+    //
+    // maxTint 0.12 matches the -bg wash emitted right below; if that percentage ever moves, this
+    // has to move with it or the solve goes silently stale.
+    parts.push(`--color-action-${key}-fg: ${deriveHueInk(hue, colors['text-primary'], SURFACES, 3, 0.12, 72)};`);
     // bg stays TRANSLUCENT (mixed over transparent, not bg-surface): pills must
     // composite over row hover/selection/highlight/block washes and the drag
     // ghost — an opaque fill punches a hole through all of them. The light-theme
@@ -1707,6 +1779,82 @@ export function applyThemeConfig(colors: ThemeColors, uiSettings: ThemeUISetting
   root.setAttribute('data-animations', uiSettings.enableAnimations ? 'true' : 'false');
 }
 
+/**
+ * What a colour field will ACTUALLY measure once painted — the number the Theme Editor shows.
+ *
+ * It lives here, next to applyThemeConfig, on purpose. The old checker compared four raw text
+ * colours against bg-surface and nothing else, which made it wrong in three separate ways: it
+ * never looked at accent-solid (whose ink is contrast-PICKED, so the raw accent tells you
+ * nothing), it never looked at the fourteen hue fields (whose ink is DERIVED, so the stored value
+ * is an identity and not the paint), and it used one surface where the token lands on four. A
+ * checker that measures a different thing from what the renderer paints is worse than none: it
+ * reports green while the pill is at 1.5:1. Keeping the two recipes in one file is what stops
+ * them drifting apart again.
+ *
+ * Returns null for fields that have no ink of their own (a surface, a disabled text colour that
+ * WCAG exempts by design) rather than inventing a number for them.
+ */
+export function measurePaintedContrast(
+  kind: 'theme' | 'ui',
+  key: string,
+  colors: ThemeColors,
+  ui: ThemeUISettings,
+): { ratio: number; target: number; what: string } | null {
+  const surfaces = [colors['bg-surface'], colors['bg-card'], colors['bg-elevated'], colors['bg-base']];
+  const text = colors['text-primary'];
+  const worstAgainst = (ink: string, backdrops: string[]) =>
+    backdrops.reduce((w, b) => Math.min(w, contrastRatio(ink, b)), Infinity);
+
+  if (kind === 'theme') {
+    // A background has no ink of its own — the text fields already measure against it.
+    if (key.startsWith('bg-')) return null;
+    // WCAG explicitly exempts disabled controls, so a chip here would be noise the user
+    // cannot act on: making text-disabled pass 4.5 would stop it reading as disabled.
+    if (key === 'text-disabled') return null;
+    if (key.startsWith('text-')) {
+      return { ratio: worstAgainst(colors[key as keyof ThemeColors], [...surfaces, colors['bg-input']]), target: 4.5, what: 'worst surface' };
+    }
+    if (key.startsWith('border-')) {
+      // WCAG 1.4.11 — a boundary that carries meaning needs 3:1, not 4.5.
+      return { ratio: worstAgainst(colors[key as keyof ThemeColors], [colors['bg-surface'], colors['bg-card'], colors['bg-input']]), target: 3, what: 'UI boundary' };
+    }
+    if (key === 'accent-solid') {
+      // The solid button: the label is pickInk's choice, not white, so measure THAT pairing.
+      return { ratio: contrastRatio(pickInk(colors['accent-solid']), colors['accent-solid']), target: 4.5, what: 'label on solid fill' };
+    }
+    if (key === 'accent' || key === 'accent-hover') {
+      return { ratio: worstAgainst(colors[key as keyof ThemeColors], surfaces), target: 4.5, what: 'accent as text' };
+    }
+    return null;
+  }
+
+  // The fourteen hue fields. Each is painted as DERIVED ink over its own translucent wash, so
+  // both sides of the comparison have to be reconstructed exactly as applyThemeConfig emits them.
+  // Target 3 matches the floor those inks are solved for: they are glyphs and labels beside an
+  // icon, not body text — see the deriveHueInk call sites.
+  const HUE_FIELDS: Record<string, number> = {
+    recordingColor: 0.10, replayColor: 0.10, clickerColor: 0.12,
+    actionMouseColor: 0.12, actionKeyColor: 0.12, actionScrollColor: 0.12,
+    actionSendTextColor: 0.12, actionSetVariableColor: 0.12, actionWaitImageColor: 0.12,
+    actionPixelColorColor: 0.12, actionBrowserColor: 0.12, actionRunProfileColor: 0.12,
+    actionPauseColor: 0.12, actionIfColor: 0.12, actionLoopColor: 0.12,
+    actionFlowColor: 0.12, actionActivateWindowColor: 0.12,
+  };
+  const tint = HUE_FIELDS[key];
+  if (tint === undefined) return null;
+  const hue = (ui as unknown as Record<string, string>)[key];
+  if (!isParsableColor(hue) || !isParsableColor(text)) return null;
+  const ink = deriveHueInk(hue, text, surfaces, 3, tint, 72);
+  // The solve fell back to a color-mix string (unparsable surfaces): nothing numeric to report.
+  if (!ink.startsWith('#')) return null;
+  const h = hexToRGB(toHex(hue));
+  const composited = surfaces.filter(isParsableColor).map(s => {
+    const b = hexToRGB(toHex(s));
+    return rgbToHex(h.r * tint + b.r * (1 - tint), h.g * tint + b.g * (1 - tint), h.b * tint + b.b * (1 - tint));
+  });
+  return { ratio: worstAgainst(ink, composited), target: 3, what: 'derived ink on its own wash' };
+}
+
 // ── Import/Export ──
 
 // Accepts only strings safe to interpolate into a CSS value: hex / rgb()/rgba() / hsl()/hsla()
@@ -1720,6 +1868,44 @@ function isSafeCssColor(v: unknown): boolean {
 // quote / `;` / `{}` can't escape the rule.
 function isSafeFontFamily(v: unknown): boolean {
   return typeof v === 'string' && v.length > 0 && v.length <= 64 && /^[a-zA-Z0-9 _-]+$/.test(v);
+}
+
+/** Every uiSettings field that is interpolated into a CSS declaration as a colour. Shared by the
+ *  file-import validator and the storage sanitiser so a field added to one is never missed by the
+ *  other — the split between them is exactly how the storage path ended up unguarded. */
+const UI_COLOR_FIELDS = [
+  'recordingColor', 'replayColor', 'clickerColor', 'actionMouseColor', 'actionKeyColor',
+  'actionScrollColor', 'actionSendTextColor', 'actionWaitImageColor', 'actionPixelColorColor',
+  'actionBrowserColor', 'actionRunProfileColor', 'actionPauseColor', 'actionIfColor',
+  'actionSetVariableColor', 'actionLoopColor', 'actionFlowColor', 'actionActivateWindowColor',
+] as const;
+
+/**
+ * Strip anything from a STORED config that is not safe to interpolate into a CSS declaration.
+ *
+ * The file-import path has been validated since isSafeCssColor was written, but localStorage was
+ * not — and it is the same sink: colorOverrides and the uiSettings hues flow verbatim into
+ * `root.style.cssText`. Anything that reaches storage without passing through today's import
+ * (hand-edited storage, a preset saved before the validator existed, a future writer that forgets)
+ * lands in that sink unchecked, which is the CSS-injection vector isSafeCssColor exists to close.
+ *
+ * Dropping the offending key rather than the whole config is deliberate: a single bad override
+ * should cost that one colour, which then falls through to the base preset, not the user's whole
+ * theme. Returns the count so the caller can say something rather than fail silently.
+ */
+function sanitizeStoredConfig(config: ThemeConfig): number {
+  let dropped = 0;
+  if (config.colorOverrides && typeof config.colorOverrides === 'object') {
+    for (const key of Object.keys(config.colorOverrides) as (keyof ThemeColors)[]) {
+      if (!isSafeCssColor(config.colorOverrides[key])) { delete config.colorOverrides[key]; dropped++; }
+    }
+  }
+  const ui = config.uiSettings as unknown as Record<string, unknown>;
+  for (const f of UI_COLOR_FIELDS) {
+    if (ui[f] !== undefined && !isSafeCssColor(ui[f])) { ui[f] = DEFAULT_UI_SETTINGS[f]; dropped++; }
+  }
+  if (ui.fontMono !== undefined && !isSafeFontFamily(ui.fontMono)) { ui.fontMono = DEFAULT_UI_SETTINGS.fontMono; dropped++; }
+  return dropped;
 }
 
 export function validateExportedTheme(data: unknown): data is ExportedTheme {
@@ -1743,12 +1929,6 @@ export function validateExportedTheme(data: unknown): data is ExportedTheme {
   if (ui.zoom !== undefined && !(typeof ui.zoom === 'number' && ui.zoom >= 25 && ui.zoom <= 500)) return false;
   // uiSettings color fields are interpolated into cssText (incl. color-mix) — when present they
   // must be safe colors. Missing fields are tolerated (merged over DEFAULT_UI_SETTINGS on import).
-  const UI_COLOR_FIELDS = [
-    'recordingColor', 'replayColor', 'clickerColor', 'actionMouseColor', 'actionKeyColor',
-    'actionScrollColor', 'actionSendTextColor', 'actionWaitImageColor', 'actionPixelColorColor',
-    'actionBrowserColor', 'actionRunProfileColor', 'actionPauseColor', 'actionIfColor',
-    'actionSetVariableColor',
-  ];
   for (const f of UI_COLOR_FIELDS) {
     if (ui[f] !== undefined && !isSafeCssColor(ui[f])) return false;
   }

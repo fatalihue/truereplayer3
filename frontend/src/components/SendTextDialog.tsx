@@ -1011,7 +1011,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
               <button
                 type="button"
                 onClick={() => { surface.remove(); closeSurface(); }}
-                className="flex items-center gap-1 h-7 px-2 text-[11px] rounded text-red-300 hover:bg-red-500/15 border border-transparent hover:border-red-500/30 transition-colors"
+                className="flex items-center gap-1 h-7 px-2 text-[11px] rounded text-[color:var(--color-recording-fg)] hover:bg-[color-mix(in_srgb,var(--color-recording)_15%,transparent)] border border-transparent hover:border-[color-mix(in_srgb,var(--color-recording)_30%,transparent)] transition-colors"
               >
                 <Trash2 size={12} />
                 Delete token
@@ -1360,7 +1360,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                         <div
                           key={s.id}
                           className={`flex items-center gap-1 px-3 py-2 transition-colors group border-b border-border-subtle last:border-b-0 ${
-                            deletingSnippetId === s.id ? 'bg-red-500/10' : 'hover:bg-bg-card'
+                            deletingSnippetId === s.id ? 'bg-[color-mix(in_srgb,var(--color-recording)_10%,transparent)]' : 'hover:bg-bg-card'
                           }`}
                         >
                           <button
@@ -1383,11 +1383,11 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                               since autoFocus only acts on mount. */}
                           {deletingSnippetId === s.id ? (
                             <React.Fragment key="confirm">
-                              <span className="text-[10px] text-red-300 mr-1 shrink-0">Delete?</span>
+                              <span className="text-[10px] text-[color:var(--color-recording-fg)] mr-1 shrink-0">Delete?</span>
                               <button
                                 type="button"
                                 onClick={() => handleDeleteSnippet(s.id)}
-                                className="shrink-0 p-1 rounded text-red-300 bg-red-500/20 hover:bg-red-500/35 border border-red-500/40 transition-colors"
+                                className="shrink-0 p-1 rounded text-[color:var(--color-recording-fg)] bg-[color-mix(in_srgb,var(--color-recording)_20%,transparent)] hover:bg-[color-mix(in_srgb,var(--color-recording)_35%,transparent)] border border-[color-mix(in_srgb,var(--color-recording)_40%,transparent)] transition-colors"
                                 autoFocus
                               >
                                 <Check size={12} />
@@ -1412,7 +1412,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                               <button
                                 type="button"
                                 onClick={() => setDeletingSnippetId(s.id)}
-                                className="shrink-0 p-1 text-text-disabled hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                                className="shrink-0 p-1 text-text-disabled hover:text-[color:var(--color-recording-fg)] transition-colors opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
                               >
                                 <Trash2 size={12} />
                               </button>

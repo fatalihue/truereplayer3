@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   Check, RotateCcw, Download, Upload, Clipboard, ClipboardPaste, Pipette,
   ChevronDown, ChevronRight, ChevronLeft, Dices, SlidersHorizontal, FileJson2,
-  Palette, Wand2, TriangleAlert,
+  Palette, Wand2, TriangleAlert, Undo2,
 } from 'lucide-react';
 import { NumberInput } from './common/NumberInput';
 import { Toggle } from './common/Toggle';
@@ -18,9 +18,11 @@ import {
   getThemeTags,
   hexToHSL,
   hslToHex,
-  contrastRatio,
+  measurePaintedContrast,
+  pickInk,
+  DEFAULT_THEME_ID,
 } from '../themes';
-import type { ThemeColors, ExportedTheme, ThemeTag, CustomThemePreset, ThemeUISettings } from '../themes';
+import type { ThemeColors, ExportedTheme, ThemeTag, CustomThemePreset, ThemeUISettings, ThemeConfig } from '../themes';
 import { useTheme } from '../state/ThemeContext';
 import { useTt, useLanguage, DEFAULT_LANGUAGE } from '../state/LanguageContext';
 
@@ -88,6 +90,9 @@ const COLOR_SECTIONS: ColorSection[] = [
     { key: 'actionRunProfileColor', label: 'Run Profile', kind: 'ui' },
     { key: 'actionPauseColor', label: 'Pause', kind: 'ui' },
     { key: 'actionIfColor', label: 'Conditional', kind: 'ui' },
+    { key: 'actionLoopColor', label: 'Loop', kind: 'ui' },
+    { key: 'actionFlowColor', label: 'Stop / Return', kind: 'ui' },
+    { key: 'actionActivateWindowColor', label: 'Activate Window', kind: 'ui' },
   ] },
 ];
 
@@ -115,12 +120,13 @@ const HAS_EYEDROPPER = typeof (window as unknown as { EyeDropper?: unknown }).Ey
 // ── Unified color row ──
 // One row for all 29 colours. The parent supplies the resolved value, whether it's
 // overridden, and change/reset callbacks — the row stays agnostic about theme vs ui.
-function ColorRow({ label, value, overridden, wcagBg, hslOpen, onChange, onReset, onToggleHsl, onHover }: {
+function ColorRow({ label, value, overridden, check, hslOpen, onChange, onReset, onToggleHsl, onHover }: {
   label: string;
   value: string;
   overridden: boolean;
-  /** When set, show a WCAG contrast chip comparing this colour against the bg. */
-  wcagBg?: string;
+  /** Measured by measurePaintedContrast — the ratio this colour reaches once PAINTED, which for
+   *  a hue field is its derived ink over its own wash, not the stored value on a flat surface. */
+  check?: { ratio: number; target: number; what: string } | null;
   hslOpen: boolean;
   onChange: (hex: string) => void;   // raw #rrggbb; parent applies alpha/plain + tracks recent
   onReset: () => void;
@@ -129,7 +135,7 @@ function ColorRow({ label, value, overridden, wcagBg, hslOpen, onChange, onReset
 }) {
   const tt = useTt();
   const hexValue = toHex(value);
-  const ratio = wcagBg ? contrastRatio(hexValue, wcagBg) : null;
+  const ratio = check ? check.ratio : null;
 
   return (
     <div
@@ -187,12 +193,17 @@ function ColorRow({ label, value, overridden, wcagBg, hslOpen, onChange, onReset
           )}
         </span>
 
-        {ratio !== null && (() => {
-          // Quiet-when-passing: ≥4.5 renders a bare ratio; below AA shows a tinted
-          // warning chip so failures are the only thing that draws the eye.
-          const passing = ratio >= 4.5;
-          const bad = ratio < 3;
-          const tip = tt(`Contrast ${ratio.toFixed(1)}:1 — WCAG AA wants 4.5+ for body text`, `Contraste ${ratio.toFixed(1)}:1 — WCAG AA exige 4.5+ para texto de corpo`);
+        {ratio !== null && check && (() => {
+          // Quiet-when-passing: at or above the field's own floor this renders a bare number;
+          // below it, a tinted chip, so failures are the only thing that draws the eye.
+          // The floor is per-field now — 4.5 for text and for a solid button's label, 3 for a UI
+          // boundary and for the hue inks, which are glyphs beside an icon rather than body text.
+          const passing = ratio >= check.target;
+          const bad = ratio < check.target * 0.67;
+          const tip = tt(
+            `${check.what}: ${ratio.toFixed(1)}:1 — wants ${check.target}+`,
+            `${check.what}: ${ratio.toFixed(1)}:1 — precisa de ${check.target}+`,
+          );
           if (passing) {
             return <span className="ml-auto font-mono text-[10px] text-text-tertiary" data-tip={tip}>{ratio.toFixed(1)}</span>;
           }
@@ -200,7 +211,10 @@ function ColorRow({ label, value, overridden, wcagBg, hslOpen, onChange, onReset
             <span
               className="ml-auto inline-flex items-center gap-1 px-1.5 rounded font-mono text-[10px]"
               style={{
-                color: bad ? 'var(--color-recording)' : 'var(--color-warning-ink)',
+                // -fg, not the raw hue: this chip is TEXT, and the raw recording red is solved
+                // for fills. On a light preset the raw hue put the contrast warning itself below
+                // the contrast it was warning about.
+                color: bad ? 'var(--color-recording-fg)' : 'var(--color-warning-ink)',
                 background: `color-mix(in srgb, ${bad ? 'var(--color-recording)' : 'var(--color-warning)'} 8%, transparent)`,
               }}
               data-tip={tip}
@@ -298,7 +312,7 @@ const DENSITY_PRESETS = [
 export function ThemeEditor({ onClose }: ThemeEditorProps) {
   const tt = useTt();
   const {
-    config, resolvedColors, customPresets, selectPreset,
+    config, resolvedColors, customPresets, selectPreset, replaceConfig,
     setColorOverride, clearColorOverride, clearAllOverrides,
     setAccentColor, setUISetting, resetUISettings,
     exportTheme, importTheme,
@@ -330,8 +344,36 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   const saveInputRef = useRef<HTMLInputElement>(null);
   const resetMenuRef = useRef<HTMLDivElement>(null);
 
+  // Snapshot of the theme as the editor found it. This dialog is a LIVE preview — every change is
+  // written to the document and persisted within 200 ms — so there was no way back from an hour of
+  // edits: Done, Esc, the X and the backdrop all did the same thing, and none of them was a
+  // cancel. The snapshot is the cheapest honest undo: one deep-enough copy on open, restored on
+  // demand. Deliberately NOT wired to Esc or the backdrop, which would make the usual ways of
+  // closing destructive; Revert is an explicit button that only appears once something differs.
+  const openSnapshot = useRef<ThemeConfig | null>(null);
+  if (openSnapshot.current === null) {
+    openSnapshot.current = {
+      ...config,
+      colorOverrides: { ...config.colorOverrides },
+      uiSettings: { ...config.uiSettings },
+    };
+  }
+  const snap = openSnapshot.current;
+  const dirtySinceOpen = snap.baseThemeId !== config.baseThemeId
+    || JSON.stringify(snap.colorOverrides) !== JSON.stringify(config.colorOverrides)
+    || JSON.stringify(snap.uiSettings) !== JSON.stringify(config.uiSettings);
+  const revertToOpenState = useCallback(() => { replaceConfig(openSnapshot.current!); }, [replaceConfig]);
+
   const hasOverrides = Object.keys(config.colorOverrides).length > 0;
-  const basePreset = themes.find(t => t.id === config.baseThemeId) ?? themes[0];
+  // Same lookup order as resolveThemeColors, and for the same reason: a custom preset is not in
+  // `themes`, so searching only there fell through to themes[0] — which is Gruvbox Dark, because
+  // the array is hue-sorted and slot 0 is an arbitrary palette rather than a neutral one. Every
+  // user with a saved preset was told their base was "Gruvbox Dark", and, worse, the per-field
+  // "modified" dots and per-field reset compared against Gruvbox's colours instead of their own.
+  const basePreset = customPresets.find(t => t.id === config.baseThemeId)
+    ?? themes.find(t => t.id === config.baseThemeId)
+    ?? themes.find(t => t.id === DEFAULT_THEME_ID)
+    ?? themes[0];
   const currentAccentHex = toHex(resolvedColors.accent);
 
   // Field-wise compare (cheaper than JSON.stringify per render) for the reset-everything gate.
@@ -564,6 +606,11 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
           <SlidersHorizontal size={13} /> Customize
         </Button>
       )}
+      {dirtySinceOpen && (
+        <Button variant="secondary" onClick={revertToOpenState} data-tip={tt('Put back the theme as it was when you opened the editor', 'Devolve o tema como estava quando você abriu o editor')}>
+          <Undo2 size={13} /> {tt('Revert', 'Desfazer tudo')}
+        </Button>
+      )}
       <Button variant="primary" onClick={onClose}>Done</Button>
     </>
   );
@@ -655,7 +702,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
           {isActive && (
             <button
               onClick={() => setSurface('customize')}
-              className="absolute bottom-9 right-1 w-4 h-4 rounded bg-black/45 text-white opacity-0 group-hover/card:opacity-100 transition-opacity flex items-center justify-center"
+              className="absolute bottom-9 right-1 w-4 h-4 rounded bg-[color-mix(in_srgb,var(--color-bg-base)_70%,transparent)] text-[color:var(--color-text-primary)] opacity-0 group-hover/card:opacity-100 transition-opacity flex items-center justify-center"
               data-tip={tt('Customize this theme', 'Personalizar este tema')}
             >
               <SlidersHorizontal size={10} />
@@ -819,7 +866,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
                         label={f.label}
                         value={fieldValue(f)}
                         overridden={fieldOverridden(f)}
-                        wcagBg={section.wcag ? resolvedColors['bg-surface'] : undefined}
+                        check={measurePaintedContrast(f.kind, f.key, resolvedColors, config.uiSettings)}
                         hslOpen={openHslKey === f.key}
                         onChange={(hex) => applyColor(f, hex)}
                         onReset={() => resetColor(f)}
@@ -852,7 +899,10 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
                   style={{ backgroundColor: c }}
                   data-tip={openField ? tt(`Apply ${c} to ${openField.label}`, `Aplicar ${c} em ${openField.label}`) : copiedRecent === i ? tt(`${c} — copied!`, `${c} — copiado!`) : tt(`${c} — click to copy`, `${c} — clique para copiar`)}
                 >
-                  {copiedRecent === i && <Check size={9} className="text-white drop-shadow-[0_0_1px_rgba(0,0,0,0.8)]" />}
+                  {/* The swatch colour is known here, so the tick can be CHOSEN rather than
+                      painted white and rescued with a drop shadow — pickInk is the same call
+                      that decides the ink on every solid fill in the app. */}
+                  {copiedRecent === i && <Check size={9} style={{ color: pickInk(toHex(c)) }} />}
                 </button>
               ))}
             </div>
@@ -1028,7 +1078,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
           </div>
           {/* Toolbar */}
           <div className="flex items-center gap-1.5 px-2 h-8 bg-bg-surface border-b border-border-subtle shrink-0" style={ckHover('bg-surface')} {...ckEvents('bg-surface')}>
-            <button className="px-2 py-0.5 text-white bg-accent-solid" style={{ fontSize: fsMeta, borderRadius: 'var(--ui-border-radius)', ...ckHover('accent-solid') }} {...ckEvents('accent-solid')}>Save</button>
+            <button className="px-2 py-0.5 text-[color:var(--color-accent-ink)] bg-accent-solid" style={{ fontSize: fsMeta, borderRadius: 'var(--ui-border-radius)', ...ckHover('accent-solid') }} {...ckEvents('accent-solid')}>Save</button>
             <button className="px-2 py-0.5 text-text-secondary bg-bg-elevated border border-border-default" style={{ fontSize: fsMeta, borderRadius: 'var(--ui-border-radius)' }}>Load</button>
           </div>
           {/* Grid header — columns widened to fit real-size type; the old 14/54/30px track set
@@ -1077,7 +1127,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
             </div>
             <span className="flex-1" />
             <div className="px-1.5 flex items-center font-mono text-text-primary bg-bg-input border border-accent-solid shrink-0" style={{ fontSize: fsMeta, height: 'calc(var(--ui-row-height) * 0.8)', borderRadius: 'var(--ui-border-radius)' }}>1742, 388</div>
-            <button className="px-2 py-0.5 text-white bg-accent-solid shrink-0" style={{ fontSize: fsMeta, borderRadius: 'var(--ui-border-radius)' }}>OK</button>
+            <button className="px-2 py-0.5 text-[color:var(--color-accent-ink)] bg-accent-solid shrink-0" style={{ fontSize: fsMeta, borderRadius: 'var(--ui-border-radius)' }}>OK</button>
           </div>
           {/* Action bar */}
           <div className="flex items-center gap-1.5 px-2 h-9 bg-bg-surface border-t border-border-subtle shrink-0">

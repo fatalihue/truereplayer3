@@ -2023,7 +2023,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               <span className="text-[11px] text-text-tertiary leading-snug">Record a macro and save it, or create an empty profile to start.</span>
               <button
                 onClick={() => handleCreate(null)}
-                className="mt-1 px-3 py-1 rounded text-[11px] text-white bg-accent-solid hover:bg-accent-solid/85 transition-colors"
+                className="mt-1 px-3 py-1 rounded text-[11px] text-[color:var(--color-accent-ink)] bg-accent-solid hover:bg-accent-solid/85 transition-colors"
               >
                 + New profile
               </button>
@@ -2714,7 +2714,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               <button
                 onClick={confirmCreate}
                 disabled={!dialogValue.trim() || createProfileNameTaken}
-                className="px-4 py-1.5 text-xs text-white bg-accent-solid hover:bg-accent-solid/80 rounded transition-colors disabled:opacity-40"
+                className="px-4 py-1.5 text-xs text-[color:var(--color-accent-ink)] bg-accent-solid hover:bg-accent-solid/80 rounded transition-colors disabled:opacity-40"
               >
                 Create
               </button>
@@ -2748,7 +2748,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               <button
                 onClick={confirmRename}
                 disabled={!dialogValue.trim() || renameProfileNameTaken}
-                className="px-4 py-1.5 text-xs text-white bg-accent-solid hover:bg-accent-solid/80 rounded transition-colors disabled:opacity-40"
+                className="px-4 py-1.5 text-xs text-[color:var(--color-accent-ink)] bg-accent-solid hover:bg-accent-solid/80 rounded transition-colors disabled:opacity-40"
               >
                 Rename
               </button>
@@ -2775,7 +2775,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               <button
                 autoFocus
                 onClick={confirmDelete}
-                className="px-4 py-1.5 text-xs text-white bg-recording hover:bg-recording/80 rounded transition-colors"
+                className="px-4 py-1.5 text-xs text-[color:var(--color-recording-ink)] bg-recording hover:bg-recording/80 rounded transition-colors"
               >
                 Delete
               </button>
@@ -2804,7 +2804,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               <button
                 autoFocus
                 onClick={runConfirmedRemoval}
-                className="px-4 py-1.5 text-xs text-white bg-recording hover:bg-recording/80 rounded transition-colors"
+                className="px-4 py-1.5 text-xs text-[color:var(--color-recording-ink)] bg-recording hover:bg-recording/80 rounded transition-colors"
               >
                 Yes, remove
               </button>
@@ -2893,7 +2893,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                 <button
                   onClick={confirmHotkey}
                   disabled={hotkeyCapture === '...'}
-                  className="px-4 py-1.5 text-xs text-white bg-accent-solid hover:bg-accent-solid/80 rounded transition-colors disabled:opacity-40"
+                  className="px-4 py-1.5 text-xs text-[color:var(--color-accent-ink)] bg-accent-solid hover:bg-accent-solid/80 rounded transition-colors disabled:opacity-40"
                 >
                   Assign
                 </button>
@@ -3294,7 +3294,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               <button
                 onClick={confirmCreateFolder}
                 disabled={!folderDialogName.trim() || createFolderNameTaken}
-                className="px-4 py-1.5 text-xs text-white bg-accent-solid hover:bg-accent-solid/80 rounded transition-colors disabled:opacity-40"
+                className="px-4 py-1.5 text-xs text-[color:var(--color-accent-ink)] bg-accent-solid hover:bg-accent-solid/80 rounded transition-colors disabled:opacity-40"
               >
                 Create
               </button>
@@ -3331,7 +3331,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               <button
                 onClick={confirmRenameFolder}
                 disabled={!folderDialogName.trim() || renameFolderNameTaken}
-                className="px-4 py-1.5 text-xs text-white bg-accent-solid hover:bg-accent-solid/80 rounded transition-colors disabled:opacity-40"
+                className="px-4 py-1.5 text-xs text-[color:var(--color-accent-ink)] bg-accent-solid hover:bg-accent-solid/80 rounded transition-colors disabled:opacity-40"
               >
                 Rename
               </button>

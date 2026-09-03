@@ -103,7 +103,7 @@ export function RadioRow({
             checked ? 'bg-accent-solid border-accent-solid' : 'bg-bg-input border-border-default'
           }`}
         >
-          {checked && <span className="w-[5px] h-[5px] rounded-full bg-white" />}
+          {checked && <span className="w-[5px] h-[5px] rounded-full bg-[color:var(--color-accent-ink)]" />}
         </span>
         <span className="flex-1">{label}</span>
       </button>

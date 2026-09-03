@@ -315,7 +315,7 @@ function Footer({
       <button
         type="button"
         onClick={onDelete}
-        className="flex items-center gap-1 h-7 px-2 text-[11px] rounded text-red-300 hover:bg-red-500/15 border border-transparent hover:border-red-500/30 transition-colors"
+        className="flex items-center gap-1 h-7 px-2 text-[11px] rounded text-[color:var(--color-recording-fg)] hover:bg-[color-mix(in_srgb,var(--color-recording)_15%,transparent)] border border-transparent hover:border-[color-mix(in_srgb,var(--color-recording)_30%,transparent)] transition-colors"
       >
         <Trash2 size={12} />
         Delete

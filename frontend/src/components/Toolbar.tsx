@@ -514,7 +514,7 @@ export function Toolbar(_props: ToolbarProps) {
                         ? 'bg-accent-solid border-accent-solid'
                         : 'border-border-default'
                     }`}>
-                      {columnVisibility[col.key] && <Check size={10} className="text-white" />}
+                      {columnVisibility[col.key] && <Check size={10} className="text-[color:var(--color-accent-ink)]" />}
                     </div>
                     {col.label}
                   </button>

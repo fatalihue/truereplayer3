@@ -247,7 +247,10 @@ function HeaderMenu({
       <div className="h-px bg-border-subtle my-1" />
       <button
         type="button"
-        className={`${itemCls} ${armedDelete ? 'text-red-300 hover:text-red-200' : ''}`}
+        // Armed state used text-red-300 with a one-step lighten on hover. There is no "lighter
+        // recording" token, and inventing one for a single row is worse than dropping the step:
+        // the armed colour already carries the state, and the row keeps its background hover.
+        className={`${itemCls} ${armedDelete ? 'text-[color:var(--color-recording-fg)]' : ''}`}
         onClick={() => {
           if (!armedDelete) { setArmedDelete(true); return; }
           onAction('delete');
@@ -361,7 +364,7 @@ const GridRow = memo(function GridRow({
             <button
               type="button"
               onClick={() => onDelete(r)}
-              className="w-6 h-6 flex items-center justify-center rounded bg-bg-elevated border border-border-subtle text-text-tertiary hover:text-red-400 transition-colors"
+              className="w-6 h-6 flex items-center justify-center rounded bg-bg-elevated border border-border-subtle text-text-tertiary hover:text-[color:var(--color-recording-fg)] transition-colors"
               data-tip="Delete row"
             >
               <Trash2 size={11} />
@@ -1371,7 +1374,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
               }}
               disabled={emptyGrid}
               className={`flex items-center gap-2 px-3 h-7 text-[11px] transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-                armedClear ? 'text-red-300 hover:bg-red-500/15' : 'text-text-secondary hover:text-text-primary hover:bg-bg-card'
+                armedClear ? 'text-[color:var(--color-recording-fg)] hover:bg-[color-mix(in_srgb,var(--color-recording)_15%,transparent)]' : 'text-text-secondary hover:text-text-primary hover:bg-bg-card'
               }`}
             >
               <Trash2 size={12} className="shrink-0" />

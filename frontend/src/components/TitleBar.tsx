@@ -28,7 +28,7 @@ export function TitleBar({ onOpenCommandPalette }: TitleBarProps) {
       {/* Logo */}
       <div className="no-drag flex items-center gap-2.5">
         <div className="w-[18px] h-[18px] rounded bg-accent-solid flex items-center justify-center">
-          <span className="text-[10px] font-bold text-white">T</span>
+          <span className="text-[10px] font-bold text-[color:var(--color-accent-ink)]">T</span>
         </div>
         <span className="text-xs text-text-secondary">TrueReplayer</span>
       </div>
