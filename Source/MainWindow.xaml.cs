@@ -730,8 +730,13 @@ namespace TrueReplayer
                 // profiles that no longer exist, so a deleted profile can't rot in the sidecar
                 // (or hand its old position to a NEW profile that reuses the name). No-ops on an
                 // empty list, so a failed profile load never wipes the user's positions.
-                RunCursorService.PruneMissingProfiles(
-                    profileController.ProfileEntries.Select(p => p.Name).ToList());
+                // AllKnownProfileNames, not ProfileEntries: a profile whose JSON failed to parse
+                // never enters that collection, so the prune read "failed to read" as "deleted"
+                // and — since it writes through immediately — permanently discarded that profile's
+                // saved row position for a file still sitting on disk and usually readable on the
+                // next pass. Identical to the defect fixed for the automation sidecar; the shared
+                // property exists so the two prunes cannot drift again.
+                RunCursorService.PruneMissingProfiles(profileController.AllKnownProfileNames);
 
                 // The one item that genuinely needs BOTH halves, which is why it did not travel
                 // up with the profile it describes: ResolveTooltip reads
@@ -926,7 +931,7 @@ namespace TrueReplayer
                         // still has the window (and the unsaved actions) in front of them.
                         try
                         {
-                            var profile = bridge.CreateProfileFromState();
+                            var profile = bridge.CreateProfileForSave();
                             profile.CustomHotkey = UserProfile.Current.CustomHotkey;
                             await SettingsManager.SaveProfileAsync(bridge.CurrentProfilePath, profile);
                             canClose = true;
