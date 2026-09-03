@@ -620,11 +620,23 @@ namespace TrueReplayer.Controllers
         /// then clears the list. Called once by the bridge after profiles:updated is pushed
         /// so the alert fires exactly once per failed load.
         /// </summary>
+        /// True once the current <see cref="_loadFailures"/> have been shown to the user. Replaces
+        /// the old "clear the list to mark it consumed", which conflated two different questions:
+        /// "have we told the user?" and "which profiles are unreadable right now?".
+        ///
+        /// The list is the answer to the SECOND one, and <see cref="AllKnownProfileNames"/> depends
+        /// on it to keep the automation prune from reading "failed to parse" as "deleted". Draining
+        /// it for the toast therefore reopened, a few lines later, the exact data loss the prune fix
+        /// closed: from the boot toast until the next full list reload, any resync passed a list
+        /// missing the unreadable profile and its fire history was pruned off disk. Arming an
+        /// automation right after seeing "1 profile(s) couldn't load" lands inside that window.
+        private bool _failuresReported;
+
         public IReadOnlyList<string> GetAndClearLoadFailures()
         {
-            var copy = _loadFailures.ToList();
-            _loadFailures.Clear();
-            return copy;
+            if (_failuresReported) return Array.Empty<string>();
+            _failuresReported = true;
+            return _loadFailures.ToList();
         }
 
         /// <summary>
@@ -755,6 +767,9 @@ namespace TrueReplayer.Controllers
             _referencedImagesByProfile = loadedImages;
             _loadFailures.Clear();
             _loadFailures.AddRange(loadedFailures);
+            // A fresh scan is fresh news: whatever failed now has not been reported yet, and
+            // whatever no longer fails must stop counting as known-but-unreadable.
+            _failuresReported = false;
 
             await LoadProfileOrderAsync();
             PopulateEffectiveTargets();
