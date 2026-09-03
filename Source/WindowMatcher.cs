@@ -137,10 +137,19 @@ namespace TrueReplayer.Helpers
                     NativeMethods.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
                 if (hProcess == IntPtr.Zero)
                 {
-                    // Most common silent cause of "hotkey/replay doesn't fire": the target is
-                    // elevated and TrueReplayer isn't, so OpenProcess fails with ACCESS_DENIED (5).
-                    // Log the Win32 error so it's diagnosable from the session log instead of being
-                    // indistinguishable from "window not in foreground".
+                    // Log the Win32 error so a failure here is diagnosable from the session log
+                    // instead of being indistinguishable from "window not in foreground".
+                    //
+                    // This used to blame elevation, and that was measured wrong: with
+                    // PROCESS_QUERY_LIMITED_INFORMATION (0x1000) an ELEVATED window of the same
+                    // user opens fine — a sweep of 246 top-level windows, 24 of them visible,
+                    // produced zero failures. (0x0400 and 0x0010 are the rights that get denied.)
+                    // The processes that do refuse are SYSTEM and service processes, which own no
+                    // window this matcher would ever be asked about.
+                    //
+                    // The symptom that comment was reaching for is real but has a different cause:
+                    // UIPI blocks SendInput INTO an elevated window, which is what the RunAsAdmin
+                    // toggle exists for. Matching is not where that fails.
                     int err = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
                     TrueReplayer.Services.DiagnosticLog.Warn(
                         $"WindowMatcher: OpenProcess failed for '{target.ProcessName}' (pid {pid}), Win32 error {err}");

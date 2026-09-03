@@ -122,7 +122,6 @@ namespace TrueReplayer.Services
         public sealed class AutomationStatusEntry
         {
             public string Profile = "";
-            public ProfileTriggerConfig Config = null!;
             public bool Running;                          // loop currently armed + alive
             public bool ConditionTrue;
             public DateTime? NextDueAt;
@@ -133,11 +132,6 @@ namespace TrueReplayer.Services
             public int SkippedModal;
             public int SkippedSuppressed;
             public string? LastResult;
-        }
-
-        public int ArmedCount
-        {
-            get { lock (_lock) return _runtimes.Count; }
         }
 
         /// <summary>Armed triggers in CONFIG (independent of the global master switch) —
@@ -219,8 +213,11 @@ namespace TrueReplayer.Services
                     started.Add(name);
                 }
 
-                // Drop stats for profiles that no longer carry a trigger at all (renames are
-                // migrated explicitly via RenameStats before the refresh lands here).
+                // Drop stats for profiles that no longer EXIST. Not "no longer carry a trigger",
+                // which the old wording claimed and this loop never did — deleting a trigger from a
+                // profile that stays on disk leaves the name in allProfileNames, so its history
+                // outlived it until ClearStats was wired into the delete path. Renames are migrated
+                // explicitly via RenameStats before the refresh lands here.
                 // Only when the caller could tell us what actually exists, and never on an empty
                 // set (a failed/partial profile-list load must not read as "everything is gone").
                 if (allProfileNames is { Count: > 0 })
@@ -342,7 +339,6 @@ namespace TrueReplayer.Services
                 return new AutomationStatusEntry
                 {
                     Profile = name,
-                    Config = null!,
                     // Everything live stays false/null on purpose: for a profile with no watcher,
                     // zero IS the truth, and only the history carries over.
                     Running = false,
@@ -422,7 +418,6 @@ namespace TrueReplayer.Services
                     result.Add(new AutomationStatusEntry
                     {
                         Profile = name,
-                        Config = config,
                         Running = rt != null,
                         ConditionTrue = rt?.ConditionTrue ?? false,
                         NextDueAt = rt != null && rt.NextDueTicks > 0 ? new DateTime(rt.NextDueTicks) : null,
@@ -745,9 +740,16 @@ namespace TrueReplayer.Services
                         searchRegion = new System.Drawing.Rectangle(cfg.SearchRegionX ?? 0, cfg.SearchRegionY ?? 0, sw, sh);
                 }
 
-                // Only the FIRST probe may report an unusable search region: the region is fixed
-                // for the loop's lifetime, so the verdict can't change between polls — same gate
-                // WaitForImageAsync keeps for its own poll loop (ImageMatchingService.cs).
+                // Only the FIRST probe may report an unusable search region — the same gate
+                // WaitForImageAsync keeps for its own poll loop (ImageMatchingService.cs), and for
+                // the same reason: at up to 10 polls a second an every-tick report is a log flood.
+                //
+                // The old justification, that "the verdict can't change between polls", is false.
+                // The region is fixed, but usability is judged against VirtualScreen.Bounds, which
+                // WM_DISPLAYCHANGE invalidates: unplug the monitor an ROI lives on and the region
+                // becomes unusable, so the probe reads false with the report suppressed. It also
+                // recovers on its own when the geometry comes back, which is why this stays a
+                // first-tick gate rather than growing a per-poll report.
                 bool reportRegion = true;
 
                 // Seed the edge state with an INITIAL probe: a condition that is already true
@@ -758,17 +760,39 @@ namespace TrueReplayer.Services
                 reportRegion = false;
                 rt.ConditionTrue = wasTrue;
                 if (wasTrue) NotifyStateChanged();
+                // Consecutive false readings. A probe FAILURE is folded into false by every family
+                // here — GetPixelAt returns null for a coordinate no longer on a visible monitor or
+                // for fullscreen-exclusive denying GDI, Process.GetProcessesByName can throw, a
+                // File.Exists on a flapping UNC path answers no — so one false reading is not
+                // evidence the condition ended. Believing it dropped wasTrue and MANUFACTURED a
+                // false-to-true edge when the reading came back, firing a macro at someone who had
+                // just sat down. Requiring two costs one poll of latency when a condition really
+                // does end, and covers the single-tick glitch, which is the shape these take.
+                //
+                // Deliberately not a tri-state through four services: null is not the common case
+                // (a locked screen usually reads a VALID black, where false is correct), and the
+                // naive "skip the tick when null" leaves a permanently mute watcher when a sensor
+                // goes blind for good.
+                int falseStreak = wasTrue ? 0 : 2;
                 bool pending = false;
                 var pendingSince = DateTime.MinValue;
                 TriggerFireResult? lastRefusal = null;
                 DateTime CooldownUntil() { lock (_lock) return new DateTime(stats.CooldownUntilTicks); }
                 void StampCooldown() { lock (_lock) stats.CooldownUntilTicks = DateTime.Now.AddSeconds(cooldownSec).Ticks; }
+                // A cooldown the user just LOWERED must not keep the watcher mute for the old one.
+                ClampCooldownToCurrent(stats, cooldownSec);
 
                 while (!ct.IsCancellationRequested)
                 {
                     await Task.Delay(pollMs, ct);
 
-                    bool isTrue = ProbeCondition(cfg, kind, windowTarget, titleRegex, pixelColor, templateMat, searchRegion, reportRegion);
+                    bool raw = ProbeCondition(cfg, kind, windowTarget, titleRegex, pixelColor, templateMat, searchRegion, reportRegion);
+                    // True is believed at once — a condition appearing is the event we exist for,
+                    // and delaying it would cost reaction time on every fire. Only the DROP waits
+                    // for a second opinion; see falseStreak.
+                    bool isTrue;
+                    if (raw) { falseStreak = 0; isTrue = true; }
+                    else { falseStreak++; isTrue = falseStreak < 2 && rt.ConditionTrue; }
                     if (isTrue != rt.ConditionTrue)
                     {
                         rt.ConditionTrue = isTrue;
@@ -789,6 +813,16 @@ namespace TrueReplayer.Services
                                 StampCooldown();
                             else if (r == TriggerFireResult.Failed)
                                 await Task.Delay(30000, ct);   // permanent failure — don't spam the disk logger
+                            else if (r == TriggerFireResult.SkippedDirty)
+                                // SkippedDirty is terminal, so it comes straight back — and in level
+                                // mode a true condition then re-asks on EVERY poll for as long as
+                                // the grid stays dirty: four dispatcher hops a second, an atomic
+                                // sidecar write and a state push behind each debounce, and a counter
+                                // climbing into six figures. This is the short backoff the fire
+                                // queue's refactor dropped. Five seconds, not thirty: unsaved
+                                // changes end with a Ctrl+S, and the first fire after it should not
+                                // wait half a minute.
+                                await Task.Delay(5000, ct);
                         }
                         continue;
                     }
@@ -875,6 +909,27 @@ namespace TrueReplayer.Services
         /// that way — they are the same fix and drifted apart once already.
         private static DateTime Later(DateTime a, DateTime b) => a > b ? a : b;
 
+        /// <summary>
+        /// Trim a retained cooldown deadline to what the CURRENT setting could have produced.
+        ///
+        /// The deadline is stored as an absolute instant so it survives the loop restarts a config
+        /// edit causes — that part is deliberate. What was missing is that lowering the cooldown
+        /// could not take effect: dropping it from an hour to 30 s left the old deadline standing,
+        /// so the watcher stayed mute for the remaining fifty-odd minutes, with the panel reporting
+        /// the new number. Reopening the app "fixed" it by accident, since the field is not
+        /// restored from the sidecar.
+        ///
+        /// Zero (never fired) passes through untouched, since Min(0, anything positive) is 0.
+        /// </summary>
+        private void ClampCooldownToCurrent(TriggerStats stats, int cooldownSec)
+        {
+            lock (_lock)
+            {
+                long ceiling = DateTime.Now.AddSeconds(cooldownSec).Ticks;
+                if (stats.CooldownUntilTicks > ceiling) stats.CooldownUntilTicks = ceiling;
+            }
+        }
+
         /// How long a single edge-mode fire attempt may sit in the queue before the loop takes its
         /// turn back to probe again. Matches the bound the level branch already uses, and for the
         /// same reason: while this loop is awaiting, it cannot notice that the condition went away.
@@ -890,8 +945,21 @@ namespace TrueReplayer.Services
             var cfg = rt.Config;
             int cooldownSec = cfg.CooldownSeconds > 0 ? cfg.CooldownSeconds : 5;
             int pollMs = PollCadenceMs(cfg);
-            uint lastSeq = NativeMethods.GetClipboardSequenceNumber();
-            var cooldownUntil = DateTime.MinValue;
+            // Seeded, not read raw: zero means the clipboard was unreadable (no access to the
+            // window station), not "sequence zero". Taking it at face value made the first REAL
+            // reading afterwards look like a change and fabricate a fire.
+            uint seed = NativeMethods.GetClipboardSequenceNumber();
+            bool seeded = seed != 0;
+            uint lastSeq = seed;
+
+            // Shared with the condition loop rather than local to this one. The field's own comment
+            // says why the cooldown lives in TriggerStats — a loop-local copy lets an edit right
+            // after a fire re-fire immediately, voiding the cooldown the user set — and this loop
+            // was the one place that did not honour it.
+            DateTime CooldownUntil() { lock (_lock) return new DateTime(stats.CooldownUntilTicks); }
+            void StampCooldown() { lock (_lock) stats.CooldownUntilTicks = DateTime.Now.AddSeconds(cooldownSec).Ticks; }
+            ClampCooldownToCurrent(stats, cooldownSec);
+
             var lastReplayActiveAt = DateTime.MinValue;
             // A copy the DIRTY gate refused, kept for one hold window so the next ticks can ask
             // again. MinValue = nothing held. See the refusal branch at the bottom of the loop.
@@ -902,7 +970,10 @@ namespace TrueReplayer.Services
                 await Task.Delay(pollMs, ct);
 
                 uint seq = NativeMethods.GetClipboardSequenceNumber();
-                if (seq == 0) continue;   // locked desktop — unknown, hold previous state
+                // Zero is "unknown", never a real sequence number — hold the previous state.
+                if (seq == 0) continue;
+                // First readable value after an unreadable start is the BASELINE, not a change.
+                if (!seeded) { seeded = true; lastSeq = seq; continue; }
 
                 bool replayActive = IsReplayActive?.Invoke() ?? false;
                 if (replayActive) lastReplayActiveAt = DateTime.Now;
@@ -960,7 +1031,7 @@ namespace TrueReplayer.Services
                     continue;
                 }
 
-                if (DateTime.Now < cooldownUntil) { heldCopyAt = DateTime.MinValue; continue; }
+                if (DateTime.Now < CooldownUntil()) { heldCopyAt = DateTime.MinValue; continue; }
 
                 if (!string.IsNullOrEmpty(cfg.ClipboardPattern))
                 {
@@ -983,7 +1054,7 @@ namespace TrueReplayer.Services
                 var r = await RequestFireAsync(name, stats, ct,
                     dueAt: copiedAt, expiresAt: copiedAt + ClipboardHoldWindow);
                 if (r == TriggerFireResult.Fired)
-                    cooldownUntil = DateTime.Now.AddSeconds(cooldownSec);
+                    StampCooldown();
                 else if (r == TriggerFireResult.SkippedDirty)
                 {
                     // Every other refusal already spent this window INSIDE the queue — the pump
@@ -1278,7 +1349,10 @@ namespace TrueReplayer.Services
                 // SkippedDirty is terminal on purpose. Unsaved edits are not a moment of
                 // contention like a running replay — they can sit for hours, and a request holding
                 // the head of the queue that whole time would starve every other automation. The
-                // watcher's next tick asks again.
+                // watcher's next tick asks again — true for interval and for a condition, but NOT
+                // for the two event-shaped watchers, which is why each grew its own hold: a
+                // clipboard copy is consumed on the way in and nothing re-offers it (the loop keeps
+                // it for one window now), and a schedule's next tick is tomorrow.
                 bool terminal = result is TriggerFireResult.Fired
                                        or TriggerFireResult.Failed
                                        or TriggerFireResult.SkippedDirty;
@@ -1368,12 +1442,19 @@ namespace TrueReplayer.Services
             // counters live in the panel and (before persistence) died with the process, meaning
             // "did my automation run last night?" was unanswerable after a restart.
             //
-            // Log the TRANSITION, not the state. Every retry loop calls this repeatedly for
-            // exactly the outcomes worth logging — interval every 5 s, schedule every 15 s,
-            // clipboard every 2 s, and level-mode conditions every 5 s with no upper bound — and
-            // DiagnosticLog.Info is a synchronous append under a global lock. Logging per call
-            // would grow the file forever while a watcher sits blocked. One line when the outcome
-            // changes keeps the durable trace and costs nothing while it persists.
+            // Log the TRANSITION, not the state. A blocked watcher reaches this repeatedly for
+            // exactly the outcomes worth logging, so logging per call would grow the file for as
+            // long as the block lasts; one line when the outcome changes keeps the durable trace
+            // and costs nothing while it persists.
+            //
+            // Two details in the original reasoning have since stopped being true, and neither
+            // changes the conclusion. The per-loop retry cadences it listed (interval 5 s, schedule
+            // 15 s, clipboard 2 s) were replaced by the fire queue in 2026-08-04, and the worst
+            // case now is FASTER, not slower: a level-mode watcher over a dirty grid re-asks on
+            // every poll. And DiagnosticLog stopped being "a synchronous append under a global
+            // lock" when it became lock-free — but its queue is bounded and shared with the hooks
+            // and WebView2, so flooding it still costs other subsystems their lines. Do not read
+            // the second correction as "logging per tick is free now".
             string? logLine = null;
             lock (_lock)
             {
