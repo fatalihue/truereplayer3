@@ -653,13 +653,6 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
           ) : (
             // key={selected} for the same reason SettingsPanel keys its tab content:
             // without it, picking a different automation keeps this subtree mounted and
-            // React reuses every node by position. The "Foreground only" Toggle would then
-            // slide its knob (transition-[left], 150ms) as the new automation's value
-            // replaced the old one — a switch animating on a control the user never
-            // touched. draft/selected live in this component, not in the subtree, so
-            // remounting costs nothing.
-            // key={selected} for the same reason SettingsPanel keys its tab content:
-            // without it, picking a different automation keeps this subtree mounted and
             // React reuses every node by position — measured: 49 of 49 nodes survive the
             // switch. The "Foreground only" Toggle would then slide its knob
             // (transition-[left], 150ms) as the new automation's value replaced the old

@@ -2243,6 +2243,25 @@ namespace TrueReplayer.Controllers
                         RecordImageFailure(imgAction.ImagePath!, finalName); // absent-from-envelope (dropped at export, BUG-3)
                 }
 
+                // The automation trigger's own reference PNG, which the loop above cannot see: it
+                // walks Actions, and a watcher's image lives on Triggers. The EXPORT collector does
+                // include it, so the sender was warned that the envelope was missing a file while
+                // the receiver was told nothing — the comment above claims both sides agree on
+                // which images matter, and this is the row where they did not.
+                //
+                // Only the absent-from-envelope case needs adding: a present-but-rejected image is
+                // already reported by the Images loop, which walks every key. The profile also
+                // arrives DISARMED, so nothing fires blind — arming it later stops the watcher with
+                // "reference image missing", which is the deliberate behaviour. This is about the
+                // receiver knowing at import time.
+                var trig = profile.Triggers;
+                if (trig != null
+                    && !string.IsNullOrEmpty(trig.ImagePath)
+                    && string.Equals(trig.ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase)
+                    && !restoredKeys.Contains(trig.ImagePath)
+                    && !ImageStorageService.ReferenceImageExists(finalName, trig.ImagePath))
+                    RecordImageFailure(trig.ImagePath!, finalName);
+
                 imported++;
                 // Record original -> final so the org merge can remap folder/pin references. Keyed by
                 // the original envelope name (what org.Folders / org.Pinned reference); value is the
