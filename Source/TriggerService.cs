@@ -392,6 +392,48 @@ namespace TrueReplayer.Services
             NotifyStateChanged();
         }
 
+        /// Last "watcher stopped itself" reason announced per profile, so a Reload that restarts a
+        /// still-broken watcher does not balloon again. Cleared once a watcher reaches its poll
+        /// loop, so a problem that is fixed and then returns is announced afresh.
+        private readonly Dictionary<string, string> _announcedStop = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Tell the user, on the tray, that a watcher took itself out of service.
+        ///
+        /// The gap this fills: a watcher that returns early — unfillable condition, reference image
+        /// gone, unparseable schedule time — leaves _runtimes, but the three surfaces that are
+        /// ALWAYS visible keep saying armed: the tray tooltip's count, the sidebar dot, and the
+        /// Settings dot. Only the Automation panel distinguishes armed-and-watching from
+        /// armed-and-stopped, and that is the screen nobody leaves open. So the failure mode is an
+        /// automation the user believes is guarding something, silently guarding nothing.
+        ///
+        /// Rate-limited by (profile, reason) rather than by time: the trigger is a state change,
+        /// and Reload restarts loops often enough — every config edit, every arm toggle — that an
+        /// unlimited version would balloon on each one.
+        ///
+        /// Reaching the tray from here follows the precedent RemapService set: TrayIconService is
+        /// public static and this service, like that one, is alive long before the bridge exists.
+        /// Never fatal — a notification that throws must not take the daemon with it.
+        /// </summary>
+        private void AnnounceWatcherStopped(string name, string reason)
+        {
+            lock (_lock)
+            {
+                if (_announcedStop.TryGetValue(name, out var last) && last == reason) return;
+                _announcedStop[name] = reason;
+            }
+            try
+            {
+                TrayIconService.ShowBalloon(
+                    $"Automation stopped: {name}",
+                    $"{reason} The automation is still armed, but it is not watching for anything.");
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Warn($"Tray balloon for stopped watcher '{name}' failed: {ex.Message}");
+            }
+        }
+
         /// <summary>Suppress clipboard-change fires for the next 2 s (capture-slot etc.).</summary>
         public void NotifyAppClipboardActivity()
             => Interlocked.Exchange(ref _clipboardSuppressUntilTicks, DateTime.UtcNow.AddSeconds(2).Ticks);
@@ -583,7 +625,11 @@ namespace TrueReplayer.Services
         {
             if (!TimeSpan.TryParse(rt.Config.TimeOfDay, System.Globalization.CultureInfo.InvariantCulture, out var timeOfDay))
             {
+                // The third way a watcher takes itself out of service, and the only one that used to
+                // do it without even a log line.
                 SetLastResult(stats, $"invalid schedule time '{rt.Config.TimeOfDay}'");
+                DiagnosticLog.Warn($"Automation watcher '{name}': schedule time '{rt.Config.TimeOfDay}' is not a valid HH:mm");
+                AnnounceWatcherStopped(name, $"Its schedule time '{rt.Config.TimeOfDay}' is not a valid time.");
                 NotifyStateChanged();
                 return;
             }
@@ -686,6 +732,7 @@ namespace TrueReplayer.Services
             {
                 SetLastResult(stats, $"{unfireable} — watcher stopped");
                 DiagnosticLog.Warn($"Automation watcher '{name}': {unfireable}");
+                AnnounceWatcherStopped(name, char.ToUpperInvariant(unfireable[0]) + unfireable.Substring(1) + ".");
                 NotifyStateChanged();
                 return;
             }
@@ -732,6 +779,7 @@ namespace TrueReplayer.Services
                     {
                         SetLastResult(stats, "reference image missing — watcher stopped");
                         DiagnosticLog.Warn($"Automation watcher '{name}': reference image '{cfg.ImagePath}' missing");
+                        AnnounceWatcherStopped(name, "Its reference image is missing.");
                         NotifyStateChanged();
                         return;
                     }
@@ -756,6 +804,10 @@ namespace TrueReplayer.Services
                 // when the loop starts is NOT an edge. Without this, every config edit (which
                 // restarts the loop) — or arming while the condition holds — auto-fired within
                 // one poll. Cooldown lives in TriggerStats so it also survives loop restarts.
+                // Past every self-kill check, so this watcher is genuinely watching. Forget any
+                // stop we announced for it: if the same problem comes back later it is news again.
+                lock (_lock) _announcedStop.Remove(name);
+
                 bool wasTrue = ProbeCondition(cfg, kind, windowTarget, titleRegex, pixelColor, templateMat, searchRegion, reportRegion);
                 reportRegion = false;
                 rt.ConditionTrue = wasTrue;
