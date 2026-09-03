@@ -550,6 +550,26 @@ namespace TrueReplayer.Services
             (p => p.Triggers is { PollIntervalMs: > 0 },
                 new Version(2, 9, 9), "Automation poll interval"),
 
+            // Automation active hours. NOT the destroy-on-round-trip mechanism of the two pins
+            // above: TimeOfDay has existed since the 2.9.0 Triggers pin, so an older build reads
+            // the string, keeps it, and writes it back intact. This is the ROI pin's class instead
+            // — behavioural divergence — and the divergence is the more consequential of the two:
+            // the older build does not know a RANGE means anything outside the schedule kind, so
+            // it ignores the window entirely and fires around the clock. An automation the author
+            // confined to working hours takes the mouse and keyboard at 03:00 on that build, which
+            // is worse than the ROI pin's "slower and more false positives".
+            //
+            // Gated on the range actually parsing, and on a non-schedule kind, for the same reason
+            // the poll-interval pin gates on > 0: for a schedule TimeOfDay IS the fire time and
+            // carries no window, and a bare time on any kind is deliberately not a window (see
+            // TriggerService.ParseActiveHours — profiles drafted as a schedule and switched to
+            // condition keep one, and honouring it would silence them).
+            // Introduced after 2.34.0 — bump at release.
+            (p => p.Triggers is { } t
+                  && !string.Equals(t.Kind, "schedule", StringComparison.OrdinalIgnoreCase)
+                  && TriggerService.ParseActiveHours(t.TimeOfDay) != null,
+                new Version(2, 34, 0), "Automation active hours"),
+
             // Per-profile loop count. Destroy-on-round-trip, same mechanism as the automation pins
             // above: an older build has no LoopCount on UserProfile (it was [JsonIgnore]d there and
             // absent from ProfileExportEntry entirely) and there is no [JsonExtensionData], so it
