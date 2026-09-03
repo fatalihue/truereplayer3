@@ -144,7 +144,7 @@ export function BulkActionBar({
             />
             <button
               onClick={handleConfirm}
-              className="h-6 px-2 rounded text-[11px] font-medium bg-accent-solid text-white hover:bg-accent-solid/80 transition-colors"
+              className="h-6 px-2 rounded text-[11px] font-medium bg-accent-solid text-[color:var(--color-accent-ink)] hover:bg-accent-solid/80 transition-colors"
             >
               OK
             </button>

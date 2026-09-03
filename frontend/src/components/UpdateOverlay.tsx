@@ -146,10 +146,13 @@ export function UpdateOverlay() {
           />
           {isComplete && (
             <div style={checkBadgeStyle}>
+              {/* The badge behind this tick is a --color-replay gradient, and replay is a
+                  user-chosen hue: a pale green choice left a white tick at ~1.5:1 on it.
+                  pickInk already answers that for the fill, via --color-replay-ink. */}
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                 <polyline
                   points="6 12 10 16 18 8"
-                  stroke="white"
+                  stroke="var(--color-replay-ink)"
                   strokeWidth="3"
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -270,7 +273,7 @@ export function UpdateOverlay() {
               e.currentTarget.style.background = 'linear-gradient(180deg, var(--color-accent-solid), color-mix(in srgb, var(--color-accent-solid) 82%, #000))';
             }}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-ink)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />
@@ -539,7 +542,7 @@ const primaryButtonStyle: React.CSSProperties = {
   border: 'none',
   borderRadius: 8,
   background: 'linear-gradient(180deg, var(--color-accent-solid), color-mix(in srgb, var(--color-accent-solid) 82%, #000))',
-  color: 'white',
+  color: 'var(--color-accent-ink)',
   fontSize: 13,
   fontWeight: 600,
   cursor: 'pointer',

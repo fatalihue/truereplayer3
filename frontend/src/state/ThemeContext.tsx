@@ -32,6 +32,11 @@ interface ThemeContextValue {
   /** Pick a preset — clears color overrides, keeps UI settings */
   selectPreset: (id: string) => void;
 
+  /** Put back a whole config captured earlier. Exists for the Theme Editor's Cancel: the editor
+   *  is a LIVE preview (every change is applied to the document and persisted within 200 ms), so
+   *  there is no draft to throw away — undoing means restoring a snapshot taken on open. */
+  replaceConfig: (config: ThemeConfig) => void;
+
   /** Override a single color key */
   setColorOverride: (key: keyof ThemeColors, value: string) => void;
   /** Remove a single color override (reverts to base) */
@@ -253,6 +258,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       : prev);
   }, []);
 
+  const replaceConfig = useCallback((next: ThemeConfig) => {
+    // Carries CURRENT_THEME_CONFIG_VERSION rather than whatever the snapshot held: a snapshot is
+    // taken from live state that already ran the migrations, so re-stamping the version keeps a
+    // stale literal from re-running them on the next load.
+    setConfig({ ...next, version: CURRENT_THEME_CONFIG_VERSION });
+  }, []);
+
   const importTheme = useCallback((theme: ExportedTheme): boolean => {
     if (!validateExportedTheme(theme)) return false;
 
@@ -271,7 +283,19 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       version: CURRENT_THEME_CONFIG_VERSION, // writing a stale version re-runs migrations on next load
       baseThemeId: baseId,
       colorOverrides: overrides,
-      uiSettings: { ...DEFAULT_UI_SETTINGS, ...theme.uiSettings },
+      uiSettings: {
+        ...DEFAULT_UI_SETTINGS,
+        ...theme.uiSettings,
+        // An import is an explicit pick, exactly like selectPreset — and it has to turn the OS
+        // follower OFF for the same reason, which selectPreset documents and this path used to
+        // miss. The effect that follows prefers-color-scheme lists matchSystemTheme among its
+        // deps and calls sync() as soon as it runs, and sync() writes `colorOverrides: {}`
+        // whenever the active preset differs from the dark/light slot. So importing a file that
+        // carries `matchSystemTheme: true` wiped the colours it had just installed, in the same
+        // tick. exportTheme copies uiSettings wholesale, so EVERY theme exported by someone who
+        // uses "Match Windows theme" was a self-erasing file.
+        matchSystemTheme: false,
+      },
     });
     return true;
   }, []);
@@ -281,6 +305,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     resolvedColors,
     customPresets,
     selectPreset,
+    replaceConfig,
     setColorOverride,
     clearColorOverride,
     clearAllOverrides,
@@ -292,7 +317,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     saveAsPreset,
     deleteCustomPreset,
   }), [
-    config, resolvedColors, customPresets, selectPreset, setColorOverride,
+    config, resolvedColors, customPresets, selectPreset, replaceConfig, setColorOverride,
     clearColorOverride, clearAllOverrides, setAccentColor,
     setUISetting, resetUISettings, exportTheme, importTheme,
     saveAsPreset, deleteCustomPreset,

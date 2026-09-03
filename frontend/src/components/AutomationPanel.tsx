@@ -951,7 +951,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                             onClick={() => patch({ daysOfWeek: draft.daysOfWeek ^ d.bit })}
                             className={`h-7 px-2 rounded text-[11px] border transition-colors ${
                               on
-                                ? 'bg-accent-solid border-accent-solid text-white'
+                                ? 'bg-accent-solid border-accent-solid text-[color:var(--color-accent-ink)]'
                                 : 'bg-bg-input border-border-subtle text-text-secondary hover:border-border-strong'
                             }`}
                           >

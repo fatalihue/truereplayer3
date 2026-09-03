@@ -47,6 +47,13 @@
   --color-clicker: #c084fc;
   --color-clicker-bg: rgba(192, 132, 252, 0.12);
   --color-clicker-border: rgba(192, 132, 252, 0.3);
+  /* The -fg rung had no pre-hydration default at all, unlike -ink above: it is only born in
+     applyThemeConfig, so for the first frame every consumer of it (about twenty components, and
+     now the Theme Editor's own contrast chip) resolved to the var() fallback each call site
+     happened to carry, or to nothing. Same 72 % recipe applyThemeConfig falls back to. */
+  --color-recording-fg: color-mix(in srgb, var(--color-recording) 72%, var(--color-text-primary));
+  --color-replay-fg: color-mix(in srgb, var(--color-replay) 72%, var(--color-text-primary));
+  --color-clicker-fg: color-mix(in srgb, var(--color-clicker) 72%, var(--color-text-primary));
   /* Warning — fixed semantic amber (foot-gun notes, capture caveats, coordinate
      migration toasts). Was ~10 scattered #FFC107 literals; consumers use
      text-warning / border-warning/N / bg-warning/N or color-mix derivations. */
@@ -104,6 +111,16 @@
   --color-action-if-fg: color-mix(in srgb, #2dd4bf 72%, var(--color-text-primary));
   --color-action-if-bg: color-mix(in srgb, #2dd4bf 12%, transparent);
   --color-action-if-border: color-mix(in srgb, #2dd4bf 35%, transparent);
+  /* Loop / flow-leaf / ActivateWindow. displayUtils has read these three with a fallback since
+     they were introduced; now that applyThemeConfig actually emits them, the pre-hydration
+     defaults belong here too, or the first frame paints a While row in the If teal and then
+     snaps to emerald once the bundle mounts. Values mirror DEFAULT_UI_SETTINGS. */
+  --color-action-loop-fg: color-mix(in srgb, #059669 72%, var(--color-text-primary));
+  --color-action-loop-bg: color-mix(in srgb, #059669 12%, transparent);
+  --color-action-flow-fg: color-mix(in srgb, #78716c 72%, var(--color-text-primary));
+  --color-action-flow-bg: color-mix(in srgb, #78716c 12%, transparent);
+  --color-action-activatewindow-fg: color-mix(in srgb, #4f46e5 72%, var(--color-text-primary));
+  --color-action-activatewindow-bg: color-mix(in srgb, #4f46e5 12%, transparent);
 
   /* Conditional-block nesting palette ("rainbow brackets"). Level 0 is the user's
      configurable IF colour (--color-action-if-fg) so single-level blocks look

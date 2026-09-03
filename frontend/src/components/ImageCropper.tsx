@@ -28,7 +28,7 @@ const MAX_DISPLAY_H = 600;
 const HANDLE_PX = 12;
 // Crop rect overlay colors — slightly transparent so the underlying image stays readable
 // while still giving the crop rect enough contrast to be visible against any background.
-const ACCENT_RGBA = 'rgba(96, 205, 255, 0.65)';
+const ACCENT_RGBA = 'color-mix(in srgb, var(--color-accent) 65%, transparent)';
 const HANDLE_BORDER_RGBA = 'rgba(255, 255, 255, 0.7)';
 
 // Modal cropper for tightening an existing reference image. Operates purely in image-pixel
@@ -311,7 +311,7 @@ export function ImageCropper({ imageBase64, onSave, onCancel }: ImageCropperProp
               type="button"
               onClick={() => onSave(crop)}
               disabled={!canSave}
-              className="px-3 py-1.5 text-xs font-medium text-white bg-accent-solid hover:bg-accent-solid/80 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-1.5 text-xs font-medium text-[color:var(--color-accent-ink)] bg-accent-solid hover:bg-accent-solid/80 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               data-tip={canSave ? tt('Apply crop', 'Aplicar recorte') : tt('Pick a smaller region first', 'Selecione uma região menor primeiro')}
             >
               Save crop

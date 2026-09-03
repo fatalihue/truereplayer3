@@ -508,7 +508,7 @@ export function ClipboardModifierBody({
       <div className="px-3.5 py-1.5 bg-bg-surface border-b border-border-subtle">
         <div className="text-[9px] uppercase tracking-wide text-text-tertiary mb-0.5">{sourceLabel}</div>
         <div
-          className="font-mono text-[10.5px] text-text-secondary bg-white/[0.03] border-l-2 border-border-subtle px-2 py-0.5 mb-1.5 rounded-r whitespace-pre-wrap break-all max-h-[36px] overflow-auto"
+          className="font-mono text-[10.5px] text-text-secondary bg-[color-mix(in_srgb,var(--color-text-primary)_3%,transparent)] border-l-2 border-border-subtle px-2 py-0.5 mb-1.5 rounded-r whitespace-pre-wrap break-all max-h-[36px] overflow-auto"
           style={{ lineHeight: 1.35 }}
         >
           {sourceUnknown ? (

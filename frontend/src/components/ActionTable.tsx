@@ -355,7 +355,7 @@ function ProbeDetails({ action }: { action: ActionItem }) {
           {action.pixelColor && (
             // No tooltip: the hex sits immediately to the right of this swatch.
             <span
-              className="inline-block w-2.5 h-2.5 rounded-sm border border-white/20 shrink-0"
+              className="inline-block w-2.5 h-2.5 rounded-sm border border-[color-mix(in_srgb,var(--color-text-primary)_20%,transparent)] shrink-0"
               style={{ background: action.pixelColor }}
             />
           )}
@@ -2722,7 +2722,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                   </span>
                 )}
                 {dragIndices.length > 1 && (
-                  <span className="ml-auto shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-accent-solid text-white">
+                  <span className="ml-auto shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-accent-solid text-[color:var(--color-accent-ink)]">
                     +{dragIndices.length - 1}
                   </span>
                 )}

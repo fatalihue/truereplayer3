@@ -4,15 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>TrueReplayer</title>
+    <!-- BEGIN GENERATED THEME BOOT MIRROR — edit tools/gen-boot-mirror.mjs, not this -->
     <script>
       // Paint the saved theme BEFORE React loads, so launching never flashes the wrong
       // canvas (most visible on the light presets: a dark boot then a white app).
       //
-      // GENERATED MIRROR of frontend/src/themes.ts — this file cannot import the module
-      // (it runs as a classic inline script before any bundle exists), so the palettes,
-      // the removed-id remap and the defaults below are a copy. Regenerate whenever a
-      // preset is added, removed or recoloured; a stale entry here only costs one frame
-      // of the wrong colour, never a crash (an unknown id falls back to the default).
+      // GENERATED from frontend/src/themes.ts — this file cannot import the module (it runs as a
+      // classic inline script before any bundle exists), so the palettes, the removed-id remap
+      // and the defaults below are a copy kept in sync by the build. A stale entry here only
+      // costs one frame of the wrong colour, never a crash: an unknown id falls back to the
+      // default preset.
       (function() {
         var presets = {
           'gruvbox-dark':{'bg-base':'#1d2021','bg-surface':'#282828','bg-card':'#3c3836','bg-elevated':'#45403d','bg-input':'#161819','border-subtle':'rgba(235,219,178,0.06)','border-default':'rgba(235,219,178,0.1)','border-strong':'rgba(235,219,178,0.15)','text-primary':'#ebdbb2','text-secondary':'#d5c4a1','text-tertiary':'#928374','text-disabled':'#665c54','accent':'#fabd2f','accent-solid':'#d79921','accent-hover':'#ffd866'},
@@ -61,7 +62,7 @@
         try { saved = localStorage.getItem('truereplay-theme'); } catch(e) {}
         var resolve = function(id) { return presets[id] || presets[moved[id]] || null; };
         var colors = presets['lavender-coal'];
-        var ui = { fontSize: 13, borderRadius: 3, rowHeight: 34 };
+        var ui = { fontSize: 13, borderRadius: 3, rowHeight: 34, zoom: 90 };
         if (saved) {
           try {
             var cfg = JSON.parse(saved);
@@ -78,6 +79,7 @@
               if (typeof cfg.uiSettings.fontSize === 'number') ui.fontSize = cfg.uiSettings.fontSize;
               if (typeof cfg.uiSettings.borderRadius === 'number') ui.borderRadius = cfg.uiSettings.borderRadius;
               if (typeof cfg.uiSettings.rowHeight === 'number') ui.rowHeight = cfg.uiSettings.rowHeight;
+              if (typeof cfg.uiSettings.zoom === 'number') ui.zoom = cfg.uiSettings.zoom;
             }
           } catch(e) {
             // Pre-v1 format: the value is a bare theme id string.
@@ -90,9 +92,15 @@
         s.setProperty('--ui-font-size', ui.fontSize + 'px');
         s.setProperty('--ui-border-radius', ui.borderRadius + 'px');
         s.setProperty('--ui-row-height', ui.rowHeight + 'px');
+        // Zoom too, or the first frame paints at 100 % and snaps to the user's scale the moment
+        // applyThemeConfig runs — the one part of the boot paint the hand-maintained mirror
+        // never covered.
+        s.setProperty('--ui-zoom', ui.zoom / 100);
+        s.zoom = ui.zoom / 100;
         s.background = colors['bg-base'];
       })();
     </script>
+    <!-- END GENERATED THEME BOOT MIRROR -->
     <style>
       html, body { background: var(--color-bg-base, #121212); margin: 0; padding: 0; }
     </style>
