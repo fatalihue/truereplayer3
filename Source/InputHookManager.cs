@@ -1247,10 +1247,15 @@ namespace TrueReplayer
                 }
                 else
                 {
-                    // OpenProcess failed — usually the foreground app is elevated and we're not
-                    // (errno 5 = ACCESS_DENIED), which is the #2 silent "hotkey does nothing"
-                    // cause. Surface the errno so support can tell elevation apart from a
-                    // ProcessName mismatch. OpenProcess has SetLastError=true (NativeMethods.cs).
+                    // OpenProcess failed. Surface the errno so a diagnosis can tell this apart from
+                    // a ProcessName mismatch — OpenProcess has SetLastError=true (NativeMethods.cs).
+                    //
+                    // NOT elevation, which this used to claim: with the LIMITED query right we ask
+                    // for, an elevated window of the same user opens fine (measured: 246 top-level
+                    // windows, 24 visible, zero failures). Only SYSTEM and service processes refuse,
+                    // and those own no foreground window a hotkey would be gated on. The real
+                    // "hotkey does nothing against an elevated app" is UIPI on the SendInput side,
+                    // which is what RunAsAdmin is for. Same correction in WindowMatcher.
                     proc = $"?(open-failed err {Marshal.GetLastWin32Error()}, pid {pid})";
                 }
                 return $"{proc} \"{title}\"";

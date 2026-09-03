@@ -1486,7 +1486,10 @@ namespace TrueReplayer
             {
                 if (name == CurrentProfileName) UserProfile.Current.Triggers = prevCurrent;
                 if (entry != null) entry.Triggers = prevEntry;
-                throw;   // the callers report it; they also re-push after the rollback
+                // The callers report it. Only ONE of the two also re-pushes after the rollback, so
+                // do not read this as a guarantee; the panel's own 2 s poll is what actually
+                // reconciles the other one.
+                throw;
             }
 
             // The trigger is gone from disk, so its history has nothing left to describe. Done
@@ -1640,7 +1643,13 @@ namespace TrueReplayer
                     TriggerFireResult.SkippedDirty => "Skipped: the action grid has unsaved changes. Automations never fire over unsaved edits — save the profile first.",
                     TriggerFireResult.SkippedModal => "Skipped: a dialog or key capture is open. Close it and try again.",
                     TriggerFireResult.NotReady => "Not ready: the app is still starting up.",
-                    _ => "Failed to start — the profile could not be loaded. Check that it still exists and is not disabled.",
+                    // Failed has four sources, and "could not be loaded" was the one that is almost
+                    // never true — so a profile with no actions, or one whose data table is empty
+                    // with loop-over-data on, got told to check that its file still exists. The
+                    // data-table case additionally shows the real cause in its own toast, leaving
+                    // two contradictory messages on screen. The advice about being disabled was
+                    // dead outright: a disabled profile is refused higher up, above.
+                    _ => "Nothing ran. The profile may have no actions, or its data table may be empty while loop-over-data is on.",
                 };
                 SendMessage("automation:testFireResult", new { requestId, fired = result == TriggerFireResult.Fired, detail });
             }

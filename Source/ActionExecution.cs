@@ -2277,6 +2277,19 @@ namespace TrueReplayer.Services
                             targetHwnd, _windowTarget, _windowTargetTitleRegex, token);
                         await Task.Delay(300, token); // Wait for window to restore and gain focus
                     }
+                    else
+                    {
+                        // A missing target used to be a total no-op — no log, no step in the run
+                        // report — and with ABSOLUTE coordinates there is no rescue afterwards
+                        // (TryResolveRelativeOffset returns true immediately for non-relative), so
+                        // the clicks land at those screen positions and SendText types into
+                        // whatever happens to be in front. An automation then reports "fired".
+                        // Costs nothing: FindTargetWindow has already run.
+                        DiagnosticLog.Warn(
+                            $"BringToFocus: target window not found ({_windowTarget.ProcessName ?? "any process"}" +
+                            $"{(string.IsNullOrEmpty(_windowTarget.WindowTitle) ? "" : $" / {_windowTarget.WindowTitle}")}) — " +
+                            "the run continues against whatever is in the foreground");
+                    }
                 }
 
                 // Restore Position / Restore Size: reposition/resize target window before replay.
