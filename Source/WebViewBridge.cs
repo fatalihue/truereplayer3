@@ -2625,6 +2625,28 @@ namespace TrueReplayer
                 // goes through CreateProfileForSave, and the export never used this builder.)
                 CreatedAt = UserProfile.Current.CreatedAt,
                 UpdatedAt = UserProfile.Current.UpdatedAt,
+                // The sharing metadata, carried for exactly the reason the dates above are: this
+                // initializer is the only gate, so a field omitted here is written as null (or as
+                // the class default — ProfileVersion is 1) over whatever the file held. Saving the
+                // grid is not an edit to the profile's identity, but it went through this builder,
+                // so adding one action silently dropped the description, the tags, the emoji shown
+                // in the sidebar, and reset an author's manual version bump to 1.
+                //
+                // Reading them from Current is only sound because the two handlers that own them
+                // now mirror their writes back into it (HandleProfileSetMetadata,
+                // HandleProfileBumpVersion). They edit the on-disk copy through
+                // LoadProfileByNameAsync, which is a different object; without that mirror this
+                // carry would be strictly WORSE than the loss it fixes, because a stale Current
+                // would actively restore the pre-edit values on the next grid save instead of
+                // merely clearing them.
+                Description = UserProfile.Current.Description,
+                Tags = UserProfile.Current.Tags,
+                IconEmoji = UserProfile.Current.IconEmoji,
+                ProfileVersion = UserProfile.Current.ProfileVersion,
+                // Recomputed from the actions at export time, so this is a cache rather than a
+                // source of truth — but the Info tab reads it, and writing null over it made the
+                // compatibility line blank until the next export.
+                AppMinVersion = UserProfile.Current.AppMinVersion,
             };
         }
 
@@ -9611,6 +9633,17 @@ namespace TrueReplayer
                 profile.IconEmoji = string.IsNullOrEmpty(iconEmojiValue) ? null : iconEmojiValue;
 
             await profileController.SaveProfileByNameAsync(name, profile);
+            // `profile` came from disk, so it is NOT the object the grid saves through. Mirror the
+            // three fields onto Current when this is the profile the user has open, or
+            // CreateProfileFromState — which carries them from Current — would write the pre-edit
+            // values back on the next Save. RefreshProfileListAsync reloads the ENTRIES (what the
+            // sidebar draws), never Current, so it does not do this for us.
+            if (name == CurrentProfileName)
+            {
+                if (hasDescription) UserProfile.Current.Description = profile.Description;
+                if (hasTags) UserProfile.Current.Tags = profile.Tags;
+                if (hasIconEmoji) UserProfile.Current.IconEmoji = profile.IconEmoji;
+            }
             await profileController.RefreshProfileListAsync(true);
             PushProfilesUpdate();
         }
@@ -9625,6 +9658,9 @@ namespace TrueReplayer
             // which no human will ever reach but better than crashing.
             profile.ProfileVersion = profile.ProfileVersion < int.MaxValue ? profile.ProfileVersion + 1 : 1;
             await profileController.SaveProfileByNameAsync(name, profile);
+            // Same mirror as HandleProfileSetMetadata, for the same reason: without it the next
+            // grid Save carries the stale number from Current and un-bumps the version.
+            if (name == CurrentProfileName) UserProfile.Current.ProfileVersion = profile.ProfileVersion;
             await profileController.RefreshProfileListAsync(true);
             PushProfilesUpdate();
             SendMessage("profile:versionBumped", new { name, newVersion = profile.ProfileVersion });
