@@ -178,6 +178,7 @@ namespace TrueReplayer
         {
             const uint GW_OWNER = 4;
             IntPtr found = IntPtr.Zero;
+            var cls = new System.Text.StringBuilder(256);
             // Held in a local so the GC cannot collect the delegate while EnumWindows is calling it.
             EnumWindowsProc callback = (hwnd, _) =>
             {
@@ -186,12 +187,24 @@ namespace TrueReplayer
                 // Skip tooltips, menus and other owned popups — the main window owns them, not the
                 // other way round.
                 if (GetWindow(hwnd, GW_OWNER) != IntPtr.Zero) return true;
+                // And skip everything that is not the WinUI window itself. The process also owns
+                // unowned, invisible helper windows — GDI+ and the WinForms message pump each keep
+                // one — and picking one of those made the relaunch do nothing. Worse, the
+                // SW_RESTORE below would make it VISIBLE, which poisons Process.MainWindowHandle
+                // for the rest of the process's life: from then on even the visible-window path
+                // resolves to a helper. Matching the class is what keeps that from happening.
+                cls.Clear();
+                if (GetClassName(hwnd, cls, cls.Capacity) == 0) return true;
+                if (cls.ToString() != "WinUIDesktopWin32WindowClass") return true;
                 found = hwnd;
                 return false;
             };
             EnumWindows(callback, IntPtr.Zero);
             return found;
         }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+        private static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder lpClassName, int nMaxCount);
 
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);

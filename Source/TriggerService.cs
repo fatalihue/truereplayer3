@@ -422,16 +422,25 @@ namespace TrueReplayer.Services
                 if (_announcedStop.TryGetValue(name, out var last) && last == reason) return;
                 _announcedStop[name] = reason;
             }
-            try
+            // Marshalled to the UI thread, not called from the watcher's. ShowBalloon mutates the
+            // single static NOTIFYICONDATA the tray also writes from there, and the field it sets
+            // to raise the balloon is cleared again right after the Shell_NotifyIcon call. Two
+            // threads interleaving that can leave the flag standing — and then every unrelated tray
+            // refresh re-pops the same balloon for the rest of the session, which is the one
+            // outcome here that does not heal itself. OnStateChanged already routes this way.
+            dispatcherQueue?.TryEnqueue(() =>
             {
-                TrayIconService.ShowBalloon(
-                    $"Automation stopped: {name}",
-                    $"{reason} The automation is still armed, but it is not watching for anything.");
-            }
-            catch (Exception ex)
-            {
-                DiagnosticLog.Warn($"Tray balloon for stopped watcher '{name}' failed: {ex.Message}");
-            }
+                try
+                {
+                    TrayIconService.ShowBalloon(
+                        $"Automation stopped: {name}",
+                        $"{reason} The automation is still armed, but it is not watching for anything.");
+                }
+                catch (Exception ex)
+                {
+                    DiagnosticLog.Warn($"Tray balloon for stopped watcher '{name}' failed: {ex.Message}");
+                }
+            });
         }
 
         /// <summary>Suppress clipboard-change fires for the next 2 s (capture-slot etc.).</summary>
@@ -617,7 +626,16 @@ namespace TrueReplayer.Services
                 // truthful result line — calling that "missed the grace window" would be a lie.
                 if (result is not (TriggerFireResult.Fired or TriggerFireResult.Failed or TriggerFireResult.SkippedDirty))
                 {
-                    SetLastResult(stats, "missed (busy past the grace window)");
+                    // Name the blocker instead of asserting contention. The condition loop
+                    // got this in 55e1d20; these two loops kept saying "busy" for a modal or a
+                    // still-booting app, both of which are not the engine being busy.
+                    SetLastResult(stats, result switch
+                    {
+                        TriggerFireResult.SkippedModal =>
+                            $"missed ({AutomationGuard.LastReason ?? "a dialog was open"} past the grace window)",
+                        TriggerFireResult.NotReady => "missed (app was still starting past the grace window)",
+                        _ => "missed (busy past the grace window)",
+                    });
                     NotifyStateChanged();
                 }
 
@@ -646,6 +664,13 @@ namespace TrueReplayer.Services
                 NotifyStateChanged();
                 return;
             }
+            // Past the only way this loop takes itself out of service, so it is genuinely watching.
+            // The condition loop clears its announcement here too; leaving this one out made
+            // _announcedStop's own remark ("cleared once a watcher reaches its poll loop") false for
+            // half the watchers, and a schedule time broken, fixed, then broken again the same way
+            // in one session announced only the first time.
+            lock (_lock) _announcedStop.Remove(name);
+
             while (!ct.IsCancellationRequested)
             {
                 var next = ComputeNextOccurrence(DateTime.Now, timeOfDay, rt.Config.DaysOfWeek);
@@ -708,7 +733,16 @@ namespace TrueReplayer.Services
                 var result = await RequestFireAsync(name, stats, ct, dueAt: next, expiresAt: graceEnd);
                 if (result is not (TriggerFireResult.Fired or TriggerFireResult.Failed or TriggerFireResult.SkippedDirty))
                 {
-                    SetLastResult(stats, "missed (busy past the grace window)");
+                    // Name the blocker instead of asserting contention. The condition loop
+                    // got this in 55e1d20; these two loops kept saying "busy" for a modal or a
+                    // still-booting app, both of which are not the engine being busy.
+                    SetLastResult(stats, result switch
+                    {
+                        TriggerFireResult.SkippedModal =>
+                            $"missed ({AutomationGuard.LastReason ?? "a dialog was open"} past the grace window)",
+                        TriggerFireResult.NotReady => "missed (app was still starting past the grace window)",
+                        _ => "missed (busy past the grace window)",
+                    });
                     NotifyStateChanged();
                 }
             }
@@ -932,8 +966,11 @@ namespace TrueReplayer.Services
                             ? $"fire skipped (outside active hours {cfg.TimeOfDay} — edge expired)"
                             : lastRefusal switch
                         {
+                            // LastReason ALREADY reads "skipped (a dialog is open)" — it is composed
+                            // for this exact use — so wrapping it produced "fire skipped (skipped
+                            // (a dialog is open) — edge expired)". Only the fallback needs the word.
                             TriggerFireResult.SkippedModal =>
-                                $"fire skipped ({AutomationGuard.LastReason ?? "a dialog was open"} — edge expired)",
+                                $"fire {AutomationGuard.LastReason ?? "skipped (a dialog was open)"} — edge expired",
                             TriggerFireResult.NotReady => "fire skipped (app was still starting — edge expired)",
                             TriggerFireResult.SkippedDirty => "fire skipped (unsaved changes — edge expired)",
                             _ => "fire skipped (busy too long — edge expired)",
@@ -946,6 +983,10 @@ namespace TrueReplayer.Services
                     // before closing time still ages out on schedule instead of being frozen and
                     // released hours later, which is the same ambush by a slower route.
                     if (holding) { heldByHours = true; continue; }
+                    // Reaching here proves the window opened, so whatever happens next is the real
+                    // blocker. Without this the flag was sticky: an edge held overnight and then
+                    // refused by a running replay still blamed the hours in the durable line.
+                    heldByHours = false;
 
                     // Bounded per ATTEMPT, so the loop gets back to probing — the same reasoning
                     // the level branch above states, and it applies at least as strongly here.
@@ -1002,10 +1043,12 @@ namespace TrueReplayer.Services
         /// The hours an interval/condition/clipboard watcher is allowed to fire in, read from
         /// <c>TimeOfDay</c> as a RANGE — "09:00-18:00". Null when there is no window.
         ///
-        /// Reusing TimeOfDay rather than adding a property is what keeps this off the pin list:
-        /// ProfileTriggerConfig has no [JsonExtensionData], so a genuinely new field is dropped by
-        /// an older build on any save. A string it already knows survives the round trip untouched
-        /// and is simply ignored there — degradation instead of destruction.
+        /// Reusing TimeOfDay rather than adding a property is what keeps this off the DESTROY-ON-
+        /// ROUND-TRIP class: ProfileTriggerConfig has no [JsonExtensionData], so a genuinely new
+        /// field is dropped by an older build on any save, while a string it already knows survives
+        /// untouched. It is still PINNED — an older build ignores the range and fires around the
+        /// clock, which is behavioural divergence, and the matrix pins that too. See the
+        /// "Automation active hours" entry in ProfileCompatibility.
         ///
         /// A RANGE is required, and that is the safety property, not a parsing detail. TimeOfDay is
         /// the schedule kind's fire time, so a profile that was once drafted as a schedule and then
@@ -1184,8 +1227,14 @@ namespace TrueReplayer.Services
                     // the stale ambush the hold window is bounded to prevent.
                     heldCopyAt = DateTime.MinValue;
                 }
-                else if (DateTime.Now - heldCopyAt > ClipboardHoldWindow)
+                else if (DateTime.Now - heldCopyAt > ClipboardHoldWindow - TimeSpan.FromMilliseconds(FireRetryCadenceMs))
                 {
+                    // Retire the hold one retry cadence EARLY. An attempt offered in the last
+                    // fraction of the window is born expired: the pump sweeps expirations before it
+                    // picks a head, so it comes back as SkippedBusy without FireProfile ever being
+                    // called — a phantom refusal from a possibly idle engine, counted as
+                    // contention. Deliberately not Later() here: extending the deadline instead
+                    // would push the copy past the ten seconds the hold is bounded to.
                     heldCopyAt = DateTime.MinValue;
                     continue;
                 }
@@ -1197,7 +1246,12 @@ namespace TrueReplayer.Services
                 if (HoldForActiveHours(activeHours, stats, ref outsideHours, cfg.TimeOfDay ?? ""))
                 { heldCopyAt = DateTime.MinValue; continue; }
 
-                if (!string.IsNullOrEmpty(cfg.ClipboardPattern))
+                // Evaluated ONCE per copy, on the tick that saw it. A held copy has already passed
+                // this — the sequence number has not moved, so the content cannot have either — and
+                // re-reading it on every retry cost ~20 clipboard reads per hold AND could kill the
+                // hold outright: a transient CLIPBRD_E_CANT_OPEN returns null, which this branch
+                // cannot tell apart from "the text does not match".
+                if (isNewCopy && !string.IsNullOrEmpty(cfg.ClipboardPattern))
                 {
                     string? text = await ActionReplayer.ReadClipboardTextAsync(dispatcherQueue);
                     if (text == null || !text.Contains(cfg.ClipboardPattern, StringComparison.OrdinalIgnoreCase))
@@ -1215,8 +1269,12 @@ namespace TrueReplayer.Services
                 // Retry briefly, bounded so a stale copy can never ambush them later.
                 var copiedAt = isNewCopy ? DateTime.Now : heldCopyAt;
                 heldCopyAt = DateTime.MinValue;
+                // countRefusal only on the tick that saw the copy: a hold re-offers the SAME
+                // event up to twenty times, and the counters mean "how many times was a fire
+                // refused", not "how many attempts did the retry make". The first refusal is
+                // already recorded; the rest are the same occasion.
                 var r = await RequestFireAsync(name, stats, ct,
-                    dueAt: copiedAt, expiresAt: copiedAt + ClipboardHoldWindow);
+                    dueAt: copiedAt, expiresAt: copiedAt + ClipboardHoldWindow, countRefusal: isNewCopy);
                 if (r == TriggerFireResult.Fired)
                     StampCooldown();
                 else if (r == TriggerFireResult.SkippedDirty)
@@ -1543,7 +1601,8 @@ namespace TrueReplayer.Services
         /// caller's signal that it waited the window out rather than being refused once.
         /// </param>
         private async Task<TriggerFireResult> RequestFireAsync(
-            string name, TriggerStats stats, CancellationToken ct, DateTime dueAt, DateTime expiresAt)
+            string name, TriggerStats stats, CancellationToken ct, DateTime dueAt, DateTime expiresAt,
+            bool countRefusal = true)
         {
             var req = new FireRequest { Name = name, DueAt = dueAt, ExpiresAt = expiresAt };
             lock (_queueLock)
@@ -1578,15 +1637,15 @@ namespace TrueReplayer.Services
                         stats.LastResult = "fired";
                         break;
                     case TriggerFireResult.SkippedBusy:
-                        stats.SkippedBusy++;
+                        if (countRefusal) stats.SkippedBusy++;
                         stats.LastResult = "skipped (busy)";
                         break;
                     case TriggerFireResult.SkippedDirty:
-                        stats.SkippedDirty++;
+                        if (countRefusal) stats.SkippedDirty++;
                         stats.LastResult = "skipped (unsaved changes)";
                         break;
                     case TriggerFireResult.SkippedModal:
-                        stats.SkippedModal++;
+                        if (countRefusal) stats.SkippedModal++;
                         // Name WHAT blocked it. "skipped (dialog open)" on a screen that looks
                         // idle — because the blocker was a full-screen overlay or a picker behind
                         // the main window — reads as a bug in the automation engine, and steps 4-5

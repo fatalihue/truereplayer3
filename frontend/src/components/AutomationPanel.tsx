@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Zap, Plus, Trash2, Pipette, Camera, CircleDot, Frame, X, ScanSearch, Check, Play, Power } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
 import { useAppState } from '../state/AppStateContext';
@@ -418,6 +418,16 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
   const captureReqRef = useRef<string | null>(null);
   const regionReqRef = useRef<string | null>(null);
   const testMatchReqRef = useRef<string | null>(null);
+
+  // Remembers the last non-empty half of the active-hours pair, so clearing one input does not
+  // destroy the other and the sibling never has to invent 00:00 / 23:59.
+  const lastHoursRef = useRef({ from: '09:00', to: '18:00' });
+
+  // Stable, so it runs on MOUNT and not on every render. As an inline arrow it was a new callback
+  // each time, and the panel re-renders on the 2 s automation poll — which pulled focus back to
+  // the discard prompt every two seconds while the user was trying to answer it, and made the
+  // "Focusing on mount" comment beside it false.
+  const focusOnMount = useCallback((el: HTMLDivElement | null) => { el?.focus(); }, []);
   useEffect(() => {
     return subscribe((msg) => {
       if (msg.type === 'pixel:colorPicked' && msg.payload.requestId === pickReqRef.current) {
@@ -486,8 +496,27 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
 
   // The echo landed (or the entry existed all along) — the save is no longer in flight.
   useEffect(() => {
-    if (savedPendingEcho && selected && entryByProfile.has(selected)) setSavedPendingEcho(false);
-  }, [savedPendingEcho, selected, entryByProfile]);
+    if (!savedPendingEcho || !selected || !draft) return;
+    const stored = entryByProfile.get(selected)?.trigger;
+    if (!stored) return;
+    // Cleared when the STORE actually reflects what we sent — not merely when an entry for this
+    // profile exists, which for an existing automation was already true at the moment of the save
+    // and therefore proved nothing. Without this, `dirty` survived a successful save: the unsaved
+    // dot stayed up, "Run now" stayed disabled with a tooltip about pending edits, and closing the
+    // panel offered to discard work that was already on disk.
+    //
+    // Comparing rather than trusting a token is what keeps B13 intact: when the backend save throws
+    // it rolls the mirrors back, the stored value then differs from the draft, and the panel
+    // correctly goes on considering the edits unsaved.
+    //
+    // imageBase64 is display-only and deliberately sent as null; armed is not an editor field (the
+    // list toggle owns it), so neither takes part in the comparison.
+    const shape = (t: TriggerConfig) => JSON.stringify({ ...t, imageBase64: null, armed: false });
+    if (shape(stored) === shape(draft)) {
+      setSavedPendingEcho(false);
+      setDirty(false);
+    }
+  }, [savedPendingEcho, selected, entryByProfile, draft]);
 
   const pickPixel = () => {
     const id = `autopix-${Date.now()}`;
@@ -859,8 +888,15 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                 const parts = (draft.timeOfDay ?? '').split('-');
                 const from = parts.length === 2 ? parts[0].trim() : '';
                 const to = parts.length === 2 ? parts[1].trim() : '';
-                const write = (f: string, t: string) =>
+                // Clearing ONE input must not throw the other away. The old form dropped the
+                // whole window the moment either half went blank, and the sibling then wrote a
+                // silent 00:00 / 23:59 fallback on the next keystroke — so backspacing the start
+                // and retyping it turned 09:00-18:00 into 10:00-23:59 without saying so. The
+                // remembered half survives an empty box until the pair is whole again.
+                const write = (f: string, t: string) => {
+                  lastHoursRef.current = { from: f || lastHoursRef.current.from, to: t || lastHoursRef.current.to };
                   patch({ timeOfDay: f && t ? `${f}-${t}` : null });
+                };
                 return (
                   <Field
                     label="Active hours"
@@ -869,10 +905,10 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   >
                     <div className="flex items-center gap-2">
                       <input type="time" className={`${inputCls} w-28`} value={from}
-                        onChange={(e) => write(e.target.value, to || '23:59')} />
+                        onChange={(e) => write(e.target.value, to || lastHoursRef.current.to)} />
                       <span className="text-[12px] text-text-tertiary">{tt('to', 'até')}</span>
                       <input type="time" className={`${inputCls} w-28`} value={to}
-                        onChange={(e) => write(from || '00:00', e.target.value)} />
+                        onChange={(e) => write(from || lastHoursRef.current.from, e.target.value)} />
                       {(from || to) && (
                         <Button variant="ghost" size="sm" onClick={() => patch({ timeOfDay: null })}>
                           {tt('Clear', 'Limpar')}
@@ -1254,7 +1290,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
           aria-modal="true"
           aria-label={tt('Unsaved automation', 'Automação não salva')}
           tabIndex={-1}
-          ref={(el) => el?.focus()}
+          ref={focusOnMount}
           onKeyDown={(e) => {
             if (e.key !== 'Escape') return;
             e.preventDefault();

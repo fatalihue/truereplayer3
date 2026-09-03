@@ -1842,7 +1842,14 @@ namespace TrueReplayer
                 var startInfo = new System.Diagnostics.ProcessStartInfo
                 {
                     FileName = exePath,
-                    Arguments = RelaunchArgPrefix + nextGeneration.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    // --startup travels with the relaunch for the same reason it travels with the
+                    // update restart: the flag is produced only by the Run registry key and is the
+                    // sole input to "start hidden in the tray", so a recovery relaunch without it
+                    // reopens the window over whatever the user is doing — and an open window
+                    // breaks any pixel or image watcher whose region it covers. The update path
+                    // learned this; this one was left behind.
+                    Arguments = RelaunchArgPrefix + nextGeneration.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                                + (App.HasStartupFlag() ? " --startup" : ""),
                     UseShellExecute = true,
                 };
                 // Bypasses ForceExit — flush the debounced run cursors before the process dies,
