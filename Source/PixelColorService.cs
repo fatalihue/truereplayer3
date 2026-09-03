@@ -83,10 +83,11 @@ namespace TrueReplayer.Services
         /// (#FFF) is NOT supported.
         ///
         /// The reason given here used to be "the editor always saves the expanded form", and that
-        /// was never true: both colour fields accept three digits and their swatch RENDERS #F00 as
-        /// solid red, so the UI confirms a value this rejects. Callers must therefore treat null as
-        /// a real, reachable answer — the automation daemon reports it through DescribeUnfireable
-        /// rather than polling forever on a colour that can never match.
+        /// was never true: both colour swatches accepted three digits and rendered #F00 as solid
+        /// red, confirming a value this rejects. Both were tightened to six digits, but null stays
+        /// a real, reachable answer — a config written by hand or arriving from an import never
+        /// passed either editor. The automation daemon reports it through DescribeUnfireable rather
+        /// than polling forever on a colour that can never match.
         /// </summary>
         public static Color? ParseHex(string? hex)
         {

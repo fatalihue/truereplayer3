@@ -856,6 +856,8 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       if (actions[actionIndex]) {
         setX(String(seedCoords.x));
         setY(String(seedCoords.y));
+        // A pick opens the editor already dirty with no input event to notice it.
+        setEditorTouched(true);
       }
       onSeedConsumedRef.current?.();
     }
@@ -1748,8 +1750,14 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   // it. Erring long is deliberate: holding an autonomous fire for a few extra seconds costs a
   // deferral, while releasing it early costs the edits.
   const [editorTouched, setEditorTouched] = useState(false);
-  useEffect(() => { if (hasUnsavedChanges) setEditorTouched(true); }, [hasUnsavedChanges]);
   useEffect(() => { setEditorTouched(false); }, [actionIndex]);
+  // Armed by a real edit, not by hasUnsavedChanges. That flag is a diff against the STORE, and any
+  // actions:updated push replaces the store — so an editor nobody had touched latched itself and
+  // then held autonomous fires for up to the guard's whole TTL. markTouched is called from the DOM
+  // input handler on the form below (React events bubble, so one handler covers every field) and
+  // from the pick-from-screen seed, which writes coordinates without any input event at all and
+  // otherwise left a dirty editor completely unprotected.
+  const markTouched = useCallback(() => setEditorTouched(true), []);
 
   const pendingEdits = actionIndex != null && editorTouched;
   useEffect(() => {
@@ -2388,8 +2396,13 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
           </div>
         </div>
 
-        {/* Body */}
-        <div className="p-4 space-y-3 flex-1 min-h-0 overflow-y-auto">
+        {/* Body. onInput/onChange here rather than on seventy setters: React events bubble, so one
+            handler on the form marks the editor touched for any field the user actually types in,
+            picks or toggles — which is what the automation guard needs to know, and what a diff
+            against the store cannot tell it once a push has replaced that store. */}
+        <div className="p-4 space-y-3 flex-1 min-h-0 overflow-y-auto"
+          onInput={markTouched}
+          onChange={markTouched}>
           {/* Action Type — only shown when the family has >1 meaningful option. Hidden for
               SendText (single option), WaitImage / Browser / Pause (each has its own editor
               shape). Cross-family conversions aren't offered: users who want to swap families

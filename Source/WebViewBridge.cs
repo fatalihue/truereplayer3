@@ -2618,9 +2618,11 @@ namespace TrueReplayer
                 // CreatedAt that was lost and then re-stamped by SaveProfileByNameAsync. Both are
                 // user-visible, in the Info tab and the Import Preview.
                 //
-                // UpdatedAt is carried rather than stamped here because this builder is also used
-                // to READ current state (the close guard, the export path); the save sites stamp
-                // it, exactly as SaveProfileByNameAsync does.
+                // Carried rather than stamped HERE so the builder stays a pure projection of
+                // current state; CreateProfileForSave is what stamps, exactly as
+                // SaveProfileByNameAsync does. (An earlier version of this note named the close
+                // guard and the export path as read-only callers — neither is: the close guard now
+                // goes through CreateProfileForSave, and the export never used this builder.)
                 CreatedAt = UserProfile.Current.CreatedAt,
                 UpdatedAt = UserProfile.Current.UpdatedAt,
             };
@@ -7333,9 +7335,10 @@ namespace TrueReplayer
                     // With a CLEAN grid the on-disk copy is byte-identical to the list we just
                     // rewrote, so the active profile is not special here: persist it exactly the
                     // way loop 1 persists every other profile, and the session stays clean. Going
-                    // through the on-disk copy rather than CreateProfileFromState() is deliberate —
-                    // SaveProfileByNameAsync is what stamps UpdatedAt and keeps CreatedAt, which
-                    // that builder does not carry.
+                    // through the on-disk copy rather than the in-memory builder is deliberate:
+                    // that builder is a WHITELIST, so anything absent from its initializer is
+                    // written away — Description, Tags and AppMinVersion among them. The disk copy
+                    // carries the whole profile and only the RunProfile keys change.
                     bool persisted = false;
                     if (!gridWasDirty)
                     {
