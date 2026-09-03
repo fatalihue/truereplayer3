@@ -11,6 +11,7 @@ import { SegmentedControl } from './common/SegmentedControl';
 import { NumberInput } from './common/NumberInput';
 import { ProfileSearchList } from './common/ProfileSearchList';
 import { Field } from './sheet/Field';
+import { FieldError } from './common/FieldError';
 import { WindowTargetFields } from './WindowTargetFields';
 import { ImageCropper } from './ImageCropper';
 import type { AutomationEntry, TriggerConfig } from '../bridge/messageTypes';
@@ -88,8 +89,18 @@ const defaultCooldownSec = (conditionType: string | null | undefined) =>
  * ImageFound was the only family that self-reported, which taught users that silence means healthy.
  */
 function whyCannotFire(t: TriggerConfig, tt: (en: string, pt: string) => string): string | null {
-  if (t.kind === 'schedule' && !t.timeOfDay) {
-    return tt('Pick a time of day.', 'Escolha um horário.');
+  if (t.kind === 'schedule') {
+    if (!t.timeOfDay) return tt('Pick a time of day.', 'Escolha um horário.');
+    // Schedule and the active-hours window share TimeOfDay, and switching kind does not clear the
+    // other one's value — so a range configured as active hours arrives here looking truthy while
+    // the "At" field shows blank. The daemon then stops the watcher on its first line. Detected by
+    // SHAPE, using the same helper the summary uses, rather than by a stricter HH:mm regex:
+    // TimeSpan.TryParse accepts forms like "1.09:00" from an imported profile, and rejecting those
+    // would be over-matching — the regression in the opposite direction.
+    if (rangeParts(t.timeOfDay)) {
+      return tt('That is an active-hours range, not a time of day — pick a single time.',
+                'Isso é uma faixa de horário ativo, não um horário — escolha um horário único.');
+    }
   }
   if (t.kind !== 'condition') return null;
   switch (t.conditionType) {
@@ -156,16 +167,57 @@ function fmtWhen(iso: string | null): string {
   return `${d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} ${time}`;
 }
 
-/** The active-hours window, ONLY when it is a range — mirrors TriggerService.ParseActiveHours, whose
- *  remarks explain why a bare time must not count. */
-function activeHours(t: TriggerConfig): string | null {
-  if (t.kind === 'schedule') return null;          // there, timeOfDay is the fire time
-  const s = (t.timeOfDay ?? '').trim();
+/** The range form "HH:mm-HH:mm", or null. One helper because three places now ask the same
+ *  question — the summary, the schedule guard and the phase-lock warning — and they must agree
+ *  with TriggerService.ParseActiveHours, which is the only opinion that decides behaviour. */
+function rangeParts(timeOfDay: string | null | undefined): { from: string; to: string } | null {
+  const s = (timeOfDay ?? '').trim();
   const dash = s.indexOf('-');
   if (dash <= 0 || dash === s.length - 1) return null;
   const from = s.slice(0, dash).trim();
   const to = s.slice(dash + 1).trim();
-  return from && to && from !== to ? `${from}–${to}` : null;
+  return from && to && from !== to ? { from, to } : null;
+}
+
+/** Seconds since midnight, or null when the half is not HH:mm. */
+function clockSeconds(hhmm: string): number | null {
+  const m = /^(d{1,2}):(d{2})$/.exec(hhmm);
+  if (!m) return null;
+  const h = Number(m[1]), min = Number(m[2]);
+  return h < 24 && min < 60 ? h * 3600 + min * 60 : null;
+}
+
+const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+
+/** The active-hours window, ONLY when it is a range — mirrors TriggerService.ParseActiveHours, whose
+ *  remarks explain why a bare time must not count. */
+function activeHours(t: TriggerConfig): string | null {
+  if (t.kind === 'schedule') return null;          // there, timeOfDay is the fire time
+  const r = rangeParts(t.timeOfDay);
+  return r ? `${r.from}–${r.to}` : null;
+}
+
+/**
+ * True when NO tick of this interval can ever land inside the window, for some starting phase.
+ *
+ * The ticks of a period P visit the clock at multiples of gcd(P, 24h): a 24 h interval hits one
+ * instant a day, a 12 h interval two. If that spacing is WIDER than the window, a phase exists
+ * where every tick misses — and the loop preserves phase when it skips, so the automation stays
+ * armed, keeps reporting a next-due time, and never runs. Below the spacing, the pigeonhole
+ * guarantees a hit and the pairing is always safe.
+ *
+ * A warning rather than a Save block: whether it actually locks depends on the arming moment, so
+ * refusing the configuration outright would reject pairings that work.
+ */
+function phaseLockRisk(t: TriggerConfig): boolean {
+  if (t.kind !== 'interval') return false;
+  const r = rangeParts(t.timeOfDay);
+  if (!r) return false;
+  const start = clockSeconds(r.from);
+  const end = clockSeconds(r.to);
+  if (start == null || end == null) return false;
+  const width = end > start ? end - start : 86400 - start + end;   // wraps midnight
+  return gcd(Math.max(5, t.intervalSeconds), 86400) > width;
 }
 
 function kindSummary(t: TriggerConfig, tt: (en: string, pt: string) => string): string {
@@ -765,7 +817,17 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   ariaLabel="Trigger kind"
                   grow
                   value={draft.kind}
-                  onChange={(v) => patch({ kind: v as TriggerConfig['kind'] })}
+                  onChange={(v) => {
+                    const next = v as TriggerConfig['kind'];
+                    // Entering Schedule drops an active-hours RANGE, because there TimeOfDay means
+                    // the fire time and a range can never be one. Only on the way IN, and only for
+                    // a range: clearing on the way OUT would throw away the window on an innocent
+                    // round trip, and would also erase the bare "12:00" that two real profiles
+                    // carry from an abandoned draft — which ParseActiveHours ignores on purpose.
+                    patch(next === 'schedule' && rangeParts(draft.timeOfDay)
+                      ? { kind: next, timeOfDay: null }
+                      : { kind: next });
+                  }}
                   options={[
                     { value: 'interval', label: 'Interval' },
                     { value: 'schedule', label: 'Schedule' },
@@ -817,6 +879,17 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                         </Button>
                       )}
                     </div>
+                    {/* Warning, not a Save block: whether it actually locks depends on the moment
+                        the automation is armed, so refusing the pairing outright would reject
+                        configurations that work. See phaseLockRisk. */}
+                    <FieldError
+                      show={phaseLockRisk(draft)}
+                      tip={tt('The ticks of this interval only ever land on a few times of day, and they can all fall outside the window.',
+                              'Os ticks deste intervalo só caem em alguns horários do dia, e podem cair todos fora da janela.')}
+                    >
+                      {tt('This interval is too long for this window — it may never fire. Shorten the interval or widen the hours.',
+                          'Este intervalo é longo demais para esta janela — pode nunca disparar. Diminua o intervalo ou amplie o horário.')}
+                    </FieldError>
                   </Field>
                 );
               })()}
