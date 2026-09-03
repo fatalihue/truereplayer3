@@ -7721,14 +7721,22 @@ namespace TrueReplayer.Services
                 return;
             }
 
+            // DisplayKey is empty for a WaitImage — the reference lives in ImagePath, not Key — so
+            // the old format produced a bare "timed out ()". Harmless in a log line, sloppy now that
+            // FailCurrentStep puts this text in the run report where the user reads it. The row
+            // already carries its own number and comment, so nothing is lost by dropping the empty
+            // pair rather than inventing a GUID filename to fill it.
+            string label = string.IsNullOrWhiteSpace(action.DisplayKey) || action.DisplayKey == "—"
+                ? "" : $" ({action.DisplayKey})";
+
             SaveTimeoutScreenshot(action);
 
             if (SkipRowOnErrorActive)
             {
-                FaultRow($"Wait Image timed out ({action.DisplayKey})");
+                FaultRow($"Wait Image timed out{label}");
                 return;
             }
-            FailCurrentStep($"Wait Image timed out ({action.DisplayKey})");
+            FailCurrentStep($"Wait Image timed out{label}");
             // ObjectDisposedException possible if a new StartAsync swapped _cts out
             // from under us; swallow because this run was already over anyway.
             try { _cts?.Cancel(); } catch (ObjectDisposedException) { }
