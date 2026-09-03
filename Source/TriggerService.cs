@@ -844,6 +844,11 @@ namespace TrueReplayer.Services
                 bool pending = false;
                 var pendingSince = DateTime.MinValue;
                 TriggerFireResult? lastRefusal = null;
+                // Set when the active-hours window is what held a pending edge. Tracked apart from
+                // lastRefusal because being outside the window is not a fire RESULT — the fire was
+                // never offered — and without it the stale-edge line would blame the engine for
+                // being busy, which is the exact mislabel the reason switch below exists to end.
+                bool heldByHours = false;
                 DateTime CooldownUntil() { lock (_lock) return new DateTime(stats.CooldownUntilTicks); }
                 void StampCooldown() { lock (_lock) stats.CooldownUntilTicks = DateTime.Now.AddSeconds(cooldownSec).Ticks; }
                 // A cooldown the user just LOWERED must not keep the watcher mute for the old one.
@@ -905,6 +910,11 @@ namespace TrueReplayer.Services
                     {
                         pending = true;
                         pendingSince = DateTime.Now;
+                        // Both belong to THIS edge. Carrying either across would let a new edge
+                        // inherit the last one's excuse — the window that held yesterday's, or a
+                        // refusal from an attempt this edge never made.
+                        heldByHours = false;
+                        lastRefusal = null;
                     }
                     wasTrue = isTrue;
 
@@ -918,7 +928,9 @@ namespace TrueReplayer.Services
                         // of which is contention — were both reported as the engine being busy,
                         // erasing the reason AutomationGuard went to the trouble of composing. This
                         // line is the durable record of why last night's fire did not happen.
-                        SetLastResult(stats, lastRefusal switch
+                        SetLastResult(stats, heldByHours
+                            ? $"fire skipped (outside active hours {cfg.TimeOfDay} — edge expired)"
+                            : lastRefusal switch
                         {
                             TriggerFireResult.SkippedModal =>
                                 $"fire skipped ({AutomationGuard.LastReason ?? "a dialog was open"} — edge expired)",
@@ -933,7 +945,7 @@ namespace TrueReplayer.Services
                     // Placed AFTER the stale-edge branch above on purpose: an edge raised just
                     // before closing time still ages out on schedule instead of being frozen and
                     // released hours later, which is the same ambush by a slower route.
-                    if (holding) continue;
+                    if (holding) { heldByHours = true; continue; }
 
                     // Bounded per ATTEMPT, so the loop gets back to probing — the same reasoning
                     // the level branch above states, and it applies at least as strongly here.
@@ -1152,6 +1164,10 @@ namespace TrueReplayer.Services
                         MarkStatsDirty();
                         NotifyStateChanged();
                     }
+                    // A held copy does not survive the clipboard moving on. The app's own paste and
+                    // restore traffic replaces the content, so re-offering the held one afterwards
+                    // would ask the pattern about text the user never copied.
+                    if (seq != lastSeq) heldCopyAt = DateTime.MinValue;
                     lastSeq = seq;
                     continue;
                 }
