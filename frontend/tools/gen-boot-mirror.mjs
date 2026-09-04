@@ -112,6 +112,15 @@ const stop = norm.indexOf(END);
 let next;
 if (start >= 0 && stop > start) {
   next = norm.slice(0, start) + block + norm.slice(stop + END.length);
+} else if (start >= 0 || stop >= 0) {
+  // Exactly one marker survived — someone deleted the other, or a reformat/re-encode mangled the
+  // em dash inside it. Falling through to the first-run branch here was the bug: it anchors on the
+  // `<script>` INSIDE the orphaned block, so the surviving BEGIN is kept and the emitted block
+  // adds a second one, leaving two BEGIN markers while printing "regenerated" as if all were well.
+  // A half-marked file is unrecoverable without guessing, so say so and stop.
+  console.error('[boot-mirror] index.html has only one of the two markers — refusing to guess where the generated block ends.');
+  console.error('             Restore the pair (or delete the whole block) and run again.');
+  process.exit(1);
 } else {
   // First run: adopt the existing hand-written <script> block that sits before the <style> tag.
   const s0 = norm.indexOf('    <script>');
