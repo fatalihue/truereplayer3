@@ -1,18 +1,35 @@
 import { useEffect, useRef, useState } from 'react';
-import { Play, Pause as PauseIcon, MousePointerClick, Folder, List, Gauge, Clock, Repeat, Unplug, Chrome } from 'lucide-react';
+import { Play, Pause as PauseIcon, MousePointerClick, Folder, List, Gauge, Clock, Repeat, Unplug, Chrome, Timer, CheckCircle2, XCircle } from 'lucide-react';
 import { useAppState, useClickerLive, useHighlightedAction } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
 import { usePauseTick } from '../hooks/usePauseTick';
 import { useBrowserConnection } from '../hooks/useBrowserConnection';
-import { useTt } from '../state/LanguageContext';
+import { useTt, useLanguage } from '../state/LanguageContext';
+import type { RunReport } from '../bridge/messageTypes';
 import { formatClickerStats, formatRate, targetCps } from '../utils/clickerFormat';
 import { APP_VERSION } from '../appVersion';
+
+// What the bar keeps of the last finished run: enough to say "18/18 in 12.4 s" or "stopped at
+// step 7" beside the profile it belongs to, and to open the full report on click. Derived from the
+// replay:report the backend pushes on its own at the end of every run (WebViewBridge, the
+// ready-after-replaying edge), so no new message and nothing polled.
+interface LastRunSummary { profile: string; total: number; ok: number; failedRow: number | null; durationMs: number; }
+
+// Per-action cost the estimate adds on top of the delays: the engine's dispatch, a click's hold,
+// a keystroke's press/release. Deliberately a floor — smooth mouse moves (distance-bound) and
+// waits (timeout-bound) cannot be read off the grid and are left out; the tooltip says so.
+const PER_ACTION_OVERHEAD_MS = 30;
+
+function fmtDuration(ms: number, language: 'en' | 'pt-BR'): string {
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  return `${(ms / 1000).toLocaleString(language === 'pt-BR' ? 'pt-BR' : 'en-US', { maximumFractionDigits: 1 })} s`;
+}
 
 // Thin vertical divider between status segments.
 const Sep = () => <div className="w-px h-3 bg-border-subtle mx-3 shrink-0" />;
 
 export function StatusBar() {
-  const { statusBar, status, replayChain, pauseState, settings } = useAppState();
+  const { statusBar, status, replayChain, pauseState, settings, actions } = useAppState();
   // Separate contexts on purpose: the live slices update ~4×/s during a run and the highlight
   // advances once per executed action; keeping them out of AppState is what stops every other
   // panel re-rendering at those cadences.
@@ -22,7 +39,29 @@ export function StatusBar() {
   // reconnect can't re-render every consumer of the store.
   const browserConnection = useBrowserConnection();
   const tt = useTt();
-  const { send } = useBridge();
+  const { language } = useLanguage();
+  const { send, subscribe } = useBridge();
+
+  // Last finished run, from the automatic end-of-run report push. A report requested mid-run
+  // carries a 'running' step and is not a finished run; skipped rows count for neither side.
+  const [lastRun, setLastRun] = useState<LastRunSummary | null>(null);
+  useEffect(() => subscribe((msg) => {
+    if (msg.type !== 'replay:report') return;
+    const r = msg.payload as RunReport;
+    if (!r.startedAt || r.steps.length === 0 || r.steps.some(s => s.status === 'running')) return;
+    const counted = r.steps.filter(s => s.status !== 'skipped');
+    const failed = r.steps.find(s => s.status === 'failed');
+    setLastRun({
+      profile: r.steps[0].profile || r.profile,
+      total: counted.length,
+      ok: counted.filter(s => s.status === 'ok').length,
+      failedRow: failed ? failed.row : null,
+      durationMs: r.steps.reduce((a, s) => a + s.durationMs, 0),
+    });
+  }), [subscribe]);
+
+  // The delays added up plus a per-action floor — the number the grid can promise before a run.
+  const estimateMs = actions.reduce((sum, a) => sum + (a.delay > 0 ? a.delay : 0) + PER_ACTION_OVERHEAD_MS, 0);
   const isReplaying = status === 'replaying';
   const isClicker = settings.useCursorClick;
   // The engine's stack already includes the root profile at index 0, so we only
@@ -201,6 +240,39 @@ export function StatusBar() {
                 <List size={11} />
                 <span className="text-text-secondary">{statusBar.actionCount} actions</span>
               </span>
+              {/* Two readouts the bar did not carry: what the grid will cost, and how the last run
+                  ended. Both are readouts, not controls — the report itself stays where the
+                  palette put it; the chip only opens it. Hidden when the loaded profile is not
+                  the one that ran, so a switch cannot pin another profile's result to this name.
+                  Visible text stays English (labels); the tooltips are the bilingual half. */}
+              {actions.length > 0 && (
+                <>
+                  <Sep />
+                  <span
+                    className="flex items-center gap-1.5 text-text-tertiary"
+                    data-tip={tt('Estimated duration: the delays added up, plus ~30 ms per action. Smooth mouse moves and waits are not counted.', 'Duração estimada: a soma dos atrasos mais ~30 ms por ação. Movimentos suaves e esperas não entram na conta.')}
+                  >
+                    <Timer size={11} />
+                    <span className="text-text-secondary font-mono">~{fmtDuration(estimateMs, language)}</span>
+                  </span>
+                </>
+              )}
+              {lastRun && lastRun.profile === statusBar.profileName && (
+                <>
+                  <Sep />
+                  <button
+                    type="button"
+                    onClick={() => window.dispatchEvent(new CustomEvent('cmd:runreport'))}
+                    className="flex items-center gap-1.5 px-1 -mx-1 rounded hover:bg-bg-elevated transition-colors"
+                    style={{ color: lastRun.failedRow == null ? 'var(--color-replay-fg)' : 'var(--color-recording-fg)' }}
+                    data-tip={tt('Last run. Click to open the run report.', 'Última execução. Clique para abrir o relatório.')}
+                  >
+                    {lastRun.failedRow == null ? <CheckCircle2 size={11} /> : <XCircle size={11} />}
+                    <span className="font-medium">{lastRun.failedRow == null ? 'last run' : `stopped at step ${lastRun.failedRow}`}</span>
+                    <span className="font-mono text-text-secondary">{lastRun.ok}/{lastRun.total} · {fmtDuration(lastRun.durationMs, language)}</span>
+                  </button>
+                </>
+              )}
             </>
           )}
 
