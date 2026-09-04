@@ -31,7 +31,7 @@
   },
   "src/components/ProfilePanel.tsx": {
     "no-restricted-syntax": {
-      "count": 39
+      "count": 31
     }
   },
   "src/components/RemapSection.tsx": {

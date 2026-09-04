@@ -1488,13 +1488,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
     if (e.key === 'Enter') {
       e.preventDefault();
       onConfirm();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      setShowCreateDialog(false);
-      setShowRenameDialog(null);
-      setShowCreateFolderDialog(false);
-      setShowRenameFolderDialog(null);
     }
+    // Escape is the DialogShell's: it plays the exit animation and then runs the dialog's onClose.
   };
 
   const profile = contextMenu ? profiles.find(p => p.name === contextMenu.profileName) : null;
@@ -2673,25 +2668,13 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
 
       {/* Create Dialog */}
       {showCreateDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-[340px] bg-bg-card border border-border-default rounded-dialog p-5 shadow-dialog">
+        <DialogShell title={createFolder ? `New profile in ${createFolder}` : 'New profile'} widthClass="w-[340px]" onClose={() => setShowCreateDialog(false)}>
+          <div className="p-4 flex flex-col">
             {/* The destination rides the TITLE rather than a line of its own: it is one fact,
                 and a dialog reached from two different buttons has to say which one opened it.
                 One name for one action, everywhere — the toolbar tooltip, this title and the
                 folder row all read "New profile" (it used to be "New profile" / "Create Profile"
                 / nothing, for the same thing). */}
-            <h3 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-1.5 flex-wrap">
-              New profile
-              {createFolder && (
-                <span
-                  className="inline-flex items-center gap-1 text-xs font-medium"
-                  style={{ color: (profileOrder?.folders ?? []).find(f => f.name === createFolder)?.color ?? 'var(--color-text-secondary)' }}
-                >
-                  <FolderOpen size={11} />
-                  in {createFolder}
-                </span>
-              )}
-            </h3>
             <input
               ref={dialogInputRef}
               type="text"
@@ -2721,14 +2704,13 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               </button>
             </div>
           </div>
-        </div>
+        </DialogShell>
       )}
 
       {/* Rename Dialog */}
       {showRenameDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-[340px] bg-bg-card border border-border-default rounded-dialog p-5 shadow-dialog">
-            <h3 className="text-sm font-semibold text-text-primary mb-3">Rename Profile</h3>
+        <DialogShell title="Rename Profile" widthClass="w-[340px]" onClose={() => setShowRenameDialog(null)}>
+          <div className="p-4 flex flex-col">
             <input
               ref={dialogInputRef}
               type="text"
@@ -2755,14 +2737,13 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               </button>
             </div>
           </div>
-        </div>
+        </DialogShell>
       )}
 
       {/* Delete Confirm Dialog */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onKeyDown={(e) => { if (e.key === 'Enter') confirmDelete(); else if (e.key === 'Escape') setShowDeleteConfirm(null); }}>
-          <div className="w-[340px] bg-bg-card border border-border-default rounded-dialog p-5 shadow-dialog">
-            <h3 className="text-sm font-semibold text-text-primary mb-3">Delete Profile</h3>
+        <DialogShell title="Delete Profile" widthClass="w-[340px]" onClose={() => setShowDeleteConfirm(null)} onCardKeyDown={(e) => { if (e.key === 'Enter') confirmDelete(); }}>
+          <div className="p-4 flex flex-col">
             <p className="text-sm text-text-secondary">
               Delete profile <span className="text-text-primary font-medium">'{showDeleteConfirm}'</span>?
             </p>
@@ -2774,7 +2755,6 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                 Cancel
               </button>
               <button
-                autoFocus
                 onClick={confirmDelete}
                 className="px-4 py-1.5 text-xs text-[color:var(--color-recording-ink)] bg-recording hover:bg-recording/80 rounded transition-colors"
               >
@@ -2782,16 +2762,15 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               </button>
             </div>
           </div>
-        </div>
+        </DialogShell>
       )}
 
       {/* Remove-confirmation Dialog — gate for the inline ✕ removals (hotkey /
           hotstring / profile target / folder target). Same shape as the delete
           dialog; Enter confirms, Esc cancels. */}
       {confirmRemoval && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onKeyDown={(e) => { if (e.key === 'Enter') runConfirmedRemoval(); else if (e.key === 'Escape') setConfirmRemoval(null); }}>
-          <div className="w-[340px] bg-bg-card border border-border-default rounded-dialog p-5 shadow-dialog">
-            <h3 className="text-sm font-semibold text-text-primary mb-3">Are you sure?</h3>
+        <DialogShell title="Are you sure?" widthClass="w-[340px]" onClose={() => setConfirmRemoval(null)} onCardKeyDown={(e) => { if (e.key === 'Enter') runConfirmedRemoval(); }}>
+          <div className="p-4 flex flex-col">
             <p className="text-sm text-text-secondary">
               Remove {confirmRemoval.label} from <span className="text-text-primary font-medium">'{confirmRemoval.name}'</span>?
             </p>
@@ -2803,7 +2782,6 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                 No
               </button>
               <button
-                autoFocus
                 onClick={runConfirmedRemoval}
                 className="px-4 py-1.5 text-xs text-[color:var(--color-recording-ink)] bg-recording hover:bg-recording/80 rounded transition-colors"
               >
@@ -2811,14 +2789,13 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               </button>
             </div>
           </div>
-        </div>
+        </DialogShell>
       )}
 
       {/* Assign Hotkey Dialog */}
       {showHotkeyDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-[340px] bg-bg-card border border-border-default rounded-dialog p-5 shadow-dialog">
-            <h3 className="text-sm font-semibold text-text-primary mb-3">Assign Hotkey</h3>
+        <DialogShell title="Assign Hotkey" widthClass="w-[340px]" onClose={() => setShowHotkeyDialog(null)}>
+          <div className="p-4 flex flex-col">
             <p className="text-xs text-text-secondary mb-3">
               Press a key combination for <span className="text-text-primary font-medium">'{showHotkeyDialog}'</span>
             </p>
@@ -2901,14 +2878,13 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               </div>
             </div>
           </div>
-        </div>
+        </DialogShell>
       )}
 
       {/* Assign Hotstring Dialog */}
       {showHotstringDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-[340px] bg-bg-card border border-border-default rounded-dialog p-5 shadow-dialog">
-            <h3 className="text-sm font-semibold text-text-primary mb-3">Assign Hotstring</h3>
+        <DialogShell title="Assign Hotstring" widthClass="w-[340px]" onClose={() => setShowHotstringDialog(null)}>
+          <div className="p-4 flex flex-col">
             <p className="text-xs text-text-secondary mb-3">
               Type a character sequence for <span className="text-text-primary font-medium">'{showHotstringDialog}'</span>
             </p>
@@ -2919,7 +2895,6 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               onChange={(e) => setHotstringValue(e.target.value.replace(/[^a-zA-Z0-9\-./,;=]/g, ''))}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') { e.preventDefault(); confirmHotstring(); }
-                else if (e.key === 'Escape') { e.preventDefault(); setShowHotstringDialog(null); }
               }}
               placeholder="e.g. /id"
               maxLength={32}
@@ -2966,7 +2941,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               </div>
             </div>
           </div>
-        </div>
+        </DialogShell>
       )}
 
       {/* Export Profiles Dialog */}
@@ -3233,9 +3208,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
 
       {/* Create Folder Dialog */}
       {showCreateFolderDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-[340px] bg-bg-card border border-border-default rounded-dialog p-5 shadow-dialog">
-            <h3 className="text-sm font-semibold text-text-primary mb-3">New Folder</h3>
+        <DialogShell title="New Folder" widthClass="w-[340px]" onClose={() => setShowCreateFolderDialog(false)}>
+          <div className="p-4 flex flex-col">
             <input
               ref={folderDialogInputRef}
               type="text"
@@ -3301,14 +3275,13 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               </button>
             </div>
           </div>
-        </div>
+        </DialogShell>
       )}
 
       {/* Rename Folder Dialog */}
       {showRenameFolderDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-[340px] bg-bg-card border border-border-default rounded-dialog p-5 shadow-dialog">
-            <h3 className="text-sm font-semibold text-text-primary mb-3">Rename Folder</h3>
+        <DialogShell title="Rename Folder" widthClass="w-[340px]" onClose={() => setShowRenameFolderDialog(null)}>
+          <div className="p-4 flex flex-col">
             <input
               ref={folderDialogInputRef}
               type="text"
@@ -3316,7 +3289,6 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               onChange={(e) => setFolderDialogName(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') { e.preventDefault(); confirmRenameFolder(); }
-                else if (e.key === 'Escape') { e.preventDefault(); setShowRenameFolderDialog(null); }
               }}
               placeholder="New folder name..."
               className="w-full h-9 px-3 text-sm text-text-primary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid"
@@ -3338,7 +3310,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               </button>
             </div>
           </div>
-        </div>
+        </DialogShell>
       )}
 
       {/* Window Target Dialog — profile scope */}

@@ -106,7 +106,12 @@ export function DialogShell({
   // Focus the card so Esc works without a click first (the convention every
   // hand-rolled dialog already followed).
   useEffect(() => {
-    cardRef.current?.focus();
+    // Take focus only when nothing inside the card has it already: a dialog that focuses its own
+    // input (autoFocus, or a parent layout effect — the ProfilePanel dialogs do this) must not be
+    // robbed of it by the trap's initial focus. Layout effects run before this passive one, so
+    // the parent's focus lands first and this check sees it.
+    const card = cardRef.current;
+    if (card && !card.contains(document.activeElement)) card.focus();
   }, []);
 
   // Exit fallback — animationend never fires if the window is occluded/minimized
