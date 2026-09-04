@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
 import { useAppState } from '../state/AppStateContext';
 
-// The TR monogram (memory/asset-mark-tr.svg): five round-capped strokes in a 24-unit box. Kept
-// inline so the mark paints with theme tokens — the same drawing the tray .ico files and the
-// Assets tiles are generated from (memory/tool-make-icons.mjs). 2.6 is the small-size stroke: at
-// the 14px this renders, 2.2 would come out as a 1.3px line and fuzz.
-const MARK_PATHS = ['M3.5 5.5h11.5', 'M8.5 5.5V19', 'M14 10.5V19', 'M14 10.5h3.2a2.6 2.6 0 0 1 0 5.2H14', 'M16.4 15.7l3 3.3'];
+// The brand mark: a vector reading of the original robot icon at its SMALL optical size (the
+// same drawing memory/tool-make-icons-robot.mjs, variant A, puts in the 16-24 px frames of the
+// tray .ico files). Illustration colours come from the --mark-* tokens in index.css — fixed on
+// purpose, this is the app's icon — and only the signal ring takes the mode's colour, mirroring
+// the three tray icons the backend swaps.
 
 // Right margin reserved for the Windows native caption-button strip
 // (minimize / maximize / close), which is overlaid on the right edge of the
@@ -42,30 +42,24 @@ export function TitleBar({ onOpenCommandPalette }: TitleBarProps) {
     const t = setTimeout(() => setRunDone(false), 1500);
     return () => clearTimeout(t);
   }, [status]);
-  // The mark takes the mode's colour, mirroring the three tray icons the backend swaps:
-  // recording red while a capture is live, clicker purple in Clicker mode, accent otherwise.
-  // Fill and ink are the paired tokens (the -ink rung is contrast-picked per theme), never a
-  // literal, so every preset paints its own pair.
-  const markFill = status === 'recording'
+  // Signal ring in the mode's colour: recording red while a capture is live, clicker purple in
+  // Clicker mode, the theme accent otherwise.
+  const markRing = status === 'recording'
     ? 'var(--color-recording)'
-    : settings.useCursorClick ? 'var(--color-clicker)' : 'var(--color-accent-solid)';
-  const markInk = status === 'recording'
-    ? 'var(--color-recording-ink)'
-    : settings.useCursorClick ? 'var(--color-clicker-ink)' : 'var(--color-accent-ink)';
+    : settings.useCursorClick ? 'var(--color-clicker)' : 'var(--color-accent)';
 
   return (
     <div className="drag-region flex items-center h-[48px] px-4 bg-bg-base border-b border-border-subtle shrink-0">
       {/* Logo */}
       <div className="no-drag flex items-center gap-2.5">
-        <div
-          className="w-5 h-5 rounded-[5px] flex items-center justify-center transition-colors"
-          style={{ background: markFill, color: markInk }}
-          aria-hidden="true"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round">
-            {MARK_PATHS.map((d) => <path key={d} d={d} />)}
-          </svg>
-        </div>
+        <svg width="20" height="20" viewBox="0 0 64 64" aria-hidden="true" className="shrink-0">
+          <rect width="64" height="64" rx="14" fill="var(--mark-ground)" />
+          <path d="M7 45 A26 26 0 1 1 57 45" fill="none" stroke={markRing} strokeWidth="6" strokeLinecap="round" className="transition-colors" />
+          <ellipse cx="32" cy="32" rx="15" ry="16" fill="var(--mark-silver)" />
+          <rect x="19.5" y="28" width="25" height="10.5" rx="5.25" fill="var(--mark-visor)" />
+          <circle cx="27" cy="33.25" r="4.6" fill="var(--mark-eye)" />
+          <path d="M13 54 c0 -4 8 -7 19 -7 s19 3 19 7 v1 h-38 z" fill="var(--mark-steel)" />
+        </svg>
         <span className="text-xs text-text-secondary">TrueReplayer</span>
       </div>
 

@@ -200,6 +200,18 @@
      as a stain). These dark-theme values only cover the pre-hydration frame. */
   --shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.45);
   --shadow-dialog: 0 16px 48px rgba(0, 0, 0, 0.55);
+
+  /* Brand mark — the vector robot (memory/tool-make-icons-robot.mjs, variant A, chosen
+     2026-09-04 over the TR monogram after a live look). These are ILLUSTRATION colours, fixed
+     on purpose: the title-bar mark is the same picture the tray and the taskbar show, and an
+     icon that re-skinned itself per theme would stop being recognisable. Only the signal ring
+     follows the mode (TitleBar passes the mode token). Declared here so the JSX carries no
+     literal — the colour gate reads .tsx, not this file. */
+  --mark-ground: #141923;
+  --mark-silver: #e6e9ef;
+  --mark-steel: #a0a9b6;
+  --mark-visor: #1c2230;
+  --mark-eye: #ff3b3b;
 }
 
 /* Global resets */
