@@ -5,17 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run mirror && npm run lint:hooks && npm run lint:colors && tsc -b && vite build",
+    "build": "npm run mirror && npm run lint:gate && tsc -b && vite build",
     "lint": "eslint .",
-    "lint:hooks": "eslint -c eslint.hooks.config.js --suppressions-location eslint-hooks-suppressions.json .",
-    "lint:hooks:prune": "eslint -c eslint.hooks.config.js --suppressions-location eslint-hooks-suppressions.json --prune-suppressions .",
-    "lint:hooks:accept": "eslint -c eslint.hooks.config.js --suppressions-location eslint-hooks-suppressions.json --suppress-all .",
     "preview": "vite preview",
     "mirror": "node tools/gen-boot-mirror.mjs",
     "mirror:check": "node tools/gen-boot-mirror.mjs --check",
-    "lint:colors": "eslint -c eslint.colors.config.js --suppressions-location eslint-colors-suppressions.json .",
-    "lint:colors:prune": "eslint -c eslint.colors.config.js --suppressions-location eslint-colors-suppressions.json --prune-suppressions .",
-    "lint:colors:accept": "eslint -c eslint.colors.config.js --suppressions-location eslint-colors-suppressions.json --suppress-all ."
+    "lint:gate": "eslint -c eslint.gate.config.js --suppressions-location eslint-gate-suppressions.json .",
+    "lint:gate:prune": "eslint -c eslint.gate.config.js --suppressions-location eslint-gate-suppressions.json --prune-suppressions .",
+    "lint:gate:accept": "eslint -c eslint.gate.config.js --suppressions-location eslint-gate-suppressions.json --suppress-all ."
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
