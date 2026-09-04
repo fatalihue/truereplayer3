@@ -406,7 +406,7 @@ function ComboInput({ value, onCommit, options, width = FIELD_W, editable = true
         <ChevronDown size={11} />
       </button>
       {open && (
-        <div className="absolute left-0 top-full mt-1 z-50 w-full bg-bg-card border border-border-default rounded-md shadow-lg py-1">
+        <div className="absolute left-0 top-full mt-1 z-50 w-full bg-bg-card border border-border-default rounded-overlay shadow-overlay py-1">
           {options.map((o) => (
             <button
               key={o.value}

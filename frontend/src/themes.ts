@@ -163,14 +163,19 @@ export const DEFAULT_UI_SETTINGS: ThemeUISettings = {
   // Indigo — adjacent to RunProfile's blue, the open slot between it and Mouse's violet.
   // ΔE 7.5 minimum (nearest: Mouse).
   actionActivateWindowColor: '#4f46e5',
-  fontMono: 'Consolas',
+  // Cascadia Mono ships with Windows 11 (and with Windows Terminal on 10); Consolas stays in the
+  // fallback stack applyThemeConfig emits, so a machine without it sees exactly what it saw
+  // before. The v6 → v7 migration moves a stored 'Consolas' here ONLY when it is still the old
+  // default, the same only-if-still-default rule the colour migrations use.
+  fontMono: 'Cascadia Mono',
   matchSystemTheme: false,
   darkPresetId: 'lavender-coal',
   lightPresetId: 'github-light',
   enableAnimations: true,
 };
 
-export const CURRENT_THEME_CONFIG_VERSION = 6;
+// v7 = default monospace font Consolas → Cascadia Mono (2026-09-04 main-window polish).
+export const CURRENT_THEME_CONFIG_VERSION = 7;
 
 export interface ThemeConfig {
   // Schema version. v1 = original; v2 = palette pass (PixelColor / Scroll / Pause
@@ -1619,6 +1624,16 @@ export function loadThemeConfig(): ThemeConfig {
         ui.lightPresetId = REMOVED_THEME_FALLBACKS[ui.lightPresetId] ?? ui.lightPresetId;
       }
 
+      // v6 → v7 migration: the default monospace face moved from Consolas to Cascadia Mono
+      // (Windows 11). Only-if-still-the-old-default, like the colour migrations: someone who
+      // picked Consolas on purpose in the Theme Editor cannot be told apart from someone who
+      // never touched it, so the migration errs on the side of the new default — the value
+      // stays one click away in the same picker.
+      if (parsed.version < 7) {
+        const ui = merged.uiSettings;
+        if (ui.fontMono === 'Consolas') ui.fontMono = DEFAULT_UI_SETTINGS.fontMono;
+      }
+
       // Runs AFTER the migrations so a value a migration just wrote is checked too.
       const dropped = sanitizeStoredConfig(merged);
       if (dropped) console.warn(`[themes] Dropped ${dropped} unsafe colour value(s) from stored config`);
@@ -1816,8 +1831,17 @@ export function applyThemeConfig(colors: ThemeColors, uiSettings: ThemeUISetting
   // Tinted border for the conditional block scope rail — keeps the RAW hue (35%
   // alpha): rails are structural, not text, and want the pure identity color.
   parts.push(`--color-action-if-border: color-mix(in srgb, ${uiSettings.actionIfColor} 35%, transparent);`);
-  // Font
-  parts.push(`--font-mono: '${uiSettings.fontMono}', 'Courier New', monospace;`);
+  // Font — the user's pick first, then the two faces every Windows has, so a name that is not
+  // installed (a config carried over from another machine) degrades to Consolas, not to the
+  // browser's serif default.
+  parts.push(`--font-mono: '${uiSettings.fontMono}', Consolas, 'Courier New', monospace;`);
+  // Elevation — one pair of shadows for the app, per theme. On the light presets a black
+  // 45-60% shadow under a white card reads as a stain; a lighter blue-grey one reads as depth.
+  // Same classification the ink solver uses (isLightColor is alpha-safe since a4c5b5c).
+  const lightSurface = isLightColor(colors['bg-base']) === true;
+  parts.push(lightSurface
+    ? `--shadow-overlay: 0 6px 20px rgba(20, 30, 50, 0.14); --shadow-dialog: 0 16px 40px rgba(20, 30, 50, 0.2);`
+    : `--shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.45); --shadow-dialog: 0 16px 48px rgba(0, 0, 0, 0.55);`);
   // The zoom as a NUMBER, mirroring root.style.zoom below. `zoom` on <html> scales
   // everything it paints, but viewport units still resolve against the UNZOOMED viewport —
   // so `height: 100vh` paints at only `100vh * zoom` and can never fill the window (at the

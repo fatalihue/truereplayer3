@@ -642,7 +642,7 @@ export function Toolbar(_props: ToolbarProps) {
               <ChevronDown size={9} className="opacity-60" />
             </button>
             {showWaitMenu && (
-              <div ref={waitFlyout.ref} className={`absolute w-56 bg-bg-surface border border-border-default rounded-lg shadow-xl z-50 py-1 ${waitFlyout.flipX ? 'right-0' : 'left-0'} ${waitFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
+              <div ref={waitFlyout.ref} className={`absolute w-56 bg-bg-surface border border-border-default rounded-overlay shadow-overlay z-50 py-1 ${waitFlyout.flipX ? 'right-0' : 'left-0'} ${waitFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                 <div className="px-3 py-1 label-micro text-text-tertiary">
                   Insert Wait
                 </div>
@@ -727,7 +727,7 @@ export function Toolbar(_props: ToolbarProps) {
               <ChevronDown size={9} className="opacity-60" />
             </button>
             {showConditionalMenu && (
-              <div ref={conditionalFlyout.ref} className={`absolute w-56 bg-bg-surface border border-border-default rounded-lg shadow-xl z-50 py-1 ${conditionalFlyout.flipX ? 'right-0' : 'left-0'} ${conditionalFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
+              <div ref={conditionalFlyout.ref} className={`absolute w-56 bg-bg-surface border border-border-default rounded-overlay shadow-overlay z-50 py-1 ${conditionalFlyout.flipX ? 'right-0' : 'left-0'} ${conditionalFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                 <div className="px-3 py-1 label-micro text-text-tertiary">
                   Insert Conditional
                 </div>
@@ -847,7 +847,7 @@ export function Toolbar(_props: ToolbarProps) {
               const loopDepth = loopDepthAt(actions, loopInsertAt);
               const rowsN = dataTable.rows.length;
               return (
-              <div ref={loopFlyout.ref} className={`absolute w-60 bg-bg-surface border border-border-default rounded-lg shadow-xl z-50 py-1 ${loopFlyout.flipX ? 'right-0' : 'left-0'} ${loopFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
+              <div ref={loopFlyout.ref} className={`absolute w-60 bg-bg-surface border border-border-default rounded-overlay shadow-overlay z-50 py-1 ${loopFlyout.flipX ? 'right-0' : 'left-0'} ${loopFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                 <div className="px-3 py-1 label-micro text-text-tertiary">
                   Insert While — repeats while true
                 </div>
@@ -934,7 +934,7 @@ export function Toolbar(_props: ToolbarProps) {
               <ChevronDown size={9} className="opacity-60" />
             </button>
             {showAssertMenu && (
-              <div ref={assertFlyout.ref} className={`absolute w-56 bg-bg-surface border border-border-default rounded-lg shadow-xl z-50 py-1 ${assertFlyout.flipX ? 'right-0' : 'left-0'} ${assertFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
+              <div ref={assertFlyout.ref} className={`absolute w-56 bg-bg-surface border border-border-default rounded-overlay shadow-overlay z-50 py-1 ${assertFlyout.flipX ? 'right-0' : 'left-0'} ${assertFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                 <div className="px-3 py-1 label-micro text-text-tertiary">
                   Insert Assert — must be true
                 </div>
@@ -1000,7 +1000,7 @@ export function Toolbar(_props: ToolbarProps) {
               <ChevronDown size={9} className="opacity-60" />
             </button>
             {showBrowserMenu && (
-              <div ref={browserFlyout.ref} className={`absolute w-56 bg-bg-surface border border-border-default rounded-lg shadow-xl z-50 py-1 ${browserFlyout.flipX ? 'right-0' : 'left-0'} ${browserFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
+              <div ref={browserFlyout.ref} className={`absolute w-56 bg-bg-surface border border-border-default rounded-overlay shadow-overlay z-50 py-1 ${browserFlyout.flipX ? 'right-0' : 'left-0'} ${browserFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                 {/* Header pill matches the sibling Wait / Conditional dropdowns so the
                     three menus read as one family. Width also bumped 44 → 56 for the
                     same reason — long labels like "Navigate to URL" got close to the
@@ -1118,7 +1118,7 @@ export function Toolbar(_props: ToolbarProps) {
               // 30px = half the fixed-width "Clear all" button (its English label is a
               // constant, so the offset is stable). Same kind of pixel nudge as the
               // deselect X's -ml-[13px]. flipY is kept for the (rare) short-window case.
-              <div ref={clearFlyout.ref} className={`absolute w-60 bg-bg-surface border border-border-default rounded-lg shadow-xl z-50 p-3 -right-[30px] ${clearFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
+              <div ref={clearFlyout.ref} className={`absolute w-60 bg-bg-surface border border-border-default rounded-overlay shadow-overlay z-50 p-3 -right-[30px] ${clearFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                 <div className="text-xs font-semibold text-text-primary">
                   Clear all {actions.length} action{actions.length === 1 ? '' : 's'}?
                 </div>

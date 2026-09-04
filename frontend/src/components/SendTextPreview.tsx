@@ -48,7 +48,7 @@ export function SendTextPreview({ text, badge = null, badgeTips }: SendTextPrevi
           // bg-card / bg-elevated plus an 8% tint, and a 12% fill of the ink over itself is a
           // heavier ground than the solve models — the badge sits on the row's own surface,
           // which IS in that list, so the border and the ink carry it instead.
-          className={`inline-flex items-center gap-[3px] px-1 py-[1px] mr-1 text-[9px] font-semibold uppercase tracking-wide rounded select-none align-middle ${
+          className={`inline-flex items-center gap-[3px] px-1 py-[1px] mr-1 text-[10px] font-semibold uppercase tracking-wide rounded select-none align-middle ${
             badge.degraded
               ? 'text-warning-ink border border-dashed border-[color-mix(in_srgb,var(--color-warning-ink)_60%,transparent)]'
               : 'text-accent bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)] border border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)]'

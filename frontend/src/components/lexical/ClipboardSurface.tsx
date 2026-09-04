@@ -225,7 +225,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
               : tt('This builder cannot rebuild this token exactly as written — a modifier it does not know, one used twice, or a different order — so it is read-only here. Edit the token text directly in the editor instead.',
                    'Este construtor não consegue reconstruir este token exatamente como está escrito — um modificador que ele não conhece, um usado duas vezes, ou em outra ordem — então está só para leitura. Edite o texto do token direto no editor.')}
           </div>
-          <div className="text-[9px] uppercase tracking-wide text-text-tertiary">Token</div>
+          <div className="text-[10px] uppercase tracking-wide text-text-tertiary">Token</div>
           <div className="font-mono text-[12px] px-2 py-1 rounded break-all"
             style={{
               color: 'var(--color-action-sendtext-fg)',
@@ -669,7 +669,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
               )}
             </div>
             <div
-              className="font-mono text-[10.5px] text-text-secondary bg-bg-input border border-border-subtle px-2 py-1 rounded whitespace-pre-wrap break-all max-h-24 overflow-auto"
+              className="font-mono text-[11px] text-text-secondary bg-bg-input border border-border-subtle px-2 py-1 rounded whitespace-pre-wrap break-all max-h-24 overflow-auto"
               style={{ lineHeight: 1.35 }}
             >
               {source.unknown ? (
@@ -717,7 +717,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
           <div className="shrink-0">
             <div className="label-micro text-text-tertiary mb-1">Token</div>
             <div
-              className="font-mono text-[11.5px] px-2 py-1 rounded break-all"
+              className="font-mono text-[12px] px-2 py-1 rounded break-all"
               style={{
                 color: 'var(--color-action-sendtext-fg)',
                 background: 'color-mix(in srgb, var(--color-action-sendtext-fg) 10%, transparent)',
@@ -748,7 +748,7 @@ function Step({
     <div>
       <div className="flex items-center gap-2 mb-1.5">
         <span
-          className={`w-4 h-4 rounded-full text-[9px] font-semibold flex items-center justify-center border transition-colors ${
+          className={`w-4 h-4 rounded-full text-[10px] font-semibold flex items-center justify-center border transition-colors ${
             active
               ? 'text-accent-light bg-accent-solid/15 border-accent-solid/40'
               : 'text-text-tertiary bg-bg-surface border-border-subtle'

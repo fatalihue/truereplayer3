@@ -2360,7 +2360,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
             ? 'slide-out-right var(--motion-base) var(--ease-exit) forwards'
             // --motion-slow keeps the "exit is faster than entrance" relationship.
             : 'slide-in-right var(--motion-slow) var(--ease-enter)',
-          boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
+          boxShadow: 'var(--shadow-dialog)',
         }}
         onAnimationEnd={(e) => {
           if (leaving && e.target === e.currentTarget) onExited?.();

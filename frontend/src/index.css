@@ -144,8 +144,15 @@
   /* Delay — blends accent with warm amber so it adapts per theme */
   --color-delay: color-mix(in srgb, var(--color-accent) 55%, #ffd93d);
 
-  /* Fonts */
-  --font-mono: 'Consolas', 'Courier New', monospace;
+  /* Fonts — the Windows 11 faces first (Segoe UI Variable ships with the OS; Cascadia Mono with
+     Windows 11 / Windows Terminal), the Windows 10 faces as the fallback stack so nothing changes
+     on a machine without them. Three optical roles, per the Segoe UI Variable guidance: Small for
+     captions up to 11px, Text for body, Display for 20px and up. --font-mono is overwritten per
+     theme by applyThemeConfig from uiSettings.fontMono (default 'Cascadia Mono'). */
+  --font-sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-display: 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
+  --font-small: 'Segoe UI Variable Small', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'Cascadia Mono', Consolas, 'Courier New', monospace;
 
   /* Type ramp — 5 roles replace the ad-hoc size collection (Tailwind v4 --text-*
      pairs generate text-caption/-minor/-body/-subtitle/-title utilities). 11px is
@@ -176,6 +183,23 @@
   --ui-font-size: 13px;
   --ui-border-radius: 3px;
   --ui-row-height: 34px;
+
+  /* Radius scale — four roles in place of the eight ad-hoc values the audit of 2026-09-03
+     counted. Control = buttons, chips, pills, inputs (Tailwind `rounded`, 4px). The SHELL radius
+     (panels, the centre card) follows the user's border-radius setting at twice the control
+     value, so the 3px default draws the 6px shell the design was made at and a user who picks
+     0 still gets square panels. Overlays (menus, flyouts, tooltip, toast) and dialogs (palette,
+     DialogShell, sheet) are fixed: they float, so the user's shell setting is not about them. */
+  --radius-control: 4px;
+  --radius-shell: calc(var(--ui-border-radius) * 2);
+  --radius-overlay: 8px;
+  --radius-dialog: 12px;
+
+  /* Elevation — two shadows for the whole app, re-derived per theme in applyThemeConfig (the
+     light presets get a lighter, blue-grey shadow; a black 45-60% shadow on a white card reads
+     as a stain). These dark-theme values only cover the pre-hydration frame. */
+  --shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-dialog: 0 16px 48px rgba(0, 0, 0, 0.55);
 }
 
 /* Global resets */
@@ -209,7 +233,7 @@ html, body, #root {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
   background: var(--color-bg-base);
   color: var(--color-text-primary);
   user-select: none;
@@ -284,8 +308,9 @@ select:focus-visible,
   color: var(--color-text-primary);
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.45);
+  font-family: var(--font-small);
+  border-radius: var(--radius-overlay);
+  box-shadow: var(--shadow-overlay);
   pointer-events: none;
   z-index: 99999;
 }
@@ -751,6 +776,7 @@ tbody tr[data-replay] [data-rownum-value] {
    app-wide floor for meaningful text. Color intentionally NOT set here — surfaces
    pair it with text-tertiary by default or their own accent dot. */
 @utility label-micro {
+  font-family: var(--font-small);
   font-size: 11px;
   line-height: 1.3;
   font-weight: 600;

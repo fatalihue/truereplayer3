@@ -153,7 +153,7 @@ export function DialogShell({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`dialog-card bg-bg-elevated border border-border-subtle rounded-lg shadow-xl ${widthClass} ${maxWidthClass} flex flex-col outline-none`}
+        className={`dialog-card bg-bg-elevated border border-border-subtle rounded-dialog shadow-dialog ${widthClass} ${maxWidthClass} flex flex-col outline-none`}
         onClick={(e) => e.stopPropagation()}
         // Only the card's OWN dialog-out end may unmount — animationend bubbles,
         // so a child's finishing animation must not close the dialog early.

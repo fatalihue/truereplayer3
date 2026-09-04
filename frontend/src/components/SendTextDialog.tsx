@@ -420,7 +420,7 @@ function NamePromptPopover({
         width: 260,
         background: 'var(--color-bg-elevated, #2d2d2d)',
         border: '1px solid color-mix(in srgb, var(--color-accent-solid) 35%, transparent)',
-        boxShadow: '0 16px 40px rgba(0, 0, 0, 0.55)',
+        boxShadow: 'var(--shadow-dialog)',
       }}
       className="rounded-lg overflow-hidden"
     >
@@ -1475,7 +1475,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
         onClick={() => { setConfirmDiscard(false); lexicalApiRef.current?.focus(); }}
       >
         <div
-          className="w-[380px] rounded-lg border border-border-subtle bg-bg-surface p-4 shadow-xl"
+          className="w-[380px] rounded-dialog border border-border-subtle bg-bg-surface p-4 shadow-dialog"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="text-[13px] text-text-primary font-medium mb-1.5">{tt('Unsaved text', 'Texto não salvo')}</div>

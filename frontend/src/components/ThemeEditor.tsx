@@ -101,7 +101,7 @@ const ALL_FIELDS: ColorField[] = COLOR_SECTIONS.flatMap(s => s.fields);
 // one at a time. The header chevrons still collapse a section on demand.
 const INITIAL_COLLAPSED = new Set<string>();
 
-const MONO_FONTS = ['Consolas', 'Cascadia Mono', 'Cascadia Code', 'Courier New', 'Lucida Console'];
+const MONO_FONTS = ['Cascadia Mono', 'Cascadia Code', 'Consolas', 'Courier New', 'Lucida Console'];
 
 // Picks a color anywhere on screen using the EyeDropper API (Chromium 95+).
 // Returns the sRGBHex string or null if unsupported or cancelled.
@@ -605,7 +605,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
         <div
           ref={resetMenuRef}
           tabIndex={-1}
-          className="absolute bottom-full left-0 mb-1 w-[220px] bg-bg-card border border-border-default rounded shadow-xl p-1 z-10 outline-none"
+          className="absolute bottom-full left-0 mb-1 w-[220px] bg-bg-card border border-border-default rounded-overlay shadow-overlay p-1 z-10 outline-none"
           onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setResetMenuOpen(false); } }}
         >
           <button
@@ -1125,7 +1125,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
         <div className="label-micro text-text-tertiary mb-2 shrink-0">Live Preview</div>
         {/* flex-1: the mock window fills the rail, so the taller panel shows more real rows
             instead of leaving dead space under a fixed-size mock. */}
-        <div className="flex flex-col flex-1 min-h-0 border border-border-default overflow-hidden shadow-lg" style={{ borderRadius: 'calc(var(--ui-border-radius) + 4px)' }}>
+        <div className="flex flex-col flex-1 min-h-0 border border-border-default overflow-hidden shadow-overlay" style={{ borderRadius: 'calc(var(--ui-border-radius) + 4px)' }}>
           {/* Title bar */}
           <div className="flex items-center gap-1.5 px-2 h-8 bg-bg-surface border-b border-border-subtle shrink-0" style={ckHover('bg-surface')} {...ckEvents('bg-surface')}>
             <span className="w-4 h-4 rounded bg-accent-solid shrink-0" style={ckHover('accent-solid')} {...ckEvents('accent-solid')} />

@@ -236,7 +236,7 @@ export function TokenChipPopover({
         width: kind === 'clipboard' || kind === 'rowcol' || kind === 'rownextcol' || kind === 'pick' ? 300 : 260,
         background: 'var(--color-bg-elevated, #2d2d2d)',
         border: '1px solid color-mix(in srgb, var(--color-accent-solid) 35%, transparent)',
-        boxShadow: '0 16px 40px rgba(0, 0, 0, 0.55)',
+        boxShadow: 'var(--shadow-dialog)',
         animation: 'token-chip-pop-in 0.14s ease',
         maxHeight: 'calc(100vh - 24px)',
       }}

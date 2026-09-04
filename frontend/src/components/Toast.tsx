@@ -60,7 +60,7 @@ export function Toast() {
               background: 'var(--color-bg-card)',
               border: '1px solid var(--color-border-default)',
               borderRadius: 'var(--ui-border-radius)',
-              boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+              boxShadow: 'var(--shadow-overlay)',
               maxWidth: 380,
               pointerEvents: 'auto',
             }}

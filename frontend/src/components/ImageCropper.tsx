@@ -216,7 +216,7 @@ export function ImageCropper({ imageBase64, onSave, onCancel }: ImageCropperProp
       onKeyDown={(e) => e.stopPropagation()}
     >
       <div
-        className="bg-bg-elevated border border-border-default rounded-lg shadow-2xl p-4 max-w-[90vw] max-h-[90vh] flex flex-col"
+        className="bg-bg-elevated border border-border-default rounded-dialog shadow-dialog p-4 max-w-[90vw] max-h-[90vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-3">
