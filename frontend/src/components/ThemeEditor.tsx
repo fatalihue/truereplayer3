@@ -605,7 +605,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
         <div
           ref={resetMenuRef}
           tabIndex={-1}
-          className="absolute bottom-full left-0 mb-1 w-[220px] bg-bg-card border border-border-default rounded-overlay shadow-overlay p-1 z-10 outline-none"
+          className="absolute bottom-full left-0 mb-1 w-[220px] menu-surface p-1 z-10 outline-none"
           onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setResetMenuOpen(false); } }}
         >
           <button

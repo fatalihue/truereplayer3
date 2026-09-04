@@ -10,6 +10,7 @@ import { useSelectionRef } from '../state/SelectionContext';
 import { useToast } from '../state/ToastContext';
 import { Toggle } from './common/Toggle';
 import { SegmentedControl } from './common/SegmentedControl';
+import { iconButtonClass } from './common/IconButton';
 import { chipOn, chipOff, chipDotOn, chipDotOff } from './common/chipStyles';
 import { formatMs } from '../utils/displayUtils';
 import { CLICK_HOLD_MAX_MS, CLICK_PERIOD_FLOOR_MS, delayForCps, formatRate, maxCps, targetCps } from '../utils/clickerFormat';
@@ -406,7 +407,7 @@ function ComboInput({ value, onCommit, options, width = FIELD_W, editable = true
         <ChevronDown size={11} />
       </button>
       {open && (
-        <div className="absolute left-0 top-full mt-1 z-50 w-full bg-bg-card border border-border-default rounded-overlay shadow-overlay py-1">
+        <div className="absolute left-0 top-full mt-1 z-50 w-full menu-surface py-1">
           {options.map((o) => (
             <button
               key={o.value}
@@ -1157,7 +1158,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
         <div className="flex items-center justify-center border-b border-border-subtle shrink-0 h-[47px]">
           <button
             onClick={onToggleCollapse}
-            className="w-7 h-7 flex items-center justify-center rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary transition-colors"
+            className={iconButtonClass('md')}
           >
             <ChevronsLeft size={14} />
           </button>
@@ -1223,7 +1224,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
         {onToggleCollapse && (
           <button
             onClick={onToggleCollapse}
-            className="w-7 h-7 flex items-center justify-center rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary transition-colors shrink-0"
+            className={iconButtonClass('md')}
           >
             <ChevronsRight size={14} />
           </button>

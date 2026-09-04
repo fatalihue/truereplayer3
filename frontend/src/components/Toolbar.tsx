@@ -13,6 +13,7 @@ import { NavigateDialog } from './NavigateDialog';
 import { KeystrokeCaptureDialog } from './KeystrokeCaptureDialog';
 import { PauseDialog } from './PauseDialog';
 import { useFlyoutFlip } from '../hooks/useFlyoutFlip';
+import { iconButtonClass } from './common/IconButton';
 import { useDismissOnOutside } from '../hooks/useDismissOnOutside';
 import { snapIndicesToBlocks, loopDepthAt } from '../utils/conditionalBlocks';
 
@@ -434,7 +435,7 @@ export function Toolbar(_props: ToolbarProps) {
               // (measured 12.7px gap before this fix). Purely cosmetic — the hover/click
               // hitbox still sits comfortably inside the toolbar; we're just escaping
               // the padding for one specific icon.
-              className="shrink-0 -ml-[13px] p-1 rounded text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors disabled:text-text-disabled disabled:hover:bg-transparent"
+              className={iconButtonClass('sm', { className: '-ml-[13px]' })}
             >
               <X size={16} />
             </button>
@@ -458,7 +459,7 @@ export function Toolbar(_props: ToolbarProps) {
             tabIndex={-1}
             disabled={!buttonStates.canUndo || insertsDisabled}
             onClick={() => send({ type: 'actions:undo', payload: {} })}
-            className={`p-1.5 rounded transition-colors ${buttonStates.canUndo && !insertsDisabled ? 'text-text-secondary hover:bg-bg-elevated hover:text-text-primary' : 'text-text-disabled'}`}
+            className={iconButtonClass('md')}
             data-tip={clickerTip('Undo (Ctrl+Z)', 'Desfazer (Ctrl+Z)')}
           >
             <Undo2 size={16} />
@@ -467,7 +468,7 @@ export function Toolbar(_props: ToolbarProps) {
             tabIndex={-1}
             disabled={!buttonStates.canRedo || insertsDisabled}
             onClick={() => send({ type: 'actions:redo', payload: {} })}
-            className={`p-1.5 rounded transition-colors ${buttonStates.canRedo && !insertsDisabled ? 'text-text-secondary hover:bg-bg-elevated hover:text-text-primary' : 'text-text-disabled'}`}
+            className={iconButtonClass('md')}
             data-tip={clickerTip('Redo (Ctrl+Y)', 'Refazer (Ctrl+Y)')}
           >
             <Redo2 size={16} />
@@ -548,7 +549,7 @@ export function Toolbar(_props: ToolbarProps) {
               setShowKeystrokeCapture(true);
             }}
             disabled={insertsDisabled}
-            className="p-1.5 rounded hover:bg-bg-elevated text-text-secondary hover:text-text-primary transition-colors disabled:text-text-disabled"
+            className={iconButtonClass('md')}
             data-tip={clickerTip('Send Keystroke', 'Enviar tecla')}
           >
             <Keyboard size={16} />
@@ -559,7 +560,7 @@ export function Toolbar(_props: ToolbarProps) {
             tabIndex={-1}
             onClick={() => setShowSendTextDialog(true)}
             disabled={insertsDisabled}
-            className="p-1.5 rounded hover:bg-bg-elevated text-text-secondary hover:text-text-primary transition-colors disabled:text-text-disabled"
+            className={iconButtonClass('md')}
             data-tip={clickerTip('Send Text', 'Enviar texto')}
           >
             <Type size={16} />
@@ -576,7 +577,7 @@ export function Toolbar(_props: ToolbarProps) {
               send({ type: 'actions:insertAction', payload: { actionType: 'SetVariable', insertIndex } });
             }}
             disabled={insertsDisabled}
-            className="p-1.5 rounded hover:bg-bg-elevated text-text-secondary hover:text-text-primary transition-colors disabled:text-text-disabled"
+            className={iconButtonClass('md')}
             data-tip={clickerTip('Set Variable', 'Definir variável')}
           >
             <Braces size={16} />
@@ -593,7 +594,7 @@ export function Toolbar(_props: ToolbarProps) {
               send({ type: 'actions:insertAction', payload: { actionType: 'CopyToSlot', insertIndex } });
             }}
             disabled={insertsDisabled}
-            className="p-1.5 rounded hover:bg-bg-elevated text-text-secondary hover:text-text-primary transition-colors disabled:text-text-disabled"
+            className={iconButtonClass('md')}
             data-tip={clickerTip('Copy to Slot', 'Copiar para slot')}
           >
             <ClipboardCopy size={16} />
@@ -610,7 +611,7 @@ export function Toolbar(_props: ToolbarProps) {
               setShowPauseDialog(true);
             }}
             disabled={insertsDisabled}
-            className="p-1.5 rounded hover:bg-bg-elevated text-text-secondary hover:text-text-primary transition-colors disabled:text-text-disabled"
+            className={iconButtonClass('md')}
             data-tip={clickerTip('Pause', 'Pausa')}
           >
             <Hourglass size={16} />
@@ -635,19 +636,19 @@ export function Toolbar(_props: ToolbarProps) {
               tabIndex={-1}
               onClick={() => setShowWaitMenu(!showWaitMenu)}
               disabled={insertsDisabled}
-              className={`p-1.5 rounded hover:bg-bg-elevated hover:text-text-primary transition-colors disabled:text-text-disabled flex items-center gap-0.5 ${showWaitMenu ? 'bg-bg-elevated text-text-primary' : 'text-text-secondary'}`}
+              className={iconButtonClass('md', { active: showWaitMenu })}
               data-tip={clickerTip('Wait for image, pixel or condition', 'Aguardar imagem, pixel ou condição')}
             >
               <ScanEye size={16} />
               <ChevronDown size={10} className="opacity-80" />
             </button>
             {showWaitMenu && (
-              <div ref={waitFlyout.ref} className={`absolute w-56 bg-bg-surface border border-border-default rounded-overlay shadow-overlay z-50 py-1 ${waitFlyout.flipX ? 'right-0' : 'left-0'} ${waitFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
+              <div ref={waitFlyout.ref} className={`absolute w-56 menu-surface z-50 py-1 ${waitFlyout.flipX ? 'right-0' : 'left-0'} ${waitFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                 <div className="px-3 py-1 label-micro text-text-tertiary">
                   Insert Wait
                 </div>
                 <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors flex items-center gap-2"
+                  className="menu-item text-text-primary"
                   onClick={() => {
                     const sel = selectionRef.current;
                     const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
@@ -659,7 +660,7 @@ export function Toolbar(_props: ToolbarProps) {
                   Wait for Image
                 </button>
                 <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors flex items-center gap-2"
+                  className="menu-item text-text-primary"
                   onClick={() => {
                     const sel = selectionRef.current;
                     const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
@@ -696,7 +697,7 @@ export function Toolbar(_props: ToolbarProps) {
                 ] as const).map(({ ct, Icon, label }) => (
                   <button
                     key={`waitcond-${ct}`}
-                    className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors flex items-center gap-2"
+                    className="menu-item text-text-primary"
                     onClick={() => {
                       const sel = selectionRef.current;
                       const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
@@ -720,20 +721,20 @@ export function Toolbar(_props: ToolbarProps) {
               tabIndex={-1}
               onClick={() => setShowConditionalMenu(!showConditionalMenu)}
               disabled={insertsDisabled}
-              className={`p-1.5 rounded hover:bg-bg-elevated hover:text-text-primary transition-colors disabled:text-text-disabled flex items-center gap-0.5 ${showConditionalMenu ? 'bg-bg-elevated text-text-primary' : 'text-text-secondary'}`}
+              className={iconButtonClass('md', { active: showConditionalMenu })}
               data-tip={clickerTip('Conditional', 'Condicional')}
             >
               <GitBranch size={16} />
               <ChevronDown size={10} className="opacity-80" />
             </button>
             {showConditionalMenu && (
-              <div ref={conditionalFlyout.ref} className={`absolute w-56 bg-bg-surface border border-border-default rounded-overlay shadow-overlay z-50 py-1 ${conditionalFlyout.flipX ? 'right-0' : 'left-0'} ${conditionalFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
+              <div ref={conditionalFlyout.ref} className={`absolute w-56 menu-surface z-50 py-1 ${conditionalFlyout.flipX ? 'right-0' : 'left-0'} ${conditionalFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                 <div className="px-3 py-1 label-micro text-text-tertiary">
                   Insert Conditional
                 </div>
                 {/* Active items — reuse the WaitImage / WaitPixelColor capture flows. */}
                 <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors flex items-center gap-2"
+                  className="menu-item text-text-primary"
                   onClick={() => {
                     const sel = selectionRef.current;
                     const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
@@ -745,7 +746,7 @@ export function Toolbar(_props: ToolbarProps) {
                   Image Found
                 </button>
                 <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors flex items-center gap-2"
+                  className="menu-item text-text-primary"
                   onClick={() => {
                     const sel = selectionRef.current;
                     const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
@@ -759,7 +760,7 @@ export function Toolbar(_props: ToolbarProps) {
                 {/* Capture-less conditions — insert the If/EndIf pair immediately and
                     auto-open the Sheet (backend sends sheet:openIndex); no screen overlay. */}
                 <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors flex items-center gap-2"
+                  className="menu-item text-text-primary"
                   onClick={() => {
                     const sel = selectionRef.current;
                     const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
@@ -771,7 +772,7 @@ export function Toolbar(_props: ToolbarProps) {
                   Window Open
                 </button>
                 <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors flex items-center gap-2"
+                  className="menu-item text-text-primary"
                   onClick={() => {
                     const sel = selectionRef.current;
                     const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
@@ -783,7 +784,7 @@ export function Toolbar(_props: ToolbarProps) {
                   Clipboard
                 </button>
                 <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors flex items-center gap-2"
+                  className="menu-item text-text-primary"
                   onClick={() => {
                     const sel = selectionRef.current;
                     const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
@@ -803,7 +804,7 @@ export function Toolbar(_props: ToolbarProps) {
                 ] as const).map(({ ct, Icon, label }) => (
                   <button
                     key={ct}
-                    className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors flex items-center gap-2"
+                    className="menu-item text-text-primary"
                     onClick={() => {
                       const sel = selectionRef.current;
                       const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
@@ -833,7 +834,7 @@ export function Toolbar(_props: ToolbarProps) {
               tabIndex={-1}
               onClick={() => setShowLoopMenu(!showLoopMenu)}
               disabled={insertsDisabled}
-              className={`p-1.5 rounded hover:bg-bg-elevated hover:text-text-primary transition-colors disabled:text-text-disabled flex items-center gap-0.5 ${showLoopMenu ? 'bg-bg-elevated text-text-primary' : 'text-text-secondary'}`}
+              className={iconButtonClass('md', { active: showLoopMenu })}
               data-tip={clickerTip('Loop', 'Loop')}
             >
               <IterationCw size={16} />
@@ -847,7 +848,7 @@ export function Toolbar(_props: ToolbarProps) {
               const loopDepth = loopDepthAt(actions, loopInsertAt);
               const rowsN = dataTable.rows.length;
               return (
-              <div ref={loopFlyout.ref} className={`absolute w-60 bg-bg-surface border border-border-default rounded-overlay shadow-overlay z-50 py-1 ${loopFlyout.flipX ? 'right-0' : 'left-0'} ${loopFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
+              <div ref={loopFlyout.ref} className={`absolute w-60 menu-surface z-50 py-1 ${loopFlyout.flipX ? 'right-0' : 'left-0'} ${loopFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                 <div className="px-3 py-1 label-micro text-text-tertiary">
                   Insert While — repeats while true
                 </div>
@@ -864,7 +865,7 @@ export function Toolbar(_props: ToolbarProps) {
                 ] as const).map(({ ct, Icon, label }) => (
                   <button
                     key={`loop-${ct}`}
-                    className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors flex items-center gap-2"
+                    className="menu-item text-text-primary"
                     onClick={() => {
                       send({ type: 'actions:insertLoop', payload: { conditionType: ct, insertIndex: loopInsertAt } });
                       setShowLoopMenu(false);
@@ -876,7 +877,7 @@ export function Toolbar(_props: ToolbarProps) {
                 ))}
                 <div className="my-1 border-t border-border-subtle" />
                 <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors flex items-center gap-2"
+                  className="menu-item text-text-primary"
                   onClick={() => {
                     send({ type: 'actions:insertLoop', payload: { kind: 'ForEachRow', insertIndex: loopInsertAt } });
                     setShowLoopMenu(false);
@@ -900,7 +901,7 @@ export function Toolbar(_props: ToolbarProps) {
                     data-tip={loopDepth === 0
                       ? tt('Only valid inside a loop — insert a While or For Each Data Row first', 'Só vale dentro de um loop — insira um While ou For Each Data Row antes')
                       : undefined}
-                    className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors flex items-center gap-2 disabled:text-text-disabled disabled:hover:bg-transparent"
+                    className="menu-item text-text-primary"
                     onClick={() => {
                       send({ type: 'actions:insertAction', payload: { actionType: at, insertIndex: loopInsertAt } });
                       setShowLoopMenu(false);
@@ -927,14 +928,14 @@ export function Toolbar(_props: ToolbarProps) {
               tabIndex={-1}
               onClick={() => setShowAssertMenu(!showAssertMenu)}
               disabled={insertsDisabled}
-              className={`p-1.5 rounded hover:bg-bg-elevated hover:text-text-primary transition-colors disabled:text-text-disabled flex items-center gap-0.5 ${showAssertMenu ? 'bg-bg-elevated text-text-primary' : 'text-text-secondary'}`}
+              className={iconButtonClass('md', { active: showAssertMenu })}
               data-tip={clickerTip('Assert / end the run', 'Assert / encerrar a execução')}
             >
               <ShieldCheck size={16} />
               <ChevronDown size={10} className="opacity-80" />
             </button>
             {showAssertMenu && (
-              <div ref={assertFlyout.ref} className={`absolute w-56 bg-bg-surface border border-border-default rounded-overlay shadow-overlay z-50 py-1 ${assertFlyout.flipX ? 'right-0' : 'left-0'} ${assertFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
+              <div ref={assertFlyout.ref} className={`absolute w-56 menu-surface z-50 py-1 ${assertFlyout.flipX ? 'right-0' : 'left-0'} ${assertFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                 <div className="px-3 py-1 label-micro text-text-tertiary">
                   Insert Assert — must be true
                 </div>
@@ -948,7 +949,7 @@ export function Toolbar(_props: ToolbarProps) {
                 ] as const).map(({ ct, Icon, label }) => (
                   <button
                     key={`assert-${ct}`}
-                    className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors flex items-center gap-2"
+                    className="menu-item text-text-primary"
                     onClick={() => {
                       const sel = selectionRef.current;
                       const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
@@ -970,7 +971,7 @@ export function Toolbar(_props: ToolbarProps) {
                 ] as const).map(({ at, Icon, label, tip }) => (
                   <button
                     key={`flow-${at}`}
-                    className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors flex items-center gap-2"
+                    className="menu-item text-text-primary"
                     onClick={() => {
                       const sel = selectionRef.current;
                       const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
@@ -993,14 +994,14 @@ export function Toolbar(_props: ToolbarProps) {
               tabIndex={-1}
               onClick={() => setShowBrowserMenu(!showBrowserMenu)}
               disabled={insertsDisabled}
-              className={`p-1.5 rounded hover:bg-bg-elevated hover:text-text-primary transition-colors disabled:text-text-disabled flex items-center gap-0.5 ${showBrowserMenu ? 'bg-bg-elevated text-text-primary' : 'text-text-secondary'}`}
+              className={iconButtonClass('md', { active: showBrowserMenu })}
               data-tip={clickerTip('Browser Actions', 'Ações de navegador')}
             >
               <Globe size={16} />
               <ChevronDown size={10} className="opacity-80" />
             </button>
             {showBrowserMenu && (
-              <div ref={browserFlyout.ref} className={`absolute w-56 bg-bg-surface border border-border-default rounded-overlay shadow-overlay z-50 py-1 ${browserFlyout.flipX ? 'right-0' : 'left-0'} ${browserFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
+              <div ref={browserFlyout.ref} className={`absolute w-56 menu-surface z-50 py-1 ${browserFlyout.flipX ? 'right-0' : 'left-0'} ${browserFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                 {/* Header pill matches the sibling Wait / Conditional dropdowns so the
                     three menus read as one family. Width also bumped 44 → 56 for the
                     same reason — long labels like "Navigate to URL" got close to the
@@ -1020,7 +1021,7 @@ export function Toolbar(_props: ToolbarProps) {
                 ] as const).map((item) => (
                   <button
                     key={item.type}
-                    className="w-full text-left px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors flex items-center gap-2"
+                    className="menu-item text-text-primary"
                     onClick={() => {
                       if (item.type === 'BrowserNavigate') {
                         setShowBrowserMenu(false);
@@ -1047,7 +1048,7 @@ export function Toolbar(_props: ToolbarProps) {
             tabIndex={-1}
             onClick={() => setShowRunProfileDialog(true)}
             disabled={insertsDisabled}
-            className="p-1.5 rounded hover:bg-bg-elevated text-text-secondary hover:text-text-primary transition-colors disabled:text-text-disabled"
+            className={iconButtonClass('md')}
             data-tip={clickerTip('Run Profile', 'Executar perfil')}
           >
             <Repeat2 size={16} />
@@ -1064,7 +1065,7 @@ export function Toolbar(_props: ToolbarProps) {
               send({ type: 'actions:insertAction', payload: { actionType: 'ActivateWindow', insertIndex } });
             }}
             disabled={insertsDisabled}
-            className="p-1.5 rounded hover:bg-bg-elevated text-text-secondary hover:text-text-primary transition-colors disabled:text-text-disabled"
+            className={iconButtonClass('md')}
             data-tip={clickerTip('Activate Window', 'Ativar janela')}
           >
             <AppWindow size={16} />
@@ -1083,7 +1084,7 @@ export function Toolbar(_props: ToolbarProps) {
             tabIndex={-1}
             onClick={() => window.dispatchEvent(new CustomEvent('cmd:dataeditor'))}
             disabled={isClicker}
-            className="p-1.5 rounded hover:bg-bg-elevated text-text-secondary hover:text-text-primary transition-colors disabled:text-text-disabled"
+            className={iconButtonClass('md')}
             data-tip={clickerTip('Data Loop', 'Data Loop')}
           >
             <Table2 size={16} />
@@ -1103,7 +1104,7 @@ export function Toolbar(_props: ToolbarProps) {
               tabIndex={-1}
               onClick={() => setShowClearConfirm(prev => !prev)}
               disabled={insertsDisabled || actions.length === 0}
-              className="p-1.5 rounded text-text-secondary hover:bg-recording-bg hover:text-recording transition-colors disabled:text-text-disabled disabled:hover:bg-transparent disabled:hover:text-text-disabled"
+              className={iconButtonClass('md', { tone: 'danger' })}
               data-tip={clickerTip('Clear All', 'Limpar tudo')}
             >
               <Trash2 size={16} />
@@ -1118,7 +1119,7 @@ export function Toolbar(_props: ToolbarProps) {
               // 30px = half the fixed-width "Clear all" button (its English label is a
               // constant, so the offset is stable). Same kind of pixel nudge as the
               // deselect X's -ml-[13px]. flipY is kept for the (rare) short-window case.
-              <div ref={clearFlyout.ref} className={`absolute w-60 bg-bg-surface border border-border-default rounded-overlay shadow-overlay z-50 p-3 -right-[30px] ${clearFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
+              <div ref={clearFlyout.ref} className={`absolute w-60 menu-surface z-50 p-3 -right-[30px] ${clearFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                 <div className="text-xs font-semibold text-text-primary">
                   Clear all {actions.length} action{actions.length === 1 ? '' : 's'}?
                 </div>

@@ -10,6 +10,7 @@ import { CheckboxBox } from './Checkbox';
 import { DialogShell } from './common/DialogShell';
 import { FieldError } from './common/FieldError';
 import { Button } from './common/Button';
+import { iconButtonClass } from './common/IconButton';
 import { TargetConfigDialog } from './TargetConfigDialog';
 import { SecurityWarningModal } from './SecurityWarningModal';
 import { ImportPreviewDialog } from './ImportPreviewDialog';
@@ -1777,7 +1778,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             <div className="h-[47px] w-full flex items-center justify-center border-b border-border-subtle shrink-0">
               <button
                 onClick={onToggleCollapse}
-                className="w-7 h-7 flex items-center justify-center rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary transition-colors"
+                className={iconButtonClass('md')}
                 data-tip={tt('Expand panel', 'Expandir painel')}
                 data-tip-pos="right"
               >
@@ -1787,7 +1788,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             <div className="flex flex-col items-center gap-1 pt-2 pb-2 shrink-0">
               <button
                 onClick={() => handleCreate(null)}
-                className="w-7 h-7 flex items-center justify-center rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary transition-colors"
+                className={iconButtonClass('md')}
                 data-tip={tt('New profile', 'Novo profile')}
                 data-tip-pos="right"
               >
@@ -1795,7 +1796,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               </button>
               <button
                 onClick={() => { pendingFocusSearch.current = true; onToggleCollapse?.(); }}
-                className="relative w-7 h-7 flex items-center justify-center rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary transition-colors"
+                className={iconButtonClass('md', { className: 'relative' })}
                 data-tip={searchQuery.length > 0 ? tt('Search — filter active', 'Buscar — filtro ativo') : tt('Search profiles', 'Buscar profiles')}
                 data-tip-pos="right"
               >
@@ -1921,7 +1922,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               this panel's own context menu. Not a sort glyph by accident either: this
               toolbar has no sort control for ↓↑ to be mistaken for. */}
           <div className="flex items-center">
-            <button onClick={onToggleCollapse} className="w-6 h-6 flex items-center justify-center rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary transition-colors" data-tip={tt('Collapse panel', 'Colapsar painel')}>
+            <button onClick={onToggleCollapse} className={iconButtonClass('sm')} data-tip={tt('Collapse panel', 'Colapsar painel')}>
               <ChevronsLeft size={14} />
             </button>
             {/* Collapse / expand ALL folders. Promoted out of the folder context menu: it acts
@@ -1937,7 +1938,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                 <button
                   onClick={() => send({ type: 'profile:setAllFoldersCollapsed', payload: { collapsed: anyExpanded } })}
                   disabled={folders.length === 0}
-                  className="w-6 h-6 flex items-center justify-center rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary transition-colors disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text-tertiary"
+                  className={iconButtonClass('sm')}
                   data-tip={anyExpanded
                     ? tt('Collapse all folders', 'Colapsar todas as pastas')
                     : tt('Expand all folders', 'Expandir todas as pastas')}
@@ -1947,17 +1948,17 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               );
             })()}
             <div className="w-px h-3.5 bg-border-subtle mx-0.5" />
-            <button onClick={handleOpenProfilesFolder} className="w-6 h-6 flex items-center justify-center rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary transition-colors" data-tip={tt('Open profiles folder', 'Abrir pasta de perfis')}>
+            <button onClick={handleOpenProfilesFolder} className={iconButtonClass('sm')} data-tip={tt('Open profiles folder', 'Abrir pasta de perfis')}>
               <ExternalLink size={14} />
             </button>
-            <button onClick={handleExportClick} className="w-6 h-6 flex items-center justify-center rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary transition-colors" data-tip={tt('Import / Export', 'Importar / Exportar')}>
+            <button onClick={handleExportClick} className={iconButtonClass('sm')} data-tip={tt('Import / Export', 'Importar / Exportar')}>
               <ArrowDownUp size={14} />
             </button>
             <div className="w-px h-3.5 bg-border-subtle mx-0.5" />
-            <button onClick={handleCreateFolder} className="w-6 h-6 flex items-center justify-center rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary transition-colors" data-tip={tt('New folder', 'Nova pasta')}>
+            <button onClick={handleCreateFolder} className={iconButtonClass('sm')} data-tip={tt('New folder', 'Nova pasta')}>
               <FolderPlus size={14} />
             </button>
-            <button onClick={() => handleCreate(null)} className="w-6 h-6 flex items-center justify-center rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary transition-colors" data-tip={tt('New profile', 'Novo perfil')}>
+            <button onClick={() => handleCreate(null)} className={iconButtonClass('sm')} data-tip={tt('New profile', 'Novo perfil')}>
               <FilePlus size={14} />
             </button>
           </div>
@@ -2292,13 +2293,13 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
         // a dedicated Advanced bucket so they don't crowd the prime real estate.
         <div
           ref={contextMenuRef}
-          className="fixed z-50 min-w-[180px] py-1 bg-bg-card border border-border-default rounded-overlay shadow-overlay"
+          className="fixed z-50 min-w-[180px] py-1 menu-surface"
           style={{ left: menuPos.x, top: menuPos.y }}
         >
           {/* ── Identity ── */}
           <button
             onClick={() => handleRename(contextMenu.profileName)}
-            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+            className="menu-item text-text-primary"
           >
             <Pencil size={13} className="text-text-tertiary" />
             Rename…
@@ -2311,7 +2312,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             onMouseLeave={() => setShowMoveToFolderMenu(null)}
           >
             <button
-              className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+              className="menu-item text-text-primary"
             >
               {/* FolderInput, not an arrow leaving a line: this puts the profile INTO a folder,
                   and an arrow exiting reads as send-away / export. It also pairs with the
@@ -2327,7 +2328,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                 className={`absolute bg-transparent ${moveFlyout.flipX ? 'right-full' : 'left-full'} ${moveFlyout.flipY ? 'bottom-0' : 'top-0'}`}
                 style={moveFlyout.flipX ? { paddingRight: '4px' } : { paddingLeft: '4px' }}
               >
-              <div className="py-1 bg-bg-card border border-border-default rounded-overlay shadow-overlay z-[60] whitespace-nowrap">
+              <div className="py-1 menu-surface z-[60] whitespace-nowrap">
                 {(profileOrder?.folders ?? []).map(f => (
                   <button
                     key={f.name}
@@ -2368,21 +2369,21 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               inline. */}
           <button
             onClick={() => handleAssignHotkey(contextMenu.profileName)}
-            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+            className="menu-item text-text-primary"
           >
             <Keyboard size={13} className="text-text-tertiary" />
             Hotkey…
           </button>
           <button
             onClick={() => handleAssignHotstring(contextMenu.profileName)}
-            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+            className="menu-item text-text-primary"
           >
             <Type size={13} className="text-text-tertiary" />
             Hotstring…
           </button>
           <button
             onClick={() => handleSetWindowTarget(contextMenu.profileName)}
-            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+            className="menu-item text-text-primary"
           >
             <AppWindow size={13} className="text-text-tertiary" />
             Window target…
@@ -2394,7 +2395,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               submenu at user request); Pin/Unpin moved INTO More. */}
           <button
             onClick={() => handleDuplicate(contextMenu.profileName)}
-            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+            className="menu-item text-text-primary"
           >
             <Copy size={13} className="text-text-tertiary" />
             Duplicate
@@ -2402,7 +2403,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
 
           <button
             onClick={() => handleToggleDisable(contextMenu.profileName)}
-            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+            className="menu-item text-text-primary"
           >
             {/* The glyph flips with the label, the way Pin / PinOff two rows down already does.
                 A fixed Ban sat next to "Enable" saying the opposite of the word beside it —
@@ -2427,7 +2428,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             onMouseLeave={() => setShowProfileMoreMenu(null)}
           >
             <button
-              className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+              className="menu-item text-text-primary"
             >
               <MoreHorizontal size={13} className="text-text-tertiary" />
               More
@@ -2439,10 +2440,10 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                 className={`absolute bg-transparent ${moreFlyout.flipX ? 'right-full' : 'left-full'} ${moreFlyout.flipY ? 'bottom-0' : 'top-0'}`}
                 style={moreFlyout.flipX ? { paddingRight: '4px' } : { paddingLeft: '4px' }}
               >
-                <div className="py-1 bg-bg-card border border-border-default rounded-overlay shadow-overlay z-[60] whitespace-nowrap">
+                <div className="py-1 menu-surface z-[60] whitespace-nowrap">
                   <button
                     onClick={() => handleShowInfo(contextMenu.profileName)}
-                    className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+                    className="menu-item text-text-primary"
                   >
                     <Info size={13} className="text-text-tertiary" />
                     Edit info…
@@ -2450,7 +2451,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                   {isPinned(contextMenu.profileName) ? (
                     <button
                       onClick={() => handleUnpinProfile(contextMenu.profileName)}
-                      className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+                      className="menu-item text-text-primary"
                     >
                       <PinOff size={13} className="text-text-tertiary" />
                       Unpin
@@ -2458,7 +2459,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                   ) : (
                     <button
                       onClick={() => handlePinProfile(contextMenu.profileName)}
-                      className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+                      className="menu-item text-text-primary"
                     >
                       <Pin size={13} className="text-text-tertiary" />
                       Pin
@@ -2466,7 +2467,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                   )}
                   <button
                     onClick={() => { handleOpenFolder(contextMenu.profileName); setContextMenu(null); }}
-                    className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+                    className="menu-item text-text-primary"
                   >
                     <ExternalLink size={13} className="text-text-tertiary" />
                     Open in Explorer
@@ -2541,13 +2542,13 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
         // so they have no "Open in Explorer" / "Duplicate" equivalent.
         <div
           ref={folderMenuRef}
-          className="fixed z-50 min-w-[160px] py-1 bg-bg-card border border-border-default rounded-overlay shadow-overlay"
+          className="fixed z-50 min-w-[160px] py-1 menu-surface"
           style={{ left: folderMenuPos.x, top: folderMenuPos.y }}
         >
           {/* ── Identity (this folder) ── */}
           <button
             onClick={() => handleRenameFolder(folderContextMenu.folderName)}
-            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+            className="menu-item text-text-primary"
           >
             <Pencil size={13} className="text-text-tertiary" />
             Rename…
@@ -2558,7 +2559,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             onMouseLeave={() => setShowFolderColorPicker(null)}
           >
             <button
-              className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+              className="menu-item text-text-primary"
             >
               <Palette size={13} className="text-text-tertiary" />
               Color
@@ -2570,7 +2571,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                 className={`absolute min-w-0 bg-transparent ${colorFlyout.flipX ? 'right-full' : 'left-full'} ${colorFlyout.flipY ? 'bottom-0' : 'top-0'}`}
                 style={colorFlyout.flipX ? { paddingRight: '4px' } : { paddingLeft: '4px' }}
               >
-              <div className="p-2.5 bg-bg-card border border-border-default rounded-overlay shadow-overlay z-[60]">
+              <div className="p-2.5 menu-surface z-[60]">
                 {/* Same rounded-tile grid as the New Folder dialog — 8 columns, 3 rows for
                     the 24 tones; the folder's current colour shows a ring + check. */}
                 <div className="grid grid-cols-8 gap-1.5" style={{ width: '212px' }}>
@@ -2616,7 +2617,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               setShowFolderTargetDialog(folderContextMenu.folderName);
               setFolderContextMenu(null);
             }}
-            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+            className="menu-item text-text-primary"
           >
             <AppWindow size={13} className="text-text-tertiary" />
             Window target…
@@ -2633,7 +2634,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               send({ type: 'profile:toggleFolderDisable', payload: { name: folderContextMenu.folderName } });
               setFolderContextMenu(null);
             }}
-            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+            className="menu-item text-text-primary"
           >
             {(() => {
               // One computation drives BOTH the glyph and the label — they cannot drift apart

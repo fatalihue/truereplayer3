@@ -2973,7 +2973,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
       {elseIfPicker && elseIfPickerPos && createPortal(
         <div
           ref={elseIfPickerRef}
-          className="fixed z-50 min-w-[180px] py-1 bg-bg-card border border-border-default rounded-overlay shadow-overlay"
+          className="fixed z-50 min-w-[180px] py-1 menu-surface"
           style={{ left: elseIfPickerPos.x, top: elseIfPickerPos.y }}
         >
           <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-text-tertiary">
@@ -2987,7 +2987,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                 send({ type: 'actions:addElseIfBranch', payload: { ifRowIndex: elseIfPicker.ifRowIndex, conditionType: ct } });
                 setElseIfPicker(null);
               }}
-              className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+              className="menu-item text-text-primary"
             >
               <Icon size={13} className="text-text-tertiary" />
               {label}
@@ -2999,7 +2999,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
       {contextMenu && menuPos && createPortal(
         <div
           ref={contextMenuRef}
-          className="fixed z-50 min-w-[180px] py-1 bg-bg-card border border-border-default rounded-overlay shadow-overlay"
+          className="fixed z-50 min-w-[180px] py-1 menu-surface"
           style={{ left: menuPos.x, top: menuPos.y }}
         >
           {/* Edit — specialized dialogs for SendText / RunProfile / Keystroke
@@ -3013,7 +3013,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
               openEditorForRow(contextMenu.rowIndex);
               closeContextMenu();
             }}
-            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+            className="menu-item text-text-primary"
           >
             <Pencil size={13} className="text-text-tertiary" />
             Edit
@@ -3039,7 +3039,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                   onPickCoords?.(contextMenu.rowIndex);
                   closeContextMenu();
                 }}
-                className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+                className="menu-item text-text-primary"
               >
                 <Crosshair size={13} className="text-text-tertiary" />
                 Pick from screen
@@ -3061,7 +3061,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                   send({ type: 'actions:resetCycle', payload: { index: contextMenu.rowIndex } });
                   closeContextMenu();
                 }}
-                className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+                className="menu-item text-text-primary"
               >
                 <RotateCcw size={13} className="text-text-tertiary" />
                 Reset cycle position
@@ -3081,7 +3081,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                 send({ type: 'actions:resetRow', payload: {} });
                 closeContextMenu();
               }}
-              className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+              className="menu-item text-text-primary"
             >
               <RotateCcw size={13} className="text-text-tertiary" />
               Reset row position
@@ -3216,7 +3216,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
           <button
             onMouseEnter={() => setActiveSubmenu(null)}
             onClick={handleDuplicate}
-            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+            className="menu-item text-text-primary"
           >
             <Files size={13} className="text-text-tertiary" />
             Duplicate
@@ -3239,7 +3239,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
             </button>
             {activeSubmenu === 'more' && (
               <div ref={moreFlyout.ref} className={`absolute min-w-[210px] bg-transparent ${moreFlyout.flipX ? 'right-full' : 'left-full'} ${moreFlyout.flipY ? 'bottom-0' : 'top-0'}`} style={moreFlyout.flipX ? { paddingRight: '4px' } : { paddingLeft: '4px' }}>
-                <div className="py-1 bg-bg-card border border-border-default rounded-overlay shadow-overlay z-[60]">
+                <div className="py-1 menu-surface z-[60]">
                   {/* Copy Coordinates — click rows only, FIRST item per user request.
                       Lived at top level in the type-specific slot until "Pick from
                       screen" took that spot. Paired-mode clicks are DOWN/UP pairs
@@ -3261,7 +3261,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                             .catch(() => showToast(tt('Copy failed', 'Falha ao copiar'), 'error'));
                           closeContextMenu();
                         }}
-                        className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+                        className="menu-item text-text-primary"
                       >
                         <Crosshair size={13} className="text-text-tertiary" />
                         Copy Coordinates
@@ -3287,7 +3287,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                       showToast(tt(`Selected ${similar.size} similar action(s)`, `${similar.size} ação(ões) semelhante(s) selecionada(s)`), 'success');
                       closeContextMenu();
                     }}
-                    className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+                    className="menu-item text-text-primary"
                   >
                     <CheckCheck size={13} className="text-text-tertiary" />
                     Select Similar
@@ -3349,7 +3349,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                           }
                           closeContextMenu();
                         }}
-                        className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+                        className="menu-item text-text-primary"
                       >
                         <MousePointerClick size={13} className="text-text-tertiary" />
                         Convert to {toType === 'DoubleClick' ? 'Double Click' : 'Left Click'}
@@ -3365,14 +3365,14 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                       counterpart to the record-time "Combined Actions" toggle. */}
                   <button
                     onClick={() => { send({ type: 'actions:convertMode', payload: { direction: 'toCombined' } }); setSelectedIndices(new Set<number>()); closeContextMenu(); }}
-                    className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+                    className="menu-item text-text-primary"
                   >
                     <Combine size={13} className="text-text-tertiary" />
                     Convert all to Combined
                   </button>
                   <button
                     onClick={() => { send({ type: 'actions:convertMode', payload: { direction: 'toPaired' } }); setSelectedIndices(new Set<number>()); closeContextMenu(); }}
-                    className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+                    className="menu-item text-text-primary"
                   >
                     <Split size={13} className="text-text-tertiary" />
                     Convert all to Paired

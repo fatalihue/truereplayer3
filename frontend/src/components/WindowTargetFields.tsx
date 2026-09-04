@@ -185,7 +185,7 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
             </button>
           </div>
           {showPicker && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-bg-card border border-border-default rounded-overlay shadow-overlay z-10 max-h-64 overflow-hidden flex flex-col">
+            <div className="absolute top-full left-0 right-0 mt-1 menu-surface z-10 max-h-64 overflow-hidden flex flex-col">
               <input
                 type="text"
                 value={filter}
