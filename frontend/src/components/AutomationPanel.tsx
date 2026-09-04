@@ -1285,7 +1285,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
             swallowing Escape here is what makes the overlay modal for the keyboard too; the
             stopPropagation is also what keeps Escape from reaching DialogShell's canClose and
             silently rewriting where this prompt was headed. */}
-        <div className="w-[380px] rounded-lg border border-border-subtle bg-bg-surface p-4 shadow-xl outline-none"
+        <div className="w-[380px] rounded-dialog border border-border-subtle bg-bg-surface p-4 shadow-dialog outline-none"
           role="dialog"
           aria-modal="true"
           aria-label={tt('Unsaved automation', 'Automação não salva')}

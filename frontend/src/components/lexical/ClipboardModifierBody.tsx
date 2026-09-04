@@ -118,8 +118,8 @@ export function ClipboardModifierBody({
             : tt('This editor cannot rebuild this token exactly as written — a modifier it does not know, one used twice, or a different order — so it is read-only. Editing here would quietly change what it does.',
                  'Este editor não consegue reconstruir este token exatamente como está escrito — um modificador que ele não conhece, um usado duas vezes, ou em outra ordem — então está só para leitura. Editar aqui mudaria em silêncio o que ele faz.')}
         </div>
-        <div className="text-[9px] uppercase tracking-wide text-text-tertiary">Token</div>
-        <div className="font-mono text-[11.5px] px-2 py-0.5 rounded break-all"
+        <div className="text-[10px] uppercase tracking-wide text-text-tertiary">Token</div>
+        <div className="font-mono text-[12px] px-2 py-0.5 rounded break-all"
           style={{
             color: 'var(--color-action-sendtext-fg)',
             background: 'color-mix(in srgb, var(--color-action-sendtext-fg) 10%, transparent)',
@@ -506,9 +506,9 @@ export function ClipboardModifierBody({
       </StepSection>
 
       <div className="px-3.5 py-1.5 bg-bg-surface border-b border-border-subtle">
-        <div className="text-[9px] uppercase tracking-wide text-text-tertiary mb-0.5">{sourceLabel}</div>
+        <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-0.5">{sourceLabel}</div>
         <div
-          className="font-mono text-[10.5px] text-text-secondary bg-[color-mix(in_srgb,var(--color-text-primary)_3%,transparent)] border-l-2 border-border-subtle px-2 py-0.5 mb-1.5 rounded-r whitespace-pre-wrap break-all max-h-[36px] overflow-auto"
+          className="font-mono text-[11px] text-text-secondary bg-[color-mix(in_srgb,var(--color-text-primary)_3%,transparent)] border-l-2 border-border-subtle px-2 py-0.5 mb-1.5 rounded-r whitespace-pre-wrap break-all max-h-[36px] overflow-auto"
           style={{ lineHeight: 1.35 }}
         >
           {sourceUnknown ? (
@@ -525,9 +525,9 @@ export function ClipboardModifierBody({
             <span className="italic text-text-disabled">Reading...</span>
           )}
         </div>
-        <div className="text-[9px] uppercase tracking-wide text-text-tertiary mb-0.5">Token</div>
+        <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-0.5">Token</div>
         <div
-          className="font-mono text-[11.5px] px-2 py-0.5 mb-1.5 rounded break-all"
+          className="font-mono text-[12px] px-2 py-0.5 mb-1.5 rounded break-all"
           style={{
             color: 'var(--color-action-sendtext-fg)',
             background: 'color-mix(in srgb, var(--color-action-sendtext-fg) 10%, transparent)',
@@ -535,7 +535,7 @@ export function ClipboardModifierBody({
         >
           {token}
         </div>
-        <div className="text-[9px] uppercase tracking-wide text-text-tertiary mb-0.5">Preview</div>
+        <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-0.5">Preview</div>
         <div
           className="font-mono text-[11px] px-2 py-0.5 rounded border-l-2 whitespace-pre-wrap break-all min-h-[20px] max-h-[72px] overflow-auto"
           style={{

@@ -106,7 +106,12 @@ export function DialogShell({
   // Focus the card so Esc works without a click first (the convention every
   // hand-rolled dialog already followed).
   useEffect(() => {
-    cardRef.current?.focus();
+    // Take focus only when nothing inside the card has it already: a dialog that focuses its own
+    // input (autoFocus, or a parent layout effect — the ProfilePanel dialogs do this) must not be
+    // robbed of it by the trap's initial focus. Layout effects run before this passive one, so
+    // the parent's focus lands first and this check sees it.
+    const card = cardRef.current;
+    if (card && !card.contains(document.activeElement)) card.focus();
   }, []);
 
   // Exit fallback — animationend never fires if the window is occluded/minimized
@@ -153,7 +158,7 @@ export function DialogShell({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`dialog-card bg-bg-elevated border border-border-subtle rounded-lg shadow-xl ${widthClass} ${maxWidthClass} flex flex-col outline-none`}
+        className={`dialog-card bg-bg-elevated border border-border-subtle rounded-dialog shadow-dialog ${widthClass} ${maxWidthClass} flex flex-col outline-none`}
         onClick={(e) => e.stopPropagation()}
         // Only the card's OWN dialog-out end may unmount — animationend bubbles,
         // so a child's finishing animation must not close the dialog early.

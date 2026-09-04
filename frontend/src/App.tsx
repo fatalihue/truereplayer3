@@ -82,7 +82,7 @@ function AutoCollapseOnZoom({ setSidebarCollapsed, setSettingsCollapsed, autoCol
   // between those loses the rails earlier. That is the point — the collapsed layout gives the
   // grid 948 px against the 583 it had while broken. A rail the user re-expands while narrow
   // stays expanded (autoCollapsedRef), so the old behaviour is still reachable on purpose.
-  const NARROW_THRESHOLD_LAYOUT = 1187;
+  const NARROW_THRESHOLD_LAYOUT = 1175;
   const { config: themeConfig } = useTheme();
   const zoomScale = (themeConfig.uiSettings.zoom ?? 90) / 100;
   const wasNarrowRef = useRef(false);
@@ -356,8 +356,12 @@ function AppShell() {
       {/* Title Bar */}
       <TitleBar onOpenCommandPalette={handleOpenCommandPalette} />
 
-      {/* Main Content: 3-column layout — 1px gutters between panels (user request) */}
-      <div className="flex-1 flex gap-px px-2 py-1 min-h-0">
+      {/* Main Content: one plate, three columns. No gutter between the panels — each seam is ONE
+          hairline (the side panel's inner border, in border-default so it survives the presets
+          whose border-subtle sits at 6 %); the centre column is a single card whose toolbar,
+          grid and action bar are header / body / footer split by hairlines. Radius only on the
+          plate's outer corners; 4 px of base all round (2026-09-04, owner: "o mais compacto"). */}
+      <div className="flex-1 flex gap-0 p-1 min-h-0">
         {/* Left: Profiles */}
         <ProfilePanel
           collapsed={sidebarCollapsed}
@@ -365,7 +369,7 @@ function AppShell() {
         />
 
         {/* Center: Toolbar + Table + Action Bar */}
-        <div className="flex-1 flex flex-col gap-px min-w-0">
+        <div className="flex-1 flex flex-col gap-0 min-w-0 bg-bg-surface border-y border-border-subtle">
           <ExtensionUpdateBanner />
           {/* Toolbar takes no props right now — Toggle Columns is disabled there
               (see Toolbar.tsx) so columnVisibility / setColumnVisibility don't

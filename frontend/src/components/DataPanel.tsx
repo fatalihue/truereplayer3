@@ -223,7 +223,7 @@ function HeaderMenu({
         width: 200,
         background: 'var(--color-bg-elevated, #2d2d2d)',
         border: '1px solid color-mix(in srgb, var(--color-accent-solid) 35%, transparent)',
-        boxShadow: '0 16px 40px rgba(0, 0, 0, 0.55)',
+        boxShadow: 'var(--shadow-dialog)',
       }}
       className="rounded-lg overflow-hidden py-1"
     >

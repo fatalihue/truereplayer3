@@ -11,6 +11,7 @@ import { canCollapse, canExpand, expandKeystroke } from '../utils/keyRepeat';
 import type { ActionItem } from '../bridge/messageTypes';
 import { useAppState } from '../state/AppStateContext';
 import { ReplayRowMarker } from './ReplayRowMarker';
+import { InsertedRowMarker } from './InsertedRowMarker';
 import { useBridge } from '../bridge/BridgeContext';
 import { useTt, useLanguage } from '../state/LanguageContext';
 import type { Language } from '../state/LanguageContext';
@@ -298,7 +299,7 @@ function renderMsDetail(text: string, language: Language): ReactNode {
     out.push(
       <span key={i++} className="text-text-secondary tabular-nums">
         {formatMs(Number(m[1]), language)}
-        <span className="text-[9px] text-text-tertiary ml-0.5">ms</span>
+        <span className="text-[10px] text-text-tertiary ml-0.5">ms</span>
       </span>
     );
     last = m.index + m[0].length;
@@ -1728,7 +1729,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
 
   return (
     <div
-      className="relative flex-1 bg-bg-surface border border-border-subtle rounded-ui overflow-hidden flex flex-col outline-none"
+      className="relative flex-1 bg-bg-surface overflow-hidden flex flex-col outline-none"
       // -1: click-focusable for the bubbled Delete/Ctrl+A/Escape handling below,
       // but OUT of the tab order — the inner scroll container (tabIndex=0, the
       // keyboard-navigation target) is the grid's single tab stop.
@@ -1832,11 +1833,11 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                   </button>
                 </div>
               </th>
-              <th className="sticky top-0 z-10 bg-bg-surface shadow-[inset_0_-1px_0_var(--color-border-subtle)] text-left text-xs font-semibold text-text-tertiary pl-3">#</th>
-              {columnVisibility.action && <th className="sticky top-0 z-10 bg-bg-surface shadow-[inset_0_-1px_0_var(--color-border-subtle)] text-left text-xs font-semibold text-text-tertiary pl-1">Action</th>}
-              {columnVisibility.details && <th className="sticky top-0 z-10 bg-bg-surface shadow-[inset_0_-1px_0_var(--color-border-subtle)] text-left text-xs font-semibold text-text-tertiary pl-1">Details</th>}
-              {columnVisibility.delay && <th className="sticky top-0 z-10 bg-bg-surface shadow-[inset_0_-1px_0_var(--color-border-subtle)] text-right text-xs font-semibold text-text-tertiary pl-2 pr-2">Delay</th>}
-              {columnVisibility.notes && <th className="sticky top-0 z-10 bg-bg-surface shadow-[inset_0_-1px_0_var(--color-border-subtle)] text-left text-xs font-semibold text-text-tertiary pl-2 pr-2">Notes</th>}
+              <th className="sticky top-0 z-10 bg-bg-surface shadow-[inset_0_-1px_0_var(--color-border-subtle)] text-left label-micro text-text-tertiary pl-3">#</th>
+              {columnVisibility.action && <th className="sticky top-0 z-10 bg-bg-surface shadow-[inset_0_-1px_0_var(--color-border-subtle)] text-left label-micro text-text-tertiary pl-1">Action</th>}
+              {columnVisibility.details && <th className="sticky top-0 z-10 bg-bg-surface shadow-[inset_0_-1px_0_var(--color-border-subtle)] text-left label-micro text-text-tertiary pl-1">Details</th>}
+              {columnVisibility.delay && <th className="sticky top-0 z-10 bg-bg-surface shadow-[inset_0_-1px_0_var(--color-border-subtle)] text-right label-micro text-text-tertiary pl-2 pr-2">Delay</th>}
+              {columnVisibility.notes && <th className="sticky top-0 z-10 bg-bg-surface shadow-[inset_0_-1px_0_var(--color-border-subtle)] text-left label-micro text-text-tertiary pl-2 pr-2">Notes</th>}
             </tr>
           </thead>
           )}
@@ -2091,7 +2092,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                             setElseIfPicker({ x: r.left, y: r.bottom + 2, ifRowIndex: chainOpener });
                           }}
                           disabled={buttonStates.recordingActive || buttonStates.replayActive}
-                          className="pointer-events-auto inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[10.5px] font-medium rounded border border-dashed transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                          className="pointer-events-auto inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[11px] font-medium rounded border border-dashed transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                           style={{
                             // Plain text-primary, NOT a mix toward the block hue. The old 72% mix
                             // was inherited from the W1 pill recipe, but a pill supplies its own
@@ -2116,7 +2117,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                             type="button"
                             onClick={() => send({ type: 'actions:addElseBranch', payload: { ifRowIndex: chainOpener } })}
                             disabled={buttonStates.recordingActive || buttonStates.replayActive}
-                            className="pointer-events-auto inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[10.5px] font-medium rounded border border-dashed transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                            className="pointer-events-auto inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[11px] font-medium rounded border border-dashed transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                             style={{
                               // Same measured recipe as the sibling chip above.
                               color: 'var(--color-text-primary)',
@@ -2317,7 +2318,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                       its own, so nothing the marker appends can collide with this cell's
                       reconciliation. */}
                   <td className="pl-3">
-                    <span data-rownum-value className="inline-block text-[11px] font-mono text-text-disabled leading-none translate-y-[-2px]">{action.rowNumber}</span>
+                    <span data-rownum-value className="inline-block text-[11px] font-mono text-text-tertiary leading-none translate-y-[-2px]">{action.rowNumber}</span>
                     <span data-replay-slot />
                   </td>
 
@@ -2350,7 +2351,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                         // No tooltip: the badge reads NOT next to the condition it negates, which
                         // is the whole of what the tip used to spell out.
                         <span
-                          className="ml-0.5 px-1 rounded text-[9px] font-bold tracking-wider"
+                          className="ml-0.5 px-1 rounded text-[10px] font-bold tracking-wider"
                           style={{ background: 'var(--color-action-if-fg)', color: 'var(--color-bg-surface)' }}
                         >
                           NOT
@@ -2605,9 +2606,9 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                       // Right-aligned + tabular-nums so a column of delays reads as
                       // one number ladder; the quiet "ms" suffix answers the unit
                       // question the bare integer used to leave open.
-                      <span className="text-xs font-mono tabular-nums text-text-secondary hover:text-text-primary block text-right pr-2">
+                      <span className={`text-xs font-mono tabular-nums block text-right pr-2 ${action.delay > 0 ? 'text-text-secondary hover:text-text-primary' : 'text-text-disabled hover:text-text-tertiary'}`}>
                         {formatMs(action.delay >= 0 ? action.delay : 0, language)}
-                        <span className="text-[9px] text-text-tertiary ml-0.5">ms</span>
+                        <span className={`text-[10px] ml-0.5 ${action.delay > 0 ? 'text-text-tertiary' : 'text-text-disabled'}`}>ms</span>
                       </span>
                     )}
                   </td>
@@ -2684,6 +2685,8 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
           it queries is already in the DOM. Renders null (or one portalled glyph), so a
           re-render at replay cadence costs nothing here — which is the whole point. */}
       <ReplayRowMarker tbodyRef={tbodyRef} />
+      {/* Same attribute-and-CSS doctrine, for the rows that just landed (paste / insert / undo). */}
+      <InsertedRowMarker tbodyRef={tbodyRef} />
 
       {/* Drag ghost — a translucent replica of the grabbed row with a lifted-card
           shadow and a slight tilt, Sortable style. Multi-row drags add a "+N"
@@ -2705,7 +2708,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                 className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-bg-card border border-border-default w-[300px]"
                 style={{
                   opacity: 0.88,
-                  boxShadow: '0 12px 32px rgba(0,0,0,0.5), 0 0 0 1px color-mix(in srgb, var(--color-accent) 35%, transparent)',
+                  boxShadow: 'var(--shadow-overlay), 0 0 0 1px color-mix(in srgb, var(--color-accent) 35%, transparent)',
                 }}
               >
                 <GripVertical size={12} className="text-text-disabled shrink-0" />
@@ -2970,7 +2973,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
       {elseIfPicker && elseIfPickerPos && createPortal(
         <div
           ref={elseIfPickerRef}
-          className="fixed z-50 min-w-[180px] py-1 bg-bg-card border border-border-default rounded-md shadow-lg"
+          className="fixed z-50 min-w-[180px] py-1 menu-surface"
           style={{ left: elseIfPickerPos.x, top: elseIfPickerPos.y }}
         >
           <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-text-tertiary">
@@ -2984,7 +2987,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                 send({ type: 'actions:addElseIfBranch', payload: { ifRowIndex: elseIfPicker.ifRowIndex, conditionType: ct } });
                 setElseIfPicker(null);
               }}
-              className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+              className="menu-item text-text-primary"
             >
               <Icon size={13} className="text-text-tertiary" />
               {label}
@@ -2996,7 +2999,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
       {contextMenu && menuPos && createPortal(
         <div
           ref={contextMenuRef}
-          className="fixed z-50 min-w-[180px] py-1 bg-bg-card border border-border-default rounded-md shadow-lg"
+          className="fixed z-50 min-w-[180px] py-1 menu-surface"
           style={{ left: menuPos.x, top: menuPos.y }}
         >
           {/* Edit — specialized dialogs for SendText / RunProfile / Keystroke
@@ -3010,7 +3013,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
               openEditorForRow(contextMenu.rowIndex);
               closeContextMenu();
             }}
-            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+            className="menu-item text-text-primary"
           >
             <Pencil size={13} className="text-text-tertiary" />
             Edit
@@ -3036,7 +3039,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                   onPickCoords?.(contextMenu.rowIndex);
                   closeContextMenu();
                 }}
-                className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+                className="menu-item text-text-primary"
               >
                 <Crosshair size={13} className="text-text-tertiary" />
                 Pick from screen
@@ -3058,7 +3061,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                   send({ type: 'actions:resetCycle', payload: { index: contextMenu.rowIndex } });
                   closeContextMenu();
                 }}
-                className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+                className="menu-item text-text-primary"
               >
                 <RotateCcw size={13} className="text-text-tertiary" />
                 Reset cycle position
@@ -3078,7 +3081,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                 send({ type: 'actions:resetRow', payload: {} });
                 closeContextMenu();
               }}
-              className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+              className="menu-item text-text-primary"
             >
               <RotateCcw size={13} className="text-text-tertiary" />
               Reset row position
@@ -3213,7 +3216,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
           <button
             onMouseEnter={() => setActiveSubmenu(null)}
             onClick={handleDuplicate}
-            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+            className="menu-item text-text-primary"
           >
             <Files size={13} className="text-text-tertiary" />
             Duplicate
@@ -3236,7 +3239,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
             </button>
             {activeSubmenu === 'more' && (
               <div ref={moreFlyout.ref} className={`absolute min-w-[210px] bg-transparent ${moreFlyout.flipX ? 'right-full' : 'left-full'} ${moreFlyout.flipY ? 'bottom-0' : 'top-0'}`} style={moreFlyout.flipX ? { paddingRight: '4px' } : { paddingLeft: '4px' }}>
-                <div className="py-1 bg-bg-card border border-border-default rounded-md shadow-lg z-[60]">
+                <div className="py-1 menu-surface z-[60]">
                   {/* Copy Coordinates — click rows only, FIRST item per user request.
                       Lived at top level in the type-specific slot until "Pick from
                       screen" took that spot. Paired-mode clicks are DOWN/UP pairs
@@ -3258,7 +3261,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                             .catch(() => showToast(tt('Copy failed', 'Falha ao copiar'), 'error'));
                           closeContextMenu();
                         }}
-                        className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+                        className="menu-item text-text-primary"
                       >
                         <Crosshair size={13} className="text-text-tertiary" />
                         Copy Coordinates
@@ -3284,7 +3287,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                       showToast(tt(`Selected ${similar.size} similar action(s)`, `${similar.size} ação(ões) semelhante(s) selecionada(s)`), 'success');
                       closeContextMenu();
                     }}
-                    className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+                    className="menu-item text-text-primary"
                   >
                     <CheckCheck size={13} className="text-text-tertiary" />
                     Select Similar
@@ -3346,7 +3349,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                           }
                           closeContextMenu();
                         }}
-                        className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+                        className="menu-item text-text-primary"
                       >
                         <MousePointerClick size={13} className="text-text-tertiary" />
                         Convert to {toType === 'DoubleClick' ? 'Double Click' : 'Left Click'}
@@ -3362,14 +3365,14 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                       counterpart to the record-time "Combined Actions" toggle. */}
                   <button
                     onClick={() => { send({ type: 'actions:convertMode', payload: { direction: 'toCombined' } }); setSelectedIndices(new Set<number>()); closeContextMenu(); }}
-                    className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+                    className="menu-item text-text-primary"
                   >
                     <Combine size={13} className="text-text-tertiary" />
                     Convert all to Combined
                   </button>
                   <button
                     onClick={() => { send({ type: 'actions:convertMode', payload: { direction: 'toPaired' } }); setSelectedIndices(new Set<number>()); closeContextMenu(); }}
-                    className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+                    className="menu-item text-text-primary"
                   >
                     <Split size={13} className="text-text-tertiary" />
                     Convert all to Paired

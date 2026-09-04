@@ -277,8 +277,8 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="command-enter w-[520px] bg-bg-card border border-border-default rounded-xl overflow-hidden"
-        style={{ boxShadow: '0 16px 48px rgba(0,0,0,0.6)' }}
+        className="command-enter w-[520px] bg-bg-card border border-border-default rounded-dialog overflow-hidden"
+        style={{ boxShadow: 'var(--shadow-dialog)' }}
       >
         {/* Search input */}
         <div className="flex items-center gap-2.5 px-4 py-3.5 border-b border-border-subtle">

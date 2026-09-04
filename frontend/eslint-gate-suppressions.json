@@ -1,9 +1,4 @@
 {
-  "src/components/ActionTable.tsx": {
-    "no-restricted-syntax": {
-      "count": 1
-    }
-  },
   "src/components/AutomationPanel.tsx": {
     "no-restricted-syntax": {
       "count": 4
@@ -16,12 +11,12 @@
   },
   "src/components/CommandPalette.tsx": {
     "no-restricted-syntax": {
-      "count": 2
+      "count": 1
     }
   },
   "src/components/DataPanel.tsx": {
     "no-restricted-syntax": {
-      "count": 2
+      "count": 1
     }
   },
   "src/components/ImageCropper.tsx": {
@@ -36,7 +31,7 @@
   },
   "src/components/ProfilePanel.tsx": {
     "no-restricted-syntax": {
-      "count": 40
+      "count": 31
     }
   },
   "src/components/RemapSection.tsx": {
@@ -46,7 +41,7 @@
   },
   "src/components/SendTextDialog.tsx": {
     "no-restricted-syntax": {
-      "count": 3
+      "count": 2
     }
   },
   "src/components/SettingsPanel.tsx": {
@@ -56,17 +51,12 @@
   },
   "src/components/SheetPanel.tsx": {
     "no-restricted-syntax": {
-      "count": 4
+      "count": 3
     }
   },
   "src/components/ThemeEditor.tsx": {
     "no-restricted-syntax": {
       "count": 3
-    }
-  },
-  "src/components/Toast.tsx": {
-    "no-restricted-syntax": {
-      "count": 1
     }
   },
   "src/components/UpdateOverlay.tsx": {
@@ -91,7 +81,7 @@
   },
   "src/components/lexical/TokenChipPopover.tsx": {
     "no-restricted-syntax": {
-      "count": 2
+      "count": 1
     }
   }
 }

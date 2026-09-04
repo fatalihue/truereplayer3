@@ -300,7 +300,7 @@ export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogPro
 
                 {/* Autocomplete dropdown */}
                 {showTagSuggestions && suggestions.length > 0 && (
-                  <div className="absolute top-full mt-1 left-0 right-0 z-10 bg-bg-elevated border border-border-subtle rounded shadow-lg max-h-[180px] overflow-y-auto">
+                  <div className="absolute top-full mt-1 left-0 right-0 z-10 menu-surface max-h-[180px] overflow-y-auto">
                     {suggestions.map(s => (
                       <button
                         key={s.tag}

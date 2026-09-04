@@ -44,7 +44,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBound
           justifyContent: 'center',
           background: 'var(--color-bg-base, #121212)',
           color: 'var(--color-text-primary, #e0e0e0)',
-          fontFamily: "'Segoe UI', system-ui, sans-serif",
+          fontFamily: "'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif",
         }}
       >
         <div
@@ -73,7 +73,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBound
               whiteSpace: 'pre-wrap',
               wordBreak: 'break-word',
               fontSize: 11,
-              fontFamily: "Consolas, 'Courier New', monospace",
+              fontFamily: "'Cascadia Mono', Consolas, 'Courier New', monospace",
               background: 'var(--color-bg-input, #0e0e0e)',
               border: '1px solid var(--color-border-subtle, rgba(255,255,255,0.06))',
               borderRadius: 5,

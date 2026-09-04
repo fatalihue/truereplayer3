@@ -1,5 +1,12 @@
+import { useEffect, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
 import { useAppState } from '../state/AppStateContext';
+
+// The TR monogram (memory/asset-mark-tr.svg): five round-capped strokes in a 24-unit box. Kept
+// inline so the mark paints with theme tokens — the same drawing the tray .ico files and the
+// Assets tiles are generated from (memory/tool-make-icons.mjs). 2.6 is the small-size stroke: at
+// the 14px this renders, 2.2 would come out as a 1.3px line and fuzz.
+const MARK_PATHS = ['M3.5 5.5h11.5', 'M8.5 5.5V19', 'M14 10.5V19', 'M14 10.5h3.2a2.6 2.6 0 0 1 0 5.2H14', 'M16.4 15.7l3 3.3'];
 
 // Right margin reserved for the Windows native caption-button strip
 // (minimize / maximize / close), which is overlaid on the right edge of the
@@ -20,15 +27,44 @@ interface TitleBarProps {
 }
 
 export function TitleBar({ onOpenCommandPalette }: TitleBarProps) {
-  const { status } = useAppState();
+  const { status, settings } = useAppState();
   const cfg = statusConfig[status];
+  // One green ring when a replay ends. The badge already rings while a run is live, so the end
+  // gets the same channel; edge-detected here (replaying → ready) because it is a presentation
+  // fact with a 1.5 s life, not state anything else reads.
+  const prevStatus = useRef(status);
+  const [runDone, setRunDone] = useState(false);
+  useEffect(() => {
+    const was = prevStatus.current;
+    prevStatus.current = status;
+    if (was !== 'replaying' || status !== 'ready') return;
+    setRunDone(true);
+    const t = setTimeout(() => setRunDone(false), 1500);
+    return () => clearTimeout(t);
+  }, [status]);
+  // The mark takes the mode's colour, mirroring the three tray icons the backend swaps:
+  // recording red while a capture is live, clicker purple in Clicker mode, accent otherwise.
+  // Fill and ink are the paired tokens (the -ink rung is contrast-picked per theme), never a
+  // literal, so every preset paints its own pair.
+  const markFill = status === 'recording'
+    ? 'var(--color-recording)'
+    : settings.useCursorClick ? 'var(--color-clicker)' : 'var(--color-accent-solid)';
+  const markInk = status === 'recording'
+    ? 'var(--color-recording-ink)'
+    : settings.useCursorClick ? 'var(--color-clicker-ink)' : 'var(--color-accent-ink)';
 
   return (
     <div className="drag-region flex items-center h-[48px] px-4 bg-bg-base border-b border-border-subtle shrink-0">
       {/* Logo */}
       <div className="no-drag flex items-center gap-2.5">
-        <div className="w-[18px] h-[18px] rounded bg-accent-solid flex items-center justify-center">
-          <span className="text-[10px] font-bold text-[color:var(--color-accent-ink)]">T</span>
+        <div
+          className="w-5 h-5 rounded-[5px] flex items-center justify-center transition-colors"
+          style={{ background: markFill, color: markInk }}
+          aria-hidden="true"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round">
+            {MARK_PATHS.map((d) => <path key={d} d={d} />)}
+          </svg>
         </div>
         <span className="text-xs text-text-secondary">TrueReplayer</span>
       </div>
@@ -59,7 +95,7 @@ export function TitleBar({ onOpenCommandPalette }: TitleBarProps) {
           (.rec-badge-pulse / .replay-badge-pulse in index.css) so the live state is unmistakable
           without a full-viewport frame. */}
       <div
-        className={`no-drag flex items-center gap-1.5 px-2.5 py-1 rounded-full ${cfg.bg} border ${cfg.border} ${status === 'recording' ? 'rec-badge-pulse' : status === 'replaying' ? 'replay-badge-pulse' : ''}`}
+        className={`no-drag flex items-center gap-1.5 px-2.5 py-1 rounded-full ${cfg.bg} border ${cfg.border} ${status === 'recording' ? 'rec-badge-pulse' : status === 'replaying' ? 'replay-badge-pulse' : runDone ? 'status-done-pulse' : ''}`}
         style={{ marginRight: CAPTION_BUTTONS_WIDTH_PX }}
       >
         {/* Dot pulses only while a run is LIVE — an idle "Ready" pulsing forever

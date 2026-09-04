@@ -143,7 +143,7 @@ export function ActionBar() {
   // which is exactly why the Ctrl+S handler in Toolbar now carries the same Clicker gate.
 
   return (
-    <div className="flex items-center justify-between px-3 py-1.5 bg-bg-surface border border-border-subtle rounded-ui">
+    <div className="flex items-center justify-between px-3 py-1.5 border-t border-border-subtle shrink-0">
       {/* Left: Mode toggle + Primary actions */}
       <div className="flex items-center gap-2">
         {/* Mode segmented control — shared primitive; the semantic active tints
