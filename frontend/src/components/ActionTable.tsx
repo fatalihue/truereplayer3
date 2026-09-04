@@ -1832,11 +1832,11 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                   </button>
                 </div>
               </th>
-              <th className="sticky top-0 z-10 bg-bg-surface shadow-[inset_0_-1px_0_var(--color-border-subtle)] text-left text-xs font-semibold text-text-tertiary pl-3">#</th>
-              {columnVisibility.action && <th className="sticky top-0 z-10 bg-bg-surface shadow-[inset_0_-1px_0_var(--color-border-subtle)] text-left text-xs font-semibold text-text-tertiary pl-1">Action</th>}
-              {columnVisibility.details && <th className="sticky top-0 z-10 bg-bg-surface shadow-[inset_0_-1px_0_var(--color-border-subtle)] text-left text-xs font-semibold text-text-tertiary pl-1">Details</th>}
-              {columnVisibility.delay && <th className="sticky top-0 z-10 bg-bg-surface shadow-[inset_0_-1px_0_var(--color-border-subtle)] text-right text-xs font-semibold text-text-tertiary pl-2 pr-2">Delay</th>}
-              {columnVisibility.notes && <th className="sticky top-0 z-10 bg-bg-surface shadow-[inset_0_-1px_0_var(--color-border-subtle)] text-left text-xs font-semibold text-text-tertiary pl-2 pr-2">Notes</th>}
+              <th className="sticky top-0 z-10 bg-bg-surface shadow-[inset_0_-1px_0_var(--color-border-subtle)] text-left label-micro text-text-tertiary pl-3">#</th>
+              {columnVisibility.action && <th className="sticky top-0 z-10 bg-bg-surface shadow-[inset_0_-1px_0_var(--color-border-subtle)] text-left label-micro text-text-tertiary pl-1">Action</th>}
+              {columnVisibility.details && <th className="sticky top-0 z-10 bg-bg-surface shadow-[inset_0_-1px_0_var(--color-border-subtle)] text-left label-micro text-text-tertiary pl-1">Details</th>}
+              {columnVisibility.delay && <th className="sticky top-0 z-10 bg-bg-surface shadow-[inset_0_-1px_0_var(--color-border-subtle)] text-right label-micro text-text-tertiary pl-2 pr-2">Delay</th>}
+              {columnVisibility.notes && <th className="sticky top-0 z-10 bg-bg-surface shadow-[inset_0_-1px_0_var(--color-border-subtle)] text-left label-micro text-text-tertiary pl-2 pr-2">Notes</th>}
             </tr>
           </thead>
           )}
@@ -2317,7 +2317,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                       its own, so nothing the marker appends can collide with this cell's
                       reconciliation. */}
                   <td className="pl-3">
-                    <span data-rownum-value className="inline-block text-[11px] font-mono text-text-disabled leading-none translate-y-[-2px]">{action.rowNumber}</span>
+                    <span data-rownum-value className="inline-block text-[11px] font-mono text-text-tertiary leading-none translate-y-[-2px]">{action.rowNumber}</span>
                     <span data-replay-slot />
                   </td>
 
@@ -2605,9 +2605,9 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                       // Right-aligned + tabular-nums so a column of delays reads as
                       // one number ladder; the quiet "ms" suffix answers the unit
                       // question the bare integer used to leave open.
-                      <span className="text-xs font-mono tabular-nums text-text-secondary hover:text-text-primary block text-right pr-2">
+                      <span className={`text-xs font-mono tabular-nums block text-right pr-2 ${action.delay > 0 ? 'text-text-secondary hover:text-text-primary' : 'text-text-disabled hover:text-text-tertiary'}`}>
                         {formatMs(action.delay >= 0 ? action.delay : 0, language)}
-                        <span className="text-[10px] text-text-tertiary ml-0.5">ms</span>
+                        <span className={`text-[10px] ml-0.5 ${action.delay > 0 ? 'text-text-tertiary' : 'text-text-disabled'}`}>ms</span>
                       </span>
                     )}
                   </td>
