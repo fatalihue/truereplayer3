@@ -11,6 +11,7 @@ import { canCollapse, canExpand, expandKeystroke } from '../utils/keyRepeat';
 import type { ActionItem } from '../bridge/messageTypes';
 import { useAppState } from '../state/AppStateContext';
 import { ReplayRowMarker } from './ReplayRowMarker';
+import { InsertedRowMarker } from './InsertedRowMarker';
 import { useBridge } from '../bridge/BridgeContext';
 import { useTt, useLanguage } from '../state/LanguageContext';
 import type { Language } from '../state/LanguageContext';
@@ -2684,6 +2685,8 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
           it queries is already in the DOM. Renders null (or one portalled glyph), so a
           re-render at replay cadence costs nothing here — which is the whole point. */}
       <ReplayRowMarker tbodyRef={tbodyRef} />
+      {/* Same attribute-and-CSS doctrine, for the rows that just landed (paste / insert / undo). */}
+      <InsertedRowMarker tbodyRef={tbodyRef} />
 
       {/* Drag ghost — a translucent replica of the grabbed row with a lifted-card
           shadow and a slight tilt, Sortable style. Multi-row drags add a "+N"

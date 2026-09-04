@@ -514,6 +514,31 @@ html[data-animations="true"] .replay-btn-glow {
   animation: replay-btn-glow 1.6s ease-in-out infinite;
 }
 
+/* INSERTED-ROW flash — answers "where did the row I just added land?". Attribute + CSS, like
+   the replay marker: InsertedRowMarker.tsx sets data-inserted on the new rows and clears it on
+   animationend. Accent at 22 % plus the inset bar the executing row uses, decaying over 700 ms
+   on the enter curve. Gated on the animations toggle — with motion off the attribute is never
+   written. Specificity (0,2,3) outranks the row's bg-* utility and its hover variant, the same
+   reason the replay rules are written this way. */
+@keyframes row-inserted {
+  from { background-color: color-mix(in srgb, var(--color-accent) 22%, transparent); box-shadow: inset 3px 0 0 var(--color-accent-solid); }
+  to   { background-color: transparent; box-shadow: inset 3px 0 0 transparent; }
+}
+html[data-animations="true"] tbody tr[data-inserted] {
+  animation: row-inserted 700ms var(--ease-enter) both;
+}
+
+/* RUN-DONE pulse — one green ring on the title-bar badge when a replay ends, so the end of a run
+   is as visible as its start (the badge already rings while live). One shot, same geometry as the
+   live rings; TitleBar keeps .status-done-pulse on the badge for the animation's 1.5 s. */
+@keyframes status-done-pulse {
+  from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-replay) 65%, transparent); }
+  to   { box-shadow: 0 0 0 12px transparent; }
+}
+html[data-animations="true"] .status-done-pulse {
+  animation: status-done-pulse 1.5s ease-out;
+}
+
 /* ACTION-BAR RAIL — the "pilot light" recipe for a resting primary.
    A semantic hue (record red / replay green / clicker purple) rendered at THE
    app-wide on-intensity: 12% fill, 40% border — the same numbers chipOn, Toggle

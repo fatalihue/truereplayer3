@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
 import { useAppState } from '../state/AppStateContext';
 
@@ -28,6 +29,19 @@ interface TitleBarProps {
 export function TitleBar({ onOpenCommandPalette }: TitleBarProps) {
   const { status, settings } = useAppState();
   const cfg = statusConfig[status];
+  // One green ring when a replay ends. The badge already rings while a run is live, so the end
+  // gets the same channel; edge-detected here (replaying → ready) because it is a presentation
+  // fact with a 1.5 s life, not state anything else reads.
+  const prevStatus = useRef(status);
+  const [runDone, setRunDone] = useState(false);
+  useEffect(() => {
+    const was = prevStatus.current;
+    prevStatus.current = status;
+    if (was !== 'replaying' || status !== 'ready') return;
+    setRunDone(true);
+    const t = setTimeout(() => setRunDone(false), 1500);
+    return () => clearTimeout(t);
+  }, [status]);
   // The mark takes the mode's colour, mirroring the three tray icons the backend swaps:
   // recording red while a capture is live, clicker purple in Clicker mode, accent otherwise.
   // Fill and ink are the paired tokens (the -ink rung is contrast-picked per theme), never a
@@ -81,7 +95,7 @@ export function TitleBar({ onOpenCommandPalette }: TitleBarProps) {
           (.rec-badge-pulse / .replay-badge-pulse in index.css) so the live state is unmistakable
           without a full-viewport frame. */}
       <div
-        className={`no-drag flex items-center gap-1.5 px-2.5 py-1 rounded-full ${cfg.bg} border ${cfg.border} ${status === 'recording' ? 'rec-badge-pulse' : status === 'replaying' ? 'replay-badge-pulse' : ''}`}
+        className={`no-drag flex items-center gap-1.5 px-2.5 py-1 rounded-full ${cfg.bg} border ${cfg.border} ${status === 'recording' ? 'rec-badge-pulse' : status === 'replaying' ? 'replay-badge-pulse' : runDone ? 'status-done-pulse' : ''}`}
         style={{ marginRight: CAPTION_BUTTONS_WIDTH_PX }}
       >
         {/* Dot pulses only while a run is LIVE — an idle "Ready" pulsing forever
