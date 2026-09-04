@@ -857,56 +857,6 @@ tbody tr[data-replay] [data-rownum-value] {
   &:disabled { color: var(--color-text-disabled); cursor: default; }
 }
 
-/* MENU — the one surface every menu, flyout, combo list and toast floats on, and the one item
-   recipe inside it. Five surface recipes and three item paddings collapsed into this pair in the
-   2026-09 polish; a menu is a menu wherever it opens. Colour is NOT set on the item: the call
-   site keeps text-text-primary / text-recording so a destructive item stays red without a
-   specificity fight. min-height 32 is the control scale's "default" rung. */
-@utility menu-surface {
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-overlay);
-  box-shadow: var(--shadow-overlay);
-}
-@utility menu-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 32px;
-  padding: 4px 12px;
-  font-size: 12px;
-  text-align: left;
-  transition: background-color 120ms ease, color 120ms ease;
-  &:hover:not(:disabled) { background: var(--color-bg-elevated); }
-  &:disabled { color: var(--color-text-disabled); cursor: default; }
-}
-
-/* MENU — the one surface every menu, flyout, combo list and toast floats on, and the one item
-   recipe inside it. Five surface recipes and three item paddings collapsed into this pair in the
-   2026-09 polish; a menu is a menu wherever it opens. Colour is NOT set on the item: the call
-   site keeps text-text-primary / text-recording so a destructive item stays red without a
-   specificity fight. min-height 32 is the control scale's "default" rung. */
-@utility menu-surface {
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-overlay);
-  box-shadow: var(--shadow-overlay);
-}
-@utility menu-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 32px;
-  padding: 4px 12px;
-  font-size: 12px;
-  text-align: left;
-  transition: background-color 120ms ease, color 120ms ease;
-  &:hover:not(:disabled) { background: var(--color-bg-elevated); }
-  &:disabled { color: var(--color-text-disabled); cursor: default; }
-}
-
 /* Kbd tag utilities */
 @utility kbd {
   display: inline-flex;
