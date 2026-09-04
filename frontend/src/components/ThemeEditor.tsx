@@ -669,13 +669,22 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     const filteredCustom = customList.filter(p => {
       if (presetFilter === 'all') return true;
       if (presetFilter === 'dark' || presetFilter === 'light') {
-        const hex = p.colors['bg-base'].replace('#', '');
-        if (hex.length < 6) return presetFilter === 'dark';
+        // Through toHex, because a saved preset's bg-base is not necessarily a hex string:
+        // overrides run through withOriginalAlpha, which emits `rgba(...)`. Slicing that as if
+        // it were hex made parseInt('rg', 16) NaN, and `NaN > 128` is false — so every custom
+        // preset with an alpha background silently classified as dark and vanished from Light.
+        const hex = toHex(p.colors['bg-base']).replace('#', '');
         const r = parseInt(hex.substring(0, 2), 16), g = parseInt(hex.substring(2, 4), 16), b = parseInt(hex.substring(4, 6), 16);
         const lum = (r * 299 + g * 587 + b * 114) / 1000;
         return (lum > 128) === (presetFilter === 'light');
       }
-      return false;
+      // Vivid / Pastel / Monochrome are CURATED tags, hand-assigned per built-in preset — measured
+      // against the palettes, they do not fall out of accent saturation or lightness (the three
+      // groups overlap almost completely), so there is nothing honest to compute for a user's own
+      // theme. Returning false hid every custom preset under those three filters with no hint that
+      // anything was missing. Showing them is the lesser wrong: "My Themes" is a short, separately
+      // headed list the user authored, and an uncategorised theme is not an excluded one.
+      return true;
     });
     const pool = builtinList.filter(t => t.id !== config.baseThemeId);
 
@@ -800,7 +809,16 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
 
         {/* Card grids */}
         {builtinList.length === 0 && filteredCustom.length === 0 ? (
-          <div className="text-xs text-text-tertiary text-center py-8">No themes match your search.</div>
+          // Names the reason instead of always blaming the search box — the filter chips can empty
+          // the grid on their own, and "no themes match your search" while the search is empty
+          // reads as a bug.
+          <div className="text-xs text-text-tertiary text-center py-8">
+            {presetSearch && presetFilter !== 'all'
+              ? tt(`No themes match “${presetSearch}” in ${presetFilter}.`, `Nenhum tema com “${presetSearch}” em ${presetFilter}.`)
+              : presetSearch
+                ? tt(`No themes match “${presetSearch}”.`, `Nenhum tema com “${presetSearch}”.`)
+                : tt(`No ${presetFilter} themes.`, `Nenhum tema em ${presetFilter}.`)}
+          </div>
         ) : (
           <div className="grid grid-cols-4 gap-2.5 mt-3">{builtinList.map(renderCard)}</div>
         )}
