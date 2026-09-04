@@ -247,6 +247,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       ...prev,
       baseThemeId: id,
       colorOverrides: {},
+      // Saving a preset is a manual pick, same as selectPreset, and has to turn the follower off
+      // for the same reason. Leaving it on stores the one inconsistent shape the sync() effect
+      // punishes — follower ON while baseThemeId is neither the dark nor the light slot — which
+      // then wipes overrides the next time anything re-runs that effect.
+      uiSettings: { ...prev.uiSettings, matchSystemTheme: false },
     }));
   }, [resolvedColors]);
 
@@ -259,11 +264,31 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const replaceConfig = useCallback((next: ThemeConfig) => {
-    // Carries CURRENT_THEME_CONFIG_VERSION rather than whatever the snapshot held: a snapshot is
-    // taken from live state that already ran the migrations, so re-stamping the version keeps a
-    // stale literal from re-running them on the next load.
-    setConfig({ ...next, version: CURRENT_THEME_CONFIG_VERSION });
-  }, []);
+    // The snapshot's baseThemeId can have died while the editor was open — deleting the active
+    // custom preset from the gallery moves the app to the default and drops it from storage, so
+    // restoring the id verbatim persists an orphan: resolveThemeColors falls through to the
+    // default, the header reads the wrong name, and the boot mirror paints the default forever.
+    // selectPreset has always validated this; a restore has to as well.
+    const idLives = !!getThemeById(next.baseThemeId) || customPresets.some(p => p.id === next.baseThemeId);
+    setConfig(prev => ({
+      ...next,
+      // Carries CURRENT_THEME_CONFIG_VERSION rather than whatever the snapshot held: a snapshot is
+      // taken from live state that already ran the migrations, so re-stamping the version keeps a
+      // stale literal from re-running them on the next load.
+      version: CURRENT_THEME_CONFIG_VERSION,
+      baseThemeId: idLives ? next.baseThemeId : prev.baseThemeId,
+      uiSettings: {
+        ...next.uiSettings,
+        // Left OFF, deliberately, and this is the one thing a restore does not put back. Turning
+        // the follower back on re-runs the prefers-color-scheme effect, whose sync() writes
+        // `colorOverrides: {}` whenever the active preset differs from the dark/light slot — so a
+        // Revert that honoured this flag would destroy the very colours it had just restored, and
+        // land the user on a third theme they never chose. selectPreset and importTheme force it
+        // off for exactly this reason. Losing one checkbox beats losing the whole palette.
+        matchSystemTheme: false,
+      },
+    }));
+  }, [customPresets]);
 
   const importTheme = useCallback((theme: ExportedTheme): boolean => {
     if (!validateExportedTheme(theme)) return false;

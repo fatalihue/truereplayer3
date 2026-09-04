@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   Check, RotateCcw, Download, Upload, Clipboard, ClipboardPaste, Pipette,
   ChevronDown, ChevronRight, ChevronLeft, Dices, SlidersHorizontal, FileJson2,
@@ -20,6 +20,7 @@ import {
   hslToHex,
   measurePaintedContrast,
   pickInk,
+  isLightColor,
   DEFAULT_THEME_ID,
 } from '../themes';
 import type { ThemeColors, ExportedTheme, ThemeTag, CustomThemePreset, ThemeUISettings, ThemeConfig } from '../themes';
@@ -44,7 +45,6 @@ interface ColorSection {
   title: string;
   fields: ColorField[];
   grid2?: boolean;     // render the rows in a 2-col grid (Action types)
-  wcag?: boolean;      // show a WCAG contrast chip per row (Text)
   accent?: boolean;    // append the "Derive solid & hover" button (Accent)
   defaultOpen?: boolean;
 }
@@ -62,7 +62,7 @@ const COLOR_SECTIONS: ColorSection[] = [
     { key: 'bg-elevated', label: 'Elevated', kind: 'theme' },
     { key: 'bg-input', label: 'Input', kind: 'theme' },
   ] },
-  { title: 'Text', wcag: true, fields: [
+  { title: 'Text', fields: [
     { key: 'text-primary', label: 'Primary', kind: 'theme' },
     { key: 'text-secondary', label: 'Secondary', kind: 'theme' },
     { key: 'text-tertiary', label: 'Tertiary', kind: 'theme' },
@@ -200,9 +200,18 @@ function ColorRow({ label, value, overridden, check, hslOpen, onChange, onReset,
           // boundary and for the hue inks, which are glyphs beside an icon rather than body text.
           const passing = ratio >= check.target;
           const bad = ratio < check.target * 0.67;
+          // The tooltip IS localised, so `what` has to be too — interpolating the English phrase
+          // into both branches produced a half-Portuguese tooltip.
+          const WHAT_PT: Record<string, string> = {
+            'worst surface': 'pior superfície',
+            'UI boundary': 'limite de componente',
+            'label on solid fill': 'rótulo sobre o preenchimento',
+            'accent as text': 'destaque como texto',
+            'derived ink on its own wash': 'tinta derivada sobre o próprio fundo',
+          };
           const tip = tt(
             `${check.what}: ${ratio.toFixed(1)}:1 — wants ${check.target}+`,
-            `${check.what}: ${ratio.toFixed(1)}:1 — precisa de ${check.target}+`,
+            `${WHAT_PT[check.what] ?? check.what}: ${ratio.toFixed(1)}:1 — precisa de ${check.target}+`,
           );
           if (passing) {
             return <span className="ml-auto font-mono text-[10px] text-text-tertiary" data-tip={tip}>{ratio.toFixed(1)}</span>;
@@ -359,9 +368,20 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     };
   }
   const snap = openSnapshot.current;
+  // Field-wise, not JSON.stringify — the same reason the reset gate below already spells out, plus
+  // a correctness one: JSON equality is sensitive to KEY ORDER, and clearColorOverride deletes
+  // while setColorOverride re-inserts at the end. Resetting a colour and re-picking the same value
+  // produced identical content in a different order, so the Revert button stuck on forever and
+  // clicking it changed nothing visible. setAccentColor rewrites three keys at once, so this was
+  // routine rather than exotic.
+  const sameColors = (a: Partial<ThemeColors>, b: Partial<ThemeColors>) => {
+    const ka = Object.keys(a), kb = Object.keys(b);
+    return ka.length === kb.length && ka.every(k => a[k as keyof ThemeColors] === b[k as keyof ThemeColors]);
+  };
   const dirtySinceOpen = snap.baseThemeId !== config.baseThemeId
-    || JSON.stringify(snap.colorOverrides) !== JSON.stringify(config.colorOverrides)
-    || JSON.stringify(snap.uiSettings) !== JSON.stringify(config.uiSettings);
+    || !sameColors(snap.colorOverrides, config.colorOverrides)
+    || (Object.keys(DEFAULT_UI_SETTINGS) as (keyof ThemeUISettings)[])
+         .some(k => snap.uiSettings[k] !== config.uiSettings[k]);
   const revertToOpenState = useCallback(() => { replaceConfig(openSnapshot.current!); }, [replaceConfig]);
 
   const hasOverrides = Object.keys(config.colorOverrides).length > 0;
@@ -375,6 +395,18 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     ?? themes.find(t => t.id === DEFAULT_THEME_ID)
     ?? themes[0];
   const currentAccentHex = toHex(resolvedColors.accent);
+
+  // All 32 contrast readings in one pass, keyed by field, recomputed only when the palette or the
+  // hue settings actually change. Called inline in the row map it ran on EVERY render — and every
+  // row's mouseenter/mouseleave calls setHoverKey, so dragging the pointer down the list re-solved
+  // the whole set twice per row crossed, as does each HSL slider tick at 60-120 Hz. Measured at
+  // 0.72 ms per render on a light preset, nearly all of it the seventeen deriveHueInk solves,
+  // which are exactly the ones whose answer cannot change without these two inputs changing.
+  const contrastChecks = useMemo(() => {
+    const m = new Map<string, ReturnType<typeof measurePaintedContrast>>();
+    for (const f of ALL_FIELDS) m.set(f.key, measurePaintedContrast(f.kind, f.key, resolvedColors, config.uiSettings));
+    return m;
+  }, [resolvedColors, config.uiSettings]);
 
   // Field-wise compare (cheaper than JSON.stringify per render) for the reset-everything gate.
   const uiAtDefault = (Object.keys(DEFAULT_UI_SETTINGS) as (keyof ThemeUISettings)[])
@@ -608,7 +640,9 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
       )}
       {dirtySinceOpen && (
         <Button variant="secondary" onClick={revertToOpenState} data-tip={tt('Put back the theme as it was when you opened the editor', 'Devolve o tema como estava quando você abriu o editor')}>
-          <Undo2 size={13} /> {tt('Revert', 'Desfazer tudo')}
+          {/* Label stays English like every sibling in this footer (Done, Customize, Save, OK):
+              the convention localises tooltip TEXT only, never names, labels or menus. */}
+          <Undo2 size={13} /> Revert
         </Button>
       )}
       <Button variant="primary" onClick={onClose}>Done</Button>
@@ -669,21 +703,20 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     const filteredCustom = customList.filter(p => {
       if (presetFilter === 'all') return true;
       if (presetFilter === 'dark' || presetFilter === 'light') {
-        // Through toHex, because a saved preset's bg-base is not necessarily a hex string:
-        // overrides run through withOriginalAlpha, which emits `rgba(...)`. Slicing that as if
-        // it were hex made parseInt('rg', 16) NaN, and `NaN > 128` is false — so every custom
-        // preset with an alpha background silently classified as dark and vanished from Light.
-        const hex = toHex(p.colors['bg-base']).replace('#', '');
-        const r = parseInt(hex.substring(0, 2), 16), g = parseInt(hex.substring(2, 4), 16), b = parseInt(hex.substring(4, 6), 16);
-        const lum = (r * 299 + g * 587 + b * 114) / 1000;
-        return (lum > 128) === (presetFilter === 'light');
+        // One shared answer (isLightColor) instead of a hand-rolled formula. A saved preset's
+        // bg-base is not necessarily hex — overrides run through withOriginalAlpha, which emits
+        // `rgba(...)` — and isSafeCssColor also admits `hsl()`, named colours and `color-mix()`,
+        // every one of which toHex maps to #000000, i.e. "dark". Unreadable now means unknown,
+        // and an unknown theme is shown rather than silently filed under Dark.
+        const light = isLightColor(p.colors['bg-base']);
+        return light === null || light === (presetFilter === 'light');
       }
       // Vivid / Pastel / Monochrome are CURATED tags, hand-assigned per built-in preset — measured
       // against the palettes, they do not fall out of accent saturation or lightness (the three
       // groups overlap almost completely), so there is nothing honest to compute for a user's own
       // theme. Returning false hid every custom preset under those three filters with no hint that
-      // anything was missing. Showing them is the lesser wrong: "My Themes" is a short, separately
-      // headed list the user authored, and an uncategorised theme is not an excluded one.
+      // anything was missing. They are shown instead, and the heading says why — otherwise the same
+      // theme is quietly "uncategorised so show" in three filters and "categorised so hide" in two.
       return true;
     });
     const pool = builtinList.filter(t => t.id !== config.baseThemeId);
@@ -811,20 +844,29 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
         {builtinList.length === 0 && filteredCustom.length === 0 ? (
           // Names the reason instead of always blaming the search box — the filter chips can empty
           // the grid on their own, and "no themes match your search" while the search is empty
-          // reads as a bug.
+          // reads as a bug. English, like every other label: the earlier pt-BR version also
+          // interpolated presetFilter, whose values are English tags, so it read "Nenhum tema em
+          // dark" — half-translated, which is worse than either language on its own.
           <div className="text-xs text-text-tertiary text-center py-8">
             {presetSearch && presetFilter !== 'all'
-              ? tt(`No themes match “${presetSearch}” in ${presetFilter}.`, `Nenhum tema com “${presetSearch}” em ${presetFilter}.`)
+              ? `No ${presetFilter} themes match “${presetSearch}”.`
               : presetSearch
-                ? tt(`No themes match “${presetSearch}”.`, `Nenhum tema com “${presetSearch}”.`)
-                : tt(`No ${presetFilter} themes.`, `Nenhum tema em ${presetFilter}.`)}
+                ? `No themes match “${presetSearch}”.`
+                : `No ${presetFilter} themes.`}
           </div>
         ) : (
           <div className="grid grid-cols-4 gap-2.5 mt-3">{builtinList.map(renderCard)}</div>
         )}
         {filteredCustom.length > 0 && (
           <>
-            <div className="label-micro text-text-tertiary mt-4 mb-1.5">My Themes</div>
+            {/* Says WHY your own themes are still here under a filter that cannot classify them,
+                instead of leaving the list looking like the filter simply did not apply. */}
+            <div className="label-micro text-text-tertiary mt-4 mb-1.5">
+              My Themes
+              {presetFilter !== 'all' && presetFilter !== 'dark' && presetFilter !== 'light' && (
+                <span className="ml-1.5 normal-case tracking-normal text-text-disabled">(not categorised)</span>
+              )}
+            </div>
             <div className="grid grid-cols-4 gap-2.5">{filteredCustom.map(renderCard)}</div>
           </>
         )}
@@ -884,7 +926,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
                         label={f.label}
                         value={fieldValue(f)}
                         overridden={fieldOverridden(f)}
-                        check={measurePaintedContrast(f.kind, f.key, resolvedColors, config.uiSettings)}
+                        check={contrastChecks.get(f.key)}
                         hslOpen={openHslKey === f.key}
                         onChange={(hex) => applyColor(f, hex)}
                         onReset={() => resetColor(f)}

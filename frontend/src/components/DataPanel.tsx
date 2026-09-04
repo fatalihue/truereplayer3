@@ -247,10 +247,12 @@ function HeaderMenu({
       <div className="h-px bg-border-subtle my-1" />
       <button
         type="button"
-        // Armed state used text-red-300 with a one-step lighten on hover. There is no "lighter
-        // recording" token, and inventing one for a single row is worse than dropping the step:
-        // the armed colour already carries the state, and the row keeps its background hover.
-        className={`${itemCls} ${armedDelete ? 'text-[color:var(--color-recording-fg)]' : ''}`}
+        // The armed colour has to beat itemCls's `hover:text-text-primary`, which is a more
+        // specific selector — and the pointer is NECESSARILY on this item, since arming it took a
+        // click. Dropping the old `hover:` half left the confirm state visible only after moving
+        // the mouse away, which is the one moment nobody looks. The label change is the second
+        // channel; the colour is the first, and both now survive the hover.
+        className={`${itemCls} ${armedDelete ? 'text-[color:var(--color-recording-fg)] hover:text-[color:var(--color-recording-fg)]' : ''}`}
         onClick={() => {
           if (!armedDelete) { setArmedDelete(true); return; }
           onAction('delete');
