@@ -86,7 +86,7 @@ export function ClickerDashboard() {
     // Standard theme surface (same as the macro ActionTable) — no purple glass gradient or
     // clicker-tinted border. The clicker identity now lives only in the text/icon colours
     // (--color-clicker), mirroring how macro mode keeps its green identity on text alone.
-    <div className="flex-1 flex flex-col items-center justify-center gap-6 rounded-ui border border-border-subtle bg-bg-surface min-h-0 relative overflow-hidden px-4">
+    <div className="flex-1 flex flex-col items-center justify-center gap-6 bg-bg-surface min-h-0 relative overflow-hidden px-4">
       {/* tabular-nums prevents digit-width jitter as the count climbs. */}
       <div className="flex flex-col items-center">
         <div

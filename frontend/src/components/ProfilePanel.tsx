@@ -1764,7 +1764,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
       {/* width + colors in the transition list: a bare transition-[width] overrides
           the global theme-change fade, so the panel's background/border would snap
           on theme switch while everything around it cross-fades. */}
-      <div className={`flex flex-col bg-bg-surface border border-border-subtle rounded-ui shrink-0 transition-[width,background-color,border-color] duration-200 ${collapsed ? 'w-12' : 'w-[260px]'}`}>
+      <div className={`flex flex-col bg-bg-surface border border-border-subtle border-r-border-default rounded-l-shell shrink-0 transition-[width,background-color,border-color] duration-200 ${collapsed ? 'w-12' : 'w-[260px]'}`}>
         {collapsed ? (
           <>
             {/* Collapsed rail — mirrors the SettingsPanel rail: a 47px header cell
@@ -1903,7 +1903,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             six-button layout had, so the divider margins dropped mx-1 → mx-0.5 to pay
             for it. Estimated, not yet re-measured live (UI is screenshot-masked); if
             PROFILES clips, shorten the label before shrinking the buttons. */}
-        <div className="flex items-center justify-between px-2 pt-2 pb-1">
+        <div className="flex items-center justify-between h-[47px] px-2 border-b border-border-subtle shrink-0">
           <span className="label-micro text-text-tertiary">PROFILES</span>
           {/* Grouped by function (2026-07 reorg), Toolbar divider idiom: panel chrome
               (collapse) | library utilities (open folder, import/export) | creation
@@ -1964,8 +1964,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
         </div>
 
         {/* Search — supports "#tag" prefix to filter by tag instead of name */}
-        <div className="px-3 pb-1.5">
-          <div className={`flex items-center gap-2 px-2.5 py-1.5 bg-bg-input border rounded transition-colors ${
+        <div className="h-row px-1.5 flex items-center border-b border-border-subtle shrink-0">
+          <div className={`w-full h-7 flex items-center gap-2 px-2.5 bg-bg-input border rounded transition-colors ${
             isTagSearch ? 'border-accent-solid/50' : 'border-border-default'
           }`}>
             {isTagSearch ? (

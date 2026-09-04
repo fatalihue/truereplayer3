@@ -1728,7 +1728,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
 
   return (
     <div
-      className="relative flex-1 bg-bg-surface border border-border-subtle rounded-ui overflow-hidden flex flex-col outline-none"
+      className="relative flex-1 bg-bg-surface overflow-hidden flex flex-col outline-none"
       // -1: click-focusable for the bubbled Delete/Ctrl+A/Escape handling below,
       // but OUT of the tab order — the inner scroll container (tabIndex=0, the
       // keyboard-navigation target) is the grid's single tab stop.
