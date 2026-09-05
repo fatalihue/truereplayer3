@@ -4,6 +4,7 @@ import { NumberInput } from './common/NumberInput';
 import { DialogShell, DialogFooter  } from './common/DialogShell';
 import { SegmentedControl } from './common/SegmentedControl';
 import { KeyCaps } from './common/KeyCaps';
+import { compactKey } from './common/KbdTag';
 import { chipDotOn, chipDotOff } from './common/chipStyles';
 import { DurationChips } from './common/DurationChips';
 import { useBridge } from '../bridge/BridgeContext';
@@ -548,8 +549,14 @@ export function KeystrokeCaptureDialog({
                 aria-hidden={!hasModifiers}
               >
                 {'Hold mode supports single keys only. Saving will hold'}{' '}
-                <kbd className="px-1 py-px bg-bg-elevated border border-border-default rounded font-mono text-[10px] text-warning-ink">
-                  {keystrokeDisplay(heldKey)}
+                {/* Fixed-width cap: the key name sits INSIDE the sentence, so a wide name ("Space",
+                    "ScrollDown") used to push the wrap to one more line and grow the dialog by
+                    16 px on capture — measured. 10ch fits every compact key name; anything longer
+                    truncates rather than reflowing the band. */}
+                <kbd className="inline-block w-[10ch] max-w-[10ch] truncate align-bottom text-center px-1 py-px bg-bg-elevated border border-border-default rounded font-mono text-[10px] text-warning-ink">
+                  {/* nbsp when nothing is captured: an empty cap has no line box and the band
+                      was 4 px shorter before the first key. */}
+                  {compactKey(keystrokeDisplay(heldKey)) || ' '}
                 </kbd>{' '}
                 {'and ignore the modifiers. To hold a combo, insert two rows: a Hold for the modifier, plus the action under it.'}
               </div>

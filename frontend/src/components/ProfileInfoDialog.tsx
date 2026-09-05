@@ -182,7 +182,9 @@ export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogPro
       footer={<DialogFooter secondary={{ label: 'Cancel', onClick: onClose }} primary={{ label: 'Save', onClick: handleSave, disabled: !loaded }} />}
     >
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        {/* min-h: the loading placeholder is as tall as the loaded form, so the card does not
+            grow by ~400 px the moment the metadata arrives. */}
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 min-h-[27rem]">
           {!loaded ? (
             <div className="text-xs text-text-tertiary py-4 text-center">Loading…</div>
           ) : (
