@@ -428,7 +428,7 @@ export interface SettingsState {
   cursorClickStartHotkey: string;
   cursorClickPauseHotkey: string;
   // Clicker v2 — dedicated Clicker settings, decoupled from the active profile. Stored
-  // server-side in AppSettings (global), edited through the new ClickerPanel.
+  // server-side in AppSettings (global), edited through ClickerSection in SettingsPanel.
   cursorClickDelay: string;
   cursorClickDelayJitter: string;
   cursorClickUseJitter: boolean;
@@ -449,7 +449,7 @@ export interface SettingsState {
   /** Wall-clock cap in MS on the wire; the panel edits it in seconds. */
   cursorClickMaxDuration: string;
   cursorClickUseMaxDuration: boolean;
-  /** Interpolated cursor path for the Clicker. Only bites when the cursor moves — Fixed and Area. */
+  /** Interpolated cursor path for the Clicker. Only bites when the cursor moves — Position, Fixed and Area; in plain cursor mode nothing moves. */
   cursorClickGameMove: boolean;
   recordMouse: boolean;
   recordScroll: boolean;
@@ -685,8 +685,9 @@ export interface ClickerLiveState {
   /**
    * Clicker v2 — live click counter pushed from the backend during a Clicker run
    * (~4 Hz cadence, throttled in the loop). StatusBar renders "Clicked X · Y/s ·
-   * MM:SS" from these. `active` flips on first push, off on status:changed (any
-   * status other than 'replaying').
+   * MM:SS" from these. `active` flips on the first push; a new run (status →
+   * 'replaying') resets the counter to zero, and 'ready' KEEPS the final count so the
+   * total stays readable after the run (see clickerLiveReducer).
    */
   clickerStats: {
     active: boolean;

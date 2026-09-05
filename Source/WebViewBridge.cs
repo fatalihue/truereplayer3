@@ -630,10 +630,9 @@ namespace TrueReplayer
                 saved.CursorClickUseLoops = saved.EnableLoop;
                 saved.CursorClickIntervalMs = saved.LoopInterval;
                 saved.CursorClickUseInterval = saved.LoopIntervalEnabled;
-                // CursorClickHoldMs, CursorClickDelayJitterPct, CursorClickPositionJitter, and
-                // CursorClickIntervalMs keep their AppSettings field defaults (10 ms / 10 % /
-                // 10 px / 200 ms) — these are sensible starting values that don't take effect
-                // until their companion switch is turned ON.
+                // CursorClickHoldMs and CursorClickPositionJitter are NOT copied — nothing in the
+                // legacy profile maps to them — so they keep their AppSettings field defaults
+                // (10 ms / 1 px). Neither takes effect until its companion switch is turned ON.
                 AppSettingsManager.Save(saved);
             }
             // Clamped on the way IN, not just on the way out. appsettings.json is hand-editable

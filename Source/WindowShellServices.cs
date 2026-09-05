@@ -216,8 +216,11 @@ namespace TrueReplayer.Services
         // to fit the szTip buffer used by the shell.
         private static string ResolveTooltip(AppSettingsManager.AppSettings settings)
         {
+            // The engine reports a Clicker run as "replaying" too (one status for both loops), so
+            // the mode picks the word — the icon is already purple, and "Replaying…" under a
+            // purple icon contradicted it.
             if (_runState == "replaying")
-                return "TrueReplayer — Replaying…";
+                return settings.UseCursorClick ? "TrueReplayer — Clicking…" : "TrueReplayer — Replaying…";
             if (_runState == "recording")
                 return "TrueReplayer — Recording…";
             string line;

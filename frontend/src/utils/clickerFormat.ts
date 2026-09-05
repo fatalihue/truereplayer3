@@ -115,3 +115,120 @@ export function formatEta(
   }
   return `~${etaSec}s`;
 }
+
+// ── Hold-aware rate ─────────────────────────────────────────────────────────────────
+//
+// targetCps above is the rate the delay and gap ASK for. The hold is spent inside the
+// period, so it changes nothing until it outlasts that period — then the scheduler's wait
+// goes non-positive, it resyncs (`nextTickMs = elapsed`), and the hold (plus one) becomes the
+// period. That is the `safeHold >= nominalPeriod` branch of the engine's own start banner, and
+// it is why a 100 ms delay with a 200 ms hold runs at ~5/s, not 10/s. Every readout of "what
+// rate will this produce" (the Rate row's ≈, the status bar, the dashboard recall) goes through
+// this, never through targetCps alone. Identity: effectiveCps == min(targetCps, maxCps).
+
+/** Clicks per second the run actually delivers, hold included. */
+export function effectiveCps(delayMs: number, intervalMs: number, holdMs: number): number {
+  const hold = Math.min(CLICK_HOLD_MAX_MS, Math.max(0, Number.isFinite(holdMs) ? holdMs : 0));
+  return 1000 / Math.max(clickPeriodMs(delayMs, intervalMs), hold + 1);
+}
+
+/** True when the hold, not the delay/gap, sets the rate — the one case the Rate field alone cannot show. */
+export function holdCapsRate(delayMs: number, intervalMs: number, holdMs: number): boolean {
+  const hold = Math.min(CLICK_HOLD_MAX_MS, Math.max(0, Number.isFinite(holdMs) ? holdMs : 0));
+  return hold + 1 > clickPeriodMs(delayMs, intervalMs);
+}
+
+// ── Configuration summary ──────────────────────────────────────────────────────────
+//
+// One reading of the Clicker settings for every surface that recalls them: the dashboard's
+// config line, the empty state's sentence (which used to look at useLoops alone and said "at
+// cursor" with an Area set), and whatever comes next. Three surfaces re-deriving the same bits
+// is how they drifted; this is the single place that knows the engine's precedence
+// (Area > Fixed > Position) and that both limits are optional and independent.
+
+/** The fields the summary reads. SettingsState satisfies it structurally, so this file stays import-free. */
+export interface ClickerConfigInput {
+  cursorClickButton: string;
+  cursorClickDelay: string;
+  cursorClickHold: string;
+  cursorClickUseInterval: boolean;
+  cursorClickInterval: string;
+  cursorClickUseLoops: boolean;
+  cursorClickLoops: string;
+  cursorClickUseMaxDuration: boolean;
+  cursorClickMaxDuration: string;
+  cursorClickUseArea: boolean;
+  cursorClickArea: { x: number; y: number; w: number; h: number } | null;
+  cursorClickUseFixed: boolean;
+  cursorClickFixedPoint: { x: number; y: number } | null;
+  cursorClickUsePositionJitter: boolean;
+  cursorClickPositionJitter: string;
+  cursorClickUseJitter: boolean;
+  cursorClickDelayJitter: string;
+}
+
+export interface ClickerConfigSummary {
+  /** Compact recall, joined by the caller: "Left · 5/s · 5000 clicks or 120 s · Area 800×600 · ±10% rate · +200 ms gap". */
+  bits: string[];
+  /** Where the clicks land, as the tail of "start clicking …": "at the cursor", "inside the 800×600 area". */
+  where: string;
+  /** How the run ends, as a clause: "it runs until you press it again", "it stops after 50 clicks". */
+  stop: string;
+  /** No limit armed — the run only ends by hand. */
+  unbounded: boolean;
+}
+
+export function describeClickerConfig(s: ClickerConfigInput): ClickerConfigSummary {
+  const delayMs = parseInt(s.cursorClickDelay, 10) || 0;
+  const gapMs = s.cursorClickUseInterval ? (parseInt(s.cursorClickInterval, 10) || 0) : 0;
+  const holdMs = parseInt(s.cursorClickHold, 10) || 0;
+  const loops = s.cursorClickUseLoops ? (parseInt(s.cursorClickLoops, 10) || 0) : 0;
+  const capSec = s.cursorClickUseMaxDuration ? Math.round((parseInt(s.cursorClickMaxDuration, 10) || 0) / 1000) : 0;
+  const positionPx = s.cursorClickUsePositionJitter ? (parseInt(s.cursorClickPositionJitter, 10) || 0) : 0;
+  const ratePct = s.cursorClickUseJitter ? (parseInt(s.cursorClickDelayJitter, 10) || 0) : 0;
+
+  // Where — in the engine's precedence order, so the summary can never name a mode the run ignores.
+  let where: string;
+  let whereBit: string | null;
+  if (s.cursorClickUseArea && s.cursorClickArea) {
+    where = `inside the ${s.cursorClickArea.w}×${s.cursorClickArea.h} area`;
+    whereBit = `Area ${s.cursorClickArea.w}×${s.cursorClickArea.h}`;
+  } else if (s.cursorClickUseFixed) {
+    if (s.cursorClickFixedPoint) {
+      where = `at ${s.cursorClickFixedPoint.x}, ${s.cursorClickFixedPoint.y}`;
+      whereBit = `Fixed ${s.cursorClickFixedPoint.x},${s.cursorClickFixedPoint.y}`;
+    } else {
+      where = 'where the cursor is when it starts';
+      whereBit = 'Fixed at start';
+    }
+  } else if (positionPx > 0) {
+    where = `around the cursor (±${positionPx} px)`;
+    whereBit = `±${positionPx} px`;
+  } else {
+    where = 'at the cursor';
+    whereBit = null;
+  }
+
+  // Stop — both limits optional and independent; whichever is reached first ends the run.
+  const limitBits: string[] = [];
+  if (loops > 0) limitBits.push(`${loops} clicks`);
+  if (capSec > 0) limitBits.push(`${capSec} s`);
+  const unbounded = limitBits.length === 0;
+  const stop = unbounded
+    ? 'it runs until you press it again'
+    : limitBits.length === 2
+      ? `it stops after ${limitBits[0]} or ${limitBits[1]}, whichever comes first`
+      : `it stops after ${limitBits[0]}`;
+
+  // The RATE leads: it is the single most important setting. Hold-aware — see effectiveCps.
+  const bits: string[] = [s.cursorClickButton];
+  if (delayMs > 0) bits.push(`${formatRate(effectiveCps(delayMs, gapMs, holdMs))}/s`);
+  bits.push(unbounded ? 'no limit' : limitBits.join(' or '));
+  if (whereBit) bits.push(whereBit);
+  if (ratePct > 0) bits.push(`±${ratePct}% rate`);
+  // "+N ms gap", not "every N ms": one iteration is one click, so the gap is ADDED to the
+  // cadence and the rate above already includes it.
+  if (gapMs > 0) bits.push(`+${gapMs} ms gap`);
+
+  return { bits, where, stop, unbounded };
+}

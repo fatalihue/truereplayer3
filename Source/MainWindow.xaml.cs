@@ -1138,8 +1138,11 @@ namespace TrueReplayer
                     // Clicker mode is exclusive: profile triggers (PROFILE/HOLD/TOGGLE) and the
                     // Recording hotkey are suppressed. PROFILE_STOP is intentionally NOT suppressed
                     // (handled earlier above) so a WhilePressed key released after a mid-replay mode
-                    // switch still cancels its replay. The Replay hotkey (handled below), the
-                    // ProfileKeyToggle hotkey, and the Foreground hotkey continue to work normally.
+                    // switch still cancels its replay. The ProfileKeyToggle, Foreground and
+                    // ModeToggle hotkeys continue to work normally. The Replay hotkey never arrives
+                    // here in Clicker mode — the hook gates it on IsCursorClickMode, and the
+                    // Clicker's run key is CLICKER_START above (the guard in the Replay branch below
+                    // only covers a mode flip racing an already-queued press).
                     if (bridge?.UseCursorClick == true)
                     {
                         if (isProfileTrigger || key == UserProfile.Current.RecordingHotkey)
@@ -1186,15 +1189,16 @@ namespace TrueReplayer
 
                         if (bridge?.UseCursorClick == true)
                         {
-                            // Clicker v2 — read from the dedicated CursorClick* fields, NOT the
-                            // legacy profile-shared CustomDelay/EnableLoop/etc. Must match the
-                            // exact same logic as WebViewBridge.HandleReplayToggle (button path),
-                            // otherwise the button and the hotkey produce different behaviour
-                            // for the same configuration.
-                            // Hotkey entry — defer to the bridge's BuildClickerConfig so the
-                            // parsing rules + Area/loop conventions stay in one place.
-                            mainController.ToggleCursorClickReplay(
-                                bridge?.BuildClickerConfig() ?? ClickerRunConfig.Default);
+                            // Unreachable in practice: the hook only dispatches ReplayHotkey in
+                            // Macro mode — the keyboard path and the mouse ladder are both gated
+                            // on IsCursorClickMode, and the Clicker's own run key arrives as
+                            // CLICKER_START above. The one way a press can still land here is a
+                            // mode flip racing a dispatch already queued on the UI thread, and
+                            // then the right answer is to drop it, not to start a macro replay
+                            // underneath the Clicker dashboard. This branch used to start the
+                            // click loop, which claimed a "Replay hotkey = Click" path that
+                            // never fired.
+                            return;
                         }
                         else
                         {

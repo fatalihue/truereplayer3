@@ -5454,8 +5454,11 @@ namespace TrueReplayer.Services
         // the achievable rate at ~50/s regardless of what the user configured. The clicker has
         // its own HoldMs for the press→release dwell.
         //
-        // Returns SendInput's result: 0 means the event was blocked (UIPI — an elevated
-        // foreground window while we run unelevated), which the caller must not count as a click.
+        // Returns SendInput's result: 0 means the call was rejected outright (a bad cbSize, or
+        // another thread holding BlockInput), which the caller must not count as a click. It does
+        // NOT reveal UIPI: against an elevated foreground window SendInput still returns 1 and the
+        // event silently never enters the input stream — measured 2026-08-08, see the note in the
+        // click loop above. An earlier version of this comment claimed the opposite.
         public uint ClickerButton(uint mouseEvent, int absX, int absY)
         {
             var input = new NativeMethods.INPUT

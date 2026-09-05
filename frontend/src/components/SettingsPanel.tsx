@@ -14,7 +14,7 @@ import { iconButtonClass } from './common/IconButton';
 import { KbdTag } from './common/KbdTag';
 import { chipOn, chipOff, chipDotOn, chipDotOff } from './common/chipStyles';
 import { formatMs } from '../utils/displayUtils';
-import { CLICK_HOLD_MAX_MS, CLICK_PERIOD_FLOOR_MS, delayForCps, formatRate, maxCps, targetCps } from '../utils/clickerFormat';
+import { CLICK_HOLD_MAX_MS, CLICK_PERIOD_FLOOR_MS, delayForCps, effectiveCps, formatRate, holdCapsRate, maxCps } from '../utils/clickerFormat';
 
 // Compact 28×16 switch — the redesigned Settings panel uses the smaller size for every
 // on/off control; other surfaces (dialogs) keep the default 40×20 Toggle.
@@ -240,33 +240,43 @@ function PathStepZeroNote({ step }: { step: string }) {
 }
 
 // Annotation under the Clicker Rate row — same shape and placement as PathStepZeroNote.
-// In ms mode it always shows the resulting clicks/second, because that conversion is NOT
-// 1000/ms: the interval is part of the engine's period. In /s mode it stays silent unless
-// the requested rate was out of reach, in which case it names the ceiling and the reason.
+// Two reasons, both DERIVED from the settings rather than remembered from the last commit:
+//   • hold  — the hold outlasts the period, so the hold IS the period (see effectiveCps). This
+//             one has to be live: it appears when the Hold is raised, not only when the Rate is
+//             typed, and it survives a tab switch. It used to be a useState set in commitRate,
+//             so raising the Hold to 200 ms left "≈ 10/s" standing with no note at all.
+//   • floor — the requested rate needed a delay under the engine's 5 ms floor (or over the 60 s
+//             cap), so the stored delay is not the one asked for. Transient by nature: it
+//             describes the last commit, and the field already shows the value that stuck.
 // Deliberately does NOT model the Windows timer granularity — that would replace one wrong
 // number with a differently wrong one. The dashboard's measured Rate cell is ground truth.
-// The clamp warning only — a validation message, so it keeps the full-width strip where a
-// warning wants to be. The ms→clicks/second conversion is NOT here: that one is a readout of
-// the field beside it, so it rides in the row's own label (SettingRow.labelSuffix). As a
-// strip it read as an orphan row — ~250px of empty space with six characters on the far edge.
-function ClickerRateClampNote({ clamped, ceiling, holdMs }: {
-  clamped: boolean;
+// A validation message, so it keeps the full-width strip where a warning wants to be. The
+// ms→clicks/second conversion is NOT here: that one is a readout of the field beside it, so it
+// rides in the row's own label (SettingRow.labelSuffix). As a strip it read as an orphan row —
+// ~250px of empty space with six characters on the far edge.
+function ClickerRateClampNote({ reason, ceiling, holdMs }: {
+  reason: 'hold' | 'floor' | null;
   ceiling: number;
   holdMs: number;
 }) {
-  if (!clamped) return null;
+  if (!reason) return null;
   return (
     <div className="px-2.5 pb-1 text-[11px] text-text-tertiary text-right">
-      {`max ≈ ${formatRate(ceiling)}/s (hold ${holdMs} ms)`}
+      {reason === 'hold'
+        ? `max ~${formatRate(ceiling)}/s (hold ${holdMs} ms)`
+        : `max ~${formatRate(ceiling)}/s (${CLICK_PERIOD_FLOOR_MS} ms floor)`}
     </div>
   );
 }
 
-// Game move only bites when the cursor actually has somewhere to go. In cursor mode the target
-// IS the live cursor, so the setting is switched on and doing nothing — say so rather than let
-// the switch imply an effect it cannot have. Same shape as PathStepZeroNote and the rate note.
-function GameMoveNote({ on, useArea, useFixed }: { on: boolean; useArea: boolean; useFixed: boolean }) {
-  if (!on || useArea || useFixed) return null;
+// Game move only bites when the cursor actually has somewhere to go. In plain cursor mode the
+// target IS the live cursor, so the setting is switched on and doing nothing — say so rather
+// than let the switch imply an effect it cannot have. Position jitter is NOT that case: the
+// cursor moves to a fresh point every tick and ClickerMoveTo walks it, so the note stays off
+// there (it used to show, and the row's tooltip said the same wrong thing).
+// Same shape as PathStepZeroNote and the rate note.
+function GameMoveNote({ on, useArea, useFixed, positionPx }: { on: boolean; useArea: boolean; useFixed: boolean; positionPx: number }) {
+  if (!on || useArea || useFixed || positionPx > 0) return null;
   return (
     <div className="px-2.5 pb-1 text-[11px] text-text-tertiary text-right">
       {'no effect in cursor mode'}
@@ -318,7 +328,11 @@ function SettingRow({ label, labelSuffix, tooltip, children, danger }: {
     >
       {/* Danger = thin red left accent + red icon/label (replaces the old full-row red wash). */}
       {danger && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 rounded-sm bg-recording" />}
-      <span className={`text-ui flex items-center gap-1.5 min-w-0 ${danger ? 'text-recording' : 'text-text-secondary'}`}>
+      {/* flex-wrap: the label column is ~76 px wide (204 px section − padding − gap − the
+          100 px control), and a labelSuffix that does not fit must drop to its own line whole,
+          not shrink and break mid-token ("≈" alone on line one, the number below). Only bites
+          when a suffix overflows; every plain label is far shorter than the column. */}
+      <span className={`text-ui flex flex-wrap items-center gap-1.5 min-w-0 ${danger ? 'text-recording' : 'text-text-secondary'}`}>
         {danger && <AlertTriangle size={12} className="shrink-0" />}
         {label}
         {labelSuffix}
@@ -468,11 +482,9 @@ function ClickerSection({
   // toggling to /s could briefly show the OLD value (from stale `rate` prop) before the
   // bridge echo arrived — feeling like the typed value got "lost".
   //
-  // Lower bound is 1 ms (not 10): user-typed values <10 ms are honoured in the UI even
-  // though the replay engine clamps the actual click cadence to 10 ms minimum at runtime
-  // for safety. Without this, typing "1" would silently snap to "10" — and if the user
-  // typed "1" a SECOND time, the on-screen input would visually show "1" while the stored
-  // value was still 10, because identical commits don't trigger a key-driven remount.
+  // The `Math.max(1, …)` only guards against 0/NaN from a stale or hand-edited value; the
+  // real floor is commitRate's CLICK_PERIOD_FLOOR_MS (5 ms, the engine's MinClickPeriodMs).
+  // (An older comment here spoke of a 10 ms minimum — that was never the engine's number.)
   const [localDelayMs, setLocalDelayMs] = useState(() => Math.max(1, parseInt(rate, 10) || 100));
   useEffect(() => {
     setLocalDelayMs(Math.max(1, parseInt(rate, 10) || 100));
@@ -488,25 +500,33 @@ function ClickerSection({
 
   // Strip trailing ".0" so whole-number CPS shows as "1" not "1.0", "5" not "5.0", etc.
   const trimCps = (cps: number) => cps.toFixed(1).replace(/\.0$/, '');
-  const displayValue = unit === 'cps' ? trimCps(targetCps(localDelayMs, gapMs)) : String(localDelayMs);
+  // The rate the run DELIVERS, hold included — see clickerFormat.effectiveCps. In /s mode the
+  // field states it directly; in ms mode it rides in the label. targetCps alone said 10/s for
+  // a 100 ms delay under a 200 ms hold, a run the engine paces at ~5/s.
+  const liveCps = effectiveCps(localDelayMs, gapMs, holdMs);
+  const displayValue = unit === 'cps' ? trimCps(liveCps) : String(localDelayMs);
   const rateCeiling = maxCps(holdMs, gapMs);
-  // Non-null only when there is something the user cannot work out from the field itself.
-  const [rateClamped, setRateClamped] = useState(false);
+  // Derived, not remembered: the hold capping the rate is a standing fact about the settings,
+  // so it is recomputed on every render and survives tab switches and Hold edits alike.
+  const holdCapped = holdCapsRate(localDelayMs, gapMs, holdMs);
+  // The floor clamp IS about the last commit (the stored delay is not the one asked for), so
+  // that one stays transient. The hold case wins when both apply — it is the lower ceiling.
+  const [floorClamped, setFloorClamped] = useState(false);
   const commitRate = (raw: string) => {
     const num = parseFloat(raw);
     if (isNaN(num) || num <= 0) return;
     let ms: number;
-    let clamped: boolean;
+    let requestedMs: number;
     if (unit === 'cps') {
       // Inverse of the engine's period, so the round-trip is stable and an unreachable
       // request lands honestly instead of silently storing a different rate.
-      ({ ms, clamped } = delayForCps(num, holdMs, gapMs));
+      ({ ms } = delayForCps(num, holdMs, gapMs));
+      requestedMs = Math.round(1000 / num) - gapMs;
     } else {
-      const raw2 = Math.round(num);
-      ms = Math.min(MAX_DELAY_MS, Math.max(CLICK_PERIOD_FLOOR_MS, raw2));
-      clamped = ms !== raw2;
+      requestedMs = Math.round(num);
+      ms = Math.min(MAX_DELAY_MS, Math.max(CLICK_PERIOD_FLOOR_MS, requestedMs));
     }
-    setRateClamped(clamped);
+    setFloorClamped(ms !== requestedMs);
     setLocalDelayMs(ms);              // optimistic — keeps the input stable on next render
     onChange('cursorClickDelay', String(ms));
   };
@@ -551,13 +571,17 @@ function ClickerSection({
               ]}
             />
           </SettingRow>
-          {/* The ≈ rides in the label: it is a readout of the field on this same row, and the
-              conversion is NOT 1000/ms — the Gap is part of the period, so it cannot be done in
-              the head. Only shown in ms mode; in /s mode the field already states the rate. */}
+          {/* The ~ rides in the label: it is a readout of the field on this same row, and the
+              conversion is NOT 1000/ms — the Gap is part of the period and the Hold can cap it,
+              so it cannot be done in the head. Only shown in ms mode; in /s mode the field
+              already states the rate. "~5.0/s" and not "≈ 5.0/s": the label column is ~76 px
+              and the seven-character form needed 79 with "Rate" beside it, so every sub-10
+              rate (the 200 ms preset included) broke onto two lines. Six characters fit with
+              room to spare, and the tilde is the notation the status bar already uses. */}
           <SettingRow
             label="Rate"
             labelSuffix={unit === 'ms'
-              ? <span className="text-[11px] font-mono text-text-tertiary">≈ {formatRate(targetCps(localDelayMs, gapMs))}/s</span>
+              ? <span className="text-[11px] font-mono text-text-tertiary whitespace-nowrap">~{formatRate(liveCps)}/s</span>
               : undefined}
             tooltip={tt('Click rate: /s or delay (ms). Type or pick a preset.', 'Taxa de clique: /s ou atraso (ms). Digite ou escolha um preset.')}
           >
@@ -590,10 +614,13 @@ function ClickerSection({
             </div>
           </SettingRow>
           {/* Same shape as PathStepZeroNote: a quiet right-aligned line that says the one
-              thing the field itself cannot. In ms mode it is the conversion the user cannot
-              do in their head (the interval is part of the period); in /s mode it appears
-              only when the request was out of reach. */}
-          <ClickerRateClampNote clamped={rateClamped} ceiling={rateCeiling} holdMs={holdMs} />
+              thing the field itself cannot — why the rate is lower than delay + gap would give
+              (the hold), or that the last request landed on the engine's floor. */}
+          <ClickerRateClampNote
+            reason={holdCapped ? 'hold' : floorClamped ? 'floor' : null}
+            ceiling={rateCeiling}
+            holdMs={holdMs}
+          />
         </Section>
 
         {/* The three "where" modes are a mutex the engine enforces in three places, but as
@@ -814,12 +841,17 @@ function ClickerSection({
               the first place) — and it is not cancelled by it either: the engine forces the walk
               for the Clicker. That second half was a defect until 2026-08-08; the master is not
               rendered in Clicker mode, so a user could not have seen what was silencing this. */}
-          <SettingRow label="Game move" tooltip={tt('Moves the cursor along a path instead of teleporting, for games that ignore instant jumps (Roblox). Only affects Area and Fixed — in cursor mode nothing moves. Costs a few ms per click.', 'Move o cursor por um caminho em vez de teletransportar, para jogos que ignoram saltos instantâneos (Roblox). Só afeta Area e Fixed — no modo cursor nada se move. Custa alguns ms por clique.')}>
+          <SettingRow label="Game move" tooltip={tt('Moves the cursor along a path instead of teleporting, for games that ignore instant jumps (Roblox). Only bites when the cursor moves — Position, Area and Fixed; in plain cursor mode nothing moves. Costs a few ms per click.', 'Move o cursor por um caminho em vez de teletransportar, para jogos que ignoram saltos instantâneos (Roblox). Só age quando o cursor se move — Position, Area e Fixed; no modo cursor puro nada se move. Custa alguns ms por clique.')}>
             <div className={`${FIELD_W} flex justify-end`}>
               <CompactToggle isOn={gameMove} onChange={(v) => onChange('cursorClickGameMove', v)} />
             </div>
           </SettingRow>
-          <GameMoveNote on={gameMove} useArea={useArea} useFixed={useFixed} />
+          <GameMoveNote
+            on={gameMove}
+            useArea={useArea}
+            useFixed={useFixed}
+            positionPx={usePositionJitter ? (parseInt(positionJitter, 10) || 0) : 0}
+          />
         </Section>
       </>
   );

@@ -2,7 +2,8 @@ import { Pause as PauseIcon, Check } from 'lucide-react';
 import { useAppState, useClickerLive } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
 import { usePauseTick } from '../hooks/usePauseTick';
-import { formatClickerStats, formatEta, formatRate, targetCps } from '../utils/clickerFormat';
+import { describeClickerConfig, formatClickerStats, formatEta } from '../utils/clickerFormat';
+import { KbdTag } from './common/KbdTag';
 
 import { ClickerEmptyState } from './ClickerEmptyState';
 
@@ -45,41 +46,12 @@ export function ClickerDashboard() {
     ? Math.max(0, Math.ceil((pauseState.timeoutMs - (Date.now() - pauseState.startedAt)) / 1000))
     : 0;
 
-  // Compact recall — only enabled bits. The three "where" modes are mutually exclusive
-  // (enforced upstream); surface them in the engine's precedence order Area > Fixed > Position.
-  //
-  // The RATE leads, because it is the single most important setting and this line used to
-  // omit it entirely while printing Hold — a value with no control anywhere in the UI.
-  const gapMs = settings.cursorClickUseInterval ? (parseInt(settings.cursorClickInterval, 10) || 0) : 0;
-  const delayMs = parseInt(settings.cursorClickDelay, 10) || 0;
-  const configBits: string[] = [settings.cursorClickButton];
-  if (delayMs > 0) configBits.push(`${formatRate(targetCps(delayMs, gapMs))}/s`);
-  // Both limits are optional and independent — say which ones are armed, and that the run is
-  // unbounded when neither is.
-  const limitBits: string[] = [];
-  if (settings.cursorClickUseLoops) limitBits.push(`${parseInt(settings.cursorClickLoops, 10) || 0} clicks`);
-  if (settings.cursorClickUseMaxDuration) {
-    limitBits.push(`${Math.round((parseInt(settings.cursorClickMaxDuration, 10) || 0) / 1000)}s`);
-  }
-  configBits.push(limitBits.length
-    ? limitBits.join(' or ')
-    : 'no limit');
-  if (settings.cursorClickUseArea && settings.cursorClickArea) {
-    configBits.push(`Area ${settings.cursorClickArea.w}×${settings.cursorClickArea.h}`);
-  } else if (settings.cursorClickUseFixed) {
-    configBits.push(settings.cursorClickFixedPoint
-      ? `Fixed ${settings.cursorClickFixedPoint.x},${settings.cursorClickFixedPoint.y}`
-      : 'Fixed at start');
-  } else if (settings.cursorClickUsePositionJitter && parseInt(settings.cursorClickPositionJitter, 10) > 0) {
-    configBits.push(`±${settings.cursorClickPositionJitter} px`);
-  }
-  if (settings.cursorClickUseJitter && parseInt(settings.cursorClickDelayJitter, 10) > 0) {
-    configBits.push(`±${settings.cursorClickDelayJitter}% rate`);
-  }
-  // "+N ms gap", not "every N ms": in Clicker mode one iteration is one click, so this
-  // number is not a cadence — it is ADDED to the cadence, and the rate above already
-  // includes it.
-  if (gapMs > 0) configBits.push(`+${gapMs} ms gap`);
+  // Compact recall — shared with the empty state through describeClickerConfig, so the line
+  // the user reads before the first run and the one they read after it can never disagree.
+  // Hold-aware rate, the engine's precedence for the "where" (Area > Fixed > Position), and
+  // both limits. The rate used to be targetCps(delay, gap): with a 200 ms hold it printed 10/s
+  // for a run the engine delivers at ~5/s.
+  const summary = describeClickerConfig(settings);
 
   return (
     // Standard theme surface (same as the macro ActionTable) — no purple glass gradient or
@@ -138,11 +110,11 @@ export function ClickerDashboard() {
         </div>
       )}
 
-      {/* Config recall (button · Hold X ms · every X ms …) — text-secondary, not
+      {/* Config recall (button · rate · limits · where …) — text-secondary, not
           text-disabled, so it stays readable. The faded disabled colour blended
           into the gradient and was hard to make out. */}
       <div className="text-[11px] text-text-secondary font-mono text-center max-w-[480px]">
-        {configBits.join('  ·  ')}
+        {summary.bits.join('  ·  ')}
       </div>
 
       {/* Pause — only while actively running and not already paused. Pausing freezes the
@@ -158,14 +130,17 @@ export function ClickerDashboard() {
         </button>
       )}
 
+      {/* KbdTag, not a raw <kbd>: it spells the key the way the keycap does (PgDn, not
+          PageDown) and splits a combo into one cap per key — the same rendering the Keys tab
+          uses for these two settings, so the dashboard and the panel name the key alike. */}
       <div className="text-[11px] text-text-tertiary flex items-center gap-1.5">
         {'Press'}
-        <kbd className="kbd kbd-accent">{settings.cursorClickStartHotkey}</kbd>
+        <KbdTag combo={settings.cursorClickStartHotkey} accent />
         {isReplaying ? 'to stop' : 'to run again'}
         {isReplaying && (
           <>
             <span className="opacity-40">·</span>
-            <kbd className="kbd kbd-accent">{settings.cursorClickPauseHotkey}</kbd>
+            <KbdTag combo={settings.cursorClickPauseHotkey} accent />
             {'to pause'}
           </>
         )}
@@ -194,18 +169,20 @@ export function ClickerDashboard() {
                 a clicker pause and this line never rendered — the overlay showed PAUSED and a
                 button, and never named the hotkey that also resumes. Fall back to the
                 configured pause key: this component only mounts in Clicker mode, so that is
-                always the right one. */}
-            <div className="text-[11px] text-text-secondary text-center">
+                always the right one. A flex row (gap-x for the word spacing) because KbdTag
+                renders block caps that have to sit on the text baseline. */}
+            <div className="text-[11px] text-text-secondary flex flex-wrap items-center justify-center gap-x-1">
               {pauseState.hotkey || pauseState.timeoutMs > 0 ? (
                 <>
-                  {pauseState.hotkey && <>{'Press'} <kbd className="kbd kbd-accent">{pauseState.hotkey}</kbd></>}
-                  {pauseState.hotkey && pauseState.timeoutMs > 0 ? ' or ' : ''}
-                  {pauseState.timeoutMs > 0 && <>{'wait'} <span className="font-mono">{pauseRemainingSec}s</span></>}
+                  {pauseState.hotkey && <>{'Press'}<KbdTag combo={pauseState.hotkey} accent /></>}
+                  {pauseState.hotkey && pauseState.timeoutMs > 0 ? 'or' : ''}
+                  {pauseState.timeoutMs > 0 && <>{'wait'}<span className="font-mono">{pauseRemainingSec}s</span></>}
                 </>
               ) : (
                 <>
-                  {'Press'} <kbd className="kbd kbd-accent">{settings.cursorClickPauseHotkey}</kbd>
-                  {' or click Resume'}
+                  {'Press'}
+                  <KbdTag combo={settings.cursorClickPauseHotkey} accent />
+                  {'or click Resume'}
                 </>
               )}
             </div>

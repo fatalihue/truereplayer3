@@ -6,7 +6,8 @@ import { usePauseTick } from '../hooks/usePauseTick';
 import { useBrowserConnection } from '../hooks/useBrowserConnection';
 import { useTt, useLanguage } from '../state/LanguageContext';
 import type { RunReport } from '../bridge/messageTypes';
-import { formatClickerStats, formatRate, targetCps } from '../utils/clickerFormat';
+import { effectiveCps, formatClickerStats, formatRate } from '../utils/clickerFormat';
+import { formatKeyCombo } from '../utils/displayUtils';
 import { APP_VERSION } from '../appVersion';
 
 // What the bar keeps of the last finished run: enough to say "18/18 in 12.4 s" or "stopped at
@@ -159,13 +160,14 @@ export function StatusBar() {
   // Clicker mode shows whether it's mid-run (live stats) or idle (config summary).
   const clickerRunning = isReplaying || clickerStats.count > 0;
   // Target rate — the cadence the ENGINE will produce, not 1000/delay. The interval is
-  // part of the period, so leaving it out made this disagree with the measured rate the
-  // live stats report a second later. See clickerFormat.targetCps.
+  // part of the period and the hold can cap it, so leaving either out made this disagree
+  // with the measured rate the live stats report a second later. See clickerFormat.effectiveCps.
   const clickerTargetCps = (() => {
     const d = parseInt(settings.cursorClickDelay, 10);
     if (!(d > 0)) return 0;
     const gap = settings.cursorClickUseInterval ? parseInt(settings.cursorClickInterval, 10) || 0 : 0;
-    return targetCps(d, gap);
+    const hold = parseInt(settings.cursorClickHold, 10) || 0;
+    return effectiveCps(d, gap, hold);
   })();
 
   return (
@@ -193,7 +195,8 @@ export function StatusBar() {
                   <div className="w-px h-3 bg-border-subtle shrink-0" />
                   <PauseIcon size={10} className="shrink-0" style={{ color: 'var(--color-action-pause-fg)' }} fill="currentColor" />
                   <span className="text-[11px] font-medium whitespace-nowrap" style={{ color: 'var(--color-action-pause-fg)' }}>
-                    PAUSED{settings.cursorClickPauseHotkey && ` — ${settings.cursorClickPauseHotkey}`}
+                    {/* Keycap spelling (PgUp, Ctrl + F9), the same the Keys tab shows for this key. */}
+                    PAUSED{settings.cursorClickPauseHotkey && ` — ${formatKeyCombo(settings.cursorClickPauseHotkey)}`}
                   </span>
                   <button
                     onClick={() => send({ type: 'replay:resume', payload: {} })}
@@ -319,7 +322,7 @@ export function StatusBar() {
                   <PauseIcon size={10} className="shrink-0" style={{ color: 'var(--color-action-pause-fg)' }} fill="currentColor" />
                   <span className="text-[11px] font-medium whitespace-nowrap" style={{ color: 'var(--color-action-pause-fg)' }}>
                     PAUSED
-                    {pauseState.hotkey && ` — Press ${pauseState.hotkey}`}
+                    {pauseState.hotkey && ` — Press ${formatKeyCombo(pauseState.hotkey)}`}
                     {pauseState.hotkey && pauseState.timeoutMs > 0 ? ' or ' : pauseState.timeoutMs > 0 ? ' — ' : ''}
                     {pauseState.timeoutMs > 0 && `wait ${pauseRemainingSec}s`}
                   </span>
