@@ -73,7 +73,7 @@ const defaultSettings = {
   runEndSound: false,
   runAsAdmin: false,
   automationEnabled: true,
-  remaps: { enabled: true, entries: [] as { from: string; to: string; enabled: boolean }[] },
+  remaps: { enabled: true, entries: [] as { from: string; to: string; enabled: boolean; process?: string }[] },
 };
 
 const initialState: AppState = {

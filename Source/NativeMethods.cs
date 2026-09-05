@@ -17,6 +17,12 @@ namespace TrueReplayer.Interop
         public const uint MOUSEEVENTF_MIDDLEDOWN = 0x0020;
         public const uint MOUSEEVENTF_MIDDLEUP = 0x0040;
         public const uint MOUSEEVENTF_WHEEL = 0x0800;
+        // Side buttons through SendInput: the X flags plus WHICH button in mouseData. Used by the
+        // remap layer's mouse-side targets only — the replayer never simulates side buttons.
+        public const uint MOUSEEVENTF_XDOWN = 0x0080;
+        public const uint MOUSEEVENTF_XUP = 0x0100;
+        public const uint XBUTTON1 = 0x0001;
+        public const uint XBUTTON2 = 0x0002;
         public const uint MOUSEEVENTF_VIRTUALDESK = 0x4000;
 
         public const uint KEYEVENTF_EXTENDEDKEY = 0x0001;

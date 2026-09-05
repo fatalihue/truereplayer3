@@ -493,8 +493,26 @@ export interface SettingsState {
   runAsAdmin: boolean;
   // Automation master switch — armed triggers only fire while this is on.
   automationEnabled: boolean;
-  // Key remap layer (remaps.json sidecar). to: '' = disable the key.
-  remaps: { enabled: boolean; entries: { from: string; to: string; enabled: boolean }[] };
+  // Key remap layer (remaps.json sidecar). to: '' = disable the key; to may also be a mouse-side
+  // name (LeftClick, MiddleClick, RightClick, XButton1/2, ScrollUp/Down). process = per-app scope
+  // ('' / absent = any app). The load-failure trio is the sidecar quarantine: the file exists but
+  // could not be read, the list shown is the backup (or empty), and saves go to `pendingFile`
+  // until the user asks to replace the file (remap:overwriteUnreadable).
+  remaps: {
+    enabled: boolean;
+    entries: RemapEntryDto[];
+    loadFailed?: boolean;
+    loadedFromBackup?: boolean;
+    loadFailureDetail?: string | null;
+    pendingFile?: string;
+  };
+}
+
+export interface RemapEntryDto {
+  from: string;
+  to: string;
+  enabled: boolean;
+  process?: string;
 }
 
 // ── Automation (trigger daemon) ──
@@ -950,7 +968,10 @@ export type OutgoingMessage =
   | { type: 'automation:cropReference'; payload: { requestId: string; profile: string; imagePath: string; x: number; y: number; w: number; h: number } }
   | { type: 'automation:testFire'; payload: { requestId: string; profile: string } }
   // Whole-list save of the key remap layer (capped at 32 entries backend-side).
-  | { type: 'remap:save'; payload: { enabled: boolean; remaps: { from: string; to: string; enabled: boolean }[] } }
+  | { type: 'remap:save'; payload: { enabled: boolean; remaps: RemapEntryDto[] } }
+  // "Replace the unreadable remaps.json with the list in memory" — the explicit choice the
+  // sidecar quarantine waits for (RemapService.Save's overwriteUnreadableFile).
+  | { type: 'remap:overwriteUnreadable'; payload: Record<string, never> }
   | { type: 'recording:toggle'; payload: { insertIndex?: number } }
   // No payload: the loop settings used to ride here, straight out of the React `settings`
   // slice, which no profile-activation path refreshes — so after switching from a 3x profile

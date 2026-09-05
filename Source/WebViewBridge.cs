@@ -769,6 +769,7 @@ namespace TrueReplayer
                     case "automation:cropReference": HandleAutomationCropReference(payload); break;
                     case "automation:testFire": HandleAutomationTestFire(payload); break;
                     case "remap:save": HandleRemapSave(payload); break;
+                    case "remap:overwriteUnreadable": HandleRemapOverwriteUnreadable(); break;
                     case "actions:reorder": HandleActionsReorder(payload); break;
                     case "actions:convertMode": HandleConvertActionMode(payload); break;
                     case "actions:insertAction": HandleInsertAction(payload); break;
@@ -1905,6 +1906,9 @@ namespace TrueReplayer
                     {
                         From = r.TryGetProperty("from", out var fEl) ? (fEl.GetString() ?? "") : "",
                         To = r.TryGetProperty("to", out var tEl) ? (tEl.GetString() ?? "") : "",
+                        // Per-app scope; absent or empty = any app.
+                        Process = r.TryGetProperty("process", out var pEl) && pEl.ValueKind == JsonValueKind.String
+                            ? (pEl.GetString() ?? "") : "",
                         Enabled = !r.TryGetProperty("enabled", out var enEl) || enEl.ValueKind != JsonValueKind.False,
                     });
                 }
@@ -1913,12 +1917,27 @@ namespace TrueReplayer
             PushSettingsLoaded();
         }
 
-        // Settings-blob projection for the remap layer (rides settings:loaded + state:init).
+        // The explicit "yes, replace whatever is in that file with this list" the quarantine in
+        // RemapService.Save waits for. Reached only from the Settings panel's read-failure notice,
+        // which is the one place the user can see what the list holds before choosing.
+        private void HandleRemapOverwriteUnreadable()
+        {
+            RemapService.Save(RemapService.Current, overwriteUnreadableFile: true);
+            PushSettingsLoaded();
+        }
+
+        // Settings-blob projection for the remap layer (rides settings:loaded + state:init). The
+        // load-failure trio lets the panel say WHY a list is empty or possibly stale, and offer the
+        // overwrite above — until 2026-09-05 the only word of it was a tray balloon.
         private static object ProjectRemaps() => new
         {
             enabled = RemapService.Current.Enabled,
             entries = RemapService.Current.Remaps
-                .Select(r => new { from = r.From, to = r.To, enabled = r.Enabled }).ToArray(),
+                .Select(r => new { from = r.From, to = r.To, enabled = r.Enabled, process = r.Process }).ToArray(),
+            loadFailed = RemapService.LoadFailed,
+            loadedFromBackup = RemapService.LoadedFromBackup,
+            loadFailureDetail = RemapService.LoadFailureDetail,
+            pendingFile = RemapService.PendingFileName,
         };
 
         private void PushUndoState()

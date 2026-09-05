@@ -4,6 +4,7 @@ using System.IO;
 using System.Text.Json;
 using System.Threading;
 using TrueReplayer.Helpers;
+using TrueReplayer.Interop;
 
 namespace TrueReplayer.Services
 {
@@ -22,9 +23,17 @@ namespace TrueReplayer.Services
         public class RemapEntry
         {
             public string From { get; set; } = "";
-            // Empty string = disable the key (swallow with no replacement).
+            // Empty string = disable the key (swallow with no replacement). A key name, or one of
+            // the mouse-side names (LeftClick, RightClick, MiddleClick, XButton1, XButton2,
+            // ScrollUp, ScrollDown) — see MouseTargets.
             public string To { get; set; } = "";
             public bool Enabled { get; set; } = true;
+            // Per-app scope: the process the rule is limited to ("chrome.exe" or "chrome"; case
+            // and the extension do not matter). Empty = any app. Absent in files written before
+            // 2026-09-05, which System.Text.Json reads as the default — a global rule, exactly
+            // what those entries were. An older app reading a scoped file ignores the field and
+            // applies the rule everywhere; the file stays loadable both ways.
+            public string Process { get; set; } = "";
         }
 
         public class RemapConfig
@@ -48,8 +57,9 @@ namespace TrueReplayer.Services
 
         // Where an edit goes while the latch is on. Nothing reads it back automatically: the app
         // cannot know whether remaps.json became readable again with NEWER content than this, so
-        // merging is the user's call. Both the balloon and the log name the path.
-        private const string PendingFileName = "remaps.pending.json";
+        // merging is the user's call. Both the balloon and the log name the path — and so does the
+        // Settings panel's quarantine notice, which is why the name is public.
+        public const string PendingFileName = "remaps.pending.json";
 
         private static readonly object _lock = new();
 
@@ -345,10 +355,51 @@ namespace TrueReplayer.Services
         }
 
         /// <summary>
-        /// Compiles the config into the hook's vk→vk snapshot: enabled entries only,
-        /// self-remaps rejected, duplicate FROMs first-wins, unresolvable names skipped.
-        /// TO of "" maps to 0 = swallow-only (disable the key).
+        /// Compiles the config into the hook's snapshot — fromVk → the rules for that key, each a
+        /// target plus an optional per-app scope: enabled entries only, self-remaps rejected, the
+        /// same FROM in the same scope first-wins, unresolvable names skipped. TO of "" is the
+        /// Disable target (swallow-only); the mouse-side names resolve to Mouse/Wheel targets.
         /// </summary>
+        // Mouse-side targets, by the names the UI stores. Injected through SendInput's MOUSE path,
+        // never as a keyboard vk — a keyboard injection of VK_XBUTTON1 is a no-op, which is why
+        // these were refused as targets until 2026-09-05. Sources stay keys and side buttons.
+        private static readonly Dictionary<string, RemapTarget> MouseTargets = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["LeftClick"] = RemapTarget.ForMouse(NativeMethods.MOUSEEVENTF_LEFTDOWN, NativeMethods.MOUSEEVENTF_LEFTUP),
+            ["RightClick"] = RemapTarget.ForMouse(NativeMethods.MOUSEEVENTF_RIGHTDOWN, NativeMethods.MOUSEEVENTF_RIGHTUP),
+            ["MiddleClick"] = RemapTarget.ForMouse(NativeMethods.MOUSEEVENTF_MIDDLEDOWN, NativeMethods.MOUSEEVENTF_MIDDLEUP),
+            ["XButton1"] = RemapTarget.ForMouse(NativeMethods.MOUSEEVENTF_XDOWN, NativeMethods.MOUSEEVENTF_XUP, NativeMethods.XBUTTON1),
+            ["XButton2"] = RemapTarget.ForMouse(NativeMethods.MOUSEEVENTF_XDOWN, NativeMethods.MOUSEEVENTF_XUP, NativeMethods.XBUTTON2),
+            ["ScrollUp"] = RemapTarget.ForWheel(120),
+            ["ScrollDown"] = RemapTarget.ForWheel(-120),
+        };
+
+        /// <summary>
+        /// The per-app scope as the hook compares it: lower-case, trimmed, without ".exe". Null
+        /// for "any app". One normalisation, shared by the compile step and by the duplicate
+        /// check in the bridge, so "Chrome.EXE" and "chrome" are one scope everywhere.
+        /// </summary>
+        public static string? NormalizeProcess(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return null;
+            var p = raw.Trim().ToLowerInvariant();
+            if (p.EndsWith(".exe", StringComparison.Ordinal)) p = p[..^4];
+            return p.Length == 0 ? null : p;
+        }
+
+        private static bool TryResolveTarget(string? to, out RemapTarget target)
+        {
+            target = RemapTarget.Disable;
+            if (string.IsNullOrWhiteSpace(to)) return true;   // "" = disable the key
+            var name = to.Trim();
+            if (MouseTargets.TryGetValue(name, out target)) return true;
+            if (!KeyUtils.TryResolveVirtualKeyCode(name, out var vk)) return false;
+            // A mouse-button vk reached by another spelling ("VK_5") is still not a key to inject.
+            if (vk == 0x01 || vk == 0x02 || vk == 0x04 || vk == 0x05 || vk == 0x06) return false;
+            target = RemapTarget.ForKey(vk);
+            return true;
+        }
+
         // Generic modifier names (what hotkey capture emits for either physical side) fan out
         // to BOTH side vks on the FROM side — capturing RIGHT Alt shows "Alt" in the chip, and
         // remapping only the left one would silently target the wrong physical key.
@@ -423,7 +474,7 @@ namespace TrueReplayer.Services
 
         private static void Publish()
         {
-            var map = new Dictionary<int, ushort>();
+            var rules = new Dictionary<int, List<RemapRule>>();
             int active = 0;
             bool narrowedAltFanOut = false;
             _publishedLayout = KeyUtils.ActiveLayout;
@@ -434,13 +485,8 @@ namespace TrueReplayer.Services
                     if (!entry.Enabled) continue;
                     if (string.IsNullOrWhiteSpace(entry.From)) continue;
                     if (string.Equals(entry.From, entry.To, StringComparison.OrdinalIgnoreCase)) continue;
-                    ushort toVk = 0;
-                    if (!string.IsNullOrWhiteSpace(entry.To)
-                        && !KeyUtils.TryResolveVirtualKeyCode(entry.To, out toVk)) continue;
-                    // X-button vks resolve (they're in the map for release polling) but a
-                    // KEYBOARD injection of a mouse-button vk is a no-op — accepting one
-                    // would silently DISABLE the FROM key instead of clicking. Sources only.
-                    if (toVk == 0x05 || toVk == 0x06) continue;
+                    if (!TryResolveTarget(entry.To, out var target)) continue;
+                    string? process = NormalizeProcess(entry.Process);
 
                     ushort[] fromVks;
                     var fromName = entry.From.Trim();
@@ -461,13 +507,19 @@ namespace TrueReplayer.Services
                     bool added = false;
                     foreach (var fv in fromVks)
                     {
-                        if (map.ContainsKey(fv)) continue;   // duplicate FROM — first wins
-                        map[fv] = toVk;
+                        if (!rules.TryGetValue(fv, out var list)) rules[fv] = list = new List<RemapRule>();
+                        // The same FROM in the same scope twice — first wins, as it always did. A
+                        // different scope is a different rule: "F in the game" and "F everywhere
+                        // else" both stand, and the hook picks the scoped one when its app is in front.
+                        if (list.Exists(r => string.Equals(r.Process, process, StringComparison.Ordinal))) continue;
+                        list.Add(new RemapRule(process, target));
                         added = true;
                     }
                     if (added) active++;
                 }
             }
+            var map = new Dictionary<int, RemapRule[]>(rules.Count);
+            foreach (var kv in rules) map[kv.Key] = kv.Value.ToArray();
             InputHookManager.RegisterRemaps(map);
             // The suffix is what makes "0 active" readable after the fact: an empty layer because
             // the user has no remaps and an empty layer because the file would not open used to

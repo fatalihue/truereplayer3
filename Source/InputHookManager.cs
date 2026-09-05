@@ -227,13 +227,16 @@ namespace TrueReplayer
         private static volatile int _pendingReleaseVkCode = 0;
 
         // ── Key remap layer (RemapService publishes; hook consumes) ──
-        // fromVk → toVk; toVk 0 = disable (swallow with no replacement). Volatile snapshot
-        // swapped whole (ProfileHotkeys pattern). Null/empty = layer inactive.
-        private static volatile Dictionary<int, ushort>? _remapMap;
-        // Pairing: mapping active at DOWN time, consumed at UP — a config change mid-hold
-        // must release the SAME injected key it pressed (else it stays stuck down).
-        // Hook-thread-only (both LL hooks pump on the UI thread).
-        private static readonly Dictionary<int, ushort> _activeRemapDowns = new();
+        // fromVk → the rules for that key (a target — key, mouse button, wheel notch or Disable —
+        // plus an optional per-app scope; see RemapTarget.cs). Volatile snapshot swapped whole
+        // (ProfileHotkeys pattern). Null/empty = layer inactive. Which rule applies is decided at
+        // DOWN time by TryPickRemap, against the app in front.
+        private static volatile Dictionary<int, RemapRule[]>? _remapMap;
+        // Pairing: the TARGET chosen at DOWN time, consumed at UP — a config change or a window
+        // switch mid-hold must release the SAME thing it pressed (else it stays stuck down).
+        // RemapTarget.Disable here also encodes "a hotkey consumed the logical key": swallow the
+        // repeats, release nothing. Hook-thread-only (both LL hooks pump on the UI thread).
+        private static readonly Dictionary<int, RemapTarget> _activeRemapDowns = new();
         // TO vks WE mirrored into _vkCodesCurrentlyDown — so releasing a remap never removes
         // an entry the user's PHYSICAL key put there (CapsLock→A while A is physically held),
         // and two FROM keys sharing one TO only remove the mirror when the LAST one lifts.
@@ -274,7 +277,7 @@ namespace TrueReplayer
         // Hook-thread-only, same as _swallowedXDowns.
         private static readonly HashSet<int> _captureSwallowedXDowns = new();
 
-        public static void RegisterRemaps(Dictionary<int, ushort> map)
+        public static void RegisterRemaps(Dictionary<int, RemapRule[]> map)
         {
             _remapMap = map.Count == 0 ? null : map;
         }
@@ -308,15 +311,124 @@ namespace TrueReplayer
             NativeMethods.SendInput(1, ref input, NativeMethods.InputSize);
         }
 
+        // Mouse-side targets go out through SendInput's MOUSE path: a button flag with WHICH
+        // side button in mouseData, or one wheel notch. Injected, therefore LLMHF_INJECTED, so the
+        // mouse hook's trigger path ignores them exactly as it ignores replayed clicks.
+        private static void InjectRemappedMouse(uint flags, uint mouseData)
+        {
+            var input = new NativeMethods.INPUT
+            {
+                type = NativeMethods.INPUT_MOUSE,
+                U = new NativeMethods.InputUnion
+                {
+                    mi = new NativeMethods.MOUSEINPUT { dwFlags = flags, mouseData = mouseData },
+                },
+            };
+            NativeMethods.SendInput(1, ref input, NativeMethods.InputSize);
+        }
+
+        // One entry point per kind. A wheel target has no "up": the notch IS the whole event.
+        private static void InjectRemapped(RemapTarget t, bool down)
+        {
+            switch (t.Kind)
+            {
+                case RemapTargetKind.Key: InjectRemappedKey(t.Vk, down); break;
+                case RemapTargetKind.Mouse: InjectRemappedMouse(down ? t.MouseDownFlags : t.MouseUpFlags, t.MouseData); break;
+                case RemapTargetKind.Wheel: if (down) InjectRemappedMouse(t.MouseDownFlags, t.MouseData); break;
+            }
+        }
+
+        // What an auto-repeat of the FROM key does to its target: a key repeats with it (dropping
+        // the echo would stall the auto-repeat of a key the app already sees as held), a wheel
+        // scrolls another notch (hold to keep scrolling), a mouse button stays down, a disabled or
+        // hotkey-consumed key stays swallowed. No hotstring feed here — the callers that want the
+        // logical keystream to see the repeat do that themselves.
+        private static void EchoRemappedDown(RemapTarget t)
+        {
+            if (t.Kind == RemapTargetKind.Key || t.Kind == RemapTargetKind.Wheel) InjectRemapped(t, down: true);
+        }
+
+        // Another FROM key still holding the same TO — the refcount that keeps a shared target
+        // from being released while a second finger is on it.
+        private static bool AnotherPairingHolds(RemapTarget t)
+        {
+            foreach (var v in _activeRemapDowns.Values) if (v == t) return true;
+            return false;
+        }
+
+        // Foreground process for the per-app scope, cached by top-level HWND + pid: the hook asks
+        // on a scoped key's first down only, and a user types many keys into one window before the
+        // window changes, so the OpenProcess + image-name pair runs once per window switch. The pid
+        // rides in the cache key because HWND values are recycled — a new window with an old handle
+        // must not inherit the old process. GetProcessImageFileName returns a device path; the file
+        // name without extension, lower-cased, is the key RemapService.NormalizeProcess produces.
+        private static IntPtr _fgProcHwnd = IntPtr.Zero;
+        private static uint _fgProcPid;
+        private static string? _fgProcKey;
+        private static string? ForegroundProcessKey()
+        {
+            IntPtr hwnd = NativeMethods.GetForegroundWindow();
+            if (hwnd == IntPtr.Zero) return null;
+            NativeMethods.GetWindowThreadProcessId(hwnd, out uint pid);
+            if (hwnd == _fgProcHwnd && pid == _fgProcPid) return _fgProcKey;
+            string? key = null;
+            try
+            {
+                IntPtr h = NativeMethods.OpenProcess(NativeMethods.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+                if (h != IntPtr.Zero)
+                {
+                    try
+                    {
+                        var sb = new StringBuilder(512);
+                        if (NativeMethods.GetProcessImageFileName(h, sb, (uint)sb.Capacity) > 0)
+                            key = System.IO.Path.GetFileNameWithoutExtension(sb.ToString()).ToLowerInvariant();
+                    }
+                    finally { NativeMethods.CloseHandle(h); }
+                }
+            }
+            catch { key = null; }
+            _fgProcHwnd = hwnd;
+            _fgProcPid = pid;
+            _fgProcKey = key;
+            return key;
+        }
+
+        // Picks the rule for a FROM key. A rule scoped to the app in front beats the unscoped one
+        // (specific beats general, whatever order the list is in); with only unscoped rules the
+        // first stands, which is the first-wins duplicate FROMs always had. False = every rule for
+        // this key is scoped and none is for this app: the key is not remapped HERE and goes raw.
+        private static bool TryPickRemap(int vk, Dictionary<int, RemapRule[]> map, out RemapTarget target)
+        {
+            target = RemapTarget.Disable;
+            if (!map.TryGetValue(vk, out var rules)) return false;
+            RemapRule? unscoped = null;
+            string? fg = null;
+            bool fgRead = false;
+            foreach (var rule in rules)
+            {
+                if (rule.Process == null) { unscoped ??= rule; continue; }
+                if (!fgRead) { fg = ForegroundProcessKey(); fgRead = true; }
+                if (fg != null && string.Equals(rule.Process, fg, StringComparison.Ordinal))
+                {
+                    target = rule.Target;
+                    return true;
+                }
+            }
+            if (unscoped == null) return false;
+            target = unscoped.Target;
+            return true;
+        }
+
         // App-exit / hook-stop safety: release anything the remap layer is holding down so
-        // no injected key stays stuck after the hook that would have released it is gone.
+        // no injected key or button stays stuck after the hook that would have released it is gone.
         private static void ReleaseActiveRemapDowns()
         {
             foreach (var kv in _activeRemapDowns)
             {
                 // Same rule as CloseRemapPairing: only release what was actually injected.
-                if (kv.Value != 0 && _remapInjectedDowns.Contains(kv.Key))
-                    InjectRemappedKey(kv.Value, down: false);
+                bool holdsSomething = kv.Value.Kind == RemapTargetKind.Key || kv.Value.Kind == RemapTargetKind.Mouse;
+                if (holdsSomething && _remapInjectedDowns.Contains(kv.Key))
+                    InjectRemapped(kv.Value, down: false);
             }
             _activeRemapDowns.Clear();
             _remapInjectedDowns.Clear();
@@ -325,18 +437,25 @@ namespace TrueReplayer
         }
 
         // Closes ONE remap pairing: forget it, drop the mirror (only if WE added it and no
-        // other pairing still holds the same TO), and inject the TO-key up (again only when
+        // other pairing still holds the same TO), and inject the TO up (again only when
         // this was the last holder). The single release path — every UP site routes here so
         // the refcount rules can't drift apart.
         private static void CloseRemapPairing(int fromVk)
         {
-            if (!_activeRemapDowns.TryGetValue(fromVk, out var toVk)) return;
+            if (!_activeRemapDowns.TryGetValue(fromVk, out var target)) return;
             _activeRemapDowns.Remove(fromVk);
             bool weInjectedTheDown = _remapInjectedDowns.Remove(fromVk);
-            if (toVk == 0) return;
-            if (_activeRemapDowns.ContainsValue(toVk)) return;   // another FROM still holds this TO
-            bool mirrorWasOurs = _remapMirroredVks.Remove(toVk);
-            if (mirrorWasOurs) _vkCodesCurrentlyDown.Remove(toVk);
+            // Nothing outstanding: a swallowed key, or a wheel notch that was complete on its own.
+            if (target.Kind == RemapTargetKind.Disable || target.Kind == RemapTargetKind.Wheel) return;
+            if (AnotherPairingHolds(target)) return;   // another FROM still holds this TO
+            if (target.Kind == RemapTargetKind.Mouse)
+            {
+                // Mouse buttons are not part of the chord state, so there is no mirror to settle.
+                if (weInjectedTheDown) InjectRemapped(target, down: false);
+                return;
+            }
+            bool mirrorWasOurs = _remapMirroredVks.Remove(target.Vk);
+            if (mirrorWasOurs) _vkCodesCurrentlyDown.Remove(target.Vk);
 
             // Two independent reasons to send nothing, both of which used to send a KEYUP anyway:
             //
@@ -346,7 +465,7 @@ namespace TrueReplayer
             //    this pairing opened — "CapsLock→A" pressed while A is down under the user's own
             //    finger. Releasing it there lifts a key the user is still holding, and the target
             //    only recovers on A's next auto-repeat.
-            if (weInjectedTheDown && mirrorWasOurs) InjectRemappedKey(toVk, down: false);
+            if (weInjectedTheDown && mirrorWasOurs) InjectRemappedKey(target.Vk, down: false);
         }
 
         // The AltGr phantom left Ctrl (full story in the filter inside KeyboardHookCallbackCore)
@@ -1512,38 +1631,60 @@ namespace TrueReplayer
                     // (UP-side pairing release is hoisted above the capture/suppress gates.)
                     var xRemaps = _remapMap;
                     if (xDown && xRemaps != null
-                        && MainController.Instance != null && !MainController.Instance.IsRecording()
-                        && (_activeRemapDowns.ContainsKey(xVk) || xRemaps.ContainsKey(xVk)))
+                        && MainController.Instance != null && !MainController.Instance.IsRecording())
                     {
-                        // Keyboard-branch parity, and this is the case the hop was reported for:
-                        // "XButton1 → F9" with F9 bound to Replay had the target app receiving
-                        // F9 while the replay never started. Same encoding for a consumed down —
-                        // pairing recorded as 0, no mirror — see the keyboard branch for why.
-                        bool xConsumedByHotkey = false;
-                        if (!_activeRemapDowns.TryGetValue(xVk, out var xToVk))
+                        // Same pick as the keyboard branch: an open pairing continues; a new one
+                        // starts only if a rule for this button applies to the app in front.
+                        bool xHeld = _activeRemapDowns.TryGetValue(xVk, out var xTarget);
+                        bool xStart = !xHeld && xRemaps.ContainsKey(xVk) && TryPickRemap(xVk, xRemaps, out xTarget);
+                        if (xHeld || xStart)
                         {
-                            xToVk = xRemaps[xVk];
-                            xConsumedByHotkey = xToVk != 0 && ProcessRemappedHotkeyDown(xVk, xToVk);
-                            _activeRemapDowns[xVk] = xConsumedByHotkey ? (ushort)0 : xToVk;
-                            if (!xConsumedByHotkey && xToVk != 0 && !_vkCodesCurrentlyDown.Contains(xToVk))
+                            if (!xHeld)
                             {
-                                _vkCodesCurrentlyDown.Add(xToVk);
-                                _remapMirroredVks.Add(xToVk);
+                                // Keyboard-branch parity, and this is the case the hop was reported
+                                // for: "XButton1 → F9" with F9 bound to Replay had the target app
+                                // receiving F9 while the replay never started. Same encoding for a
+                                // consumed down — pairing recorded as Disable, no mirror.
+                                bool xConsumedByHotkey = xTarget.Kind == RemapTargetKind.Key
+                                    && ProcessRemappedHotkeyDown(xVk, xTarget.Vk);
+                                _activeRemapDowns[xVk] = xConsumedByHotkey ? RemapTarget.Disable : xTarget;
+                                if (!xConsumedByHotkey)
+                                {
+                                    switch (xTarget.Kind)
+                                    {
+                                        case RemapTargetKind.Key:
+                                            if (!_vkCodesCurrentlyDown.Contains(xTarget.Vk))
+                                            {
+                                                _vkCodesCurrentlyDown.Add(xTarget.Vk);
+                                                _remapMirroredVks.Add(xTarget.Vk);
+                                            }
+                                            if (!ProcessHotstringKeyDown(xTarget.Vk))
+                                            {
+                                                InjectRemappedKey(xTarget.Vk, down: true);
+                                                _remapInjectedDowns.Add(xVk);
+                                            }
+                                            break;
+                                        case RemapTargetKind.Mouse:
+                                            // Side button → another mouse button (XButton1 → middle
+                                            // click). The injected event is LLMHF_INJECTED and the
+                                            // injected-gate above passes it to the app untouched.
+                                            InjectRemapped(xTarget, down: true);
+                                            _remapInjectedDowns.Add(xVk);
+                                            break;
+                                        case RemapTargetKind.Wheel:
+                                            InjectRemapped(xTarget, down: true);
+                                            break;
+                                    }
+                                }
                             }
+                            // A second down without an up does not happen for a mouse button, so an
+                            // open pairing here only ever swallows.
+                            // Unchanged and deliberately outside every branch above: the paired UP
+                            // must be consumed whatever happened to the down, or Windows synthesizes
+                            // WM_APPCOMMAND Back/Forward from the orphan and navigates the app.
+                            _swallowedXDowns.Add(xVk);
+                            return (IntPtr)1;
                         }
-                        if (!xConsumedByHotkey && xToVk != 0)
-                        {
-                            if (!ProcessHotstringKeyDown(xToVk))
-                            {
-                                InjectRemappedKey(xToVk, down: true);
-                                _remapInjectedDowns.Add(xVk);
-                            }
-                        }
-                        // Unchanged and deliberately outside every branch above: the paired UP
-                        // must be consumed whatever happened to the down, or Windows synthesizes
-                        // WM_APPCOMMAND Back/Forward from the orphan and navigates the app.
-                        _swallowedXDowns.Add(xVk);
-                        return (IntPtr)1;
                     }
 
                     var handled = HandleXButtonTrigger(xName, xDown);
@@ -2331,14 +2472,14 @@ namespace TrueReplayer
                     if (heldIsDown && (heldFlags & LLKHF_INJECTED) == 0
                         && !IsAltGrPhantomCtrl(heldVk, lParam))
                     {
-                        if (_activeRemapDowns.TryGetValue(heldVk, out var heldToVk))
+                        if (_activeRemapDowns.TryGetValue(heldVk, out var heldTarget))
                         {
                             // Same reason as in the branch below: while an AltGr is held down,
                             // win32k re-synthesises its phantom left Ctrl on every auto-repeat,
                             // and we are still swallowing the RAlt that was supposed to justify
                             // it. A gate being up does not change who is left holding the Ctrl.
                             NeutraliseAltGrPhantomCtrl(heldVk);
-                            if (heldToVk != 0) InjectRemappedKey(heldToVk, down: true);
+                            EchoRemappedDown(heldTarget);
                             return (IntPtr)1;
                         }
                         if (remaps != null && remaps.ContainsKey(heldVk)) _remapBypassedDowns.Add(heldVk);
@@ -2455,66 +2596,96 @@ namespace TrueReplayer
                             CloseRemapPairing(vkCode);
                         // fall through: raw processing while recording
                     }
-                    // New pairings only start on a GENUINE first down: a mid-hold auto-repeat
-                    // of a key that went down RAW (e.g. pressed during a recording that just
-                    // stopped) must not begin remapping halfway through the hold — its
-                    // eventual physical up would be swallowed and the app that saw the raw
-                    // down would never see the up. Two records of "already held raw", because
-                    // one of them cannot see the other's case: _vkCodesCurrentlyDown for downs
-                    // this method processed, _remapBypassedDowns for downs a gate waved past
-                    // before this method could track them (see the bypass block above).
-                    else if (_activeRemapDowns.ContainsKey(vkCode)
-                        || (remaps.ContainsKey(vkCode) && !_vkCodesCurrentlyDown.Contains(vkCode)
-                            && !_remapBypassedDowns.Contains(vkCode)))
+                    else
                     {
-                        // First statement in the branch, because from here the down is swallowed
-                        // on every path out — including the hotstring one, whose backspaces would
-                        // otherwise go out under a Ctrl the app is still holding, and Ctrl+
-                        // Backspace deletes a whole word rather than a character.
-                        NeutraliseAltGrPhantomCtrl(vkCode);
-
-                        bool consumedByHotkey = false;
-                        if (!_activeRemapDowns.TryGetValue(vkCode, out var toVk))
+                        // An OPEN pairing continues whatever is in front now — the release must
+                        // undo what the down did. A NEW pairing only starts on a GENUINE first
+                        // down: a mid-hold auto-repeat of a key that went down RAW (e.g. pressed
+                        // during a recording that just stopped) must not begin remapping halfway
+                        // through the hold — its eventual physical up would be swallowed and the
+                        // app that saw the raw down would never see the up. Two records of
+                        // "already held raw", because one of them cannot see the other's case:
+                        // _vkCodesCurrentlyDown for downs this method processed,
+                        // _remapBypassedDowns for downs a gate waved past before this method could
+                        // track them (see the bypass block above). And only if a rule for this key
+                        // applies to the app in front (per-app scope): a key whose every rule is
+                        // for some other app is not remapped here and goes raw.
+                        bool held = _activeRemapDowns.TryGetValue(vkCode, out var target);
+                        bool startNew = !held
+                            && remaps.ContainsKey(vkCode)
+                            && !_vkCodesCurrentlyDown.Contains(vkCode)
+                            && !_remapBypassedDowns.Contains(vkCode)
+                            && TryPickRemap(vkCode, remaps, out target);
+                        if (held || startNew)
                         {
-                            toVk = remaps[vkCode];
+                            // First statement in the branch, because from here the down is swallowed
+                            // on every path out — including the hotstring one, whose backspaces would
+                            // otherwise go out under a Ctrl the app is still holding, and Ctrl+
+                            // Backspace deletes a whole word rather than a character.
+                            NeutraliseAltGrPhantomCtrl(vkCode);
+
+                            if (held)
+                            {
+                                // Auto-repeat of the FROM. A key target repeats with it — through the
+                                // hotstring hop first, exactly as the physical keystream would feed
+                                // a held letter — a wheel target scrolls another notch, a mouse
+                                // button stays down, a disabled or hotkey-consumed key stays swallowed.
+                                if (target.Kind == RemapTargetKind.Key && ProcessHotstringKeyDown(target.Vk))
+                                    return (IntPtr)1;
+                                EchoRemappedDown(target);
+                                return (IntPtr)1;
+                            }
 
                             // Hotkey hop, on the GENUINE first down only — the equivalent of the
                             // physical path's `if (!isRepeat)` around its global/profile ladders.
                             // Runs before any pairing or mirror state exists, because a consumed
-                            // key has nothing to inject and therefore nothing to release.
-                            consumedByHotkey = toVk != 0 && ProcessRemappedHotkeyDown(vkCode, toVk);
+                            // key has nothing to inject and therefore nothing to release. Key
+                            // targets only: a mouse-side target is delivered to the app in front,
+                            // not to the hotkey matcher.
+                            bool consumedByHotkey = target.Kind == RemapTargetKind.Key
+                                && ProcessRemappedHotkeyDown(vkCode, target.Vk);
 
-                            // A consumed key still gets a pairing, recorded as toVk 0 — the same
+                            // A consumed key still gets a pairing, recorded as Disable — the same
                             // encoding "disable this key" already uses, and it means exactly the
                             // same three things here: swallow the auto-repeats (the physical path
                             // swallows a held hotkey's repeats too), inject nothing on release,
                             // and let the physical up be found by the pairing-release hoist,
                             // which is where DispatchPendingTriggerUp gets its chance to resolve
                             // an OnRelease / WhilePressed / Hold armed by the hop.
-                            _activeRemapDowns[vkCode] = consumedByHotkey ? (ushort)0 : toVk;
+                            _activeRemapDowns[vkCode] = consumedByHotkey ? RemapTarget.Disable : target;
+                            if (consumedByHotkey) return (IntPtr)1;
 
-                            // Mirror the TO into the chord state only if the physical key (or
-                            // another pairing) didn't already put it there — and remember WE
-                            // did, so release can't strip someone else's entry. Skipped for a
-                            // consumed key: nothing is holding that TO down, and a mirror the
-                            // toVk-0 release path would never clear is a key stuck in the chord
-                            // state for the rest of the session.
-                            if (!consumedByHotkey && toVk != 0 && !_vkCodesCurrentlyDown.Contains(toVk))
+                            switch (target.Kind)
                             {
-                                _vkCodesCurrentlyDown.Add(toVk);
-                                _remapMirroredVks.Add(toVk);
+                                case RemapTargetKind.Key:
+                                    // Mirror the TO into the chord state only if the physical key
+                                    // (or another pairing) didn't already put it there — and
+                                    // remember WE did, so release can't strip someone else's entry.
+                                    if (!_vkCodesCurrentlyDown.Contains(target.Vk))
+                                    {
+                                        _vkCodesCurrentlyDown.Add(target.Vk);
+                                        _remapMirroredVks.Add(target.Vk);
+                                    }
+                                    if (ProcessHotstringKeyDown(target.Vk))
+                                        return (IntPtr)1;   // hotstring consumed the logical key — nothing to inject
+                                    InjectRemappedKey(target.Vk, down: true);
+                                    // Recorded only here, on the path that actually reached SendInput,
+                                    // so the release knows whether it has anything to undo.
+                                    _remapInjectedDowns.Add(vkCode);
+                                    break;
+                                case RemapTargetKind.Mouse:
+                                    InjectRemapped(target, down: true);
+                                    _remapInjectedDowns.Add(vkCode);
+                                    break;
+                                case RemapTargetKind.Wheel:
+                                    // One notch per press; nothing to release on the way up.
+                                    InjectRemapped(target, down: true);
+                                    break;
+                                // Disable: swallow only.
                             }
+                            return (IntPtr)1;
                         }
-                        if (!consumedByHotkey && toVk != 0)
-                        {
-                            if (ProcessHotstringKeyDown(toVk))
-                                return (IntPtr)1;   // hotstring consumed the logical key — nothing to inject
-                            InjectRemappedKey(toVk, down: true);
-                            // Recorded only here, on the path that actually reached SendInput, so
-                            // the release knows whether it has anything to undo.
-                            _remapInjectedDowns.Add(vkCode);
-                        }
-                        return (IntPtr)1;
+                        // No rule for the app in front — fall through: the key is raw here.
                     }
                 }
 
