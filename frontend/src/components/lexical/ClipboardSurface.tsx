@@ -51,11 +51,11 @@ const IDENTITY_LABELS: Record<ChainHead['kind'], string> = {
 
 const IDENTITY_HINTS: Record<ChainHead['kind'], string> = {
   clipboard: '',
-  row: "Replaced with this column's cell of the current data row (loop over data).",
-  rownext: 'Each use pulls the NEXT data row for this column — 1st use → row 1, 2nd → row 2… Resets each run.',
-  var: 'Replaced with the value a Set Variable action stored under this name.',
-  clip: 'Replaced with the selection a Copy to Slot action (or the capture hotkey) stored in this slot.',
-  winclip: 'Item of the Windows clipboard history (Win+V), newest first. Needs history turned on, and it can hold anything recently copied by any app — including passwords.',
+  row: 'Cell of this column in the current data row.',
+  rownext: 'Each use takes the next row (1st → row 1, 2nd → row 2…). Resets each run.',
+  var: 'Value stored by Set Variable under this name.',
+  clip: 'What Copy to Slot or the capture hotkey stored in this slot.',
+  winclip: 'Win+V history, newest first. Needs history on; may hold anything any app copied — including passwords.',
 };
 
 // What to say when there is no source to preview against. Each reason is DIFFERENT, and saying
@@ -205,8 +205,8 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
               backgroundColor: 'color-mix(in srgb, var(--color-recording) 10%, transparent)',
             }}>
             {state.unmodeledRefArg
-              ? 'This token takes a line argument from a variable, which these controls can only show as a literal — so it is read-only here. It still runs; if the variable is missing or does not hold a valid value, the step yields nothing. Edit the token text directly in the editor to change it.'
-              : 'This builder cannot rebuild this token exactly as written — a modifier it does not know, one used twice, or a different order — so it is read-only here. Edit the token text directly in the editor instead.'}
+              ? 'Read-only: the line argument comes from a variable, which these controls can’t show. It still runs; an invalid variable yields nothing. Edit the token text in the editor to change it.'
+              : 'Read-only: a modifier here can’t be rebuilt as written (unknown, repeated or reordered). Edit the token text in the editor instead.'}
           </div>
           <div className="label-micro text-text-tertiary">Token</div>
           <div className="font-mono text-[12px] px-2 py-1 rounded break-all"
@@ -322,8 +322,8 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
             />
             <div className="text-[11px] text-text-tertiary leading-snug mt-1">
               {state.next
-                ? 'Each use takes the next line and moves on; copying something new starts over. The preview always shows line 1 — the real position lives in the run.'
-                : 'Off: every use pastes the whole clipboard.'}
+                ? 'Each use takes the next line; a new copy starts over. The preview always shows line 1.'
+                : 'Off: pastes the whole clipboard.'}
             </div>
           </Step>
           )}
@@ -377,8 +377,8 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
               </div>
               <div className="text-[11px] text-text-tertiary leading-snug">
                 {state.split === 'none'
-                  ? 'Off: the whole text goes on to the next step.'
-                  : 'If the delimiter is not in the text, this step yields nothing — not everything. That is deliberate: the other answer pastes a whole clipboard where you asked for a fragment.'}
+                  ? 'Off: the whole text passes through.'
+                  : 'No delimiter in the text = nothing, not the whole text.'}
               </div>
             </div>
           </Step>
@@ -401,8 +401,8 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
               </div>
               <div className="text-[11px] text-text-tertiary leading-snug">
                 {state.dropNumSuffix.length === 0
-                  ? 'Off: leave empty to keep any leading count.'
-                  : 'Only strips when the text STARTS with digits followed by this exact suffix — otherwise it passes through unchanged. "1x Caixa" → "Caixa"; "Caixa" stays "Caixa".'}
+                  ? 'Off: keeps any leading count.'
+                  : 'Strips only a leading count with this exact suffix: "1x Caixa" → "Caixa".'}
               </div>
             </div>
           </Step>

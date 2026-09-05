@@ -2604,7 +2604,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
               }}
               processLabel="Process Name"
               processHint={'Empty = match by title only.'}
-              titleHint={'Case-insensitive. Fill at least one of the two.'}
+              titleHint={'Case-insensitive. Fill at least one.'}
             />
             <Checkbox
               checked={windowMatchForegroundOnly}
@@ -2742,7 +2742,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
           {isIfProcess && (
             <Field
               label="Process Name"
-              hint={'TRUE while the process runs, window or not.'}
+              hint={'Matches even without a window.'}
             >
               <ProcessNameInput value={windowProcessName} onChange={setWindowProcessName} />
             </Field>
@@ -3133,7 +3133,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 // False positives lead: a wrong match somewhere else on the desktop makes the
                 // macro CLICK in the wrong place, which is damage the user sees. Slowness is
                 // the second argument, not the first.
-                : 'Searching the whole screen can match the wrong thing — and costs ~440 ms per check instead of ~4 ms.'}
+                : 'Whole screen can match the wrong thing — ~440 ms per check instead of ~4 ms.'}
             >
               <div className="flex items-center gap-2.5">
                 <div className="flex-1 h-8 px-2 flex items-center text-[11px] font-mono bg-bg-input border border-border-default rounded text-text-secondary">
@@ -4381,7 +4381,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
             <Field
               label="Position"
               hint={atCursor
-                ? 'Uses the mouse position at the moment this step runs, so it needs no coordinates.'
+                ? 'Mouse position when the step runs.'
                 : undefined}
             >
               <SegmentedControl<'point' | 'cursor'>

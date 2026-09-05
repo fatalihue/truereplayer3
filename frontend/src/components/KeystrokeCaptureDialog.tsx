@@ -548,7 +548,7 @@ export function KeystrokeCaptureDialog({
                 className={`warning-band rounded-r px-2.5 py-2 text-[10px] leading-relaxed text-text-secondary ${hasModifiers ? '' : 'invisible'}`}
                 aria-hidden={!hasModifiers}
               >
-                {'Hold mode supports single keys only. Saving will hold'}{' '}
+                {'Hold takes a single key: this saves as'}{' '}
                 {/* Fixed-width cap: the key name sits INSIDE the sentence, so a wide name ("Space",
                     "ScrollDown") used to push the wrap to one more line and grow the dialog by
                     16 px on capture — measured. 10ch fits every compact key name; anything longer
@@ -558,7 +558,7 @@ export function KeystrokeCaptureDialog({
                       was 4 px shorter before the first key. */}
                   {compactKey(keystrokeDisplay(heldKey)) || ' '}
                 </kbd>{' '}
-                {'and ignore the modifiers. To hold a combo, insert two rows: a Hold for the modifier, plus the action under it.'}
+                {'and drops the modifiers. For a combo, add a Hold row for the modifier above the action.'}
               </div>
             </div>
           </div>

@@ -39,7 +39,7 @@ export function SecurityWarningModal({ fileName, profileCount, onContinue, onCan
       // Security warning exists to be READ before proceeding — a stray click on the
       // scrim must not dismiss it (dismissal is an explicit Cancel or Esc only).
       closeOnBackdrop={false}
-      footerHint="Esc to cancel"
+      footerHint="Esc cancels"
       // "Continue to review", not "I understand, continue": the Import Preview comes NEXT — a
       // label that read as a final commit could make a cautious user cancel.
       footer={<DialogFooter secondary={{ label: 'Cancel', onClick: onCancel }} primary={{ label: 'Continue to review', onClick: () => onContinue(dontShowAgain) }} />}

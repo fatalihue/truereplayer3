@@ -115,7 +115,7 @@ export function MessagePreviewPanel({ text, method, marksAdded = false }: {
             noise. */}
         {marksAdded && (
           <div className="text-[10px] leading-snug text-text-tertiary mt-0.5">
-            {'Formatting marks (*bold*) are added on send and are not shown here.'}
+            {'Formatting marks (*bold*) are added on send.'}
           </div>
         )}
       </div>

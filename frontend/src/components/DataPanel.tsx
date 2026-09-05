@@ -900,11 +900,11 @@ export function DataPanel({ onClose }: DataPanelProps) {
     const cls = 'text-[10px] truncate';
     if (editing) return <span className={`${cls} text-text-tertiary`}>{'Enter commits · Alt+Enter line break · Esc reverts'}</span>;
     if (willClear) return <span className={`${cls} text-warning-ink`}>{'Saving now clears the stored table.'}</span>;
-    if (loopOverData && grid.rows.length === 0) return <span className={`${cls} text-warning-ink`}>{'Replay will refuse to start: no rows.'}</span>;
+    if (loopOverData && grid.rows.length === 0) return <span className={`${cls} text-warning-ink`}>{'No rows — replay won’t start.'}</span>;
     if (escArmed) return <span className={`${cls} text-warning-ink`}>{'Unsaved changes — press Esc again to discard.'}</span>;
     if (readOnly) return <span className={`${cls} text-warning-ink`}>{'Large table — grid is read-only; edit via Paste / bulk edit.'}</span>;
     if (grid.rows.length >= LARGE_TABLE_WARN) return <span className={`${cls} text-text-tertiary`}>{'Large table — the profile file grows with it.'}</span>;
-    if (!loopOverData && !emptyGrid) return <span className={`${cls} text-text-tertiary`}>{`Loop off: each run uses the next row — now row ${cursorRow + 1}. Click a row number to move the cursor.`}</span>;
+    if (!loopOverData && !emptyGrid) return <span className={`${cls} text-text-tertiary`}>{`Next run uses row ${cursorRow + 1} · click a row number to move the cursor`}</span>;
     return <span className={`${cls} text-text-tertiary`}>{'Click a cell to edit · Ctrl+Enter saves'}</span>;
   })();
 
@@ -948,11 +948,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
   );
 
   // ── Footer (swaps while the paste surface is open) ──
-  const footerHint = pasteOpen ? (
-    <>{'Tabs, quotes and line breaks survive the paste'}</>
-  ) : (
-    <>{'Loop on: one run per row. Loop off: each run advances one row (the cursor).'}</>
-  );
+  const footerHint = pasteOpen ? <>{'Tabs, quotes and line breaks survive the paste'}</> : null;
 
   const applyLabel = pasteMode === 'replace'
     ? 'Replace table'
@@ -1184,7 +1180,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
                   color: 'var(--color-replay-fg)',
                 }}
               >
-                {`${grid.rows.length} iterations — one full run per row. Overrides Loop count and WhilePressed/Toggle infinite.`}
+                {`${grid.rows.length} runs, one per row — overrides Loop count and WhilePressed/Toggle looping.`}
               </div>
             ) : loopOverData ? (
               <div
@@ -1195,11 +1191,11 @@ export function DataPanel({ onClose }: DataPanelProps) {
                   color: 'var(--color-recording-fg)',
                 }}
               >
-                {'Replay will refuse to start: the table has no rows.'}
+                {'No rows — replay won’t start.'}
               </div>
             ) : (
               <div className="border-l-2 border-border-subtle rounded px-2.5 py-2 text-[11px] leading-relaxed text-text-tertiary">
-                {'Cursor mode: each run uses the next row and advances (wrapping). The row it will use is marked; click any row number to move the cursor there. The advance happens when the run STARTS, so a run you stop has still consumed its row — move the cursor back.'}
+                {'Each run uses the marked row, then advances (wrapping). Click a row number to move the cursor. The advance happens at start, so a stopped run has still consumed its row.'}
               </div>
             )}
             {/* Lap notice — the cursor-mode counterpart of "On row error": it only means
@@ -1314,7 +1310,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
                 ))}
               </div>
               <div className="text-[10px] text-text-tertiary px-3 pt-1 pb-2">
-                {'Lookup is case-insensitive. {row} = row number. Cells accept clipboard-style transforms — click a {row:…} chip in a text editor, or type {row:name:trim:upper}.'}
+                {'Case-insensitive. {row} = row number. Transforms: type {row:name:trim:upper} or click a {row:…} chip.'}
               </div>
             </>
           )}

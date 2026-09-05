@@ -502,13 +502,13 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     try {
       const parsed = JSON.parse(json);
       if (!validateExportedTheme(parsed) || !importTheme(parsed as ExportedTheme)) {
-        setImportError('Invalid theme format. Check all required color keys and UI settings.');
+        setImportError('Invalid theme: missing color keys or UI settings.');
         return;
       }
       setImportText('');
       setSurface('gallery');
     } catch {
-      setImportError('Invalid JSON. Please check the format.');
+      setImportError('Invalid JSON.');
     }
   }, [importTheme]);
 
@@ -527,7 +527,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     try {
       text = await navigator.clipboard.readText();
     } catch {
-      setImportError('Could not read from clipboard. Check clipboard permissions or paste the JSON manually.');
+      setImportError('Could not read the clipboard — paste the JSON manually.');
       return;
     }
     setImportText(text);
@@ -823,7 +823,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
                 onChange={(e) => setSavePresetName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') doSaveAsPreset(); else if (e.key === 'Escape') { setSaveMode(false); setSavePresetName(''); } }}
                 onBlur={() => { if (!savePresetName.trim()) setSaveMode(false); }}
-                placeholder="Name your customization…"
+                placeholder="Preset name…"
                 className="flex-1 h-6 px-2 text-xs text-text-primary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid"
               />
             ) : (
@@ -1023,7 +1023,6 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
         <div className="flex items-center justify-between py-1.5">
           <div className="flex flex-col">
             <span className="text-xs text-text-secondary">Match Windows theme</span>
-            <span className="text-[10px] text-text-tertiary">Auto-switch dark / light when the OS does</span>
           </div>
           <Toggle isOn={config.uiSettings.matchSystemTheme} onChange={(v) => setUISetting('matchSystemTheme', v)} />
         </div>
@@ -1046,7 +1045,6 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
         <div className="flex items-center justify-between py-1.5">
           <div className="flex flex-col">
             <span className="text-xs text-text-secondary">Enable animations</span>
-            <span className="text-[10px] text-text-tertiary">Theme switch transitions and hover effects</span>
           </div>
           <Toggle isOn={config.uiSettings.enableAnimations} onChange={(v) => setUISetting('enableAnimations', v)} />
         </div>
@@ -1072,7 +1070,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
               <Button variant="secondary" onClick={handleExportFile}><Download size={13} /> Export to file</Button>
               <Button variant="secondary" onClick={handleCopyClipboard}><Clipboard size={13} /> {copyError ? 'Copy failed' : copySuccess ? 'Copied!' : 'Copy to clipboard'}</Button>
             </div>
-            <p className="mt-2 text-[10px] text-text-tertiary">Bundles the base preset, your color overrides and every appearance setting into a single JSON.</p>
+            <p className="mt-2 text-[10px] text-text-tertiary">One JSON with the base preset, your color overrides and appearance settings.</p>
           </div>
           <div>
             <div className="label-micro text-text-tertiary mb-2">Import a theme</div>

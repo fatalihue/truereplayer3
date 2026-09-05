@@ -213,7 +213,7 @@ export function ImageCropper({ imageBase64, onSave, onCancel }: ImageCropperProp
       onClose={onCancel}
       // A crop in progress must not be thrown away by a stray click outside the card.
       closeOnBackdrop={false}
-      footerHint="Drag a handle to resize, or drag inside the rectangle to move."
+      footerHint="Drag the handles to resize · drag inside to move"
       footer={
         <DialogFooter
           secondary={{ label: 'Cancel', onClick: onCancel }}

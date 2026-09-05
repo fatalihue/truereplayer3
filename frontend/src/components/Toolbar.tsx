@@ -1124,7 +1124,7 @@ export function Toolbar(_props: ToolbarProps) {
                   Clear all {actions.length} action{actions.length === 1 ? '' : 's'}?
                 </div>
                 <div className="mt-1 text-[11px] text-text-tertiary leading-relaxed">
-                  {'Removes every action in this profile. Ctrl+Z undoes it.'}
+                  {'Ctrl+Z undoes it.'}
                 </div>
                 <div className="mt-2.5 flex justify-end gap-1.5">
                   <button

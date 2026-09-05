@@ -439,13 +439,13 @@ function NamePromptPopover({
         />
         <div className="text-[10px] text-text-tertiary mt-1.5 leading-relaxed">
           {kind === 'var'
-            ? 'Set by a Set Variable action while replaying.'
+            ? 'Value stored by Set Variable under this name.'
             : kind === 'input'
-            ? 'Replay pauses and asks you for this value. Click the chip to add dropdown options.'
+            ? 'Replay pauses and asks. Click the chip to add dropdown options.'
             : kind === 'clip'
-            ? 'Filled by a Copy to Slot action or the capture hotkey (slots 1–9).'
+            ? 'What Copy to Slot or the capture hotkey stored here (slots 1–9).'
             : kind === 'rownext'
-            ? 'Each use pulls the NEXT row of this column — 1st → row 1, 2nd → row 2… Resets each run.'
+            ? 'Each use takes the next row (1st → row 1, 2nd → row 2…). Resets each run.'
             : "Column header from the profile's Data table."}
         </div>
       </div>
@@ -1011,10 +1011,10 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                 Delete token
               </button>
             )}
-            <span>{'Steps apply in the runtime pipeline order'}</span>
+            <span>{'Steps apply in the order shown'}</span>
           </span>
         ) : (
-          <>{'Ctrl+Enter to confirm · Esc to cancel'}</>
+          <>{'Ctrl+Enter confirms · Esc cancels'}</>
         )
       }
       footer={(requestClose) => (
@@ -1486,7 +1486,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
         }
       >
         <p className="px-4 py-4 text-xs text-text-secondary leading-relaxed">
-          This message has changes that were never applied. Closing now discards the text, its formatting and the delivery settings.
+          Unapplied changes will be lost — text, formatting and delivery settings.
         </p>
       </DialogShell>
     )}

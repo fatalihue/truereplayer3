@@ -97,7 +97,7 @@ export function LiveVariablesHost() {
       <div className="flex-1 min-h-0 overflow-y-auto pb-1.5">
         {empty && (
           <div className="px-2.5 py-2 text-[11px] text-text-tertiary leading-relaxed">
-            {'Nothing yet — Set Variable actions, {input:} answers and {clip:} captures show here as they happen.'}
+            {'Nothing yet. Variables, {input:} answers and {clip:} captures appear here as they happen.'}
           </div>
         )}
         {vars.length > 0 && (

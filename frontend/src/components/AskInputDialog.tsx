@@ -35,8 +35,8 @@ function AskInputDialog({ label, options, onSubmit, onCancel }: AskInputDialogPr
       onClose={onCancel}
       closeOnBackdrop={false}
       footerHint={isMenu
-        ? 'Pick an option · Esc cancels the run'
-        : 'Enter to submit · Esc cancels the run'}
+        ? 'Esc cancels the run'
+        : 'Enter submits · Esc cancels the run'}
       footer={isMenu ? undefined : <DialogFooter secondary={{ label: 'Cancel', onClick: onCancel }} primary={{ label: 'Submit', onClick: () => onSubmit(value) }} />}
       onCardKeyDown={(e) => {
         if (!isMenu && e.key === 'Enter') { e.preventDefault(); onSubmit(value); }

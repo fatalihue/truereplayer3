@@ -33,7 +33,7 @@ export function NavigateDialog({ onConfirm, onClose }: NavigateDialogProps) {
       // Text-entry dialog: a stray click on the scrim must not discard a
       // typed URL — dismissal is Esc or Cancel only.
       closeOnBackdrop={false}
-      footerHint="Enter to confirm · Esc to cancel"
+      footerHint="Enter confirms · Esc cancels"
       footer={<DialogFooter secondary={{ label: 'Cancel', onClick: onClose }} primary={{ label: 'Add', onClick: handleConfirm, disabled: !url.trim() }} />}
       onCardKeyDown={(e) => {
         // Enter confirms from anywhere in the card (the URL input is the only
@@ -65,7 +65,7 @@ export function NavigateDialog({ onConfirm, onClose }: NavigateDialogProps) {
         />
 
         <p className="text-[11px] text-text-tertiary">
-          Protocol (https://) will be added automatically if omitted.
+          https:// is added if omitted.
         </p>
       </div>
     </DialogShell>

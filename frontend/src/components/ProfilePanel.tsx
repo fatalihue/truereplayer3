@@ -2792,12 +2792,10 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                 ))}
               </div>
               <div className="mt-1.5 text-[10px] text-text-tertiary leading-tight min-h-[14px]">
-                {hotkeyTriggerMode === 'onPress' && 'Fires once when the key is pressed down.'}
-                {hotkeyTriggerMode === 'onRelease' && 'Fires once when the key is released.'}
-                {hotkeyTriggerMode === 'whilePressed' && 'Runs in infinite loop while held. Stops on release.'}
-                {hotkeyTriggerMode === 'toggle' && 'Press to start an infinite loop, press again to stop.'}
-                {hotkeyTriggerMode === 'doubleTap' && 'Fires once on two quick taps. Single taps do nothing.'}
-                {hotkeyTriggerMode === 'hold' && 'Fires once after holding ~0.6s. A quick tap does nothing.'}
+                {hotkeyTriggerMode === 'whilePressed' && 'Loops while held.'}
+                {hotkeyTriggerMode === 'toggle' && 'Loops until pressed again.'}
+                {hotkeyTriggerMode === 'doubleTap' && 'Single taps are ignored.'}
+                {hotkeyTriggerMode === 'hold' && 'Fires after ~0.6 s held; a tap does nothing.'}
               </div>
             </div>
           </div>

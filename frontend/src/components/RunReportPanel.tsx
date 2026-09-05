@@ -139,7 +139,7 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
       <div className="flex-1 min-h-0 overflow-y-auto p-3">
         {steps.length === 0 ? (
           <div className="h-full flex items-center justify-center text-center text-[12px] text-text-tertiary px-8 leading-relaxed">
-            {'No run recorded yet. Play a profile and the steps will show up here — with the selector that matched, how long each step took, and why any of them failed.'}
+            {'No run yet. Play a profile to see each step here: the selector that matched, how long it took and why it failed.'}
           </div>
         ) : (
           <>
@@ -166,7 +166,7 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
             </div>
             {stats.drifting > 0 && (
               <Callout tone="error" className="mb-2" icon={<TriangleAlert size={12} />} still>
-                {`${stats.drifting} step(s) matched through a FALLBACK selector — the one you picked no longer matches. Re-pick those elements before the fallbacks drift too.`}
+                {`${stats.drifting} step(s) matched via a FALLBACK selector — the one you picked no longer matches. Re-pick them before the fallbacks drift too.`}
               </Callout>
             )}
             <div className="space-y-px">

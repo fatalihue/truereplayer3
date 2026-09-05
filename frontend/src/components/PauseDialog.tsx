@@ -253,7 +253,7 @@ export function PauseDialog({ initialKey, initialTimeoutMs, onConfirm, onClose }
               'Resumes on the hotkey or after the timeout — whichever comes first.',
               'Waits until the hotkey is pressed.',
               `Waits ${timeoutLabel} then continues.`,
-              'Set a hotkey or a timeout — with neither, this Pause is skipped at replay.',
+              'No hotkey and no timeout — this Pause is skipped.',
             ];
             const active = captured && timeoutMs > 0 ? 0 : captured ? 1 : timeoutMs > 0 ? 2 : 3;
             return (

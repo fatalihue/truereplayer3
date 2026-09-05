@@ -112,8 +112,8 @@ export function ClipboardModifierBody({
             backgroundColor: 'color-mix(in srgb, var(--color-recording) 10%, transparent)',
           }}>
           {state.unmodeledRefArg
-            ? 'This token takes a line argument from a variable, which these controls can only show as a literal — so it is read-only here. It still runs; if the variable is missing or does not hold a valid value, the step yields nothing. Edit the token text directly to change it.'
-            : 'This editor cannot rebuild this token exactly as written — a modifier it does not know, one used twice, or a different order — so it is read-only. Editing here would quietly change what it does.'}
+            ? 'Read-only: the line argument comes from a variable, which these controls can’t show. It still runs; an invalid variable yields nothing.'
+            : 'Read-only: a modifier here can’t be rebuilt as written (unknown, repeated or reordered).'}
         </div>
         <div className="label-micro text-text-tertiary">Token</div>
         <div className="font-mono text-[12px] px-2 py-0.5 rounded break-all"
@@ -124,7 +124,7 @@ export function ClipboardModifierBody({
           {token}
         </div>
         <div className="text-[10px] text-text-tertiary leading-snug">
-          {'To change it, edit the token text directly in the editor.'}
+          {'Edit the token text in the editor to change it.'}
         </div>
       </div>
     );
@@ -144,7 +144,7 @@ export function ClipboardModifierBody({
           />
           <div className="text-[10px] text-text-tertiary leading-snug mt-0.5">
             {state.next
-              ? 'Each use takes the next line and moves on. Copying something new starts over. The preview always shows line 1.'
+              ? 'Each use takes the next line; a new copy starts over. The preview always shows line 1.'
               : 'Pastes the whole clipboard.'}
           </div>
         </StepSection>

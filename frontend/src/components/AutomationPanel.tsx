@@ -650,7 +650,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
           <div className="flex-1 overflow-y-auto">
             {listProfiles.length === 0 && (
               <div className="p-4 text-[12px] text-text-tertiary leading-relaxed">
-                {'No automations yet. Add one to fire a profile on a timer, a clock schedule, or a watched condition — no hotkey press needed.'}
+                {'No automations yet. One fires a profile on a timer, a schedule or a watched condition — no hotkey needed.'}
               </div>
             )}
             {listProfiles.map((name) => {
@@ -804,7 +804,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                     borderColor: 'color-mix(in srgb, var(--color-recording) 40%, transparent)',
                     backgroundColor: 'color-mix(in srgb, var(--color-recording) 10%, transparent)',
                   }}>
-                  {'This automation can never fire as configured. '}
+                  {'Never fires as configured. '}
                   {cannotFire}
                 </div>
               )}
@@ -816,7 +816,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                     borderColor: 'color-mix(in srgb, var(--color-recording) 40%, transparent)',
                     backgroundColor: 'color-mix(in srgb, var(--color-recording) 10%, transparent)',
                   }}>
-                  {'This profile is DISABLED — its automation never runs (and cannot be armed) until you enable the profile in the sidebar.'}
+                  {'Profile disabled — its automation can’t run or be armed until you enable it in the sidebar.'}
                 </div>
               )}
 
@@ -827,7 +827,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                     borderColor: 'color-mix(in srgb, var(--color-recording) 40%, transparent)',
                     backgroundColor: 'color-mix(in srgb, var(--color-recording) 10%, transparent)',
                   }}>
-                  {'This profile has no target window — when the trigger fires, it acts on whichever window happens to be focused.'}
+                  {'No target window — it acts on whichever window is focused when it fires.'}
                 </div>
               )}
 
@@ -856,7 +856,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
               </Field>
 
               {draft.kind === 'interval' && (
-                <Field label="Every" hint={'Minimum 5 seconds. The first fire happens one interval after arming.'}>
+                <Field label="Every" hint={'Min 5 s. First fire comes one interval after arming.'}>
                   <NumberInput
                     value={draft.intervalSeconds}
                     onChange={(v) => patch({ intervalSeconds: Math.max(5, v ?? 5) })}
@@ -890,7 +890,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                 return (
                   <Field
                     label="Active hours"
-                    hint={'Leave empty to run around the clock. An end before the start crosses midnight.'}
+                    hint={'Empty = always. An end before the start crosses midnight.'}
                   >
                     <div className="flex items-center gap-2">
                       <input type="time" className={`${inputCls} w-28`} value={from}
@@ -911,7 +911,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                       show={phaseLockRisk(draft)}
                       tip={tt('This interval only ticks at a few times of day — all may fall outside the window', 'Este intervalo só bate em alguns horários — todos podem cair fora da janela')}
                     >
-                      {'This interval is too long for this window — it may never fire. Shorten the interval or widen the hours.'}
+                      {'Interval longer than the active hours — it may never fire. Shorten it or widen the hours.'}
                     </FieldError>
                   </Field>
                 );
@@ -927,7 +927,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                       onChange={(e) => patch({ timeOfDay: e.target.value })}
                     />
                   </Field>
-                  <Field label="Days" hint={'None selected = every day.'}>
+                  <Field label="Days" hint={'None = every day.'}>
                     <div className="flex gap-1">
                       {DAY_PILLS.map((d) => {
                         const on = (draft.daysOfWeek & d.bit) !== 0;
@@ -1011,7 +1011,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   )}
 
                   {draft.conditionType === 'ProcessRunning' && (
-                    <Field label="Process" hint={'Image name, e.g. "notepad" or "RobloxPlayerBeta.exe".'}>
+                    <Field label="Process" hint={'With or without .exe.'}>
                       <input
                         className={inputCls}
                         value={draft.windowProcessName ?? ''}
@@ -1022,7 +1022,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   )}
 
                   {draft.conditionType === 'FileExists' && (
-                    <Field label="Path" hint={'Full path of a file or folder. Fires when it appears.'}>
+                    <Field label="Path" hint={'File or folder.'}>
                       <input
                         className={inputCls}
                         value={draft.filePath ?? ''}
@@ -1076,7 +1076,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                           <Pipette size={12} /> Pick
                         </Button>
                       </div>
-                      <Field label="Tolerance" hint={'Per-channel color tolerance (0 = exact).'}>
+                      <Field label="Tolerance" hint={'Per channel. 0 = exact.'}>
                         <NumberInput value={draft.pixelTolerance} onChange={(v) => patch({ pixelTolerance: v ?? 10 })}
                           min={0} max={255} inputWidth="w-20" />
                       </Field>
@@ -1116,7 +1116,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                               : `${'Not found on screen'} (${Math.round(testMatchResult.score * 100)}%)`}
                         </div>
                       )}
-                      <Field label="Search region" hint={'Limit matching to a screen region — faster and fewer false positives for a background watcher. Empty = full screen.'}>
+                      <Field label="Search region" hint={'Empty = full screen (slower, more false matches).'}>
                         <div className="flex items-center gap-2">
                           <div className={`${inputCls} flex-1 flex items-center ${draft.searchRegion ? 'font-mono text-[11px]' : 'text-text-disabled italic'}`}>
                             {draft.searchRegion
@@ -1134,7 +1134,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                           )}
                         </div>
                       </Field>
-                      <Field label="Confidence" hint={'Match threshold. 80% is a good start; 100% never matches a live screen.'}>
+                      <Field label="Confidence" hint={'Start at 80%. 100% never matches a live screen.'}>
                         <NumberInput
                           value={Math.round((draft.imageConfidence || 0.8) * 100)}
                           onChange={(v) => patch({ imageConfidence: Math.min(99, Math.max(10, v ?? 80)) / 100 })}
@@ -1145,7 +1145,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   )}
 
                   {draft.conditionType === 'ClipboardChanged' && (
-                    <Field label="Contains" hint={'Optional filter — empty fires on ANY clipboard change. App-made clipboard traffic (replays, capture-slot) never counts.'}>
+                    <Field label="Contains" hint={'Empty = any change. The app’s own clipboard writes never count.'}>
                       <input
                         className={inputCls}
                         value={draft.clipboardPattern ?? ''}
@@ -1173,7 +1173,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   {(() => {
                     const cd = defaultCooldownSec(draft.conditionType);
                     return (
-                      <Field label="Cooldown" hint={`Minimum gap between fires. 0 = default (${cd} s).`}>
+                      <Field label="Cooldown" hint={`0 = default (${cd} s).`}>
                         <NumberInput value={draft.cooldownSeconds} onChange={(v) => patch({ cooldownSeconds: v ?? 0 })}
                           min={0} max={86400} suffix="s" inputWidth="w-24" />
                       </Field>
@@ -1191,8 +1191,8 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                     return (
                       <Field
                         label="Check every"
-                        hint={`How often to re-probe. 0 = default (${def} ms).` +
-                            (heavy ? ' An image check grabs and scans the whole screen each time — raise this for something you can wait a few seconds for.' : '')}>
+                        hint={`0 = default (${def} ms).` +
+                            (heavy ? ' Image checks scan the whole screen — raise this if you can wait a few seconds.' : '')}>
                         <NumberInput value={draft.pollIntervalMs} onChange={(v) => patch({ pollIntervalMs: v ?? 0 })}
                           min={0} max={600000} step={250} thousands suffix="ms" inputWidth="w-28" />
                       </Field>
@@ -1203,7 +1203,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
 
               <div className="pt-2 border-t border-border-subtle text-[11px] text-text-tertiary leading-relaxed"
 >
-                {'Arm or disarm with the toggle on the list row — it takes effect immediately, independent of Save.'}
+                {'The list toggle arms or disarms at once, independent of Save.'}
               </div>
 
               {selectedEntry && (selectedEntry.skippedBusy > 0 || selectedEntry.skippedDirty > 0 || selectedEntry.skippedModal > 0) && (
@@ -1271,7 +1271,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
         }
       >
         <p className="px-4 py-4 text-xs text-text-secondary leading-relaxed">
-          This automation has changes that were never saved. Leaving now discards them — including any reference image you captured and the search region you set.
+          Unsaved changes will be lost — including the captured image and search region.
         </p>
       </DialogShell>
     )}

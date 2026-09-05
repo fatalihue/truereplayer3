@@ -141,19 +141,19 @@ export function DataPasteSurface({
 
           {invalidHeaders.length > 0 && (
             <div className="text-[10px] text-text-tertiary leading-relaxed">
-              {'Headers marked ⚠ can’t be used as {row:…} tokens (letters, digits, underscore only). They still save.'}
+              {'⚠ headers can’t be {row:…} tokens (letters, digits, _ only) but still save.'}
             </div>
           )}
 
           {ragged && (
             <div className="text-[10px] text-text-tertiary leading-relaxed">
-              {'Some rows have a different cell count than the header — missing cells resolve to empty text.'}
+              {'Rows shorter than the header: missing cells read as empty.'}
             </div>
           )}
 
           {mode === 'replace' && hasExistingTable && (
             <div className="text-[10px] text-text-tertiary leading-relaxed mt-auto">
-              {'The box opens with the current table — edit it in place or paste over it.'}
+              {'Edit in place or paste over it.'}
             </div>
           )}
         </div>

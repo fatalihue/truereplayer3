@@ -89,7 +89,7 @@ export function RunProfileDialog({ mode, initial, excludeProfileName, onConfirm,
       // one-keystroke tweak — a stray backdrop click discards nothing hard to redo,
       // so backdrop-dismiss stays enabled (the default).
       closeOnBackdrop={true}
-      footerHint={'Enter to confirm · Esc to cancel'}
+      footerHint={'Enter confirms · Esc cancels'}
       footer={<DialogFooter secondary={{ label: 'Cancel', onClick: onClose }} primary={{ label: mode === 'edit' ? 'Save' : 'Add', onClick: handleConfirm, disabled: !canConfirm }} />}
       onCardKeyDown={(e) => {
         // Plain Enter confirms — this dialog is single-field (a select), so the
@@ -164,7 +164,7 @@ export function RunProfileDialog({ mode, initial, excludeProfileName, onConfirm,
             </label>
 
             <div className="text-[11px] text-text-tertiary leading-relaxed bg-bg-card border border-border-subtle rounded px-2.5 py-2">
-              {'The called profile’s actions run right here. Its own Loops / Interval are ignored — use Repeat above. Disabled profiles are skipped, and chains deeper than 5 levels are blocked.'}
+              {'Runs the called profile’s actions inline; its own Loops/Interval are ignored (use Repeat). Disabled profiles are skipped; max 5 levels deep.'}
             </div>
           </>
         )}

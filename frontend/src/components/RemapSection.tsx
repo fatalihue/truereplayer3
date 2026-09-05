@@ -223,7 +223,7 @@ export function RemapSection() {
           )}
           {hotkeyCollision && (
             <div className="text-[10px]" style={{ color: 'var(--color-recording-fg)' }}>
-              {`This key is also the ${hotkeyCollision} — the remap will override it and that hotkey will stop firing.`}
+              {`Also the ${hotkeyCollision} — the remap overrides it and that hotkey stops firing.`}
             </div>
           )}
           <div className="flex gap-2">

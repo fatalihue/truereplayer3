@@ -391,9 +391,6 @@ function DelayEditor({ token, onChange }: { token: string; onChange: (t: string)
             inputWidth which sizes the input alone — so it needs extra room to fit "60.000 ms". */}
         <NumInput value={ms} onChange={update} min={0} width={140} thousands suffix="ms" suffixInside />
       </div>
-      <div className="text-[10px] text-text-tertiary mt-1">
-        Pause for this long before continuing.
-      </div>
     </Section>
   );
 }
@@ -427,10 +424,11 @@ function RepeatableEditor({
           time{n === 1 ? '' : 's'}
         </span>
       </div>
-      <div className="text-[10px] text-text-tertiary mt-1">
-        Press <code className="text-accent-light">{`{${initial.name}}`}</code> {n}× when this action runs.
-        {n >= MAX_KEY_REPEAT && ` ${MAX_KEY_REPEAT} presses is the engine's limit for one token.`}
-      </div>
+      {n >= MAX_KEY_REPEAT && (
+        <div className="text-[10px] text-text-tertiary mt-1">
+          {`${MAX_KEY_REPEAT} presses is the engine's limit for one token.`}
+        </div>
+      )}
     </Section>
   );
 }
@@ -456,7 +454,7 @@ function RandomEditor({ token, onChange }: { token: string; onChange: (t: string
         <NumInput value={max} onChange={(v) => update(min, v)} min={0} width={86} thousands />
       </div>
       <div className="text-[10px] text-text-tertiary mt-1">
-        A fresh integer between the two bounds (inclusive) each time this text runs.
+        Inclusive; re-rolled every run.
       </div>
     </Section>
   );
@@ -504,8 +502,8 @@ function WinClipEditor({ token, onChange }: { token: string; onChange: (t: strin
         </div>
         <div className="text-[10px] text-text-tertiary mt-1 leading-relaxed">
           {state.unmodeled
-            ? 'Read-only — this token carries a modifier chain the editor cannot rebuild (see below).'
-            : `Item ${index} of the Windows clipboard history (Win+V), newest first. Needs clipboard history turned on. It can hold anything recently copied by any app — including passwords.`}
+            ? 'Read-only — the modifier chain can’t be rebuilt here (see below).'
+            : `Item ${index} of the Win+V history, newest first. Needs history on; may hold anything any app copied — including passwords.`}
         </div>
       </Section>
       <ClipboardModifierBody
@@ -585,10 +583,10 @@ function NameEditor({
         </div>
         <div className="text-[10px] text-text-tertiary mt-1">
           {state.unmodeled
-            ? 'Read-only — this token carries a modifier chain the editor cannot rebuild (see below).'
+            ? 'Read-only — the modifier chain can’t be rebuilt here (see below).'
             : tokenName === 'var'
-              ? 'Replaced with the value a Set Variable action stored under this name.'
-              : 'Replaced with the selection a Copy to Slot action (or the capture hotkey) stored in this slot.'}
+              ? 'Value stored by Set Variable under this name.'
+              : 'What Copy to Slot or the capture hotkey stored in this slot.'}
         </div>
       </Section>
       <ClipboardModifierBody
@@ -697,10 +695,10 @@ function RowColEditor({ token, onChange, head = 'row' }: { token: string; onChan
         </div>
         <div className="text-[10px] text-text-tertiary mt-1">
           {state.unmodeled
-            ? 'Read-only — this token carries a modifier chain the editor cannot rebuild (see below).'
+            ? 'Read-only — the modifier chain can’t be rebuilt here (see below).'
             : isNext
-              ? 'Each use pulls the NEXT data row for this column — 1st use → row 1, 2nd → row 2… Resets each run.'
-              : "Replaced with this column's cell of the current data row (loop over data)."}
+              ? 'Each use takes the next row (1st → row 1, 2nd → row 2…). Resets each run.'
+              : 'Cell of this column in the current data row.'}
         </div>
       </Section>
       <ClipboardModifierBody
@@ -765,7 +763,7 @@ function InputEditor({ token, onChange }: { token: string; onChange: (t: string)
           />
         </div>
         <div className="text-[10px] text-text-tertiary mt-1">
-          Replay pauses and shows this prompt; your answer is substituted (and reusable as {'{var:label}'}).
+          Replay pauses and asks; the answer is also readable as {'{var:label}'}.
         </div>
       </Section>
       <Section label="Menu options (optional)">
@@ -780,7 +778,7 @@ function InputEditor({ token, onChange }: { token: string; onChange: (t: string)
           />
         </div>
         <div className="text-[10px] text-text-tertiary mt-1">
-          Comma-separated → the prompt becomes a dropdown instead of a text field.
+          Comma-separated → shown as a dropdown.
         </div>
       </Section>
     </>
@@ -818,7 +816,7 @@ function PickEditor({ token, onChange }: { token: string; onChange: (t: string) 
         />
       </div>
       <div className="text-[10px] text-text-tertiary mt-1">
-        Each use picks one line at random — two uses in one text roll independently.
+        One line at random per use.
       </div>
     </Section>
   );
@@ -840,8 +838,8 @@ function staticTokenInfo(token: string): { value?: string; note?: string } {
     case 'date': return { value: date };
     case 'time': return { value: time };
     case 'datetime': return { value: `${date} - ${time}` };
-    case 'counter': return { note: 'Replaced with the current loop iteration (1, 2, 3…) while replaying.' };
-    case 'row': return { note: "Replaced with the current action's grid row number while replaying." };
+    case 'counter': return { note: 'Current loop iteration (1, 2, 3…) at replay.' };
+    case 'row': return { note: 'This action’s row number at replay.' };
     default: return {};
   }
 }
@@ -862,7 +860,7 @@ function StaticInfo({ token }: { token: string }) {
   }
   return (
     <div className="px-3.5 py-3 text-[11px] text-text-tertiary">
-      {note ?? 'This token has no editable parameters. Use Delete to remove it.'}
+      {note ?? 'No editable parameters.'}
     </div>
   );
 }
