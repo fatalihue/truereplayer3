@@ -8,8 +8,10 @@ import { Button } from './common/Button';
 import { Callout } from './common/Callout';
 import { FieldError } from './common/FieldError';
 import { iconButtonClass } from './common/IconButton';
+import { splitCombo } from './common/KbdTag';
 import { ProcessNameInput } from './common/ProcessNameInput';
 import { chipOn, chipOff, chipDotOn, chipDotOff } from './common/chipStyles';
+import { compactKey } from '../utils/keyNames';
 
 type RemapEntry = RemapEntryDto;
 
@@ -35,19 +37,36 @@ const MOUSE_TARGETS: { name: string; label: string; short: string; glyph?: boole
 ];
 const mouseTarget = (name: string) =>
   MOUSE_TARGETS.find((m) => m.name.toLowerCase() === name.toLowerCase());
-// Plain-text form for tooltips and the transfer note.
-const describeKey = (name: string) => mouseTarget(name)?.label ?? name;
+// Plain-text form for tooltips and messages: the menu label for a mouse target, the keycap
+// spelling for a key (PgDn, Esc, Ins, Caps — utils/keyNames, decided 2026-09-05 family-wide).
+// The stored name stays raw; only display goes through compactKey.
+const describeKey = (name: string) => mouseTarget(name)?.label ?? compactKey(name);
 
-/** One side of a remap: raw key name, or the short mouse word (Mouse glyph where the word alone is ambiguous). */
+/** One side of a remap: keycap spelling for a key, or the short mouse word (Mouse glyph where the word alone is ambiguous). */
 function KeyLabel({ name, className = '' }: { name: string; className?: string }) {
   const m = mouseTarget(name);
   return (
     <span className={`min-w-0 inline-flex items-center gap-1 ${className}`}>
       {m?.glyph && <Mouse size={10} className="shrink-0 opacity-70" aria-hidden />}
-      <span className="truncate">{m ? m.short : name}</span>
+      <span className="truncate">{m ? m.short : compactKey(name)}</span>
     </span>
   );
 }
+
+// ── Hotkey collisions ─────────────────────────────────────────────────────────
+// "LeftCtrl" / "RightAlt" (a hand-edited file) count as their family: the hook captures the
+// generic names (KeyUtils maps both sides to Ctrl / Alt / Shift / Win) and every stored hotkey
+// uses them, so a remap of either side is a remap of the key the hotkey names.
+const keyFamily = (k: string) => k.replace(/^(Left|Right)(Ctrl|Alt|Shift|Win)$/i, '$2').toLowerCase();
+const showCombo = (combo: string) => splitCombo(combo).map(compactKey).join('+');
+const mainKey = (combo: string) => { const parts = splitCombo(combo); return parts[parts.length - 1] ?? combo; };
+const hasModifiers = (combo: string) => splitCombo(combo).length > 1;
+type HotkeyRef = { label: string; combo: string };
+// "the Recording hotkey (F5)" · "a and b" · "a, b and c" — the combo shown where the caller asks.
+const listHits = (hits: HotkeyRef[], withCombo: (h: HotkeyRef) => boolean) => {
+  const items = hits.map((h) => (withCombo(h) ? `${h.label} (${showCombo(h.combo)})` : h.label));
+  return items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+};
 
 // Same normalisation RemapService.NormalizeProcess applies: "Chrome.EXE" and "chrome" are one
 // scope, so the duplicate check and the backend's first-wins agree on what "the same rule" is.
@@ -231,25 +250,48 @@ export function RemapSection() {
   const atCap = editIndex === null && remaps.entries.length >= MAX_REMAPS;
   const canSave = fromKey !== '' && (disableMode || toKey !== '') && !duplicate && !selfRemap && !atCap;
 
-  // A FROM key that is also a hotkey loses to the remap (the remap layer runs first in
-  // the hook) — hotkeys silently not firing is the #1 support issue, so warn up front.
-  const hotkeyCollision = (() => {
-    if (!fromKey) return null;
-    const fk = fromKey.toLowerCase();
-    const globals: [string, string][] = [
-      [settings.recordingHotkey, 'Recording'],
-      [settings.replayHotkey, 'Replay'],
-      [settings.profileKeyToggleHotkey, 'Profile Keys'],
-      [settings.foregroundHotkey, 'Foreground'],
-      [settings.modeToggleHotkey, 'Mode Toggle'],
-      [settings.captureSlotHotkey, 'Capture Slot'],
-    ];
-    for (const [hk, label] of globals) {
-      if (hk && hk.toLowerCase() === fk) return `${label} hotkey (${hk})`;
+  // Every hotkey the app listens for, with the name a message uses. The Clicker pair stays out
+  // on purpose (owner decision: mode-gated, with its own conflict check).
+  const hotkeys: HotkeyRef[] = [
+    ...([
+      [settings.recordingHotkey, 'the Recording hotkey'],
+      [settings.replayHotkey, 'the Replay hotkey'],
+      [settings.profileKeyToggleHotkey, 'the Profile Keys hotkey'],
+      [settings.foregroundHotkey, 'the Foreground hotkey'],
+      [settings.modeToggleHotkey, 'the Mode Toggle hotkey'],
+      [settings.captureSlotHotkey, 'the Capture Slot hotkey'],
+    ] as [string, string][]).filter(([combo]) => !!combo).map(([combo, label]) => ({ label, combo })),
+    ...profiles.filter((p) => !!p.hotkey).map((p) => ({ label: `profile "${p.name}"`, combo: p.hotkey as string })),
+  ];
+
+  // FROM side: the remap runs before the hotkey matcher, so EVERY hotkey built on this key dies
+  // with it — the bare F5, Ctrl+F5 (the F5 becomes X before Ctrl+F5 can compose), and every
+  // Ctrl+… when the FROM is Ctrl itself. The check used to compare whole strings and caught only
+  // the bare one; "hotkey silently not firing" is the #1 support issue, so list them all.
+  const fromHits = fromKey
+    ? hotkeys.filter((h) => splitCombo(h.combo).some((seg) => keyFamily(seg) === keyFamily(fromKey)))
+    : [];
+  const fromMessage = fromHits.length > 0
+    ? `Also ${listHits(fromHits, () => true)} — the remap overrides ${fromHits.length > 1 ? 'them and those hotkeys stop' : 'it and that hotkey stops'} firing.`
+    : null;
+
+  // TO side: a KEY target that is a hotkey's main key TRIGGERS that hotkey (the hop in the
+  // hook: Side 1 → F9 with F9 = Replay starts the replay instead of typing F9). Intentional —
+  // the user just needs to know before saving, so this line is informative, not an error. A
+  // MOUSE target is the opposite case: the injected click carries LLMHF_INJECTED and the hotkey
+  // layer ignores injected input, so a remapped side button does NOT fire the profile bound to it.
+  const toTarget = !disableMode ? toKey : '';
+  const toHits = toTarget ? hotkeys.filter((h) => keyFamily(mainKey(h.combo)) === keyFamily(toTarget)) : [];
+  const toMessage = (() => {
+    if (toHits.length === 0) return null;
+    const many = toHits.length > 1;
+    const hits = listHits(toHits, (h) => hasModifiers(h.combo));
+    if (mouseTarget(toTarget)) {
+      return `${describeKey(toTarget)} is also ${hits} — a remapped press will not trigger ${many ? 'them' : 'it'} (hotkeys ignore injected input).`;
     }
-    const p = profiles.find((pr) => pr.hotkey && pr.hotkey.toLowerCase() === fk);
-    if (p) return `profile "${p.name}" (${p.hotkey})`;
-    return null;
+    const via = fromKey ? describeKey(fromKey) : 'the remapped key';
+    const modified = toHits.some((h) => hasModifiers(h.combo));
+    return `${describeKey(toTarget)} is also ${hits} — ${via} will trigger ${many ? 'them' : 'it'}${modified ? ' with those modifiers held' : ''}.`;
   })();
 
   const handleSave = () => {
@@ -491,10 +533,11 @@ export function RemapSection() {
               {'Source and target are the same key.'}
             </div>
           )}
-          {hotkeyCollision && (
-            <div className="text-[10px]" style={{ color: 'var(--color-recording-fg)' }}>
-              {`Also the ${hotkeyCollision} — the remap overrides it and that hotkey stops firing.`}
-            </div>
+          {fromMessage && (
+            <div className="text-[10px]" style={{ color: 'var(--color-recording-fg)' }}>{fromMessage}</div>
+          )}
+          {toMessage && (
+            <div className="text-[10px] text-text-secondary">{toMessage}</div>
           )}
           <div className="flex gap-2">
             <Button variant="secondary" size="sm" onClick={closeForm}>
