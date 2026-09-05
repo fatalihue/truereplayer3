@@ -886,6 +886,8 @@ namespace TrueReplayer
                         catch (Exception ex) { DiagnosticLog.Error("logs:openFolder failed", ex); }
                         break;
                     case "clipboard:read": _ = HandleClipboardRead(); break;
+                    case "shell:openUrl": HandleShellOpenUrl(payload); break;
+                    case "diagnostics:copy": HandleDiagnosticsCopy(); break;
                     case "hotkey:suppress": HandleHotkeySuppress(payload); break;
                     case "editor:pendingEdits": HandleEditorPendingEdits(payload); break;
                     case "hotkey:capture": HandleHotkeyCapture(payload); break;
@@ -3449,6 +3451,71 @@ namespace TrueReplayer
             actions.Clear();
             HasUnsavedChanges = false;
             mainController.UpdateButtonStates();
+        }
+
+        // Opens a URL in the default browser — the command palette's "Open Manual" (2026-09-05).
+        // Allow-listed on purpose: the frontend names the page, but only https on the project's
+        // own hosts gets through, so a confused or hostile message can never hand the shell an
+        // arbitrary target. Refusals are logged, not surfaced — there is no user action to take.
+        private static readonly string[] ShellOpenAllowedHosts = { "fatalihue.github.io", "github.com" };
+        private void HandleShellOpenUrl(JsonElement payload)
+        {
+            var url = payload.TryGetProperty("url", out var u) && u.ValueKind == JsonValueKind.String ? u.GetString() : null;
+            if (string.IsNullOrWhiteSpace(url)
+                || !Uri.TryCreate(url, UriKind.Absolute, out var uri)
+                || uri.Scheme != Uri.UriSchemeHttps
+                || !ShellOpenAllowedHosts.Contains(uri.Host, StringComparer.OrdinalIgnoreCase))
+            {
+                DiagnosticLog.Warn($"shell:openUrl refused: {url}");
+                return;
+            }
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = uri.AbsoluteUri,
+                    UseShellExecute = true,
+                });
+            }
+            catch (Exception ex) { DiagnosticLog.Error("shell:openUrl failed", ex); }
+        }
+
+        // "Copy Diagnostics" (command palette, 2026-09-05): the facts support asks for first, as
+        // one block of plain text on the clipboard. Each line is gathered defensively — a missing
+        // WebView2 runtime or a torn-down window must not turn the whole report into an exception.
+        private void HandleDiagnosticsCopy()
+        {
+            static string Safe(Func<string> read)
+            {
+                try { return read(); }
+                catch (Exception ex) { return $"? ({ex.GetType().Name})"; }
+            }
+            var lines = new List<string>
+            {
+                "TrueReplayer diagnostics",
+                $"Version: {Safe(() => UpdateService.CurrentVersion ?? System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "unknown")}",
+                $"OS: {Safe(() => System.Runtime.InteropServices.RuntimeInformation.OSDescription)} · {(Environment.Is64BitProcess ? "x64" : "x86")} process",
+                $"WebView2: {Safe(CoreWebView2Environment.GetAvailableBrowserVersionString)}",
+                $"DPI: {Safe(() => NativeMethods.GetDpiForWindowSafe(WinRT.Interop.WindowNative.GetWindowHandle(window)).ToString())}",
+                $"Mode: {(UseCursorClick ? "Clicker" : "Macro")}",
+                $"Profile Keys: {(ProfileKeyEnabled && !InputHookManager.IgnoreProfileHotkeys ? "on" : "off")}",
+                $"Key Remaps: {(RemapService.Current.Enabled ? "on" : "off")} · {RemapService.Current.Remaps.Count} entries{(RemapService.LoadFailed ? " · remaps.json unreadable (backup shown)" : "")}",
+                $"Automations: {Safe(() => UserProfile.Current.AutomationEnabled ? "on" : "off")}",
+                $"Profiles: {Safe(() => profileController.AllKnownProfileNames.Count.ToString())}",
+                $"Elevated: {Safe(() => new System.Security.Principal.WindowsPrincipal(System.Security.Principal.WindowsIdentity.GetCurrent()).IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator) ? "yes" : "no")}",
+                $"Logs: {DiagnosticLog.LogDirectory}",
+                $"Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss zzz}",
+            };
+            try
+            {
+                ClipboardService.CopyText(string.Join(Environment.NewLine, lines));
+                SendMessage("alert:show", new { message = "Diagnostics copied to the clipboard", type = "success" });
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Error("diagnostics:copy failed", ex);
+                SendMessage("alert:show", new { message = "Could not copy diagnostics" });
+            }
         }
 
         private void HandleActionsCopy()

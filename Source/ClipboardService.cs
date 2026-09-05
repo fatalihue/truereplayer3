@@ -10,6 +10,14 @@ namespace TrueReplayer.Services
 {
     public static class ClipboardService
     {
+        /// <summary>Plain text to the clipboard — the palette's "Copy Diagnostics" (2026-09-05).</summary>
+        public static void CopyText(string text)
+        {
+            var dataPackage = new Windows.ApplicationModel.DataTransfer.DataPackage();
+            dataPackage.SetText(text);
+            Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dataPackage);
+        }
+
         public static void CopyActions(ObservableCollection<ActionItem> actions)
         {
             if (actions == null || actions.Count == 0) return;

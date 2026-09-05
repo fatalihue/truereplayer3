@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Search, RotateCcw, Download, Upload, RefreshCw,
-  ClipboardPaste, Files, Replace, Table2,
-  Combine, Split, ScrollText, Activity, ListChecks,
+  Search, RotateCcw, RefreshCw,
+  ClipboardPaste, ClipboardCopy, Files, Replace, Table2,
+  Combine, Split, ScrollText, Activity, ListChecks, BookOpen,
 } from 'lucide-react';
 import { useAppState } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
@@ -46,8 +46,13 @@ interface CommandGroup {
 // (Record/Replay/Mode), the profile CRUD entries and the view-chrome toggles followed for
 // the same one. Before adding a command, find its UI control — if it has a discoverable
 // one, it does not belong here.
+// The web manual is the app's only documentation and, until 2026-09-05, had no door anywhere in
+// the app (window, Settings or tray). The palette is the right door: a capability with no UI
+// control at all. The URL is fixed here and allow-listed on the C# side (shell:openUrl).
+const MANUAL_URL = 'https://fatalihue.github.io/TrueReplayer-releases/manual.html';
+
 export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
-  const { profiles, activeProfile, settings, actions } = useAppState();
+  const { activeProfile, settings, actions } = useAppState();
   const { send } = useBridge();
   const selectionRef = useSelectionRef();
   const [query, setQuery] = useState('');
@@ -132,7 +137,10 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       },
       {
         // New / Save / Load / New Folder all have persistent buttons (ActionBar and the
-        // ProfilePanel header), so only the routes with no visible control remain.
+        // ProfilePanel header), so only the routes with no visible control remain. Import
+        // Profiles and Export All Profiles left on 2026-09-05: the ProfilePanel header gained
+        // ONE button (ArrowDownUp) that opens the Export dialog — multi-select, "include
+        // organisation" toggle, Import link in its footer — so both had a visible door.
         id: 'profiles',
         title: 'PROFILES',
         items: [
@@ -151,29 +159,11 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             disabledHint: 'Select a profile first',
             onAction: () => { if (activeProfile) { send({ type: 'profile:duplicate', payload: { name: activeProfile } }); onClose(); } },
           },
-          {
-            // Mirrors the ProfilePanel toolbar's Import button (Download glyph); the
-            // Export dialog's footer keeps a ghost cross-link as the third way in.
-            id: 'importprofiles', label: 'Import Profiles',
-            // 'trprofile' is the literal extension of the file the user just received —
-            // the term they will actually type when the button name doesn't come to mind.
-            keywords: ['restore', 'load file', 'json', 'trprofile', 'share'],
-            icon: <Download size={14} className="text-text-secondary" />,
-            onAction: () => { send({ type: 'profile:import', payload: {} }); onClose(); },
-          },
-          {
-            // Distinct from the header's Export button, which opens a multi-select dialog:
-            // this is the one-shot "everything, organisation included" export.
-            id: 'exportall', label: 'Export All Profiles',
-            keywords: ['backup', 'save all', 'json', 'trprofile', 'send', 'share'],
-            icon: <Upload size={14} className="text-text-secondary" />,
-            onAction: () => { send({ type: 'profile:export', payload: { names: profiles.map(p => p.name), includeOrganization: true } }); onClose(); },
-          },
         ],
       },
       {
         // Diagnostics — none of these have a UI control anywhere in the app.
-        id: 'view',
+        id: 'diagnostics',
         title: 'DIAGNOSTICS',
         items: [
           {
@@ -188,7 +178,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             // Last-run step timeline. Palette-only for the same reason as Live Variables: it is
             // a diagnostic you reach for AFTER something went wrong, so it earns no permanent
             // toolbar real estate.
-            id: 'runreport', label: 'Run report',
+            id: 'runreport', label: 'Run Report',
             keywords: ['debug', 'trace', 'timeline', 'selector', 'browser', 'failed', 'why', 'relatorio'],
             icon: <ListChecks size={14} className="text-text-secondary" />,
             onAction: () => { onClose(); window.dispatchEvent(new CustomEvent('cmd:runreport')); },
@@ -209,13 +199,34 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             icon: <ScrollText size={14} className="text-text-secondary" />,
             onAction: () => { send({ type: 'logs:openFolder', payload: {} }); onClose(); },
           },
+          {
+            // One block of text with what support asks for first (version, OS, WebView2, DPI,
+            // mode, Profile Keys / remaps / automation state, profile count, elevation, log
+            // folder). The backend gathers it and confirms with a toast.
+            id: 'copydiagnostics', label: 'Copy Diagnostics',
+            keywords: ['support', 'version', 'bug report', 'system info', 'about'],
+            icon: <ClipboardCopy size={14} className="text-text-secondary" />,
+            onAction: () => { send({ type: 'diagnostics:copy', payload: {} }); onClose(); },
+          },
+        ],
+      },
+      {
+        id: 'help',
+        title: 'HELP',
+        items: [
+          {
+            id: 'openmanual', label: 'Open Manual',
+            keywords: ['help', 'docs', 'documentation', 'guide', 'manual', 'ajuda', 'guia'],
+            icon: <BookOpen size={14} className="text-text-secondary" />,
+            onAction: () => { send({ type: 'shell:openUrl', payload: { url: MANUAL_URL } }); onClose(); },
+          },
         ],
       },
     ];
     // Narrow deps to the exact settings field read above so unrelated settings changes
     // (hotkeys, loop config, movement knobs) don't rebuild every command group.
   }, [
-    profiles, activeProfile, send, onClose, computeInsertIndex,
+    activeProfile, send, onClose, computeInsertIndex,
     settings.useCursorClick,
   ]);
 
@@ -292,10 +303,12 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
           <span className="kbd">Esc</span>
         </div>
 
-        {/* Command list — tall enough to show the whole (deliberately small) command set
-            without scrolling; the vh cap keeps it on-screen when the window is short, where
-            overflow-y still kicks in. Bump the px value if the command count ever grows. */}
-        <div className="max-h-[min(480px,72vh)] overflow-y-auto py-1.5">
+        {/* Command list — sized by its content, so the whole (deliberately small) command set
+            is always on screen without scrolling. The old px cap (480) was outgrown the moment
+            Run Report arrived: 14 rows came to 539px and the last two sat under the footer with
+            no scrollbar to hint at them, at every window size. 85vh is a safety net only — the
+            window's minimum height (780 DIP) already fits the full list with room. */}
+        <div className="max-h-[85vh] overflow-y-auto py-1.5">
           {filteredGroups.length === 0 && (
             <div className="px-4 py-6 text-center text-xs text-text-tertiary">
               No results found

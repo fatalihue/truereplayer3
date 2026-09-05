@@ -1176,6 +1176,12 @@ export type OutgoingMessage =
   | { type: 'update:check'; payload: Record<string, never> }
   | { type: 'update:apply'; payload: Record<string, never> }
   | { type: 'logs:openFolder'; payload: Record<string, never> }
+  // Open an https URL in the default browser. The backend allow-lists the host (the project's
+  // own pages only), so this is a door to the manual, not a general launcher.
+  | { type: 'shell:openUrl'; payload: { url: string } }
+  // "Copy Diagnostics" — the backend gathers version / OS / WebView2 / state and puts one block
+  // of text on the clipboard, then confirms with alert:show.
+  | { type: 'diagnostics:copy'; payload: Record<string, never> }
   | { type: 'actions:addBrowserAction'; payload: { actionType: string; selector: string; browserText?: string; newTab?: boolean; insertIndex?: number } }
   // No browser:toggleRecording: the extension's recording mode is driven from the app side
   // (the recording status change and the Browser Actions setting both call SetRecordingMode),
