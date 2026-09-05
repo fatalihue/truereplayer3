@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, useImperativeHandle, lazy, Suspense, type Ref } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, RefreshCw, Crosshair, Copy, ClipboardPaste, ShieldCheck, ShieldAlert, ShieldQuestion, PlayCircle, Pipette, Check, X, Frame, FolderOpen, Maximize } from 'lucide-react';
 import { ActionIcon } from './ActionTable';
@@ -6,6 +6,7 @@ import { useBridge } from '../bridge/BridgeContext';
 import { useAppState } from '../state/AppStateContext';
 import { carriesConditionProbe, hasConditionFields } from '../utils/conditionalBlocks';
 import { useTt } from '../state/LanguageContext';
+import { useToast } from '../state/ToastContext';
 import type { SelectorAlternative, BrowserTestResult } from '../bridge/messageTypes';
 import { Checkbox } from './Checkbox';
 import { NumberInput } from './common/NumberInput';
@@ -45,6 +46,19 @@ interface SheetPanelProps {
    *  via onSeedConsumed so a later open never replays a stale point. */
   seedCoords?: { x: number; y: number } | null;
   onSeedConsumed?: () => void;
+  /** Imperative handle for App's row-switch guard (see SheetPanelHandle). React 19: a plain prop. */
+  ref?: Ref<SheetPanelHandle>;
+}
+
+/**
+ * What App may ask the sheet before moving it to another row. `tryLeave` returns true when the
+ * move may go ahead — the editor is clean, or the user already saw the warning and repeated the
+ * gesture within the guard window (that repeat is the discard, and it toasts) — and false when
+ * it just armed the footer warning instead. Mirrors the Esc guard exactly, so every way out of
+ * a dirty editor takes the same two steps.
+ */
+export interface SheetPanelHandle {
+  tryLeave: (kind: 'switch') => boolean;
 }
 
 // Action types organised by FAMILY — the picker only offers conversions that stay within
@@ -226,7 +240,7 @@ const TIER_META: Record<'S' | 'A' | 'B' | 'C', { color: string; label: string; l
 };
 
 
-export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, seedCoords, onSeedConsumed }: SheetPanelProps) {
+export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, seedCoords, onSeedConsumed, ref }: SheetPanelProps) {
   const { actions, profiles, activeProfile } = useAppState();
   const { send, subscribe } = useBridge();
   const tt = useTt();
@@ -1720,15 +1734,53 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     (e.target as HTMLInputElement).blur();
   }, [armKeyCaptureTimer, disarmKeyCaptureTimer]);
 
-  // Dirty-aware Esc: a reflexive Esc must not silently discard unsaved edits (the panel
-  // batches edits into local state and only persists them on Save Changes). escArmed drives
-  // a footer warning; the refs let the document listener read the latest values without
-  // re-attaching on every keystroke. Cancel stays the EXPLICIT discard (no arm).
-  const [escArmed, setEscArmed] = useState(false);
-  const escArmedRef = useRef(false);
+  // Dirty-aware exits: a reflexive Esc — or a click on another row's pencil — must not silently
+  // discard unsaved edits (the panel batches edits into local state and only persists them on
+  // Save). The first attempt ARMS a footer warning that names the gesture ("Esc again discards"
+  // / "Click again to discard"); the same gesture repeated inside the window is the discard,
+  // and it toasts so the user knows the second press did what the first one promised. Each
+  // gesture arms its own kind — an Esc after a refused row switch re-arms as Esc rather than
+  // counting as the repeat. The refs let the document listener and App's tryLeave read the
+  // latest values without re-attaching on every keystroke. Cancel / Back stay the EXPLICIT
+  // one-click discard (no arm): they just say so on their labels while there is something to lose.
+  type ArmedBy = 'esc' | 'switch' | null;
+  const [armedBy, setArmedBy] = useState<ArmedBy>(null);
+  const armedByRef = useRef<ArmedBy>(null);
   const escArmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasUnsavedRef = useRef(false);
   hasUnsavedRef.current = hasUnsavedChanges;
+  // 4 s, up from 2.5: time to read the warning and decide. Shorter read as "I pressed Esc twice
+  // and it did not close" once the second press landed just outside the window.
+  const GUARD_WINDOW_MS = 4000;
+  const armGuard = useCallback((kind: Exclude<ArmedBy, null>) => {
+    armedByRef.current = kind;
+    setArmedBy(kind);
+    if (escArmTimerRef.current) clearTimeout(escArmTimerRef.current);
+    escArmTimerRef.current = setTimeout(() => {
+      armedByRef.current = null;
+      setArmedBy(null);
+    }, GUARD_WINDOW_MS);
+  }, []);
+  const { showToast } = useToast();
+  // Only when there WAS something to lose — a clean Cancel says nothing.
+  const noteDiscard = useCallback(() => {
+    if (hasUnsavedRef.current) showToast(tt('Changes discarded', 'Alterações descartadas'), 'info');
+  }, [showToast, tt]);
+  const discardAndClose = useCallback(() => { noteDiscard(); onClose(); }, [noteDiscard, onClose]);
+  // Ctrl+S from the document listener below: refs so the listener never re-attaches on a field
+  // edit (handleSave's identity changes with every keystroke) and so it can read regexError,
+  // which is declared further down the component body.
+  const handleSaveRef = useRef<() => void>(() => {});
+  const saveBlockedRef = useRef(false);
+
+  useImperativeHandle(ref, () => ({
+    tryLeave: (kind) => {
+      if (!hasUnsavedRef.current) return true;
+      if (armedByRef.current === kind) { noteDiscard(); return true; }
+      armGuard(kind);
+      return false;
+    },
+  }), [armGuard, noteDiscard]);
 
   // Declare those same pending edits to the backend, for automations only.
   //
@@ -1781,6 +1833,14 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   useEffect(() => {
     if (actionIndex == null) return;
     const onDocKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+S saves the ROW while the editor is open (same gate as the Save button). Stopped
+      // here so the window-level Ctrl+S — which saves the PROFILE — does not also fire.
+      if (e.ctrlKey && !e.altKey && (e.key === 's' || e.key === 'S') && !e.defaultPrevented) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!saveBlockedRef.current) handleSaveRef.current();
+        return;
+      }
       if (e.key !== 'Escape' || e.defaultPrevented) return;
       // An active element pick takes priority: Esc cancels the pick (tear down the extension
       // overlay + drop our in-flight state) instead of closing the panel. The extension's own
@@ -1794,24 +1854,19 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
         return;
       }
       // Dirty guard rung (below capture/pick, above close): the FIRST Esc on a panel with
-      // unsaved edits arms a 2.5s footer warning instead of closing; a SECOND Esc within the
-      // window discards + closes. A clean panel closes on the first Esc, as before.
-      if (hasUnsavedRef.current && !escArmedRef.current) {
+      // unsaved edits arms the footer warning instead of closing; a SECOND Esc within the
+      // window discards (with a toast) + closes. A clean panel closes on the first Esc, as before.
+      if (hasUnsavedRef.current && armedByRef.current !== 'esc') {
         e.preventDefault();
-        escArmedRef.current = true;
-        setEscArmed(true);
-        if (escArmTimerRef.current) clearTimeout(escArmTimerRef.current);
-        escArmTimerRef.current = setTimeout(() => {
-          escArmedRef.current = false;
-          setEscArmed(false);
-        }, 2500);
+        armGuard('esc');
         return;
       }
+      noteDiscard();
       onClose();
     };
     document.addEventListener('keydown', onDocKeyDown);
     return () => document.removeEventListener('keydown', onDocKeyDown);
-  }, [actionIndex, onClose, send]);
+  }, [actionIndex, onClose, send, armGuard, noteDiscard]);
 
   // Reset the capture state whenever the panel switches to a different action (including
   // closing — actionIndex going null). Without this, focusing the field, closing the
@@ -1828,10 +1883,10 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     setKeyFieldFocused(false);
     setPauseHotkeyFocused(false);
     disarmKeyCaptureTimer();
-    // Disarm the dirty-Esc warning when switching action (a fresh row starts clean, and a
-    // stale "press Esc again" armed against the previous row must not carry over).
-    escArmedRef.current = false;
-    setEscArmed(false);
+    // Disarm the dirty-exit warning when switching action (a fresh row starts clean, and a
+    // stale "Esc again" armed against the previous row must not carry over).
+    armedByRef.current = null;
+    setArmedBy(null);
     if (escArmTimerRef.current) { clearTimeout(escArmTimerRef.current); escArmTimerRef.current = null; }
     setPickPositionRequestId(null);
     clearTestTimeout();
@@ -2345,6 +2400,10 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       ? 'var(--color-action-loop-fg, var(--color-action-if-fg))'
     : undefined;
 
+  // Latest save path + gate for the document-level Ctrl+S (see the listener above).
+  handleSaveRef.current = handleSave;
+  saveBlockedRef.current = !!regexError;
+
   return createPortal(
     <>
       {/* Backdrop — no click-to-close, user must Save/Cancel/arrow */}
@@ -2376,7 +2435,15 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
             32 px tile and the number on a second line — 17 px taller than every other header
             in the window (the main-window bands closed at 47 px on 2026-09-04). */}
         <div className="flex items-center gap-2.5 h-[52px] px-3 border-b border-border-subtle shrink-0">
-          <button onClick={onClose} className={iconButtonClass('sm')} aria-label="Back">
+          {/* Back is the explicit one-click way out, like Cancel; while there is something to lose
+              its tip says so, so the arrow never reads as a harmless "go back". */}
+          <button
+            onClick={discardAndClose}
+            className={iconButtonClass('sm')}
+            aria-label={hasUnsavedChanges ? 'Discard changes' : 'Back'}
+            data-tip={hasUnsavedChanges ? tt('Discard changes', 'Descartar alterações') : undefined}
+            data-tip-pos="right"
+          >
             <ArrowLeft size={16} />
           </button>
           {/* Action icon — reuses the grid's canonical ActionIcon so the drawer reads the
@@ -4662,19 +4729,26 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
 
         {/* Footer */}
         <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-border-subtle shrink-0">
-          {/* Dirty-Esc warning — opacity toggle (never reflows the footer). Kept SHORT so it
-              shows in full beside the fixed-width buttons; the context (a first Esc on a dirty
-              panel just fired) makes the terse "Esc again to discard" clear. min-w-0 is the
-              safety net; the buttons stay shrink-0 / nowrap so "Save Changes" never wraps. */}
+          {/* Dirty state, in the span the footer already reserves (~111 px beside the two 84 px
+              buttons; opacity toggle, never reflows). Three readings, two channels each (text +
+              ink): at rest with edits pending, "Unsaved changes" in tertiary; armed by Esc,
+              "Esc again discards" in warning ink; armed by a click on another row, "Click again
+              to discard". Every string is measured to fit the span unwrapped — the buttons stay
+              shrink-0 / nowrap so "Save" never wraps. */}
           <span
-            className="flex-1 min-w-0 truncate text-[11px] text-warning-ink transition-opacity duration-150 pointer-events-none"
-            style={{ opacity: escArmed ? 1 : 0 }}
+            className={`flex-1 min-w-0 truncate text-[11px] transition-opacity duration-150 pointer-events-none ${armedBy ? 'text-warning-ink' : 'text-text-tertiary'}`}
+            style={{ opacity: armedBy || hasUnsavedChanges ? 1 : 0 }}
           >
-            {'Esc discards'}
+            {armedBy === 'esc' ? 'Esc again discards' : armedBy === 'switch' ? 'Click again to discard' : 'Unsaved changes'}
           </span>
           <div className="flex items-center gap-2 shrink-0">
-            <Button variant="secondary" size="md" className="min-w-[84px]" onClick={onClose}>Cancel</Button>
-            <Button variant="primary" size="md" className="min-w-[84px]" onClick={handleSave} disabled={!!regexError}>
+            {/* Cancel is the explicit one-click discard; while there is something to lose its label
+                says exactly that (same 84 px minimum, so nothing moves). */}
+            <Button variant="secondary" size="md" className="min-w-[84px]" onClick={discardAndClose}>
+              {hasUnsavedChanges ? 'Discard' : 'Cancel'}
+            </Button>
+            <Button variant="primary" size="md" className="min-w-[84px]" onClick={handleSave} disabled={!!regexError}
+              data-tip={tt('Save · Ctrl+S', 'Salvar · Ctrl+S')}>
               <Check size={14} />
               Save
             </Button>

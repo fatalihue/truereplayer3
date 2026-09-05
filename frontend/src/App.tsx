@@ -24,7 +24,7 @@ import { LiveVariablesHost } from './components/LiveVariablesPanel';
 import { ExtensionUpdateBanner } from './components/ExtensionUpdateBanner';
 import { ClickerDashboard } from './components/ClickerDashboard';
 import { CommandPalette } from './components/CommandPalette';
-import { SheetPanel } from './components/SheetPanel';
+import { SheetPanel, type SheetPanelHandle } from './components/SheetPanel';
 import { useCommandToggle } from './hooks/useCommandToggle';
 
 // Deferred: these four are already mounted conditionally, but a STATIC import still puts them in
@@ -267,7 +267,20 @@ function AppShell() {
     setCmdPaletteOpen(true);
   }, []);
 
+  // Row-switch guard (2026-09-05, S4): moving the editor to ANOTHER row while it holds unsaved
+  // edits used to re-seed the fields and drop the edits in silence — the only exit the sheet's
+  // Esc guard did not cover. The sheet owns the decision (tryLeave): clean → go; dirty and not
+  // armed → it arms its footer warning and we stay; dirty and armed → it discards and we go.
+  // Refs mirror the two states so this callback stays identity-stable for ActionTable.
+  const sheetRef = useRef<SheetPanelHandle>(null);
+  const sheetIndexRef = useRef<number | null>(null);
+  sheetIndexRef.current = sheetActionIndex;
+  const sheetLeavingRef = useRef(false);
+  sheetLeavingRef.current = sheetLeaving;
   const handleOpenSheet = useCallback((index: number) => {
+    const open = sheetIndexRef.current;
+    if (open !== null && open !== index && !sheetLeavingRef.current
+        && sheetRef.current && !sheetRef.current.tryLeave('switch')) return;
     setSheetLeaving(false);
     setSheetActionIndex(index);
   }, []);
@@ -421,6 +434,7 @@ function AppShell() {
         onClose={() => setCmdPaletteOpen(false)}
       />
       <SheetPanel
+        ref={sheetRef}
         actionIndex={sheetActionIndex}
         onClose={closeSheet}
         leaving={sheetLeaving}
