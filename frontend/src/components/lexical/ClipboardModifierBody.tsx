@@ -277,7 +277,9 @@ export function ClipboardModifierBody({
             }
           />
         </RadioGroup>
-        <div className="grid grid-flow-col grid-rows-2 gap-x-3 mt-1">
+        {/* Row-major: Sort, Dedupe / Reverse. The column-major grid this used to be put Reverse
+            beside Sort and Dedupe under it — read left to right it was a zigzag. */}
+        <div className="grid grid-cols-2 gap-x-3 mt-1">
           <CheckRow
             checked={state.sort}
             onChange={() => setState((s) => ({ ...s, sort: !s.sort }))}
@@ -446,7 +448,7 @@ export function ClipboardModifierBody({
       {/* Character-class filters over the value at THIS point of the chain — the builder emits
           them after the slice/limit steps and before Case. */}
       <StepSection n={sn(8)} label="Clean up" active={state.noAccents || state.digitsOnly}>
-        <div className="grid grid-flow-col grid-rows-1 gap-x-3">
+        <div className="grid grid-cols-2 gap-x-3">
           <CheckRow
             checked={state.noAccents}
             onChange={() => setState((s) => ({ ...s, noAccents: !s.noAccents }))}

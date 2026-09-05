@@ -267,19 +267,15 @@ export function TokenChipPopover({
         {kind === 'static' && <StaticInfo token={token} />}
       </div>
 
-      <Footer kind={kind} onDelete={onDelete} />
+      <Footer onDelete={onDelete} />
     </div>,
     document.body,
   );
 }
 
-function Footer({
-  kind,
-  onDelete,
-}: {
-  kind: TokenKind;
-  onDelete: () => void;
-}) {
+// Actions only — no notes. "No parameters" used to sit here for the static tokens, next to a body
+// that already said "No editable parameters."; the body keeps the sentence.
+function Footer({ onDelete }: { onDelete: () => void }) {
   return (
     <div className="flex items-center justify-between px-3.5 py-2 bg-bg-card border-t border-border-subtle shrink-0">
       <button
@@ -290,9 +286,6 @@ function Footer({
         <Trash2 size={12} />
         Delete token
       </button>
-      {kind === 'static' && (
-        <span className="text-[10px] text-text-tertiary italic">No parameters</span>
-      )}
     </div>
   );
 }
@@ -429,8 +422,10 @@ function RandomEditor({ token, onChange }: { token: string; onChange: (t: string
         <span className="text-[11px] text-text-tertiary">to</span>
         <NumInput value={max} onChange={(v) => update(min, v)} min={0} width={86} thousands />
       </div>
+      {/* The header already says "fresh each run"; the bounds are what the control needs
+          explained — a plain range reads as exclusive at the top to many people. */}
       <div className="text-[10px] text-text-tertiary mt-1">
-        Inclusive; re-rolled every run.
+        Inclusive.
       </div>
     </Section>
   );
@@ -476,10 +471,12 @@ function WinClipEditor({ token, onChange }: { token: string; onChange: (t: strin
           <NumInput value={index} onChange={update} min={1} width={70} disabled={state.unmodeled} />
           <span className="text-[11px] text-text-tertiary">1 = most recent</span>
         </div>
-        {/* Read-only is said ONCE, by the body's Callout below — this line keeps describing the
-            token in that state instead of repeating the warning. */}
+        {/* The header already says what the token is (Win+V history, 1 = most recent, must be
+            enabled); the one fact the header does not carry — and the one the user must know
+            before pasting an arbitrary history item — is this. Read-only is said once, by the
+            body's Callout below. */}
         <div className="text-[10px] text-text-tertiary mt-1 leading-relaxed">
-          {`Item ${index} of the Win+V history, newest first. Needs history on; may hold anything any app copied — including passwords.`}
+          May hold anything any app copied — passwords too.
         </div>
       </Section>
       <ClipboardModifierBody
@@ -559,11 +556,8 @@ function NameEditor({
             }`}
           />
         </div>
-        <div className="text-[10px] text-text-tertiary mt-1">
-          {tokenName === 'var'
-            ? 'Value stored by Set Variable under this name.'
-            : 'What Copy to Slot or the capture hotkey stored in this slot.'}
-        </div>
+        {/* No hint: the header's description ("Value stored by a Set Variable action" /
+            "Selection captured by Copy to Slot or the capture hotkey") already says it. */}
       </Section>
       <ClipboardModifierBody
         state={state}
@@ -669,11 +663,8 @@ function RowColEditor({ token, onChange, head = 'row' }: { token: string; onChan
             }`}
           />
         </div>
-        <div className="text-[10px] text-text-tertiary mt-1">
-          {isNext
-            ? 'Each use takes the next row (1st → row 1, 2nd → row 2…). Resets each run.'
-            : 'Cell of this column in the current data row.'}
-        </div>
+        {/* No hint: the header's description ("Data table column of the current row" / "Each use
+            pulls the NEXT data row. Resets each run.") already says it. */}
       </Section>
       <ClipboardModifierBody
         state={state}
@@ -736,8 +727,10 @@ function InputEditor({ token, onChange }: { token: string; onChange: (t: string)
             className="h-7 w-full px-2 text-xs bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid placeholder:text-text-disabled"
           />
         </div>
+        {/* "Replay pauses and asks" is the header's line; what the control needs is where the
+            answer goes afterwards. */}
         <div className="text-[10px] text-text-tertiary mt-1">
-          Replay pauses and asks; the answer is also readable as {'{var:label}'}.
+          Answer also readable as {'{var:label}'}.
         </div>
       </Section>
       <Section label="Menu options (optional)">
@@ -791,8 +784,10 @@ function PickEditor({ token, onChange }: { token: string; onChange: (t: string) 
           className="w-full px-2 py-1.5 text-xs bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid placeholder:text-text-disabled resize-none font-mono leading-relaxed"
         />
       </div>
+      {/* The header says "types ONE of the options, drawn each run"; the instruction is all that
+          is left for the control. */}
       <div className="text-[10px] text-text-tertiary mt-1">
-        One per line — one is picked at random per use.
+        One per line.
       </div>
     </Section>
   );
@@ -803,25 +798,25 @@ function p2(n: number): string {
   return n < 10 ? '0' + n : String(n);
 }
 
-// Live resolved value / description for tokens without editable parameters.
-// Date/time formats mirror the backend's ResolveDateTimeTokens exactly.
-function staticTokenInfo(token: string): { value?: string; note?: string } {
+// Live resolved value for tokens without editable parameters. Date/time formats mirror the
+// backend's ResolveDateTimeTokens exactly. {counter} and {row} used to carry a note here that
+// restated the header's description word for word; the header is the one place that says what a
+// token is, so the body of a parameterless token only says that there is nothing to edit.
+function staticTokenValue(token: string): string | null {
   const name = token.slice(1, -1).split(':')[0].toLowerCase();
   const now = new Date();
   const date = `${p2(now.getDate())}/${p2(now.getMonth() + 1)}/${now.getFullYear()}`;
   const time = `${p2(now.getHours())}:${p2(now.getMinutes())}:${p2(now.getSeconds())}`;
   switch (name) {
-    case 'date': return { value: date };
-    case 'time': return { value: time };
-    case 'datetime': return { value: `${date} - ${time}` };
-    case 'counter': return { note: 'Current loop iteration (1, 2, 3…) at replay.' };
-    case 'row': return { note: 'This action’s row number at replay.' };
-    default: return {};
+    case 'date': return date;
+    case 'time': return time;
+    case 'datetime': return `${date} - ${time}`;
+    default: return null;
   }
 }
 
 function StaticInfo({ token }: { token: string }) {
-  const { value, note } = staticTokenInfo(token);
+  const value = staticTokenValue(token);
   if (value) {
     return (
       // The same Section shell every parameter editor uses — this was the one label with its own
@@ -837,7 +832,7 @@ function StaticInfo({ token }: { token: string }) {
   }
   return (
     <div className="px-3.5 py-3 text-[11px] text-text-tertiary">
-      {note ?? 'No editable parameters.'}
+      No editable parameters.
     </div>
   );
 }
