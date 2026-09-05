@@ -1568,7 +1568,12 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
             <Section title="Key Remaps">
               <SettingRow
                 label="Enable Key Remaps"
-                tooltip={tt('Also in the tray menu', 'Também no menu da bandeja')}
+                // The layer also pauses while recording and while Profile Keys are off (the hook's
+                // IgnoreProfileHotkeys gate lets the FROM key through raw so a pairing never ends
+                // half-way). Deliberate — Profile Keys off is the app's "type normally" mode — and
+                // said here because the manual used to call the layer "independent of profiles".
+                tooltip={tt('Also in the tray menu. Pauses while recording and while Profile Keys are off',
+                            'Também no menu da bandeja. Pausa durante a gravação e com Profile Keys desligadas')}
               >
                 <CompactToggle
                   isOn={settings.remaps.enabled}
