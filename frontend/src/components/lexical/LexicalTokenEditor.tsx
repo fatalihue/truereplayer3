@@ -163,8 +163,10 @@ interface LexicalTokenEditorProps {
   placeholder?: React.ReactNode;
   /**
    * Typing `{` opens the token list (TokenAutocompletePlugin) — the keyboard door to the Insert
-   * palette. Off by default: the Insert Text dialog turns it on; the sheet keeps its own Esc
-   * routing and has not been walked for it yet.
+   * palette. Opt-in per surface: the Insert Text dialog and both sheet editors (Text to Type,
+   * SendText payload) pass it. The sheet's document-level Esc handler is bubble-phase and honours
+   * defaultPrevented, so the plugin's capture-phase Esc closes the list without arming the
+   * sheet's discard guard.
    */
   tokenAutocomplete?: boolean;
   /** When provided, clicking a {clipboard...} chip routes HERE instead of the
@@ -759,6 +761,30 @@ function TokenAutocompletePlugin() {
     if (rect) setCaret(rectToLayout(rect, uiZoom()));
     setMatch((prev) => (prev && prev.query === found.query && prev.nodeKey === found.nodeKey && prev.end === found.end ? prev : found));
   }), [editor]);
+
+  // The sheet scrolls under an open list, and the window can resize: re-read the caret and follow
+  // it, one placement per frame — the chip popover's rule, with a capture-phase scroll listener so
+  // a scroll in ANY ancestor counts.
+  useEffect(() => {
+    if (!match) return;
+    let raf: number | null = null;
+    const onReflow = () => {
+      if (raf !== null) return;
+      raf = requestAnimationFrame(() => {
+        raf = null;
+        const domSel = window.getSelection();
+        const raw = domSel && domSel.rangeCount > 0 ? domSel.getRangeAt(0).getBoundingClientRect() : null;
+        if (raw && (raw.width > 0 || raw.height > 0)) setCaret(rectToLayout(raw, uiZoom()));
+      });
+    };
+    window.addEventListener('resize', onReflow);
+    window.addEventListener('scroll', onReflow, true);
+    return () => {
+      if (raf !== null) cancelAnimationFrame(raf);
+      window.removeEventListener('resize', onReflow);
+      window.removeEventListener('scroll', onReflow, true);
+    };
+  }, [match]);
 
   const options = useMemo(() => (match ? filterCatalog(match.query) : []), [match]);
   const open = match !== null && options.length > 0;

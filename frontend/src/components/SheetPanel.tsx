@@ -3790,6 +3790,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                     initialText={browserText}
                     onChange={setBrowserText}
                     apiRef={browserTextEditorRef}
+                    tokenAutocomplete
                   />
                 </Suspense>
               </div>
@@ -4098,6 +4099,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                       onChange={setKey}
                       apiRef={sendTextEditorRef}
                       density="sheet"
+                      tokenAutocomplete
                     />
                   </Suspense>
                 </div>
