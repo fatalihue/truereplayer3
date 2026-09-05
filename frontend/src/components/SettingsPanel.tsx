@@ -1162,14 +1162,34 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
   // panel when Clicker mode is on, like the expanded panel does), with two deliberate
   // exceptions: the Keys tab's small Clicker hotkey pair has no entry of its own (it
   // sits right under Hotkeys), and Updates lost its entry along with its section (it's
-  // the App-tab footer now). Quiet reorg: icons are MONOCHROME (text-tertiary, hover →
-  // primary via CSS) — the only surviving hue is the semantic Clicker purple (`color`).
+  // the App-tab footer now). Quiet reorg: icons are MONOCHROME (text-icon — the same rest
+  // ink IconButton and the profile rail use, so the two rails sit side by side at one
+  // intensity; hover → primary via CSS) — the only surviving hue is the semantic Clicker
+  // purple (`color`).
   type RailEntry = { tab: 'profile' | 'keys' | 'app'; title: string; icon: React.ElementType; color?: string; dot?: string; tip?: string };
-  // The rail's only live state, each cue two-channel (tint or glyph + dot) per the
-  // toggle doctrine — color alone dies on ~half the themes. Everything else stays
-  // monochrome navigation.
+  // The rail's live states, each cue two-channel (tint or glyph + dot) per the toggle
+  // doctrine — color alone dies on ~half the themes. Everything else stays monochrome
+  // navigation.
   const anyHotkeyConflict = profiles.some(p => p.hotkeyConflict);
   const anyTriggerArmed = settings.automationEnabled && profiles.some(p => p.triggerArmed);
+  // Profile Keys OFF (the Pause hotkey): the tray goes red and every profile hotkey,
+  // hotstring and remap is silent — the state behind most "my hotkey does not fire"
+  // reports — so the Hotkeys icon carries it as tint + dot. A contested hotkey shares the
+  // dot (same hue, same family of trouble); the tip names whichever apply.
+  const profileKeysOff = !settings.profileKeyEnabled;
+  const hotkeysCue: Partial<RailEntry> = profileKeysOff || anyHotkeyConflict
+    ? {
+        ...(profileKeysOff ? { color: 'var(--color-recording)' } : {}),
+        dot: 'var(--color-recording)',
+        tip: ['Hotkeys',
+          profileKeysOff ? tt('Profile Keys off', 'Profile Keys desligadas') : null,
+          anyHotkeyConflict ? tt('hotkey conflict', 'conflito de hotkey') : null,
+        ].filter(Boolean).join(' · '),
+      }
+    : {};
+  // Key Remaps live = master on AND ≥1 enabled entry — the same rule the armed-automation
+  // dot follows: a layer that is actually doing something gets the dot, a switch alone does not.
+  const activeRemaps = settings.remaps.enabled ? settings.remaps.entries.filter(e => e.enabled).length : 0;
   const railProfile: RailEntry[] =
     settings.useCursorClick
       /* Three entries, matching the three Sections — and matching macro mode's three, so a
@@ -1192,9 +1212,9 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
   const railKeys: RailEntry[] = [
     // Recording-red dot when any profile's hotkey is contested — the only warning
     // the expanded list shows (kbd-conflict chip) that used to vanish collapsed.
-    { tab: 'keys', title: 'Hotkeys', icon: Zap,
-      ...(anyHotkeyConflict ? { dot: 'var(--color-recording)', tip: `Hotkeys · ${tt('hotkey conflict', 'conflito de hotkey')}` } : {}) },
-    { tab: 'keys', title: 'Key Remaps', icon: ArrowLeftRight },
+    { tab: 'keys', title: 'Hotkeys', icon: Zap, ...hotkeysCue },
+    { tab: 'keys', title: 'Key Remaps', icon: ArrowLeftRight,
+      ...(activeRemaps > 0 ? { dot: 'var(--color-accent)', tip: `Key Remaps · ${tt(`${activeRemaps} active`, `${activeRemaps} ativo${activeRemaps === 1 ? '' : 's'}`)}` } : {}) },
   ];
   const railApp: RailEntry[] = [
     { tab: 'app', title: 'Window', icon: Monitor },
@@ -1220,6 +1240,8 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
           <button
             onClick={onToggleCollapse}
             className={iconButtonClass('md')}
+            data-tip={tt('Expand panel', 'Expandir painel')}
+            data-tip-pos="left"
           >
             <ChevronsLeft size={14} />
           </button>
@@ -1240,7 +1262,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                 >
                   <s.icon
                     size={15}
-                    className={s.color ? undefined : 'text-text-tertiary group-hover:text-text-primary transition-colors'}
+                    className={s.color ? undefined : 'text-text-icon group-hover:text-text-primary transition-colors'}
                     style={s.color ? { color: s.color } : undefined}
                   />
                   {s.dot && (
@@ -1286,6 +1308,8 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
           <button
             onClick={onToggleCollapse}
             className={iconButtonClass('md')}
+            data-tip={tt('Collapse panel', 'Colapsar painel')}
+            data-tip-pos="left"
           >
             <ChevronsRight size={14} />
           </button>

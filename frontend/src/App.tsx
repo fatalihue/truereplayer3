@@ -309,9 +309,13 @@ function AppShell() {
     });
   }, []);
 
-  // Command palette triggers — sidebar toggle is in App state, so listen here.
-  // Clears the auto-collapse flag like the header button does: a palette toggle
-  // is just as manual, and the responsive logic must not fight it.
+  // cmd:togglesidebar — a decoupled extension point, NOT dead code. Nothing dispatches it today:
+  // the palette entry was cut in the 2026-07-18 scope audit (owner's rule: what a visible
+  // control already does stays out of the palette, and both panels have a collapse button),
+  // and the listener was kept so restoring the entry is a one-liner. Re-affirmed 2026-09-05
+  // (board P10): no palette commands for the panels. Clears the auto-collapse flag like the
+  // header button does — a programmatic toggle is just as manual, and the responsive logic
+  // must not fight it.
   useEffect(() => {
     const handler = () => {
       autoCollapsedRef.current.sidebar = false;
