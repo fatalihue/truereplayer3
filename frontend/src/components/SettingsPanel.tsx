@@ -632,7 +632,13 @@ function ClickerSection({
               isOn={usePositionJitter}
               min={0} max={MAX_POSITION_PX}
               onCommitValue={(v) => onChange('cursorClickPositionJitter', v)}
-              onToggle={(v) => setClickMode('cursorClickUsePositionJitter', v)}
+              onToggle={(v) => {
+                setClickMode('cursorClickUsePositionJitter', v);
+                // Seed a visible scatter when switching ON from the 1 px default: ±1 px is
+                // imperceptible, so the switch looked dead. Same seed-on-enable the Clicks
+                // chip uses (0 → 100). A value the user typed (≥ 2) is left alone.
+                if (v && (parseInt(positionJitter, 10) || 0) < 2) onChange('cursorClickPositionJitter', '10');
+              }}
               onEnterActivate={() => setClickMode('cursorClickUsePositionJitter', true)}
             />
           </SettingRow>
@@ -812,7 +818,12 @@ function ClickerSection({
               isOn={useRateJitter}
               unit="%" min={0} max={100}
               onCommitValue={(v) => onChange('cursorClickDelayJitter', v)}
-              onToggle={(v) => onChange('cursorClickUseJitter', v)}
+              onToggle={(v) => {
+                onChange('cursorClickUseJitter', v);
+                // Same seed-on-enable as Position: ±1 % of a 100 ms period is ±1 ms, nothing a
+                // human or a detector would notice. 10 % was the original intended seed.
+                if (v && (parseInt(rateJitter, 10) || 0) < 2) onChange('cursorClickDelayJitter', '10');
+              }}
               onEnterActivate={() => activateIfOff(useRateJitter, 'cursorClickUseJitter')}
             />
           </SettingRow>

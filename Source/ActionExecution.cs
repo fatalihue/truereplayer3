@@ -447,8 +447,20 @@ namespace TrueReplayer.Services
 
         // Bridge callback for click counter / CPS / elapsed updates. Set by MainWindow on init.
         // Throttled to ~4 Hz inside the loop so the WebView2 message channel isn't flooded
-        // (a 100 Hz clicker would otherwise spam 100 messages/s).
-        public Action<long, long>? OnClickerStats; // (count, elapsedMs)
+        // (a 100 Hz clicker would otherwise spam 100 messages/s). capMs is the run's duration
+        // limit (0 = none) so the dashboard can show time-to-finish and progress for the Time
+        // limit from the RUN's own snapshot, not from settings the user may edit mid-run.
+        public Action<long, long, long>? OnClickerStats; // (count, elapsedMs, capMs)
+
+        // Countdown before the first click — only when the run was started from the button in a
+        // cursor-relative mode (see ClickerRunConfig.StartDelayMs). Fires with the whole ms
+        // remaining at each second boundary, then with 0 the moment clicking begins.
+        public Action<long>? OnClickerCountdown;
+
+        // End of a Clicker run: why it ended ("stopped" | "clicks" | "time") and how many
+        // SendInput calls were rejected outright. Fires once, in the final flush, before
+        // ResetReplayState — the dashboard used to say "finished" for a cancelled run too.
+        public Action<string, long>? OnClickerEnded;
 
         // Macro loop counter — re-exposed from the inner ActionReplayer. Fired only for
         // genuine loops (LoopCount > 1 or infinite); single-shot replays never trigger it.
@@ -518,6 +530,9 @@ namespace TrueReplayer.Services
             bool gameMove = config.GameMove;
             bool useJitter = config.UseJitter;
             string button = config.Button;
+            // Button-start countdown (see ClickerRunConfig.StartDelayMs). 10 s ceiling: past that
+            // a typo would read as "the clicker does nothing".
+            int startDelayMs = Math.Clamp(config.StartDelayMs, 0, 10000);
 
             // Decompose the optional Area record into the booleans + 4 ints the engine expects.
             bool useArea = config.Area is not null;
@@ -595,6 +610,8 @@ namespace TrueReplayer.Services
             }
             if (loopCount == 0 && maxDurationMs == 0)
                 DiagnosticLog.Info("Clicker: unbounded run — stop with the Clicker hotkey, the Stop button or the tray.");
+            if (startDelayMs > 200)
+                DiagnosticLog.Info($"Clicker: {startDelayMs} ms countdown before the first click (started from the button in a cursor-relative mode).");
 
             // Dispose the previous run's source before replacing it. StopReplay swallows the
             // ObjectDisposedException this can produce if it races a run that just ended.
@@ -626,16 +643,44 @@ namespace TrueReplayer.Services
                 string endReason = "cancelled";
                 try
                 {
-                    // Wait for hotkey release
-                    await Task.Delay(200, token);
-                    sw.Restart();  // reset after the grace delay so CPS isn't skewed
+                    // Wait for hotkey release — or, when the run was started from the BUTTON in a
+                    // cursor-relative mode, count down so the user can move the mouse off the
+                    // button that has just turned into "Stop": the first tick would otherwise
+                    // click it and end the run after a single click (200 ms is not enough to
+                    // move away). Whole seconds go to the dashboard; ClickerWaitAsync keeps Stop
+                    // and Pause responsive throughout, and the hotkey paths (StartDelayMs = 0)
+                    // keep the plain grace.
+                    if (startDelayMs > 200)
+                    {
+                        long remaining = startDelayMs;
+                        while (remaining > 0)
+                        {
+                            var snapshotRemaining = remaining;
+                            dispatcherQueue.TryEnqueue(() => OnClickerCountdown?.Invoke(snapshotRemaining));
+                            long slice = remaining % 1000 == 0 ? 1000 : remaining % 1000;
+                            await ClickerWaitAsync(slice, sw, token);
+                            remaining -= slice;
+                        }
+                        dispatcherQueue.TryEnqueue(() => OnClickerCountdown?.Invoke(0));
+                    }
+                    else
+                    {
+                        await Task.Delay(200, token);
+                    }
+                    sw.Restart();  // reset after the grace/countdown so CPS isn't skewed
 
                     // Ask for a 1 ms system timer while a fast run is live. Task.Delay quantises
                     // to the timer period (~15.6 ms by default), so without this a configured
                     // 10 ms period silently becomes ~15.6 ms. Skipped for slow runs so an idle
                     // 1-click-per-second job doesn't hold the whole system at high resolution.
                     // Released in the finally — the setting is process-wide and sticky.
-                    if (nominalPeriod < 30)
+                    // Gated on the SHORTEST period the run can produce, not the nominal one: with
+                    // rate jitter a 40 ms nominal at ±50 % dips to 20 ms, and those ticks would
+                    // quantise to 15.6 ms with the resolution left alone.
+                    int shortestPeriod = (useJitter && jitterPercent > 0
+                        ? Math.Max(MinClickPeriodMs, basePeriod - basePeriod * jitterPercent / 100)
+                        : basePeriod) + loopInterval;
+                    if (shortestPeriod < 30)
                     {
                         NativeMethods.TimeBeginPeriod(1);
                         raisedTimerRes = true;
@@ -829,7 +874,7 @@ namespace TrueReplayer.Services
                             lastStatsPushMs = elapsedMs;
                             var snapshotCount = clickCount;
                             var snapshotElapsed = elapsedMs;
-                            dispatcherQueue.TryEnqueue(() => OnClickerStats?.Invoke(snapshotCount, snapshotElapsed));
+                            dispatcherQueue.TryEnqueue(() => OnClickerStats?.Invoke(snapshotCount, snapshotElapsed, maxDurationMs));
 
                             // Loop progress for genuine loops only (single-shot keeps "—").
                             // total=0 signals infinite — matches Macro engine convention.
@@ -913,14 +958,21 @@ namespace TrueReplayer.Services
                     // Final flush so the UI lands on the exact end-state (e.g. "100/100" not
                     // "97/100") even if the loop ended between throttled pushes.
                     var finalCount = clickCount;
+                    var finalBlocked = blockedCount;
                     var finalIteration = iteration;
                     var finalLoopTotal = isInfinite ? 0 : loopCount;
                     var emitFinalLoop = isInfinite || loopCount > 1;
+                    // The log keeps its prose; the wire gets three fixed words the dashboard maps
+                    // to a badge ("stopped" / "limit reached" / "time's up").
+                    var wireReason = endReason == "cancelled" ? "stopped"
+                        : endReason == "duration limit reached" ? "time"
+                        : "clicks";
                     dispatcherQueue.TryEnqueue(() =>
                     {
-                        OnClickerStats?.Invoke(finalCount, finalElapsed);
+                        OnClickerStats?.Invoke(finalCount, finalElapsed, maxDurationMs);
                         if (emitFinalLoop)
                             OnLoopProgress?.Invoke(finalIteration, finalLoopTotal);
+                        OnClickerEnded?.Invoke(wireReason, finalBlocked);
                         if (wasPaused) OnReplayResumed?.Invoke();
                         ResetReplayState();
                     });

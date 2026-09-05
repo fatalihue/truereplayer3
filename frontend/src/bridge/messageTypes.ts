@@ -681,6 +681,9 @@ export interface AppState {
  * only consumer of this context is the StatusBar. Kept as-is rather than renamed: the rename
  * would churn three files for no behaviour.
  */
+/** Why a Clicker run ended — the three words the engine puts on the wire (clicker:ended). */
+export type ClickerEndReason = 'stopped' | 'clicks' | 'time';
+
 export interface ClickerLiveState {
   /**
    * Clicker v2 — live click counter pushed from the backend during a Clicker run
@@ -693,6 +696,14 @@ export interface ClickerLiveState {
     active: boolean;
     count: number;
     elapsedMs: number;
+    /** The run's duration limit in ms, 0 = none — the run's own snapshot, not the settings. */
+    capMs: number;
+    /** Button-start countdown, whole ms left; 0 while clicking (or when there was none). */
+    countdownMs: number;
+    /** Set once by clicker:ended; null while running and before the first run. */
+    endReason: ClickerEndReason | null;
+    /** SendInput calls rejected outright during the run (from clicker:ended). */
+    blocked: number;
   };
   /**
    * Macro loop counter — pushed during looping replays (~4 Hz throttle, plus a final push
@@ -813,7 +824,14 @@ export type IncomingMessage =
   // slot writes (+ run start/end, and a throttled per-iteration bump). rowData is the
   // data-loop row currently executing (null outside a data run).
   | { type: 'replay:variables'; payload: { variables: Record<string, string>; slots: Record<string, string>; rowData: Record<string, string> | null } }
-  | { type: 'clicker:stats'; payload: { count: number; elapsedMs: number } }
+  // capMs = the run's own duration limit (0 = none), so time-to-finish comes from the run's
+  // snapshot and not from settings the user may edit while it runs.
+  | { type: 'clicker:stats'; payload: { count: number; elapsedMs: number; capMs: number } }
+  // Whole ms left in the button-start countdown; 0 = clicking has begun.
+  | { type: 'clicker:countdown'; payload: { remainingMs: number } }
+  // Once per run, in the final flush before the READY status: why it ended, and how many
+  // SendInput calls were rejected outright (not UIPI — see ClickerButton in ActionExecution.cs).
+  | { type: 'clicker:ended'; payload: { reason: ClickerEndReason; blocked: number } }
   | { type: 'macro:loopProgress'; payload: { current: number; total: number } }
   | { type: 'settings:reset'; payload: Record<string, never> }
   // Fired at the start of CheckForUpdateAsync so the overlay can show the indeterminate

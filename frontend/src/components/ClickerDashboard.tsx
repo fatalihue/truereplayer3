@@ -1,16 +1,17 @@
-import { Pause as PauseIcon, Check } from 'lucide-react';
+import { Pause as PauseIcon, Check, Square } from 'lucide-react';
 import { useAppState, useClickerLive } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
 import { usePauseTick } from '../hooks/usePauseTick';
-import { describeClickerConfig, formatClickerStats, formatEta } from '../utils/clickerFormat';
+import { describeClickerConfig, formatClickerStats, formatClock, formatEta } from '../utils/clickerFormat';
 import { KbdTag } from './common/KbdTag';
 
 import { ClickerEmptyState } from './ClickerEmptyState';
 
-// Live dashboard for Clicker runs. Three visual states:
+// Live dashboard for Clicker runs. Four visual states:
 //   idle + count==0 → defer to ClickerEmptyState
+//   counting down   → the seconds left as the hero (button start in a cursor-relative mode)
 //   replaying       → bright clicker color, optional progress bar + ETA
-//   ready + count>0 → same layout, dimmed
+//   ready + count>0 → same layout, dimmed, with WHY the run ended
 export function ClickerDashboard() {
   const { status, pauseState, settings } = useAppState();
   // Separate context on purpose: these two update ~4×/s during a run, and keeping them out of
@@ -22,25 +23,50 @@ export function ClickerDashboard() {
   const isReplaying = status === 'replaying';
   if (!isReplaying && clickerStats.count === 0) return <ClickerEmptyState />;
 
+  // Button-start countdown (ClickerRunConfig.StartDelayMs): the engine is waiting for the user
+  // to move the mouse off the button that has just become "Stop". Nothing has been clicked yet.
+  const counting = isReplaying && clickerStats.countdownMs > 0;
+  const countdownSec = Math.ceil(clickerStats.countdownMs / 1000);
+
   const { elapsed, rate, rateLabel } = formatClickerStats(clickerStats.count, clickerStats.elapsedMs);
-  const loopActive = loopProgress.active;
-  // A finished run (status !== 'replaying') has no time-to-finish — gate ETA on
-  // isReplaying so a completed loop renders "—" instead of "~0s" (remaining hits 0).
+  // The two limits, from the RUN's own snapshot: the click limit rides on macro:loopProgress
+  // (total; 0 = infinite, and single-shot runs never send it), the time limit on clicker:stats
+  // (capMs; 0 = none). Either, both or neither may be armed.
   //
   // Unit coupling (why mixing loopProgress + clickerStats here is sound): formatEta does
   // remaining = total - current, then etaSec = remaining / rate, so total/current/rate must
   // share a unit. `rate` is clicks/sec. In Clicker mode the backend runs exactly ONE click
   // per loop iteration (ToggleCursorClickReplay in ActionExecution.cs increments clickCount
   // and iteration in lockstep), so loopProgress.total (= loopCount, the iteration cap) is
-  // measured in CLICKS — same unit as clickerStats.count and rate. The two args come from
-  // different state slices fed by separate bridge messages (macro:loopProgress vs
-  // clicker:stats), but they coincide because of that 1-click-per-iteration invariant. If
-  // the clicker ever runs N clicks per iteration, total would become iterations and this
-  // comparison would silently break — keep it 1:1 (or convert total to clicks before passing).
-  const etaText = formatEta(isReplaying && loopActive, loopProgress.total, clickerStats.count, rate);
-  const progressPct = loopActive && loopProgress.total > 0
-    ? Math.min(100, (loopProgress.current / loopProgress.total) * 100)
-    : null;
+  // measured in CLICKS — same unit as clickerStats.count and rate. If the clicker ever runs N
+  // clicks per iteration, total would become iterations and this would silently break — keep
+  // it 1:1 (or convert total to clicks before passing).
+  const clickLimit = loopProgress.active ? loopProgress.total : 0;
+  const capMs = clickerStats.capMs;
+  // A finished run has no time-to-finish — gate on isReplaying so a completed limit renders
+  // "—" instead of "~0s"; the countdown has no samples yet, so it reads "—" too.
+  const etaText = formatEta(isReplaying && !counting, clickLimit, clickerStats.count, rate, capMs, clickerStats.elapsedMs);
+  // Progress toward whichever armed limit is closer — the bar answers "how far along is this
+  // run", and with both limits armed the nearer one is the one that will end it.
+  const clickPct = clickLimit > 0 ? Math.min(100, (loopProgress.current / clickLimit) * 100) : null;
+  const timePct = capMs > 0 ? Math.min(100, (clickerStats.elapsedMs / capMs) * 100) : null;
+  const progressPct = clickPct === null && timePct === null ? null : Math.max(clickPct ?? 0, timePct ?? 0);
+  // The Limit cell shows the TARGET, not the running count: the hero already IS the count, and
+  // the old "LOOP 1284/5000" printed it twice in macro vocabulary — worse, an unbounded run
+  // read "1284/∞", the same number as the hero with an infinity glued on.
+  const limitText = clickLimit > 0 && capMs > 0
+    ? `${clickLimit} · ${formatClock(capMs)}`
+    : clickLimit > 0 ? String(clickLimit)
+    : capMs > 0 ? formatClock(capMs)
+    : '∞';
+
+  // Why the run ended (clicker:ended). null = a run from before this message existed.
+  const ended = clickerStats.endReason;
+  const endLabel = ended === 'stopped' ? 'stopped'
+    : ended === 'time' ? "time's up"
+    : ended === 'clicks' ? 'limit reached'
+    : 'finished';
+  const EndIcon = ended === 'stopped' ? Square : Check;
 
   const pauseRemainingSec = pauseState.timeoutMs > 0
     ? Math.max(0, Math.ceil((pauseState.timeoutMs - (Date.now() - pauseState.startedAt)) / 1000))
@@ -69,19 +95,19 @@ export function ClickerDashboard() {
             letterSpacing: '-0.02em',
           }}
         >
-          {clickerStats.count.toLocaleString()}
+          {counting ? countdownSec : clickerStats.count.toLocaleString()}
         </div>
         <div
           className="text-[11px] uppercase tracking-[0.2em] mt-2 flex items-center gap-2"
           style={{ color: 'var(--color-clicker-fg)', opacity: 0.7 }}
         >
-          clicks
+          {counting ? 'starting in' : 'clicks'}
           {!isReplaying && (
             <>
               <span style={{ opacity: 0.4 }}>·</span>
               <span className="flex items-center gap-1">
-                <Check size={10} />
-                finished
+                <EndIcon size={10} fill={ended === 'stopped' ? 'currentColor' : 'none'} />
+                {endLabel}
               </span>
             </>
           )}
@@ -89,13 +115,9 @@ export function ClickerDashboard() {
       </div>
 
       <div className="grid grid-cols-4 gap-2 w-full max-w-[480px]">
-        <StatCell value={`${rateLabel}/s`} label="Rate" />
+        <StatCell value={counting ? '—' : `${rateLabel}/s`} label="Rate" dim={counting} />
         <StatCell value={elapsed} label="Elapsed" />
-        <StatCell
-          value={loopActive ? `${loopProgress.current}/${loopProgress.total === 0 ? '∞' : loopProgress.total}` : '—'}
-          label="Loop"
-          dim={!loopActive}
-        />
+        <StatCell value={limitText} label="Limit" dim={limitText === '∞'} />
         <StatCell value={etaText} label="ETA" dim={etaText === '—'} />
       </div>
 
@@ -117,10 +139,18 @@ export function ClickerDashboard() {
         {summary.bits.join('  ·  ')}
       </div>
 
-      {/* Pause — only while actively running and not already paused. Pausing freezes the
-          loop (and excludes the paused span from CPS); the overlay's Resume button below
-          resumes it. */}
-      {isReplaying && !pauseState.isPaused && (
+      {/* SendInput rejected some calls outright (BlockInput held by another app, never UIPI —
+          UIPI is silent). The log always had this number; the dashboard reported a healthy run. */}
+      {!isReplaying && clickerStats.blocked > 0 && (
+        <div className="text-[11px] font-medium" style={{ color: 'var(--color-warning-ink)' }}>
+          {`${clickerStats.blocked} ${clickerStats.blocked === 1 ? 'click was' : 'clicks were'} rejected by Windows — input was blocked`}
+        </div>
+      )}
+
+      {/* Pause — only while actively clicking and not already paused (pausing a countdown
+          would be a stall with nothing to resume into). Pausing freezes the loop (and excludes
+          the paused span from CPS); the overlay's Resume button below resumes it. */}
+      {isReplaying && !counting && !pauseState.isPaused && (
         <button
           onClick={() => send({ type: 'clicker:pause', payload: {} })}
           className="flex items-center gap-1.5 px-4 py-1.5 rounded-ui border border-border-default text-[12px] font-medium transition-colors hover:bg-bg-elevated"
@@ -134,14 +164,24 @@ export function ClickerDashboard() {
           PageDown) and splits a combo into one cap per key — the same rendering the Keys tab
           uses for these two settings, so the dashboard and the panel name the key alike. */}
       <div className="text-[11px] text-text-tertiary flex items-center gap-1.5">
-        {'Press'}
-        <KbdTag combo={settings.cursorClickStartHotkey} accent />
-        {isReplaying ? 'to stop' : 'to run again'}
-        {isReplaying && (
+        {counting ? (
           <>
-            <span className="opacity-40">·</span>
-            <KbdTag combo={settings.cursorClickPauseHotkey} accent />
-            {'to pause'}
+            {'Move the mouse to the target —'}
+            <KbdTag combo={settings.cursorClickStartHotkey} accent />
+            {'or Stop cancels'}
+          </>
+        ) : (
+          <>
+            {'Press'}
+            <KbdTag combo={settings.cursorClickStartHotkey} accent />
+            {isReplaying ? 'to stop' : 'to run again'}
+            {isReplaying && (
+              <>
+                <span className="opacity-40">·</span>
+                <KbdTag combo={settings.cursorClickPauseHotkey} accent />
+                {'to pause'}
+              </>
+            )}
           </>
         )}
       </div>
@@ -199,7 +239,9 @@ export function ClickerDashboard() {
   );
 }
 
-// `dim` greys cells whose value is "—" so they read as N/A rather than broken.
+// `dim` greys cells whose value is "—" / "∞" so they read as N/A rather than broken. A value
+// longer than seven characters ("5000 · 2:00", both limits armed) steps down one size so it
+// stays inside its ~112 px cell instead of clipping.
 function StatCell({ value, label, dim = false }: { value: string; label: string; dim?: boolean }) {
   return (
     <div
@@ -207,7 +249,7 @@ function StatCell({ value, label, dim = false }: { value: string; label: string;
       // to the glassy look and made the numbers harder to read on the gradient.
       className={`flex flex-col items-center py-2 px-1 rounded border border-border-subtle bg-bg-surface ${dim ? 'opacity-40' : ''}`}
     >
-      <div className="text-[18px] font-mono font-semibold text-text-primary tabular-nums leading-tight">
+      <div className={`${value.length > 7 ? 'text-[14px]' : 'text-[18px]'} font-mono font-semibold text-text-primary tabular-nums leading-tight`}>
         {value}
       </div>
       {/* text-caption (11px) = the type-ramp floor for meaningful text; tracking

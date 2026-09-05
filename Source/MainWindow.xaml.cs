@@ -325,9 +325,19 @@ namespace TrueReplayer
             // Clicker v2 — forward click stats (count + elapsedMs) to the React StatusBar so
             // the user sees "Clicked 1,234 · 8.3/s · 02:14" live during Clicker runs. Throttled
             // to ~4 Hz inside ToggleCursorClickReplay so this isn't called every click.
-            replayService.OnClickerStats = (count, elapsedMs) =>
+            replayService.OnClickerStats = (count, elapsedMs, capMs) =>
             {
-                bridge?.PushClickerStats(count, elapsedMs);
+                bridge?.PushClickerStats(count, elapsedMs, capMs);
+            };
+            // Button-start countdown ticks and the end-of-run reason — both dashboard-only
+            // signals, same channel discipline as the stats (a handful of messages per run).
+            replayService.OnClickerCountdown = remainingMs =>
+            {
+                bridge?.PushClickerCountdown(remainingMs);
+            };
+            replayService.OnClickerEnded = (reason, blocked) =>
+            {
+                bridge?.PushClickerEnded(reason, blocked);
             };
 
             // Macro loop counter — forward "Loop X/Y" progress for looping replays. Same

@@ -16,12 +16,15 @@ export function formatRate(rate: number): string {
   return rate >= 10 ? rate.toFixed(0) : rate.toFixed(1);
 }
 
+/** "M:SS" — the one clock format every Clicker surface uses (elapsed, the Time limit, the ETA). */
+export function formatClock(ms: number): string {
+  const sec = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+}
+
 export function formatClickerStats(count: number, elapsedMs: number): ClickerStatsView {
-  const sec = Math.max(0, Math.floor(elapsedMs / 1000));
-  const mm = Math.floor(sec / 60);
-  const ss = String(sec % 60).padStart(2, '0');
   const rate = elapsedMs > 0 ? (count * 1000) / elapsedMs : 0;
-  return { elapsed: `${mm}:${ss}`, rate, rateLabel: formatRate(rate) };
+  return { elapsed: formatClock(elapsedMs), rate, rateLabel: formatRate(rate) };
 }
 
 // ── Engine truth ────────────────────────────────────────────────────────────────────
@@ -97,17 +100,25 @@ export function delayForCps(
   return { ms, clamped };
 }
 
-// Estimated time-to-finish, in "~Ns" or "~M:SS" form. Returns "—" when the run is
-// unbounded (infinite loop) or we don't yet have enough samples to project.
+// Estimated time-to-finish, in "~Ns" or "~M:SS" form, from whichever armed limit lands first:
+// the click limit (remaining clicks at the measured rate) or the time limit (remaining ms —
+// exact, no projection needed). Returns "—" when the run is over, no limit is armed, or the
+// click projection has no sample yet. A time-only run used to read "—" here although its
+// remainder was known to the millisecond.
 export function formatEta(
-  loopActive: boolean,
-  total: number,
-  current: number,
+  running: boolean,
+  clickTotal: number,
+  clickCurrent: number,
   rate: number,
+  capMs: number,
+  elapsedMs: number,
 ): string {
-  if (!loopActive || total <= 0 || current <= 0 || rate <= 0) return '—';
-  const remaining = Math.max(0, total - current);
-  const etaSec = Math.ceil(remaining / rate);
+  if (!running) return '—';
+  const candidates: number[] = [];
+  if (clickTotal > 0 && clickCurrent > 0 && rate > 0) candidates.push(Math.max(0, clickTotal - clickCurrent) / rate);
+  if (capMs > 0) candidates.push(Math.max(0, capMs - elapsedMs) / 1000);
+  if (candidates.length === 0) return '—';
+  const etaSec = Math.ceil(Math.min(...candidates));
   if (etaSec >= 60) {
     const em = Math.floor(etaSec / 60);
     const es = String(etaSec % 60).padStart(2, '0');

@@ -2290,7 +2290,15 @@ namespace TrueReplayer
             return "";
         }
 
-        public ClickerRunConfig BuildClickerConfig()
+        // Countdown before the first click when the run starts from the BUTTON in a
+        // cursor-relative mode. Started that way, the cursor is over the button that has just
+        // become "Stop", and the first tick would click it and end the run after one click.
+        // Three seconds is enough to move the mouse and short enough not to feel like a stall.
+        private const int ButtonStartCountdownMs = 3000;
+
+        // fromButton: the replay:toggle message (the ActionBar's Click button). The hotkey
+        // paths pass false — the cursor is already where the user wants to click.
+        public ClickerRunConfig BuildClickerConfig(bool fromButton = false)
         {
             // Clamped on the way out as well as inside the engine. appsettings.json is
             // hand-editable and never passes through HandleSettingsChange, so an out-of-range
@@ -2316,9 +2324,14 @@ namespace TrueReplayer
             // Same convention as loops: toggle off resolves to 0 = no cap.
             int maxDuration = CursorClickUseMaxDuration && int.TryParse(CursorClickMaxDuration, out var md) && md > 0
                 ? Math.Clamp(md, 1000, 86400000) : 0;
+            // Cursor-relative = the first click lands wherever the cursor is: cursor mode,
+            // Position jitter, and Fixed with no point (lock-on-start). Area and a picked Fixed
+            // point move the cursor to the target on the first tick, so they need no countdown.
+            bool cursorRelative = area is null && !(useFixed && fixedPoint is not null);
+            int startDelay = fromButton && cursorRelative ? ButtonStartCountdownMs : 0;
             return new ClickerRunConfig(delay, CursorClickUseJitter, jitterPercent, loops, interval,
                 CursorClickButton, holdMs, positionJitter, area, useFixed, fixedPoint, maxDuration,
-                CursorClickGameMove);
+                CursorClickGameMove, startDelay);
         }
 
         // Optional instance = same-handler pass-through from SaveGlobalSettings ONLY — never a
@@ -3340,7 +3353,9 @@ namespace TrueReplayer
                 // Clicker v2 — read from the dedicated CursorClick* fields (sourced from
                 // AppSettings) instead of the profile's CustomDelay/Jitter/Loop. This makes
                 // Clicker truly mode-of-the-app, no longer mode-of-active-profile.
-                mainController.ToggleCursorClickReplay(BuildClickerConfig());
+                // fromButton: this message only comes from the ActionBar's Click button, the one
+                // entry point where the cursor is over the app itself (see ButtonStartCountdownMs).
+                mainController.ToggleCursorClickReplay(BuildClickerConfig(fromButton: true));
                 return;
             }
 
@@ -4484,9 +4499,22 @@ namespace TrueReplayer
         // Clicker v2 — push live click stats to the React StatusBar. Called from ReplayService
         // on a ~4 Hz cadence (throttled inside the click loop) so we don't flood the WebView2
         // message channel for high-rate clickers. The frontend computes CPS from count/elapsed.
-        public void PushClickerStats(long count, long elapsedMs)
+        public void PushClickerStats(long count, long elapsedMs, long capMs)
         {
-            SendMessage("clicker:stats", new { count, elapsedMs });
+            SendMessage("clicker:stats", new { count, elapsedMs, capMs });
+        }
+
+        // Whole milliseconds left in the button-start countdown (0 = clicking has begun).
+        public void PushClickerCountdown(long remainingMs)
+        {
+            SendMessage("clicker:countdown", new { remainingMs });
+        }
+
+        // Why the Clicker run ended — "stopped" | "clicks" | "time" — plus the number of
+        // SendInput calls rejected outright. One message per run, right before the READY status.
+        public void PushClickerEnded(string reason, long blocked)
+        {
+            SendMessage("clicker:ended", new { reason, blocked });
         }
 
         // Macro loop counter — "Loop X/Y" in the StatusBar during a looping replay. Same
@@ -10082,7 +10110,45 @@ namespace TrueReplayer
             ["foregroundHotkey"] = "Foreground",
             ["modeToggleHotkey"] = "Mode Toggle",
             ["captureSlotHotkey"] = "Capture to Slot",
+            ["cursorClickStartHotkey"] = "Clicker Start",
+            ["cursorClickPauseHotkey"] = "Clicker Pause",
         };
+
+        // The global hotkeys that stay live in BOTH modes. The Clicker pair may collide with
+        // these and nothing else: Recording/Replay are inert in Clicker mode and the Clicker
+        // keys are inert in Macro mode, so sharing a key across that divide is legitimate
+        // (the hook's mode gate makes it safe). Sharing with one of these four is not — the
+        // hook tests the Clicker pair FIRST, so a Start bound to the Mode Toggle key would
+        // swallow the toggle in Clicker mode with no keyboard way back, and a Pause bound to
+        // the Foreground key would silently eat it.
+        private static readonly string[] ModeAgnosticHotkeyKeys =
+        {
+            "profileKeyToggleHotkey", "foregroundHotkey", "modeToggleHotkey", "captureSlotHotkey",
+        };
+
+        // Conflict check for the two Clicker hotkeys: each other, plus the four mode-agnostic
+        // utilities above. Returns the display name of the holder, or null.
+        private string? GetClickerHotkeyConflict(string hotkey, string editingKey)
+        {
+            if (string.IsNullOrEmpty(hotkey)) return null;
+            string otherKey = editingKey == "cursorClickStartHotkey" ? "cursorClickPauseHotkey" : "cursorClickStartHotkey";
+            string otherValue = otherKey == "cursorClickStartHotkey" ? CursorClickStartHotkey : CursorClickPauseHotkey;
+            if (string.Equals(otherValue, hotkey, StringComparison.OrdinalIgnoreCase))
+                return HotkeyDisplayNames[otherKey];
+            foreach (var k in ModeAgnosticHotkeyKeys)
+            {
+                string current = k switch
+                {
+                    "profileKeyToggleHotkey" => UserProfile.Current.ProfileKeyToggleHotkey,
+                    "foregroundHotkey" => UserProfile.Current.ForegroundHotkey,
+                    "modeToggleHotkey" => UserProfile.Current.ModeToggleHotkey,
+                    _ => UserProfile.Current.CaptureSlotHotkey,
+                };
+                if (string.Equals(current, hotkey, StringComparison.OrdinalIgnoreCase))
+                    return HotkeyDisplayNames[k];
+            }
+            return null;
+        }
 
         /// <summary>
         /// True when targets A and B could plausibly match the same window at the same time
@@ -10144,6 +10210,17 @@ namespace TrueReplayer
                     return HotkeyDisplayNames.GetValueOrDefault(kv.Key, kv.Key);
             }
 
+            // The reverse of GetClickerHotkeyConflict: editing one of the four mode-agnostic
+            // utilities must not land on a Clicker key either. Recording/Replay (and profile
+            // hotkeys) are mode-exclusive with the Clicker pair, so they skip this on purpose.
+            if (excludeSettingKey != null && Array.IndexOf(ModeAgnosticHotkeyKeys, excludeSettingKey) >= 0)
+            {
+                if (string.Equals(CursorClickStartHotkey, hotkey, StringComparison.OrdinalIgnoreCase))
+                    return HotkeyDisplayNames["cursorClickStartHotkey"];
+                if (string.Equals(CursorClickPauseHotkey, hotkey, StringComparison.OrdinalIgnoreCase))
+                    return HotkeyDisplayNames["cursorClickPauseHotkey"];
+            }
+
             foreach (var entry in profileController.ProfileEntries)
             {
                 if (entry.Name == excludeProfileName) continue;
@@ -10180,6 +10257,21 @@ namespace TrueReplayer
             {
                 string newHotkey = valueElement.GetString() ?? "";
                 var conflict = GetHotkeyConflict(newHotkey, excludeSettingKey: key);
+                if (conflict != null)
+                {
+                    SendMessage("alert:show", new { message = $"\"{newHotkey}\" is already used by {conflict}." });
+                    PushSettingsLoaded(); // revert UI to current value
+                    return;
+                }
+            }
+
+            // The Clicker pair gets the NARROW check (each other + the four mode-agnostic
+            // utilities — see ModeAgnosticHotkeyKeys), never the full one: reusing the Recording
+            // or Replay key for the Clicker is legitimate and must keep working.
+            if (key == "cursorClickStartHotkey" || key == "cursorClickPauseHotkey")
+            {
+                string newHotkey = valueElement.GetString() ?? "";
+                var conflict = GetClickerHotkeyConflict(newHotkey, key);
                 if (conflict != null)
                 {
                     SendMessage("alert:show", new { message = $"\"{newHotkey}\" is already used by {conflict}." });
@@ -10236,9 +10328,11 @@ namespace TrueReplayer
                 case "cursorClickButton":
                     CursorClickButton = valueElement.GetString() ?? "Left";
                     break;
-                // Clicker hotkeys — intentionally NOT in HotkeySettingKeys, so they skip the
-                // global-conflict check: the user may deliberately reuse a global hotkey (the two
-                // are mode-gated and never both fire). Setters mirror the value into the hook.
+                // Clicker hotkeys — intentionally NOT in HotkeySettingKeys, so they skip the FULL
+                // global-conflict check: the user may deliberately reuse the Recording or Replay
+                // key (mode-gated, never both fire). They do get the narrow check against each
+                // other and the four mode-agnostic utilities, above the switch. Setters mirror
+                // the value into the hook.
                 // DropBareWheelHotkey: the hook only dispatches MODIFIED wheel combos as global
                 // hotkeys — swallowing a bare wheel event would kill that scroll direction
                 // system-wide — so a bare ScrollUp/ScrollDown here would store a binding that

@@ -109,7 +109,7 @@ const initialState: AppState = {
 // messageTypes.ts for why. Keeping them here would make every stats push allocate a new
 // AppState and re-render every useAppState() consumer.
 const initialClickerLive: ClickerLiveState = {
-  clickerStats: { active: false, count: 0, elapsedMs: 0 },
+  clickerStats: { active: false, count: 0, elapsedMs: 0, capMs: 0, countdownMs: 0, endReason: null, blocked: 0 },
   loopProgress: { active: false, current: 0, total: 0 },
   chainStep: { active: false, current: 0, total: 0 },
 };
@@ -241,7 +241,7 @@ function clickerLiveReducer(state: ClickerLiveInternal, message: IncomingMessage
       if (message.payload.status !== 'replaying') return state;
       return {
         ...state,
-        clickerStats: { active: true, count: 0, elapsedMs: 0 },
+        clickerStats: { active: true, count: 0, elapsedMs: 0, capMs: 0, countdownMs: 0, endReason: null, blocked: 0 },
         loopProgress: { active: false, current: 0, total: 0 },
         // chainStep follows loopProgress exactly: inactive until a run actually enters a
         // sub-profile, so an unchained replay never shows the "(x/y)" tail.
@@ -267,9 +267,32 @@ function clickerLiveReducer(state: ClickerLiveInternal, message: IncomingMessage
       // the very first stats batch arrives). status:changed → 'replaying' (a new run starting)
       // is the only transition that wipes clickerStats; 'ready' preserves the final count so
       // the user can read the total after the run ends.
+      // A stats push also ends any countdown: the engine sends countdown 0 first, but the
+      // first click is proof enough on its own.
       return {
         ...state,
-        clickerStats: { active: true, count: message.payload.count, elapsedMs: message.payload.elapsedMs },
+        clickerStats: {
+          ...state.clickerStats,
+          active: true,
+          count: message.payload.count,
+          elapsedMs: message.payload.elapsedMs,
+          capMs: message.payload.capMs,
+          countdownMs: 0,
+        },
+      };
+    case 'clicker:countdown':
+      // Button-start countdown (ClickerRunConfig.StartDelayMs). Lands before the first stats
+      // push; the dashboard swaps its hero for the seconds left while this is > 0.
+      return {
+        ...state,
+        clickerStats: { ...state.clickerStats, active: true, countdownMs: message.payload.remainingMs },
+      };
+    case 'clicker:ended':
+      // Same final flush as the last stats push, just before status → ready. Kept through
+      // 'ready' like the count, so the badge can say WHY the run ended.
+      return {
+        ...state,
+        clickerStats: { ...state.clickerStats, countdownMs: 0, endReason: message.payload.reason, blocked: message.payload.blocked },
       };
     case 'macro:loopProgress':
       // Same idea as clicker:stats — first push flips `active` on, run-start in status:changed

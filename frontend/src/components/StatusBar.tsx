@@ -177,6 +177,18 @@ export function StatusBar() {
             shows the clicker's own context instead: button + target rate when idle,
             live Clicked/rate/elapsed once it's running. */
         clickerRunning ? (() => {
+          // Button-start countdown: nothing has been clicked yet, so "Clicked 0 · 0.0/s" would
+          // read as a broken run. Say what the engine is waiting for instead.
+          if (isReplaying && clickerStats.countdownMs > 0) {
+            return (
+              <span className="flex items-center gap-2 font-mono" style={{ color: 'var(--color-clicker-fg)' }}>
+                <MousePointerClick size={11} className="shrink-0" />
+                <span className="text-text-secondary">Starting in</span>
+                <strong className="text-text-primary">{Math.ceil(clickerStats.countdownMs / 1000)} s</strong>
+                <span className="text-text-secondary">— move the mouse to the target</span>
+              </span>
+            );
+          }
           const { elapsed: clickerElapsed, rateLabel } = formatClickerStats(clickerStats.count, clickerStats.elapsedMs);
           return (
             <span className="flex items-center gap-2 font-mono" style={{ color: 'var(--color-clicker-fg)' }}>
