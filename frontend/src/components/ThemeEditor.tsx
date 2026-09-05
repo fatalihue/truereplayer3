@@ -611,14 +611,14 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
           <button
             onClick={() => { clearAllOverrides(); setResetMenuOpen(false); }}
             disabled={!hasOverrides}
-            className="w-full text-left px-2 py-1.5 rounded text-xs text-text-secondary hover:text-text-primary hover:bg-bg-surface disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="menu-item rounded text-text-secondary hover:text-text-primary disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Color overrides
           </button>
           <button
             onClick={() => { clearAllOverrides(); resetUISettings(); setLanguage(DEFAULT_LANGUAGE); setResetMenuOpen(false); }}
             disabled={everythingAtDefault}
-            className="w-full text-left px-2 pt-1.5 rounded text-xs text-text-secondary hover:text-text-primary hover:bg-bg-surface disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="menu-item rounded text-text-secondary hover:text-text-primary disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Reset everything
           </button>
@@ -799,8 +799,11 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
               <button
                 key={chip.id}
                 onClick={() => setPresetFilter(chip.id)}
-                className={`h-6 px-2 rounded text-[11px] transition-colors ${on ? 'text-accent' : 'text-text-tertiary hover:text-text-primary'}`}
-                style={on ? { background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)' } : undefined}
+                className={`h-6 px-2.5 rounded text-[11px] font-medium border transition-colors ${
+                  on
+                    ? 'text-accent border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)] bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)]'
+                    : 'text-text-secondary border-border-default bg-bg-elevated hover:bg-bg-card'
+                }`}
               >
                 {chip.label}
               </button>

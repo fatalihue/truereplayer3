@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { TriangleAlert, Zap, Plus, Trash2, Pipette, Camera, CircleDot, Frame, X, ScanSearch, Check, Play, Power } from 'lucide-react';
+import { TriangleAlert, Zap, Plus, Trash2, Pipette, Camera, Frame, X, ScanSearch, Check, Play, Power } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
 import { useAppState } from '../state/AppStateContext';
 import { useTt } from '../state/LanguageContext';
@@ -657,6 +657,23 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
               const entry = entryByProfile.get(name);
               const trig = name === newDraftProfile && !entry ? null : entry?.trigger;
               const isSel = selected === name;
+              // State dot, two channels with the arm toggle beside it: green = watching, amber =
+              // armed but not watching, grey = off. The reason behind an amber dot is in its tooltip
+              // and in the editor's own callout — the row used to spell it out as a fourth line of
+              // red 10 px text, on every such row (84 px per row, four lines in three colours).
+              const armed = !!entry?.trigger.armed;
+              const dotColor = entry?.running ? 'var(--color-replay)' : armed ? 'var(--color-warning)' : 'var(--color-text-disabled)';
+              const dotTip = entry?.running
+                ? (entry.conditionTrue
+                  ? tt('Watching — the condition is TRUE right now', 'Vigiando — a condição está VERDADEIRA agora')
+                  : tt('Watching — the condition is false right now', 'Vigiando — a condição está falsa agora'))
+                : armed
+                  ? (!automation.enabled
+                    ? tt('Armed, but all automations are paused', 'Armada, mas todas as automações estão pausadas')
+                    : entry?.isDisabled
+                      ? tt('Armed, but the profile is disabled', 'Armada, mas o profile está desativado')
+                      : tt('Armed, but not watching — see the reason in the editor', 'Armada, mas não está vigiando — veja o motivo no editor'))
+                  : entry ? tt('Off', 'Desligada') : tt('Not saved yet', 'Ainda não salva');
               return (
                 <div
                   key={name}
@@ -678,6 +695,11 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   }`}
                 >
                   <div className="flex items-center gap-2">
+                    <span
+                      className="w-2 h-2 rounded-full shrink-0"
+                      style={{ background: dotColor, boxShadow: armed || entry?.running ? `0 0 0 3px color-mix(in srgb, ${dotColor} 20%, transparent)` : undefined }}
+                      data-tip={dotTip}
+                    />
                     <span className="text-[12px] text-text-primary truncate flex-1">{name}</span>
                     {/* Unsaved marker — nothing in the list used to distinguish an edited row,
                         so a draft could be abandoned without ever looking abandoned. */}
@@ -697,37 +719,13 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                       <span className="text-[10px] text-text-tertiary uppercase">{'new'}</span>
                     )}
                   </div>
-                  <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-text-tertiary">
-                    {entry?.running && (
-                      <CircleDot size={10}
-                        className={entry.conditionTrue ? 'text-[var(--color-replay-fg)]' : 'text-accent-light'}
-                        data-tip={entry.conditionTrue
-                          ? tt('Watching — the condition is TRUE right now', 'Vigiando — a condição está VERDADEIRA agora')
-                          : tt('Watching — the condition is false right now', 'Vigiando — a condição está falsa agora')} />
-                    )}
-                    <span className="truncate">
-                      {trig ? kindSummary(trig) : 'not saved yet'}
-                      {entry && entry.fireCount > 0 && ` · ${entry.fireCount}× · ${fmtWhen(entry.lastFiredAt)}`}
-                      {entry?.trigger.armed && entry.running && entry.nextDueAt && ` · ${'next'} ${fmtWhen(entry.nextDueAt)}`}
-                    </span>
+                  {/* One meta line: schedule · fires · last · next · result. */}
+                  <div className="mt-0.5 pl-4 text-[11px] text-text-tertiary truncate">
+                    {trig ? kindSummary(trig) : 'not saved yet'}
+                    {entry && entry.fireCount > 0 && ` · ${entry.fireCount}× · ${fmtWhen(entry.lastFiredAt)}`}
+                    {entry?.trigger.armed && entry.running && entry.nextDueAt && ` · next ${fmtWhen(entry.nextDueAt)}`}
+                    {entry?.lastResult && entry.lastResult !== 'fired' && ` · ${entry.lastResult}`}
                   </div>
-                  {/* Armed but NOT running is the state that reads as healthy and isn't: the toggle
-                      is on, so the row looks live, while no watcher exists. It happens for three
-                      ordinary reasons — the master switch is off, the profile is disabled, or the
-                      loop stopped itself (missing reference image, unfillable condition). Name it,
-                      instead of conveying it by the absence of a small unlabelled dot. */}
-                  {entry?.trigger.armed && !entry.running && (
-                    <div className="text-[10px] mt-0.5 truncate" style={{ color: 'var(--color-recording-fg)' }}>
-                      {!automation.enabled
-                        ? 'armed, but all automations are paused'
-                        : entry.isDisabled
-                          ? 'armed, but the profile is disabled'
-                          : 'armed, but not watching — see the reason below'}
-                    </div>
-                  )}
-                  {entry?.lastResult && entry.lastResult !== 'fired' && (
-                    <div className="text-[10px] text-text-tertiary mt-0.5 truncate">{entry.lastResult}</div>
-                  )}
                 </div>
               );
             })}

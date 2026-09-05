@@ -908,6 +908,46 @@ export function DataPanel({ onClose }: DataPanelProps) {
     return <span className={`${cls} text-text-tertiary`}>{'Click a cell to edit · Ctrl+Enter saves'}</span>;
   })();
 
+  // ── Find box — sits on the table's own header bar, beside the counts, not in the rail:
+  //    it searches the table, so it belongs to the table. Highlights in place, never hides rows.
+  const findBox = (
+    <div className="flex items-center gap-2 min-w-0">
+      <div className="relative flex items-center w-52">
+        <Search size={12} className="absolute left-2 text-text-tertiary pointer-events-none" />
+        <input
+          type="text"
+          value={find}
+          onChange={(e) => setFind(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') jumpToMatch(e.shiftKey ? -1 : 1); }}
+          placeholder={'Find in table…'}
+          className="input-inline pl-7 pr-7 font-sans text-[11px]"
+        />
+        {find && (
+          <button
+            type="button"
+            onClick={() => setFind('')}
+            className="absolute right-1.5 text-text-disabled hover:text-text-secondary"
+            data-tip={tt('Clear', 'Limpar')}
+          >
+            <X size={11} />
+          </button>
+        )}
+      </div>
+      {findLower !== '' && (
+        <span className="flex items-center gap-1 text-[10px] text-text-tertiary tabular-nums whitespace-nowrap">
+          <span>{matchRows.length === 0 ? 'No matches' : `${matchRows.length} row${matchRows.length === 1 ? '' : 's'}`}</span>
+          {matchRows.length > 0 && (
+            <>
+              <button type="button" onClick={() => jumpToMatch(-1)} className="px-1 hover:text-text-primary" data-tip={tt('Previous (Shift+Enter)', 'Anterior (Shift+Enter)')}>↑</button>
+              <button type="button" onClick={() => jumpToMatch(1)} className="px-1 hover:text-text-primary" data-tip={tt('Next (Enter)', 'Próximo (Enter)')}>↓</button>
+              <span>{findPos + 1}/{matchRows.length}</span>
+            </>
+          )}
+        </span>
+      )}
+    </div>
+  );
+
   // ── Footer (swaps while the paste surface is open) ──
   const footerHint = pasteOpen ? (
     <>{'Tabs, quotes and line breaks survive the paste'}</>
@@ -973,8 +1013,14 @@ export function DataPanel({ onClose }: DataPanelProps) {
     >
       {/* Body — `relative` is load-bearing: the paste surface overlays inside it. */}
       <div className="relative flex flex-1 min-h-0">
-        {/* ── Hero column: grid + status strip ── */}
+        {/* ── Hero column: header bar (counts + find) · grid · status strip (hints) ── */}
         <div className="flex-1 min-w-0 flex flex-col">
+          {!emptyGrid && (
+            <div className="h-row shrink-0 px-3 flex items-center justify-between gap-3 bg-bg-card border-b border-border-subtle">
+              {stripLeft}
+              {findBox}
+            </div>
+          )}
           {emptyGrid ? (
             <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-3 bg-bg-surface">
               <Table2 size={24} className="text-text-tertiary" />
@@ -1105,9 +1151,8 @@ export function DataPanel({ onClose }: DataPanelProps) {
               </table>
             </div>
           )}
-          {/* Status strip */}
-          <div className="h-7 shrink-0 px-4 flex items-center justify-between gap-3 bg-bg-card border-t border-border-subtle">
-            {stripLeft}
+          {/* Status strip — the hint ladder; the counts moved up to the header bar. */}
+          <div className="h-7 shrink-0 px-4 flex items-center justify-end gap-3 bg-bg-card border-t border-border-subtle">
             {stripRight}
           </div>
         </div>
@@ -1275,44 +1320,6 @@ export function DataPanel({ onClose }: DataPanelProps) {
             </>
           )}
 
-          {/* FIND — highlights matches in place (never hides rows). */}
-          <div className="px-3 pt-2 pb-1 border-t border-border-subtle mt-auto">
-            <div className="relative flex items-center">
-              <Search size={12} className="absolute left-2 text-text-tertiary pointer-events-none" />
-              <input
-                type="text"
-                value={find}
-                onChange={(e) => setFind(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') jumpToMatch(e.shiftKey ? -1 : 1); }}
-                placeholder={'Find in table…'}
-                className="w-full h-7 pl-7 pr-14 text-[11px] bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid"
-              />
-              {find && (
-                <button
-                  type="button"
-                  onClick={() => setFind('')}
-                  className="absolute right-1.5 text-text-disabled hover:text-text-secondary"
-                  data-tip={tt('Clear', 'Limpar')}
-                >
-                  <X size={11} />
-                </button>
-              )}
-            </div>
-            {findLower !== '' && (
-              <div className="flex items-center gap-2 mt-1 px-0.5 text-[10px] text-text-tertiary">
-                <span>{matchRows.length === 0 ? 'No matches' : `${matchRows.length} row${matchRows.length === 1 ? '' : 's'}`}</span>
-                {matchRows.length > 0 && (
-                  <span className="ml-auto flex items-center gap-1">
-                    <button type="button" onClick={() => jumpToMatch(-1)} className="px-1 hover:text-text-primary" data-tip={tt('Previous (Shift+Enter)', 'Anterior (Shift+Enter)')}>↑</button>
-                    <button type="button" onClick={() => jumpToMatch(1)} className="px-1 hover:text-text-primary" data-tip={tt('Next (Enter)', 'Próximo (Enter)')}>↓</button>
-                    <span className="tabular-nums">{findPos + 1}/{matchRows.length}</span>
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* DATA */}
           <div className="label-micro text-text-tertiary px-3 pt-2 pb-1 border-t border-border-subtle">Data</div>
           <div className="flex flex-col pb-2">
             <button

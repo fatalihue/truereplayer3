@@ -19,11 +19,6 @@
       "count": 1
     }
   },
-  "src/components/LiveVariablesPanel.tsx": {
-    "no-restricted-syntax": {
-      "count": 1
-    }
-  },
   "src/components/ProfilePanel.tsx": {
     "no-restricted-syntax": {
       "count": 31
