@@ -18,6 +18,13 @@
   --color-text-secondary: #a0a0a0;
   --color-text-tertiary: #707070;
   --color-text-disabled: #333333;
+  /* Rest ink for icon-only buttons (IconButton's ghost/danger tones — toolbar, panel headers,
+     dialog close). Midway between secondary and tertiary: at plain secondary (7.3:1 on Carbon)
+     the toolbar's row of seventeen 16 px icons read as loud as the labels beside it (owner,
+     2026-09-05); plain tertiary (3.6:1) was the old rest the 2026-09-04 review found hard to
+     scan. Derived from the two tokens, so every preset follows without a per-theme value and
+     the mix stays above tertiary's own contrast everywhere. Hover still lifts to primary. */
+  --color-text-icon: color-mix(in srgb, var(--color-text-secondary) 50%, var(--color-text-tertiary));
 
   /* Accent */
   --color-accent: #90caf9;

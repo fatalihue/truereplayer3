@@ -7,9 +7,13 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react';
  * (toolbar, collapse buttons), lg 32 (rails) — with min-width rather than width so a button
  * that also carries a chevron grows instead of clipping.
  *
- * Rest is text-secondary (the tertiary rest of the old toolbar measured ~3.9:1 and was the
- * reason the strip was hard to scan); hover lifts to elevated + primary; `active` is the
- * open-menu state and paints the hover look while the flyout is up. Every hover is gated on
+ * Rest is text-icon — the index.css token midway between secondary and tertiary. The tertiary
+ * rest of the old toolbar measured ~3.9:1 and was the reason the strip was hard to scan; the
+ * secondary rest that replaced it made the toolbar's row of icons read as loud as the labels
+ * beside it (owner, 2026-09-05), so the rest settled between the two. One token, so the
+ * toolbar and the profile panel's header buttons stay at the same intensity by construction.
+ * Hover lifts to elevated + primary; `active` is the open-menu state and paints the hover look
+ * while the flyout is up. Every hover is gated on
  * `enabled:` for the same reason Button gates it: index.css restores pointer-events on
  * [data-tip][disabled] so a disabled control can still explain itself, which lets :hover match.
  *
@@ -26,8 +30,8 @@ const SIZE_CLASSES: Record<IconButtonSize, string> = {
 };
 
 const TONE_CLASSES: Record<IconButtonTone, string> = {
-  ghost: 'text-text-secondary enabled:hover:bg-bg-elevated enabled:hover:text-text-primary',
-  danger: 'text-text-secondary enabled:hover:bg-recording-bg enabled:hover:text-recording',
+  ghost: 'text-text-icon enabled:hover:bg-bg-elevated enabled:hover:text-text-primary',
+  danger: 'text-text-icon enabled:hover:bg-recording-bg enabled:hover:text-recording',
 };
 
 const ACTIVE_CLASSES = 'bg-bg-elevated text-text-primary';
