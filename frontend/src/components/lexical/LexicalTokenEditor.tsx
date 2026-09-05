@@ -31,6 +31,7 @@ import {
   KEY_DELETE_COMMAND,
   KEY_ENTER_COMMAND,
   KEY_SPACE_COMMAND,
+  KEY_DOWN_COMMAND,
   TextNode,
   type LexicalNode,
   type TextFormatType,
@@ -48,7 +49,7 @@ import { LinkNode, AutoLinkNode, $isLinkNode, $isAutoLinkNode, $createLinkNode, 
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from '@lexical/html';
 import { $dfs, mergeRegister } from '@lexical/utils';
 import {
-  Bold, Italic, Underline, Strikethrough, Code, List, ListOrdered, Link2, Check, X,
+  Bold, Italic, Underline, Strikethrough, Code, List, ListOrdered, Link2, Check, X, RemoveFormatting,
 } from 'lucide-react';
 import { iconButtonClass } from '../common/IconButton';
 import { useTt } from '../../state/LanguageContext';
@@ -699,12 +700,47 @@ const AUTO_LINK_MATCHERS = [
 // collapses the editor selection they act on. Active states track the selection
 // via an update listener. The link flow is a tiny inline URL input — apply on
 // Enter, cancel on Esc; '{' is rejected (tokens inside link URLs are unsupported).
+// A DELIBERATE link (toolbar / Ctrl+K), not the AutoLinkNode a bare typed URL becomes — the
+// eraser and its enabled-state ask the same question, so they share the answer.
+function $insideDeliberateLink(node: LexicalNode): boolean {
+  return ($isLinkNode(node) && !$isAutoLinkNode(node))
+    || node.getParents().some((p) => $isLinkNode(p) && !$isAutoLinkNode(p));
+}
+
+// The eraser. Pasted text arrives with bold, inline styles and links, and until now the only way
+// out was to select and switch each button off in turn. selection.extract() splits the boundary
+// text nodes so only the SELECTED range loses its formatting and hands back exactly the selected
+// nodes; format bits and pasted inline styles reset, deliberate links in the range unwrap. Lists
+// stay: they are structure, and their own buttons toggle them. A collapsed caret clears what the
+// next keystroke would inherit, so "clear, then keep typing" works the way it does in Docs.
+function $clearFormatting(): void {
+  const sel = $getSelection();
+  if (!$isRangeSelection(sel)) return;
+  if (sel.isCollapsed()) {
+    sel.format = 0;
+    sel.style = '';
+    if ($insideDeliberateLink(sel.anchor.getNode())) $toggleLink(null);
+    return;
+  }
+  const hadLink = sel.getNodes().some($insideDeliberateLink);
+  for (const node of sel.extract()) {
+    const texts = $isTextNode(node) ? [node] : $isElementNode(node) ? node.getAllTextNodes() : [];
+    for (const t of texts) {
+      if (t.getFormat() !== 0) t.setFormat(0);
+      if (t.getStyle() !== '') t.setStyle('');
+    }
+  }
+  if (hadLink) $toggleLink(null);
+}
+
 function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDelivered: boolean; toolbarExtra?: React.ReactNode }) {
   const [editor] = useLexicalComposerContext();
   const tt = useTt();
   const [formats, setFormats] = useState({
     bold: false, italic: false, underline: false, strikethrough: false, code: false,
     link: false, ul: false, ol: false,
+    // Would the eraser remove anything? Drives its enabled state.
+    clearable: false,
   });
   const [linkInputOpen, setLinkInputOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
@@ -729,6 +765,14 @@ function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDe
         const anchorNode = sel.anchor.getNode();
         const parents = anchorNode.getParents();
         const listParent = parents.find($isListNode);
+        // Collapsed caret: the formats the next keystroke inherits, or a link around it. Range:
+        // any text node in it with a format/style bit, or a deliberate link in or above it. A
+        // selection-sized walk — the same cost as the B/I/U reads beside it. hasFormat() alone
+        // would not do: it answers for the ANCHOR, so a mixed selection whose anchor sits in plain
+        // text would show the eraser off with bold two words away.
+        const clearable = sel.isCollapsed()
+          ? sel.format !== 0 || $insideDeliberateLink(anchorNode)
+          : sel.getNodes().some((n) => ($isTextNode(n) && (n.getFormat() !== 0 || n.getStyle() !== '')) || $insideDeliberateLink(n));
         setFormats({
           bold: sel.hasFormat('bold'),
           italic: sel.hasFormat('italic'),
@@ -738,10 +782,25 @@ function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDe
           link: parents.some($isLinkNode),
           ul: !!listParent && listParent.getListType() === 'bullet',
           ol: !!listParent && listParent.getListType() === 'number',
+          clearable,
         });
       });
     });
   }, [editor]);
+
+  // Ctrl+\ — Docs' shortcut for the same eraser. `key`, not `code`: ABNT2 keeps the backslash on
+  // IntlBackslash and US on Backslash, and both report '\' as the key. Module-level $clearFormatting
+  // so the button and the key share one implementation with no closure to list as a dep.
+  useEffect(() => editor.registerCommand(
+    KEY_DOWN_COMMAND,
+    (event: KeyboardEvent) => {
+      if (!event.ctrlKey || event.altKey || event.metaKey || event.key !== '\\') return false;
+      event.preventDefault();
+      editor.update($clearFormatting);
+      return true;
+    },
+    COMMAND_PRIORITY_LOW,
+  ), [editor]);
 
   const applyLink = () => {
     const url = linkUrl.trim();
@@ -805,6 +864,23 @@ function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDe
       {fmtBtn('underline', formats.underline, Underline, tt('Underline (Ctrl+U)', 'Sublinhado (Ctrl+U)'))}
       {fmtBtn('strikethrough', formats.strikethrough, Strikethrough, tt('Strikethrough', 'Tachado'))}
       {fmtBtn('code', formats.code, Code, tt('Inline code', 'Código inline'))}
+      {/* The eraser closes the inline-format cluster. Measured before adding it (2026-09-05, the
+          rule from 08-31): at the minimum window the group had 133 px of slack with the link input
+          closed, so these 24 px keep the row on one line; with the input open the delivery control
+          already dropped to a second line and still does. Off → the reason (index.css keeps
+          [data-tip][disabled] hoverable); on → the action and its key. */}
+      <button
+        type="button"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => editor.update($clearFormatting)}
+        disabled={!formats.clearable}
+        className={btnClass(false)}
+        data-tip={formats.clearable
+          ? tt('Clear formatting (Ctrl+\\)', 'Limpar formatação (Ctrl+\\)')
+          : tt('Select formatted text to clear it', 'Selecione texto formatado para limpar')}
+      >
+        <RemoveFormatting size={14} />
+      </button>
       <div className="w-px h-4 mx-1 bg-border-default" />
       <button
         type="button"

@@ -1,5 +1,8 @@
 import { useMemo } from 'react';
+import { TriangleAlert } from 'lucide-react';
 import { useTt } from '../../state/LanguageContext';
+import { normalizeToken, splitTokenSegments } from './tokenNormalize';
+import type { DeliveryFacts } from '../../utils/sendTextStatus';
 import { useAppState } from '../../state/AppStateContext';
 import { useClipboardContent } from './useClipboardContent';
 import { useRunStateSnapshot } from './useRunStateSnapshot';
@@ -69,12 +72,15 @@ const NOTE_TIP: Record<string, [string, string]> = {
   ],
 };
 
-export function MessagePreviewPanel({ text, method, marksAdded = false }: {
+export function MessagePreviewPanel({ text, method, marksAdded = false, delivery }: {
   text: string;
   method: SendMethod;
   /** Delivery is Markdown/Discord AND the document carries formatting — so the engine will send
    *  KeyMarkdown, which is this text plus literal marks the panel cannot render. */
   marksAdded?: boolean;
+  /** The "Delivery" block under the message: transport, flavor, the fate of the formatting and
+   *  WHY, in full — see describeDelivery. The tab has the room the status strip does not. */
+  delivery?: DeliveryFacts;
 }) {
   const tt = useTt();
   const { clipRaw, clipReady } = useClipboardContent();
@@ -97,6 +103,22 @@ export function MessagePreviewPanel({ text, method, marksAdded = false }: {
   }, new Date()), [text, clipRaw, clipReady, dataTable, runState]);
 
   const empty = text.trim().length === 0;
+
+  // The names the Delivery block lists — the chips' own labels (the normalised token minus the
+  // braces, so a saved `{enter}` reads "Enter" here as it does in the editor), each once, in
+  // order of first appearance.
+  const tokenNames = useMemo(() => {
+    const names: string[] = [];
+    for (const seg of splitTokenSegments(text)) {
+      if (seg.kind !== 'token') continue;
+      const name = normalizeToken(seg.value).slice(1, -1);
+      if (!names.includes(name)) names.push(name);
+    }
+    return names;
+  }, [text]);
+  const tokensLine = tokenNames.length === 0
+    ? 'None'
+    : `${tokenNames.slice(0, 8).join(', ')}${tokenNames.length > 8 ? ` +${tokenNames.length - 8} more` : ''} · filled in at replay`;
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
@@ -158,6 +180,35 @@ export function MessagePreviewPanel({ text, method, marksAdded = false }: {
             )
           )}
         </div>
+        {/* The other question this tab is for: not just WHAT goes out but HOW. Four rows on one
+            grid, label column auto-sized. The Formatting row carries the ladder's own verdict and,
+            when it is a warning, its full sentence — the WHY that the status strip could only park
+            in a tooltip. Two channels for the warning (glyph + ink), as the strip does.
+            warning-ink is legal here: the rail paints on the card's bg-bg-elevated, one of the
+            three surfaces the ink is solved against. */}
+        {delivery && (
+          <div className="mt-3">
+            <div className="label-micro text-text-tertiary mb-1">Delivery</div>
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px] leading-snug">
+              <dt className="text-text-tertiary">Transport</dt>
+              <dd className="text-text-secondary min-w-0">{delivery.transport}</dd>
+              <dt className="text-text-tertiary">Flavor</dt>
+              <dd className="text-text-secondary min-w-0">{delivery.flavor}</dd>
+              <dt className="text-text-tertiary">Formatting</dt>
+              <dd className={`min-w-0 ${delivery.formatting.tone === 'warn' ? 'text-warning-ink' : 'text-text-secondary'}`}>
+                {delivery.formatting.tone === 'warn' && (
+                  <TriangleAlert size={11} className="inline-block align-[-1px] mr-1 shrink-0" />
+                )}
+                {delivery.formatting.verdict}
+                {delivery.formatting.why && (
+                  <div className="text-text-tertiary mt-0.5">{delivery.formatting.why}</div>
+                )}
+              </dd>
+              <dt className="text-text-tertiary">Tokens</dt>
+              <dd className="text-text-secondary min-w-0 break-words">{tokensLine}</dd>
+            </dl>
+          </div>
+        )}
       </div>
     </div>
   );

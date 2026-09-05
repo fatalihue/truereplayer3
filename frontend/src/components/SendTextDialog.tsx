@@ -19,7 +19,7 @@ import { normalizeToken, parseSendTextSegments, richFlavorSurvives, splitTokenSe
 import { tokenTip } from './lexical/tokenDescriptions';
 import { PopoverHeader, Section } from './lexical/popoverAtoms';
 import { FieldError } from './common/FieldError';
-import { pickStatusNote } from '../utils/sendTextStatus';
+import { describeDelivery, pickStatusNote } from '../utils/sendTextStatus';
 import type { SendMode, SendMethod } from '../utils/sendTextTypes';
 import { NumberInput } from './common/NumberInput';
 import { ClipboardSurface } from './lexical/ClipboardSurface';
@@ -238,7 +238,8 @@ function SnippetText({ text }: { text: string }) {
             key={idx}
             className="inline-flex items-center px-1 mx-[1px] rounded text-[10px] font-mono align-baseline select-none border text-text-secondary bg-bg-input border-border-default"
           >
-            {segment.value.slice(1, -1)}
+            {/* Normalised like the editor's chips, so an imported `{enter}` reads "Enter" here too. */}
+            {normalizeToken(segment.value).slice(1, -1)}
           </span>
         ) : (
           <span key={idx}>{segment.value}</span>
@@ -876,6 +877,16 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
     [hasFormatting, sendMode, text],
   );
 
+  // The Preview tab's Delivery block: the ladder's inputs plus the pause, all four rows, the WHY
+  // in full. Same charDelay rule as handleConfirm/isDirty: it only exists under Type.
+  const deliveryFacts = useMemo(
+    () => describeDelivery({
+      sendMode, sendMethod, hasFormatting, tokenCount, richWillDegrade,
+      charDelayMs: sendMethod === 'type' && charDelay ? charDelay : null,
+    }),
+    [sendMode, sendMethod, hasFormatting, tokenCount, richWillDegrade, charDelay],
+  );
+
   // Parked on the right of the formatting toolbar (LexicalTokenEditor's toolbarExtra), beside the
   // B/I/U buttons whose fate it decides. No "Delivery" caption: the names are self-describing
   // and the toolbar is a narrow row that also has to fit the link URL input.
@@ -1206,6 +1217,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
               text={text}
               method={sendMethod}
               marksAdded={(sendMode === 'markdown' || sendMode === 'discord') && hasFormatting}
+              delivery={deliveryFacts}
             />
           ) : railTab === 'emoji' ? (
             <div className="flex-1 min-h-0 overflow-hidden">
