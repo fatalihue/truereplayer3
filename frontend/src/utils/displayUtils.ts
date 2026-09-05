@@ -1,10 +1,14 @@
 import type { ActionItem } from '../bridge/messageTypes';
 import { carriesConditionProbe } from './conditionalBlocks';
+import { compactKey } from './keyNames';
 
+// Raw key names as older profiles and the hook report them (numeric VK codes, WinForms enum
+// names, Oem*) -> the canonical KeyUtils.cs name. getDisplayKey then applies the keycap
+// spelling from utils/keyNames (PageDown -> PgDn), the same table KbdTag and KeyCaps use.
 const DISPLAY_KEY_MAP: Record<string, string> = {
   '162': 'Ctrl', '163': 'Ctrl',
   '160': 'Shift', '161': 'Shift',
-  '20': 'Caps Lock', '144': 'Num Lock', '145': 'Scroll Lock',
+  '20': 'CapsLock', '144': 'NumLock', '145': 'ScrollLock',
   '91': 'Win', '92': 'Win',
   '164': 'Alt', '165': 'Alt', 'Menu': 'Alt',
   'Oem1': ';', 'Oem2': '/', 'Oem3': '`',
@@ -14,8 +18,8 @@ const DISPLAY_KEY_MAP: Record<string, string> = {
   'NumMultiply': 'Num*', 'NumDivide': 'Num/',
   'NumAdd': 'Num+', 'NumSubtract': 'Num-',
   'Return': 'Enter', 'Back': 'Backspace',
-  'Capital': 'Caps Lock',
-  'Next': 'Page Down', 'Prior': 'Page Up',
+  'Capital': 'CapsLock',
+  'Next': 'PageDown', 'Prior': 'PageUp',
 };
 
 const NO_COORD_TYPES = new Set(['Assert', 'KeyDown', 'KeyUp', 'Keystroke', 'HoldKey', 'ScrollUp', 'ScrollDown', 'SendText', 'SetVariable', 'CopyToSlot', 'ActivateWindow', 'WaitImage', 'WaitPixelColor', 'BrowserClick', 'BrowserRightClick', 'BrowserType', 'BrowserWaitElement', 'BrowserNavigate', 'BrowserSelectOption', 'BrowserAssert', 'RunProfile', 'Pause', 'If', 'ElseIf', 'Else', 'EndIf', 'Stop', 'Return', 'While', 'EndLoop', 'BreakLoop', 'ContinueLoop', 'ForEachRow']);
@@ -23,7 +27,7 @@ const NO_COORD_TYPES = new Set(['Assert', 'KeyDown', 'KeyUp', 'Keystroke', 'Hold
 export function getDisplayKey(key: string): string {
   if (!key) return '';
   if (key.startsWith('D') && key.length === 2 && /\d/.test(key[1])) return key[1];
-  return DISPLAY_KEY_MAP[key] ?? key;
+  return compactKey(DISPLAY_KEY_MAP[key] ?? key);
 }
 
 // Space the '+' separators in a keystroke combo for readability in the grid:

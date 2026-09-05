@@ -1,4 +1,5 @@
 import { splitCombo } from './KbdTag';
+import { compactKey } from '../../utils/keyNames';
 
 /**
  * Hero key-caps for the capture dialogs' pads — one big cap per key, joined by
@@ -15,7 +16,8 @@ interface KeyCapsProps {
 }
 
 export function KeyCaps({ combo, fg }: KeyCapsProps) {
-  const parts = splitCombo(combo.replace(/\bVK_93\b/, 'Menu'));
+  // compactKey is display-only: the cap says PgDn like every other keycap; state keeps PageDown.
+  const parts = splitCombo(combo.replace(/\bVK_93\b/, 'Menu')).map(compactKey);
   return (
     <div className="inline-flex items-center justify-center self-center gap-1 flex-wrap">
       {parts.map((part, i) => (

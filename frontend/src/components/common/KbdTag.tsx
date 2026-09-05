@@ -1,3 +1,4 @@
+import { compactKey } from '../../utils/keyNames';
 interface KbdTagProps {
   combo: string;
   accent?: boolean;
@@ -19,24 +20,8 @@ export function splitCombo(combo: string): string[] {
     : combo.split('+').map((p, i, arr) => (p === '' && i === arr.length - 1 ? '+' : p)).filter(p => p !== '');
 }
 
-/**
- * Physical-keyboard abbreviations for the long key names the hook reports. What a keycap says
- * is what the chip says: PgUp, not PageUp. This is what let the settings column stop clipping
- * "Ctrl+PageDown" without growing — and it is the ONE place the names are shortened, so the
- * settings field, the profile list and the menus all spell a key the same way.
- */
-const COMPACT_KEY: Record<string, string> = {
-  PageUp: 'PgUp', 'Page Up': 'PgUp', Prior: 'PgUp',
-  PageDown: 'PgDn', 'Page Down': 'PgDn', Next: 'PgDn',
-  ScrollLock: 'ScrLk', 'Scroll Lock': 'ScrLk',
-  CapsLock: 'Caps', 'Caps Lock': 'Caps',
-  NumLock: 'NumLk', 'Num Lock': 'NumLk',
-  PrintScreen: 'PrtSc',
-  Insert: 'Ins',
-  Delete: 'Del',
-  Escape: 'Esc',
-};
-export const compactKey = (key: string): string => COMPACT_KEY[key] ?? key;
+// The keycap spelling (PgDn, Esc, Del...) lives in utils/keyNames so the grid, the sheet and the
+// hero caps say exactly what this tag says. Display-only; the combo in state stays canonical.
 
 /**
  * Renders a keyboard shortcut combo.

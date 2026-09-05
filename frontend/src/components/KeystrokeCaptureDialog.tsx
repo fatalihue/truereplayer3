@@ -4,7 +4,7 @@ import { NumberInput } from './common/NumberInput';
 import { DialogShell, DialogFooter  } from './common/DialogShell';
 import { SegmentedControl } from './common/SegmentedControl';
 import { KeyCaps } from './common/KeyCaps';
-import { compactKey } from './common/KbdTag';
+import { compactKey } from '../utils/keyNames';
 import { chipDotOn, chipDotOff } from './common/chipStyles';
 import { DurationChips } from './common/DurationChips';
 import { useBridge } from '../bridge/BridgeContext';
