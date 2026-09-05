@@ -965,7 +965,7 @@ function HotkeyInput({ value, settingKey, onChange, width = FIELD_W }: {
       }}
       onBlur={() => { setIsFocused(false); setLocalValue(value); send({ type: 'hotkey:capture', payload: { enabled: false, ownerId: ownerIdRef.current } }); disarmCaptureTimer(); }}
       aria-label={value ? `Hotkey: ${value}` : 'Set hotkey'}
-      className={`min-w-full h-7 px-1.5 flex items-center justify-center rounded border transition-colors cursor-pointer outline-none ${
+      className={`min-w-[100px] h-7 px-1.5 flex items-center justify-center rounded border transition-colors cursor-pointer outline-none ${
         isFocused
           ? 'border-accent-solid bg-bg-input'
           : 'border-transparent bg-transparent hover:bg-bg-elevated focus-visible:border-accent-solid'
@@ -994,10 +994,12 @@ function HotkeyInput({ value, settingKey, onChange, width = FIELD_W }: {
   // hovered (the resting panel should read as one clean column of key values) — opacity
   // rather than mounting, so the combo underneath never shifts. focus-visible keeps it
   // reachable by keyboard, where there is no hover to give.
-  // Free width with the column's 100 px floor: a two-cap combo ("Win + Ctrl + C") grows the
-  // field leftwards instead of clipping — the label side has the room, the value side never did.
+  // Free width with the column's 100 px floor ON THE BUTTON (never a percentage of an auto-width
+  // wrapper — that is circular, and a capture-time reflow resolved it wide enough to wrap the
+  // row labels): a three-cap combo ("Win + Ctrl + C") grows the field leftwards instead of
+  // clipping — the label side has the room, the value side never did.
   return (
-    <div className={`group relative inline-flex justify-end ${width === FIELD_W ? 'min-w-[100px]' : width}`}>
+    <div className={`group relative inline-flex justify-end ${width === FIELD_W ? '' : width}`}>
       {input}
       {value !== '' && !isFocused && (
         <button
