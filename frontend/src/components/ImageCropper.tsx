@@ -221,7 +221,7 @@ export function ImageCropper({ imageBase64, onSave, onCancel }: ImageCropperProp
             label: 'Save crop',
             onClick: () => onSave(crop),
             disabled: !canSave,
-            tip: canSave ? tt('Apply crop', 'Aplicar recorte') : tt('Pick a smaller region first', 'Selecione uma região menor primeiro'),
+            tip: canSave ? undefined : tt('Pick a smaller region first', 'Selecione uma região menor primeiro'),
           }}
         />
       }

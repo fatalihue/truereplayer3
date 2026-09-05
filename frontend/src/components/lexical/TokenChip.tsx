@@ -160,7 +160,7 @@ export function TokenChip({ nodeKey, token }: { nodeKey: NodeKey; token: string 
         // {clipboard:next} note) was reachable only before you had a chip to read it about.
         // Hover-only, like every other data-tip; the keyboard path to the same words is the
         // popover header, which Enter/Space now opens.
-        data-tip={tokenTip(token, tt)}
+        data-tip={tokenTip(token, tt, { skipKeys: true })}
         // DOM marker for the selected state so it can be asserted without a screenshot.
         data-chip-selected={isSelected ? '' : undefined}
         // Chip palette tracks the SendText action colour (--color-action-sendtext-fg).

@@ -129,6 +129,14 @@ export function describeToken(token: string): TokenDescription | null {
   return BY_NAME[split.name as KnownTokenName] ?? null;
 }
 
+// The plain key-press tokens. A chip that reads "Enter" needs no hover saying "Press Enter", so
+// tokenTip returns '' for these when asked to (skipKeys) — the popover header, which is text and
+// not a hover, keeps the description.
+const KEY_PRESS_TOKENS = new Set([
+  'enter', 'tab', 'space', 'backspace', 'delete', 'escape', 'esc', 'home', 'end',
+  'pageup', 'pagedown', 'up', 'down', 'left', 'right',
+]);
+
 export interface TokenTipOptions {
   /**
    * Append ` — {raw token}` when the token carries arguments, so the reader sees exactly what
@@ -139,13 +147,16 @@ export interface TokenTipOptions {
   withRaw?: boolean;
   /** Prefer paletteTip when the entry has one. Palette only. */
   palette?: boolean;
+  /** Return '' for the plain key-press tokens (see KEY_PRESS_TOKENS). Hover surfaces only. */
+  skipKeys?: boolean;
 }
 
 /** Ready-to-render tooltip text for a token. Empty string when the name is unknown. */
 export function tokenTip(token: string, tt: Tt, opts: TokenTipOptions = {}): string {
-  const { withRaw = true, palette = false } = opts;
+  const { withRaw = true, palette = false, skipKeys = false } = opts;
   const entry = describeToken(token);
   if (!entry) return '';
+  if (skipKeys && KEY_PRESS_TOKENS.has(splitToken(token)?.name ?? '')) return '';
   const pair = (palette && entry.paletteTip) || entry.tip;
   const text = tt(pair[0], pair[1]);
   const split = splitToken(token);

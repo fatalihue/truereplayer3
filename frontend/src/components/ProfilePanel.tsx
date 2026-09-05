@@ -1505,7 +1505,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
       // utility below, same mechanism as the dialog cards).
       tabIndex={0}
       role="button"
-      data-tip={isClicker ? tt('Profile activation is unavailable in Clicker mode — switch to Macro', 'Ativação de perfis indisponível no modo Clicker — mude para Macro') : undefined}
+      data-tip={isClicker ? tt('Macro mode only', 'Só no modo Macro') : undefined}
       onKeyDown={(e) => {
         if (e.key !== 'Enter' && e.key !== ' ') return;
         e.preventDefault();
@@ -1617,7 +1617,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               than a column of its own; the ring keeps it readable over the row hover. */}
           {p.triggerArmed && (
             <span
-              data-tip={tt('Automation armed — fires without a hotkey', 'Automação armada — dispara sem hotkey')}
+              data-tip={tt('Automation armed', 'Automação armada')}
               data-tip-pos="end"
               className="absolute -right-1 -bottom-1 w-1.5 h-1.5 rounded-full"
               style={{ background: 'var(--color-replay)', outline: '1.5px solid var(--color-bg-card)' }}
@@ -1711,8 +1711,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                always computed this — it just never left the toast, so the sidebar showed two
                identical chips for a combo where only one of them can ever fire. */
             tip={p.hotkeyConflict
-              ? tt('Another profile uses this hotkey with the same target window — only one will fire',
-                   'Outro profile usa este hotkey com a mesma janela-alvo — só um vai disparar')
+              ? tt('Another profile uses this hotkey for the same window — only one fires',
+                   'Outro profile usa este hotkey na mesma janela — só um dispara')
               : undefined}
             className={p.hotkeyConflict ? 'kbd-conflict' : undefined}
           >
@@ -2482,7 +2482,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                       setContextMenu(null);
                     }}
                     className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                    data-tip={profile?.isActive ? tt("Rewrite this profile's action X/Y to be relative to its target window", 'Reescreve o X/Y das ações deste perfil para ser relativo à janela-alvo') : tt('Open this profile first — convert applies to the loaded profile', 'Abra este perfil primeiro — a conversão se aplica ao perfil carregado')}
+                    data-tip={profile?.isActive ? tt('X/Y relative to the target window', 'X/Y relativos à janela-alvo') : tt('Open this profile first', 'Abra este perfil primeiro')}
                   >
                     <ArrowLeftRight size={13} className="text-text-tertiary" />
                     Convert coords → Relative
@@ -2494,7 +2494,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                       setContextMenu(null);
                     }}
                     className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                    data-tip={profile?.isActive ? tt("Rewrite this profile's action X/Y to absolute screen coordinates", 'Reescreve o X/Y das ações deste perfil para coordenadas absolutas de tela') : tt('Open this profile first — convert applies to the loaded profile', 'Abra este perfil primeiro — a conversão se aplica ao perfil carregado')}
+                    data-tip={profile?.isActive ? tt('X/Y as absolute screen coordinates', 'X/Y em coordenadas absolutas de tela') : tt('Open this profile first', 'Abra este perfil primeiro')}
                   >
                     <ArrowLeftRight size={13} className="text-text-tertiary" />
                     Convert coords → Absolute
@@ -2770,12 +2770,12 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               <div className="label-micro text-text-tertiary mb-1.5">Trigger Mode</div>
               <div className="grid grid-cols-2 gap-1.5">
                 {([
-                  { id: 'onPress', label: 'On Press', help: tt('Fires once when the key is pressed down.', 'Dispara uma vez quando a tecla é pressionada.') },
-                  { id: 'onRelease', label: 'On Release', help: tt('Fires once when the key is released.', 'Dispara uma vez quando a tecla é solta.') },
-                  { id: 'whilePressed', label: 'While Pressed', help: tt('Runs in infinite loop while held. Stops on release.', 'Executa em loop infinito enquanto pressionada. Para ao soltar.') },
-                  { id: 'toggle', label: 'Toggle', help: tt('Press to start an infinite loop, press again to stop.', 'Pressione para iniciar um loop infinito, pressione de novo para parar.') },
-                  { id: 'doubleTap', label: 'Double-tap', help: tt('Fires once when the key is tapped twice quickly. Single taps do nothing.', 'Dispara uma vez com dois toques rápidos na tecla. Toques únicos não fazem nada.') },
-                  { id: 'hold', label: 'Hold (long-press)', help: tt('Fires ONCE after the key is held ~0.6s. A quick tap does nothing. Unlike While Pressed, the run does not stop on release.', 'Dispara UMA vez após segurar ~0,6s. Toque rápido não faz nada. Diferente de While Pressed, a execução não para ao soltar.') },
+                  { id: 'onPress', label: 'On Press', help: undefined },
+                  { id: 'onRelease', label: 'On Release', help: undefined },
+                  { id: 'whilePressed', label: 'While Pressed', help: tt('Loops while held; stops on release', 'Repete enquanto segura; para ao soltar') },
+                  { id: 'toggle', label: 'Toggle', help: tt('Press to start looping, press again to stop', 'Aperte para começar o loop, de novo para parar') },
+                  { id: 'doubleTap', label: 'Double-tap', help: tt('Two quick taps; a single tap is ignored', 'Dois toques rápidos; toque único é ignorado') },
+                  { id: 'hold', label: 'Hold (long-press)', help: tt('Fires once after ~0.6 s held; does not stop on release', 'Dispara uma vez após ~0,6 s segurando; não para ao soltar') },
                 ] as const).map((opt) => (
                   <button
                     key={opt.id}
@@ -3086,7 +3086,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                 type="button"
                 onClick={() => setIncludeExportOrg(v => !v)}
                 className="w-full flex items-center gap-2 text-left"
-                data-tip={tt('Keeps pins, folders, order and folder targets.', 'Mantém pins, pastas, ordem e alvos de pasta.')}
+                data-tip={tt('Pins, folders, order and folder targets', 'Pins, pastas, ordem e alvos de pasta')}
               >
                 <CheckboxBox checked={includeExportOrg} />
                 <span className="text-xs text-text-secondary">Include folder organization</span>

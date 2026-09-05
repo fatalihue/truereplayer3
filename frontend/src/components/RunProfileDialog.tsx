@@ -158,8 +158,7 @@ export function RunProfileDialog({ mode, initial, excludeProfileName, onConfirm,
                 onChange={(e) => setRunOverData(e.target.checked)}
               />
               <span className="text-xs text-text-primary"
-                data-tip={tt('Runs the called profile once per row of ITS own Data table, with {row:column} coming from that row. Overrides Repeat; with no table it just runs once.',
-                  'Roda o perfil chamado uma vez por linha da tabela de dados DELE, com {row:column} vindo daquela linha. Substitui o Repeat; sem tabela, roda uma vez só.')}>
+                data-tip={tt("Once per row of the called profile's table. Overrides Repeat.", 'Uma vez por linha da tabela do perfil chamado. Substitui o Repeat.')}>
                 Run once per data row
               </span>
             </label>

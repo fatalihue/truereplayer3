@@ -236,7 +236,7 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
               value={value.titleMatchMode}
               onChange={(m) => edit({ titleMatchMode: m })}
               options={[
-                { value: 'contains', label: 'Contains', tip: tt('Contains this text', 'Contém este texto') },
+                { value: 'contains', label: 'Contains' },
                 { value: 'regex', label: 'Regex', tip: tt('.NET regular expression', 'Expressão regular .NET') },
               ]}
             />

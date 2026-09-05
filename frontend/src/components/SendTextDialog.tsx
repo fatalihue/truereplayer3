@@ -460,7 +460,7 @@ function NamePromptPopover({
             onClick={advanced}
             disabled={!name.trim()}
             className="flex items-center gap-1 h-7 px-2 text-[11px] rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            data-tip={tt('Open the chain builder for this token — trim, split, lines, case…', 'Abrir o construtor de cadeia para este token — trim, corte, linhas, maiúsculas…')}
+            data-tip={tt('Transforms: trim, split, lines, case…', 'Transformações: trim, corte, linhas, maiúsculas…')}
           >
             <Wand2 size={11} className="shrink-0" />
             Advanced…
@@ -849,11 +849,11 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
           // decides between them. The rest (no clipboard write, line breaks becoming Enter)
           // lives in the status rung and the manual, which is where a reader who needs it looks.
           { value: 'paste', label: 'Paste', tip: tt(
-            'Ctrl+V via the clipboard. The only mode that sends formatting.',
-            'Ctrl+V pela área de transferência. Único modo que envia formatação.') },
+            'Ctrl+V — the only mode that sends formatting',
+            'Ctrl+V — único modo que envia formatação') },
           { value: 'type', label: 'Type', tip: tt(
-            'Types key by key. For targets that ignore Ctrl+V.',
-            'Digita tecla por tecla. Para alvos que ignoram Ctrl+V.') },
+            'Key by key — for targets that ignore Ctrl+V',
+            'Tecla a tecla — para alvos que ignoram Ctrl+V') },
         ]}
       />
       {sendMethod === 'type' && (
@@ -881,10 +881,10 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
       value={sendMode}
       onChange={setSendMode}
       options={[
-        { value: 'rich', label: 'Rich', tip: tt('Real formatting where the target accepts it (Gmail, Crisp, Word).', 'Formatação real onde o alvo aceita (Gmail, Crisp, Word).') },
+        { value: 'rich', label: 'Rich', tip: tt('Real formatting (Gmail, Crisp, Word)', 'Formatação real (Gmail, Crisp, Word)') },
         { value: 'markdown', label: 'Markdown', tip: tt('*bold* / _italic_ as text — for WhatsApp.', '*negrito* / _itálico_ como texto — para WhatsApp.') },
         { value: 'discord', label: 'Discord', tip: tt('**bold** / ~~strike~~ as text — for Discord.', '**negrito** / ~~tachado~~ como texto — para Discord.') },
-        { value: 'plain', label: 'Plain', tip: tt('Raw text, no formatting.', 'Texto cru, sem formatação.') },
+        { value: 'plain', label: 'Plain' },
       ]}
     />
     </div>
@@ -939,7 +939,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
       // From the shared table, in its PALETTE voice (the "click the chip after inserting"
       // advice that would be nonsense on the chip itself) and without the raw token, because a
       // palette chip is a generic SEED and not the user's token.
-      data-tip={tokenTip(paletteToken(chip), tt, { palette: true, withRaw: false })}
+      data-tip={tokenTip(paletteToken(chip), tt, { palette: true, withRaw: false, skipKeys: true })}
     >
       {chip.label}
     </button>
@@ -1244,7 +1244,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                       onClick={handleExportSnippets}
                       disabled={snippets.length === 0}
                       className={iconButtonClass('sm')}
-                      data-tip={tt('Save all snippets to a file', 'Salvar todos os snippets em um arquivo')}
+                      data-tip={tt('Export snippets', 'Exportar snippets')}
                     >
                       <Download size={14} />
                     </button>
@@ -1252,7 +1252,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                       type="button"
                       onClick={() => snippetFileRef.current?.click()}
                       className={iconButtonClass('sm')}
-                      data-tip={tt('Load from a file — ADDED to the ones you have', 'Carregar de um arquivo — SOMADOS aos que você já tem')}
+                      data-tip={tt('Import snippets (added to yours)', 'Importar snippets (somados aos seus)')}
                     >
                       <Upload size={14} />
                     </button>
@@ -1261,7 +1261,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                       onClick={() => setSavingSnippet(true)}
                       disabled={!text.trim()}
                       className={iconButtonClass('sm')}
-                      data-tip={tt('Save current text as a snippet', 'Salvar o texto atual como snippet')}
+                      data-tip={tt('Save as snippet', 'Salvar como snippet')}
                     >
                       <BookmarkPlus size={14} />
                     </button>

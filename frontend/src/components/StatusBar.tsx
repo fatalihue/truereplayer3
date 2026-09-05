@@ -202,7 +202,7 @@ export function StatusBar() {
                   <span
                     className="flex items-center gap-1 text-[11px] font-medium whitespace-nowrap"
                     style={{ color: 'var(--color-warning-ink)' }}
-                    data-tip={tt('The window under the cursor runs as administrator — Windows drops these clicks. Run TrueReplayer as administrator.', 'A janela sob o cursor roda como administrador — o Windows descarta esses cliques. Rode o TrueReplayer como administrador.')}
+                    data-tip={tt('Windows drops clicks on elevated windows — run as administrator', 'O Windows descarta cliques em janelas elevadas — rode como administrador')}
                   >
                     <AlertTriangle size={10} className="shrink-0" />
                     elevated target
@@ -275,7 +275,7 @@ export function StatusBar() {
                   <Sep />
                   <span
                     className="flex items-center gap-1.5 text-text-tertiary"
-                    data-tip={tt('Estimated duration: the delays added up, plus ~30 ms per action. Smooth mouse moves and waits are not counted.', 'Duração estimada: a soma dos atrasos mais ~30 ms por ação. Movimentos suaves e esperas não entram na conta.')}
+                    data-tip={tt('Delays + ~30 ms per action. Moves and waits not counted.', 'Atrasos + ~30 ms por ação. Movimentos e esperas não entram.')}
                   >
                     <Timer size={11} />
                     <span className="text-text-secondary font-mono">~{fmtDuration(estimateMs, language)}</span>
@@ -290,7 +290,7 @@ export function StatusBar() {
                     onClick={() => window.dispatchEvent(new CustomEvent('cmd:runreport'))}
                     className="flex items-center gap-1.5 px-1 -mx-1 rounded hover:bg-bg-elevated transition-colors"
                     style={{ color: lastRun.failedRow == null ? 'var(--color-replay-fg)' : 'var(--color-recording-fg)' }}
-                    data-tip={tt('Last run. Click to open the run report.', 'Última execução. Clique para abrir o relatório.')}
+                    data-tip={tt('Open the run report', 'Abrir o relatório da execução')}
                   >
                     {lastRun.failedRow == null ? <CheckCircle2 size={11} /> : <XCircle size={11} />}
                     <span className="font-medium">{lastRun.failedRow == null ? 'last run' : `stopped at step ${lastRun.failedRow}`}</span>
@@ -407,8 +407,8 @@ export function StatusBar() {
             // adds is the CONSEQUENCE the label can't fit — that conditions fail silently rather
             // than loudly — plus what to do about it.
             data-tip={tt(
-              'Browser actions will fail, and browser conditions read as "not found" — so a macro can take the wrong branch without erroring. Open Chrome with the TrueReplayer extension enabled.',
-              'Ações de browser vão falhar, e condições de browser leem "não encontrado" — então a macro pode pegar o caminho errado sem dar erro. Abra o Chrome com a extensão do TrueReplayer ativa.',
+              'Browser actions fail and browser conditions read as "not found". Open Chrome with the extension enabled.',
+              'Ações de browser falham e condições de browser leem "não encontrado". Abra o Chrome com a extensão ativa.',
             )}
           >
             <Unplug size={11} className="shrink-0" />

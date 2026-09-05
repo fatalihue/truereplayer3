@@ -2393,8 +2393,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                           <MousePointer2
                             size={11}
                             className="ml-0.5 opacity-80"
-                            data-tip={tt('Clicks at the mouse position when this step runs.',
-                                         'Clica na posição do mouse quando este passo rodar.')}
+                            data-tip={tt('Clicks at the cursor position', 'Clica na posição do cursor')}
                           />
                         )}
                     </span>
@@ -2516,12 +2515,12 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                               badge={sendTextDeliveryBadge(action)}
                               badgeTips={{
                                 'rich-split': tt(
-                                  'Delivery is Rich, but a key or delay token splits the text — the engine attaches formatting only when the payload is ONE text run, so replay pastes this as PLAIN. Move the token to the start or the end, split the action in two, or switch Delivery to Markdown/Discord.',
-                                  'O Delivery está em Rich, mas um token de tecla ou delay divide o texto — o motor só anexa formatação quando o texto forma UM bloco, então o replay cola como TEXTO PURO. Mova o token para o início ou o fim, divida a ação em duas, ou troque o Delivery para Markdown/Discord.',
+                                  'Rich, but a key or delay token splits the text, so replay pastes it as plain. Move the token to an end, split the action, or use Markdown/Discord.',
+                                  'Rich, mas um token de tecla ou delay divide o texto, então o replay cola como texto puro. Mova o token para uma ponta, divida a ação ou use Markdown/Discord.',
                                 ),
                                 'type-drops-rich': tt(
-                                  'This row is set to Type, which sends keystrokes with no clipboard — so the formatting it carries is not sent. The formatting stays saved: switch to Paste to send it, or switch Delivery to Markdown/Discord, whose marks are typed as literal characters.',
-                                  'Esta linha está em Type, que envia teclas sem passar pela área de transferência — então a formatação que ela carrega não é enviada. A formatação continua salva: troque para Paste para enviá-la, ou troque o Delivery para Markdown/Discord, cujas marcas são digitadas como caracteres literais.',
+                                  'Type sends keystrokes, no clipboard, so the formatting is not sent. It stays saved: use Paste, or Markdown/Discord to type the marks.',
+                                  'Type envia teclas, sem área de transferência, então a formatação não é enviada. Ela fica salva: use Paste, ou Markdown/Discord para digitar as marcas.',
                                 ),
                               }}
                             />
@@ -3436,14 +3435,14 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
             onClick={handleContextDelete}
             data-tip={
               deleteScope === 'block'
-                ? tt('Removes the If, its body, every Else If arm and the End If.',
-                     'Remove o If, o corpo dele, todos os braços Else If e o End If.')
+                ? tt('Deletes the whole If block, End If included',
+                     'Apaga o bloco If inteiro, com o End If')
                 : deleteScope === 'loop'
-                  ? tt('Removes the loop opener, its body and the End Loop.',
-                       'Remove o abridor do loop, o corpo dele e o End Loop.')
+                  ? tt('Deletes the whole loop, End Loop included',
+                       'Apaga o loop inteiro, com o End Loop')
                   : deleteScope === 'arm'
-                    ? tt('Removes only this Else If and its body. The rest of the chain stays.',
-                         'Remove só este Else If e o corpo dele. O resto da cadeia fica.')
+                    ? tt('Deletes only this Else If arm',
+                         'Apaga só este braço Else If')
                     : undefined
             }
             className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-recording hover:bg-bg-elevated transition-colors"

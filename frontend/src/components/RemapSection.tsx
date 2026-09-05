@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { X, Plus, ArrowRight, Ban } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
 import { useAppState } from '../state/AppStateContext';
-import { useTt } from '../state/LanguageContext';
 import { Button } from './common/Button';
 import { chipOn, chipOff, chipDotOn, chipDotOff } from './common/chipStyles';
 
@@ -20,7 +19,6 @@ const MAX_REMAPS = 32;
 export function RemapSection() {
   const { send, subscribe } = useBridge();
   const { settings, profiles } = useAppState();
-  const tt = useTt();
   const remaps = settings.remaps;
 
   const [addOpen, setAddOpen] = useState(false);
@@ -172,7 +170,6 @@ export function RemapSection() {
             type="button"
             onClick={() => saveList(remaps.entries.map((e, j) => (j === i ? { ...e, enabled: !r.enabled } : e)))}
             aria-label={r.enabled ? 'Disable remap' : 'Enable remap'}
-            data-tip={tt(r.enabled ? 'Disable this remap' : 'Enable this remap', r.enabled ? 'Desativar este remap' : 'Ativar este remap')}
             className="h-full pl-2 pr-1.5 flex items-center shrink-0 cursor-pointer transition-colors hover:bg-[rgba(127,127,127,0.18)]"
           >
             <span

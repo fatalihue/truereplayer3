@@ -319,8 +319,8 @@ const GridRow = memo(function GridRow({
         } ${isCursor ? 'font-semibold text-[color:var(--color-replay-fg)]' : 'text-text-tertiary'}`}
         data-tip={onSetCursor
           ? (isCursor
-              ? tt('The next run starts on this row', 'A próxima execução começa nesta linha')
-              : tt('Click to start the next run here', 'Clique para a próxima execução começar aqui'))
+              ? tt('Next run starts here', 'A próxima execução começa aqui')
+              : tt('Start the next run here', 'Começar a próxima execução aqui'))
           : undefined}
       >
         <span className="inline-flex items-center justify-end gap-0.5">
@@ -927,7 +927,6 @@ export function DataPanel({ onClose }: DataPanelProps) {
             type="button"
             onClick={() => setFind('')}
             className="absolute right-1.5 text-text-disabled hover:text-text-secondary"
-            data-tip={tt('Clear', 'Limpar')}
           >
             <X size={11} />
           </button>
@@ -980,7 +979,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
           <>
             <Button variant="secondary" size="md" onClick={requestClose}>Cancel</Button>
             {willClear ? (
-              <span data-tip={tt('Saving an empty grid deletes the data table from this profile.', 'Salvar a grade vazia apaga a tabela de dados deste profile.')}>
+              <span data-tip={tt("Deletes this profile's data table", 'Apaga a tabela de dados deste profile')}>
                 <Button variant="destructive" size="md" onClick={handleSave}>Clear table</Button>
               </span>
             ) : (
@@ -1057,7 +1056,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
                     <th
                       onClick={() => copyToken('{row}', '__rownum')}
                       className="sticky top-0 left-0 z-20 bg-bg-surface shadow-[inset_-1px_0_0_var(--color-border-subtle),inset_0_-1px_0_var(--color-border-subtle)] h-row text-[10px] text-text-tertiary text-right pr-2 select-none cursor-pointer"
-                      data-tip={tt('{row} = the current row number (1-based) during the loop — click to copy', '{row} = o número da linha atual (base 1) durante o loop — clique para copiar')}
+                      data-tip={tt('{row} — click to copy the token', '{row} — clique para copiar o token')}
                     >
                       {copiedKey === '__rownum' ? <Check size={11} className="inline text-[color:var(--color-replay-fg)]" /> : '#'}
                     </th>
@@ -1084,7 +1083,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
                                 type="button"
                                 onClick={() => { if (!readOnly) setEditing({ kind: 'header', c }); }}
                                 className={`truncate ${meta.dup ? 'underline decoration-dotted decoration-warning-ink underline-offset-2' : ''} ${readOnly ? '' : 'cursor-text'}`}
-                                data-tip={meta.dup ? tt('Duplicate column — the last one wins at replay.', 'Coluna duplicada — a última vence no replay.') : undefined}
+                                data-tip={meta.dup ? tt('Duplicate column — the last one wins', 'Coluna duplicada — a última vence') : undefined}
                               >
                                 {meta.name || <span className="text-text-disabled italic">({'empty'})</span>}
                               </button>
@@ -1168,8 +1167,8 @@ export function DataPanel({ onClose }: DataPanelProps) {
             onClick={() => setLoop(!loopOverData)}
             className="flex items-center gap-2 px-3 py-1 text-xs text-text-secondary hover:text-text-primary transition-colors"
             data-tip={tt(
-              'Runs the whole profile once per data row. Overrides Loop count and WhilePressed/Toggle infinite replay.',
-              'Executa o perfil inteiro uma vez por linha. Sobrepõe o Loop count e o replay infinito de WhilePressed/Toggle.',
+              'Runs the profile once per row. Overrides Loop count and infinite replay.',
+              'Roda o perfil uma vez por linha. Sobrepõe o Loop count e o replay infinito.',
             )}
           >
             <CheckboxBox checked={loopOverData} />
@@ -1215,8 +1214,8 @@ export function DataPanel({ onClose }: DataPanelProps) {
                 onClick={() => setNotifyLap(!notifyLap)}
                 className="mt-2 flex items-center gap-2 text-[11px] text-text-tertiary hover:text-text-secondary transition-colors"
                 data-tip={tt(
-                  'Chime and tray balloon when a run uses the last row — the list finished and the next run starts over.',
-                  'Som e balão na bandeja quando uma execução usa a última linha — a lista acabou e a próxima recomeça.',
+                  'Chime and tray balloon when the list finishes',
+                  'Som e balão na bandeja quando a lista acaba',
                 )}
               >
                 <CheckboxBox checked={notifyLap} />
@@ -1234,8 +1233,8 @@ export function DataPanel({ onClose }: DataPanelProps) {
                   value={onRowError}
                   onChange={setOnRowError}
                   options={[
-                    { value: 'halt', label: 'Halt', tip: tt('Stop the replay on the first failed row (default).', 'Para o replay na primeira linha com erro (padrão).') },
-                    { value: 'skip', label: 'Skip row', tip: tt('Log the failed row and continue with the next one. A summary shows at the end.', 'Registra a linha com erro e continua na próxima. Um resumo aparece no final.') },
+                    { value: 'halt', label: 'Halt', tip: tt('Stop at the first failed row', 'Para na primeira linha com erro') },
+                    { value: 'skip', label: 'Skip row', tip: tt('Log it and continue; summary at the end', 'Registra e continua; resumo no final') },
                   ]}
                 />
               </div>
@@ -1260,8 +1259,8 @@ export function DataPanel({ onClose }: DataPanelProps) {
                             onClick={() => copyToken(`{row:${meta.name}}`, `h${c}`)}
                             className={`${CHIP_CLASS} min-w-0`}
                             data-tip={tt(
-                              'Copy token — paste into Insert Text, Keystroke Key or Browser Type',
-                              'Copiar token — cole em Insert Text, Keystroke Key ou Browser Type',
+                              'Copy token',
+                              'Copiar token',
                             )}
                           >
                             {copiedKey === `h${c}` ? (
@@ -1290,8 +1289,8 @@ export function DataPanel({ onClose }: DataPanelProps) {
                             onClick={() => fixHeader(c)}
                             className="w-6 h-6 flex items-center justify-center rounded text-text-tertiary hover:text-text-primary hover:bg-bg-card transition-colors ml-auto shrink-0"
                             data-tip={tt(
-                              'Headers need A–Z, 0–9 or _ to work as tokens — click to auto-fix',
-                              'Cabeçalhos precisam de A–Z, 0–9 ou _ para virar token — clique para corrigir',
+                              'Not a valid token name (A–Z, 0–9, _) — click to fix',
+                              'Nome inválido para token (A–Z, 0–9, _) — clique para corrigir',
                             )}
                           >
                             <Wand2 size={12} />
@@ -1307,7 +1306,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
                     <span className="text-[11px] font-mono text-warning-ink truncate">{`{row:${name}}`}</span>
                     <span
                       className="text-[10px] text-warning-ink ml-auto shrink-0"
-                      data-tip={tt('An action references this column, but the table has no such header — it will type empty text.', 'Uma action referencia esta coluna, mas a tabela não tem esse cabeçalho — vai digitar texto vazio.')}
+                      data-tip={tt('Referenced by an action, but no such column — types empty text', 'Referenciada por uma action, mas a coluna não existe — digita texto vazio')}
                     >
                       ×{count} · {'no column'}
                     </span>

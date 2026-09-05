@@ -91,8 +91,7 @@ export function ClipboardModifierBody({
   const setLimitN = (n: number) => setState((s) => ({ ...s, limitN: Math.max(0, n) }));
   const setExtractRef = (r: string) => setState((s) => ({ ...s, extractRef: r }));
   const setLimitRef = (r: string) => setState((s) => ({ ...s, limitRef: r }));
-  const refTip = tt('Take this number from a variable instead — @name, @counter or @row',
-                    'Pegar este número de uma variável — @nome, @counter ou @row');
+  const refTip = tt('Use a variable instead — @name, @counter or @row', 'Usar uma variável — @nome, @counter ou @row');
   const numTip = tt('Back to a fixed number', 'Voltar para um número fixo');
   const setListPick = (v: ListPick) => setState((s) => ({ ...s, listPick: v }));
   // A span bound of null is an OPEN end ("word 6 onwards"), which is why these go through
@@ -192,8 +191,8 @@ export function ClipboardModifierBody({
             placeholder=" - "
             aria-label="Delimiter"
             data-tip={tt(
-              'The text to cut at. It is not kept. Spaces and colons are fine; { } end the token itself and are removed. Missing from the content? The step yields nothing, rather than everything.',
-              'O texto onde cortar. Ele não entra no resultado. Espaços e dois-pontos podem; { } encerram o próprio token e são removidos. Não existir no conteúdo? O passo não devolve nada, em vez de devolver tudo.',
+              'Cut here — the delimiter is dropped. Spaces and : allowed, { } not. Absent = empty result.',
+              'Corta aqui — o delimitador é descartado. Espaços e : podem, { } não. Ausente = resultado vazio.',
             )}
             className="h-7 w-[104px] px-1.5 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid disabled:opacity-50"
           />
@@ -203,7 +202,6 @@ export function ClipboardModifierBody({
             aria-checked={state.splitLast}
             disabled={state.split === 'none'}
             onClick={() => setState((s) => ({ ...s, splitLast: !s.splitLast }))}
-            data-tip={tt('Cut at the last occurrence instead of the first', 'Cortar na última ocorrência em vez da primeira')}
             className="flex items-center gap-2 text-xs text-text-secondary hover:text-text-primary disabled:opacity-50"
           >
             <CheckboxBox checked={state.splitLast} />
@@ -222,8 +220,8 @@ export function ClipboardModifierBody({
             placeholder="x "
             aria-label="Count suffix"
             data-tip={tt(
-              'Strips a leading run of digits plus this text (e.g. "1x ") from the start; otherwise the text passes through unchanged. Spaces and colons are fine; { } end the token itself and are removed.',
-              'Remove uma sequência inicial de dígitos mais este texto (ex.: "1x ") do começo; senão o texto passa intacto. Espaços e dois-pontos podem; { } encerram o próprio token e são removidos.',
+              'Strips leading digits + this text (e.g. "1x "). { } not allowed.',
+              'Remove dígitos iniciais + este texto (ex.: "1x "). { } não podem.',
             )}
             className="h-7 w-[104px] px-1.5 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid disabled:opacity-50"
           />
@@ -324,8 +322,8 @@ export function ClipboardModifierBody({
             placeholder=","
             aria-label="Separator"
             data-tip={tt(
-              'Separator between joined lines — empty is legal. { } : are removed: unlike the split delimiter, a colon has no escape here.',
-              'Separador entre as linhas unidas — vazio é válido. { } : são removidos: ao contrário do delimitador de corte, aqui dois-pontos não tem escape.',
+              'Joins lines with this — empty allowed. { } : not allowed.',
+              'Une as linhas com isto — vazio permitido. { } : não podem.',
             )}
             className="h-7 w-[70px] px-1.5 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid disabled:opacity-50"
           />
@@ -381,8 +379,8 @@ export function ClipboardModifierBody({
               <span
                 className="flex items-center gap-1"
                 data-tip={tt(
-                  'A span of words, kept with the original spacing. Leave a side blank for an open end.',
-                  'Um intervalo de palavras, com o espaçamento original. Deixe um lado em branco para não ter limite.',
+                  'Word range; a blank side is open-ended.',
+                  'Intervalo de palavras; lado em branco = sem limite.',
                 )}
               >
                 <NumInput

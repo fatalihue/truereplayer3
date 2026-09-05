@@ -562,12 +562,12 @@ function ClickerSection({ unit, onUnitChange, settings, onChange }: {
               Button/Rate are pickers; Area is chip-shaped (dot + picker). */}
           {/* Presets — named snapshots of every row below. Everything Clicker is global and
               Save/Load are disabled in this mode, so this is the only way to keep two setups. */}
-          <SettingRow label="Preset" tooltip={tt('Save the current Clicker settings under a name, or apply a saved one. Custom = no saved preset matches.', 'Salve as configurações atuais do Clicker com um nome, ou aplique uma salva. Custom = nenhum preset salvo bate.')}>
+          <SettingRow label="Preset" tooltip={tt('Save or apply a named setup. Custom = none matches.', 'Salve ou aplique um setup nomeado. Custom = nenhum bate.')}>
             <ClickerPresetRow settings={settings} width={FIELD_W} />
           </SettingRow>
           {/* Mouse button picker — moved here from the ActionBar so the panel is the single
               source of truth for "every Clicker setting". Left/Right/Middle, always applied. */}
-          <SettingRow label="Button" tooltip={tt('Mouse button to click', 'Botão do mouse a clicar')}>
+          <SettingRow label="Button">
             <ComboInput
               editable={false}
               value={button}
@@ -591,7 +591,6 @@ function ClickerSection({ unit, onUnitChange, settings, onChange }: {
             labelSuffix={unit === 'ms'
               ? <span className="text-[11px] font-mono text-text-tertiary whitespace-nowrap">~{formatRate(liveCps)}/s</span>
               : undefined}
-            tooltip={tt('Click rate: /s or delay (ms). Type or pick a preset.', 'Taxa de clique: /s ou atraso (ms). Digite ou escolha um preset.')}
           >
             {/* Combo + /s↔ms unit toggle share one FIELD_W slot so the row aligns with the chips. */}
             <div className={`${FIELD_W} flex items-center gap-1`}>
@@ -634,7 +633,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange }: {
         {/* The three "where" modes are a mutex the engine enforces in three places, but as
             three loose rows they read as independent switches. A group says "pick one". */}
         <Section title="Target">
-          <SettingRow label="Position" tooltip={tt('Random ±px around the cursor. Exclusive with Area / Fixed.', 'Variação ±px aleatória ao redor do cursor. Exclusivo com Area / Fixed.')}>
+          <SettingRow label="Position" tooltip={tt('Random ±px around the cursor', 'Variação ±px ao redor do cursor')}>
             <EnableChip
               value={positionJitter}
               isOn={usePositionJitter}
@@ -653,7 +652,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange }: {
           {/* Click area — chip-shaped: the dot toggles useArea (mutually exclusive with
               Position); the body opens the region picker; ✕ (hover) clears. Backend also
               auto-enables useArea + disables Position jitter on a successful draw. */}
-          <SettingRow label="Area" tooltip={tt('Clicks a random point in a screen box. Exclusive with Position / Fixed.', 'Clica em um ponto aleatório em uma caixa na tela. Exclusivo com Position / Fixed.')}>
+          <SettingRow label="Area" tooltip={tt('Random point inside a screen box', 'Ponto aleatório numa caixa na tela')}>
             <div
               className={`${FIELD_W} h-7 flex items-center rounded border overflow-hidden group`}
               style={useArea
@@ -680,8 +679,8 @@ function ClickerSection({ unit, onUnitChange, settings, onChange }: {
                 // instead of the default auto placement that lands on top of the field.
                 data-tip-pos="left"
                 data-tip={area
-                  ? tt(`Current: ${area.w}×${area.h} at (${area.x}, ${area.y}). Click to redraw.`, `Atual: ${area.w}×${area.h} em (${area.x}, ${area.y}). Clique para redesenhar.`)
-                  : tt('Drag a rectangle on screen', 'Arraste um retângulo na tela')}
+                  ? tt(`${area.w}×${area.h} at (${area.x}, ${area.y}) — click to redraw`, `${area.w}×${area.h} em (${area.x}, ${area.y}) — clique para redesenhar`)
+                  : tt('Draw a box on screen', 'Desenhe uma caixa na tela')}
               >
                 {area
                   ? <span className={`text-[10px] truncate ${useArea ? 'text-text-primary' : 'text-text-tertiary'}`}>{area.w}×{area.h}</span>
@@ -710,7 +709,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange }: {
               set → clicks exactly there; with NONE set → "At start" (locks to the cursor
               when clicking begins). ✕ clears the point back to lock-on-start. Backend also
               auto-enables useFixed + disables the other two on a successful pick. */}
-          <SettingRow label="Fixed" tooltip={tt('Always clicks one point. No point set = locks to the cursor when clicking starts. Exclusive with Position / Area.', 'Sempre clica em um ponto. Sem ponto = trava na posição do cursor quando começa a clicar. Exclusivo com Position / Area.')}>
+          <SettingRow label="Fixed" tooltip={tt('One point every click. No point = locks where the cursor is at start.', 'Um ponto a cada clique. Sem ponto = trava onde o cursor está ao começar.')}>
             <div
               className={`${FIELD_W} h-7 flex items-center rounded border overflow-hidden group`}
               style={useFixed
@@ -737,8 +736,8 @@ function ClickerSection({ unit, onUnitChange, settings, onChange }: {
                 // area instead of on top of the field.
                 data-tip-pos="left"
                 data-tip={fixedPoint
-                  ? tt(`Fixed at (${fixedPoint.x}, ${fixedPoint.y}). Click to re-pick.`, `Fixo em (${fixedPoint.x}, ${fixedPoint.y}). Clique para escolher de novo.`)
-                  : tt('Locks to the cursor when clicking starts. Click to pick an exact point.', 'Trava na posição do cursor ao começar a clicar. Clique para escolher um ponto exato.')}
+                  ? tt(`(${fixedPoint.x}, ${fixedPoint.y}) — click to re-pick`, `(${fixedPoint.x}, ${fixedPoint.y}) — clique para escolher de novo`)
+                  : tt('Locks to the cursor at start — click to pick a point', 'Trava no cursor ao começar — clique para escolher um ponto')}
               >
                 {fixedPoint
                   ? <span className={`text-[10px] truncate ${useFixed ? 'text-text-primary' : 'text-text-tertiary'}`}>{fixedPoint.x}, {fixedPoint.y}</span>
@@ -766,7 +765,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange }: {
             Grouping them separates "how it clicks" from "when it stops", which is what made
             Loops and Interval — one a bound, one part of the cadence — confusing as neighbours. */}
         <Section title="Stop after">
-          <SettingRow label="Clicks" tooltip={tt('Stop after N clicks. Off = no limit.', 'Parar após N cliques. Desligado = sem limite.')}>
+          <SettingRow label="Clicks">
             <EnableChip
               value={loops}
               isOn={useLoops}
@@ -790,7 +789,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange }: {
           </SettingRow>
           {/* Seconds here, milliseconds on the wire. This is the one clicker field a human
               states in human units, and the backend keeps ms for consistency with Rate. */}
-          <SettingRow label="Time" tooltip={tt('Stop after N seconds of clicking. Paused time does not count. Off = no limit.', 'Parar após N segundos clicando. Tempo pausado não conta. Desligado = sem limite.')}>
+          <SettingRow label="Time" tooltip={tt('Paused time does not count', 'Tempo pausado não conta')}>
             <EnableChip
               value={durationSec}
               isOn={useMaxDuration}
@@ -839,12 +838,12 @@ function ClickerSection({ unit, onUnitChange, settings, onChange }: {
               from the rate (it used to stack on top of the delay), which made it a trap. Now
               that the hold lives inside the period, raising it does not change the rate until
               it becomes the ceiling — and the ≈ note under Rate says so when it does. */}
-          <SettingRow label="Hold" tooltip={tt('How long the button stays pressed (ms). 10 = a normal click; 50-200 for apps that miss short clicks.', 'Quanto tempo o botão fica pressionado (ms). 10 = clique normal; 50-200 para apps que perdem cliques curtos.')}>
+          <SettingRow label="Hold" tooltip={tt('Press duration. 50–200 ms for apps that miss short clicks.', 'Duração do pressionar. 50–200 ms para apps que perdem cliques curtos.')}>
             <ValueField value={hold} unit="ms" min={0} max={CLICK_HOLD_MAX_MS} onCommitValue={(v) => onChange('cursorClickHold', v)} />
           </SettingRow>
           {/* "Gap", not "Interval": in Clicker mode one iteration is one click, so this is not
               a pause between bursts — it is added to every click's period. */}
-          <SettingRow label="Gap" tooltip={tt('Extra time added to every click (ms) — it adds to the rate, it is not a pause between bursts.', 'Tempo extra somado a cada clique (ms) — soma à taxa, não é pausa entre rajadas.')}>
+          <SettingRow label="Gap" tooltip={tt("Added to every click's period", 'Somado ao período de cada clique')}>
             <EnableChip
               value={interval}
               isOn={useInterval}
@@ -860,7 +859,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange }: {
               the first place) — and it is not cancelled by it either: the engine forces the walk
               for the Clicker. That second half was a defect until 2026-08-08; the master is not
               rendered in Clicker mode, so a user could not have seen what was silencing this. */}
-          <SettingRow label="Game move" tooltip={tt('Moves the cursor along a path instead of teleporting, for games that ignore instant jumps (Roblox). Only bites when the cursor moves — Position, Area and Fixed; in plain cursor mode nothing moves. Costs a few ms per click.', 'Move o cursor por um caminho em vez de teletransportar, para jogos que ignoram saltos instantâneos (Roblox). Só age quando o cursor se move — Position, Area e Fixed; no modo cursor puro nada se move. Custa alguns ms por clique.')}>
+          <SettingRow label="Game move" tooltip={tt('Walks the cursor instead of teleporting, for games like Roblox. Costs a few ms per click.', 'Move o cursor por um caminho em vez de teletransportar, para jogos como Roblox. Custa alguns ms por clique.')}>
             <div className={`${FIELD_W} flex justify-end`}>
               <CompactToggle isOn={gameMove} onChange={(v) => onChange('cursorClickGameMove', v)} />
             </div>
@@ -1346,7 +1345,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
             ) : (
               <>
             <Section title="Execution">
-              <SettingRow label="Delay" tooltip={tt('Fixed delay between actions (ms).', 'Atraso fixo entre ações (ms).')}>
+              <SettingRow label="Delay" tooltip={tt('Between every action', 'Entre cada ação')}>
                 <EnableChip
                   value={settings.customDelay}
                   isOn={settings.useCustomDelay}
@@ -1373,8 +1372,8 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
               <SettingRow
                 label="Loops"
                 tooltip={profileLoop.scoped
-                  ? tt('Times to repeat (1–999). Saved with the profile.', 'Vezes a repetir (1–999). Salvo com o perfil.')
-                  : tt('Times to repeat (1–999). Used when no profile is loaded.', 'Vezes a repetir (1–999). Usado quando nenhum perfil está carregado.')}
+                  ? tt('1–999, saved with the profile', '1–999, salvo com o perfil')
+                  : tt('1–999, used with no profile loaded', '1–999, usado sem perfil carregado')}
               >
                 <EnableChip
                   value={profileLoop.count}
@@ -1388,8 +1387,8 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
               <SettingRow
                 label="Interval"
                 tooltip={profileLoop.scoped
-                  ? tt('Pause between loops (ms). Saved with the profile.', 'Pausa entre loops (ms). Salvo com o perfil.')
-                  : tt('Pause between loops (ms). Used when no profile is loaded.', 'Pausa entre loops (ms). Usado quando nenhum perfil está carregado.')}
+                  ? tt('Between loops, saved with the profile', 'Entre loops, salvo com o perfil')
+                  : tt('Between loops, used with no profile loaded', 'Entre loops, usado sem perfil carregado')}
               >
                 <EnableChip
                   value={profileLoop.interval}
@@ -1428,7 +1427,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                 // wrapper — without it the only text explaining what this control does is gone.
                 <span
                   className="flex items-center"
-                  data-tip={tt('Cursor walks a path to each target so games (e.g. Roblox) accept the move. Off = one instant jump, right for normal apps — Fast approach and the Tuning knobs stop applying. Click delay applies either way.', 'O cursor percorre um caminho até cada alvo para que jogos (ex.: Roblox) aceitem o movimento. Off = um salto instantâneo, ideal para apps normais — o Fast approach e os ajustes do Tuning deixam de valer. O Click delay vale nos dois casos.')}
+                  data-tip={tt('Cursor walks a path so games accept the move. Off = instant jump, for normal apps.', 'O cursor percorre um caminho para jogos aceitarem o movimento. Off = salto instantâneo, para apps normais.')}
                   data-tip-pos="left"
                 >
                   <CompactToggle isOn={settings.smoothMovement} onChange={(v) => changeSetting('smoothMovement', v)} />
@@ -1436,7 +1435,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
               }
             >
               {settings.smoothMovement && (
-                <SettingRow label="Fast approach" tooltip={tt('Teleports long moves (e.g. across monitors), smoothing only the final stretch — far clicks become near-instant. Turn off if a game misclicks.', 'Teletransporta movimentos longos (ex.: entre monitores), suavizando só o trecho final — cliques distantes ficam quase instantâneos. Desligue se um jogo errar o clique.')}>
+                <SettingRow label="Fast approach" tooltip={tt('Teleports long moves, walks only the last stretch. Turn off if a game misclicks.', 'Teletransporta movimentos longos, anda só o trecho final. Desligue se um jogo errar o clique.')}>
                   <CompactToggle isOn={settings.fastApproach} onChange={(v) => changeSetting('fastApproach', v)} />
                 </SettingRow>
               )}
@@ -1448,20 +1447,20 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                   else in here genuinely does nothing without the smooth walk, so it stays gated.
                   With the master off this collapses to a lone "Tuning" caret holding Click delay. */}
               <Disclosure label="Tuning">
-                <SettingRow label="Click delay" tooltip={tt('Gap before each button event (ms), applied twice per click. After a move it lets the app register the position; on release it is the press→release dwell. Applies with Game Mode off too.', 'Pausa antes de cada evento de botão (ms), aplicada duas vezes por clique. Depois de um movimento, dá tempo do app registrar a posição; na soltura, é o dwell entre pressionar e soltar. Vale também com o Game Mode desligado.')}>
+                <SettingRow label="Click delay" tooltip={tt('Pause before each button event. Applies with Game Mode off too.', 'Pausa antes de cada evento de botão. Vale também com Game Mode desligado.')}>
                   <ValueField value={settings.moveClickDelay} unit="ms" onCommitValue={(v) => changeSetting('moveClickDelay', v)} />
                 </SettingRow>
                 {settings.smoothMovement && (
                   <>
-                    <SettingRow label="Path step" tooltip={tt('Max px per step. Lower = smoother, slower. ~20 for Roblox. Raise it to match Distance to cut the walk to a hop or two.', 'Máx. px por passo. Menor = mais suave, mais lento. ~20 para Roblox. Suba até igualar o Distance para reduzir o caminho a um ou dois passos.')}>
+                    <SettingRow label="Path step" tooltip={tt('Max px per step. Lower = smoother, slower. ~20 for Roblox.', 'Máx. px por passo. Menor = mais suave, mais lento. ~20 para Roblox.')}>
                       <ValueField value={settings.moveStepPx} unit="px" onCommitValue={(v) => changeSetting('moveStepPx', v)} />
                     </SettingRow>
                     <PathStepZeroNote step={settings.moveStepPx} />
-                    <SettingRow label="Step delay" tooltip={tt('Pause between path steps (ms).', 'Pausa entre passos do caminho (ms).')}>
+                    <SettingRow label="Step delay">
                       <ValueField value={settings.moveStepDelay} unit="ms" onCommitValue={(v) => changeSetting('moveStepDelay', v)} />
                     </SettingRow>
                     {settings.fastApproach && (
-                      <SettingRow label="Distance" tooltip={tt('Px smoothed before the target after a teleport. Higher = safer, slower. ~80.', 'Px suavizados antes do alvo após um teletransporte. Maior = mais seguro, mais lento. ~80.')}>
+                      <SettingRow label="Distance" tooltip={tt('Walked stretch before the target after a teleport. ~80 px.', 'Trecho percorrido antes do alvo após o teletransporte. ~80 px.')}>
                         <ValueField value={settings.settleDistance} unit="px" onCommitValue={(v) => changeSetting('settleDistance', v)} />
                       </SettingRow>
                     )}
@@ -1484,7 +1483,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
               <SettingRow label="Keyboard">
                 <CompactToggle isOn={settings.recordKeyboard} onChange={(v) => changeSetting('recordKeyboard', v)} />
               </SettingRow>
-              <SettingRow label="Combined Actions" tooltip={tt('Records each click/keypress as one action (not Down+Up). Merges double-clicks, folds modifiers (Ctrl+C). Holds & drags need this off.', 'Grava cada clique/tecla como uma ação (não Down+Up). Mescla cliques duplos, agrupa modificadores (Ctrl+C). Holds e arrastos precisam disto desligado.')}>
+              <SettingRow label="Combined Actions" tooltip={tt('One action per click/key instead of Down+Up. Off for holds and drags.', 'Uma ação por clique/tecla em vez de Down+Up. Desligue para holds e arrastos.')}>
                 <CompactToggle isOn={settings.recordCombinedInput} onChange={(v) => changeSetting('recordCombinedInput', v)} />
               </SettingRow>
               <SettingRow label="Profile Keys" danger={!settings.profileKeyEnabled} tooltip={tt("Profile shortcuts & hotstrings won't fire while off.", 'Atalhos e hotstrings do perfil não disparam enquanto desligado.')}>
@@ -1531,7 +1530,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                   onChange={changeHotkey}
                 />
               </SettingRow>
-              <SettingRow label="Mode" tooltip={tt('Switch Macro ↔ Clicker.', 'Alterna Macro ↔ Clicker.')}>
+              <SettingRow label="Mode" tooltip="Macro ↔ Clicker">
                 <HotkeyInput
                   value={settings.modeToggleHotkey}
                   settingKey="modeToggleHotkey"
@@ -1540,7 +1539,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
               </SettingRow>
               <SettingRow
                 label="Capture Slot"
-                tooltip={tt('Capture the selection into the next slot ({clip:1}…{clip:9}).', 'Captura a seleção no próximo slot ({clip:1}…{clip:9}).')}
+                tooltip={tt('Selection → next {clip:N} slot', 'Seleção → próximo slot {clip:N}')}
               >
                 <HotkeyInput
                   value={settings.captureSlotHotkey}
@@ -1569,8 +1568,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
             <Section title="Key Remaps">
               <SettingRow
                 label="Enable Key Remaps"
-                tooltip={tt('Turns every remap on or off. Also in the tray menu.',
-                  'Liga e desliga todos os remaps. Também no menu da bandeja.')}
+                tooltip={tt('Also in the tray menu', 'Também no menu da bandeja')}
               >
                 <CompactToggle
                   isOn={settings.remaps.enabled}

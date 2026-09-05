@@ -229,7 +229,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
           type="button"
           onClick={onBack}
           className="flex items-center gap-1 h-6 px-1.5 text-[11px] rounded text-text-tertiary hover:text-text-primary hover:bg-bg-card transition-colors"
-          data-tip={tt('Back to the editor (discards changes)', 'Voltar ao editor (descarta alterações)')}
+          data-tip={tt('Discards changes', 'Descarta as alterações')}
         >
           <ChevronLeft size={13} />
           Editor
@@ -241,7 +241,6 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
           type="button"
           onClick={onReset}
           className="flex items-center gap-1 h-6 px-1.5 text-[11px] rounded text-text-tertiary hover:text-text-primary hover:bg-bg-card transition-colors"
-          data-tip={tt('Reset all steps', 'Redefinir todas as etapas')}
         >
           <RotateCcw size={12} />
           Reset
@@ -363,8 +362,8 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                       placeholder=" - "
                       aria-label="Delimiter"
                       data-tip={tt(
-                        'The text to cut at — it is not kept. Spaces and colons are fine; { } end the token itself and are removed.',
-                        'O texto onde cortar — ele não entra no resultado. Espaços e dois-pontos podem; { } encerram o próprio token e são removidos.',
+                        'Cut here — the delimiter is dropped. Spaces and : allowed, { } not.',
+                        'Corta aqui — o delimitador é descartado. Espaços e : podem, { } não.',
                       )}
                       className="h-8 w-28 px-2 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid placeholder:text-text-disabled"
                     />
@@ -394,8 +393,8 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                   placeholder="x "
                   aria-label="Count suffix"
                   data-tip={tt(
-                    'Strips a leading run of digits plus this text (e.g. "1x ") from the start. Spaces and colons are fine; { } end the token itself and are removed.',
-                    'Remove uma sequência inicial de dígitos mais este texto (ex.: "1x ") do começo. Espaços e dois-pontos podem; { } encerram o próprio token e são removidos.',
+                    'Strips leading digits + this text (e.g. "1x "). { } not allowed.',
+                    'Remove dígitos iniciais + este texto (ex.: "1x "). { } não podem.',
                   )}
                   className="h-8 w-28 px-2 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid placeholder:text-text-disabled"
                 />
@@ -453,8 +452,8 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                     onChange={(e) => set({ linesSpec: e.target.value.replace(/[^0-9,]/g, '') })}
                     placeholder="3,1,2"
                     data-tip={tt(
-                      'Line numbers, comma-separated — repeats allowed (3,1,2). Only digits and commas.',
-                      'Números das linhas, separados por vírgula — repetição permitida (3,1,2). Apenas dígitos e vírgulas.',
+                      'Comma-separated line numbers; repeats allowed',
+                      'Números de linha separados por vírgula; repetição permitida',
                     )}
                     className="h-8 w-24 px-2 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid placeholder:text-text-disabled"
                   />
@@ -477,8 +476,8 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                   disabled={!state.join}
                   placeholder=","
                   data-tip={tt(
-                    'Separator between joined lines — empty is legal. { } : are removed: unlike the split delimiter, a colon has no escape here.',
-                    'Separador entre as linhas unidas — vazio é válido. { } : são removidos: ao contrário do delimitador de corte, aqui dois-pontos não tem escape.',
+                    'Joins lines with this — empty allowed. { } : not allowed.',
+                    'Une as linhas com isto — vazio permitido. { } : não podem.',
                   )}
                   className="h-8 w-24 px-2 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid disabled:opacity-50 placeholder:text-text-disabled"
                 />
@@ -514,8 +513,8 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                 <span
                   className="flex items-center gap-1"
                   data-tip={tt(
-                    'A span of words, kept with the original spacing between them. Leave a side blank for an open end.',
-                    'Um intervalo de palavras, mantendo o espaçamento original entre elas. Deixe um lado em branco para não ter limite.',
+                    'Word range; a blank side is open-ended.',
+                    'Intervalo de palavras; lado em branco = sem limite.',
                   )}
                 >
                   <NumberInput

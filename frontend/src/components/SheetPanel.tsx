@@ -2715,11 +2715,11 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 value={conditionOperator}
                 onChange={setConditionOperator}
                 options={[
-                  { value: 'eq', label: '=', tip: tt('Equal — text, case-insensitive', 'Igual — texto, sem diferenciar maiúsculas') },
-                  { value: 'neq', label: '≠', tip: tt('Not equal', 'Diferente') },
-                  { value: 'contains', label: 'has', tip: tt('Variable contains the operand', 'A variável contém o operando') },
-                  { value: 'gt', label: '>', tip: tt('Greater than (numeric when both are numbers)', 'Maior que (numérico quando ambos são números)') },
-                  { value: 'lt', label: '<', tip: tt('Less than (numeric when both are numbers)', 'Menor que (numérico quando ambos são números)') },
+                  { value: 'eq', label: '=', tip: tt('Text match, case-insensitive', 'Texto, sem diferenciar maiúsculas') },
+                  { value: 'neq', label: '≠' },
+                  { value: 'contains', label: 'has', tip: tt('Contains', 'Contém') },
+                  { value: 'gt', label: '>', tip: tt('Numeric when both are numbers', 'Numérico quando ambos são números') },
+                  { value: 'lt', label: '<', tip: tt('Numeric when both are numbers', 'Numérico quando ambos são números') },
                 ]}
               />
             </Field>
@@ -3756,13 +3756,12 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 checked={typeAppend}
                 onChange={setTypeAppend}
                 label="Keep existing text"
-                title={tt('Adds to what is already in the field.', 'Adiciona ao que já está no campo.')}
               />
               <Checkbox
                 checked={typePaste}
                 onChange={setTypePaste}
                 label="Paste"
-                title={tt('Instant, instead of typing character by character.', 'Instantâneo, em vez de digitar caractere a caractere.')}
+                title={tt('Instant, not key by key', 'Instantâneo, não tecla a tecla')}
               />
               <div className="flex items-center gap-2">
                 <label className="text-xs text-text-secondary">Char delay</label>
@@ -3926,7 +3925,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                       <button
                         onClick={() => { setKey(testResult.matchedVia!.selector); setTextMatch(''); }}
                         className="mt-0.5 w-full text-left font-mono truncate text-text-tertiary hover:text-text-primary transition-colors"
-                        data-tip={tt('Use this selector as the primary', 'Usar este seletor como primário')}
+                        data-tip={tt('Use as primary', 'Usar como primário')}
                       >
                         {testResult.matchedVia.selector}
                       </button>
@@ -4394,13 +4393,11 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                   {
                     value: 'point',
                     label: 'This point',
-                    tip: tt('Clicks the X / Y below.', 'Clica no X / Y abaixo.'),
                   },
                   {
                     value: 'cursor',
                     label: 'At cursor',
-                    tip: tt('Clicks wherever the mouse is when this step runs.',
-                            'Clica onde o mouse estiver quando este passo rodar.'),
+                    tip: tt('Wherever the mouse is at run time', 'Onde o mouse estiver na hora'),
                   },
                 ]}
               />
@@ -4594,8 +4591,8 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                   aria-pressed={posJitterOn && !atCursor}
                   className="flex items-center gap-1.5 disabled:cursor-not-allowed"
                   data-tip={atCursor
-                    ? tt('Not available at cursor — the scatter would drag the cursor it reads from.',
-                         'Indisponível no cursor — o desvio arrastaria o próprio cursor que ele lê.')
+                    ? tt('Not at cursor — the scatter would move the cursor it reads',
+                         'Não no cursor — o desvio moveria o cursor que ele lê')
                     : tt('Random ±px on the click point — less robotic.', 'Variação ±px aleatória no ponto do clique — menos robótico.')}
                 >
                   <CheckboxBox checked={posJitterOn && repeatCount > 1 && !atCursor} />

@@ -143,15 +143,15 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
   const resolutionOptions = (iconSize: number, withTips = false): SegmentOption<ImportConflictResolution>[] => [
     {
       value: 'rename', label: 'Rename', icon: <Pencil size={iconSize} />,
-      tip: withTips ? tt("Imports as 'Name (2)' — keeps yours untouched.", "Importa como 'Nome (2)' — mantém o seu intacto.") : undefined,
+      tip: withTips ? tt("Imports as 'Name (2)'", "Importa como 'Nome (2)'") : undefined,
     },
     {
       value: 'overwrite', label: 'Overwrite', icon: <Replace size={iconSize} />,
-      tip: withTips ? tt('Replaces your local profile with the incoming one.', 'Substitui o seu perfil local pelo que está chegando.') : undefined,
+      tip: withTips ? tt('Replaces your local profile', 'Substitui o seu perfil local') : undefined,
     },
     {
       value: 'skip', label: 'Skip', icon: <Ban size={iconSize} />,
-      tip: withTips ? tt('Not imported — the row stays checked but is skipped.', 'Não importa — a linha continua marcada mas é pulada.') : undefined,
+      tip: withTips ? tt('Not imported', 'Não importa') : undefined,
     },
   ];
 
@@ -194,7 +194,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
             {conflictCountAll > 0 && (
               <span
                 className="text-warning-ink flex items-center gap-1"
-                data-tip={tt('Resolved per row below — the banner applies to selected rows only.', 'Resolvidos linha a linha abaixo — o banner age só nas linhas selecionadas.')}
+                data-tip={tt('Set per row below', 'Definido linha a linha abaixo')}
               >
                 <AlertTriangle size={11} style={{ color: 'var(--color-warning-ink)' }} />
                 {conflictCountAll} name conflict{conflictCountAll === 1 ? '' : 's'}
@@ -203,7 +203,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
             {incompatibleCount > 0 && (
               <span
                 className="text-warning-ink"
-                data-tip={tt('Incompatible profiles cannot be selected.', 'Perfis incompatíveis não podem ser selecionados.')}
+                data-tip={tt('Cannot be selected', 'Não podem ser selecionados')}
               >
                 {incompatibleCount} incompatible
               </span>
@@ -369,8 +369,8 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
                         <span
                           className="flex items-center gap-1 text-warning-ink"
                           data-tip={tt(
-                            'This profile has an automation trigger. It arrives DISARMED — arm it in Automation after importing.',
-                            'Este perfil tem um gatilho de automação. Ele chega DESARMADO — arme em Automation depois de importar.'
+                            'Automation trigger — arrives disarmed',
+                            'Gatilho de automação — chega desarmado'
                           )}
                         >
                           <Zap size={10} style={{ color: 'var(--color-warning-ink)' }} />
@@ -396,10 +396,10 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
                             className="text-[10px] px-1.5 py-0.5 rounded border font-mono inline-flex items-center gap-1"
                             data-tip={
                               d.status === 'inEnvelope'
-                                ? tt('Bundled in this file — will be imported alongside.', 'Incluído neste arquivo — será importado junto.')
+                                ? tt('Bundled — imported alongside', 'Incluído — importado junto')
                                 : d.status === 'localOnly'
-                                  ? tt('Not in this file — will call YOUR existing profile of this name.', 'Não está neste arquivo — vai chamar o SEU perfil existente com este nome.')
-                                  : tt('Not found here or locally — this Run Profile step will do nothing at replay.', 'Não existe aqui nem localmente — este passo Run Profile não fará nada na reprodução.')
+                                  ? tt('Not in the file — uses your local profile', 'Fora do arquivo — usa o seu perfil local')
+                                  : tt('Missing here and locally — the step does nothing', 'Não existe aqui nem localmente — o passo não faz nada')
                             }
                             // Both hues use their DERIVED ink, not the raw token: this is 10px
                             // text. Raw --color-replay measured 1.32–1.89:1 on all 14 light

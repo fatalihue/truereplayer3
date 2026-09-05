@@ -59,8 +59,8 @@ export function pickStatusNote(
       tone: 'warn',
       text: 'Formatting will be dropped at replay',
       tip: tt(
-        'Rich formatting is attached only when the payload is ONE run of text. An {Enter}, {Tab} or {Delay:N} with text on BOTH sides splits it, so this action pastes as plain text. Fixes: move the key token to the start or the end, split it into two Insert Text actions, or switch Delivery to Markdown or Discord — those paste their marks as literal text and are not affected by this rule.',
-        'A formatação só é anexada quando o texto forma UM bloco contínuo. Um {Enter}, {Tab} ou {Delay:N} com texto dos DOIS lados divide esse bloco, e a ação cola como texto puro. Saídas: mova o token de tecla para o início ou o fim, divida em duas ações Insert Text, ou troque o Delivery para Markdown ou Discord — esses colam as marcas como texto literal e não são afetados por esta regra.',
+        'Rich needs ONE run of text. A key or delay token with text on both sides splits it, so this pastes as plain. Move the token to an end, split the action, or use Markdown/Discord.',
+        'Rich precisa de UM bloco de texto. Um token de tecla ou delay com texto dos dois lados divide o bloco, e a ação cola como texto puro. Mova o token para uma ponta, divida a ação ou use Markdown/Discord.',
       ),
     };
   }
@@ -74,8 +74,8 @@ export function pickStatusNote(
       tone: 'warn',
       text: 'Typing sends no formatting',
       tip: tt(
-        'Type sends keystrokes, one character at a time — there is no clipboard, so the HTML flavor is never attached. The formatting stays saved with the action and comes back the moment you switch to Paste. To keep it WHILE typing, switch Delivery to Markdown or Discord: their marks are literal characters and are typed exactly as written.',
-        'O modo Type envia teclas, um caractere por vez — não existe área de transferência, então o formato HTML nunca é anexado. A formatação continua salva na ação e volta assim que você escolher Paste. Para mantê-la DIGITANDO, troque o Delivery para Markdown ou Discord: as marcas deles são caracteres literais e são digitadas exatamente como estão.',
+        'Type has no clipboard, so HTML formatting is never sent. It returns with Paste; Markdown/Discord keep their marks while typing.',
+        'Type não usa a área de transferência, então a formatação HTML nunca é enviada. Ela volta com Paste; Markdown/Discord mantêm as marcas ao digitar.',
       ),
     };
   }
@@ -95,12 +95,12 @@ export function pickStatusNote(
       // CONDITION is genuinely method-independent — only the way out changes.
       tip: sendMethod === 'type'
         ? tt(
-          'The formatting stays saved with the action and comes back if you change Delivery. It is simply not sent while Plain is selected — and since this action TYPES, switch to Markdown or Discord: their marks are literal characters and are typed exactly as written. Rich cannot be typed at all.',
-          'A formatação continua salva na ação e volta se você trocar o Delivery. Ela apenas não é enviada enquanto Plain estiver selecionado — e como esta ação DIGITA, troque para Markdown ou Discord: as marcas deles são caracteres literais e são digitadas exatamente como estão. Rich não tem como ser digitado.',
+          'Kept with the action, not sent while Plain. This action types, so use Markdown or Discord — Rich cannot be typed.',
+          'Fica salva na ação, não é enviada em Plain. Esta ação digita, então use Markdown ou Discord — Rich não se digita.',
         )
         : tt(
-          'The formatting stays saved with the action and comes back if you switch Delivery to Rich. It is simply not sent while Plain is selected — switch to Rich, Markdown or Discord to send it.',
-          'A formatação continua salva na action e volta se você trocar o Delivery para Rich. Ela apenas não é enviada enquanto Plain estiver selecionado — troque para Rich, Markdown ou Discord para enviá-la.',
+          'Kept with the action, not sent while Plain. Switch to Rich, Markdown or Discord to send it.',
+          'Fica salva na ação, não é enviada em Plain. Troque para Rich, Markdown ou Discord para enviar.',
         ),
     };
   }

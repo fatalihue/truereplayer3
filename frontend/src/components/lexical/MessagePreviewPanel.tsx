@@ -16,12 +16,12 @@ import type { SendMethod } from '../../utils/sendTextTypes';
 
 const REASON_TIP: Record<PendingReason, [string, string]> = {
   literal: [
-    'The engine sends this verbatim, braces and all — the name is one it resolves, but the argument is not a shape it accepts.',
-    'O motor envia isso literalmente, chaves e tudo — o nome ele resolve, mas o argumento não está numa forma que ele aceita.',
+    'Sent verbatim, braces included — the argument is not a shape the engine accepts.',
+    'Enviado literalmente, com as chaves — o argumento não está numa forma que o motor aceita.',
   ],
   'key-press': [
-    'Sent as its own key press, not as characters inside the text — it is dispatched between the text blocks, never inside one.',
-    'Enviado como uma tecla própria, não como caracteres dentro do texto — é disparado entre os blocos de texto, nunca dentro de um.',
+    'Sent as a key press between the text blocks, not as characters.',
+    'Enviado como tecla entre os blocos de texto, não como caracteres.',
   ],
   delay: ['A pause in the typing, not text.', 'Uma pausa na digitação, não texto.'],
   random: ['Drawn fresh every run.', 'Sorteado a cada execução.'],
@@ -35,20 +35,20 @@ const REASON_TIP: Record<PendingReason, [string, string]> = {
   'runtime-counter': ['The loop iteration — there is no value outside a run.', 'A iteração do loop — não existe valor fora de uma execução.'],
   'runtime-row': ["The action's own grid row — there is no value outside a run.", 'A linha da action na grade — não existe valor fora de uma execução.'],
   'runtime-rowcursor': [
-    'Loop over data is off, so each run uses the NEXT row of the Data table and advances. Which row that is carries over between runs, so the editor cannot show it.',
-    'O loop sobre dados está desligado, então cada execução usa a PRÓXIMA linha da tabela e avança. Qual linha é isso continua de uma execução para a outra, então o editor não tem como mostrar.',
+    'Loop over data is off: each run takes the NEXT row, and that position lives between runs.',
+    'Loop over data desligado: cada execução pega a PRÓXIMA linha, e essa posição vive entre as execuções.',
   ],
   'runtime-norows': [
     'The Data table has no rows, so this resolves to nothing at replay.',
     'A tabela de dados não tem linhas, então isto resolve como vazio no replay.',
   ],
   'runtime-cursor': [
-    'Auto-advancing: which line it takes depends on how many times it has already run, and that position lives in the run.',
-    'Auto-avança: qual linha ele pega depende de quantas vezes já rodou, e essa posição fica na execução.',
+    'Auto-advancing: the line depends on how many runs came before.',
+    'Auto-avança: a linha depende de quantas execuções já houve.',
   ],
   'unmodeled-chain': [
-    'This builder cannot model the chain exactly as written, so it will not guess at the result. It still runs.',
-    'Este construtor não consegue modelar a cadeia exatamente como está escrita, então não vai adivinhar o resultado. Ela roda normalmente.',
+    'The builder cannot model this chain, so it shows no result. It still runs.',
+    'O construtor não consegue modelar esta cadeia, então não mostra resultado. Ela roda normalmente.',
   ],
   'unknown-column': ['No column by that name in the Data table.', 'Nenhuma coluna com esse nome na tabela de dados.'],
   unset: ['Nothing stored under that name yet.', 'Nada guardado com esse nome ainda.'],
@@ -56,16 +56,16 @@ const REASON_TIP: Record<PendingReason, [string, string]> = {
 
 const NOTE_TIP: Record<string, [string, string]> = {
   clock: [
-    'The date and time of this preview. At replay the engine formats with the machine\'s locale, so the separators can differ.',
-    'A data e a hora desta prévia. No replay o motor formata com o idioma da máquina, então os separadores podem mudar.',
+    'Preview time. At replay the machine locale applies, so separators can differ.',
+    'Hora da prévia. No replay vale o idioma da máquina, então os separadores podem mudar.',
   ],
   'first-data-row': [
-    'The FIRST row of the Data table. A run uses whichever row it is on, and a ForEach or a Run Profile sub-table can substitute a different table entirely.',
-    'A PRIMEIRA linha da tabela de dados. Uma execução usa a linha em que está, e um ForEach ou uma sub-tabela de Run Profile pode trocar a tabela inteira.',
+    'The FIRST data row. A run uses the row it is on; ForEach and Run Profile can use another table.',
+    'A PRIMEIRA linha de dados. A execução usa a linha em que está; ForEach e Run Profile podem usar outra tabela.',
   ],
   'last-run': [
-    'From the LAST run — variables are cleared at the start of every run, so this is history, not a promise.',
-    'Da ÚLTIMA execução — as variáveis são apagadas no começo de cada execução, então isto é histórico, não uma promessa.',
+    'From the LAST run — variables reset at every start.',
+    'Da ÚLTIMA execução — as variáveis zeram a cada início.',
   ],
 };
 

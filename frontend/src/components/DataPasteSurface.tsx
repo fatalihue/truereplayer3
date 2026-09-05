@@ -52,7 +52,7 @@ export function DataPasteSurface({
           type="button"
           onClick={onBack}
           className="flex items-center gap-1 h-6 px-1.5 text-[11px] rounded text-text-tertiary hover:text-text-primary hover:bg-bg-card transition-colors"
-          data-tip={tt('Back to the grid (discards this paste)', 'Voltar à grade (descarta esta colagem)')}
+          data-tip={tt('Discards this paste', 'Descarta esta colagem')}
         >
           <ChevronLeft size={13} />
           Grid
@@ -73,12 +73,11 @@ export function DataPasteSurface({
                 {
                   value: 'replace',
                   label: 'Replace table',
-                  tip: tt('Parse the text below as the whole new table', 'Interpreta o texto abaixo como a nova tabela inteira'),
                 },
                 {
                   value: 'append',
                   label: 'Append rows',
-                  tip: tt('Add the pasted rows to the current table, matching columns by name', 'Adiciona as linhas coladas à tabela atual, casando colunas pelo nome'),
+                  tip: tt('Matches columns by name', 'Casa as colunas pelo nome'),
                 },
               ]}
               value={mode}
@@ -106,8 +105,8 @@ export function DataPasteSurface({
             onClick={() => onFirstRowHeaderChange(!firstRowHeader)}
             className="flex items-center gap-2 text-xs text-text-secondary hover:text-text-primary transition-colors"
             data-tip={tt(
-              'Off: columns are named col1..colN and every pasted line is data',
-              'Desligado: colunas viram col1..colN e toda linha colada é dado',
+              'Off: columns become col1…colN and every line is data',
+              'Desligado: colunas viram col1…colN e toda linha é dado',
             )}
           >
             <CheckboxBox checked={firstRowHeader} />

@@ -74,7 +74,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     // Clicker-mode gate — mirrors the Toolbar's insertsDisabled story: these
     // entries mutate the macro list, which is invisible in Clicker mode.
     const isClicker = settings.useCursorClick;
-    const clickerHint = 'Not available in Clicker mode — switch to Macro';
+    const clickerHint = 'Macro mode only';
 
     return [
       {

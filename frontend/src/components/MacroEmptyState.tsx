@@ -2,7 +2,6 @@ import { List, Circle, Type } from 'lucide-react';
 import { useAppState } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
 import { Button } from './common/Button';
-import { useTt } from '../state/LanguageContext';
 
 // Shown inside the ActionTable when the grid has zero actions (Macro mode only —
 // Clicker mode swaps the whole table for ClickerDashboard / ClickerEmptyState).
@@ -14,7 +13,6 @@ import { useTt } from '../state/LanguageContext';
 export function MacroEmptyState() {
   const { settings, status, buttonStates } = useAppState();
   const { send } = useBridge();
-  const tt = useTt();
   const isRecording = status === 'recording';
 
   return (
@@ -46,7 +44,6 @@ export function MacroEmptyState() {
             size="xs"
             disabled={!buttonStates.recordEnabled}
             onClick={() => send({ type: 'recording:toggle', payload: { insertIndex: 0 } })}
-            data-tip={tt('Start recording now — the same as the hotkey', 'Começar a gravar agora — o mesmo que o atalho')}
           >
             <Circle size={10} fill="currentColor" style={{ color: 'var(--color-recording-fg)' }} />
             Start recording
@@ -56,7 +53,6 @@ export function MacroEmptyState() {
             variant="secondary"
             size="xs"
             onClick={() => window.dispatchEvent(new CustomEvent('cmd:sendtext'))}
-            data-tip={tt('Insert a Send Text action', 'Inserir uma ação Send Text')}
           >
             <Type size={11} />
             Send Text

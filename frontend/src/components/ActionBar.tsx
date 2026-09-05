@@ -125,7 +125,7 @@ export function ActionBar() {
   //
   // The same sentence Toolbar, CommandPalette and ProfilePanel already use for this gate —
   // four surfaces, one string.
-  const clickerTip = tt('Not available in Clicker mode — switch to Macro', 'Indisponível no modo Clicker — mude para Macro');
+  const clickerTip = tt('Macro mode only', 'Só no modo Macro');
 
   // The bar is tooltip-free by request, with two exceptions, both of which are cases
   // where the control's own label genuinely cannot carry the message:

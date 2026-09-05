@@ -665,14 +665,14 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
               const dotColor = entry?.running ? 'var(--color-replay)' : armed ? 'var(--color-warning)' : 'var(--color-text-disabled)';
               const dotTip = entry?.running
                 ? (entry.conditionTrue
-                  ? tt('Watching — the condition is TRUE right now', 'Vigiando — a condição está VERDADEIRA agora')
-                  : tt('Watching — the condition is false right now', 'Vigiando — a condição está falsa agora'))
+                  ? tt('Watching · condition true now', 'Vigiando · condição verdadeira agora')
+                  : tt('Watching · condition false now', 'Vigiando · condição falsa agora'))
                 : armed
                   ? (!automation.enabled
-                    ? tt('Armed, but all automations are paused', 'Armada, mas todas as automações estão pausadas')
+                    ? tt('Armed · automations paused', 'Armada · automações pausadas')
                     : entry?.isDisabled
-                      ? tt('Armed, but the profile is disabled', 'Armada, mas o profile está desativado')
-                      : tt('Armed, but not watching — see the reason in the editor', 'Armada, mas não está vigiando — veja o motivo no editor'))
+                      ? tt('Armed · profile disabled', 'Armada · profile desativado')
+                      : tt('Armed · not watching (see the editor)', 'Armada · não vigia (veja o editor)'))
                   : entry ? tt('Off', 'Desligada') : tt('Not saved yet', 'Ainda não salva');
               return (
                 <div
@@ -710,7 +710,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                     {entry ? (
                       <span onClick={(e) => e.stopPropagation()}
                         data-tip={entry.isDisabled
-                          ? tt('Profile is disabled — enable it in the sidebar before arming.', 'Profile desativado — reative na barra lateral antes de armar.')
+                          ? tt('Profile disabled — enable it in the sidebar', 'Profile desativado — reative na barra lateral')
                           : undefined}>
                         <Toggle size="sm" isOn={entry.trigger.armed} disabled={entry.isDisabled}
                           onChange={(v) => send({ type: 'automation:setArmed', payload: { profile: name, armed: v } })} />
@@ -763,7 +763,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                       the same reason — a tip on a disabled <button> does still show here, since
                       Button sets no pointer-events:none. */}
                   <span data-tip={isNewDraft || hasUnsavedWork
-                    ? tt('Save first — Run now fires the SAVED automation.', 'Salve primeiro — o Run now dispara a automação SALVA.')
+                    ? tt('Save first', 'Salve primeiro')
                     : undefined}>
                     <Button variant="secondary" size="sm" onClick={runNow} disabled={isNewDraft || hasUnsavedWork}>
                       <Play size={12} /> {'Run now'}
@@ -909,8 +909,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                         configurations that work. See phaseLockRisk. */}
                     <FieldError
                       show={phaseLockRisk(draft)}
-                      tip={tt('The ticks of this interval only ever land on a few times of day, and they can all fall outside the window.',
-                              'Os ticks deste intervalo só caem em alguns horários do dia, e podem cair todos fora da janela.')}
+                      tip={tt('This interval only ticks at a few times of day — all may fall outside the window', 'Este intervalo só bate em alguns horários — todos podem cair fora da janela')}
                     >
                       {'This interval is too long for this window — it may never fire. Shorten the interval or widen the hours.'}
                     </FieldError>
@@ -1004,7 +1003,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                         <Toggle size="sm" isOn={draft.windowMatchForegroundOnly}
                           onChange={(v) => patch({ windowMatchForegroundOnly: v })} />
                         <span className="text-[12px] text-text-secondary"
-                          data-tip={tt('Only match when the window is in the FOREGROUND (instead of open anywhere).', 'Só considera quando a janela está em PRIMEIRO PLANO (em vez de aberta em qualquer lugar).')}>
+                          data-tip={tt('Must be in front, not just open', 'Precisa estar em primeiro plano, não só aberta')}>
                           Foreground only
                         </span>
                       </div>
@@ -1164,8 +1163,8 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                         value={draft.retrigger === 'level' ? 'level' : 'edge'}
                         onChange={(v) => patch({ retrigger: v })}
                         options={[
-                          { value: 'edge', label: 'Once per appearance', tip: tt('Fires once when the condition becomes true; must turn false before it can fire again.', 'Dispara uma vez quando a condição fica verdadeira; precisa ficar falsa antes de disparar de novo.') },
-                          { value: 'level', label: 'Continuous', tip: tt('Keeps firing every cooldown while the condition stays true.', 'Continua disparando a cada cooldown enquanto a condição fica verdadeira.') },
+                          { value: 'edge', label: 'Once per appearance', tip: tt('Fires when it turns true; re-arms when it turns false', 'Dispara ao ficar verdadeira; rearma ao ficar falsa') },
+                          { value: 'level', label: 'Continuous', tip: tt('Fires every cooldown while true', 'Dispara a cada cooldown enquanto verdadeira') },
                         ]}
                       />
                     </Field>
@@ -1235,9 +1234,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                 || selectedEntry.skippedSuppressed > 0) && (
                 <div className="pt-1">
                   <Button variant="ghost" size="sm"
-                    onClick={() => send({ type: 'automation:resetCounters', payload: { profile: selectedEntry.profile } })}
-                    data-tip={tt('Zero the fire and skip counts. The next scheduled run is not affected.',
-                                 'Zera as contagens de disparo e de pulos. O próximo disparo agendado não muda.')}>
+                    onClick={() => send({ type: 'automation:resetCounters', payload: { profile: selectedEntry.profile } })}>
                     {'Reset counters'}
                   </Button>
                 </div>

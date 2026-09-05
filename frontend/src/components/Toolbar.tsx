@@ -120,7 +120,7 @@ export function Toolbar(_props: ToolbarProps) {
   // Wraps each button's own bilingual hint: in Clicker mode the reason the
   // button is off matters more than what it would insert.
   const clickerTip = (en: string, ptBr: string) =>
-    isClicker ? tt('Not available in Clicker mode — switch to Macro', 'Indisponível no modo Clicker — mude para Macro') : tt(en, ptBr);
+    isClicker ? tt('Macro mode only', 'Só no modo Macro') : tt(en, ptBr);
   /* DISABLED — Toggle Columns dropdown.
    * Re-enable by:
    *   1. Changing ToolbarProps back to { columnVisibility, onColumnVisibilityChange }
@@ -637,7 +637,7 @@ export function Toolbar(_props: ToolbarProps) {
               onClick={() => setShowWaitMenu(!showWaitMenu)}
               disabled={insertsDisabled}
               className={iconButtonClass('md', { active: showWaitMenu })}
-              data-tip={clickerTip('Wait for image, pixel or condition', 'Aguardar imagem, pixel ou condição')}
+              data-tip={clickerTip('Wait (image, pixel, condition)', 'Aguardar (imagem, pixel, condição)')}
             >
               <ScanEye size={16} />
               <ChevronDown size={10} className="opacity-80" />
@@ -899,7 +899,7 @@ export function Toolbar(_props: ToolbarProps) {
                     key={`loopctl-${at}`}
                     disabled={loopDepth === 0}
                     data-tip={loopDepth === 0
-                      ? tt('Only valid inside a loop — insert a While or For Each Data Row first', 'Só vale dentro de um loop — insira um While ou For Each Data Row antes')
+                      ? tt('Only inside a loop', 'Só dentro de um loop')
                       : undefined}
                     className="menu-item text-text-primary"
                     onClick={() => {

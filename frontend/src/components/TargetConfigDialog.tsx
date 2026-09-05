@@ -312,7 +312,7 @@ export function TargetConfigDialog({
       // toast physically covered the buttons to force a Convert-or-Skip choice; in the shell the
       // footer is a sibling the toast can't cover, so the gate is explicit. Saving a flipped
       // Relative-Coordinates flag without converting silently reinterprets every stored X/Y.
-      footer={<DialogFooter secondary={{ label: 'Cancel', onClick: handleCancel }} primary={{ label: 'Set Target', onClick: () => handleSubmit(), disabled: submitDisabled || convertHint !== null, tip: convertHint ? tt('Resolve the coordinate-conversion prompt first (Convert or Skip).', 'Resolva primeiro o aviso de conversão de coordenadas (Converter ou Pular).') : undefined }} />}
+      footer={<DialogFooter secondary={{ label: 'Cancel', onClick: handleCancel }} primary={{ label: 'Set Target', onClick: () => handleSubmit(), disabled: submitDisabled || convertHint !== null, tip: convertHint ? tt('Resolve the conversion prompt first', 'Resolva o aviso de conversão primeiro') : undefined }} />}
     >
       {/* `relative` replaces the old card's positioning context — the convert-hint toast
           below pins itself to this wrapper's bottom edge (just above the shell footer). */}
@@ -404,7 +404,7 @@ export function TargetConfigDialog({
           <div
             className="flex items-center justify-between"
             data-tip={relativeCoordsAreDormant
-              ? tt("This profile inherits its window target from its folder, so the coordinate space is the folder's. Edit the process name or window title above to give it its own target.", 'Este perfil herda a janela-alvo da pasta, então o espaço de coordenadas é o da pasta. Edite o nome do processo ou o título da janela acima para dar um alvo próprio a ele.')
+              ? tt("Inherits the folder's window target. Set a process or title above for its own.", 'Herda a janela-alvo da pasta. Defina um processo ou título acima para ter a própria.')
               : undefined}
           >
             <span className={`text-xs ${relativeToggleDisabled ? 'text-text-disabled' : 'text-text-secondary'}`}>Relative Coordinates</span>

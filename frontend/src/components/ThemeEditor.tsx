@@ -178,7 +178,7 @@ function ColorRow({ label, value, overridden, check, hslOpen, onChange, onReset,
           <button
             onClick={onToggleHsl}
             className={`w-5 h-5 flex items-center justify-center rounded hover:bg-bg-card transition-opacity ${hslOpen ? 'text-accent opacity-100' : 'text-text-tertiary hover:text-text-primary opacity-0 group-hover:opacity-100'}`}
-            data-tip={tt('Fine-tune with HSL sliders', 'Ajustar com controles HSL')}
+            data-tip={tt('HSL sliders', 'Controles HSL')}
           >
             <SlidersHorizontal size={11} />
           </button>
@@ -639,7 +639,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
         </Button>
       )}
       {dirtySinceOpen && (
-        <Button variant="secondary" size="md" onClick={revertToOpenState} data-tip={tt('Put back the theme as it was when you opened the editor', 'Devolve o tema como estava quando você abriu o editor')}>
+        <Button variant="secondary" size="md" onClick={revertToOpenState} data-tip={tt('As it was when you opened the editor', 'Como estava ao abrir o editor')}>
           {/* Label stays English like every sibling in this footer (Done, Customize, Save, OK):
               the convention localises tooltip TEXT only, never names, labels or menus. */}
           <Undo2 size={13} /> Revert
@@ -781,7 +781,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
             onClick={() => { if (pool.length) selectPreset(pool[Math.floor(Math.random() * pool.length)].id); }}
             disabled={pool.length === 0}
             className="w-8 h-8 flex items-center justify-center rounded text-text-secondary hover:text-text-primary hover:bg-bg-card disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            data-tip={pool.length === 0 ? tt('No other presets in this filter', 'Nenhum outro preset neste filtro') : tt('Pick a random preset from the current filter', 'Escolher um preset aleatório do filtro atual')}
+            data-tip={pool.length === 0 ? tt('No other presets in this filter', 'Nenhum outro preset neste filtro') : tt('Random preset from this filter', 'Preset aleatório deste filtro')}
           >
             <Dices size={14} />
           </button>
