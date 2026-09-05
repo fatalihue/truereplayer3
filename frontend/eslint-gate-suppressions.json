@@ -4,11 +4,6 @@
       "count": 2
     }
   },
-  "src/components/BulkActionBar.tsx": {
-    "no-restricted-syntax": {
-      "count": 1
-    }
-  },
   "src/components/CommandPalette.tsx": {
     "no-restricted-syntax": {
       "count": 1
@@ -37,11 +32,6 @@
   "src/components/ThemeEditor.tsx": {
     "no-restricted-syntax": {
       "count": 3
-    }
-  },
-  "src/components/UpdateOverlay.tsx": {
-    "no-restricted-syntax": {
-      "count": 6
     }
   },
   "src/components/common/DialogShell.tsx": {

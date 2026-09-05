@@ -890,6 +890,31 @@ html[data-animations="true"] .pop-in {
   animation: pop-in var(--motion-base) var(--ease-enter);
 }
 
+/* Update splash — card, backdrop, logo pulse, install pulse and the tick draw. Gated: the
+   component used to inject its own ungated copies through a <style> tag. */
+@keyframes update-card-in {
+  from { opacity: 0; transform: scale(0.94) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes update-logo-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+@keyframes update-install-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
+}
+@keyframes update-checkmark {
+  from { stroke-dashoffset: 24; }
+  to { stroke-dashoffset: 0; }
+}
+html[data-animations="true"] .update-fade-in { animation: fade-in var(--motion-slow) ease-out; }
+html[data-animations="true"] .update-card-in { animation: update-card-in 450ms cubic-bezier(0.16, 1, 0.3, 1); }
+html[data-animations="true"] .update-logo-pulse { animation: update-logo-pulse 2s ease-in-out infinite; }
+html[data-animations="true"] .update-install-pulse { animation: update-install-pulse 1.5s ease-in-out infinite; }
+.update-checkmark { stroke-dasharray: 24; stroke-dashoffset: 0; }
+html[data-animations="true"] .update-checkmark { animation: update-checkmark 400ms ease 200ms both; }
+
 /* Callout entrance — inline note cards appear in REACTION to something (a probe finished, a
    field went invalid), so they fade in like every other reactive surface. Gated. */
 html[data-animations="true"] .callout-enter {

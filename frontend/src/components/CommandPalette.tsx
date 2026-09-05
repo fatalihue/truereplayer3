@@ -318,12 +318,14 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
                     onMouseEnter={() => setFocusedIndex(idx)}
                     disabled={isDisabled}
                     data-tip={isDisabled ? item.disabledHint : undefined}
-                    className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors ${
+                    // menu-item (the menus' own recipe: 32 px, 12 px, elevated hover); the keyboard
+                    // focus paints the hover look, and a disabled item explains itself at the right.
+                    className={`menu-item gap-2 ${
                       isDisabled
                         ? 'opacity-40 cursor-not-allowed'
                         : isFocused
                           ? 'bg-bg-elevated text-text-primary'
-                          : 'text-text-secondary hover:bg-bg-elevated hover:text-text-primary'
+                          : 'text-text-secondary hover:text-text-primary'
                     }`}
                     style={{ borderRadius: 'var(--ui-border-radius)' }}
                   >

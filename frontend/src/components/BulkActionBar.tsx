@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Clock, Trash2, X, Crosshair, MessageSquare, Eye, EyeOff, ArrowUpToLine, ArrowDownToLine } from 'lucide-react';
+import { iconButtonClass } from './common/IconButton';
 
 interface BulkActionBarProps {
   selectedCount: number;
@@ -107,18 +108,15 @@ export function BulkActionBar({
   // keyframe was orphaned when the bar became docked); gated on the Animations
   // toggle in index.css like every other entrance.
   return (
-    <div className="bulk-bar-enter flex items-center h-8 px-3 border-t border-accent-solid/30 shrink-0 bg-[color-mix(in_srgb,var(--color-accent)_6%,var(--color-bg-card))] shadow-[0_-4px_12px_rgba(0,0,0,0.18)]">
+    <div className="bulk-bar-enter flex items-center h-[34px] px-3 border-t border-accent-solid/30 shrink-0 bg-[color-mix(in_srgb,var(--color-accent)_6%,var(--color-bg-card))] shadow-[0_-4px_12px_color-mix(in_srgb,var(--color-bg-base)_45%,transparent)]">
       {/* Left: selection info + clear. shrink-0 + whitespace-nowrap make sure the
           "N selected" text stays on one line even if the right-side button cluster
           grows enough to compress the flex layout — without these, narrow window
           widths would wrap "N" and "selected" onto two lines. */}
       <div className="flex items-center gap-2 shrink-0">
         <span className="text-xs font-semibold text-accent-light whitespace-nowrap">{selectedCount} selected</span>
-        <button
-          onClick={onClearSelection}
-          className="p-0.5 rounded hover:bg-bg-elevated text-text-secondary hover:text-text-primary transition-colors"
-        >
-          <X size={11} />
+        <button onClick={onClearSelection} className={iconButtonClass('sm')} aria-label="Clear selection">
+          <X size={14} />
         </button>
       </div>
 
@@ -138,19 +136,19 @@ export function BulkActionBar({
               onKeyDown={(e) => { if (e.key === 'Enter') handleConfirm(); if (e.key === 'Escape') setActiveInput(null); }}
               autoFocus
               placeholder={inputPlaceholder}
-              className={`${inputWidth} h-6 px-2 text-[11px] font-mono bg-bg-input border rounded text-center text-text-primary outline-none ${
+              className={`${inputWidth} h-7 px-2 text-xs font-mono bg-bg-input border rounded text-center text-text-primary outline-none ${
                 inputInvalid ? 'border-recording/60 focus:border-recording' : 'border-border-default focus:border-accent-solid'
               }`}
             />
             <button
               onClick={handleConfirm}
-              className="h-6 px-2 rounded text-[11px] font-medium bg-accent-solid text-[color:var(--color-accent-ink)] hover:bg-accent-solid/80 transition-colors"
+              className="h-7 px-2.5 rounded text-xs font-medium bg-accent-solid text-[color:var(--color-accent-ink)] hover:bg-accent-solid/80 transition-colors"
             >
               OK
             </button>
             <button
               onClick={() => setActiveInput(null)}
-              className="h-6 px-1.5 rounded text-[11px] text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+              className={iconButtonClass('md')}
             >
               <X size={10} />
             </button>
@@ -163,26 +161,26 @@ export function BulkActionBar({
             <button
               onClick={onMoveUp}
               disabled={!canMoveUp}
-              className="flex items-center gap-1 h-6 px-2 rounded text-[11px] text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-text-secondary"
+              className="flex items-center gap-1.5 h-7 px-2 rounded text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-text-secondary"
             >
-              <ArrowUpToLine size={11} />
+              <ArrowUpToLine size={14} />
             </button>
             <button
               onClick={onMoveDown}
               disabled={!canMoveDown}
-              className="flex items-center gap-1 h-6 px-2 rounded text-[11px] text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-text-secondary"
+              className="flex items-center gap-1.5 h-7 px-2 rounded text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-text-secondary"
             >
-              <ArrowDownToLine size={11} />
+              <ArrowDownToLine size={14} />
             </button>
 
-            <div className="w-px h-3.5 bg-border-subtle mx-0.5" />
+            <div className="w-px h-4 bg-border-default mx-1" />
 
             {/* Set Delay */}
             <button
               onClick={() => openInput('delay')}
-              className="flex items-center gap-1 h-6 px-2 rounded text-[11px] text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+              className="flex items-center gap-1.5 h-7 px-2 rounded text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors"
             >
-              <Clock size={11} />
+              <Clock size={14} />
               Delay
             </button>
 
@@ -190,30 +188,30 @@ export function BulkActionBar({
                 context menu, so coord-related UI uses the same glyph across the app. */}
             <button
               onClick={() => openInput('x')}
-              className="flex items-center gap-1 h-6 px-2 rounded text-[11px] text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+              className="flex items-center gap-1.5 h-7 px-2 rounded text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors"
             >
-              <Crosshair size={11} />
+              <Crosshair size={14} />
               X
             </button>
 
             <button
               onClick={() => openInput('y')}
-              className="flex items-center gap-1 h-6 px-2 rounded text-[11px] text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+              className="flex items-center gap-1.5 h-7 px-2 rounded text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors"
             >
-              <Crosshair size={11} />
+              <Crosshair size={14} />
               Y
             </button>
 
             {/* Set Notes */}
             <button
               onClick={() => openInput('notes')}
-              className="flex items-center gap-1 h-6 px-2 rounded text-[11px] text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+              className="flex items-center gap-1.5 h-7 px-2 rounded text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors"
             >
-              <MessageSquare size={11} />
+              <MessageSquare size={14} />
               Notes
             </button>
 
-            <div className="w-px h-3.5 bg-border-subtle mx-0.5" />
+            <div className="w-px h-4 bg-border-default mx-1" />
 
             {/* Skip / Enable — Eye / EyeOff mirrors the row context menu's Skip toggle
                 so the same visual vocabulary travels across both surfaces. Duplicate
@@ -221,22 +219,24 @@ export function BulkActionBar({
                 more discoverable path for the rare cases users want a copy of a row. */}
             <button
               onClick={onToggleSkip}
-              className={`flex items-center gap-1 h-6 px-2 rounded text-[11px] transition-colors ${
+              className={`flex items-center gap-1.5 h-7 px-2 rounded text-xs font-medium transition-colors ${
                 allSelectedSkipped
                   ? 'text-accent-light hover:text-accent-light hover:bg-accent-solid/10'
                   : 'text-text-secondary hover:text-text-primary hover:bg-bg-elevated'
               }`}
             >
-              {allSelectedSkipped ? <Eye size={11} /> : <EyeOff size={11} />}
+              {allSelectedSkipped ? <Eye size={14} /> : <EyeOff size={14} />}
               {allSelectedSkipped ? 'Enable' : 'Skip'}
             </button>
+
+            <div className="w-px h-4 bg-border-default mx-1" />
 
             {/* Delete — destructive group of one (the Del hotkey also deletes the selection). */}
             <button
               onClick={onDelete}
-              className="flex items-center gap-1 h-6 px-2 rounded text-[11px] text-recording hover:text-recording/80 hover:bg-recording-bg transition-colors"
+              className="flex items-center gap-1.5 h-7 px-2 rounded text-xs font-medium text-recording hover:text-recording/80 hover:bg-recording-bg transition-colors"
             >
-              <Trash2 size={11} />
+              <Trash2 size={14} />
               Delete
             </button>
           </>
