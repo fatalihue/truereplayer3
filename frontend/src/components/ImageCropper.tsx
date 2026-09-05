@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { Crop } from 'lucide-react';
 import { useTt } from '../state/LanguageContext';
 import { uiZoom } from '../utils/zoomSpace';
+import { DialogShell, DialogFooter } from './common/DialogShell';
 
 interface CropRect {
   x: number;
@@ -26,14 +27,20 @@ const MIN_SIZE = 10;
 const MAX_DISPLAY_W = 900;
 const MAX_DISPLAY_H = 600;
 const HANDLE_PX = 12;
-// Crop rect overlay colors — slightly transparent so the underlying image stays readable
-// while still giving the crop rect enough contrast to be visible against any background.
+// Crop rect stroke — slightly transparent so the underlying image stays readable while the
+// rectangle keeps enough contrast against any background. The handles are solid accent with
+// a 2 px ring in the card colour, so they read on a light image as well as on a dark one.
 const ACCENT_RGBA = 'color-mix(in srgb, var(--color-accent) 65%, transparent)';
-const HANDLE_BORDER_RGBA = 'rgba(255, 255, 255, 0.7)';
+// The four dimming panes outside the crop: the theme's base ground at 62 %, not a fixed black —
+// on a light preset a black wash turned the whole picture into a night scene.
+const DIM = 'color-mix(in srgb, var(--color-bg-base) 62%, transparent)';
 
 // Modal cropper for tightening an existing reference image. Operates purely in image-pixel
 // coordinates (the parent persists those via the bridge); display scaling is calculated
 // on the fly so the UI works for any reference size from a tiny 30px icon up to a 600px panel.
+//
+// Lives in the DialogShell like every other dialog (scrim, focus, Escape, motion), at z-80
+// because it opens from INSIDE the sheet, which sits at z-70.
 export function ImageCropper({ imageBase64, onSave, onCancel }: ImageCropperProps) {
   const tt = useTt();
   const imgRef = useRef<HTMLImageElement>(null);
@@ -65,18 +72,6 @@ export function ImageCropper({ imageBase64, onSave, onCancel }: ImageCropperProp
     };
   }, [natural]);
   const displayScale = display?.scale ?? 1;
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        onCancel();
-      }
-    };
-    document.addEventListener('keydown', onKey, true);
-    return () => document.removeEventListener('keydown', onKey, true);
-  }, [onCancel]);
 
   // Global mousemove/mouseup so the drag survives even if the cursor briefly leaves the
   // handle while dragging fast.
@@ -195,42 +190,57 @@ export function ImageCropper({ imageBase64, onSave, onCancel }: ImageCropperProp
     crop.h >= MIN_SIZE &&
     !(crop.x === 0 && crop.y === 0 && crop.w === natural.w && crop.h === natural.h);
 
-  // Each handle is a small filled square positioned so its CENTRE sits on the edge/corner of
-  // the crop rect. The offset (negative half the size) keeps it visually centred on the edge.
-  // Slightly transparent so the image underneath remains visible at the corners.
+  // Each handle is a 12 px square positioned so its CENTRE sits on the edge/corner of the crop
+  // rect (the negative half-size offset). Solid accent with a 2 px ring in the card colour so it
+  // separates from the image on either side of the luminance range.
   const handleStyle: React.CSSProperties = {
     position: 'absolute',
     width: HANDLE_PX,
     height: HANDLE_PX,
-    background: ACCENT_RGBA,
-    border: `1px solid ${HANDLE_BORDER_RGBA}`,
-    boxShadow: '0 0 0 1px rgba(0,0,0,0.25)',
+    background: 'var(--color-accent-solid)',
+    boxShadow: '0 0 0 2px var(--color-bg-elevated)',
     borderRadius: 2,
   };
   const half = HANDLE_PX / 2;
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[80] flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.7)' }}
-      onKeyDown={(e) => e.stopPropagation()}
+  return (
+    <DialogShell
+      icon={<Crop size={14} style={{ color: 'var(--color-action-waitimage-fg)' }} />}
+      title="Crop reference image"
+      size="auto"
+      zClass="z-[80]"
+      cardClassName="max-h-[90vh]"
+      onClose={onCancel}
+      // A crop in progress must not be thrown away by a stray click outside the card.
+      closeOnBackdrop={false}
+      footerHint="Drag a handle to resize, or drag inside the rectangle to move."
+      footer={
+        <DialogFooter
+          secondary={{ label: 'Cancel', onClick: onCancel }}
+          primary={{
+            label: 'Save crop',
+            onClick: () => onSave(crop),
+            disabled: !canSave,
+            tip: canSave ? tt('Apply crop', 'Aplicar recorte') : tt('Pick a smaller region first', 'Selecione uma região menor primeiro'),
+          }}
+        />
+      }
     >
-      <div
-        className="bg-bg-elevated border border-border-default rounded-dialog shadow-dialog p-4 max-w-[90vw] max-h-[90vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-text-primary">Crop reference image</h3>
-          <div className="text-xs font-mono text-text-tertiary">
-            {natural ? `${crop.w} × ${crop.h}` : 'Loading...'}
-            {natural && <span className="text-text-disabled"> / {natural.w} × {natural.h}</span>}
-          </div>
+      <div className="p-4 flex flex-col gap-3 min-h-0">
+        {/* Size readout — crop size, then the source size, as one mono line. */}
+        <div className="flex justify-end items-baseline gap-1.5 text-[11px] font-mono tabular-nums text-text-tertiary">
+          {natural ? (
+            <>
+              <span className="px-1.5 py-0.5 rounded bg-bg-input border border-border-subtle text-text-secondary">{crop.w} × {crop.h}</span>
+              <span className="text-text-disabled">/ {natural.w} × {natural.h}</span>
+            </>
+          ) : 'Loading...'}
         </div>
 
         {/* Centred container — the image+crop overlay sit inside a flex centerer so they
-            don't hug the left edge of the modal when the image is smaller than the modal. */}
+            don't hug the left edge of the card when the image is smaller than the card. */}
         <div className="flex justify-center">
-          <div className="relative inline-block bg-black/40">
+          <div className="relative inline-block" style={{ background: DIM }}>
           <img
             ref={imgRef}
             src={`data:image/png;base64,${imageBase64}`}
@@ -247,15 +257,15 @@ export function ImageCropper({ imageBase64, onSave, onCancel }: ImageCropperProp
                   can still grab the move/resize handles inside without the overlay swallowing it. */}
               <div
                 className="absolute pointer-events-none"
-                style={{ left: 0, top: 0, right: 0, height: dispCrop.top, background: 'rgba(0,0,0,0.55)' }}
+                style={{ left: 0, top: 0, right: 0, height: dispCrop.top, background: DIM }}
               />
               <div
                 className="absolute pointer-events-none"
-                style={{ left: 0, top: dispCrop.top + dispCrop.height, right: 0, bottom: 0, background: 'rgba(0,0,0,0.55)' }}
+                style={{ left: 0, top: dispCrop.top + dispCrop.height, right: 0, bottom: 0, background: DIM }}
               />
               <div
                 className="absolute pointer-events-none"
-                style={{ left: 0, top: dispCrop.top, width: dispCrop.left, height: dispCrop.height, background: 'rgba(0,0,0,0.55)' }}
+                style={{ left: 0, top: dispCrop.top, width: dispCrop.left, height: dispCrop.height, background: DIM }}
               />
               <div
                 className="absolute pointer-events-none"
@@ -264,7 +274,7 @@ export function ImageCropper({ imageBase64, onSave, onCancel }: ImageCropperProp
                   top: dispCrop.top,
                   right: 0,
                   height: dispCrop.height,
-                  background: 'rgba(0,0,0,0.55)',
+                  background: DIM,
                 }}
               />
 
@@ -294,32 +304,7 @@ export function ImageCropper({ imageBase64, onSave, onCancel }: ImageCropperProp
           )}
           </div>
         </div>
-
-        <div className="flex items-center justify-between mt-3 gap-2">
-          <div className="text-[10px] text-text-tertiary">
-            Drag a handle to resize, or drag inside the rectangle to move.
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onCancel}
-              className="px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary border border-border-default rounded transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => onSave(crop)}
-              disabled={!canSave}
-              className="px-3 py-1.5 text-xs font-medium text-[color:var(--color-accent-ink)] bg-accent-solid hover:bg-accent-solid/80 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              data-tip={canSave ? tt('Apply crop', 'Aplicar recorte') : tt('Pick a smaller region first', 'Selecione uma região menor primeiro')}
-            >
-              Save crop
-            </button>
-          </div>
-        </div>
       </div>
-    </div>,
-    document.body,
+    </DialogShell>
   );
 }

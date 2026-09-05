@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { AlertTriangle, FolderOpen } from 'lucide-react';
 import { Checkbox } from './Checkbox';
-import { DialogShell } from './common/DialogShell';
-import { Button } from './common/Button';
+import { DialogShell, DialogFooter  } from './common/DialogShell';
 
 interface SecurityWarningModalProps {
   /** Name of the .trprofile that triggered the warning — anchors the generic text
@@ -35,34 +34,15 @@ export function SecurityWarningModal({ fileName, profileCount, onContinue, onCan
     <DialogShell
       icon={<AlertTriangle size={14} style={{ color: 'var(--color-warning-ink)' }} />}
       title="Heads up"
-      widthClass="w-[520px]"
+      size="lg"
       onClose={onCancel}
       // Security warning exists to be READ before proceeding — a stray click on the
       // scrim must not dismiss it (dismissal is an explicit Cancel or Esc only).
       closeOnBackdrop={false}
       footerHint="Esc to cancel"
-      footer={
-        <>
-          {/* min-w matches the Export dialog's even-button-row convention. */}
-          <Button
-            variant="secondary"
-            className="min-w-[84px]"
-            onClick={onCancel}
-          >
-            Cancel
-          </Button>
-          {/* "Continue to review", not "I understand, continue": the Import Preview
-              comes NEXT — the old label read as a final commit and could make a
-              cautious user cancel, thinking Continue meant import-everything-now. */}
-          <Button
-            variant="primary"
-            className="min-w-[84px]"
-            onClick={() => onContinue(dontShowAgain)}
-          >
-            Continue to review
-          </Button>
-        </>
-      }
+      // "Continue to review", not "I understand, continue": the Import Preview comes NEXT — a
+      // label that read as a final commit could make a cautious user cancel.
+      footer={<DialogFooter secondary={{ label: 'Cancel', onClick: onCancel }} primary={{ label: 'Continue to review', onClick: () => onContinue(dontShowAgain) }} />}
     >
       {/* Body */}
       <div className="px-4 py-4 space-y-3">

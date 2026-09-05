@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Keyboard } from 'lucide-react';
 import { NumberInput } from './common/NumberInput';
-import { DialogShell } from './common/DialogShell';
-import { Button } from './common/Button';
+import { DialogShell, DialogFooter  } from './common/DialogShell';
 import { SegmentedControl } from './common/SegmentedControl';
 import { KeyCaps } from './common/KeyCaps';
 import { chipDotOn, chipDotOff } from './common/chipStyles';
@@ -306,14 +305,7 @@ export function KeystrokeCaptureDialog({
         : captured
           ? 'Press another combo to replace'
           : ''}
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={handleConfirm} disabled={!captured?.trim()}>
-            {isEditing ? 'Save' : 'Add'}
-          </Button>
-        </>
-      }
+      footer={<DialogFooter secondary={{ label: 'Cancel', onClick: onClose }} primary={{ label: isEditing ? 'Save' : 'Add', onClick: handleConfirm, disabled: !captured?.trim() }} />}
       onCardKeyDown={(e) => {
         // Enter confirms ONLY when a numeric input is focused — in that state the
         // backend capture is paused (handleFocusIn in the capture effect) so the

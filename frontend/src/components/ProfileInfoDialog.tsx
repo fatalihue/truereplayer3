@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Info, Smile, Hash, X } from 'lucide-react';
 import EmojiPicker, { Theme as EmojiTheme, EmojiStyle } from 'emoji-picker-react';
-import { DialogShell } from './common/DialogShell';
-import { Button } from './common/Button';
+import { DialogShell, DialogFooter  } from './common/DialogShell';
 import { useBridge } from '../bridge/BridgeContext';
 import type { ProfileMetadataPayload, TagListEntry } from '../bridge/messageTypes';
 import { formatDateLong } from '../utils/dateFormat';
@@ -178,13 +177,9 @@ export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogPro
       closeOnBackdrop={false}
       // max-h keeps the card inside the viewport so the body below can scroll
       // (the emoji picker alone is 320px tall).
-      widthClass="w-[560px] max-h-[90vh]"
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={handleSave} disabled={!loaded}>Save</Button>
-        </>
-      }
+      size="lg"
+      cardClassName="max-h-[90vh]"
+      footer={<DialogFooter secondary={{ label: 'Cancel', onClick: onClose }} primary={{ label: 'Save', onClick: handleSave, disabled: !loaded }} />}
     >
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">

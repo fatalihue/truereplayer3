@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Hourglass } from 'lucide-react';
 import { NumberInput } from './common/NumberInput';
-import { DialogShell } from './common/DialogShell';
-import { Button } from './common/Button';
+import { DialogShell, DialogFooter  } from './common/DialogShell';
 import { KeyCaps } from './common/KeyCaps';
 import { DurationChips } from './common/DurationChips';
 import { useBridge } from '../bridge/BridgeContext';
@@ -151,14 +150,7 @@ export function PauseDialog({ initialKey, initialTimeoutMs, onConfirm, onClose }
       footerHint={captured
         ? 'Press another key to replace'
         : ''}
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={handleConfirm} disabled={!canConfirm}>
-            {isEditing ? 'Save' : 'Add'}
-          </Button>
-        </>
-      }
+      footer={<DialogFooter secondary={{ label: 'Cancel', onClick: onClose }} primary={{ label: isEditing ? 'Save' : 'Add', onClick: handleConfirm, disabled: !canConfirm }} />}
       onCardKeyDown={(e) => {
         // Enter confirms ONLY while a numeric input is focused (in that state the
         // backend capture is suspended, so Enter isn't doubling as a captured

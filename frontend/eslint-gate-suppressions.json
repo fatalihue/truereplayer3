@@ -1,7 +1,7 @@
 {
   "src/components/AutomationPanel.tsx": {
     "no-restricted-syntax": {
-      "count": 3
+      "count": 2
     }
   },
   "src/components/BulkActionBar.tsx": {
@@ -17,11 +17,6 @@
   "src/components/DataPanel.tsx": {
     "no-restricted-syntax": {
       "count": 1
-    }
-  },
-  "src/components/ImageCropper.tsx": {
-    "no-restricted-syntax": {
-      "count": 8
     }
   },
   "src/components/LiveVariablesPanel.tsx": {
@@ -41,7 +36,7 @@
   },
   "src/components/SendTextDialog.tsx": {
     "no-restricted-syntax": {
-      "count": 2
+      "count": 1
     }
   },
   "src/components/SettingsPanel.tsx": {

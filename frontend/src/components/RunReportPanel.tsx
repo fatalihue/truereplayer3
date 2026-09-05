@@ -1,8 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { ListChecks, CheckCircle2, CircleDashed, XCircle, MinusCircle, TriangleAlert, RefreshCw, Repeat } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
-import { DialogShell } from './common/DialogShell';
-import { Button } from './common/Button';
+import { DialogShell, DialogFooter  } from './common/DialogShell';
 import type { RunReport, RunStep } from '../bridge/messageTypes';
 
 // Structured codes the extension emits (content.js mkError) plus the two the native bridge
@@ -107,25 +106,16 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
       // chain reports 2.21.0 exists to make readable are exactly the long ones. Divided by
       // --ui-zoom for the same reason PANEL_SIZE is (DialogShell:41): raw vh is measured before
       // the app's 0.9 zoom scales it down, so 85vh would paint as 76vh.
-      widthClass="w-[720px] h-[calc(85vh/var(--ui-zoom))]"
-      maxWidthClass="max-w-[calc(100vw-24px)]"
+      size="xl"
+      cardClassName="h-[calc(85vh/var(--ui-zoom))]"
       onClose={onClose}
       showClose
-      footer={() => (
-        <>
-          <div className="mr-auto text-[11px] text-text-tertiary">
-            {steps.length > 0
-              ? `${steps.length} ${'steps'} · ${fmtMs(stats.total)}` +
-                (stats.failed > 0 ? ` · ${stats.failed} ${'failed'}` : '')
-                + (stats.running > 0 ? ` · ${stats.running} ${'in progress'}` : '')
-              : ''}
-          </div>
-          <Button variant="secondary" onClick={() => send({ type: 'replay:reportRequest', payload: {} })}>
-            <RefreshCw size={12} /> {'Refresh'}
-          </Button>
-          <Button variant="primary" onClick={onClose}>{'Close'}</Button>
-        </>
-      )}
+      footerHint={steps.length > 0
+        ? `${steps.length} steps · ${fmtMs(stats.total)}`
+          + (stats.failed > 0 ? ` · ${stats.failed} failed` : '')
+          + (stats.running > 0 ? ` · ${stats.running} in progress` : '')
+        : ''}
+      footer={<DialogFooter secondary={{ label: <><RefreshCw size={12} /> Refresh</>, onClick: () => send({ type: 'replay:reportRequest', payload: {} }) }} primary={{ label: 'Close', onClick: onClose }} />}
     >
       {/* flex-1 min-h-0, not h-full: the card is `flex flex-col` and this is a direct flex item,
           so an intrinsic height ignores the space the header and footer leave over (DialogShell:38). */}

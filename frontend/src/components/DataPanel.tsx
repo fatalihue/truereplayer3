@@ -4,7 +4,7 @@ import {
   Table2, TriangleAlert, Repeat, Plus, Trash2, Wand2, Check, Copy,
   MoreHorizontal, ClipboardPaste, FileUp, Search, X, Bell, ChevronRight,
 } from 'lucide-react';
-import { DialogShell, PANEL_SIZE, PANEL_MAX_WIDTH } from './common/DialogShell';
+import { DialogShell  } from './common/DialogShell';
 import { Button } from './common/Button';
 import { SegmentedControl } from './common/SegmentedControl';
 import { CheckboxBox } from './Checkbox';
@@ -923,8 +923,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
     <DialogShell
       icon={<Table2 size={14} className="text-accent-light" />}
       title="Data Loop"
-      widthClass={PANEL_SIZE}
-      maxWidthClass={PANEL_MAX_WIDTH}
+      size="full"
       onClose={onClose}
       closeOnBackdrop={false}
       showClose
@@ -932,20 +931,20 @@ export function DataPanel({ onClose }: DataPanelProps) {
       footer={(requestClose) =>
         pasteOpen ? (
           <>
-            <Button variant="secondary" onClick={() => setPasteOpen(false)}>Cancel</Button>
-            <Button variant="primary" onClick={applyPaste} disabled={pasteParsed.headers.length === 0}>
+            <Button variant="secondary" size="md" onClick={() => setPasteOpen(false)}>Cancel</Button>
+            <Button variant="primary" size="md" onClick={applyPaste} disabled={pasteParsed.headers.length === 0}>
               {applyLabel}
             </Button>
           </>
         ) : (
           <>
-            <Button variant="secondary" onClick={requestClose}>Cancel</Button>
+            <Button variant="secondary" size="md" onClick={requestClose}>Cancel</Button>
             {willClear ? (
               <span data-tip={tt('Saving an empty grid deletes the data table from this profile.', 'Salvar a grade vazia apaga a tabela de dados deste profile.')}>
-                <Button variant="destructive" onClick={handleSave}>Clear table</Button>
+                <Button variant="destructive" size="md" onClick={handleSave}>Clear table</Button>
               </span>
             ) : (
-              <Button variant="primary" onClick={handleSave} disabled={!dirty}>Save</Button>
+              <Button variant="primary" size="md" onClick={handleSave} disabled={!dirty}>Save</Button>
             )}
           </>
         )

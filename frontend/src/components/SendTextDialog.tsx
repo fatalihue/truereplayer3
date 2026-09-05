@@ -1,12 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect } from 'react';
 import ReactDOM from 'react-dom';
-import {
-  Smile, Braces, BookmarkPlus, Trash2, ChevronRight, Wand2, Pencil, Search, Check, X, Type,
-  TriangleAlert, Eye, Download, Upload,
-} from 'lucide-react';
+import { AlertTriangle, Smile, Braces, BookmarkPlus, Trash2, ChevronRight, Wand2, Pencil, Search, Check, X, Type,
+  TriangleAlert, Eye, Download, Upload, } from 'lucide-react';
 import EmojiPicker, { Theme } from 'emoji-picker-react';
 import type { EmojiClickData } from 'emoji-picker-react';
-import { DialogShell, PANEL_SIZE, PANEL_MAX_WIDTH } from './common/DialogShell';
+import { DialogShell, DialogFooter  } from './common/DialogShell';
 import { Button } from './common/Button';
 import { SegmentedControl } from './common/SegmentedControl';
 import { useTt } from '../state/LanguageContext';
@@ -984,8 +982,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
     <DialogShell
       icon={<Type size={14} style={{ color: 'var(--color-action-sendtext-fg)' }} />}
       title={mode === 'add' ? 'Insert Text' : 'Edit Text'}
-      widthClass={PANEL_SIZE}
-      maxWidthClass={PANEL_MAX_WIDTH}
+      size="full"
       onClose={onClose}
       // Text-entry dialog: a stray scrim click must not discard typed text —
       // dismissal is Esc or Cancel only.
@@ -1031,9 +1028,10 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
         // into Cancel when the Advanced Clipboard surface closed.
         surface ? (
           <React.Fragment key="surface">
-            <Button variant="secondary" onClick={closeSurface}>Cancel</Button>
+            <Button variant="secondary" size="md" onClick={closeSurface}>Cancel</Button>
             <Button
               variant="primary"
+              size="md"
               onClick={handleSurfaceConfirm}
               // Mirrors the guard that actually runs inside handleSurfaceConfirm, so an unusable
               // head reads as blocked instead of as a button that does nothing. The guard itself
@@ -1050,8 +1048,8 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                 away — so it moved up into that toolbar (deliveryControl). The keyed fragments stay:
                 they exist because React reconciled the primary "Insert" here against the secondary
                 "Cancel" in the surface footer and cross-faded accent into grey. */}
-            <Button variant="secondary" onClick={requestClose}>Cancel</Button>
-            <Button variant="primary" onClick={handleConfirm} disabled={!text.trim()}>
+            <Button variant="secondary" size="md" onClick={requestClose}>Cancel</Button>
+            <Button variant="primary" size="md" onClick={handleConfirm} disabled={!text.trim()}>
               {mode === 'add' ? 'Add' : 'Save'}
             </Button>
           </React.Fragment>
@@ -1470,38 +1468,26 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
         completed user action. No native confirm() — window.confirm races the shell's Escape
         handling, which is why the in-panel overlay pattern exists. */}
     {confirmDiscard && (
-      <div
-        className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
-        onClick={() => { setConfirmDiscard(false); lexicalApiRef.current?.focus(); }}
+      <DialogShell
+        icon={<AlertTriangle size={14} style={{ color: 'var(--color-warning-ink)' }} />}
+        title="Unsaved text"
+        size="sm"
+        zClass="z-[60]"
+        onClose={() => { setConfirmDiscard(false); lexicalApiRef.current?.focus(); }}
+        footer={
+          <DialogFooter
+            secondary={{ label: 'Keep editing', onClick: () => { setConfirmDiscard(false); lexicalApiRef.current?.focus(); }, autoFocus: true }}
+            extra={<Button variant="destructiveText" size="md" onClick={() => { setConfirmDiscard(false); onClose(); }}>Discard</Button>}
+            /* Repeats the footer's own gate and label so it cannot fire handleConfirm's early-return
+               branch on a whitespace-only payload. */
+            primary={{ label: mode === 'add' ? 'Add' : 'Save', onClick: () => { setConfirmDiscard(false); handleConfirm(); }, disabled: !text.trim() }}
+          />
+        }
       >
-        <div
-          className="w-[380px] rounded-dialog border border-border-subtle bg-bg-surface p-4 shadow-dialog"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="text-[13px] text-text-primary font-medium mb-1.5">{'Unsaved text'}</div>
-          <div className="text-[12px] text-text-secondary leading-relaxed mb-4">
-            {'This message has changes that were never applied. Closing now discards the text, its formatting and the delivery settings.'}
-          </div>
-          <div className="flex justify-end gap-2">
-            {/* autoFocus is safe here: this overlay mounts fresh every time, unlike the snippet
-                delete row where React REUSED the node and autoFocus never fired. */}
-            <Button variant="ghost" size="sm" autoFocus
-              onClick={() => { setConfirmDiscard(false); lexicalApiRef.current?.focus(); }}>
-              {'Keep editing'}
-            </Button>
-            <Button variant="secondary" size="sm"
-              onClick={() => { setConfirmDiscard(false); onClose(); }}>
-              {'Discard'}
-            </Button>
-            {/* Repeats the footer's own gate and label so it cannot fire handleConfirm's
-                early-return branch on a whitespace-only payload. */}
-            <Button variant="primary" size="sm" disabled={!text.trim()}
-              onClick={() => { setConfirmDiscard(false); handleConfirm(); }}>
-              {mode === 'add' ? 'Add' : 'Save'}
-            </Button>
-          </div>
-        </div>
-      </div>
+        <p className="px-4 py-4 text-xs text-text-secondary leading-relaxed">
+          This message has changes that were never applied. Closing now discards the text, its formatting and the delivery settings.
+        </p>
+      </DialogShell>
     )}
     </>
   );

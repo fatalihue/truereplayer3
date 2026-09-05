@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Keyboard } from 'lucide-react';
-import { DialogShell } from './common/DialogShell';
-import { Button } from './common/Button';
+import { DialogShell, DialogFooter  } from './common/DialogShell';
 import { useBridge } from '../bridge/BridgeContext';
 
 
@@ -32,18 +31,13 @@ function AskInputDialog({ label, options, onSubmit, onCancel }: AskInputDialogPr
     <DialogShell
       icon={<Keyboard size={14} className="text-accent-solid" />}
       title="Input needed"
-      widthClass="w-[400px]"
+      size="sm"
       onClose={onCancel}
       closeOnBackdrop={false}
       footerHint={isMenu
         ? 'Pick an option · Esc cancels the run'
         : 'Enter to submit · Esc cancels the run'}
-      footer={isMenu ? undefined : (
-        <>
-          <Button variant="secondary" onClick={onCancel}>Cancel</Button>
-          <Button variant="primary" onClick={() => onSubmit(value)}>Submit</Button>
-        </>
-      )}
+      footer={isMenu ? undefined : <DialogFooter secondary={{ label: 'Cancel', onClick: onCancel }} primary={{ label: 'Submit', onClick: () => onSubmit(value) }} />}
       onCardKeyDown={(e) => {
         if (!isMenu && e.key === 'Enter') { e.preventDefault(); onSubmit(value); }
       }}
@@ -67,7 +61,7 @@ function AskInputDialog({ label, options, onSubmit, onCancel }: AskInputDialogPr
             ref={inputRef}
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            className="h-8 px-2 rounded border border-border-subtle bg-bg-card text-ui text-text-primary outline-none focus:border-border-default"
+            className="input-field font-sans"
           />
         )}
       </div>

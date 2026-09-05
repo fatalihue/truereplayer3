@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode, type KeyboardEvent, type MouseEvent } from 'react';
 import { X } from 'lucide-react';
+import { Button } from './Button';
+import { IconButton } from './IconButton';
 
 /**
  * Shared chrome for the modal-dialog family — the scrim + card + header/footer
@@ -43,11 +45,89 @@ export const PANEL_SIZE = 'w-[calc(90vw/var(--ui-zoom))] h-[calc(90vh/var(--ui-z
 /** No clamp: PANEL_SIZE already leaves a 5 % gutter per side and is the single source of truth. */
 export const PANEL_MAX_WIDTH = 'max-w-none';
 
+/**
+ * The five widths a dialog can have. The 2026-09-04 sweep measured ten (340, 380, 400, 440,
+ * 460, 480, 520, 560, 640, 720 px and the 90 % panel), one per dialog, each written as a
+ * `w-[…px]` at the call site, so nothing in a width said whether it was a prompt or a tool.
+ *
+ *   sm   360   prompts — Rename, Delete, Assign Hotkey / Hotstring, Input needed, discard prompts
+ *   md   440   editors — Keystroke, Pause, Run Profile, Open URL, Window Target, Export
+ *   lg   560   readers — Profile Info, Import complete, the security warning
+ *   xl   720   reviews — Import Profiles, Run report
+ *   full  90 % of the window (PANEL_SIZE) — Automation, Insert Text, Data Loop, Theme Editor
+ *   auto  content-sized — only the image cropper, whose width is the image
+ */
+export type DialogSize = 'sm' | 'md' | 'lg' | 'xl' | 'full' | 'auto';
+
+const SIZE_CLASSES: Record<DialogSize, string> = {
+  sm: 'w-[360px]',
+  md: 'w-[440px]',
+  lg: 'w-[560px]',
+  xl: 'w-[720px]',
+  full: PANEL_SIZE,
+  auto: 'w-auto',
+};
+
+/** One footer action — label, handler, and the two things a footer button ever varies by. */
+export interface FooterAction {
+  label: ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  /** Portal tooltip on the button — also shown while disabled (index.css keeps pointer-events
+   *  on [data-tip][disabled]) so a blocked primary can say WHY it is blocked. */
+  tip?: string;
+  autoFocus?: boolean;
+  className?: string;
+}
+
+/**
+ * THE footer of a dialog: secondary (Cancel / Close) then primary, right-aligned, both 32 px
+ * with an 84 px minimum so a Cancel / OK pair reads as a pair. `extra` slots a third button
+ * between them (a discard prompt's "Discard"), `danger` paints the primary red for the dialogs
+ * whose primary action destroys something (Delete Profile, Clear table). The tertiary
+ * left-anchored action (Remove, Reset) is not here — it is the shell's `footerStart` slot, so
+ * the two never fight over the left edge with the hint text.
+ *
+ * Seven footer recipes across seventeen dialogs collapsed into this (2026-09-04 sweep).
+ */
+export function DialogFooter({ secondary, extra, primary, danger = false }: {
+  secondary?: FooterAction;
+  extra?: ReactNode;
+  primary?: FooterAction;
+  danger?: boolean;
+}) {
+  return (
+    <>
+      {secondary && (
+        <Button variant="secondary" size="md" className={`min-w-[84px] ${secondary.className ?? ''}`} onClick={secondary.onClick} disabled={secondary.disabled} data-tip={secondary.tip} autoFocus={secondary.autoFocus}>
+          {secondary.label}
+        </Button>
+      )}
+      {extra}
+      {primary && (
+        <Button variant={danger ? 'destructive' : 'primary'} size="md" className={`min-w-[84px] ${primary.className ?? ''}`} onClick={primary.onClick} disabled={primary.disabled} data-tip={primary.tip} autoFocus={primary.autoFocus}>
+          {primary.label}
+        </Button>
+      )}
+    </>
+  );
+}
+
 export interface DialogShellProps {
   /** Icon rendered before the title (usually the action's Lucide icon, size 14). */
   icon?: ReactNode;
   title: string;
-  /** Tailwind width class for the card. */
+  /** Width on the five-step scale above. Default md (440). */
+  size?: DialogSize;
+  /** Extra classes on the card — height caps (`max-h-[90vh]`, a vh-tracking height). */
+  cardClassName?: string;
+  /** Stacking layer. Default z-50; a dialog opened from INSIDE another layer (the sheet is
+   *  z-70, the Insert Text shell z-50) passes a higher one so it paints above its opener. */
+  zClass?: string;
+  /** Left-anchored tertiary action in the footer (Remove, Reset ▾). Replaces the hint text
+   *  when present — the two share the left edge and never both appear. */
+  footerStart?: ReactNode;
+  /** @deprecated Escape hatch kept for the odd case; prefer `size` + `cardClassName`. */
   widthClass?: string;
   /** Tailwind max-width clamp for the card. Default preserves the historical 90vw
    *  clamp; space-hungry dialogs (Insert Text) pass a tighter-gutter clamp like
@@ -85,8 +165,12 @@ export interface DialogShellProps {
 export function DialogShell({
   icon,
   title,
-  widthClass = 'w-[440px]',
-  maxWidthClass = 'max-w-[90vw]',
+  size = 'md',
+  cardClassName = '',
+  zClass = 'z-50',
+  footerStart,
+  widthClass,
+  maxWidthClass,
   onClose,
   canClose,
   closeOnBackdrop = true,
@@ -99,6 +183,10 @@ export function DialogShell({
 }: DialogShellProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [leaving, setLeaving] = useState(false);
+  // Width: the size step, or the legacy widthClass when a caller still passes one. The full
+  // panel size must not be clawed back by the default 90vw clamp (see PANEL_MAX_WIDTH).
+  const widthClasses = widthClass ?? SIZE_CLASSES[size];
+  const maxWidthClasses = maxWidthClass ?? (size === 'full' ? PANEL_MAX_WIDTH : 'max-w-[calc(100vw-24px)]');
   // Where the last mousedown landed — a drag that merely ENDS on the scrim
   // (text selection pulled outside the card) must not count as a backdrop click.
   const pressOnScrim = useRef(false);
@@ -138,7 +226,7 @@ export function DialogShell({
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/50 dialog-scrim ${leaving ? 'dialog-leaving' : ''}`}
+      className={`fixed inset-0 ${zClass} flex items-center justify-center bg-black/50 dialog-scrim ${leaving ? 'dialog-leaving' : ''}`}
       onMouseDown={(e) => {
         // Pressing the scrim itself must not steal focus from the card —
         // otherwise Chromium focuses <body> and the card's Esc handler goes
@@ -158,7 +246,7 @@ export function DialogShell({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`dialog-card bg-bg-elevated border border-border-subtle rounded-dialog shadow-dialog ${widthClass} ${maxWidthClass} flex flex-col outline-none`}
+        className={`dialog-card bg-bg-elevated border border-border-subtle rounded-dialog shadow-dialog ${widthClasses} ${maxWidthClasses} ${cardClassName} flex flex-col outline-none`}
         onClick={(e) => e.stopPropagation()}
         // Only the card's OWN dialog-out end may unmount — animationend bubbles,
         // so a child's finishing animation must not close the dialog early.
@@ -195,28 +283,26 @@ export function DialogShell({
           onCardKeyDown?.(e);
         }}
       >
-        {/* Header */}
+        {/* Header — icon always sits in a fixed 14 px slot so titles align across dialogs
+            whether or not the caller passed one. */}
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border-subtle">
-          {icon}
-          <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
+          {icon && <span className="shrink-0 flex items-center">{icon}</span>}
+          <h3 className="text-sm font-semibold text-text-primary truncate">{title}</h3>
           {showClose && (
-            <button
-              onClick={requestClose}
-              aria-label="Close"
-              className="ml-auto w-7 h-7 flex items-center justify-center rounded text-text-tertiary hover:text-text-primary hover:bg-bg-card transition-colors"
-            >
+            <IconButton size="sm" aria-label="Close" className="ml-auto" onClick={requestClose}>
               <X size={14} />
-            </button>
+            </IconButton>
           )}
         </div>
 
         {children}
 
-        {/* Footer */}
-        {(footer || footerHint) && (
-          <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-border-subtle">
-            <span className="text-[11px] text-text-tertiary">{footerHint}</span>
-            <div className="flex items-center gap-2">
+        {/* Footer — left edge: a tertiary action OR the hint, never both; right edge: the
+            actions (a DialogFooter, or hand-composed buttons for the four panels). */}
+        {(footer || footerHint || footerStart) && (
+          <div className="flex items-center gap-2 px-4 py-3 border-t border-border-subtle">
+            {footerStart ?? <span className="text-[11px] text-text-tertiary min-w-0">{footerHint}</span>}
+            <div className="ml-auto flex items-center gap-2 shrink-0">
               {typeof footer === 'function' ? footer(requestClose) : footer}
             </div>
           </div>
