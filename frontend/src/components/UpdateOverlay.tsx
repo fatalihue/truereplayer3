@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
+import { Download } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
+import { Button } from './common/Button';
 
 type Phase =
   | { step: 'hidden' }
@@ -17,6 +19,15 @@ type Phase =
 //           applies + restarts with no feedback.
 const UPDATE_OVERLAY_ENABLED = true;
 
+/**
+ * The update splash. It is the first thing a user sees after every release, and until the
+ * 2026-09-04 sweep it was the one surface entirely outside the design system: 396 characters
+ * of inline style on the card, a 14 px radius on a 4/6/8/12 scale, a gradient button, and
+ * keyframes injected by a <style> tag that ignored the animations toggle. Same layout as
+ * before — icon, title, the two version tiles, what's new, one wide button — now on the
+ * dialog tokens (--radius-dialog, --shadow-dialog, the app's Button) with every motion gated
+ * in index.css like the dialogs' own.
+ */
 export function UpdateOverlay() {
   const { send, subscribe } = useBridge();
   const [phase, setPhase] = useState<Phase>({ step: 'hidden' });
@@ -128,425 +139,142 @@ export function UpdateOverlay() {
   const isInstalling = phase.step === 'installing';
 
   return (
-    <div style={overlayStyle}>
-      {/* Backdrop */}
-      <div style={backdropStyle} />
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+      {/* Backdrop — the theme's base ground at 65 % plus a blur, not a fixed black: on a light
+          preset the old rgba(0,0,0,.65) turned the whole app into a night scene behind the card. */}
+      <div
+        className="absolute inset-0 backdrop-blur-xl update-fade-in"
+        style={{ background: 'color-mix(in srgb, var(--color-bg-base) 65%, transparent)' }}
+      />
 
       {/* Card */}
-      <div style={cardStyle}>
-        {/* App Icon */}
-        <div style={logoContainerStyle}>
+      <div className="relative w-[88%] max-w-[420px] rounded-dialog border border-border-default bg-bg-elevated shadow-dialog px-7 pt-7 pb-6 update-card-in">
+        {/* App icon */}
+        <div className="relative w-14 h-14 mx-auto mb-3.5">
           <img
             src="app-icon.png"
             alt="TrueReplayer"
-            style={{
-              ...logoImgStyle,
-              ...(isComplete ? {} : { animation: 'update-logo-pulse 2s ease-in-out infinite' }),
-            }}
+            className={`block w-14 h-14 rounded-[14px] object-cover shadow-overlay ${isComplete ? '' : 'update-logo-pulse'}`}
           />
           {isComplete && (
-            <div style={checkBadgeStyle}>
-              {/* The badge behind this tick is a --color-replay gradient, and replay is a
-                  user-chosen hue: a pale green choice left a white tick at ~1.5:1 on it.
-                  pickInk already answers that for the fill, via --color-replay-ink. */}
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <div className="absolute -bottom-0.5 -right-0.5 w-[22px] h-[22px] rounded-full bg-replay border-2 border-bg-elevated flex items-center justify-center">
+              {/* replay is a user-chosen hue: the tick takes the ink pickInk derived for that
+                  fill (--color-replay-ink), never a fixed white. */}
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <polyline
                   points="6 12 10 16 18 8"
                   stroke="var(--color-replay-ink)"
                   strokeWidth="3"
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  style={{
-                    strokeDasharray: 24,
-                    strokeDashoffset: 0,
-                    animation: 'update-checkmark 0.4s ease 0.2s both',
-                  }}
+                  className="update-checkmark"
                 />
               </svg>
             </div>
           )}
         </div>
 
-        {/* Title */}
-        <div
-          style={{
-            ...titleStyle,
-            ...(isComplete || isInstalling ? { color: 'var(--color-replay-fg)' } : {}),
-          }}
-        >
+        {/* Title + subtitle */}
+        <div className={`text-center text-[17px] font-semibold font-display tracking-tight mb-1 ${isComplete || isInstalling ? 'text-[color:var(--color-replay-fg)]' : 'text-text-primary'}`}>
           {phase.step === 'available' && 'Update available'}
           {phase.step === 'downloading' && 'Downloading update'}
           {phase.step === 'installing' && `Updating to v${version}`}
           {phase.step === 'complete' && 'Updated successfully!'}
         </div>
-
-        {/* Subtitle */}
-        <div style={subtitleStyle}>
+        <div className="text-center text-[11px] text-text-tertiary mb-[18px]">
           {phase.step === 'available' && 'A new version of TrueReplayer is ready'}
           {phase.step === 'downloading' && 'Do not close the app'}
           {phase.step === 'installing' && 'Closing TrueReplayer...'}
           {phase.step === 'complete' && 'You are now on the latest version'}
         </div>
 
-        {/* Version chips (current ➜ new), or a single chip on the 'complete' phase. */}
-        {isComplete ? (
-          <div style={versionRowStyle}>
-            <div style={{ ...versionChipStyle, ...versionChipNewStyle, minWidth: 120 }}>
-              <div style={{ ...versionLabelStyle, color: 'var(--color-accent)' }}>Current version</div>
-              <div style={{ ...versionValueStyle, color: 'var(--color-accent)' }}>v{version}</div>
-            </div>
-          </div>
-        ) : (
-          <div style={versionRowStyle}>
-            <div style={versionChipStyle}>
-              <div style={versionLabelStyle}>Current version</div>
-              <div style={versionValueStyle}>v{currentVersion}</div>
-            </div>
-            <div style={versionArrowStyle}>&#10132;</div>
-            <div style={{ ...versionChipStyle, ...versionChipNewStyle }}>
-              <div style={{ ...versionLabelStyle, color: 'var(--color-accent)' }}>New version</div>
-              <div style={{ ...versionValueStyle, color: 'var(--color-accent)' }}>v{version}</div>
-            </div>
-          </div>
-        )}
+        {/* Version tiles (current ➜ new), or a single tile on the 'complete' phase. */}
+        <div className="flex items-center justify-center gap-2.5 mb-4">
+          {isComplete ? (
+            <VersionTile label="Current version" value={version} accent className="min-w-[120px]" />
+          ) : (
+            <>
+              <VersionTile label="Current version" value={currentVersion} />
+              <span className="text-accent text-sm" aria-hidden="true">&#10132;</span>
+              <VersionTile label="New version" value={version} accent />
+            </>
+          )}
+        </div>
 
-        {/* Changelog — only on 'available' phase (full list before user decides) */}
+        {/* Changelog — only on 'available' phase (full list before the user decides) */}
         {phase.step === 'available' && phase.notes.length > 0 && (
-          <div style={changelogStyle}>
-            <div style={changelogTitleStyle}>
-              <span style={changelogDotStyle} />
+          <div className="mb-[18px]">
+            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-text-secondary mb-2">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent" aria-hidden="true" />
               What's new
             </div>
-            <ul style={changelogListStyle} className="update-changelog-list">
+            <ul className="list-none p-0 m-0">
               {phase.notes.slice(0, 6).map((note, i) => (
-                <li key={i} style={changelogItemStyle}>
+                <li
+                  key={i}
+                  className="relative pl-4 py-0.5 text-xs leading-snug text-text-secondary before:content-[''] before:absolute before:left-1 before:top-[9px] before:w-1 before:h-1 before:rounded-full before:bg-text-disabled"
+                >
                   {note}
                 </li>
               ))}
             </ul>
           </div>
         )}
-        {phase.step === 'complete' && <div style={{ height: 12 }} />}
+        {phase.step === 'complete' && <div className="h-3" />}
 
         {/* Progress bar (downloading / installing).
             Downloading shows the real percent. Installing pins the bar at 100 % and
             pulses (update-install-pulse) while the apply runs. */}
         {(phase.step === 'downloading' || phase.step === 'installing') && (
           <>
-            <div style={progressContainerStyle}>
-              <div style={progressTrackStyle}>
+            <div className="mb-3">
+              <div className="w-full h-1.5 rounded-full overflow-hidden bg-[color-mix(in_srgb,var(--color-text-primary)_12%,transparent)]">
                 <div
-                  style={{
-                    ...progressFillStyle,
-                    ...(phase.step === 'downloading'
-                      ? { width: `${phase.percent}%`, animation: 'none', transform: 'none' }
-                      : { width: '100%', animation: 'update-install-pulse 1.5s ease-in-out infinite', transform: 'none' }),
-                  }}
+                  className={`h-full rounded-full bg-accent-solid transition-[width] duration-300 ${phase.step === 'installing' ? 'update-install-pulse' : ''}`}
+                  style={{ width: phase.step === 'downloading' ? `${phase.percent}%` : '100%' }}
                 />
               </div>
               {phase.step === 'downloading' && (
-                <div style={progressMetaStyle}>
+                <div className="flex justify-between mt-1.5 text-[11px] text-text-tertiary tabular-nums">
                   <span>Downloading...</span>
-                  <span style={{ color: 'var(--color-accent)', fontWeight: 600 }}>{phase.percent}%</span>
+                  <span className="text-accent font-semibold">{phase.percent}%</span>
                 </div>
               )}
             </div>
             {phase.step === 'installing' && (
               <>
-                <div style={statusStyle}>Applying update, please wait...</div>
-                <div style={hintStyle}>The app will restart automatically</div>
+                <div className="text-center text-xs text-text-tertiary mt-1">Applying update, please wait...</div>
+                <div className="text-center text-[11px] text-text-tertiary mt-3.5">The app will restart automatically</div>
               </>
             )}
           </>
         )}
 
-        {/* Button — only on "available" phase */}
+        {/* Button — only on the "available" phase */}
         {phase.step === 'available' && (
-          <button
-            type="button"
-            style={primaryButtonStyle}
-            onClick={handleAccept}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'linear-gradient(180deg, var(--color-accent-hover), var(--color-accent-solid))';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'linear-gradient(180deg, var(--color-accent-solid), color-mix(in srgb, var(--color-accent-solid) 82%, #000))';
-            }}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-ink)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
+          <Button variant="primary" size="md" className="w-full" onClick={handleAccept}>
+            <Download size={14} />
             Download and install
-          </button>
+          </Button>
         )}
       </div>
-
-      {/* Keyframe animations injected as style tag */}
-      <style>{keyframes}</style>
     </div>
   );
 }
 
-/* ── Keyframes ── */
-const keyframes = `
-@keyframes update-card-in {
-  from { opacity: 0; transform: scale(0.94) translateY(8px); }
-  to { opacity: 1; transform: scale(1) translateY(0); }
+// One version tile: micro-label over the number. `accent` marks the NEW version (and the single
+// tile on the complete phase) with the accent tint every "lit" chip in the app uses.
+function VersionTile({ label, value, accent = false, className = '' }: { label: string; value: string; accent?: boolean; className?: string }) {
+  return (
+    <div
+      className={`flex flex-col items-center rounded-overlay px-3.5 py-2 min-w-20 border ${
+        accent
+          ? 'bg-[color-mix(in_srgb,var(--color-accent)_8%,transparent)] border-[color-mix(in_srgb,var(--color-accent)_25%,transparent)]'
+          : 'bg-bg-card border-border-subtle'
+      } ${className}`}
+    >
+      <div className={`label-micro mb-0.5 ${accent ? 'text-accent' : 'text-text-tertiary'}`}>{label}</div>
+      <div className={`text-sm font-semibold tabular-nums ${accent ? 'text-accent' : 'text-text-secondary'}`}>v{value}</div>
+    </div>
+  );
 }
-@keyframes update-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-@keyframes update-logo-pulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.04); }
-}
-@keyframes update-install-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.65; }
-}
-@keyframes update-checkmark {
-  from { stroke-dashoffset: 24; }
-  to { stroke-dashoffset: 0; }
-}
-.update-changelog-list li::before {
-  content: '';
-  position: absolute;
-  left: 4px;
-  top: 10px;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--color-text-disabled);
-}
-`;
-
-/* ── Styles ──
-   Colors are pulled from the active theme's CSS custom properties (set on :root by
-   themes.ts → applyTheme) so the update splash tracks whatever theme the user has
-   selected. Accent elements use --color-accent / --color-accent-solid / --color-accent-hover;
-   the success (complete) state uses --color-replay; surfaces and text use the --color-bg-* /
-   --color-text-* / --color-border-* tokens. Non-color depth (drop shadows) and the dark
-   modal scrim stay fixed on purpose — a neutral dark backdrop reads well under any theme. */
-const overlayStyle: React.CSSProperties = {
-  position: 'fixed',
-  inset: 0,
-  zIndex: 9999,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-};
-
-const backdropStyle: React.CSSProperties = {
-  position: 'absolute',
-  inset: 0,
-  background: 'rgba(0, 0, 0, 0.65)',
-  backdropFilter: 'blur(20px)',
-  WebkitBackdropFilter: 'blur(20px)',
-  animation: 'update-fade-in 0.4s ease-out',
-};
-
-const cardStyle: React.CSSProperties = {
-  position: 'relative',
-  width: '88%',
-  maxWidth: 420,
-  background: 'color-mix(in srgb, var(--color-bg-card) 92%, transparent)',
-  border: '1px solid var(--color-border-default)',
-  borderRadius: 14,
-  padding: '28px 28px 24px',
-  boxShadow: '0 24px 80px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255,255,255,0.04)',
-  animation: 'update-card-in 0.45s cubic-bezier(0.16, 1, 0.3, 1)',
-};
-
-const logoContainerStyle: React.CSSProperties = {
-  position: 'relative',
-  width: 56,
-  height: 56,
-  margin: '0 auto 14px',
-};
-
-const logoImgStyle: React.CSSProperties = {
-  width: 56,
-  height: 56,
-  borderRadius: 14,
-  boxShadow: '0 6px 18px rgba(0, 0, 0, 0.45)',
-  display: 'block',
-  objectFit: 'cover',
-};
-
-const checkBadgeStyle: React.CSSProperties = {
-  position: 'absolute',
-  bottom: -3,
-  right: -3,
-  width: 22,
-  height: 22,
-  borderRadius: '50%',
-  background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-replay) 60%, #000), var(--color-replay))',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  boxShadow: '0 2px 6px color-mix(in srgb, var(--color-replay) 40%, transparent)',
-  border: '2px solid var(--color-bg-card)',
-};
-
-const titleStyle: React.CSSProperties = {
-  textAlign: 'center',
-  fontSize: 17,
-  fontWeight: 600,
-  color: 'var(--color-text-primary)',
-  letterSpacing: -0.2,
-  marginBottom: 4,
-};
-
-const subtitleStyle: React.CSSProperties = {
-  textAlign: 'center',
-  fontSize: 11,
-  color: 'var(--color-text-tertiary)',
-  marginBottom: 18,
-};
-
-const versionRowStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: 10,
-  marginBottom: 16,
-};
-
-const versionChipStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  background: 'var(--color-bg-elevated)',
-  border: '1px solid var(--color-border-subtle)',
-  borderRadius: 8,
-  padding: '8px 14px',
-  minWidth: 80,
-};
-
-const versionChipNewStyle: React.CSSProperties = {
-  background: 'color-mix(in srgb, var(--color-accent) 8%, transparent)',
-  borderColor: 'color-mix(in srgb, var(--color-accent) 25%, transparent)',
-};
-
-const versionLabelStyle: React.CSSProperties = {
-  fontSize: 9,
-  color: 'var(--color-text-tertiary)',
-  textTransform: 'uppercase',
-  letterSpacing: 0.8,
-  marginBottom: 2,
-};
-
-const versionValueStyle: React.CSSProperties = {
-  fontSize: 14,
-  fontWeight: 600,
-  color: 'var(--color-text-secondary)',
-  fontVariantNumeric: 'tabular-nums',
-};
-
-const versionArrowStyle: React.CSSProperties = {
-  color: 'var(--color-accent)',
-  fontSize: 14,
-};
-
-const changelogStyle: React.CSSProperties = {
-  marginBottom: 18,
-};
-
-const changelogTitleStyle: React.CSSProperties = {
-  fontSize: 11,
-  fontWeight: 600,
-  color: 'var(--color-text-secondary)',
-  marginBottom: 8,
-  display: 'flex',
-  alignItems: 'center',
-  gap: 5,
-};
-
-const changelogDotStyle: React.CSSProperties = {
-  width: 5,
-  height: 5,
-  borderRadius: '50%',
-  background: 'var(--color-accent)',
-  display: 'inline-block',
-};
-
-const changelogListStyle: React.CSSProperties = {
-  listStyle: 'none',
-  padding: 0,
-  margin: 0,
-};
-
-const changelogItemStyle: React.CSSProperties = {
-  position: 'relative',
-  fontSize: 11.5,
-  color: 'var(--color-text-secondary)',
-  padding: '3px 0 3px 16px',
-  lineHeight: 1.4,
-};
-
-const progressContainerStyle: React.CSSProperties = {
-  marginBottom: 12,
-};
-
-const progressTrackStyle: React.CSSProperties = {
-  width: '100%',
-  height: 6,
-  background: 'color-mix(in srgb, var(--color-text-primary) 12%, transparent)',
-  borderRadius: 3,
-  overflow: 'hidden',
-  position: 'relative',
-};
-
-const progressFillStyle: React.CSSProperties = {
-  height: '100%',
-  background: 'linear-gradient(90deg, var(--color-accent-solid), var(--color-accent))',
-  borderRadius: 3,
-  width: '0%',
-  transition: 'width 0.3s ease',
-  boxShadow: '0 0 10px color-mix(in srgb, var(--color-accent) 35%, transparent)',
-};
-
-const progressMetaStyle: React.CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  marginTop: 6,
-  fontSize: 10.5,
-  color: 'var(--color-text-tertiary)',
-  fontVariantNumeric: 'tabular-nums',
-};
-
-const statusStyle: React.CSSProperties = {
-  textAlign: 'center',
-  fontSize: 11.5,
-  color: 'var(--color-text-tertiary)',
-  marginTop: 4,
-};
-
-const hintStyle: React.CSSProperties = {
-  marginTop: 14,
-  fontSize: 10,
-  color: 'var(--color-text-tertiary)',
-  textAlign: 'center',
-};
-
-const primaryButtonStyle: React.CSSProperties = {
-  width: '100%',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: 8,
-  height: 36,
-  border: 'none',
-  borderRadius: 8,
-  background: 'linear-gradient(180deg, var(--color-accent-solid), color-mix(in srgb, var(--color-accent-solid) 82%, #000))',
-  color: 'var(--color-accent-ink)',
-  fontSize: 13,
-  fontWeight: 600,
-  cursor: 'pointer',
-  boxShadow: '0 2px 6px color-mix(in srgb, var(--color-accent-solid) 35%, transparent)',
-  transition: 'background 0.15s ease',
-  fontFamily: 'inherit',
-};

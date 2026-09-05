@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Activity, X } from 'lucide-react';
+import { iconButtonClass } from './common/IconButton';
 import { useBridge } from '../bridge/BridgeContext';
 import { useAppState } from '../state/AppStateContext';
 
@@ -82,14 +83,14 @@ export function LiveVariablesHost() {
   // z-[40]: below every DialogShell modal (z-50) and the SheetPanel stack (60/70) —
   // a debug pane must never paint over, or steal clicks from, an open dialog.
   return (
-    <div className="fixed bottom-10 right-3 z-[40] w-[264px] max-h-[45vh] flex flex-col rounded-lg border border-border-subtle bg-bg-elevated shadow-[0_12px_32px_rgba(0,0,0,0.45)] overflow-hidden">
+    <div className="fixed bottom-10 right-3 z-[40] w-[264px] max-h-[45vh] flex flex-col menu-surface overflow-hidden">
       <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-border-subtle shrink-0">
         <Activity size={12} className={status === 'replaying' ? '' : 'text-text-tertiary'} style={status === 'replaying' ? { color: 'var(--color-replay-fg)' } : undefined} />
         <span className="label-micro text-text-secondary flex-1">Live Variables</span>
         <button
           type="button"
           onClick={() => window.dispatchEvent(new CustomEvent('cmd:livevars'))}
-          className="p-0.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"        >
+          className={iconButtonClass('sm')}>
           <X size={12} />
         </button>
       </div>

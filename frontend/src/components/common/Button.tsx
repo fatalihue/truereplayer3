@@ -9,13 +9,18 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react';
  *   secondary    the Cancel convention: quiet card fill + subtle border
  *   ghost        borderless, text-only until hover (toolbar-adjacent uses)
  *   destructive  recording-red fill + its ink token (Clear all / Delete confirms)
+ *   destructiveText  red TEXT, no fill — the secondary "Remove" of a dialog whose
+ *                primary is something else (Assign Hotkey, Window Target). The
+ *                2026-09-04 sweep found the same action shipped as red text in one
+ *                dialog and as a solid red fill in the next; the rule is now: solid
+ *                when destroying IS the primary action, text when it is secondary.
  *
  * Sizes: xs = the 28px action-bar rail tier; sm = the existing dialog-footer
  * metrics; md = the 32px control standard (Fluent medium — same height the
- * SheetPanel locked in 2.6.10).
+ * SheetPanel locked in 2.6.10, and what DialogFooter uses).
  */
 
-type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'destructive';
+type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'destructive' | 'destructiveText';
 type ButtonSize = 'xs' | 'sm' | 'md';
 
 // Pressed = one step dimmer (Fluent physics: fills darken on press, never
@@ -33,6 +38,9 @@ export const BUTTON_VARIANT_CLASSES: Record<ButtonVariant, string> = {
   secondary: 'text-text-secondary bg-bg-card enabled:hover:bg-bg-surface enabled:active:bg-bg-elevated border border-border-subtle',
   ghost: 'text-text-secondary enabled:hover:text-text-primary enabled:hover:bg-bg-elevated enabled:active:bg-bg-card',
   destructive: 'bg-recording text-[color:var(--color-recording-ink)] enabled:hover:opacity-85 enabled:active:opacity-75',
+  // -fg ink (hue mixed toward text-primary) so the text survives light presets; the hover
+  // wash is the same recording-bg tint the danger IconButton uses.
+  destructiveText: 'text-[color:var(--color-recording-fg)] enabled:hover:bg-recording-bg enabled:active:opacity-80',
 };
 
 const SIZE_CLASSES: Record<ButtonSize, string> = {

@@ -116,7 +116,7 @@ export function ClipboardModifierBody({
             ? 'This token takes a line argument from a variable, which these controls can only show as a literal — so it is read-only here. It still runs; if the variable is missing or does not hold a valid value, the step yields nothing. Edit the token text directly to change it.'
             : 'This editor cannot rebuild this token exactly as written — a modifier it does not know, one used twice, or a different order — so it is read-only. Editing here would quietly change what it does.'}
         </div>
-        <div className="text-[10px] uppercase tracking-wide text-text-tertiary">Token</div>
+        <div className="label-micro text-text-tertiary">Token</div>
         <div className="font-mono text-[12px] px-2 py-0.5 rounded break-all"
           style={{
             color: 'var(--color-action-sendtext-fg)',
@@ -500,7 +500,7 @@ export function ClipboardModifierBody({
       </StepSection>
 
       <div className="px-3.5 py-1.5 bg-bg-surface border-b border-border-subtle">
-        <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-0.5">{sourceLabel}</div>
+        <div className="label-micro text-text-tertiary mb-0.5">{sourceLabel}</div>
         <div
           className="font-mono text-[11px] text-text-secondary bg-[color-mix(in_srgb,var(--color-text-primary)_3%,transparent)] border-l-2 border-border-subtle px-2 py-0.5 mb-1.5 rounded-r whitespace-pre-wrap break-all max-h-[36px] overflow-auto"
           style={{ lineHeight: 1.35 }}
@@ -519,7 +519,7 @@ export function ClipboardModifierBody({
             <span className="italic text-text-disabled">Reading...</span>
           )}
         </div>
-        <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-0.5">Token</div>
+        <div className="label-micro text-text-tertiary mb-0.5">Token</div>
         <div
           className="font-mono text-[12px] px-2 py-0.5 mb-1.5 rounded break-all"
           style={{
@@ -529,7 +529,7 @@ export function ClipboardModifierBody({
         >
           {token}
         </div>
-        <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-0.5">Preview</div>
+        <div className="label-micro text-text-tertiary mb-0.5">Preview</div>
         <div
           className="font-mono text-[11px] px-2 py-0.5 rounded border-l-2 whitespace-pre-wrap break-all min-h-[20px] max-h-[72px] overflow-auto"
           style={{

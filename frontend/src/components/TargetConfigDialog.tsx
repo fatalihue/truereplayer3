@@ -3,7 +3,7 @@ import { AppWindow } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
 import { useTt } from '../state/LanguageContext';
 import { Toggle } from './common/Toggle';
-import { DialogShell } from './common/DialogShell';
+import { DialogShell, DialogFooter  } from './common/DialogShell';
 import { Button } from './common/Button';
 import { WindowTargetFields, type WindowTargetFieldsHandle } from './WindowTargetFields';
 
@@ -293,7 +293,6 @@ export function TargetConfigDialog({
     <DialogShell
       icon={<AppWindow size={14} className="shrink-0 text-text-tertiary" />}
       title={header}
-      widthClass="w-[380px]"
       onClose={handleCancel}
       // Multi-field form — typed process name / window title, live detection + picker
       // state and five flags. A stray click on the scrim must not discard all that, so
@@ -303,28 +302,17 @@ export function TargetConfigDialog({
       // across its many fields), and Esc is the shell's — plus the capture-phase
       // overlay handler above for the picker/detection states.
       //
-      // The footerHint slot doubles as the LEFT-aligned Remove affordance — the shell
-      // right-aligns everything in `footer`, and the hint slot is its only left-anchored
-      // footer region. Remove is a destructive-with-undo action (the parent shows a 10 s
-      // undo toast), hence the destructive variant.
-      footerHint={hasOwnTarget && onRemove ? (
-        <Button variant="destructive" onClick={handleRemove}>Remove</Button>
+      // Remove rides the shell's left-anchored footerStart slot. It is destructive-with-undo
+      // (the parent shows a 10 s undo toast) and SECONDARY to Set Target, hence red text and
+      // not a red fill — the fill is for dialogs whose PRIMARY action destroys (Delete Profile).
+      footerStart={hasOwnTarget && onRemove ? (
+        <Button variant="destructiveText" size="md" onClick={handleRemove}>Remove</Button>
       ) : undefined}
-      footer={
-        <>
-          <Button variant="secondary" onClick={handleCancel}>Cancel</Button>
-          {/* Gated while the coordinate-conversion prompt is pending — the old card's
-              toast physically covered the buttons to force a Convert-or-Skip choice;
-              in the shell the footer is a sibling the toast can't cover, so the gate
-              is explicit. Saving a flipped Relative-Coordinates flag without converting
-              silently reinterprets every stored X/Y in the wrong coordinate space. */}
-          <span data-tip={convertHint ? tt('Resolve the coordinate-conversion prompt first (Convert or Skip).', 'Resolva primeiro o aviso de conversão de coordenadas (Converter ou Pular).') : undefined}>
-            <Button variant="primary" onClick={() => handleSubmit()} disabled={submitDisabled || convertHint !== null}>
-              Set Target
-            </Button>
-          </span>
-        </>
-      }
+      // Set Target is gated while the coordinate-conversion prompt is pending: the old card's
+      // toast physically covered the buttons to force a Convert-or-Skip choice; in the shell the
+      // footer is a sibling the toast can't cover, so the gate is explicit. Saving a flipped
+      // Relative-Coordinates flag without converting silently reinterprets every stored X/Y.
+      footer={<DialogFooter secondary={{ label: 'Cancel', onClick: handleCancel }} primary={{ label: 'Set Target', onClick: () => handleSubmit(), disabled: submitDisabled || convertHint !== null, tip: convertHint ? tt('Resolve the coordinate-conversion prompt first (Convert or Skip).', 'Resolva primeiro o aviso de conversão de coordenadas (Converter ou Pular).') : undefined }} />}
     >
       {/* `relative` replaces the old card's positioning context — the convert-hint toast
           below pins itself to this wrapper's bottom edge (just above the shell footer). */}

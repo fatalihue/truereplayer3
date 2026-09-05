@@ -11,6 +11,7 @@ import { useToast } from '../state/ToastContext';
 import { Toggle } from './common/Toggle';
 import { SegmentedControl } from './common/SegmentedControl';
 import { iconButtonClass } from './common/IconButton';
+import { KbdTag } from './common/KbdTag';
 import { chipOn, chipOff, chipDotOn, chipDotOff } from './common/chipStyles';
 import { formatMs } from '../utils/displayUtils';
 import { CLICK_HOLD_MAX_MS, CLICK_PERIOD_FLOOR_MS, delayForCps, formatRate, maxCps, targetCps } from '../utils/clickerFormat';
@@ -839,7 +840,7 @@ function HotkeyInput({ value, settingKey, onChange, width = FIELD_W }: {
   // Escape as a hotkey if they want), the only way out of capture mode is to click away
   // or wait this many ms. Resets on every captured combo so an actively engaged user is
   // never surprised mid-press.
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLButtonElement>(null);
   const captureTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Stable refcount slot — each HotkeyInput instance owns its own slot in the backend
   // HashSet so cleaning up one field (e.g. Profile-key toggle) doesn't disable the hook
@@ -944,12 +945,17 @@ function HotkeyInput({ value, settingKey, onChange, width = FIELD_W }: {
     send({ type: 'hotkey:capture', payload: { enabled: true, ownerId: ownerIdRef.current } });
     armCaptureTimer();
   };
+  // Idle: the stored combo as keycaps (one .kbd cap per key, accent tone, PgUp / PgDn
+  // abbreviations from KbdTag) on a quiet button that lifts on hover — the same cap the
+  // profile list and the menus use, so a key is spelled the same everywhere. It used to be a
+  // read-only text input in a fixed 100 px box, and the DEFAULT Replay combo "Ctrl+PageDown"
+  // clipped in it. Capturing: an accent-outlined box with the live combo (or the pulsing
+  // "New key..." prompt), as before. A <button>, so focus / blur / Enter / Space keep the
+  // capture contract the input had.
   const input = (
-    <input
+    <button
       ref={inputRef}
-      type="text"
-      readOnly
-      value={localValue}
+      type="button"
       onClick={() => { if (!isFocused) armCapture(); }}
       onKeyDown={(e) => {
         if (!isFocused && (e.key === 'Enter' || e.key === ' ')) {
@@ -958,16 +964,21 @@ function HotkeyInput({ value, settingKey, onChange, width = FIELD_W }: {
         }
       }}
       onBlur={() => { setIsFocused(false); setLocalValue(value); send({ type: 'hotkey:capture', payload: { enabled: false, ownerId: ownerIdRef.current } }); disarmCaptureTimer(); }}
-      // px-1.5 (not the fields' usual px-2): the 100px column's content box is 82px at
-      // px-2, and the DEFAULT Replay combo "Ctrl+PageDown" needs ~86px at 12px Consolas —
-      // the 6px padding gives it 88px so no factory default ever clips.
-      className={`w-full h-7 px-1.5 text-xs font-mono bg-bg-input border rounded text-center outline-none cursor-pointer placeholder:text-accent-light/50 ${
+      aria-label={value ? `Hotkey: ${value}` : 'Set hotkey'}
+      className={`min-w-[100px] h-7 px-1.5 flex items-center justify-center rounded border transition-colors cursor-pointer outline-none ${
         isFocused
-          ? 'text-accent-light border-accent-solid animate-pulse'
-          : 'text-accent border-border-default'
+          ? 'border-accent-solid bg-bg-input'
+          : 'border-transparent bg-transparent hover:bg-bg-elevated focus-visible:border-accent-solid'
       }`}
-      placeholder="New key..."
-    />
+    >
+      {isFocused
+        ? (localValue
+          ? <KbdTag combo={localValue} accent />
+          : <span className="text-xs font-mono text-accent-light/60 animate-pulse">New key...</span>)
+        : (localValue
+          ? <KbdTag combo={localValue} accent />
+          : <span className="text-xs font-mono text-text-tertiary">—</span>)}
+    </button>
   );
   // EVERY hotkey field clears (2026-07-19). It used to be opt-in for Capture Slot alone,
   // on the theory that clearing a core hotkey would leave it dead — but each of the six
@@ -983,8 +994,12 @@ function HotkeyInput({ value, settingKey, onChange, width = FIELD_W }: {
   // hovered (the resting panel should read as one clean column of key values) — opacity
   // rather than mounting, so the combo underneath never shifts. focus-visible keeps it
   // reachable by keyboard, where there is no hover to give.
+  // Free width with the column's 100 px floor ON THE BUTTON (never a percentage of an auto-width
+  // wrapper — that is circular, and a capture-time reflow resolved it wide enough to wrap the
+  // row labels): a three-cap combo ("Win + Ctrl + C") grows the field leftwards instead of
+  // clipping — the label side has the room, the value side never did.
   return (
-    <div className={`group relative ${width}`}>
+    <div className={`group relative inline-flex justify-end ${width === FIELD_W ? '' : width}`}>
       {input}
       {value !== '' && !isFocused && (
         <button
@@ -1624,18 +1639,19 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                   onClick={() => window.dispatchEvent(new CustomEvent('cmd:themeeditor'))}
                   className="flex items-center gap-1 text-ui text-accent-solid hover:underline"
                 >
-                  Customise <ChevronRight size={12} />
+                  Customize <ChevronRight size={12} />
                 </button>
               </SettingRow>
               <SettingRow label="Tooltips">
-                <select
+                {/* The app's own picker, not a native <select>: it was the one control in the
+                    panel drawn by the OS, with the OS's arrow and menu. */}
+                <ComboInput
                   value={language}
-                  onChange={(e) => setLanguage(e.target.value as 'en' | 'pt-BR')}
-                  className="h-7 px-2 text-ui bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid cursor-pointer text-text-primary"
-                >
-                  <option value="en">English</option>
-                  <option value="pt-BR">Português (BR)</option>
-                </select>
+                  onCommit={(v) => setLanguage(v as 'en' | 'pt-BR')}
+                  options={[{ value: 'en', label: 'English' }, { value: 'pt-BR', label: 'Português (BR)' }]}
+                  width="w-[132px]"
+                  editable={false}
+                />
               </SettingRow>
             </Section>
 

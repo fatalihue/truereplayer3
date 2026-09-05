@@ -27,7 +27,7 @@ export function StepSection({
     <div className="px-3.5 py-1.5 border-b border-border-subtle">
       <div className="flex items-center gap-1.5 mb-1">
         <span
-          className={`w-3.5 h-3.5 rounded-full text-[8px] font-semibold flex items-center justify-center border transition-colors shrink-0 ${
+          className={`w-4 h-4 rounded-full text-[10px] font-semibold flex items-center justify-center border transition-colors shrink-0 ${
             active
               ? 'text-accent-light bg-accent-solid/15 border-accent-solid/40'
               : 'text-text-tertiary bg-bg-surface border-border-subtle'
@@ -35,7 +35,7 @@ export function StepSection({
         >
           {n}
         </span>
-        <div className="text-[10px] uppercase tracking-wide font-semibold text-text-tertiary">{label}</div>
+        <div className="label-micro text-text-tertiary">{label}</div>
       </div>
       {children}
     </div>
@@ -45,28 +45,29 @@ export function StepSection({
 export function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="px-3.5 py-1.5 border-b border-border-subtle">
-      <div className="text-[10px] uppercase tracking-wide font-semibold text-text-tertiary mb-1">{label}</div>
+      <div className="label-micro text-text-tertiary mb-1">{label}</div>
       {children}
     </div>
   );
 }
 
-export function CheckRow({
-  checked,
-  onChange,
-  label,
-}: {
+export interface CheckRowProps {
   checked: boolean;
   onChange: () => void;
   label: string;
-}) {
+  /** Popovers stack rows full-width (the whole line is the target); the clipboard surface lays
+   *  them inline in a wrapping row and passes an empty string. */
+  className?: string;
+}
+
+export function CheckRow({ checked, onChange, label, className = 'w-full' }: CheckRowProps) {
   return (
     <button
       type="button"
       role="checkbox"
       aria-checked={checked}
       onClick={onChange}
-      className="flex items-center gap-2 w-full py-0.5 text-xs text-text-secondary hover:text-text-primary"
+      className={`flex items-center gap-2 py-0.5 text-xs text-text-secondary hover:text-text-primary transition-colors ${className}`}
     >
       <CheckboxBox checked={checked} />
       <span className="flex-1 text-left">{label}</span>

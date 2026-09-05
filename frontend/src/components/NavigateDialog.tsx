@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Globe } from 'lucide-react';
 import { Checkbox } from './Checkbox';
-import { DialogShell } from './common/DialogShell';
-import { Button } from './common/Button';
+import { DialogShell, DialogFooter  } from './common/DialogShell';
 
 interface NavigateDialogProps {
   onConfirm: (url: string, newTab: boolean) => void;
@@ -30,20 +29,12 @@ export function NavigateDialog({ onConfirm, onClose }: NavigateDialogProps) {
     <DialogShell
       icon={<Globe size={14} style={{ color: 'var(--color-action-browser-fg)' }} />}
       title="Open URL"
-      widthClass="w-[480px]"
       onClose={onClose}
       // Text-entry dialog: a stray click on the scrim must not discard a
       // typed URL — dismissal is Esc or Cancel only.
       closeOnBackdrop={false}
       footerHint="Enter to confirm · Esc to cancel"
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={handleConfirm} disabled={!url.trim()}>
-            Add
-          </Button>
-        </>
-      }
+      footer={<DialogFooter secondary={{ label: 'Cancel', onClick: onClose }} primary={{ label: 'Add', onClick: handleConfirm, disabled: !url.trim() }} />}
       onCardKeyDown={(e) => {
         // Enter confirms from anywhere in the card (the URL input is the only
         // text field). Esc is owned by DialogShell.

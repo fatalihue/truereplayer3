@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Zap, Plus, Trash2, Pipette, Camera, CircleDot, Frame, X, ScanSearch, Check, Play, Power } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { TriangleAlert, Zap, Plus, Trash2, Pipette, Camera, Frame, X, ScanSearch, Check, Play, Power } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
 import { useAppState } from '../state/AppStateContext';
 import { useTt } from '../state/LanguageContext';
-import { DialogShell, PANEL_SIZE, PANEL_MAX_WIDTH } from './common/DialogShell';
+import { DialogShell, DialogFooter  } from './common/DialogShell';
 import { Button } from './common/Button';
 import { Toggle } from './common/Toggle';
 import { IconToggle } from './common/IconToggle';
@@ -424,7 +424,6 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
   // each time, and the panel re-renders on the 2 s automation poll — which pulled focus back to
   // the discard prompt every two seconds while the user was trying to answer it, and made the
   // "Focusing on mount" comment beside it false.
-  const focusOnMount = useCallback((el: HTMLDivElement | null) => { el?.focus(); }, []);
   useEffect(() => {
     return subscribe((msg) => {
       if (msg.type === 'pixel:colorPicked' && msg.payload.requestId === pickReqRef.current) {
@@ -565,8 +564,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
     <DialogShell
       icon={<Zap size={14} className="text-accent-light" />}
       title="Automation"
-      widthClass={PANEL_SIZE}
-      maxWidthClass={PANEL_MAX_WIDTH}
+      size="full"
       onClose={onClose}
       // Pre-close veto, NOT an onClose that declines: DialogShell's onClose runs after it has
       // already committed to leaving, so refusing there fades the panel out and leaves it
@@ -593,11 +591,11 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
               onChange={(v) => send({ type: 'automation:setEnabled', payload: { enabled: v } })} />
             <span className="text-[12px] text-text-secondary">Automations enabled</span>
           </div>
-          <Button variant="secondary" onClick={() => navigateTo({ kind: 'close' })}>Close</Button>
+          <Button variant="secondary" size="md" onClick={() => navigateTo({ kind: 'close' })}>Close</Button>
           {/* The tooltip explains a blocked Save (cannotFire); when there's simply nothing
               unsaved, the button just sits disabled with no tooltip. */}
           <span data-tip={hasUnsavedWork ? cannotFire ?? undefined : undefined}>
-            <Button variant="primary" onClick={handleSave} disabled={!canSave}>Save</Button>
+            <Button variant="primary" size="md" onClick={handleSave} disabled={!canSave}>Save</Button>
           </span>
         </>
       )}
@@ -659,6 +657,23 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
               const entry = entryByProfile.get(name);
               const trig = name === newDraftProfile && !entry ? null : entry?.trigger;
               const isSel = selected === name;
+              // State dot, two channels with the arm toggle beside it: green = watching, amber =
+              // armed but not watching, grey = off. The reason behind an amber dot is in its tooltip
+              // and in the editor's own callout — the row used to spell it out as a fourth line of
+              // red 10 px text, on every such row (84 px per row, four lines in three colours).
+              const armed = !!entry?.trigger.armed;
+              const dotColor = entry?.running ? 'var(--color-replay)' : armed ? 'var(--color-warning)' : 'var(--color-text-disabled)';
+              const dotTip = entry?.running
+                ? (entry.conditionTrue
+                  ? tt('Watching — the condition is TRUE right now', 'Vigiando — a condição está VERDADEIRA agora')
+                  : tt('Watching — the condition is false right now', 'Vigiando — a condição está falsa agora'))
+                : armed
+                  ? (!automation.enabled
+                    ? tt('Armed, but all automations are paused', 'Armada, mas todas as automações estão pausadas')
+                    : entry?.isDisabled
+                      ? tt('Armed, but the profile is disabled', 'Armada, mas o profile está desativado')
+                      : tt('Armed, but not watching — see the reason in the editor', 'Armada, mas não está vigiando — veja o motivo no editor'))
+                  : entry ? tt('Off', 'Desligada') : tt('Not saved yet', 'Ainda não salva');
               return (
                 <div
                   key={name}
@@ -680,6 +695,11 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   }`}
                 >
                   <div className="flex items-center gap-2">
+                    <span
+                      className="w-2 h-2 rounded-full shrink-0"
+                      style={{ background: dotColor, boxShadow: armed || entry?.running ? `0 0 0 3px color-mix(in srgb, ${dotColor} 20%, transparent)` : undefined }}
+                      data-tip={dotTip}
+                    />
                     <span className="text-[12px] text-text-primary truncate flex-1">{name}</span>
                     {/* Unsaved marker — nothing in the list used to distinguish an edited row,
                         so a draft could be abandoned without ever looking abandoned. */}
@@ -699,37 +719,13 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                       <span className="text-[10px] text-text-tertiary uppercase">{'new'}</span>
                     )}
                   </div>
-                  <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-text-tertiary">
-                    {entry?.running && (
-                      <CircleDot size={10}
-                        className={entry.conditionTrue ? 'text-[var(--color-replay-fg)]' : 'text-accent-light'}
-                        data-tip={entry.conditionTrue
-                          ? tt('Watching — the condition is TRUE right now', 'Vigiando — a condição está VERDADEIRA agora')
-                          : tt('Watching — the condition is false right now', 'Vigiando — a condição está falsa agora')} />
-                    )}
-                    <span className="truncate">
-                      {trig ? kindSummary(trig) : 'not saved yet'}
-                      {entry && entry.fireCount > 0 && ` · ${entry.fireCount}× · ${fmtWhen(entry.lastFiredAt)}`}
-                      {entry?.trigger.armed && entry.running && entry.nextDueAt && ` · ${'next'} ${fmtWhen(entry.nextDueAt)}`}
-                    </span>
+                  {/* One meta line: schedule · fires · last · next · result. */}
+                  <div className="mt-0.5 pl-4 text-[11px] text-text-tertiary truncate">
+                    {trig ? kindSummary(trig) : 'not saved yet'}
+                    {entry && entry.fireCount > 0 && ` · ${entry.fireCount}× · ${fmtWhen(entry.lastFiredAt)}`}
+                    {entry?.trigger.armed && entry.running && entry.nextDueAt && ` · next ${fmtWhen(entry.nextDueAt)}`}
+                    {entry?.lastResult && entry.lastResult !== 'fired' && ` · ${entry.lastResult}`}
                   </div>
-                  {/* Armed but NOT running is the state that reads as healthy and isn't: the toggle
-                      is on, so the row looks live, while no watcher exists. It happens for three
-                      ordinary reasons — the master switch is off, the profile is disabled, or the
-                      loop stopped itself (missing reference image, unfillable condition). Name it,
-                      instead of conveying it by the absence of a small unlabelled dot. */}
-                  {entry?.trigger.armed && !entry.running && (
-                    <div className="text-[10px] mt-0.5 truncate" style={{ color: 'var(--color-recording-fg)' }}>
-                      {!automation.enabled
-                        ? 'armed, but all automations are paused'
-                        : entry.isDisabled
-                          ? 'armed, but the profile is disabled'
-                          : 'armed, but not watching — see the reason below'}
-                    </div>
-                  )}
-                  {entry?.lastResult && entry.lastResult !== 'fired' && (
-                    <div className="text-[10px] text-text-tertiary mt-0.5 truncate">{entry.lastResult}</div>
-                  )}
                 </div>
               );
             })}
@@ -1263,50 +1259,24 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
         only when the draft is actually saveable — otherwise the sole options are to go back
         and fix it or to throw it away, which is the honest set. */}
     {pendingNav && (
-      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
-        onClick={() => setPendingNav(null)}>
-        {/* A real dialog, not just a box that looks like one. As a bare div it was a SIBLING of
-            the DialogShell card, so the shell's focus trap — which only knows about the card —
-            never reached it: Tab could not get here, and Space on the armed toggle still behind
-            the scrim fired automation:setArmed, which persists immediately. Focusing on mount and
-            swallowing Escape here is what makes the overlay modal for the keyboard too; the
-            stopPropagation is also what keeps Escape from reaching DialogShell's canClose and
-            silently rewriting where this prompt was headed. */}
-        <div className="w-[380px] rounded-dialog border border-border-subtle bg-bg-surface p-4 shadow-dialog outline-none"
-          role="dialog"
-          aria-modal="true"
-          aria-label={'Unsaved automation'}
-          tabIndex={-1}
-          ref={focusOnMount}
-          onKeyDown={(e) => {
-            if (e.key !== 'Escape') return;
-            e.preventDefault();
-            e.stopPropagation();
-            setPendingNav(null);
-          }}
-          onClick={(e) => e.stopPropagation()}>
-          <div className="text-[13px] text-text-primary font-medium mb-1.5">
-            {'Unsaved automation'}
-          </div>
-          <div className="text-[12px] text-text-secondary leading-relaxed mb-4">
-            {'This automation has changes that were never saved. Leaving now discards them — including any reference image you captured and the search region you set.'}
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" size="sm" onClick={() => setPendingNav(null)}>
-              {'Keep editing'}
-            </Button>
-            <Button variant="secondary" size="sm" onClick={() => discardAndGo(pendingNav)}>
-              {'Discard'}
-            </Button>
-            {canSave && (
-              <Button variant="primary" size="sm"
-                onClick={() => { const dest = pendingNav; handleSave(); go(dest); }}>
-                {'Save and continue'}
-              </Button>
-            )}
-          </div>
-        </div>
-      </div>
+      <DialogShell
+        icon={<TriangleAlert size={14} style={{ color: 'var(--color-warning-ink)' }} />}
+        title="Unsaved automation"
+        size="sm"
+        zClass="z-[60]"
+        onClose={() => setPendingNav(null)}
+        footer={
+          <DialogFooter
+            secondary={{ label: 'Keep editing', onClick: () => setPendingNav(null), autoFocus: true }}
+            extra={<Button variant="destructiveText" size="md" onClick={() => discardAndGo(pendingNav)}>Discard</Button>}
+            primary={canSave ? { label: 'Save and continue', onClick: () => { const dest = pendingNav; handleSave(); go(dest); } } : undefined}
+          />
+        }
+      >
+        <p className="px-4 py-4 text-xs text-text-secondary leading-relaxed">
+          This automation has changes that were never saved. Leaving now discards them — including any reference image you captured and the search region you set.
+        </p>
+      </DialogShell>
     )}
     </>
   );

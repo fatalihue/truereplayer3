@@ -2,8 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { Download, AlertTriangle, FolderOpen, Hash, Pencil, Replace, Ban, Type, Zap, PackageCheck, Link2 } from 'lucide-react';
 import type { ImportPreviewPayload, ImportConflictResolution } from '../bridge/messageTypes';
 import { Checkbox, CheckboxBox } from './Checkbox';
-import { DialogShell } from './common/DialogShell';
-import { Button } from './common/Button';
+import { DialogShell, DialogFooter  } from './common/DialogShell';
 import { SegmentedControl, type SegmentOption } from './common/SegmentedControl';
 import { KbdTag } from './common/KbdTag';
 import { useTt } from '../state/LanguageContext';
@@ -162,7 +161,8 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
       title="Import Profiles"
       // max-h keeps the review list scrollable inside the card on short windows
       // (the profile list below is the flex-1 overflow-y-auto region).
-      widthClass="w-[640px] max-h-[90vh]"
+      size="xl"
+      cardClassName="max-h-[90vh]"
       onClose={onCancel}
       // closeOnBackdrop FALSE: accidentally clicking outside while reviewing a
       // dozen profiles would discard the selection + conflict choices. The user
@@ -173,18 +173,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
           ? <>{effectiveImportCount} will be imported · {skipResolvedCount} skipped</>
           : <>{effectiveImportCount} of {compatibleCount} will be imported</>
       }
-      footer={
-        <>
-          <Button variant="secondary" onClick={onCancel}>Cancel</Button>
-          <Button
-            variant="primary"
-            onClick={handleConfirm}
-            disabled={effectiveImportCount === 0}
-          >
-            Import Selected ({effectiveImportCount})
-          </Button>
-        </>
-      }
+      footer={<DialogFooter secondary={{ label: 'Cancel', onClick: onCancel }} primary={{ label: `Import Selected (${effectiveImportCount})`, onClick: handleConfirm, disabled: effectiveImportCount === 0 }} />}
       // No Enter rule (unchanged from the hand-rolled version); this handler only
       // preserves the old scrim-level stopPropagation so keystrokes typed while
       // reviewing don't leak to app-level shortcut handlers. Esc is owned by the

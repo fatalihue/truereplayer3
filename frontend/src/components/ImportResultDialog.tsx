@@ -1,7 +1,6 @@
 import { Download, AlertTriangle, FolderOpen, Keyboard, ImageOff, Ban, Check } from 'lucide-react';
 import type { ImportResultPayload } from '../bridge/messageTypes';
-import { DialogShell } from './common/DialogShell';
-import { Button } from './common/Button';
+import { DialogShell, DialogFooter  } from './common/DialogShell';
 
 interface ImportResultDialogProps {
   result: ImportResultPayload;
@@ -27,12 +26,13 @@ export function ImportResultDialog({ result, onClose }: ImportResultDialogProps)
     <DialogShell
       icon={<Download size={14} style={{ color: 'var(--color-accent)' }} />}
       title="Import complete"
-      widthClass="w-[520px] max-h-[85vh]"
+      size="lg"
+      cardClassName="max-h-[85vh]"
       onClose={onClose}
       // Pure reading, nothing to lose — backdrop click may dismiss (unlike the
       // preview, where a stray click would discard a curated selection).
       closeOnBackdrop
-      footer={<Button variant="primary" className="min-w-[84px]" onClick={onClose}>Close</Button>}
+      footer={<DialogFooter primary={{ label: 'Close', onClick: onClose }} />}
     >
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-xs">
         {/* Imported — final names; rename-allocated ones say so. */}

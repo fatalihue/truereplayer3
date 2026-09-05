@@ -1,8 +1,8 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { ListChecks, CheckCircle2, CircleDashed, XCircle, MinusCircle, TriangleAlert, RefreshCw, Repeat } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
-import { DialogShell } from './common/DialogShell';
-import { Button } from './common/Button';
+import { DialogShell, DialogFooter  } from './common/DialogShell';
+import { Callout } from './common/Callout';
 import type { RunReport, RunStep } from '../bridge/messageTypes';
 
 // Structured codes the extension emits (content.js mkError) plus the two the native bridge
@@ -46,6 +46,23 @@ function explainCode(code: string | null): string | null {
 }
 
 const fmtMs = (ms: number) => (ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`);
+// "21:40 · " — the run's start, machine locale; empty when the backend sent no timestamp.
+const fmtStart = (iso: string | null | undefined) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) + ' · ';
+};
+
+// One tally of the summary strip: a dot in the status colour plus the count.
+function Tally({ color, n, label }: { color: string; n: number; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className="inline-block w-2 h-2 rounded-full" style={{ background: color }} aria-hidden="true" />
+      {n} {label}
+    </span>
+  );
+}
 
 function StatusIcon({ status }: { status: RunStep['status'] }) {
   if (status === 'failed') return <XCircle size={13} style={{ color: 'var(--color-recording-fg)' }} />;
@@ -95,7 +112,11 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
     // column is ambiguous on its own. More than one distinct profile here is what turns the
     // per-profile grouping on — a plain single-profile run must look exactly as it did before.
     const profiles = [...new Set(steps.map((s) => s.profile).filter(Boolean))] as string[];
-    return { failed, running, total, drifting, pages, profiles };
+    const ok = steps.filter((s) => s.status === 'ok').length;
+    const skipped = steps.filter((s) => s.status === 'skipped').length;
+    // Index (not row: rows restart inside every sub-call) of the first failure, for the jump link.
+    const firstFailedIdx = steps.findIndex((s) => s.status === 'failed');
+    return { failed, running, total, drifting, pages, profiles, ok, skipped, firstFailedIdx };
   }, [steps]);
 
   return (
@@ -107,25 +128,11 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
       // chain reports 2.21.0 exists to make readable are exactly the long ones. Divided by
       // --ui-zoom for the same reason PANEL_SIZE is (DialogShell:41): raw vh is measured before
       // the app's 0.9 zoom scales it down, so 85vh would paint as 76vh.
-      widthClass="w-[720px] h-[calc(85vh/var(--ui-zoom))]"
-      maxWidthClass="max-w-[calc(100vw-24px)]"
+      size="xl"
+      cardClassName="h-[calc(85vh/var(--ui-zoom))]"
       onClose={onClose}
       showClose
-      footer={() => (
-        <>
-          <div className="mr-auto text-[11px] text-text-tertiary">
-            {steps.length > 0
-              ? `${steps.length} ${'steps'} · ${fmtMs(stats.total)}` +
-                (stats.failed > 0 ? ` · ${stats.failed} ${'failed'}` : '')
-                + (stats.running > 0 ? ` · ${stats.running} ${'in progress'}` : '')
-              : ''}
-          </div>
-          <Button variant="secondary" onClick={() => send({ type: 'replay:reportRequest', payload: {} })}>
-            <RefreshCw size={12} /> {'Refresh'}
-          </Button>
-          <Button variant="primary" onClick={onClose}>{'Close'}</Button>
-        </>
-      )}
+      footer={<DialogFooter secondary={{ label: <><RefreshCw size={12} /> Refresh</>, onClick: () => send({ type: 'replay:reportRequest', payload: {} }) }} primary={{ label: 'Close', onClick: onClose }} />}
     >
       {/* flex-1 min-h-0, not h-full: the card is `flex flex-col` and this is a direct flex item,
           so an intrinsic height ignores the space the header and footer leave over (DialogShell:38). */}
@@ -136,16 +143,31 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
           </div>
         ) : (
           <>
+            {/* Summary strip — what ran, when, how long, and the pass / skip / fail tally, read
+                first; it used to sit in the footer in 11 px. The jump goes to the first failure. */}
+            <div className="mb-2 flex items-center gap-x-3 gap-y-1 flex-wrap rounded border border-border-subtle bg-bg-card px-3 py-2 text-[12px] text-text-secondary">
+              {stats.profiles[0] && <span className="font-semibold text-text-primary truncate">{stats.profiles[0]}</span>}
+              <span className="tabular-nums">{fmtStart(report?.startedAt)}{steps.length} steps · {fmtMs(stats.total)}</span>
+              <span className="flex items-center gap-3 tabular-nums">
+                <Tally color="var(--color-replay)" n={stats.ok} label="ok" />
+                {stats.skipped > 0 && <Tally color="var(--color-text-tertiary)" n={stats.skipped} label="skipped" />}
+                {stats.failed > 0 && <Tally color="var(--color-recording)" n={stats.failed} label="failed" />}
+                {stats.running > 0 && <Tally color="var(--color-accent)" n={stats.running} label="in progress" />}
+              </span>
+              {stats.firstFailedIdx >= 0 && (
+                <button
+                  type="button"
+                  onClick={() => document.getElementById(`run-step-${stats.firstFailedIdx}`)?.scrollIntoView({ block: 'center' })}
+                  className="ml-auto text-[12px] font-medium text-accent hover:underline"
+                >
+                  step {steps[stats.firstFailedIdx].row} →
+                </button>
+              )}
+            </div>
             {stats.drifting > 0 && (
-              <div className="mb-2 rounded border px-3 py-2 text-[11px] leading-relaxed"
-                style={{
-                  color: 'var(--color-recording-fg)',
-                  borderColor: 'color-mix(in srgb, var(--color-recording) 40%, transparent)',
-                  backgroundColor: 'color-mix(in srgb, var(--color-recording) 10%, transparent)',
-                }}>
-                <TriangleAlert size={12} className="inline mr-1 -mt-0.5" />
+              <Callout tone="error" className="mb-2" icon={<TriangleAlert size={12} />} still>
                 {`${stats.drifting} step(s) matched through a FALLBACK selector — the one you picked no longer matches. Re-pick those elements before the fallbacks drift too.`}
-              </div>
+              </Callout>
             )}
             <div className="space-y-px">
               {steps.map((s, idx) => (
@@ -169,6 +191,7 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
                   </div>
                 )}
                 <div
+                  id={`run-step-${idx}`}
                   className={`rounded px-2 py-1.5 ${s.status === 'failed' ? 'bg-bg-card' : 'hover:bg-bg-elevated/50'}`}>
                   <div className="flex items-center gap-2 text-[12px]">
                     <span className="w-7 shrink-0 text-right font-mono text-[10px] text-text-disabled">{s.row}</span>
@@ -205,18 +228,13 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
                     </div>
                   )}
 
+                  {/* The failed step gets the same card a failed probe gets in the sheet. */}
                   {s.status === 'failed' && (
-                    <div className="ml-[52px] mt-0.5 space-y-0.5">
-                      {s.errorCode && (
-                        <div className="text-[10px] font-mono text-text-tertiary">{s.errorCode}</div>
-                      )}
-                      <div className="text-[11px] leading-snug" style={{ color: 'var(--color-recording-fg)' }}>
-                        {explainCode(s.errorCode) ?? s.errorMessage}
-                      </div>
-                      {s.tip && (
-                        <div className="text-[10px] text-text-tertiary leading-snug">{s.tip}</div>
-                      )}
-                    </div>
+                    <Callout tone="error" className="ml-[52px] mt-1" still>
+                      {s.errorCode && <div className="font-mono text-[10px] tracking-wide opacity-80">{s.errorCode}</div>}
+                      <div>{explainCode(s.errorCode) ?? s.errorMessage}</div>
+                      {s.tip && <div className="mt-0.5 text-text-secondary">{s.tip}</div>}
+                    </Callout>
                   )}
                 </div>
                 </Fragment>

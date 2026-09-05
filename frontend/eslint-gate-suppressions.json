@@ -1,12 +1,7 @@
 {
   "src/components/AutomationPanel.tsx": {
     "no-restricted-syntax": {
-      "count": 3
-    }
-  },
-  "src/components/BulkActionBar.tsx": {
-    "no-restricted-syntax": {
-      "count": 1
+      "count": 2
     }
   },
   "src/components/CommandPalette.tsx": {
@@ -15,16 +10,6 @@
     }
   },
   "src/components/DataPanel.tsx": {
-    "no-restricted-syntax": {
-      "count": 1
-    }
-  },
-  "src/components/ImageCropper.tsx": {
-    "no-restricted-syntax": {
-      "count": 8
-    }
-  },
-  "src/components/LiveVariablesPanel.tsx": {
     "no-restricted-syntax": {
       "count": 1
     }
@@ -39,17 +24,7 @@
       "count": 1
     }
   },
-  "src/components/SendTextDialog.tsx": {
-    "no-restricted-syntax": {
-      "count": 2
-    }
-  },
   "src/components/SettingsPanel.tsx": {
-    "no-restricted-syntax": {
-      "count": 3
-    }
-  },
-  "src/components/SheetPanel.tsx": {
     "no-restricted-syntax": {
       "count": 3
     }
@@ -57,11 +32,6 @@
   "src/components/ThemeEditor.tsx": {
     "no-restricted-syntax": {
       "count": 3
-    }
-  },
-  "src/components/UpdateOverlay.tsx": {
-    "no-restricted-syntax": {
-      "count": 6
     }
   },
   "src/components/common/DialogShell.tsx": {
@@ -72,16 +42,6 @@
   "src/components/common/ErrorBoundary.tsx": {
     "no-restricted-syntax": {
       "count": 8
-    }
-  },
-  "src/components/lexical/LexicalTokenEditor.tsx": {
-    "no-restricted-syntax": {
-      "count": 1
-    }
-  },
-  "src/components/lexical/TokenChipPopover.tsx": {
-    "no-restricted-syntax": {
-      "count": 1
     }
   }
 }

@@ -729,7 +729,7 @@ html[data-animations="true"] .replay-progress-line::before {
   border-radius: 50%;
   background: var(--color-accent-solid);
   border: 2px solid var(--color-bg-surface);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--color-bg-base) 70%, transparent);
   cursor: pointer;
   transition: transform 0.1s ease;
 }
@@ -857,6 +857,69 @@ tbody tr[data-replay] [data-rownum-value] {
   &:disabled { color: var(--color-text-disabled); cursor: default; }
 }
 
+/* FORM INPUT — the one text-field recipe for sheets, dialogs and popovers. The 2026-09-04
+   sweep counted four input heights (h-8 / h-7 / h-6 / h-5) and three font sizes for the same
+   role; these are the two that remain: `input-field` 32 px for forms, `input-inline` 28 px for
+   popovers, the palette and inline rows. Mono by default because nearly every field here holds
+   a value (coordinates, paths, selectors); add font-sans at the call site for prose. */
+@utility input-field {
+  @apply w-full h-8 px-2 text-ui font-mono text-text-primary bg-bg-input border border-border-default rounded outline-none placeholder:text-text-tertiary focus:border-accent-solid disabled:opacity-50;
+}
+@utility input-inline {
+  @apply w-full h-7 px-1.5 text-xs font-mono text-text-primary bg-bg-input border border-border-default rounded outline-none placeholder:text-text-tertiary focus:border-accent-solid disabled:opacity-50;
+}
+
+/* NumberInput (compact NumberBox): the native spinner must never show next to ours. */
+.numberbox .numberbox-input {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.numberbox .numberbox-input::-webkit-inner-spin-button,
+.numberbox .numberbox-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Floating-surface entrance — token popovers and the name prompt. One keyframe, gated like the
+   dialog and menu motions; TokenChipPopover used to inject its own ungated copy inline. */
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(-3px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+html[data-animations="true"] .pop-in {
+  animation: pop-in var(--motion-base) var(--ease-enter);
+}
+
+/* Update splash — card, backdrop, logo pulse, install pulse and the tick draw. Gated: the
+   component used to inject its own ungated copies through a <style> tag. */
+@keyframes update-card-in {
+  from { opacity: 0; transform: scale(0.94) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes update-logo-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+@keyframes update-install-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
+}
+@keyframes update-checkmark {
+  from { stroke-dashoffset: 24; }
+  to { stroke-dashoffset: 0; }
+}
+html[data-animations="true"] .update-fade-in { animation: fade-in var(--motion-slow) ease-out; }
+html[data-animations="true"] .update-card-in { animation: update-card-in 450ms cubic-bezier(0.16, 1, 0.3, 1); }
+html[data-animations="true"] .update-logo-pulse { animation: update-logo-pulse 2s ease-in-out infinite; }
+html[data-animations="true"] .update-install-pulse { animation: update-install-pulse 1.5s ease-in-out infinite; }
+.update-checkmark { stroke-dasharray: 24; stroke-dashoffset: 0; }
+html[data-animations="true"] .update-checkmark { animation: update-checkmark 400ms ease 200ms both; }
+
+/* Callout entrance — inline note cards appear in REACTION to something (a probe finished, a
+   field went invalid), so they fade in like every other reactive surface. Gated. */
+html[data-animations="true"] .callout-enter {
+  animation: fade-in var(--motion-base) var(--ease-enter);
+}
 /* Kbd tag utilities */
 @utility kbd {
   display: inline-flex;

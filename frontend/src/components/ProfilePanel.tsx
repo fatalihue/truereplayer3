@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, lazy, Suspense } from 'react';
-import { Search, SearchX, X, Pencil, Copy, Trash2, FolderOpen, FolderMinus, Keyboard, AppWindow, ArrowLeftRight, ArrowDownUp, Type, Ban, Power, FolderInput, ChevronsLeft, ChevronsRight, ChevronsDownUp, ChevronsUpDown, Pin, PinOff, FolderPlus, FilePlus, Plus, ChevronRight, ChevronDown, Palette, Zap, Repeat, Repeat2, Hourglass, ArrowUpFromDot, ExternalLink, Info, MoreHorizontal, Hash, Upload, Download, Check } from 'lucide-react';
+import { AlertTriangle, Search, SearchX, X, Pencil, Copy, Trash2, FolderOpen, FolderMinus, Keyboard, AppWindow, ArrowLeftRight, ArrowDownUp, Type, Ban, Power, FolderInput, ChevronsLeft, ChevronsRight, ChevronsDownUp, ChevronsUpDown, Pin, PinOff, FolderPlus, FilePlus, Plus, ChevronRight, ChevronDown, Palette, Zap, Repeat, Repeat2, Hourglass, ArrowUpFromDot, ExternalLink, Info, MoreHorizontal, Hash, Upload, Download, Check } from 'lucide-react';
 import type { ProfileEntry, ImportPreviewPayload, ImportResultPayload, ImportConflictResolution, TriggerMode } from '../bridge/messageTypes';
 import { useAppState } from '../state/AppStateContext';
 import { carriesConditionProbe } from '../utils/conditionalBlocks';
@@ -7,7 +7,7 @@ import { useBridge } from '../bridge/BridgeContext';
 import { KbdTag } from './common/KbdTag';
 import { RemovableChip } from './common/RemovableChip';
 import { CheckboxBox } from './Checkbox';
-import { DialogShell } from './common/DialogShell';
+import { DialogShell, DialogFooter  } from './common/DialogShell';
 import { FieldError } from './common/FieldError';
 import { Button } from './common/Button';
 import { iconButtonClass } from './common/IconButton';
@@ -2515,7 +2515,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               <Trash2 size={13} />
               Delete
             </span>
-            <span className="text-[10px] text-text-disabled font-mono">Del</span>
+            <span className="kbd">Del</span>
           </button>
         </div>
       )}
@@ -2668,7 +2668,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
 
       {/* Create Dialog */}
       {showCreateDialog && (
-        <DialogShell title={createFolder ? `New profile in ${createFolder}` : 'New profile'} widthClass="w-[340px]" onClose={() => setShowCreateDialog(false)}>
+        <DialogShell icon={<FilePlus size={14} className="text-accent" />} title={createFolder ? `New profile in ${createFolder}` : 'New profile'} size="sm" onClose={() => setShowCreateDialog(false)}
+          footer={<DialogFooter secondary={{ label: 'Cancel', onClick: () => setShowCreateDialog(false) }} primary={{ label: 'Create', onClick: confirmCreate, disabled: !dialogValue.trim() || createProfileNameTaken }} />}>
           <div className="p-4 flex flex-col">
             {/* The destination rides the TITLE rather than a line of its own: it is one fact,
                 and a dialog reached from two different buttons has to say which one opened it.
@@ -2682,34 +2683,20 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               onChange={(e) => setDialogValue(e.target.value)}
               onKeyDown={(e) => handleDialogKeyDown(e, confirmCreate)}
               placeholder="Profile name..."
-              className="w-full h-9 px-3 text-sm text-text-primary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid"
+              className="input-field font-sans"
             />
             {/* Reserved slot, not a conditional mount — see FieldError. The name is deliberately
                 NOT echoed here: it is in the focused input 8 px above, and an interpolated value
                 would make the reserved width track what the user types. */}
             <FieldError show={createProfileNameTaken}>A profile with that name already exists.</FieldError>
-            <div className="flex justify-end gap-2 mt-4">
-              <button
-                onClick={() => setShowCreateDialog(false)}
-                className="px-4 py-1.5 text-xs text-text-secondary hover:text-text-primary bg-bg-elevated rounded transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmCreate}
-                disabled={!dialogValue.trim() || createProfileNameTaken}
-                className="px-4 py-1.5 text-xs text-[color:var(--color-accent-ink)] bg-accent-solid hover:bg-accent-solid/80 rounded transition-colors disabled:opacity-40"
-              >
-                Create
-              </button>
-            </div>
           </div>
         </DialogShell>
       )}
 
       {/* Rename Dialog */}
       {showRenameDialog && (
-        <DialogShell title="Rename Profile" widthClass="w-[340px]" onClose={() => setShowRenameDialog(null)}>
+        <DialogShell icon={<Pencil size={14} className="text-accent" />} title="Rename Profile" size="sm" onClose={() => setShowRenameDialog(null)}
+          footer={<DialogFooter secondary={{ label: 'Cancel', onClick: () => setShowRenameDialog(null) }} primary={{ label: 'Rename', onClick: confirmRename, disabled: !dialogValue.trim() || renameProfileNameTaken }} />}>
           <div className="p-4 flex flex-col">
             <input
               ref={dialogInputRef}
@@ -2718,49 +2705,21 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               onChange={(e) => setDialogValue(e.target.value)}
               onKeyDown={(e) => handleDialogKeyDown(e, confirmRename)}
               placeholder="New name..."
-              className="w-full h-9 px-3 text-sm text-text-primary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid"
+              className="input-field font-sans"
             />
             <FieldError show={renameProfileNameTaken}>A profile with that name already exists.</FieldError>
-            <div className="flex justify-end gap-2 mt-4">
-              <button
-                onClick={() => setShowRenameDialog(null)}
-                className="px-4 py-1.5 text-xs text-text-secondary hover:text-text-primary bg-bg-elevated rounded transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmRename}
-                disabled={!dialogValue.trim() || renameProfileNameTaken}
-                className="px-4 py-1.5 text-xs text-[color:var(--color-accent-ink)] bg-accent-solid hover:bg-accent-solid/80 rounded transition-colors disabled:opacity-40"
-              >
-                Rename
-              </button>
-            </div>
           </div>
         </DialogShell>
       )}
 
       {/* Delete Confirm Dialog */}
       {showDeleteConfirm && (
-        <DialogShell title="Delete Profile" widthClass="w-[340px]" onClose={() => setShowDeleteConfirm(null)} onCardKeyDown={(e) => { if (e.key === 'Enter') confirmDelete(); }}>
+        <DialogShell icon={<Trash2 size={14} style={{ color: 'var(--color-recording-fg)' }} />} title="Delete Profile" size="sm" onClose={() => setShowDeleteConfirm(null)} onCardKeyDown={(e) => { if (e.key === 'Enter') confirmDelete(); }}
+          footer={<DialogFooter danger secondary={{ label: 'Cancel', onClick: () => setShowDeleteConfirm(null) }} primary={{ label: 'Delete', onClick: confirmDelete }} />}>
           <div className="p-4 flex flex-col">
             <p className="text-sm text-text-secondary">
               Delete profile <span className="text-text-primary font-medium">'{showDeleteConfirm}'</span>?
             </p>
-            <div className="flex justify-end gap-2 mt-4">
-              <button
-                onClick={() => setShowDeleteConfirm(null)}
-                className="px-4 py-1.5 text-xs text-text-secondary hover:text-text-primary bg-bg-elevated rounded transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmDelete}
-                className="px-4 py-1.5 text-xs text-[color:var(--color-recording-ink)] bg-recording hover:bg-recording/80 rounded transition-colors"
-              >
-                Delete
-              </button>
-            </div>
           </div>
         </DialogShell>
       )}
@@ -2769,32 +2728,23 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
           hotstring / profile target / folder target). Same shape as the delete
           dialog; Enter confirms, Esc cancels. */}
       {confirmRemoval && (
-        <DialogShell title="Are you sure?" widthClass="w-[340px]" onClose={() => setConfirmRemoval(null)} onCardKeyDown={(e) => { if (e.key === 'Enter') runConfirmedRemoval(); }}>
+        <DialogShell icon={<AlertTriangle size={14} style={{ color: 'var(--color-warning-ink)' }} />} title="Are you sure?" size="sm" onClose={() => setConfirmRemoval(null)} onCardKeyDown={(e) => { if (e.key === 'Enter') runConfirmedRemoval(); }}
+          footer={<DialogFooter danger secondary={{ label: 'No', onClick: () => setConfirmRemoval(null) }} primary={{ label: 'Yes, remove', onClick: runConfirmedRemoval }} />}>
           <div className="p-4 flex flex-col">
             <p className="text-sm text-text-secondary">
               Remove {confirmRemoval.label} from <span className="text-text-primary font-medium">'{confirmRemoval.name}'</span>?
             </p>
-            <div className="flex justify-end gap-2 mt-4">
-              <button
-                onClick={() => setConfirmRemoval(null)}
-                className="px-4 py-1.5 text-xs text-text-secondary hover:text-text-primary bg-bg-elevated rounded transition-colors"
-              >
-                No
-              </button>
-              <button
-                onClick={runConfirmedRemoval}
-                className="px-4 py-1.5 text-xs text-[color:var(--color-recording-ink)] bg-recording hover:bg-recording/80 rounded transition-colors"
-              >
-                Yes, remove
-              </button>
-            </div>
           </div>
         </DialogShell>
       )}
 
       {/* Assign Hotkey Dialog */}
       {showHotkeyDialog && (
-        <DialogShell title="Assign Hotkey" widthClass="w-[340px]" onClose={() => setShowHotkeyDialog(null)}>
+        <DialogShell icon={<Keyboard size={14} className="text-accent" />} title="Assign Hotkey" size="sm" onClose={() => setShowHotkeyDialog(null)}
+          footerStart={profiles.find(p => p.name === showHotkeyDialog)?.hotkey ? (
+            <Button variant="destructiveText" size="md" onClick={() => { handleRemoveHotkey(showHotkeyDialog!); setShowHotkeyDialog(null); }}>Remove</Button>
+          ) : undefined}
+          footer={<DialogFooter secondary={{ label: 'Cancel', onClick: () => setShowHotkeyDialog(null) }} primary={{ label: 'Assign', onClick: confirmHotkey, disabled: hotkeyCapture === '...' }} />}>
           <div className="p-4 flex flex-col">
             <p className="text-xs text-text-secondary mb-3">
               Press a key combination for <span className="text-text-primary font-medium">'{showHotkeyDialog}'</span>
@@ -2808,7 +2758,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               readOnly
               value={!hotkeyCapture || hotkeyCapture === '...' ? '' : hotkeyCapture}
               placeholder="New key..."
-              className={`w-full h-9 px-3 text-sm font-mono bg-bg-input border border-accent-solid rounded text-center outline-none placeholder:text-accent-light/50 ${
+              className={`w-full h-8 px-2 text-ui font-mono bg-bg-input border border-accent-solid rounded text-center outline-none placeholder:text-accent-light/50 ${
                 !hotkeyCapture || hotkeyCapture === '...'
                   ? 'text-accent-light animate-pulse'
                   : 'text-accent'
@@ -2817,7 +2767,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
 
             {/* Trigger Mode */}
             <div className="mt-4">
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-text-disabled mb-1.5">Trigger Mode</div>
+              <div className="label-micro text-text-tertiary mb-1.5">Trigger Mode</div>
               <div className="grid grid-cols-2 gap-1.5">
                 {([
                   { id: 'onPress', label: 'On Press', help: tt('Fires once when the key is pressed down.', 'Dispara uma vez quando a tecla é pressionada.') },
@@ -2850,40 +2800,17 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                 {hotkeyTriggerMode === 'hold' && 'Fires once after holding ~0.6s. A quick tap does nothing.'}
               </div>
             </div>
-
-            <div className="flex items-center mt-4">
-              {profiles.find(p => p.name === showHotkeyDialog)?.hotkey && (
-                <button
-                  onClick={() => { handleRemoveHotkey(showHotkeyDialog!); setShowHotkeyDialog(null); }}
-                  className="px-4 py-1.5 text-xs text-recording hover:text-recording/80 bg-bg-elevated rounded transition-colors"
-                >
-                  Remove
-                </button>
-              )}
-              <div className="flex-1" />
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowHotkeyDialog(null)}
-                  className="px-4 py-1.5 text-xs text-text-secondary hover:text-text-primary bg-bg-elevated rounded transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmHotkey}
-                  disabled={hotkeyCapture === '...'}
-                  className="px-4 py-1.5 text-xs text-[color:var(--color-accent-ink)] bg-accent-solid hover:bg-accent-solid/80 rounded transition-colors disabled:opacity-40"
-                >
-                  Assign
-                </button>
-              </div>
-            </div>
           </div>
         </DialogShell>
       )}
 
       {/* Assign Hotstring Dialog */}
       {showHotstringDialog && (
-        <DialogShell title="Assign Hotstring" widthClass="w-[340px]" onClose={() => setShowHotstringDialog(null)}>
+        <DialogShell icon={<Type size={14} className="text-accent" />} title="Assign Hotstring" size="sm" onClose={() => setShowHotstringDialog(null)}
+          footerStart={profiles.find(p => p.name === showHotstringDialog)?.hotstring ? (
+            <Button variant="destructiveText" size="md" onClick={() => { handleRemoveHotstring(showHotstringDialog!); setShowHotstringDialog(null); }}>Remove</Button>
+          ) : undefined}
+          footer={<DialogFooter secondary={{ label: 'Cancel', onClick: () => setShowHotstringDialog(null) }} primary={{ label: 'Assign', onClick: confirmHotstring, disabled: hotstringValue.trim().length < 2 }} />}>
           <div className="p-4 flex flex-col">
             <p className="text-xs text-text-secondary mb-3">
               Type a character sequence for <span className="text-text-primary font-medium">'{showHotstringDialog}'</span>
@@ -2898,7 +2825,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               }}
               placeholder="e.g. /id"
               maxLength={32}
-              className="w-full h-9 px-3 text-sm font-mono text-accent bg-bg-input border border-accent-solid rounded outline-none"
+              className="w-full h-8 px-2 text-ui font-mono text-accent bg-bg-input border border-accent-solid rounded outline-none"
             />
             <p className="text-[11px] text-text-tertiary mt-1.5">
               Min 2 characters.
@@ -2913,33 +2840,6 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               <span className="text-xs text-text-secondary">Instant trigger</span>
               <span className="text-[11px] text-text-tertiary">(no Enter/Space/Tab needed)</span>
             </button>
-
-            <div className="flex items-center mt-4">
-              {profiles.find(p => p.name === showHotstringDialog)?.hotstring && (
-                <button
-                  onClick={() => { handleRemoveHotstring(showHotstringDialog!); setShowHotstringDialog(null); }}
-                  className="px-4 py-1.5 text-xs text-recording hover:text-recording/80 bg-bg-elevated rounded transition-colors"
-                >
-                  Remove
-                </button>
-              )}
-              <div className="flex-1" />
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowHotstringDialog(null)}
-                  className="px-4 py-1.5 text-xs text-text-secondary hover:text-text-primary bg-bg-elevated rounded transition-colors"
-                >
-                  Cancel
-                </button>
-                <Button
-                  variant="primary"
-                  onClick={confirmHotstring}
-                  disabled={hotstringValue.trim().length < 2}
-                >
-                  Assign
-                </Button>
-              </div>
-            </div>
           </div>
         </DialogShell>
       )}
@@ -2996,7 +2896,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             // light picker, import is a review), but no longer the only dialog UNDER the
             // shell's 440 default while serving the app's longest list (~81 profiles with
             // folder indentation truncating PT-BR names early at 380).
-            widthClass="w-[460px] max-h-[90vh]"
+            size="md"
+            cardClassName="max-h-[90vh]"
             onClose={() => setShowExportDialog(false)}
             // Don't discard a multi-profile selection on a stray outside click, matching the
             // Import Preview dialog.
@@ -3013,6 +2914,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               <span className="flex items-center gap-3">
                 <Button
                   variant="secondary"
+                  size="md"
                   onClick={() => { handleImportClick(); setShowExportDialog(false); }}
                 >
                   <Download size={12} />
@@ -3026,7 +2928,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             }
             footer={
               <>
-                <Button variant="secondary" className="min-w-[84px]" onClick={() => setShowExportDialog(false)}>Cancel</Button>
+                <Button variant="secondary" size="md" className="min-w-[84px]" onClick={() => setShowExportDialog(false)}>Cancel</Button>
                 <Button
                   variant="primary"
                   className="min-w-[84px]"
@@ -3208,7 +3110,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
 
       {/* Create Folder Dialog */}
       {showCreateFolderDialog && (
-        <DialogShell title="New Folder" widthClass="w-[340px]" onClose={() => setShowCreateFolderDialog(false)}>
+        <DialogShell icon={<FolderPlus size={14} className="text-accent" />} title="New Folder" size="sm" onClose={() => setShowCreateFolderDialog(false)}
+          footer={<DialogFooter secondary={{ label: 'Cancel', onClick: () => setShowCreateFolderDialog(false) }} primary={{ label: 'Create', onClick: confirmCreateFolder, disabled: !folderDialogName.trim() || createFolderNameTaken }} />}>
           <div className="p-4 flex flex-col">
             <input
               ref={folderDialogInputRef}
@@ -3217,7 +3120,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               onChange={(e) => setFolderDialogName(e.target.value)}
               onKeyDown={(e) => handleDialogKeyDown(e, confirmCreateFolder)}
               placeholder="Folder name..."
-              className="w-full h-9 px-3 text-sm text-text-primary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid"
+              className="input-field font-sans"
             />
             {/* Colour picker — a full-width 8×3 grid of rounded tiles. Square cells tile the
                 dialog width edge-to-edge (symmetric by construction, no stray gaps); the
@@ -3259,28 +3162,14 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               <span className="ml-auto text-[10px] uppercase tracking-wide text-text-disabled shrink-0">preview</span>
             </div>
             <FieldError show={createFolderNameTaken}>A folder with that name already exists.</FieldError>
-            <div className="flex justify-end gap-2 mt-4">
-              <button
-                onClick={() => setShowCreateFolderDialog(false)}
-                className="px-4 py-1.5 text-xs text-text-secondary hover:text-text-primary bg-bg-elevated rounded transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmCreateFolder}
-                disabled={!folderDialogName.trim() || createFolderNameTaken}
-                className="px-4 py-1.5 text-xs text-[color:var(--color-accent-ink)] bg-accent-solid hover:bg-accent-solid/80 rounded transition-colors disabled:opacity-40"
-              >
-                Create
-              </button>
-            </div>
           </div>
         </DialogShell>
       )}
 
       {/* Rename Folder Dialog */}
       {showRenameFolderDialog && (
-        <DialogShell title="Rename Folder" widthClass="w-[340px]" onClose={() => setShowRenameFolderDialog(null)}>
+        <DialogShell icon={<Pencil size={14} className="text-accent" />} title="Rename Folder" size="sm" onClose={() => setShowRenameFolderDialog(null)}
+          footer={<DialogFooter secondary={{ label: 'Cancel', onClick: () => setShowRenameFolderDialog(null) }} primary={{ label: 'Rename', onClick: confirmRenameFolder, disabled: !folderDialogName.trim() || renameFolderNameTaken }} />}>
           <div className="p-4 flex flex-col">
             <input
               ref={folderDialogInputRef}
@@ -3291,24 +3180,9 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                 if (e.key === 'Enter') { e.preventDefault(); confirmRenameFolder(); }
               }}
               placeholder="New folder name..."
-              className="w-full h-9 px-3 text-sm text-text-primary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid"
+              className="input-field font-sans"
             />
             <FieldError show={renameFolderNameTaken}>A folder with that name already exists.</FieldError>
-            <div className="flex justify-end gap-2 mt-4">
-              <button
-                onClick={() => setShowRenameFolderDialog(null)}
-                className="px-4 py-1.5 text-xs text-text-secondary hover:text-text-primary bg-bg-elevated rounded transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmRenameFolder}
-                disabled={!folderDialogName.trim() || renameFolderNameTaken}
-                className="px-4 py-1.5 text-xs text-[color:var(--color-accent-ink)] bg-accent-solid hover:bg-accent-solid/80 rounded transition-colors disabled:opacity-40"
-              >
-                Rename
-              </button>
-            </div>
           </div>
         </DialogShell>
       )}

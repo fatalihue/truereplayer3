@@ -3,8 +3,7 @@ import { Repeat2 } from 'lucide-react';
 import { useAppState } from '../state/AppStateContext';
 import { useTt } from '../state/LanguageContext';
 import { NumberInput } from './common/NumberInput';
-import { DialogShell } from './common/DialogShell';
-import { Button } from './common/Button';
+import { DialogShell, DialogFooter  } from './common/DialogShell';
 import { ProfileSearchList } from './common/ProfileSearchList';
 
 export interface RunProfileDialogProps {
@@ -91,14 +90,7 @@ export function RunProfileDialog({ mode, initial, excludeProfileName, onConfirm,
       // so backdrop-dismiss stays enabled (the default).
       closeOnBackdrop={true}
       footerHint={'Enter to confirm · Esc to cancel'}
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={handleConfirm} disabled={!canConfirm}>
-            {mode === 'edit' ? 'Save' : 'Add'}
-          </Button>
-        </>
-      }
+      footer={<DialogFooter secondary={{ label: 'Cancel', onClick: onClose }} primary={{ label: mode === 'edit' ? 'Save' : 'Add', onClick: handleConfirm, disabled: !canConfirm }} />}
       onCardKeyDown={(e) => {
         // Plain Enter confirms — this dialog is single-field (a select), so the
         // multi-line-text justification for Ctrl+Enter (used in SendTextDialog)
