@@ -401,6 +401,22 @@ export interface ProfileOrderData {
   ungroupedOrder: string[];
 }
 
+/**
+ * The cursorClick* fields a Clicker preset snapshots — the same names and shapes SettingsState
+ * uses (numbers as strings, the same area/point objects), so "which preset is active" is a
+ * field-by-field comparison and nothing more. Hotkeys are deliberately not part of a preset.
+ */
+export type ClickerPresetFields = Pick<SettingsState,
+  | 'cursorClickButton' | 'cursorClickDelay' | 'cursorClickDelayJitter' | 'cursorClickUseJitter' | 'cursorClickHold'
+  | 'cursorClickPositionJitter' | 'cursorClickUsePositionJitter' | 'cursorClickUseArea' | 'cursorClickArea'
+  | 'cursorClickUseFixed' | 'cursorClickFixedPoint' | 'cursorClickLoops' | 'cursorClickUseLoops'
+  | 'cursorClickInterval' | 'cursorClickUseInterval' | 'cursorClickMaxDuration' | 'cursorClickUseMaxDuration'
+  | 'cursorClickGameMove'>;
+
+export interface ClickerPreset extends ClickerPresetFields {
+  name: string;
+}
+
 export interface SettingsState {
   customDelay: string;
   useCustomDelay: boolean;
@@ -451,6 +467,8 @@ export interface SettingsState {
   cursorClickUseMaxDuration: boolean;
   /** Interpolated cursor path for the Clicker. Only bites when the cursor moves — Position, Fixed and Area; in plain cursor mode nothing moves. */
   cursorClickGameMove: boolean;
+  /** Saved Clicker setups, applied/saved/deleted through the clicker:*Preset messages. */
+  cursorClickPresets: ClickerPreset[];
   recordMouse: boolean;
   recordScroll: boolean;
   recordKeyboard: boolean;
@@ -684,6 +702,9 @@ export interface AppState {
 /** Why a Clicker run ended — the three words the engine puts on the wire (clicker:ended). */
 export type ClickerEndReason = 'stopped' | 'clicks' | 'time';
 
+/** Live target warnings (clicker:warning). One code today; a union so the next one is a one-liner. */
+export type ClickerWarningCode = 'elevatedTarget';
+
 export interface ClickerLiveState {
   /**
    * Clicker v2 — live click counter pushed from the backend during a Clicker run
@@ -704,6 +725,8 @@ export interface ClickerLiveState {
     endReason: ClickerEndReason | null;
     /** SendInput calls rejected outright during the run (from clicker:ended). */
     blocked: number;
+    /** Live target warning (clicker:warning); null while the target is a normal window. */
+    warning: ClickerWarningCode | null;
   };
   /**
    * Macro loop counter — pushed during looping replays (~4 Hz throttle, plus a final push
@@ -832,6 +855,10 @@ export type IncomingMessage =
   // Once per run, in the final flush before the READY status: why it ended, and how many
   // SendInput calls were rejected outright (not UIPI — see ClickerButton in ActionExecution.cs).
   | { type: 'clicker:ended'; payload: { reason: ClickerEndReason; blocked: number } }
+  // Live target warning: 'elevatedTarget' while the root window under the cursor runs elevated
+  // and the app does not (UIPI drops every click, SendInput says yes). The clearing message
+  // arrives with the key OMITTED (the bridge serializer drops nulls) — read missing as null.
+  | { type: 'clicker:warning'; payload: { code?: ClickerWarningCode | null } }
   | { type: 'macro:loopProgress'; payload: { current: number; total: number } }
   | { type: 'settings:reset'; payload: Record<string, never> }
   // Fired at the start of CheckForUpdateAsync so the overlay can show the indeterminate
@@ -1102,6 +1129,11 @@ export type OutgoingMessage =
   // No requestId: there is no reply to correlate it with (see the note above).
   | { type: 'clicker:configureArea'; payload: Record<string, never> }
   | { type: 'clicker:configurePoint'; payload: Record<string, never> }
+  // Clicker presets — named snapshots of the cursorClick* settings, global like the rest. The
+  // bridge answers all three with settings:loaded (the list rides in cursorClickPresets).
+  | { type: 'clicker:savePreset'; payload: { name: string } }
+  | { type: 'clicker:applyPreset'; payload: { name: string } }
+  | { type: 'clicker:deletePreset'; payload: { name: string } }
   | { type: 'waitimage:cropReference'; payload: { index: number; x: number; y: number; w: number; h: number } }
   | { type: 'image:testMatch'; payload: { requestId: string; imagePath: string; confidence: number; searchRegion?: { x: number; y: number; w: number; h: number }; absolute?: boolean; profile?: string } }
   | { type: 'mouse:pickPosition'; payload: { requestId: string } }

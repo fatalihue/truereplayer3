@@ -181,6 +181,8 @@ export interface ClickerConfigInput {
 export interface ClickerConfigSummary {
   /** Compact recall, joined by the caller: "Left · 5/s · 5000 clicks or 120 s · Area 800×600 · ±10% rate · +200 ms gap". */
   bits: string[];
+  /** The delivered rate, hold included (0 when the delay is unset) — what the status bar prints. */
+  rateCps: number;
   /** Where the clicks land, as the tail of "start clicking …": "at the cursor", "inside the 800×600 area". */
   where: string;
   /** How the run ends, as a clause: "it runs until you press it again", "it stops after 50 clicks". */
@@ -232,8 +234,9 @@ export function describeClickerConfig(s: ClickerConfigInput): ClickerConfigSumma
       : `it stops after ${limitBits[0]}`;
 
   // The RATE leads: it is the single most important setting. Hold-aware — see effectiveCps.
+  const rateCps = delayMs > 0 ? effectiveCps(delayMs, gapMs, holdMs) : 0;
   const bits: string[] = [s.cursorClickButton];
-  if (delayMs > 0) bits.push(`${formatRate(effectiveCps(delayMs, gapMs, holdMs))}/s`);
+  if (rateCps > 0) bits.push(`${formatRate(rateCps)}/s`);
   bits.push(unbounded ? 'no limit' : limitBits.join(' or '));
   if (whereBit) bits.push(whereBit);
   if (ratePct > 0) bits.push(`±${ratePct}% rate`);
@@ -241,5 +244,5 @@ export function describeClickerConfig(s: ClickerConfigInput): ClickerConfigSumma
   // cadence and the rate above already includes it.
   if (gapMs > 0) bits.push(`+${gapMs} ms gap`);
 
-  return { bits, where, stop, unbounded };
+  return { bits, rateCps, where, stop, unbounded };
 }

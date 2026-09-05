@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Play, Pause as PauseIcon, MousePointerClick, Folder, List, Gauge, Clock, Repeat, Unplug, Chrome, Timer, CheckCircle2, XCircle } from 'lucide-react';
+import { Play, Pause as PauseIcon, MousePointerClick, Folder, List, Gauge, Clock, Repeat, Unplug, Chrome, Timer, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import { useAppState, useClickerLive, useHighlightedAction } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
 import { usePauseTick } from '../hooks/usePauseTick';
 import { useBrowserConnection } from '../hooks/useBrowserConnection';
 import { useTt, useLanguage } from '../state/LanguageContext';
 import type { RunReport } from '../bridge/messageTypes';
-import { effectiveCps, formatClickerStats, formatRate } from '../utils/clickerFormat';
+import { describeClickerConfig, formatClickerStats, formatRate } from '../utils/clickerFormat';
 import { formatKeyCombo } from '../utils/displayUtils';
 import { APP_VERSION } from '../appVersion';
 
@@ -159,16 +159,10 @@ export function StatusBar() {
 
   // Clicker mode shows whether it's mid-run (live stats) or idle (config summary).
   const clickerRunning = isReplaying || clickerStats.count > 0;
-  // Target rate — the cadence the ENGINE will produce, not 1000/delay. The interval is
-  // part of the period and the hold can cap it, so leaving either out made this disagree
-  // with the measured rate the live stats report a second later. See clickerFormat.effectiveCps.
-  const clickerTargetCps = (() => {
-    const d = parseInt(settings.cursorClickDelay, 10);
-    if (!(d > 0)) return 0;
-    const gap = settings.cursorClickUseInterval ? parseInt(settings.cursorClickInterval, 10) || 0 : 0;
-    const hold = parseInt(settings.cursorClickHold, 10) || 0;
-    return effectiveCps(d, gap, hold);
-  })();
+  // Target rate — the cadence the ENGINE will produce, not 1000/delay: the interval is part of
+  // the period and the hold can cap it. One reading shared with the dashboard and the empty
+  // state (describeClickerConfig), so the three surfaces cannot disagree by construction.
+  const clickerTargetCps = describeClickerConfig(settings).rateCps;
 
   return (
     <div className="flex items-center h-[26px] px-4 bg-bg-base border-t border-border-subtle shrink-0 text-[11px] font-small">
@@ -199,6 +193,22 @@ export function StatusBar() {
               <strong className="text-text-primary">{rateLabel}/s</strong>
               <span className="text-text-disabled">·</span>
               <span className="flex items-center gap-1 text-text-secondary"><Clock size={10} />{clickerElapsed}</span>
+              {/* The window under the cursor runs elevated and we do not: SendInput says yes,
+                  Windows drops the click, and the counter keeps climbing. This bar is often the
+                  only part of the window visible behind the target, so it carries the word. */}
+              {clickerStats.warning === 'elevatedTarget' && (
+                <>
+                  <div className="w-px h-3 bg-border-subtle shrink-0" />
+                  <span
+                    className="flex items-center gap-1 text-[11px] font-medium whitespace-nowrap"
+                    style={{ color: 'var(--color-warning-ink)' }}
+                    data-tip={tt('The window under the cursor runs as administrator — Windows drops these clicks. Run TrueReplayer as administrator.', 'A janela sob o cursor roda como administrador — o Windows descarta esses cliques. Rode o TrueReplayer como administrador.')}
+                  >
+                    <AlertTriangle size={10} className="shrink-0" />
+                    elevated target
+                  </span>
+                </>
+              )}
               {/* Pause was drawn only in the macro branch, so a paused clicker showed frozen
                   stats with nothing saying why — and this bar is usually the only part of the
                   window visible behind a game. */}

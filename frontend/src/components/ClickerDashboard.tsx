@@ -147,6 +147,15 @@ export function ClickerDashboard() {
         </div>
       )}
 
+      {/* UIPI: the window under the cursor runs elevated and we do not. SendInput says yes and
+          Windows drops the click — the one failure the counter cannot see (see ClickerButton),
+          found by comparing integrity levels at the stats cadence (ProcessIntegrity). */}
+      {clickerStats.warning === 'elevatedTarget' && (
+        <div className="text-[11px] font-medium text-center max-w-[480px]" style={{ color: 'var(--color-warning-ink)' }}>
+          {'The window under the cursor runs as administrator — Windows drops these clicks. Run TrueReplayer as administrator.'}
+        </div>
+      )}
+
       {/* Pause — only while actively clicking and not already paused (pausing a countdown
           would be a stall with nothing to resume into). Pausing freezes the loop (and excludes
           the paused span from CPS); the overlay's Resume button below resumes it. */}

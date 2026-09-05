@@ -339,6 +339,10 @@ namespace TrueReplayer
             {
                 bridge?.PushClickerEnded(reason, blocked);
             };
+            replayService.OnClickerWarning = code =>
+            {
+                bridge?.PushClickerWarning(code);
+            };
 
             // Macro loop counter — forward "Loop X/Y" progress for looping replays. Same
             // throttle story as OnClickerStats; only fires on multi-iteration or infinite

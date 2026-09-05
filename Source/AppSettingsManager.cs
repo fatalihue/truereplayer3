@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using TrueReplayer.Models;
@@ -94,6 +95,9 @@ namespace TrueReplayer.Services
             // Default PageDown = Start/Stop, PageUp = Pause/Resume. Active only in Clicker mode.
             public string CursorClickStartHotkey { get; set; } = "PageDown";
             public string CursorClickPauseHotkey { get; set; } = "PageUp";
+            // Named snapshots of the Clicker settings above (WebViewBridge.HandleSaveClickerPreset).
+            // Absent on an older appsettings.json → empty list, no migration.
+            public List<ClickerPreset> ClickerPresets { get; set; } = new();
             // Recording
             public bool RecordMouse { get; set; } = true;
             public bool RecordScroll { get; set; } = true;
@@ -128,6 +132,39 @@ namespace TrueReplayer.Services
             // the user ticks "Don't show again" on the warning dialog. Saved to appsettings.json
             // so it survives reinstalls (same Documents folder as the rest of the file).
             public bool HasAcknowledgedImportWarning { get; set; } = false;
+        }
+
+        // One saved Clicker setup. Ints and bools like AppSettings (the bridge mirrors are strings
+        // for the textbox-backed fields; a preset stores what the engine reads). The "where" modes
+        // are stored as saved — the bridge re-applies the Area > Fixed > Position mutex on apply,
+        // so a hand-edited file cannot switch two of them on at once. Serialized through the same
+        // source-generated context as AppSettings (the generator follows property types).
+        public class ClickerPreset
+        {
+            public string Name { get; set; } = "";
+            public string Button { get; set; } = "Left";
+            public int DelayMs { get; set; } = 100;
+            public int DelayJitterPct { get; set; } = 1;
+            public bool UseJitter { get; set; }
+            public int HoldMs { get; set; } = 10;
+            public int PositionJitter { get; set; } = 1;
+            public bool UsePositionJitter { get; set; }
+            public bool UseArea { get; set; }
+            public int AreaX { get; set; }
+            public int AreaY { get; set; }
+            public int AreaW { get; set; }
+            public int AreaH { get; set; }
+            public bool UseFixed { get; set; }
+            public bool FixedPointSet { get; set; }
+            public int FixedX { get; set; }
+            public int FixedY { get; set; }
+            public int Loops { get; set; }
+            public bool UseLoops { get; set; }
+            public int IntervalMs { get; set; } = 200;
+            public bool UseInterval { get; set; }
+            public int MaxDurationMs { get; set; } = 60000;
+            public bool UseMaxDuration { get; set; }
+            public bool GameMove { get; set; }
         }
 
         public static void Save(AppSettings settings)

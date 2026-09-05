@@ -227,6 +227,19 @@ namespace TrueReplayer.Interop
 
         public const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
+        // Token plumbing for ProcessIntegrity — "is the window under the Clicker's cursor
+        // elevated while we are not?". TOKEN_QUERY on a limited process handle is all that
+        // TokenElevation needs.
+        public const uint TOKEN_QUERY = 0x0008;
+        public const int TokenElevation = 20;
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        public static extern bool OpenProcessToken(IntPtr processHandle, uint desiredAccess, out IntPtr tokenHandle);
+
+        // TokenElevation writes a TOKEN_ELEVATION — a single DWORD (TokenIsElevated).
+        [DllImport("advapi32.dll", SetLastError = true)]
+        public static extern bool GetTokenInformation(IntPtr tokenHandle, int tokenInformationClass, out uint tokenInformation, uint tokenInformationLength, out uint returnLength);
+
         [DllImport("user32.dll")]
         public static extern IntPtr WindowFromPoint(POINT point);
 

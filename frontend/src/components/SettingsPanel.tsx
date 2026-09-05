@@ -12,6 +12,8 @@ import { Toggle } from './common/Toggle';
 import { SegmentedControl } from './common/SegmentedControl';
 import { iconButtonClass } from './common/IconButton';
 import { KbdTag } from './common/KbdTag';
+import { ClickerPresetRow } from './ClickerPresetRow';
+import type { SettingsState } from '../bridge/messageTypes';
 import { chipOn, chipOff, chipDotOn, chipDotOff } from './common/chipStyles';
 import { formatMs } from '../utils/displayUtils';
 import { CLICK_HOLD_MAX_MS, CLICK_PERIOD_FLOOR_MS, delayForCps, effectiveCps, formatRate, holdCapsRate, maxCps } from '../utils/clickerFormat';
@@ -441,34 +443,35 @@ function ComboInput({ value, onCommit, options, width = FIELD_W, editable = true
 // so it's fully decoupled from the active profile's Delay/Jitter/Loop settings. Visual
 // identity: the purple section title so the user immediately sees "I'm configuring
 // Clicker, not the macro profile".
-function ClickerSection({
-  unit, onUnitChange,
-  button, rate, rateJitter, useRateJitter, hold, positionJitter, usePositionJitter,
-  useArea, area, useFixed, fixedPoint,
-  loops, useLoops, interval, useInterval, maxDuration, useMaxDuration, gameMove, onChange,
-}: {
+// Takes the whole settings slice rather than 22 mirrored props: every new Clicker setting used
+// to touch four places in this file (prop, type, destructure, call site) before it did anything.
+// The local names below are the ones the body always used, so it reads as before.
+function ClickerSection({ unit, onUnitChange, settings, onChange }: {
   unit: 'ms' | 'cps';
   onUnitChange: (u: 'ms' | 'cps') => void;
-  button: string;
-  rate: string;
-  rateJitter: string;
-  useRateJitter: boolean;
-  hold: string;
-  positionJitter: string;
-  usePositionJitter: boolean;
-  useArea: boolean;
-  area: { x: number; y: number; w: number; h: number } | null;
-  useFixed: boolean;
-  fixedPoint: { x: number; y: number } | null;
-  loops: string;
-  useLoops: boolean;
-  interval: string;
-  useInterval: boolean;
-  maxDuration: string;
-  useMaxDuration: boolean;
-  gameMove: boolean;
+  settings: SettingsState;
   onChange: (key: string, value: string | boolean | number | object | null) => void;
 }) {
+  const {
+    cursorClickButton: button,
+    cursorClickDelay: rate,
+    cursorClickDelayJitter: rateJitter,
+    cursorClickUseJitter: useRateJitter,
+    cursorClickHold: hold,
+    cursorClickPositionJitter: positionJitter,
+    cursorClickUsePositionJitter: usePositionJitter,
+    cursorClickUseArea: useArea,
+    cursorClickArea: area,
+    cursorClickUseFixed: useFixed,
+    cursorClickFixedPoint: fixedPoint,
+    cursorClickLoops: loops,
+    cursorClickUseLoops: useLoops,
+    cursorClickInterval: interval,
+    cursorClickUseInterval: useInterval,
+    cursorClickMaxDuration: maxDuration,
+    cursorClickUseMaxDuration: useMaxDuration,
+    cursorClickGameMove: gameMove,
+  } = settings;
   const { send } = useBridge();
   const tt = useTt();
   // Unit toggle for the Rate row: 'ms' shows the raw delay; '/s' shows the clicks per second
@@ -557,6 +560,11 @@ function ClickerSection({
               so chips, combos and the area control all line up — and match the macro Execution
               chips' width across a mode switch. Value+enable rows are a single EnableChip;
               Button/Rate are pickers; Area is chip-shaped (dot + picker). */}
+          {/* Presets — named snapshots of every row below. Everything Clicker is global and
+              Save/Load are disabled in this mode, so this is the only way to keep two setups. */}
+          <SettingRow label="Preset" tooltip={tt('Save the current Clicker settings under a name, or apply a saved one. Custom = no saved preset matches.', 'Salve as configurações atuais do Clicker com um nome, ou aplique uma salva. Custom = nenhum preset salvo bate.')}>
+            <ClickerPresetRow settings={settings} width={FIELD_W} />
+          </SettingRow>
           {/* Mouse button picker — moved here from the ActionBar so the panel is the single
               source of truth for "every Clicker setting". Left/Right/Middle, always applied. */}
           <SettingRow label="Button" tooltip={tt('Mouse button to click', 'Botão do mouse a clicar')}>
@@ -1332,24 +1340,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                    visited another tab or narrowed the window. */
                 unit={clickerUnit}
                 onUnitChange={setClickerUnit}
-                button={settings.cursorClickButton}
-                rate={settings.cursorClickDelay}
-                rateJitter={settings.cursorClickDelayJitter}
-                useRateJitter={settings.cursorClickUseJitter}
-                hold={settings.cursorClickHold}
-                positionJitter={settings.cursorClickPositionJitter}
-                usePositionJitter={settings.cursorClickUsePositionJitter}
-                useArea={settings.cursorClickUseArea}
-                area={settings.cursorClickArea}
-                useFixed={settings.cursorClickUseFixed}
-                fixedPoint={settings.cursorClickFixedPoint}
-                loops={settings.cursorClickLoops}
-                useLoops={settings.cursorClickUseLoops}
-                interval={settings.cursorClickInterval}
-                useInterval={settings.cursorClickUseInterval}
-                maxDuration={settings.cursorClickMaxDuration}
-                useMaxDuration={settings.cursorClickUseMaxDuration}
-                gameMove={settings.cursorClickGameMove}
+                settings={settings}
                 onChange={changeSetting}
               />
             ) : (

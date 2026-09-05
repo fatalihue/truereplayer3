@@ -462,6 +462,11 @@ namespace TrueReplayer.Services
         // ResetReplayState — the dashboard used to say "finished" for a cancelled run too.
         public Action<string, long>? OnClickerEnded;
 
+        // Live warning about the target: "elevatedTarget" when the root window under the cursor
+        // runs elevated and this process does not (UIPI drops every click while SendInput says
+        // yes — see ProcessIntegrity), null when the cursor is back over a normal window.
+        public Action<string?>? OnClickerWarning;
+
         // Macro loop counter — re-exposed from the inner ActionReplayer. Fired only for
         // genuine loops (LoopCount > 1 or infinite); single-shot replays never trigger it.
         // total == 0 signals infinite loop. Frontend renders "Loop X/Y" or "Loop X/∞".
@@ -714,6 +719,14 @@ namespace TrueReplayer.Services
                     long nextTickMs = 0;
                     bool durationCapped = false;
 
+                    // Elevated-target probe. Runs at the stats cadence (4 Hz), and the token is
+                    // only queried when the ROOT window under the cursor changes: WindowFromPoint
+                    // is cheap, OpenProcess/OpenProcessToken are not. Skipped entirely when we run
+                    // elevated ourselves — UIPI never blocks a high-integrity sender.
+                    bool probeElevation = !ProcessIntegrity.SelfElevated;
+                    IntPtr lastRootHwnd = IntPtr.Zero;
+                    bool reportedElevated = false;
+
                     while (!token.IsCancellationRequested && (isInfinite || iteration < loopCount))
                     {
                         // Duration cap, checked before committing to another click. The elapsed
@@ -875,6 +888,26 @@ namespace TrueReplayer.Services
                             var snapshotCount = clickCount;
                             var snapshotElapsed = elapsedMs;
                             dispatcherQueue.TryEnqueue(() => OnClickerStats?.Invoke(snapshotCount, snapshotElapsed, maxDurationMs));
+
+                            // The one failure the counter above cannot see: the click landed on an
+                            // elevated window. Reported on the CHANGE, in both directions, so the
+                            // dashboard line follows the cursor rather than latching for the run.
+                            if (probeElevation)
+                            {
+                                var root = ProcessIntegrity.RootWindowAt(targetX, targetY);
+                                if (root != lastRootHwnd)
+                                {
+                                    lastRootHwnd = root;
+                                    bool elevated = ProcessIntegrity.IsWindowElevated(root) == true;
+                                    if (elevated != reportedElevated)
+                                    {
+                                        reportedElevated = elevated;
+                                        if (elevated)
+                                            DiagnosticLog.Warn("Clicker: the window under the cursor runs elevated and this process does not — SendInput reports success but UIPI drops every click. Run TrueReplayer as administrator.");
+                                        dispatcherQueue.TryEnqueue(() => OnClickerWarning?.Invoke(elevated ? "elevatedTarget" : null));
+                                    }
+                                }
+                            }
 
                             // Loop progress for genuine loops only (single-shot keeps "—").
                             // total=0 signals infinite — matches Macro engine convention.

@@ -121,13 +121,19 @@ namespace TrueReplayer
         public ClickPoint? CursorClickFixedPoint { get; set; }
         public string CursorClickLoops { get; set; } = "0";
         public bool CursorClickUseLoops { get; set; } = false;
-        public string CursorClickInterval { get; set; } = "0";
+        // "200" like AppSettings.CursorClickIntervalMs and the frontend default — the three used
+        // to disagree ("0" here). Overwritten on load; the default only matters before it.
+        public string CursorClickInterval { get; set; } = "200";
         public bool CursorClickUseInterval { get; set; } = false;
         // Wall-clock cap, in MS on the wire (the panel converts to seconds for display).
         public string CursorClickMaxDuration { get; set; } = "60000";
         public bool CursorClickUseMaxDuration { get; set; } = false;
         // See AppSettings.CursorClickGameMove.
         public bool CursorClickGameMove { get; set; } = false;
+        // Named snapshots of the Clicker settings above. Global like everything Clicker: profiles
+        // are unavailable in that mode, so this is the only way to keep two setups without
+        // retyping. This list IS the persisted one (SaveGlobalSettings writes it back as is).
+        public List<AppSettingsManager.ClickerPreset> ClickerPresets { get; set; } = new();
         public bool RecordMouse { get; set; } = true;
         public bool RecordScroll { get; set; } = true;
         public bool RecordKeyboard { get; set; } = true;
@@ -668,6 +674,7 @@ namespace TrueReplayer
             CursorClickMaxDuration = ClampNumeric(saved.CursorClickMaxDurationMs.ToString(), 1000, 86400000, 60000);
             CursorClickUseMaxDuration = saved.CursorClickUseMaxDuration;
             CursorClickGameMove = saved.CursorClickGameMove;
+            ClickerPresets = saved.ClickerPresets ?? new();
             RecordMouse = saved.RecordMouse;
             RecordScroll = saved.RecordScroll;
             RecordKeyboard = saved.RecordKeyboard;
@@ -784,6 +791,9 @@ namespace TrueReplayer
                     case "waitimage:configureSearchRegion": _ = HandleConfigureSearchRegionAsync(payload); break;
                     case "clicker:configureArea": _ = HandleConfigureClickAreaAsync(payload); break;
                     case "clicker:configurePoint": _ = HandleConfigureClickPointAsync(payload); break;
+                    case "clicker:savePreset": HandleSaveClickerPreset(payload); break;
+                    case "clicker:applyPreset": HandleApplyClickerPreset(payload); break;
+                    case "clicker:deletePreset": HandleDeleteClickerPreset(payload); break;
                     case "waitimage:cropReference": HandleCropReference(payload); break;
                     case "image:testMatch": _ = HandleTestMatchAsync(payload); break;
                     case "mouse:pickPosition": _ = HandleMousePickPositionAsync(payload); break;
@@ -2334,6 +2344,109 @@ namespace TrueReplayer
                 CursorClickGameMove, startDelay);
         }
 
+        /// <summary>
+        /// The ONE projection of the settings slice, behind both emitters (settings:loaded and the
+        /// state:init cold-start blob). It used to be two hand-written copies of ~60 fields, and
+        /// the Clicker's 24 among them had to be edited twice per feature (the memory of "BOTH
+        /// settings-push sites, replace_all" is exactly that cost). Same reason ProjectProfileLoop
+        /// and BuildAutomationStatePayload exist: every duplicated DTO in this file has drifted.
+        /// </summary>
+        private object ProjectSettings(UserProfile profile, AppSettingsManager.AppSettings appSettings)
+        {
+            return new
+            {
+                customDelay = CustomDelay,
+                useCustomDelay = UseCustomDelay,
+                delayVariation = DelayVariation,
+                useDelayVariation = UseDelayVariation,
+                loopCount = LoopCount,
+                enableLoop = EnableLoop,
+                loopInterval = LoopInterval,
+                loopIntervalEnabled = LoopIntervalEnabled,
+                smoothMovement = ActionReplayer.SmoothMovement,
+                moveStepPx = ActionReplayer.MoveStepPx.ToString(),
+                moveStepDelay = ActionReplayer.MoveStepDelayMs.ToString(),
+                moveClickDelay = ActionReplayer.MoveClickDelayMs.ToString(),
+                fastApproach = ActionReplayer.FastApproach,
+                settleDistance = ActionReplayer.SettleDistancePx.ToString(),
+                useCursorClick = UseCursorClick,
+                cursorClickButton = CursorClickButton,
+                cursorClickStartHotkey = CursorClickStartHotkey,
+                cursorClickPauseHotkey = CursorClickPauseHotkey,
+                cursorClickDelay = CursorClickDelay,
+                cursorClickDelayJitter = CursorClickDelayJitter,
+                cursorClickUseJitter = CursorClickUseJitter,
+                cursorClickHold = CursorClickHold,
+                cursorClickPositionJitter = CursorClickPositionJitter,
+                cursorClickUsePositionJitter = CursorClickUsePositionJitter,
+                cursorClickUseArea = CursorClickUseArea,
+                cursorClickArea = CursorClickArea is { } a
+                    ? (object)new { x = a.X, y = a.Y, w = a.W, h = a.H }
+                    : null,
+                cursorClickUseFixed = CursorClickUseFixed,
+                cursorClickFixedPoint = CursorClickFixedPoint is { } fp
+                    ? (object)new { x = fp.X, y = fp.Y }
+                    : null,
+                cursorClickLoops = CursorClickLoops,
+                cursorClickUseLoops = CursorClickUseLoops,
+                cursorClickInterval = CursorClickInterval,
+                cursorClickUseInterval = CursorClickUseInterval,
+                cursorClickMaxDuration = CursorClickMaxDuration,
+                cursorClickUseMaxDuration = CursorClickUseMaxDuration,
+                cursorClickGameMove = CursorClickGameMove,
+                // Presets in the SAME shapes the settings above use (numbers as strings, the same
+                // area/point objects), so the panel can tell which preset is active with a plain
+                // field-by-field comparison and no second vocabulary.
+                cursorClickPresets = ClickerPresets.Select(p => new
+                {
+                    name = p.Name,
+                    cursorClickButton = p.Button,
+                    cursorClickDelay = p.DelayMs.ToString(),
+                    cursorClickDelayJitter = p.DelayJitterPct.ToString(),
+                    cursorClickUseJitter = p.UseJitter,
+                    cursorClickHold = p.HoldMs.ToString(),
+                    cursorClickPositionJitter = p.PositionJitter.ToString(),
+                    cursorClickUsePositionJitter = p.UsePositionJitter,
+                    cursorClickUseArea = p.UseArea,
+                    cursorClickArea = p.AreaW > 0 && p.AreaH > 0
+                        ? (object)new { x = p.AreaX, y = p.AreaY, w = p.AreaW, h = p.AreaH }
+                        : null,
+                    cursorClickUseFixed = p.UseFixed,
+                    cursorClickFixedPoint = p.FixedPointSet
+                        ? (object)new { x = p.FixedX, y = p.FixedY }
+                        : null,
+                    cursorClickLoops = p.Loops.ToString(),
+                    cursorClickUseLoops = p.UseLoops,
+                    cursorClickInterval = p.IntervalMs.ToString(),
+                    cursorClickUseInterval = p.UseInterval,
+                    cursorClickMaxDuration = p.MaxDurationMs.ToString(),
+                    cursorClickUseMaxDuration = p.UseMaxDuration,
+                    cursorClickGameMove = p.GameMove,
+                }).ToArray(),
+                recordMouse = RecordMouse,
+                recordScroll = RecordScroll,
+                recordKeyboard = RecordKeyboard,
+                recordCombinedInput = RecordCombinedInput,
+                profileKeyEnabled = ProfileKeyEnabled,
+                browserSelectorEnabled = BrowserSelectorEnabled,
+                recordingHotkey = profile.RecordingHotkey,
+                replayHotkey = profile.ReplayHotkey,
+                profileKeyToggleHotkey = profile.ProfileKeyToggleHotkey,
+                foregroundHotkey = profile.ForegroundHotkey,
+                modeToggleHotkey = profile.ModeToggleHotkey,
+                captureSlotHotkey = profile.CaptureSlotHotkey,
+                alwaysOnTop = profile.AlwaysOnTop,
+                minimizeToTray = profile.MinimizeToTray,
+                runOnStartup = appSettings.RunOnStartup,
+                startMinimized = profile.StartMinimized,
+                runEndFlash = profile.RunEndFlash,
+                runEndSound = profile.RunEndSound,
+                runAsAdmin = appSettings.RunAsAdmin,
+                automationEnabled = profile.AutomationEnabled,
+                remaps = ProjectRemaps()
+            };
+        }
+
         // Optional instance = same-handler pass-through from SaveGlobalSettings ONLY — never a
         // cache held across handlers (appsettings.json is hand-editable; a stale copy would win).
         public void PushSettingsLoaded(AppSettingsManager.AppSettings? appSettings = null)
@@ -2346,69 +2459,7 @@ namespace TrueReplayer
             appSettings ??= AppSettingsManager.Load();
             SendMessage("settings:loaded", new
             {
-                settings = new
-                {
-                    customDelay = CustomDelay,
-                    useCustomDelay = UseCustomDelay,
-                    delayVariation = DelayVariation,
-                    useDelayVariation = UseDelayVariation,
-                    loopCount = LoopCount,
-                    enableLoop = EnableLoop,
-                    loopInterval = LoopInterval,
-                    loopIntervalEnabled = LoopIntervalEnabled,
-                    smoothMovement = ActionReplayer.SmoothMovement,
-                    moveStepPx = ActionReplayer.MoveStepPx.ToString(),
-                    moveStepDelay = ActionReplayer.MoveStepDelayMs.ToString(),
-                    moveClickDelay = ActionReplayer.MoveClickDelayMs.ToString(),
-                    fastApproach = ActionReplayer.FastApproach,
-                    settleDistance = ActionReplayer.SettleDistancePx.ToString(),
-                    useCursorClick = UseCursorClick,
-                    cursorClickButton = CursorClickButton,
-                    cursorClickStartHotkey = CursorClickStartHotkey,
-                    cursorClickPauseHotkey = CursorClickPauseHotkey,
-                    cursorClickDelay = CursorClickDelay,
-                    cursorClickDelayJitter = CursorClickDelayJitter,
-                    cursorClickUseJitter = CursorClickUseJitter,
-                    cursorClickHold = CursorClickHold,
-                    cursorClickPositionJitter = CursorClickPositionJitter,
-                    cursorClickUsePositionJitter = CursorClickUsePositionJitter,
-                    cursorClickUseArea = CursorClickUseArea,
-                    cursorClickArea = CursorClickArea is { } a
-                        ? (object)new { x = a.X, y = a.Y, w = a.W, h = a.H }
-                        : null,
-                    cursorClickUseFixed = CursorClickUseFixed,
-                    cursorClickFixedPoint = CursorClickFixedPoint is { } fp
-                        ? (object)new { x = fp.X, y = fp.Y }
-                        : null,
-                    cursorClickLoops = CursorClickLoops,
-                    cursorClickUseLoops = CursorClickUseLoops,
-                    cursorClickInterval = CursorClickInterval,
-                    cursorClickUseInterval = CursorClickUseInterval,
-                    cursorClickMaxDuration = CursorClickMaxDuration,
-                    cursorClickUseMaxDuration = CursorClickUseMaxDuration,
-                    cursorClickGameMove = CursorClickGameMove,
-                    recordMouse = RecordMouse,
-                    recordScroll = RecordScroll,
-                    recordKeyboard = RecordKeyboard,
-                    recordCombinedInput = RecordCombinedInput,
-                    profileKeyEnabled = ProfileKeyEnabled,
-                    browserSelectorEnabled = BrowserSelectorEnabled,
-                    recordingHotkey = profile.RecordingHotkey,
-                    replayHotkey = profile.ReplayHotkey,
-                    profileKeyToggleHotkey = profile.ProfileKeyToggleHotkey,
-                    foregroundHotkey = profile.ForegroundHotkey,
-                    modeToggleHotkey = profile.ModeToggleHotkey,
-                    captureSlotHotkey = profile.CaptureSlotHotkey,
-                    alwaysOnTop = profile.AlwaysOnTop,
-                    minimizeToTray = profile.MinimizeToTray,
-                    runOnStartup = appSettings.RunOnStartup,
-                    startMinimized = profile.StartMinimized,
-                    runEndFlash = profile.RunEndFlash,
-                    runEndSound = profile.RunEndSound,
-                    runAsAdmin = appSettings.RunAsAdmin,
-                    automationEnabled = profile.AutomationEnabled,
-                    remaps = ProjectRemaps()
-                }
+                settings = ProjectSettings(profile, appSettings)
             });
         }
 
@@ -2847,69 +2898,7 @@ namespace TrueReplayer
                     }).ToArray(),
                     ungroupedOrder = profileController.GetProfileOrder().UngroupedOrder
                 },
-                settings = new
-                {
-                    customDelay = CustomDelay,
-                    useCustomDelay = UseCustomDelay,
-                    delayVariation = DelayVariation,
-                    useDelayVariation = UseDelayVariation,
-                    loopCount = LoopCount,
-                    enableLoop = EnableLoop,
-                    loopInterval = LoopInterval,
-                    loopIntervalEnabled = LoopIntervalEnabled,
-                    smoothMovement = ActionReplayer.SmoothMovement,
-                    moveStepPx = ActionReplayer.MoveStepPx.ToString(),
-                    moveStepDelay = ActionReplayer.MoveStepDelayMs.ToString(),
-                    moveClickDelay = ActionReplayer.MoveClickDelayMs.ToString(),
-                    fastApproach = ActionReplayer.FastApproach,
-                    settleDistance = ActionReplayer.SettleDistancePx.ToString(),
-                    useCursorClick = UseCursorClick,
-                    cursorClickButton = CursorClickButton,
-                    cursorClickStartHotkey = CursorClickStartHotkey,
-                    cursorClickPauseHotkey = CursorClickPauseHotkey,
-                    cursorClickDelay = CursorClickDelay,
-                    cursorClickDelayJitter = CursorClickDelayJitter,
-                    cursorClickUseJitter = CursorClickUseJitter,
-                    cursorClickHold = CursorClickHold,
-                    cursorClickPositionJitter = CursorClickPositionJitter,
-                    cursorClickUsePositionJitter = CursorClickUsePositionJitter,
-                    cursorClickUseArea = CursorClickUseArea,
-                    cursorClickArea = CursorClickArea is { } a
-                        ? (object)new { x = a.X, y = a.Y, w = a.W, h = a.H }
-                        : null,
-                    cursorClickUseFixed = CursorClickUseFixed,
-                    cursorClickFixedPoint = CursorClickFixedPoint is { } fp
-                        ? (object)new { x = fp.X, y = fp.Y }
-                        : null,
-                    cursorClickLoops = CursorClickLoops,
-                    cursorClickUseLoops = CursorClickUseLoops,
-                    cursorClickInterval = CursorClickInterval,
-                    cursorClickUseInterval = CursorClickUseInterval,
-                    cursorClickMaxDuration = CursorClickMaxDuration,
-                    cursorClickUseMaxDuration = CursorClickUseMaxDuration,
-                    cursorClickGameMove = CursorClickGameMove,
-                    recordMouse = RecordMouse,
-                    recordScroll = RecordScroll,
-                    recordKeyboard = RecordKeyboard,
-                    recordCombinedInput = RecordCombinedInput,
-                    profileKeyEnabled = ProfileKeyEnabled,
-                    browserSelectorEnabled = BrowserSelectorEnabled,
-                    recordingHotkey = profile.RecordingHotkey,
-                    replayHotkey = profile.ReplayHotkey,
-                    profileKeyToggleHotkey = profile.ProfileKeyToggleHotkey,
-                    foregroundHotkey = profile.ForegroundHotkey,
-                    modeToggleHotkey = profile.ModeToggleHotkey,
-                    captureSlotHotkey = profile.CaptureSlotHotkey,
-                    alwaysOnTop = profile.AlwaysOnTop,
-                    minimizeToTray = profile.MinimizeToTray,
-                    runOnStartup = appSettings.RunOnStartup,
-                    startMinimized = profile.StartMinimized,
-                    runEndFlash = profile.RunEndFlash,
-                    runEndSound = profile.RunEndSound,
-                    runAsAdmin = appSettings.RunAsAdmin,
-                    automationEnabled = profile.AutomationEnabled,
-                    remaps = ProjectRemaps()
-                },
+                settings = ProjectSettings(profile, appSettings),
                 // Cold-start automation state — MUST mirror PushAutomationState (same builder,
                 // so it can't drift). Without it the panel seeds empty until the first push.
                 automation = BuildAutomationStatePayload(),
@@ -4515,6 +4504,14 @@ namespace TrueReplayer
         public void PushClickerEnded(string reason, long blocked)
         {
             SendMessage("clicker:ended", new { reason, blocked });
+        }
+
+        // "elevatedTarget" while the root window under the cursor runs elevated and we do not;
+        // null when it is a normal window again. JsonOptions drop null properties, so the
+        // clearing message arrives as an empty payload — the frontend reads a missing code as null.
+        public void PushClickerWarning(string? code)
+        {
+            SendMessage("clicker:warning", new { code });
         }
 
         // Macro loop counter — "Loop X/Y" in the StatusBar during a looping replay. Same
@@ -6554,6 +6551,108 @@ namespace TrueReplayer
             CursorClickUsePositionJitter = false;
             SaveGlobalSettings();
             PushSettingsLoaded();
+        }
+
+        // ── Clicker presets ─────────────────────────────────────────────────────────────────
+        // Named snapshots of the Clicker settings. Everything Clicker is global (profiles are
+        // unavailable in that mode), so without these a user who alternates two setups retypes
+        // every field. Names match case-insensitively; saving over an existing name replaces it.
+        private const int MaxClickerPresets = 24;
+        private const int MaxClickerPresetNameLength = 40;
+
+        private static string? ReadPresetName(JsonElement payload)
+        {
+            if (!payload.TryGetProperty("name", out var el) || el.ValueKind != JsonValueKind.String) return null;
+            var name = (el.GetString() ?? "").Trim();
+            if (name.Length == 0) return null;
+            return name.Length > MaxClickerPresetNameLength ? name[..MaxClickerPresetNameLength] : name;
+        }
+
+        private AppSettingsManager.ClickerPreset? FindClickerPreset(string name)
+            => ClickerPresets.FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
+
+        private void HandleSaveClickerPreset(JsonElement payload)
+        {
+            var name = ReadPresetName(payload);
+            if (name == null) return;
+            var existing = FindClickerPreset(name);
+            if (existing == null && ClickerPresets.Count >= MaxClickerPresets)
+            {
+                SendMessage("alert:show", new { message = $"Clicker presets are limited to {MaxClickerPresets}. Delete one to save another." });
+                return;
+            }
+            // Snapshot the mirrors with the same parse-and-clamp the save path uses, so a preset
+            // can never hold a value the engine would refuse.
+            var snap = new AppSettingsManager.ClickerPreset
+            {
+                Name = existing?.Name ?? name,
+                Button = CursorClickButton,
+                DelayMs = Math.Clamp(int.TryParse(CursorClickDelay, out var d) ? d : 100, 1, 60000),
+                DelayJitterPct = Math.Clamp(int.TryParse(CursorClickDelayJitter, out var jp) ? jp : 1, 0, 100),
+                UseJitter = CursorClickUseJitter,
+                HoldMs = Math.Clamp(int.TryParse(CursorClickHold, out var h) ? h : 10, 0, 2000),
+                PositionJitter = Math.Clamp(int.TryParse(CursorClickPositionJitter, out var pj) ? pj : 1, 0, 500),
+                UsePositionJitter = CursorClickUsePositionJitter,
+                UseArea = CursorClickUseArea,
+                AreaX = CursorClickArea?.X ?? 0,
+                AreaY = CursorClickArea?.Y ?? 0,
+                AreaW = CursorClickArea?.W ?? 0,
+                AreaH = CursorClickArea?.H ?? 0,
+                UseFixed = CursorClickUseFixed,
+                FixedPointSet = CursorClickFixedPoint is not null,
+                FixedX = CursorClickFixedPoint?.X ?? 0,
+                FixedY = CursorClickFixedPoint?.Y ?? 0,
+                Loops = Math.Clamp(int.TryParse(CursorClickLoops, out var lc) ? lc : 0, 0, 100000),
+                UseLoops = CursorClickUseLoops,
+                IntervalMs = Math.Clamp(int.TryParse(CursorClickInterval, out var li) ? li : 0, 0, 60000),
+                UseInterval = CursorClickUseInterval,
+                MaxDurationMs = Math.Clamp(int.TryParse(CursorClickMaxDuration, out var md) ? md : 60000, 1000, 86400000),
+                UseMaxDuration = CursorClickUseMaxDuration,
+                GameMove = CursorClickGameMove,
+            };
+            if (existing != null) ClickerPresets[ClickerPresets.IndexOf(existing)] = snap;
+            else ClickerPresets.Add(snap);
+            DiagnosticLog.Info($"Clicker preset saved: \"{snap.Name}\" ({ClickerPresets.Count} total).");
+            PushSettingsLoaded(SaveGlobalSettings());
+        }
+
+        private void HandleApplyClickerPreset(JsonElement payload)
+        {
+            var name = ReadPresetName(payload);
+            var p = name == null ? null : FindClickerPreset(name);
+            if (p == null) return;
+            CursorClickButton = p.Button is "Left" or "Right" or "Middle" ? p.Button : "Left";
+            CursorClickDelay = ClampNumeric(p.DelayMs.ToString(), 1, 60000, 100);
+            CursorClickDelayJitter = ClampNumeric(p.DelayJitterPct.ToString(), 0, 100, 1);
+            CursorClickUseJitter = p.UseJitter;
+            CursorClickHold = ClampNumeric(p.HoldMs.ToString(), 0, 2000, 10);
+            CursorClickPositionJitter = ClampNumeric(p.PositionJitter.ToString(), 0, 500, 1);
+            // The three "where" modes are a mutex. A preset saved through the UI already respects
+            // it; a hand-edited appsettings.json might not — Area wins, then Fixed, like the engine.
+            CursorClickArea = p.AreaW > 0 && p.AreaH > 0 ? new ClickArea(p.AreaX, p.AreaY, p.AreaW, p.AreaH) : null;
+            CursorClickUseArea = p.UseArea && CursorClickArea is not null;
+            CursorClickFixedPoint = p.FixedPointSet ? new ClickPoint(p.FixedX, p.FixedY) : null;
+            CursorClickUseFixed = p.UseFixed && !CursorClickUseArea;
+            CursorClickUsePositionJitter = p.UsePositionJitter && !CursorClickUseArea && !CursorClickUseFixed;
+            CursorClickLoops = ClampNumeric(p.Loops.ToString(), 0, 100000, 0);
+            CursorClickUseLoops = p.UseLoops;
+            CursorClickInterval = ClampNumeric(p.IntervalMs.ToString(), 0, 60000, 0);
+            CursorClickUseInterval = p.UseInterval;
+            CursorClickMaxDuration = ClampNumeric(p.MaxDurationMs.ToString(), 1000, 86400000, 60000);
+            CursorClickUseMaxDuration = p.UseMaxDuration;
+            CursorClickGameMove = p.GameMove;
+            DiagnosticLog.Info($"Clicker preset applied: \"{p.Name}\".");
+            PushSettingsLoaded(SaveGlobalSettings());
+        }
+
+        private void HandleDeleteClickerPreset(JsonElement payload)
+        {
+            var name = ReadPresetName(payload);
+            var p = name == null ? null : FindClickerPreset(name);
+            if (p == null) return;
+            ClickerPresets.Remove(p);
+            DiagnosticLog.Info($"Clicker preset deleted: \"{p.Name}\" ({ClickerPresets.Count} left).");
+            PushSettingsLoaded(SaveGlobalSettings());
         }
 
         private void HandleDuplicateActions(JsonElement payload)
@@ -9855,6 +9954,8 @@ namespace TrueReplayer
                 CursorClickMaxDurationMs = 60000,
                 CursorClickUseMaxDuration = false,
                 CursorClickGameMove = false,
+                // Presets are the user's own data, not a value to restore — kept, like the mode.
+                ClickerPresets = ClickerPresets,
             };
             AppSettingsManager.Save(defaults);
 
@@ -10008,6 +10109,7 @@ namespace TrueReplayer
                 CursorClickMaxDurationMs = int.TryParse(CursorClickMaxDuration, out var mdSave) ? mdSave : 60000,
                 CursorClickUseMaxDuration = CursorClickUseMaxDuration,
                 CursorClickGameMove = CursorClickGameMove,
+                ClickerPresets = ClickerPresets,
                 RecordMouse = RecordMouse,
                 RecordScroll = RecordScroll,
                 RecordKeyboard = RecordKeyboard,

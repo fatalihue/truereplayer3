@@ -48,6 +48,7 @@ const defaultSettings = {
   cursorClickMaxDuration: '60000',
   cursorClickUseMaxDuration: false,
   cursorClickGameMove: false,
+  cursorClickPresets: [],
   recordMouse: true,
   recordScroll: true,
   recordKeyboard: true,
@@ -109,7 +110,7 @@ const initialState: AppState = {
 // messageTypes.ts for why. Keeping them here would make every stats push allocate a new
 // AppState and re-render every useAppState() consumer.
 const initialClickerLive: ClickerLiveState = {
-  clickerStats: { active: false, count: 0, elapsedMs: 0, capMs: 0, countdownMs: 0, endReason: null, blocked: 0 },
+  clickerStats: { active: false, count: 0, elapsedMs: 0, capMs: 0, countdownMs: 0, endReason: null, blocked: 0, warning: null },
   loopProgress: { active: false, current: 0, total: 0 },
   chainStep: { active: false, current: 0, total: 0 },
 };
@@ -241,7 +242,7 @@ function clickerLiveReducer(state: ClickerLiveInternal, message: IncomingMessage
       if (message.payload.status !== 'replaying') return state;
       return {
         ...state,
-        clickerStats: { active: true, count: 0, elapsedMs: 0, capMs: 0, countdownMs: 0, endReason: null, blocked: 0 },
+        clickerStats: { active: true, count: 0, elapsedMs: 0, capMs: 0, countdownMs: 0, endReason: null, blocked: 0, warning: null },
         loopProgress: { active: false, current: 0, total: 0 },
         // chainStep follows loopProgress exactly: inactive until a run actually enters a
         // sub-profile, so an unchained replay never shows the "(x/y)" tail.
@@ -293,6 +294,13 @@ function clickerLiveReducer(state: ClickerLiveInternal, message: IncomingMessage
       return {
         ...state,
         clickerStats: { ...state.clickerStats, countdownMs: 0, endReason: message.payload.reason, blocked: message.payload.blocked },
+      };
+    case 'clicker:warning':
+      // Follows the cursor in both directions: the code while the root window under it runs
+      // elevated, null (sent as an omitted key) once it is a normal window again.
+      return {
+        ...state,
+        clickerStats: { ...state.clickerStats, warning: message.payload.code ?? null },
       };
     case 'macro:loopProgress':
       // Same idea as clicker:stats — first push flips `active` on, run-start in status:changed
