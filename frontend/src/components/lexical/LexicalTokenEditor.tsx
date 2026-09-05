@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import { ContentEditable } from '@lexical/react/LexicalContentEditable';
 import { PlainTextPlugin } from '@lexical/react/LexicalPlainTextPlugin';
@@ -12,6 +13,7 @@ import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import {
   $getRoot,
+  $getNodeByKey,
   $getSelection,
   $setSelection,
   $insertNodes,
@@ -25,6 +27,7 @@ import {
   type BaseSelection,
   type ElementNode,
   COMMAND_PRIORITY_LOW,
+  COMMAND_PRIORITY_HIGH,
   FORMAT_TEXT_COMMAND,
   PASTE_COMMAND,
   KEY_BACKSPACE_COMMAND,
@@ -32,6 +35,9 @@ import {
   KEY_ENTER_COMMAND,
   KEY_SPACE_COMMAND,
   KEY_DOWN_COMMAND,
+  KEY_ARROW_DOWN_COMMAND,
+  KEY_ARROW_UP_COMMAND,
+  KEY_TAB_COMMAND,
   TextNode,
   type LexicalNode,
   type TextFormatType,
@@ -60,6 +66,8 @@ import { ClipboardChipEditContext, OPEN_TOKEN_CHIP_COMMAND, type ClipboardChipEd
 // there. They are imported rather than restated because the grid's SendTextPreview needs the
 // identical answer and a second copy of a list is how the two drifted in the first place.
 import { KNOWN_TOKEN_NAMES, splitTokenSegments, normalizeToken } from './tokenNormalize';
+import { TOKEN_CATALOG, type CatalogEntry } from './tokenCatalog';
+import { uiZoom, rectToLayout, viewportInLayout, type Box } from '../../utils/zoomSpace';
 
 // The TYPING grammar — narrower than what the engine resolves, on purpose. Modifier segments
 // allow digits/letters plus ',', '-' and '_' so {Random:1-10}, {Clipboard:lines:3,1,2} and
@@ -153,6 +161,12 @@ interface LexicalTokenEditorProps {
    * 340 px sheet field has no room for. A slot, not a flag: the caller owns the words.
    */
   placeholder?: React.ReactNode;
+  /**
+   * Typing `{` opens the token list (TokenAutocompletePlugin) — the keyboard door to the Insert
+   * palette. Off by default: the Insert Text dialog turns it on; the sheet keeps its own Esc
+   * routing and has not been walked for it yet.
+   */
+  tokenAutocomplete?: boolean;
   /** When provided, clicking a {clipboard...} chip routes HERE instead of the
    *  built-in 300px popover (see ClipboardChipEditContext). */
   onClipboardChipEdit?: (req: ClipboardChipEditRequest) => void;
@@ -677,6 +691,233 @@ function TokenPastePlugin({ richMode }: { richMode?: boolean }) {
   return null;
 }
 
+// ── `{` autocomplete ──────────────────────────────────────────────────────────
+// The keyboard door to the Insert palette: typing `{` opens a floating list of the SAME catalog
+// the palette draws (tokenCatalog — one list, so the two cannot drift), filtered by what follows
+// the brace; ↑/↓ move, Enter or Tab insert, Esc closes and leaves the brace as typed. A direct
+// entry becomes a chip on the spot; a prompt entry (Variable…, Clip slot…) inserts its open half
+// — `{var:` — and leaves the caret there, and TokenAutoTransformPlugin chips the finished
+// `{var:name}` on its closing brace exactly as it does for a hand-typed one. The palette itself
+// is untouched: this is the second door, not a replacement.
+//
+// Detection is a SELECTION read on every update, not a keydown: that is what also closes the list
+// when the caret leaves, when Backspace eats the brace, and when the transform chips a hand-typed
+// token underneath it. The query stops at ':' (an argument is being typed, not a name) and at any
+// character a name cannot contain, so `{var:` after a prompt pick does not reopen the list.
+const TRIGGER_RE = /\{([A-Za-z0-9_-]*)$/;
+
+interface TriggerMatch { query: string; nodeKey: string; end: number }
+
+// Prefix matches first (label or token name), then substring matches, palette order within each.
+function filterCatalog(query: string): CatalogEntry[] {
+  if (!query) return TOKEN_CATALOG;
+  const q = query.toLowerCase();
+  const starts = TOKEN_CATALOG.filter((e) => e.label.toLowerCase().startsWith(q) || e.name.startsWith(q));
+  const within = TOKEN_CATALOG.filter((e) => !starts.includes(e) && (e.label.toLowerCase().includes(q) || e.name.includes(q)));
+  return [...starts, ...within];
+}
+
+function TokenAutocompletePlugin() {
+  const [editor] = useLexicalComposerContext();
+  const [match, setMatch] = useState<TriggerMatch | null>(null);
+  const [caret, setCaret] = useState<Box | null>(null);
+  const [active, setActive] = useState(0);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  // Esc closes the list but the brace stays, and so does the caret right after it — remember
+  // WHICH brace was dismissed so the next keystroke does not simply reopen the same list. Cleared
+  // the moment the caret leaves that brace.
+  const dismissedRef = useRef<{ nodeKey: string; brace: number } | null>(null);
+
+  useEffect(() => editor.registerUpdateListener(({ editorState }) => {
+    const found = editorState.read((): TriggerMatch | null => {
+      const sel = $getSelection();
+      if (!$isRangeSelection(sel) || !sel.isCollapsed()) return null;
+      const node = sel.anchor.getNode();
+      if (!$isTextNode(node)) return null;
+      const end = sel.anchor.offset;
+      const m = TRIGGER_RE.exec(node.getTextContent().slice(0, end));
+      return m ? { query: m[1], nodeKey: node.getKey(), end } : null;
+    });
+    if (!found) {
+      dismissedRef.current = null;
+      setMatch(null);
+      return;
+    }
+    const brace = found.end - found.query.length - 1;
+    const dismissed = dismissedRef.current;
+    if (dismissed && dismissed.nodeKey === found.nodeKey && dismissed.brace === brace) {
+      setMatch(null);
+      return;
+    }
+    dismissedRef.current = null;
+    // Caret rect: a visual read converted to the LAYOUT space `left/top` are written in, like
+    // every floating surface here (utils/zoomSpace). A collapsed range still reports its line box.
+    const domSel = window.getSelection();
+    const raw = domSel && domSel.rangeCount > 0 ? domSel.getRangeAt(0).getBoundingClientRect() : null;
+    const rect = raw && (raw.width > 0 || raw.height > 0) ? raw : editor.getRootElement()?.getBoundingClientRect() ?? null;
+    if (rect) setCaret(rectToLayout(rect, uiZoom()));
+    setMatch((prev) => (prev && prev.query === found.query && prev.nodeKey === found.nodeKey && prev.end === found.end ? prev : found));
+  }), [editor]);
+
+  const options = useMemo(() => (match ? filterCatalog(match.query) : []), [match]);
+  const open = match !== null && options.length > 0;
+  useEffect(() => { setActive(0); }, [match?.query]);
+
+  // Below the caret, above it when the bottom would leave the viewport, clamped to the sides.
+  useLayoutEffect(() => {
+    if (!open || !caret || !menuRef.current) { setPos(null); return; }
+    const zoom = uiZoom();
+    const { width: vw, height: vh } = viewportInLayout(zoom);
+    const el = menuRef.current;
+    let left = caret.left;
+    let top = caret.bottom + 4;
+    if (top + el.offsetHeight > vh - 8) top = Math.max(8, caret.top - el.offsetHeight - 4);
+    if (left + el.offsetWidth > vw - 8) left = vw - el.offsetWidth - 8;
+    if (left < 8) left = 8;
+    setPos({ left, top });
+  }, [open, caret, options.length]);
+
+  useEffect(() => {
+    menuRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
+  }, [active, options]);
+
+  const commit = useCallback((entry: CatalogEntry, m: TriggerMatch) => {
+    editor.update(() => {
+      const node = $getNodeByKey(m.nodeKey);
+      if (!$isTextNode(node)) return;
+      const text = node.getTextContent();
+      const start = m.end - m.query.length - 1;
+      if (start < 0 || text.slice(start, m.end) !== `{${m.query}`) return;   // the document moved on
+      const format = node.getFormat();
+      const style = node.getStyle();
+      // splitText returns only the non-empty pieces, in order: the trigger is the first when it
+      // opens the run, the second otherwise.
+      const pieces = node.splitText(start, m.end);
+      const trigger = pieces[start === 0 ? 0 : 1] ?? node;
+      if (entry.kind === 'direct') {
+        const chip = $createTokenNode(entry.insert);
+        trigger.replace(chip);
+        // A text node after the chip for the caret to land in (TokenNode is isolated), carrying
+        // the run's format so typing on inside a bold run stays bold — the trailing-node rule
+        // TokenAutoTransformPlugin follows.
+        const next = chip.getNextSibling();
+        let landing: TextNode;
+        if ($isTextNode(next)) {
+          landing = next;
+        } else {
+          landing = $createTextNode('');
+          landing.setFormat(format);
+          landing.setStyle(style);
+          chip.insertAfter(landing);
+        }
+        landing.select(0, 0);
+      } else {
+        // The open half only: the name is the user's to type, and the finished `{var:name}` chips
+        // through the transform on its closing brace, exactly as a hand-typed token does.
+        trigger.setTextContent(entry.insert);
+        trigger.select(entry.insert.length, entry.insert.length);
+      }
+    });
+    setMatch(null);
+  }, [editor]);
+
+  // Keys, while open: ↑/↓ move, Enter/Tab take the highlighted entry. HIGH priority so the
+  // editor's own Enter (paragraph) and Tab (indent) never fire underneath; Ctrl+Enter is the
+  // dialog's confirm and passes through untouched. Read through a ref so the handlers see the
+  // current highlight without re-registering on every arrow press.
+  const liveRef = useRef<{ match: TriggerMatch; options: CatalogEntry[]; active: number } | null>(null);
+  liveRef.current = open && match ? { match, options, active } : null;
+  useEffect(() => {
+    if (!open) return;
+    const step = (delta: number) => (e: KeyboardEvent | null) => {
+      e?.preventDefault();
+      setActive((i) => (i + delta + options.length) % options.length);
+      return true;
+    };
+    const pick = (e: KeyboardEvent | null) => {
+      if (e && (e.ctrlKey || e.metaKey || e.altKey)) return false;
+      e?.preventDefault();
+      const live = liveRef.current;
+      if (live) commit(live.options[live.active] ?? live.options[0], live.match);
+      return true;
+    };
+    return mergeRegister(
+      editor.registerCommand(KEY_ARROW_DOWN_COMMAND, step(1), COMMAND_PRIORITY_HIGH),
+      editor.registerCommand(KEY_ARROW_UP_COMMAND, step(-1), COMMAND_PRIORITY_HIGH),
+      editor.registerCommand(KEY_ENTER_COMMAND, pick, COMMAND_PRIORITY_HIGH),
+      editor.registerCommand(KEY_TAB_COMMAND, pick, COMMAND_PRIORITY_HIGH),
+    );
+  }, [editor, open, options.length, commit]);
+
+  // Esc and outside clicks. Esc on a capture-phase document listener, the way TokenChipPopover
+  // owns its key: it must never reach the dialog's card handler (which would read it as "close
+  // the dialog") nor Lexical. The dialog's own Esc router stands down for the data-token-popover
+  // marker the menu carries.
+  useEffect(() => {
+    if (!open || !match) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      dismissedRef.current = { nodeKey: match.nodeKey, brace: match.end - match.query.length - 1 };
+      setMatch(null);
+    };
+    const onMouseDown = (e: MouseEvent) => {
+      if (menuRef.current?.contains(e.target as Node)) return;
+      setMatch(null);
+    };
+    document.addEventListener('keydown', onKey, true);
+    document.addEventListener('mousedown', onMouseDown);
+    return () => {
+      document.removeEventListener('keydown', onKey, true);
+      document.removeEventListener('mousedown', onMouseDown);
+    };
+  }, [open, match]);
+
+  if (!open || !match) return null;
+  const grouped = match.query === '';
+  return createPortal(
+    <div
+      ref={menuRef}
+      role="listbox"
+      aria-label="Tokens"
+      data-token-popover=""
+      // Keeps the editor's focus and selection while an entry is clicked, as the toolbar does.
+      onMouseDown={(e) => e.preventDefault()}
+      className="menu-surface pop-in fixed w-64 max-h-72 overflow-y-auto py-1"
+      style={{ zIndex: 100, left: pos?.left ?? 0, top: pos?.top ?? 0, visibility: pos ? 'visible' : 'hidden' }}
+    >
+      {options.map((entry, i) => (
+        <Fragment key={entry.label}>
+          {grouped && (i === 0 || options[i - 1].group !== entry.group) && (
+            <div className="label-micro text-text-tertiary px-3 pt-1.5 pb-0.5">{entry.group}</div>
+          )}
+          <button
+            type="button"
+            role="option"
+            aria-selected={i === active}
+            tabIndex={-1}
+            // The highlight is a fill AND brighter text (two channels), never a hue alone.
+            className={`menu-item ${i === active ? 'bg-bg-elevated text-text-primary' : 'text-text-secondary'}`}
+            onMouseEnter={() => setActive(i)}
+            onClick={() => commit(entry, match)}
+          >
+            <span className="flex-1 truncate">{entry.label}</span>
+            <span className="font-mono text-[11px] text-text-tertiary shrink-0">
+              {entry.kind === 'direct' ? entry.insert : `${entry.insert}…}`}
+            </span>
+          </button>
+        </Fragment>
+      ))}
+      <div className="mt-1 px-3 pt-1 pb-0.5 border-t border-border-subtle text-[10px] text-text-tertiary">
+        Enter inserts · Esc keeps the brace
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 // URL matcher for AutoLink — a typed/pasted URL becomes a live link node. The
 // pattern requires a dot-separated host, so it can never collide with the token
 // grammar (tokens contain no dots).
@@ -1041,6 +1282,7 @@ export function LexicalTokenEditor({
   contentClassName = EDITOR_DENSITY[density].content,
   placeholderClassName = EDITOR_DENSITY[density].placeholder,
   placeholder: placeholderContent = 'Type the text to send...',
+  tokenAutocomplete = false,
   onClipboardChipEdit,
   onFormattingChange,
   richMode = false,
@@ -1119,6 +1361,7 @@ export function LexicalTokenEditor({
         {richMode && <ListPlugin />}
         {richMode && <LinkPlugin />}
         {richMode && <AutoLinkPlugin matchers={AUTO_LINK_MATCHERS} />}
+        {tokenAutocomplete && <TokenAutocompletePlugin />}
         <OnChangePlugin
           // ignoreSelectionChange: without it (the default is false) this fires on every
           // selection-only change too — arrow keys, clicks, focus — and each fire walks the whole

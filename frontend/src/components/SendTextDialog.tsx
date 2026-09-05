@@ -17,6 +17,10 @@ import {
 import type { ClipboardChipEditRequest } from './lexical/TokenChip';
 import { normalizeToken, parseSendTextSegments, richFlavorSurvives, splitTokenSegments } from './lexical/tokenNormalize';
 import { tokenTip } from './lexical/tokenDescriptions';
+import {
+  type PaletteChip, paletteToken,
+  VALUE_CHIPS, KEY_CHIPS, MORE_KEY_CHIPS, CLIPBOARD_CHIPS, MORE_CLIPBOARD_CHIPS, RUN_STATE_CHIPS, MORE_ROW_CHIPS,
+} from './lexical/tokenCatalog';
 import { PopoverHeader, Section } from './lexical/popoverAtoms';
 import { FieldError } from './common/FieldError';
 import { describeDelivery, pickStatusNote } from '../utils/sendTextStatus';
@@ -259,80 +263,8 @@ function SnippetText({ text }: { text: string }) {
 // Direct chips insert their seed string; prompt chips ({Variable…}/{Row
 // column…}) open a name prompt first — never insert a literal placeholder.
 
-interface PaletteChip {
-  label: string;
-  insert?: string;                                       // direct-insert seed (byte-identical to 2.7.x)
-  prompt?: 'var' | 'row' | 'rownext' | 'clip' | 'input'; // opens the name/label prompt instead
-}
-
-// The token a palette chip stands for. Descriptions used to live inline on every chip, one copy
-// each, and they vanished the moment the token BECAME a chip in the editor; they now come from
-// the one shared table in lexical/tokenDescriptions. Direct chips ARE their seed; a prompt chip
-// has no seed yet, so a synthetic one carries the right NAME — and, for {row:x}, lands on the
-// data-column VARIANT rather than the bare action-row counter, which is what that chip means.
-const paletteToken = (chip: PaletteChip): string => chip.insert ?? `{${chip.prompt}:x}`;
-
-const VALUE_CHIPS: PaletteChip[] = [
-  { label: 'Date', insert: '{date}' },
-  { label: 'Time', insert: '{time}' },
-  { label: 'DateTime', insert: '{datetime}' },
-  { label: 'Random', insert: '{random:1-10}' },
-  // Seed is PRE-normalized ({Pick:...}, args verbatim) — direct chips insert as text and only
-  // a normalization fixed point survives the load gate as a chip. Click the chip to edit the
-  // options one-per-line in its popover.
-  { label: 'Pick', insert: '{Pick:a|b|c}' },
-];
-
-const KEY_CHIPS: PaletteChip[] = [
-  { label: 'Enter', insert: '{enter}' },
-  { label: 'Tab', insert: '{tab}' },
-  { label: 'Delay', insert: '{delay:500}' },
-];
-
-const MORE_KEY_CHIPS: PaletteChip[] = [
-  { label: 'Space', insert: '{space}' },
-  { label: 'Backspace', insert: '{backspace}' },
-  { label: 'Delete', insert: '{delete}' },
-  { label: 'Escape', insert: '{escape}' },
-  { label: 'Home', insert: '{home}' },
-  { label: 'End', insert: '{end}' },
-  { label: 'PageUp', insert: '{pageup}' },
-  { label: 'PageDown', insert: '{pagedown}' },
-  { label: 'Up', insert: '{up}' },
-  { label: 'Down', insert: '{down}' },
-  { label: 'Left', insert: '{left}' },
-  { label: 'Right', insert: '{right}' },
-];
-
-// Clipboard-sourced tokens — grouped under the Clipboard section next to {clipboard}
-// itself. {clip:N} is an in-app capture slot; {winclip:N} is the Windows Win+V history.
-// Clip slot stays inline: it is the consumer end of the Copy to Slot action and the
-// capture hotkey, so hiding it here would hide half of that feature.
-const CLIPBOARD_CHIPS: PaletteChip[] = [
-  { label: 'Clip slot…', prompt: 'clip' },
-];
-
-// Collapsed: {clipboard:next} is a niche auto-advancing read, and {winclip:N} depends
-// on a Windows setting being on and can surface anything recently copied.
-const MORE_CLIPBOARD_CHIPS: PaletteChip[] = [
-  { label: 'Clipboard line (next)', insert: '{clipboard:next}' },
-  { label: 'Clipboard history', insert: '{winclip:1}' },
-];
-
-const RUN_STATE_CHIPS: PaletteChip[] = [
-  { label: 'Variable…', prompt: 'var' },
-  { label: 'Counter', insert: '{counter}' },
-  { label: 'Ask input…', prompt: 'input' },
-];
-
-// Collapsed: every one of these is row-addressed, and the two data-table ones only
-// resolve to anything in a profile that loops over data. They also carry the longest
-// labels in the palette, so parking them keeps Run state to a single line.
-const MORE_ROW_CHIPS: PaletteChip[] = [
-  { label: 'Action row #', insert: '{row}' },
-  { label: 'Row column…', prompt: 'row' },
-  { label: 'Row column (next)…', prompt: 'rownext' },
-];
+// The chips themselves live in lexical/tokenCatalog, shared with the editor autocomplete (typing {),
+// so the two surfaces offer ONE list: a second copy is how the palette and the menu would drift.
 
 // One chip recipe everywhere (SheetPanel parity). border-default, not border-subtle: at 6 % the
 // chips — the rail's main affordance — vanished on light presets. Hover is the app's accent
@@ -1154,6 +1086,8 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
               apiRef={lexicalApiRef}
               density="dialog"
               onClipboardChipEdit={handleClipboardChipEdit}
+              // The keyboard door to the palette: `{` opens the same catalog the Insert panel draws.
+              tokenAutocomplete
               // Two lines, only here: the empty state of this window is ninety percent of the
               // screen with one line in it, and the panel on the right cannot say the one thing
               // a newcomer needs — that a brace word is a token, filled in at replay. Placeholder
@@ -1163,7 +1097,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                 <>
                   Type the text to send...
                   <span className="block mt-1.5 text-xs leading-relaxed">
-                    Tokens like <span className="font-mono">{'{clipboard}'}</span>, <span className="font-mono">{'{date}'}</span> and <span className="font-mono">{'{enter}'}</span> are filled in at replay · pick them in the Insert panel or type them
+                    Tokens like <span className="font-mono">{'{clipboard}'}</span>, <span className="font-mono">{'{date}'}</span> and <span className="font-mono">{'{enter}'}</span> are filled in at replay · pick them in the Insert panel, or type <span className="font-mono">{'{'}</span> to search them here
                   </span>
                 </>
               }
