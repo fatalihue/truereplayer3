@@ -88,9 +88,9 @@ const defaultCooldownSec = (conditionType: string | null | undefined) =>
  * watcher arms, shows Running, spins at 1 Hz and never fires — with nothing on screen saying so.
  * ImageFound was the only family that self-reported, which taught users that silence means healthy.
  */
-function whyCannotFire(t: TriggerConfig, tt: (en: string, pt: string) => string): string | null {
+function whyCannotFire(t: TriggerConfig): string | null {
   if (t.kind === 'schedule') {
-    if (!t.timeOfDay) return tt('Pick a time of day.', 'Escolha um horário.');
+    if (!t.timeOfDay) return 'Pick a time of day.';
     // Schedule and the active-hours window share TimeOfDay, and switching kind does not clear the
     // other one's value — so a range configured as active hours arrives here looking truthy while
     // the "At" field shows blank. The daemon then stops the watcher on its first line. Detected by
@@ -98,8 +98,7 @@ function whyCannotFire(t: TriggerConfig, tt: (en: string, pt: string) => string)
     // TimeSpan.TryParse accepts forms like "1.09:00" from an imported profile, and rejecting those
     // would be over-matching — the regression in the opposite direction.
     if (rangeParts(t.timeOfDay)) {
-      return tt('That is an active-hours range, not a time of day — pick a single time.',
-                'Isso é uma faixa de horário ativo, não um horário — escolha um horário único.');
+      return 'That is an active-hours range, not a time of day — pick a single time.';
     }
   }
   if (t.kind !== 'condition') return null;
@@ -107,28 +106,26 @@ function whyCannotFire(t: TriggerConfig, tt: (en: string, pt: string) => string)
     case 'WindowOpen':
       return (t.windowProcessName ?? '').trim() || (t.windowTitle ?? '').trim()
         ? null
-        : tt('Fill in a process name or a window title — with both blank this can never match.',
-             'Preencha um nome de processo ou um título de janela — com os dois vazios isto nunca casa.');
+        : 'Fill in a process name or a window title — with both blank this can never match.';
     case 'ProcessRunning':
       return (t.windowProcessName ?? '').trim()
         ? null
-        : tt('Fill in a process name.', 'Preencha um nome de processo.');
+        : 'Fill in a process name.';
     case 'FileExists':
       return (t.filePath ?? '').trim()
         ? null
-        : tt('Fill in a file or folder path.', 'Preencha um caminho de arquivo ou pasta.');
+        : 'Fill in a file or folder path.';
     case 'ImageFound':
       return t.imagePath
         ? null
-        : tt('Capture a reference image.', 'Capture uma imagem de referência.');
+        : 'Capture a reference image.';
     case 'PixelColorMatch':
       // Mirrors PixelColorService.ParseHex: six hex digits, optional leading #. The default
       // (#FFFFFF) and the eyedropper both produce that, so this only catches a hand-typed value —
       // which is exactly the case that used to arm and never fire.
       return /^#?[0-9A-Fa-f]{6}$/.test((t.pixelColor ?? '').trim())
         ? null
-        : tt('Enter a 6-digit hex colour, like #FF0000 — shorthand such as #F00 is not accepted.',
-             'Informe uma cor hex de 6 dígitos, como #FF0000 — a forma curta #F00 não é aceita.');
+        : 'Enter a 6-digit hex colour, like #FF0000 — shorthand such as #F00 is not accepted.';
     default:
       return null;   // ClipboardChanged is valid with its defaults
   }
@@ -220,17 +217,17 @@ function phaseLockRisk(t: TriggerConfig): boolean {
   return gcd(Math.max(5, t.intervalSeconds), 86400) > width;
 }
 
-function kindSummary(t: TriggerConfig, tt: (en: string, pt: string) => string): string {
+function kindSummary(t: TriggerConfig): string {
   const hours = activeHours(t);
-  const within = hours ? tt(`, ${hours}`, `, ${hours}`) : '';
+  const within = hours ? `, ${hours}` : '';
   if (t.kind === 'interval') {
     const s = Math.max(5, t.intervalSeconds);
-    const every = s % 60 === 0 ? tt(`every ${s / 60} min`, `a cada ${s / 60} min`) : tt(`every ${s}s`, `a cada ${s}s`);
+    const every = s % 60 === 0 ? `every ${s / 60} min` : `every ${s}s`;
     return every + within;
   }
-  if (t.kind === 'schedule') return tt(`at ${t.timeOfDay ?? '--:--'}`, `às ${t.timeOfDay ?? '--:--'}`);
+  if (t.kind === 'schedule') return `at ${t.timeOfDay ?? '--:--'}`;
   const c = CONDITION_TYPES.find((x) => x.value === t.conditionType);
-  return tt(`when ${c?.label ?? t.conditionType ?? '?'}`, `quando ${c?.label ?? t.conditionType ?? '?'}`) + within;
+  return `when ${c?.label ?? t.conditionType ?? '?'}` + within;
 }
 
 export function AutomationPanel({ onClose }: { onClose: () => void }) {
@@ -318,7 +315,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
   // and the only escape was to discover you must nudge a field first. `dirty` keeps meaning
   // "the user edited something"; the Save gate is what widens.
   const isNewDraft = selected != null && !entryByProfile.has(selected);
-  const cannotFire = draft ? whyCannotFire(draft, tt) : null;
+  const cannotFire = draft ? whyCannotFire(draft) : null;
   // savedPendingEcho closes a gap the new-draft rule opens: handleSave clears `dirty`, but the
   // row only stops being a "new draft" when the backend echo lands, so for those few frames the
   // panel would still call the work unsaved — offering to save an already-saved automation and
@@ -617,12 +614,12 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center gap-2">
                   <span className="label-micro text-text-tertiary flex-1">
-                    {tt('Pick a profile', 'Escolha um profile')}
+                    {'Pick a profile'}
                   </span>
                   <button
                     type="button"
                     onClick={() => setAddOpen(false)}
-                    aria-label={tt('Cancel', 'Cancelar')}
+                    aria-label={'Cancel'}
                     className="text-text-disabled hover:text-text-secondary transition-colors shrink-0"
                   >
                     <X size={12} />
@@ -642,7 +639,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   autoFocus
                   onCancel={() => setAddOpen(false)}
                   listMaxHeightClass="max-h-[220px]"
-                  ariaLabel={tt('Profiles without an automation', 'Profiles sem automação')}
+                  ariaLabel={'Profiles without an automation'}
                 />
               </div>
             ) : (
@@ -655,8 +652,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
           <div className="flex-1 overflow-y-auto">
             {listProfiles.length === 0 && (
               <div className="p-4 text-[12px] text-text-tertiary leading-relaxed">
-                {tt('No automations yet. Add one to fire a profile on a timer, a clock schedule, or a watched condition — no hotkey press needed.',
-                  'Nenhuma automação ainda. Adicione uma para disparar um profile por timer, horário ou condição vigiada — sem apertar hotkey.')}
+                {'No automations yet. Add one to fire a profile on a timer, a clock schedule, or a watched condition — no hotkey press needed.'}
               </div>
             )}
             {listProfiles.map((name) => {
@@ -700,7 +696,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                           onChange={(v) => send({ type: 'automation:setArmed', payload: { profile: name, armed: v } })} />
                       </span>
                     ) : (
-                      <span className="text-[10px] text-text-tertiary uppercase">{tt('new', 'novo')}</span>
+                      <span className="text-[10px] text-text-tertiary uppercase">{'new'}</span>
                     )}
                   </div>
                   <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-text-tertiary">
@@ -712,9 +708,9 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                           : tt('Watching — the condition is false right now', 'Vigiando — a condição está falsa agora')} />
                     )}
                     <span className="truncate">
-                      {trig ? kindSummary(trig, tt) : tt('not saved yet', 'ainda não salvo')}
+                      {trig ? kindSummary(trig) : 'not saved yet'}
                       {entry && entry.fireCount > 0 && ` · ${entry.fireCount}× · ${fmtWhen(entry.lastFiredAt)}`}
-                      {entry?.trigger.armed && entry.running && entry.nextDueAt && ` · ${tt('next', 'próx.')} ${fmtWhen(entry.nextDueAt)}`}
+                      {entry?.trigger.armed && entry.running && entry.nextDueAt && ` · ${'next'} ${fmtWhen(entry.nextDueAt)}`}
                     </span>
                   </div>
                   {/* Armed but NOT running is the state that reads as healthy and isn't: the toggle
@@ -725,10 +721,10 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   {entry?.trigger.armed && !entry.running && (
                     <div className="text-[10px] mt-0.5 truncate" style={{ color: 'var(--color-recording-fg)' }}>
                       {!automation.enabled
-                        ? tt('armed, but all automations are paused', 'armada, mas todas as automações estão pausadas')
+                        ? 'armed, but all automations are paused'
                         : entry.isDisabled
-                          ? tt('armed, but the profile is disabled', 'armada, mas o profile está desativado')
-                          : tt('armed, but not watching — see the reason below', 'armada, mas não está vigiando — veja o motivo abaixo')}
+                          ? 'armed, but the profile is disabled'
+                          : 'armed, but not watching — see the reason below'}
                     </div>
                   )}
                   {entry?.lastResult && entry.lastResult !== 'fired' && (
@@ -744,7 +740,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
         <div className="flex-1 min-w-0 overflow-y-auto p-4">
           {!selected || !draft ? (
             <div className="h-full flex items-center justify-center text-[12px] text-text-tertiary">
-              {tt('Select an automation on the left, or add one.', 'Selecione uma automação à esquerda, ou adicione uma.')}
+              {'Select an automation on the left, or add one.'}
             </div>
           ) : (
             // key={selected} for the same reason SettingsPanel keys its tab content:
@@ -774,14 +770,14 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                     ? tt('Save first — Run now fires the SAVED automation.', 'Salve primeiro — o Run now dispara a automação SALVA.')
                     : undefined}>
                     <Button variant="secondary" size="sm" onClick={runNow} disabled={isNewDraft || hasUnsavedWork}>
-                      <Play size={12} /> {tt('Run now', 'Rodar agora')}
+                      <Play size={12} /> {'Run now'}
                     </Button>
                   </span>
                   {confirmDelete ? (
                     <div className="flex items-center gap-1">
-                      <span className="text-[11px] text-text-secondary">{tt('Delete?', 'Excluir?')}</span>
-                      <Button variant="destructive" size="sm" onClick={handleRemove}>{tt('Yes', 'Sim')}</Button>
-                      <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>{tt('No', 'Não')}</Button>
+                      <span className="text-[11px] text-text-secondary">{'Delete?'}</span>
+                      <Button variant="destructive" size="sm" onClick={handleRemove}>{'Yes'}</Button>
+                      <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>{'No'}</Button>
                     </div>
                   ) : (
                     // Confirm rather than fire-and-forget: this deletes a captured reference
@@ -812,7 +808,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                     borderColor: 'color-mix(in srgb, var(--color-recording) 40%, transparent)',
                     backgroundColor: 'color-mix(in srgb, var(--color-recording) 10%, transparent)',
                   }}>
-                  {tt('This automation can never fire as configured. ', 'Esta automação nunca vai disparar como está. ')}
+                  {'This automation can never fire as configured. '}
                   {cannotFire}
                 </div>
               )}
@@ -824,8 +820,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                     borderColor: 'color-mix(in srgb, var(--color-recording) 40%, transparent)',
                     backgroundColor: 'color-mix(in srgb, var(--color-recording) 10%, transparent)',
                   }}>
-                  {tt('This profile is DISABLED — its automation never runs (and cannot be armed) until you enable the profile in the sidebar.',
-                    'Este profile está DESATIVADO — a automação dele nunca roda (nem pode ser armada) até você reativá-lo na barra lateral.')}
+                  {'This profile is DISABLED — its automation never runs (and cannot be armed) until you enable the profile in the sidebar.'}
                 </div>
               )}
 
@@ -836,8 +831,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                     borderColor: 'color-mix(in srgb, var(--color-recording) 40%, transparent)',
                     backgroundColor: 'color-mix(in srgb, var(--color-recording) 10%, transparent)',
                   }}>
-                  {tt('This profile has no target window — when the trigger fires, it acts on whichever window happens to be focused.',
-                    'Este profile não tem janela-alvo — quando o gatilho disparar, ele age sobre a janela que estiver em foco.')}
+                  {'This profile has no target window — when the trigger fires, it acts on whichever window happens to be focused.'}
                 </div>
               )}
 
@@ -866,7 +860,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
               </Field>
 
               {draft.kind === 'interval' && (
-                <Field label="Every" hint={tt('Minimum 5 seconds. The first fire happens one interval after arming.', 'Mínimo 5 segundos. O primeiro disparo ocorre um intervalo após armar.')}>
+                <Field label="Every" hint={'Minimum 5 seconds. The first fire happens one interval after arming.'}>
                   <NumberInput
                     value={draft.intervalSeconds}
                     onChange={(v) => patch({ intervalSeconds: Math.max(5, v ?? 5) })}
@@ -900,18 +894,17 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                 return (
                   <Field
                     label="Active hours"
-                    hint={tt('Leave empty to run around the clock. An end before the start crosses midnight.',
-                             'Deixe vazio para rodar o tempo todo. Fim antes do início cruza a meia-noite.')}
+                    hint={'Leave empty to run around the clock. An end before the start crosses midnight.'}
                   >
                     <div className="flex items-center gap-2">
                       <input type="time" className={`${inputCls} w-28`} value={from}
                         onChange={(e) => write(e.target.value, to || lastHoursRef.current.to)} />
-                      <span className="text-[12px] text-text-tertiary">{tt('to', 'até')}</span>
+                      <span className="text-[12px] text-text-tertiary">{'to'}</span>
                       <input type="time" className={`${inputCls} w-28`} value={to}
                         onChange={(e) => write(from || lastHoursRef.current.from, e.target.value)} />
                       {(from || to) && (
                         <Button variant="ghost" size="sm" onClick={() => patch({ timeOfDay: null })}>
-                          {tt('Clear', 'Limpar')}
+                          {'Clear'}
                         </Button>
                       )}
                     </div>
@@ -923,8 +916,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                       tip={tt('The ticks of this interval only ever land on a few times of day, and they can all fall outside the window.',
                               'Os ticks deste intervalo só caem em alguns horários do dia, e podem cair todos fora da janela.')}
                     >
-                      {tt('This interval is too long for this window — it may never fire. Shorten the interval or widen the hours.',
-                          'Este intervalo é longo demais para esta janela — pode nunca disparar. Diminua o intervalo ou amplie o horário.')}
+                      {'This interval is too long for this window — it may never fire. Shorten the interval or widen the hours.'}
                     </FieldError>
                   </Field>
                 );
@@ -940,7 +932,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                       onChange={(e) => patch({ timeOfDay: e.target.value })}
                     />
                   </Field>
-                  <Field label="Days" hint={tt('None selected = every day.', 'Nenhum selecionado = todos os dias.')}>
+                  <Field label="Days" hint={'None selected = every day.'}>
                     <div className="flex gap-1">
                       {DAY_PILLS.map((d) => {
                         const on = (draft.daysOfWeek & d.bit) !== 0;
@@ -1024,7 +1016,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   )}
 
                   {draft.conditionType === 'ProcessRunning' && (
-                    <Field label="Process" hint={tt('Image name, e.g. "notepad" or "RobloxPlayerBeta.exe".', 'Nome do processo, ex. "notepad" ou "RobloxPlayerBeta.exe".')}>
+                    <Field label="Process" hint={'Image name, e.g. "notepad" or "RobloxPlayerBeta.exe".'}>
                       <input
                         className={inputCls}
                         value={draft.windowProcessName ?? ''}
@@ -1035,7 +1027,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   )}
 
                   {draft.conditionType === 'FileExists' && (
-                    <Field label="Path" hint={tt('Full path of a file or folder. Fires when it appears.', 'Caminho completo de arquivo ou pasta. Dispara quando ele aparece.')}>
+                    <Field label="Path" hint={'Full path of a file or folder. Fires when it appears.'}>
                       <input
                         className={inputCls}
                         value={draft.filePath ?? ''}
@@ -1089,7 +1081,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                           <Pipette size={12} /> Pick
                         </Button>
                       </div>
-                      <Field label="Tolerance" hint={tt('Per-channel color tolerance (0 = exact).', 'Tolerância por canal de cor (0 = exata).')}>
+                      <Field label="Tolerance" hint={'Per-channel color tolerance (0 = exact).'}>
                         <NumberInput value={draft.pixelTolerance} onChange={(v) => patch({ pixelTolerance: v ?? 10 })}
                           min={0} max={255} inputWidth="w-20" />
                       </Field>
@@ -1106,7 +1098,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                             : `${inputCls} flex items-center text-text-tertiary truncate`}>
                           {draft.imageBase64
                             ? <img src={`data:image/png;base64,${draft.imageBase64}`} alt="" className="max-h-[120px] w-full object-contain" />
-                            : (draft.imagePath ?? tt('none captured', 'nenhuma capturada'))}
+                            : (draft.imagePath ?? 'none captured')}
                         </div>
                       </Field>
                       <div className="flex gap-2">
@@ -1125,19 +1117,19 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                           {testMatchResult.error
                             ? testMatchResult.error
                             : testMatchResult.found
-                              ? `${tt('Found', 'Encontrado')} (${Math.round(testMatchResult.score * 100)}%) — ${tt('region snapped to it', 'região ajustada no ponto')}`
-                              : `${tt('Not found on screen', 'Não encontrado na tela')} (${Math.round(testMatchResult.score * 100)}%)`}
+                              ? `${'Found'} (${Math.round(testMatchResult.score * 100)}%) — ${'region snapped to it'}`
+                              : `${'Not found on screen'} (${Math.round(testMatchResult.score * 100)}%)`}
                         </div>
                       )}
-                      <Field label="Search region" hint={tt('Limit matching to a screen region — faster and fewer false positives for a background watcher. Empty = full screen.', 'Limita a busca a uma região da tela — mais rápido e menos falso-positivo num vigia de fundo. Vazio = tela inteira.')}>
+                      <Field label="Search region" hint={'Limit matching to a screen region — faster and fewer false positives for a background watcher. Empty = full screen.'}>
                         <div className="flex items-center gap-2">
                           <div className={`${inputCls} flex-1 flex items-center ${draft.searchRegion ? 'font-mono text-[11px]' : 'text-text-disabled italic'}`}>
                             {draft.searchRegion
                               ? `${draft.searchRegion.x}, ${draft.searchRegion.y}  ·  ${draft.searchRegion.w} × ${draft.searchRegion.h}`
-                              : tt('Full screen (default)', 'Tela inteira (padrão)')}
+                              : 'Full screen (default)'}
                           </div>
                           <Button variant="secondary" size="sm" onClick={configureRegion}>
-                            <Frame size={12} /> {tt('Configure', 'Configurar')}
+                            <Frame size={12} /> {'Configure'}
                           </Button>
                           {draft.searchRegion && (
                             <button type="button" onClick={() => patch({ searchRegion: null })}
@@ -1147,7 +1139,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                           )}
                         </div>
                       </Field>
-                      <Field label="Confidence" hint={tt('Match threshold. 80% is a good start; 100% never matches a live screen.', 'Limiar de match. 80% é um bom começo; 100% nunca bate numa tela real.')}>
+                      <Field label="Confidence" hint={'Match threshold. 80% is a good start; 100% never matches a live screen.'}>
                         <NumberInput
                           value={Math.round((draft.imageConfidence || 0.8) * 100)}
                           onChange={(v) => patch({ imageConfidence: Math.min(99, Math.max(10, v ?? 80)) / 100 })}
@@ -1158,12 +1150,12 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   )}
 
                   {draft.conditionType === 'ClipboardChanged' && (
-                    <Field label="Contains" hint={tt('Optional filter — empty fires on ANY clipboard change. App-made clipboard traffic (replays, capture-slot) never counts.', 'Filtro opcional — vazio dispara em QUALQUER mudança. Tráfego do próprio app (replays, capture-slot) nunca conta.')}>
+                    <Field label="Contains" hint={'Optional filter — empty fires on ANY clipboard change. App-made clipboard traffic (replays, capture-slot) never counts.'}>
                       <input
                         className={inputCls}
                         value={draft.clipboardPattern ?? ''}
                         onChange={(e) => patch({ clipboardPattern: e.target.value })}
-                        placeholder={tt('text the clipboard must contain', 'texto que o clipboard deve conter')}
+                        placeholder={'text the clipboard must contain'}
                       />
                     </Field>
                   )}
@@ -1186,7 +1178,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   {(() => {
                     const cd = defaultCooldownSec(draft.conditionType);
                     return (
-                      <Field label="Cooldown" hint={tt(`Minimum gap between fires. 0 = default (${cd} s).`, `Intervalo mínimo entre disparos. 0 = padrão (${cd} s).`)}>
+                      <Field label="Cooldown" hint={`Minimum gap between fires. 0 = default (${cd} s).`}>
                         <NumberInput value={draft.cooldownSeconds} onChange={(v) => patch({ cooldownSeconds: v ?? 0 })}
                           min={0} max={86400} suffix="s" inputWidth="w-24" />
                       </Field>
@@ -1204,12 +1196,8 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                     return (
                       <Field
                         label="Check every"
-                        hint={tt(
-                          `How often to re-probe. 0 = default (${def} ms).` +
-                            (heavy ? ' An image check grabs and scans the whole screen each time — raise this for something you can wait a few seconds for.' : ''),
-                          `Com que frequência re-checar. 0 = padrão (${def} ms).` +
-                            (heavy ? ' Uma checagem de imagem captura e varre a tela inteira a cada vez — aumente para algo que pode esperar alguns segundos.' : ''),
-                        )}>
+                        hint={`How often to re-probe. 0 = default (${def} ms).` +
+                            (heavy ? ' An image check grabs and scans the whole screen each time — raise this for something you can wait a few seconds for.' : '')}>
                         <NumberInput value={draft.pollIntervalMs} onChange={(v) => patch({ pollIntervalMs: v ?? 0 })}
                           min={0} max={600000} step={250} thousands suffix="ms" inputWidth="w-28" />
                       </Field>
@@ -1220,15 +1208,14 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
 
               <div className="pt-2 border-t border-border-subtle text-[11px] text-text-tertiary leading-relaxed"
 >
-                {tt('Arm or disarm with the toggle on the list row — it takes effect immediately, independent of Save.',
-                  'Arme ou desarme pelo toggle na linha da lista — vale imediatamente, independente do Save.')}
+                {'Arm or disarm with the toggle on the list row — it takes effect immediately, independent of Save.'}
               </div>
 
               {selectedEntry && (selectedEntry.skippedBusy > 0 || selectedEntry.skippedDirty > 0 || selectedEntry.skippedModal > 0) && (
                 <div className="text-[11px] text-text-tertiary leading-relaxed">
-                  {tt('Skipped fires', 'Disparos pulados')}: {selectedEntry.skippedBusy} {tt('busy', 'ocupado')} ·{' '}
-                  {selectedEntry.skippedDirty} {tt('unsaved changes', 'mudanças não salvas')} ·{' '}
-                  {selectedEntry.skippedModal} {tt('dialog open', 'diálogo aberto')}
+                  {'Skipped fires'}: {selectedEntry.skippedBusy} {'busy'} ·{' '}
+                  {selectedEntry.skippedDirty} {'unsaved changes'} ·{' '}
+                  {selectedEntry.skippedModal} {'dialog open'}
                 </div>
               )}
 
@@ -1238,7 +1225,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   swallowed with it, and used to be invisible. */}
               {selectedEntry && selectedEntry.skippedSuppressed > 0 && (
                 <div className="text-[11px] text-text-tertiary leading-relaxed">
-                  {tt('Clipboard changes ignored just after a replay', 'Mudanças de clipboard ignoradas logo após um replay')}: {selectedEntry.skippedSuppressed}
+                  {'Clipboard changes ignored just after a replay'}: {selectedEntry.skippedSuppressed}
                 </div>
               )}
 
@@ -1255,7 +1242,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                     onClick={() => send({ type: 'automation:resetCounters', payload: { profile: selectedEntry.profile } })}
                     data-tip={tt('Zero the fire and skip counts. The next scheduled run is not affected.',
                                  'Zera as contagens de disparo e de pulos. O próximo disparo agendado não muda.')}>
-                    {tt('Reset counters', 'Zerar contadores')}
+                    {'Reset counters'}
                   </Button>
                 </div>
               )}
@@ -1288,7 +1275,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
         <div className="w-[380px] rounded-dialog border border-border-subtle bg-bg-surface p-4 shadow-dialog outline-none"
           role="dialog"
           aria-modal="true"
-          aria-label={tt('Unsaved automation', 'Automação não salva')}
+          aria-label={'Unsaved automation'}
           tabIndex={-1}
           ref={focusOnMount}
           onKeyDown={(e) => {
@@ -1299,23 +1286,22 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
           }}
           onClick={(e) => e.stopPropagation()}>
           <div className="text-[13px] text-text-primary font-medium mb-1.5">
-            {tt('Unsaved automation', 'Automação não salva')}
+            {'Unsaved automation'}
           </div>
           <div className="text-[12px] text-text-secondary leading-relaxed mb-4">
-            {tt('This automation has changes that were never saved. Leaving now discards them — including any reference image you captured and the search region you set.',
-                'Esta automação tem alterações que nunca foram salvas. Sair agora descarta tudo — inclusive a imagem de referência capturada e a região de busca definida.')}
+            {'This automation has changes that were never saved. Leaving now discards them — including any reference image you captured and the search region you set.'}
           </div>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => setPendingNav(null)}>
-              {tt('Keep editing', 'Continuar editando')}
+              {'Keep editing'}
             </Button>
             <Button variant="secondary" size="sm" onClick={() => discardAndGo(pendingNav)}>
-              {tt('Discard', 'Descartar')}
+              {'Discard'}
             </Button>
             {canSave && (
               <Button variant="primary" size="sm"
                 onClick={() => { const dest = pendingNav; handleSave(); go(dest); }}>
-                {tt('Save and continue', 'Salvar e continuar')}
+                {'Save and continue'}
               </Button>
             )}
           </div>

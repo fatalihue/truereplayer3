@@ -6,7 +6,7 @@ import { Button } from './common/Button';
 import { KeyCaps } from './common/KeyCaps';
 import { DurationChips } from './common/DurationChips';
 import { useBridge } from '../bridge/BridgeContext';
-import { useTt, useLanguage } from '../state/LanguageContext';
+import { useLanguage } from '../state/LanguageContext';
 import { useWindowFocused } from '../hooks/useWindowFocused';
 import { formatMs } from '../utils/displayUtils';
 
@@ -59,7 +59,6 @@ const TIMEOUT_PRESETS = [100, 500, 1000, 5000, 30000, 0] as const;
 const stepFor = (ms: number) => (ms >= 1000 ? 1000 : 100);
 
 export function PauseDialog({ initialKey, initialTimeoutMs, onConfirm, onClose }: PauseDialogProps) {
-  const tt = useTt();
   const { language } = useLanguage();
   const isEditing = initialKey !== undefined;
 
@@ -150,7 +149,7 @@ export function PauseDialog({ initialKey, initialTimeoutMs, onConfirm, onClose }
       // Truthful per state — never advertises Enter while the hook is armed
       // (outside input focus, Enter would be CAPTURED as the resume key).
       footerHint={captured
-        ? tt('Press another key to replace', 'Pressione outra tecla para substituir')
+        ? 'Press another key to replace'
         : ''}
       footer={
         <>
@@ -195,8 +194,8 @@ export function PauseDialog({ initialKey, initialTimeoutMs, onConfirm, onClose }
                       it would be inviting a press that (correctly) goes to that other app. */}
                   <div className="text-[12px] text-text-secondary mb-1">
                     {windowFocused
-                      ? tt('Press any key — optional', 'Pressione qualquer tecla — opcional')
-                      : tt('Click TrueReplayer to capture keys', 'Clique no TrueReplayer para capturar teclas')}
+                      ? 'Press any key — optional'
+                      : 'Click TrueReplayer to capture keys'}
                   </div>
                   <div className="text-[10px] font-mono text-text-tertiary">F8 · Esc · Ctrl+R</div>
                 </>
@@ -259,10 +258,10 @@ export function PauseDialog({ initialKey, initialTimeoutMs, onConfirm, onClose }
             // gridArea overlay the Send Keystroke dialog uses for its Press/Hold bodies, and
             // the same doctrine as common/FieldError.
             const messages = [
-              tt('Resumes on the hotkey or after the timeout — whichever comes first.', 'Retoma pelo atalho ou após o tempo limite — o que vier primeiro.'),
-              tt('Waits until the hotkey is pressed.', 'Aguarda até o atalho ser pressionado.'),
-              tt(`Waits ${timeoutLabel} then continues.`, `Aguarda ${timeoutLabel} e continua.`),
-              tt('Set a hotkey or a timeout — with neither, this Pause is skipped at replay.', 'Defina um atalho ou um tempo limite — sem nenhum dos dois, esta Pausa é pulada no replay.'),
+              'Resumes on the hotkey or after the timeout — whichever comes first.',
+              'Waits until the hotkey is pressed.',
+              `Waits ${timeoutLabel} then continues.`,
+              'Set a hotkey or a timeout — with neither, this Pause is skipped at replay.',
             ];
             const active = captured && timeoutMs > 0 ? 0 : captured ? 1 : timeoutMs > 0 ? 2 : 3;
             return (

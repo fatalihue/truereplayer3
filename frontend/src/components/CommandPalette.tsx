@@ -8,7 +8,6 @@ import {
 import { useAppState } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
 import { useSelectionRef } from '../state/SelectionContext';
-import { useTt } from '../state/LanguageContext';
 
 interface CommandPaletteProps {
   isOpen: boolean;
@@ -51,7 +50,6 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   const { profiles, activeProfile, settings, actions } = useAppState();
   const { send } = useBridge();
   const selectionRef = useSelectionRef();
-  const tt = useTt();
   const [query, setQuery] = useState('');
 
   // Insert position helper: matches the toolbar's behavior — before the first selected
@@ -76,7 +74,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     // Clicker-mode gate — mirrors the Toolbar's insertsDisabled story: these
     // entries mutate the macro list, which is invisible in Clicker mode.
     const isClicker = settings.useCursorClick;
-    const clickerHint = tt('Not available in Clicker mode — switch to Macro', 'Indisponível no modo Clicker — mude para Macro');
+    const clickerHint = 'Not available in Clicker mode — switch to Macro';
 
     return [
       {
@@ -150,7 +148,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             keywords: ['copy profile', 'clone'],
             icon: <Files size={14} className="text-text-secondary" />,
             disabled: !activeProfile,
-            disabledHint: tt('Select a profile first', 'Selecione um perfil primeiro'),
+            disabledHint: 'Select a profile first',
             onAction: () => { if (activeProfile) { send({ type: 'profile:duplicate', payload: { name: activeProfile } }); onClose(); } },
           },
           {
@@ -217,7 +215,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     // Narrow deps to the exact settings field read above so unrelated settings changes
     // (hotkeys, loop config, movement knobs) don't rebuild every command group.
   }, [
-    profiles, activeProfile, send, onClose, computeInsertIndex, tt,
+    profiles, activeProfile, send, onClose, computeInsertIndex,
     settings.useCursorClick,
   ]);
 

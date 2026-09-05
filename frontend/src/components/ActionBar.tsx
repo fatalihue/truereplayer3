@@ -76,7 +76,7 @@ export function ActionBar() {
   // decorate a value that this run is not going to use.
   const showsCount = !perRow && !forcedInfinite;
   const loopLabel = perRow
-    ? tt('per row', 'por linha')
+    ? 'per row'
     : forcedInfinite
       ? '∞'
       : profileLoop.enabled

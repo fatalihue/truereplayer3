@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Activity, X } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
 import { useAppState } from '../state/AppStateContext';
-import { useTt } from '../state/LanguageContext';
+
 
 // ── Live Variables pane ──────────────────────────────────────────────────────
 //
@@ -45,7 +45,6 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 export function LiveVariablesHost() {
   const { send, subscribe } = useBridge();
   const { status } = useAppState();
-  const tt = useTt();
   const [enabled, setEnabled] = useState(() => localStorage.getItem(STORAGE_KEY) === '1');
   const [snap, setSnap] = useState<Snapshot>(EMPTY);
 
@@ -97,15 +96,12 @@ export function LiveVariablesHost() {
       <div className="flex-1 min-h-0 overflow-y-auto pb-1.5">
         {empty && (
           <div className="px-2.5 py-2 text-[11px] text-text-tertiary leading-relaxed">
-            {tt(
-              'Nothing yet — Set Variable actions, {input:} answers and {clip:} captures show here as they happen.',
-              'Nada ainda — actions Set Variable, respostas de {input:} e capturas {clip:} aparecem aqui em tempo real.',
-            )}
+            {'Nothing yet — Set Variable actions, {input:} answers and {clip:} captures show here as they happen.'}
           </div>
         )}
         {vars.length > 0 && (
           <>
-            <SectionLabel>{tt('Variables', 'Variáveis')}</SectionLabel>
+            <SectionLabel>{'Variables'}</SectionLabel>
             {vars.map(([k, v]) => <ValueRow key={`v${k}`} name={k} value={v} />)}
           </>
         )}
@@ -117,7 +113,7 @@ export function LiveVariablesHost() {
         )}
         {row.length > 0 && (
           <>
-            <SectionLabel>{tt('Current row', 'Linha atual')}</SectionLabel>
+            <SectionLabel>{'Current row'}</SectionLabel>
             {row.map(([k, v]) => <ValueRow key={`r${k}`} name={`row:${k}`} value={v} />)}
           </>
         )}

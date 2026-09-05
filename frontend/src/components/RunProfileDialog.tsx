@@ -90,7 +90,7 @@ export function RunProfileDialog({ mode, initial, excludeProfileName, onConfirm,
       // one-keystroke tweak — a stray backdrop click discards nothing hard to redo,
       // so backdrop-dismiss stays enabled (the default).
       closeOnBackdrop={true}
-      footerHint={tt('Enter to confirm · Esc to cancel', 'Enter confirma · Esc cancela')}
+      footerHint={'Enter to confirm · Esc to cancel'}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
@@ -114,9 +114,9 @@ export function RunProfileDialog({ mode, initial, excludeProfileName, onConfirm,
       <div className="px-4 py-4 flex flex-col gap-4">
         {eligibleProfiles.length === 0 ? (
           <div className="text-xs text-text-tertiary py-4 text-center">
-            {tt('No other profile to call.', 'Nenhum outro perfil para chamar.')}
+            {'No other profile to call.'}
             <br />
-            {tt('Create one first.', 'Crie um perfil antes.')}
+            {'Create one first.'}
           </div>
         ) : (
           <>
@@ -133,7 +133,7 @@ export function RunProfileDialog({ mode, initial, excludeProfileName, onConfirm,
                 onChange={setProfileName}
                 autoFocus
                 initialQuery={seedQuery}
-                ariaLabel={tt('Profile to run', 'Profile a executar')}
+                ariaLabel={'Profile to run'}
               />
             </div>
 
@@ -150,12 +150,11 @@ export function RunProfileDialog({ mode, initial, excludeProfileName, onConfirm,
                     max={999}
                     inputWidth="w-16"
                     inputHeight="h-8"
-                    ariaLabel={tt('Repeat count', 'Número de repetições')}
+                    ariaLabel={'Repeat count'}
                   />
                 </span>
                 <span className="text-xs text-text-tertiary">
-                  {tt(repeatCount === 1 ? 'time per call' : 'times per call',
-                      repeatCount === 1 ? 'vez por chamada' : 'vezes por chamada')}
+                  {repeatCount === 1 ? 'time per call' : 'times per call'}
                 </span>
               </div>
             </div>
@@ -174,8 +173,7 @@ export function RunProfileDialog({ mode, initial, excludeProfileName, onConfirm,
             </label>
 
             <div className="text-[11px] text-text-tertiary leading-relaxed bg-bg-card border border-border-subtle rounded px-2.5 py-2">
-              {tt('The called profile’s actions run right here. Its own Loops / Interval are ignored — use Repeat above. Disabled profiles are skipped, and chains deeper than 5 levels are blocked.',
-                'As ações do perfil chamado rodam aqui mesmo. Os Loops / Interval dele são ignorados — use o Repeat acima. Perfis desativados são pulados, e cadeias com mais de 5 níveis são bloqueadas.')}
+              {'The called profile’s actions run right here. Its own Loops / Interval are ignored — use Repeat above. Disabled profiles are skipped, and chains deeper than 5 levels are blocked.'}
             </div>
           </>
         )}

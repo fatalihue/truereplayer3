@@ -113,10 +113,8 @@ export function ClipboardModifierBody({
             backgroundColor: 'color-mix(in srgb, var(--color-recording) 10%, transparent)',
           }}>
           {state.unmodeledRefArg
-            ? tt('This token takes a line argument from a variable, which these controls can only show as a literal — so it is read-only here. It still runs; if the variable is missing or does not hold a valid value, the step yields nothing. Edit the token text directly to change it.',
-                 'Este token pega um argumento de linha de uma variável, e estes controles só conseguem mostrar um valor literal — por isso está só para leitura. Ele roda normalmente; se a variável não existir ou não tiver um valor válido, o passo não devolve nada. Edite o texto do token para mudá-lo.')
-            : tt('This editor cannot rebuild this token exactly as written — a modifier it does not know, one used twice, or a different order — so it is read-only. Editing here would quietly change what it does.',
-                 'Este editor não consegue reconstruir este token exatamente como está escrito — um modificador que ele não conhece, um usado duas vezes, ou em outra ordem — então está só para leitura. Editar aqui mudaria em silêncio o que ele faz.')}
+            ? 'This token takes a line argument from a variable, which these controls can only show as a literal — so it is read-only here. It still runs; if the variable is missing or does not hold a valid value, the step yields nothing. Edit the token text directly to change it.'
+            : 'This editor cannot rebuild this token exactly as written — a modifier it does not know, one used twice, or a different order — so it is read-only. Editing here would quietly change what it does.'}
         </div>
         <div className="text-[10px] uppercase tracking-wide text-text-tertiary">Token</div>
         <div className="font-mono text-[12px] px-2 py-0.5 rounded break-all"
@@ -127,8 +125,7 @@ export function ClipboardModifierBody({
           {token}
         </div>
         <div className="text-[10px] text-text-tertiary leading-snug">
-          {tt('To change it, edit the token text directly in the editor.',
-              'Para alterar, edite o texto do token direto no editor.')}
+          {'To change it, edit the token text directly in the editor.'}
         </div>
       </div>
     );
@@ -148,11 +145,8 @@ export function ClipboardModifierBody({
           />
           <div className="text-[10px] text-text-tertiary leading-snug mt-0.5">
             {state.next
-              ? tt(
-                  'Each use takes the next line and moves on. Copying something new starts over. The preview always shows line 1.',
-                  'Cada uso pega a próxima linha e avança. Copiar algo novo recomeça do início. A prévia sempre mostra a linha 1.',
-                )
-              : tt('Pastes the whole clipboard.', 'Cola a área de transferência inteira.')}
+              ? 'Each use takes the next line and moves on. Copying something new starts over. The preview always shows line 1.'
+              : 'Pastes the whole clipboard.'}
           </div>
         </StepSection>
       )}
@@ -513,7 +507,7 @@ export function ClipboardModifierBody({
         >
           {sourceUnknown ? (
             <span className="italic text-text-disabled">
-              {tt('Known only while the macro runs', 'Só existe enquanto a macro roda')}
+              {'Known only while the macro runs'}
             </span>
           ) : clipReady ? (
             clipRaw === '' ? (
@@ -548,18 +542,15 @@ export function ClipboardModifierBody({
               message is the one about the field still waiting on a name. */}
           {sourceUnknown
             ? <span className="italic text-text-disabled">
-                {tt('No preview — this value is read when the macro runs.',
-                    'Sem prévia — este valor é lido quando a macro roda.')}
+                {'No preview — this value is read when the macro runs.'}
               </span>
             : refUnfinished
             ? <span className="italic" style={{ color: 'var(--color-recording-fg)' }}>
-                {tt('Finish the name after @ — until then the token keeps the fixed number.',
-                    'Complete o nome depois do @ — até lá o token mantém o número fixo.')}
+                {'Finish the name after @ — until then the token keeps the fixed number.'}
               </span>
             : runtimeDependent
               ? <span className="italic text-text-disabled">
-                  {tt('Resolved when the macro runs — the index comes from a variable.',
-                      'Resolvido quando a macro roda — o índice vem de uma variável.')}
+                  {'Resolved when the macro runs — the index comes from a variable.'}
                 </span>
               : preview === '' ? <span className="italic text-text-disabled">(empty)</span> : preview}
         </div>

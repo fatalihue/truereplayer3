@@ -444,14 +444,14 @@ function NamePromptPopover({
         />
         <div className="text-[10px] text-text-tertiary mt-1.5 leading-relaxed">
           {kind === 'var'
-            ? tt('Set by a Set Variable action while replaying.', 'Definida por uma action Set Variable durante a execução.')
+            ? 'Set by a Set Variable action while replaying.'
             : kind === 'input'
-            ? tt('Replay pauses and asks you for this value. Click the chip to add dropdown options.', 'A execução pausa e pede este valor. Clique no chip para adicionar opções de dropdown.')
+            ? 'Replay pauses and asks you for this value. Click the chip to add dropdown options.'
             : kind === 'clip'
-            ? tt('Filled by a Copy to Slot action or the capture hotkey (slots 1–9).', 'Preenchido por uma action Copy to Slot ou pelo hotkey de captura (slots 1–9).')
+            ? 'Filled by a Copy to Slot action or the capture hotkey (slots 1–9).'
             : kind === 'rownext'
-            ? tt('Each use pulls the NEXT row of this column — 1st → row 1, 2nd → row 2… Resets each run.', 'Cada uso pega a PRÓXIMA linha desta coluna — 1º → linha 1, 2º → linha 2… Reinicia a cada execução.')
-            : tt("Column header from the profile's Data table.", 'Cabeçalho de coluna da tabela Data do profile.')}
+            ? 'Each use pulls the NEXT row of this column — 1st → row 1, 2nd → row 2… Resets each run.'
+            : "Column header from the profile's Data table."}
         </div>
       </div>
       {/* Two buttons, no fifth palette section: the chain builder gets an entry point for the
@@ -721,8 +721,8 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
     a.download = snippetExportFilename(new Date());
     a.click();
     URL.revokeObjectURL(url);
-    setSnippetTransferNote(tt(`Saved ${snippets.length} snippets`, `${snippets.length} snippets salvos`));
-  }, [snippets, tt]);
+    setSnippetTransferNote(`Saved ${snippets.length} snippets`);
+  }, [snippets]);
 
   const handleImportSnippets = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -730,19 +730,19 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
     e.target.value = '';
     if (!file) return;
     const reader = new FileReader();
-    reader.onerror = () => setSnippetTransferNote(tt('Could not read that file', 'Não foi possível ler esse arquivo'));
+    reader.onerror = () => setSnippetTransferNote('Could not read that file');
     reader.onload = () => {
       const result = parseSnippetImport(String(reader.result ?? ''));
       if (!result.ok) {
         // Each reason is a DIFFERENT statement — "not a snippet file" is fixable by picking
         // another file, "unsupported version" is not.
-        const REASONS: Record<typeof result.reason, [string, string]> = {
-          'not-json': ['That file is not valid JSON', 'Esse arquivo não é um JSON válido'],
-          'not-a-snippet-file': ['That is not a snippets file', 'Esse arquivo não é de snippets'],
-          'unsupported-version': ['That file is from a newer version', 'Esse arquivo é de uma versão mais nova'],
-          'no-snippets': ['No usable snippets in that file', 'Nenhum snippet aproveitável nesse arquivo'],
+        const REASONS: Record<typeof result.reason, string> = {
+          'not-json': 'That file is not valid JSON',
+          'not-a-snippet-file': 'That is not a snippets file',
+          'unsupported-version': 'That file is from a newer version',
+          'no-snippets': 'No usable snippets in that file',
         };
-        setSnippetTransferNote(tt(REASONS[result.reason][0], REASONS[result.reason][1]));
+        setSnippetTransferNote(REASONS[result.reason]);
         return;
       }
       // ADD, never replace: the file is one library and what is on screen is another, and there
@@ -752,11 +752,11 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
       saveSnippets(merged);
       const n = result.snippets.length;
       setSnippetTransferNote(result.skipped > 0
-        ? tt(`Added ${n}, skipped ${result.skipped} incomplete`, `${n} adicionados, ${result.skipped} incompletos ignorados`)
-        : tt(`Added ${n} snippets`, `${n} snippets adicionados`));
+        ? `Added ${n}, skipped ${result.skipped} incomplete`
+        : `Added ${n} snippets`);
     };
     reader.readAsText(file);
-  }, [snippets, tt]);
+  }, [snippets]);
 
   const handleInsertSnippet = useCallback((snippet: Snippet) => {
     // Rich snippets re-enter as formatted nodes; pre-rich ones as plain text+chips.
@@ -1017,10 +1017,10 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                 Delete token
               </button>
             )}
-            <span>{tt('Steps apply in the runtime pipeline order', 'As etapas seguem a ordem do pipeline de execução')}</span>
+            <span>{'Steps apply in the runtime pipeline order'}</span>
           </span>
         ) : (
-          <>{tt('Ctrl+Enter to confirm · Esc to cancel', 'Ctrl+Enter para confirmar · Esc para cancelar')}</>
+          <>{'Ctrl+Enter to confirm · Esc to cancel'}</>
         )
       }
       footer={(requestClose) => (
@@ -1341,11 +1341,11 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                 <div className="flex-1 min-h-0 overflow-y-auto border-t border-border-subtle">
                   {snippets.length === 0 ? (
                     <div className="px-3 py-4 text-center text-[11px] text-text-disabled">
-                      {tt('No saved snippets yet', 'Nenhum snippet salvo ainda')}
+                      {'No saved snippets yet'}
                     </div>
                   ) : filteredSnippets.length === 0 ? (
                     <div className="px-3 py-4 text-center text-[11px] text-text-disabled">
-                      {tt('No snippets match', 'Nenhum snippet corresponde a')} “{snippetFilter}”
+                      {'No snippets match'} “{snippetFilter}”
                     </div>
                   ) : (
                     filteredSnippets.map((s) =>
@@ -1478,21 +1478,20 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
           className="w-[380px] rounded-dialog border border-border-subtle bg-bg-surface p-4 shadow-dialog"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="text-[13px] text-text-primary font-medium mb-1.5">{tt('Unsaved text', 'Texto não salvo')}</div>
+          <div className="text-[13px] text-text-primary font-medium mb-1.5">{'Unsaved text'}</div>
           <div className="text-[12px] text-text-secondary leading-relaxed mb-4">
-            {tt('This message has changes that were never applied. Closing now discards the text, its formatting and the delivery settings.',
-                'Esta mensagem tem alterações que nunca foram aplicadas. Fechar agora descarta o texto, a formatação e os ajustes de entrega.')}
+            {'This message has changes that were never applied. Closing now discards the text, its formatting and the delivery settings.'}
           </div>
           <div className="flex justify-end gap-2">
             {/* autoFocus is safe here: this overlay mounts fresh every time, unlike the snippet
                 delete row where React REUSED the node and autoFocus never fired. */}
             <Button variant="ghost" size="sm" autoFocus
               onClick={() => { setConfirmDiscard(false); lexicalApiRef.current?.focus(); }}>
-              {tt('Keep editing', 'Continuar editando')}
+              {'Keep editing'}
             </Button>
             <Button variant="secondary" size="sm"
               onClick={() => { setConfirmDiscard(false); onClose(); }}>
-              {tt('Discard', 'Descartar')}
+              {'Discard'}
             </Button>
             {/* Repeats the footer's own gate and label so it cannot fire handleConfirm's
                 early-return branch on a whitespace-only payload. */}

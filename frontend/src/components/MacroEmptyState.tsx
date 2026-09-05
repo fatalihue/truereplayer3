@@ -28,10 +28,10 @@ export function MacroEmptyState() {
             above stays English because it is a label. Same split as ClickerEmptyState. */}
         {isRecording ? (
           <span className="font-medium text-recording">
-            {tt('Recording — waiting for input…', 'Gravando — aguardando entrada…')}
+            {'Recording — waiting for input…'}
           </span>
         ) : (
-          tt('No actions recorded.', 'Nenhuma ação gravada.')
+          'No actions recorded.'
         )}
       </div>
       {/* An empty grid that acts: the two first steps most macros start with, as real buttons

@@ -103,8 +103,8 @@ export function MessagePreviewPanel({ text, method, marksAdded = false }: {
       <div className="px-3 pt-2 pb-1 shrink-0">
         <div className="label-micro text-text-tertiary">
           {method === 'type'
-            ? tt('What this will type', 'O que isto vai digitar')
-            : tt('What this will paste', 'O que isto vai colar')}
+            ? 'What this will type'
+            : 'What this will paste'}
         </div>
         {/* This panel renders the PLAIN payload — the same string the engine resolves — and it has
             no way to render the markdown flavor, which is exported imperatively from the editor at
@@ -115,8 +115,7 @@ export function MessagePreviewPanel({ text, method, marksAdded = false }: {
             noise. */}
         {marksAdded && (
           <div className="text-[10px] leading-snug text-text-tertiary mt-0.5">
-            {tt('Formatting marks (*bold*) are added on send and are not shown here.',
-                'As marcas de formatação (*negrito*) são acrescentadas no envio e não aparecem aqui.')}
+            {'Formatting marks (*bold*) are added on send and are not shown here.'}
           </div>
         )}
       </div>
@@ -131,7 +130,7 @@ export function MessagePreviewPanel({ text, method, marksAdded = false }: {
         >
           {empty ? (
             <span className="italic text-text-disabled">
-              {tt('Nothing to send yet', 'Nada para enviar ainda')}
+              {'Nothing to send yet'}
             </span>
           ) : (
             pieces.map((p, i) =>

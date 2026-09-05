@@ -76,8 +76,8 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
     const pattern = (value.windowTitle ?? '').trim();
     if (!pattern) return null;
     try { new RegExp(pattern); return null; }
-    catch { return tt('This does not look like a valid regular expression.', 'Isto não parece uma expressão regular válida.'); }
-  }, [value.titleMatchMode, value.windowTitle, tt]);
+    catch { return 'This does not look like a valid regular expression.'; }
+  }, [value.titleMatchMode, value.windowTitle]);
   const shownTitleError = titleError ?? autoTitleError;
 
   const [processList, setProcessList] = useState<{ name: string; title: string }[] | null>(null);
@@ -191,19 +191,19 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
                 autoFocus
-                placeholder={tt('Filter…', 'Filtrar…')}
+                placeholder={'Filter…'}
                 className="w-full h-7 px-2 text-[11px] text-text-primary bg-bg-input border-b border-border-subtle outline-none"
               />
               <div className="overflow-y-auto flex-1">
                 {processList === null ? (
-                  <div className="px-2 py-2 text-[11px] text-text-tertiary">{tt('Loading…', 'Carregando…')}</div>
+                  <div className="px-2 py-2 text-[11px] text-text-tertiary">{'Loading…'}</div>
                 ) : (() => {
                   const f = filter.trim().toLowerCase();
                   const items = f.length === 0
                     ? processList
                     : processList.filter(p => p.name.toLowerCase().includes(f) || p.title.toLowerCase().includes(f));
                   if (items.length === 0) {
-                    return <div className="px-2 py-2 text-[11px] text-text-tertiary">{tt('No processes match.', 'Nenhum processo corresponde.')}</div>;
+                    return <div className="px-2 py-2 text-[11px] text-text-tertiary">{'No processes match.'}</div>;
                   }
                   return items.map((p) => (
                     <button
@@ -287,8 +287,8 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
           }`}
         >
           {isDetecting
-            ? tt('Click the target window…', 'Clique na janela-alvo…')
-            : tt('Detect window', 'Detectar janela')}
+            ? 'Click the target window…'
+            : 'Detect window'}
         </button>
       )}
     </>

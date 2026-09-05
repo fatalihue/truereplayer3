@@ -111,16 +111,16 @@ export function DataPasteSurface({
             )}
           >
             <CheckboxBox checked={firstRowHeader} />
-            {tt('First row is the header', 'Primeira linha é o cabeçalho')}
+            {'First row is the header'}
           </button>
 
           <div className="text-[11px] text-text-tertiary tabular-nums">
-            {parsed.headers.length} {tt('columns', 'colunas')} · {parsed.rows.length} {tt('rows', 'linhas')}
+            {parsed.headers.length} {'columns'} · {parsed.rows.length} {'rows'}
           </div>
 
           {parsed.headers.length > 0 && (
             <div className="flex flex-col gap-1">
-              <div className="label-micro text-text-tertiary">{tt('Columns', 'Colunas')}</div>
+              <div className="label-micro text-text-tertiary">{'Columns'}</div>
               {parsed.headers.map((h, i) => {
                 const name = h.trim();
                 const ok = name !== '' && VALID_HEADER.test(name);
@@ -132,7 +132,7 @@ export function DataPasteSurface({
                       <TriangleAlert size={11} className="text-warning-ink shrink-0" />
                     )}
                     <span className={ok ? 'text-text-secondary' : 'text-warning-ink'}>
-                      {name || <span className="italic text-text-disabled">({tt('empty', 'vazio')})</span>}
+                      {name || <span className="italic text-text-disabled">({'empty'})</span>}
                     </span>
                   </div>
                 );
@@ -142,28 +142,19 @@ export function DataPasteSurface({
 
           {invalidHeaders.length > 0 && (
             <div className="text-[10px] text-text-tertiary leading-relaxed">
-              {tt(
-                'Headers marked ⚠ can’t be used as {row:…} tokens (letters, digits, underscore only). They still save.',
-                'Cabeçalhos com ⚠ não podem virar tokens {row:…} (só letras, dígitos, underscore). Ainda assim são salvos.',
-              )}
+              {'Headers marked ⚠ can’t be used as {row:…} tokens (letters, digits, underscore only). They still save.'}
             </div>
           )}
 
           {ragged && (
             <div className="text-[10px] text-text-tertiary leading-relaxed">
-              {tt(
-                'Some rows have a different cell count than the header — missing cells resolve to empty text.',
-                'Algumas linhas têm contagem de células diferente do cabeçalho — células faltantes viram texto vazio.',
-              )}
+              {'Some rows have a different cell count than the header — missing cells resolve to empty text.'}
             </div>
           )}
 
           {mode === 'replace' && hasExistingTable && (
             <div className="text-[10px] text-text-tertiary leading-relaxed mt-auto">
-              {tt(
-                'The box opens with the current table — edit it in place or paste over it.',
-                'A caixa abre com a tabela atual — edite direto ou cole por cima.',
-              )}
+              {'The box opens with the current table — edit it in place or paste over it.'}
             </div>
           )}
         </div>

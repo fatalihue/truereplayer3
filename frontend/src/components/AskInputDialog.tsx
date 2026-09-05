@@ -3,7 +3,7 @@ import { Keyboard } from 'lucide-react';
 import { DialogShell } from './common/DialogShell';
 import { Button } from './common/Button';
 import { useBridge } from '../bridge/BridgeContext';
-import { useTt } from '../state/LanguageContext';
+
 
 /**
  * Runtime "Ask-Input" modal for the {input:Label} token. When the replay resolver hits an
@@ -20,7 +20,6 @@ interface AskInputDialogProps {
 }
 
 function AskInputDialog({ label, options, onSubmit, onCancel }: AskInputDialogProps) {
-  const tt = useTt();
   const [value, setValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const isMenu = options != null && options.length > 0;
@@ -37,8 +36,8 @@ function AskInputDialog({ label, options, onSubmit, onCancel }: AskInputDialogPr
       onClose={onCancel}
       closeOnBackdrop={false}
       footerHint={isMenu
-        ? tt('Pick an option · Esc cancels the run', 'Escolha uma opção · Esc cancela a execução')
-        : tt('Enter to submit · Esc cancels the run', 'Enter para enviar · Esc cancela a execução')}
+        ? 'Pick an option · Esc cancels the run'
+        : 'Enter to submit · Esc cancels the run'}
       footer={isMenu ? undefined : (
         <>
           <Button variant="secondary" onClick={onCancel}>Cancel</Button>

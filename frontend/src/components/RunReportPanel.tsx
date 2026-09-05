@@ -1,7 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { ListChecks, CheckCircle2, CircleDashed, XCircle, MinusCircle, TriangleAlert, RefreshCw, Repeat } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
-import { useTt } from '../state/LanguageContext';
 import { DialogShell } from './common/DialogShell';
 import { Button } from './common/Button';
 import type { RunReport, RunStep } from '../bridge/messageTypes';
@@ -13,34 +12,34 @@ import type { RunReport, RunStep } from '../bridge/messageTypes';
 // This list is checked against the real emitters, not guessed: the extension's codes are all
 // ELEMENT_-prefixed (ELEMENT_COVERED, not COVERED), and an unlisted code is not a problem —
 // the row falls back to the raw message, which is still the extension's own English sentence.
-function explainCode(code: string | null, tt: (en: string, pt: string) => string): string | null {
+function explainCode(code: string | null): string | null {
   switch (code) {
     case 'ELEMENT_NOT_FOUND':
-      return tt('No element matched the selector.', 'Nenhum elemento casou com o seletor.');
+      return 'No element matched the selector.';
     case 'ELEMENT_HIDDEN':
-      return tt('Found, but not visible on screen.', 'Encontrado, mas não visível na tela.');
+      return 'Found, but not visible on screen.';
     case 'ELEMENT_DISABLED':
-      return tt('Found, but disabled.', 'Encontrado, mas desabilitado.');
+      return 'Found, but disabled.';
     case 'ELEMENT_COVERED':
-      return tt('Found, but something is on top of it.', 'Encontrado, mas há algo por cima dele.');
+      return 'Found, but something is on top of it.';
     case 'SELECTOR_INVALID':
-      return tt('The selector is not valid CSS.', 'O seletor não é um CSS válido.');
+      return 'The selector is not valid CSS.';
     case 'NAVIGATION_TIMEOUT':
-      return tt('The page did not finish loading in time.', 'A página não terminou de carregar a tempo.');
+      return 'The page did not finish loading in time.';
     case 'INVALID_URL':
-      return tt('That is not a URL the browser can open.', 'Isso não é uma URL que o navegador consiga abrir.');
+      return 'That is not a URL the browser can open.';
     case 'OPTION_NOT_FOUND':
-      return tt('No option in the list matched.', 'Nenhuma opção da lista casou.');
+      return 'No option in the list matched.';
     case 'OPTION_DISABLED':
-      return tt('The option matched, but it is disabled.', 'A opção casou, mas está desabilitada.');
+      return 'The option matched, but it is disabled.';
     case 'NOT_A_SELECT':
-      return tt('That element is not a dropdown list.', 'Esse elemento não é uma lista suspensa.');
+      return 'That element is not a dropdown list.';
     case 'TAB_GONE':
-      return tt('The tab this run was acting on was closed.', 'A aba em que esta execução estava agindo foi fechada.');
+      return 'The tab this run was acting on was closed.';
     case 'NO_CONTENT_SCRIPT':
       // Browser actions run on whichever Chrome tab is active, so this fires when that tab is a
       // page extensions cannot touch (chrome://, the Web Store) or one that needs a reload.
-      return tt('The active Chrome tab cannot be automated.', 'A aba ativa do Chrome não pode ser automatizada.');
+      return 'The active Chrome tab cannot be automated.';
     default:
       return null;
   }
@@ -67,7 +66,6 @@ function StatusIcon({ status }: { status: RunStep['status'] }) {
  */
 export function RunReportPanel({ onClose }: { onClose: () => void }) {
   const { send, subscribe } = useBridge();
-  const tt = useTt();
   const [report, setReport] = useState<RunReport | null>(null);
 
   useEffect(() => {
@@ -117,15 +115,15 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
         <>
           <div className="mr-auto text-[11px] text-text-tertiary">
             {steps.length > 0
-              ? `${steps.length} ${tt('steps', 'passos')} · ${fmtMs(stats.total)}` +
-                (stats.failed > 0 ? ` · ${stats.failed} ${tt('failed', 'falharam')}` : '')
-                + (stats.running > 0 ? ` · ${stats.running} ${tt('in progress', 'em andamento')}` : '')
+              ? `${steps.length} ${'steps'} · ${fmtMs(stats.total)}` +
+                (stats.failed > 0 ? ` · ${stats.failed} ${'failed'}` : '')
+                + (stats.running > 0 ? ` · ${stats.running} ${'in progress'}` : '')
               : ''}
           </div>
           <Button variant="secondary" onClick={() => send({ type: 'replay:reportRequest', payload: {} })}>
-            <RefreshCw size={12} /> {tt('Refresh', 'Atualizar')}
+            <RefreshCw size={12} /> {'Refresh'}
           </Button>
-          <Button variant="primary" onClick={onClose}>{tt('Close', 'Fechar')}</Button>
+          <Button variant="primary" onClick={onClose}>{'Close'}</Button>
         </>
       )}
     >
@@ -134,8 +132,7 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
       <div className="flex-1 min-h-0 overflow-y-auto p-3">
         {steps.length === 0 ? (
           <div className="h-full flex items-center justify-center text-center text-[12px] text-text-tertiary px-8 leading-relaxed">
-            {tt('No run recorded yet. Play a profile and the steps will show up here — with the selector that matched, how long each step took, and why any of them failed.',
-                'Nenhuma execução registrada ainda. Rode um profile e os passos aparecem aqui — com o seletor que casou, quanto cada passo levou e por que algum falhou.')}
+            {'No run recorded yet. Play a profile and the steps will show up here — with the selector that matched, how long each step took, and why any of them failed.'}
           </div>
         ) : (
           <>
@@ -147,8 +144,7 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
                   backgroundColor: 'color-mix(in srgb, var(--color-recording) 10%, transparent)',
                 }}>
                 <TriangleAlert size={12} className="inline mr-1 -mt-0.5" />
-                {tt(`${stats.drifting} step(s) matched through a FALLBACK selector — the one you picked no longer matches. Re-pick those elements before the fallbacks drift too.`,
-                    `${stats.drifting} passo(s) casaram por um seletor de RESERVA — o que você escolheu não casa mais. Re-escolha esses elementos antes que as reservas também mudem.`)}
+                {`${stats.drifting} step(s) matched through a FALLBACK selector — the one you picked no longer matches. Re-pick those elements before the fallbacks drift too.`}
               </div>
             )}
             <div className="space-y-px">
@@ -204,7 +200,7 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
 
                   {s.matchedTier && (
                     <div className="ml-[52px] mt-0.5 text-[10px] leading-snug" style={{ color: 'var(--color-recording-fg)' }}>
-                      {tt('matched via fallback', 'casou por reserva')} <b>tier {s.matchedTier}</b>
+                      {'matched via fallback'} <b>tier {s.matchedTier}</b>
                       {s.matchedSelector && <span className="font-mono"> · {s.matchedSelector}</span>}
                     </div>
                   )}
@@ -215,7 +211,7 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
                         <div className="text-[10px] font-mono text-text-tertiary">{s.errorCode}</div>
                       )}
                       <div className="text-[11px] leading-snug" style={{ color: 'var(--color-recording-fg)' }}>
-                        {explainCode(s.errorCode, tt) ?? s.errorMessage}
+                        {explainCode(s.errorCode) ?? s.errorMessage}
                       </div>
                       {s.tip && (
                         <div className="text-[10px] text-text-tertiary leading-snug">{s.tip}</div>
@@ -228,8 +224,7 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
             </div>
             {(report?.overflow ?? 0) > 0 && (
               <div className="mt-2 text-[10px] text-text-tertiary text-center">
-                {tt(`+${report!.overflow} more steps not recorded (report is capped).`,
-                    `+${report!.overflow} passos não registrados (o relatório tem limite).`)}
+                {`+${report!.overflow} more steps not recorded (report is capped).`}
               </div>
             )}
           </>

@@ -19,7 +19,6 @@ import {
 import { NumInput, Section } from './popoverAtoms';
 import { normalizeToken } from './tokenNormalize';
 import { tokenTip } from './tokenDescriptions';
-import { useTt } from '../../state/LanguageContext';
 import { useAppState } from '../../state/AppStateContext';
 import { uiZoom, rectToLayout, viewportInLayout } from '../../utils/zoomSpace';
 
@@ -271,15 +270,14 @@ export function TokenChipPopover({
 }
 
 function Header({ token, onClose }: { token: string; onClose: () => void }) {
-  const tt = useTt();
   // The KEYBOARD-reachable copy of the chip's hover tip. TooltipLayer is hover-only — it listens
   // on mouseover/mouseout with no focusin path — so a user who reached this popover with
   // Enter/Space has no way to read the chip's data-tip. Always mounted, never conditional: the
   // popover re-places itself on token change and a line that appears and disappears would make
   // it hop. Unknown names fall back rather than collapsing the row.
   // withRaw:false because the header already prints the raw token on the line above.
-  const tip = tokenTip(token, tt, { withRaw: false })
-    || tt('Token substituted while replaying.', 'Token substituído durante a execução.');
+  const tip = tokenTip(token, (en) => en, { withRaw: false })
+    || 'Token substituted while replaying.';
   return (
     <div className="px-3.5 py-2.5 border-b border-border-subtle bg-bg-card shrink-0">
       <div className="flex items-center gap-2">

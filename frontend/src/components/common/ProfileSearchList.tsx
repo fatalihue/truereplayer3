@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, useEffect, useLayoutEffect, useId, type ReactNode } from 'react';
 import { Search, SearchX, X } from 'lucide-react';
-import { useTt } from '../../state/LanguageContext';
+
 
 export interface ProfileSearchListProps {
   /** Candidate profile names, already filtered for eligibility by the caller. */
@@ -52,7 +52,6 @@ export function ProfileSearchList({
   renderMeta,
   ariaLabel,
 }: ProfileSearchListProps) {
-  const tt = useTt();
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -231,12 +230,12 @@ export function ProfileSearchList({
         <input
           ref={inputRef}
           type="text"
-          aria-label={ariaLabel ?? tt('Search profiles', 'Pesquisar profiles')}
+          aria-label={ariaLabel ?? 'Search profiles'}
           role="combobox"
           aria-expanded
           aria-controls={`${baseId}-list`}
           aria-activedescendant={filtered.length > 0 ? rowId(highlight) : undefined}
-          placeholder={placeholder ?? tt('Search profiles...', 'Pesquisar profiles...')}
+          placeholder={placeholder ?? 'Search profiles...'}
           value={query}
           // Typing re-filters, which moves the highlight to the top match — revealing it is
           // right, so raise the flag the same way the arrow keys do.
@@ -248,7 +247,7 @@ export function ProfileSearchList({
           <button
             type="button"
             onClick={() => { scrollOnHighlightRef.current = true; setQuery(''); inputRef.current?.focus(); }}
-            aria-label={tt('Clear search', 'Limpar pesquisa')}
+            aria-label={'Clear search'}
             className="text-text-disabled hover:text-text-secondary transition-colors shrink-0"
           >
             <X size={12} />
@@ -260,7 +259,7 @@ export function ProfileSearchList({
         ref={listRef}
         id={`${baseId}-list`}
         role="listbox"
-        aria-label={ariaLabel ?? tt('Profiles', 'Profiles')}
+        aria-label={ariaLabel ?? 'Profiles'}
         className={`${listMaxHeightClass} overflow-y-auto border border-border-subtle rounded bg-bg-input/40`}
         // scrollbarGutter reserves the scrollbar's track even when the list doesn't
         // overflow, so filtering a long list down to two rows no longer shifts every row
@@ -272,8 +271,8 @@ export function ProfileSearchList({
             <SearchX size={18} />
             <span className="text-[11px]">
               {profiles.length === 0
-                ? tt('No profiles available', 'Nenhum profile disponível')
-                : tt('No profile matches', 'Nenhum profile corresponde')}
+                ? 'No profiles available'
+                : 'No profile matches'}
             </span>
           </div>
         ) : (

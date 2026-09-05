@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, ChevronDown } from 'lucide-react';
 import { useBridge } from '../../bridge/BridgeContext';
-import { useTt } from '../../state/LanguageContext';
+
 
 /**
  * Free-text process name with a running-process picker — type it by hand, or open the
@@ -24,7 +24,6 @@ export function ProcessNameInput({
   placeholder?: string;
 }) {
   const { send, subscribe } = useBridge();
-  const tt = useTt();
 
   const [processList, setProcessList] = useState<{ name: string; title: string }[] | null>(null);
   const [showPicker, setShowPicker] = useState(false);
@@ -74,7 +73,7 @@ export function ProcessNameInput({
           <button
             type="button"
             onClick={() => onChange('')}
-            aria-label={tt('Clear', 'Limpar')}
+            aria-label={'Clear'}
             className="p-1 text-text-disabled hover:text-text-secondary transition-colors"
           >
             <X size={12} />
@@ -88,7 +87,7 @@ export function ProcessNameInput({
             // Lazy fetch — first open enumerates. Re-opens reuse the cache.
             if (next && processList === null) send({ type: 'process:list', payload: {} });
           }}
-          aria-label={tt('Pick a running process', 'Escolher um processo em execução')}
+          aria-label={'Pick a running process'}
           className={`p-1 transition-colors ${showPicker ? 'text-accent' : 'text-text-tertiary hover:text-text-secondary'}`}
         >
           <ChevronDown size={14} />
@@ -101,19 +100,19 @@ export function ProcessNameInput({
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             autoFocus
-            placeholder={tt('Filter…', 'Filtrar…')}
+            placeholder={'Filter…'}
             className="w-full h-7 px-2 text-[11px] text-text-primary bg-bg-input border-b border-border-subtle outline-none"
           />
           <div className="overflow-y-auto flex-1">
             {processList === null ? (
-              <div className="px-2 py-2 text-[11px] text-text-tertiary">{tt('Loading…', 'Carregando…')}</div>
+              <div className="px-2 py-2 text-[11px] text-text-tertiary">{'Loading…'}</div>
             ) : (() => {
               const f = filter.trim().toLowerCase();
               const items = f.length === 0
                 ? processList
                 : processList.filter(p => p.name.toLowerCase().includes(f) || p.title.toLowerCase().includes(f));
               if (items.length === 0) {
-                return <div className="px-2 py-2 text-[11px] text-text-tertiary">{tt('No processes match.', 'Nenhum processo corresponde.')}</div>;
+                return <div className="px-2 py-2 text-[11px] text-text-tertiary">{'No processes match.'}</div>;
               }
               return items.map((p) => (
                 <button

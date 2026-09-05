@@ -1,7 +1,7 @@
 {
   "src/components/AutomationPanel.tsx": {
     "no-restricted-syntax": {
-      "count": 4
+      "count": 3
     }
   },
   "src/components/BulkActionBar.tsx": {

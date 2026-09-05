@@ -1001,7 +1001,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
   const targetLabel = (procName?: string | null, windowTitle?: string | null): string => {
     if (procName) return /\.exe$/i.test(procName) ? procName : `${procName}.exe`;
     if (windowTitle) return windowTitle;
-    return tt('Window target', 'Janela-alvo');
+    return 'Window target';
   };
 
   // Folder colour for the collapsed rail's avatar dot — tells which folder a
@@ -1560,7 +1560,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
           {p.appIconBase64 && p.hasWindowTarget && (
             <RemovableChip
               variant="circle"
-              removeTitle={tt(`Remove window target (${targetLabel(p.windowTargetProcessName, p.windowTargetWindowTitle)})`, `Remover janela-alvo (${targetLabel(p.windowTargetProcessName, p.windowTargetWindowTitle)})`)}
+              removeTitle={`Remove window target (${targetLabel(p.windowTargetProcessName, p.windowTargetWindowTitle)})`}
               tip={targetLabel(p.windowTargetProcessName, p.windowTargetWindowTitle)}
               onRemove={(e) => { e.stopPropagation(); setConfirmRemoval({ kind: 'profileTarget', name: p.name, label: `window target (${targetLabel(p.windowTargetProcessName, p.windowTargetWindowTitle)})` }); }}
               className="w-3.5 h-3.5"
@@ -1589,7 +1589,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
           {!p.appIconBase64 && p.hasWindowTarget && (
             <RemovableChip
               variant="circle"
-              removeTitle={tt(`Remove window target (${targetLabel(p.windowTargetProcessName, p.windowTargetWindowTitle)})`, `Remover janela-alvo (${targetLabel(p.windowTargetProcessName, p.windowTargetWindowTitle)})`)}
+              removeTitle={`Remove window target (${targetLabel(p.windowTargetProcessName, p.windowTargetWindowTitle)})`}
               tip={targetLabel(p.windowTargetProcessName, p.windowTargetWindowTitle)}
               onRemove={(e) => { e.stopPropagation(); setConfirmRemoval({ kind: 'profileTarget', name: p.name, label: `window target (${targetLabel(p.windowTargetProcessName, p.windowTargetWindowTitle)})` }); }}
             >
@@ -1705,7 +1705,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
 
         {p.hotkey && (
           <RemovableChip
-            removeTitle={tt(`Remove hotkey ${p.hotkey}`, `Remover hotkey ${p.hotkey}`)}
+            removeTitle={`Remove hotkey ${p.hotkey}`}
             onRemove={(e) => { e.stopPropagation(); setConfirmRemoval({ kind: 'hotkey', name: p.name, label: `hotkey ${p.hotkey}` }); }}
             /* A contested hotkey reads as a warning instead of a plain chip. The backend has
                always computed this — it just never left the toast, so the sidebar showed two
@@ -1727,7 +1727,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
           // 22.6px chip next to a 20px one. Same class + same px-1 as KbdTag's unified
           // branch means they cannot disagree about height again.
           <RemovableChip
-            removeTitle={tt(`Remove hotstring "${p.hotstring}"`, `Remover hotstring "${p.hotstring}"`)}
+            removeTitle={`Remove hotstring "${p.hotstring}"`}
             onRemove={(e) => { e.stopPropagation(); setConfirmRemoval({ kind: 'hotstring', name: p.name, label: `hotstring "${p.hotstring}"` }); }}
             className="kbd px-1"
           ><span>
@@ -2154,7 +2154,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                         {folder.appIconBase64 && (
                           <RemovableChip
                             variant="circle"
-                            removeTitle={tt(`Remove folder target (${targetLabel(folder.windowTargetProcessName, folder.windowTargetWindowTitle)})`, `Remover alvo da pasta (${targetLabel(folder.windowTargetProcessName, folder.windowTargetWindowTitle)})`)}
+                            removeTitle={`Remove folder target (${targetLabel(folder.windowTargetProcessName, folder.windowTargetWindowTitle)})`}
                             tip={targetLabel(folder.windowTargetProcessName, folder.windowTargetWindowTitle)}
                             onRemove={(e) => { e.stopPropagation(); setConfirmRemoval({ kind: 'folderTarget', name: folder.name, label: `folder target (${targetLabel(folder.windowTargetProcessName, folder.windowTargetWindowTitle)})` }); }}
                             className={`w-3.5 h-3.5 ${folderAllDisabled ? 'opacity-40' : ''}`}
@@ -2176,7 +2176,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                         {folder.hasWindowTarget && !folder.appIconBase64 && (
                           <RemovableChip
                             variant="circle"
-                            removeTitle={tt(`Remove folder target (${targetLabel(folder.windowTargetProcessName, folder.windowTargetWindowTitle)})`, `Remover alvo da pasta (${targetLabel(folder.windowTargetProcessName, folder.windowTargetWindowTitle)})`)}
+                            removeTitle={`Remove folder target (${targetLabel(folder.windowTargetProcessName, folder.windowTargetWindowTitle)})`}
                             tip={targetLabel(folder.windowTargetProcessName, folder.windowTargetWindowTitle)}
                             onRemove={(e) => { e.stopPropagation(); setConfirmRemoval({ kind: 'folderTarget', name: folder.name, label: `folder target (${targetLabel(folder.windowTargetProcessName, folder.windowTargetWindowTitle)})` }); }}
                           >
@@ -3046,7 +3046,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                 <input
                   type="text"
                   placeholder="Filter profiles..."
-                  aria-label={tt('Filter profiles', 'Filtrar perfis')}
+                  aria-label={'Filter profiles'}
                   value={exportSearch}
                   onChange={(e) => setExportSearch(e.target.value)}
                   className="bg-transparent text-xs text-text-primary placeholder:text-text-disabled outline-none flex-1 min-w-0"
@@ -3054,7 +3054,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                 {exportSearch && (
                   <button
                     onClick={() => setExportSearch('')}
-                    aria-label={tt('Clear filter', 'Limpar filtro')}
+                    aria-label={'Clear filter'}
                     className="text-text-disabled hover:text-text-secondary transition-colors shrink-0"
                   >
                     <X size={11} />

@@ -58,18 +58,18 @@ export function RemapSection() {
       if (msg.payload.owner && msg.payload.owner !== 'remap-add') return;
       const combo = msg.payload.combo;
       if (combo.includes('+')) {
-        setCaptureError(tt('Single keys only — combos are not remappable.', 'Apenas teclas únicas — combos não são remapeáveis.'));
+        setCaptureError('Single keys only — combos are not remappable.');
         return;
       }
       // Wheel "keys" can't be remapped at all (nothing to inject, nothing to swallow
       // per-direction), and X-buttons are valid SOURCES only — a keyboard injection of
       // a mouse-button vk is a no-op, which would silently disable the source key.
       if (combo === 'ScrollUp' || combo === 'ScrollDown') {
-        setCaptureError(tt('The scroll wheel cannot be remapped.', 'A roda do mouse não pode ser remapeada.'));
+        setCaptureError('The scroll wheel cannot be remapped.');
         return;
       }
       if (capturingRef.current === 'to' && (combo === 'XButton1' || combo === 'XButton2')) {
-        setCaptureError(tt('Mouse side buttons can be remap sources, not targets.', 'Botões laterais do mouse podem ser origem de remap, não destino.'));
+        setCaptureError('Mouse side buttons can be remap sources, not targets.');
         return;
       }
       if (capturingRef.current === 'from') setFromKey(combo);
@@ -137,7 +137,7 @@ export function RemapSection() {
             : 'border-border-default text-text-tertiary bg-bg-input'
       } ${dimmed ? 'opacity-40 pointer-events-none' : ''}`}
     >
-      {capturing === side ? tt('press…', 'aperte…') : value || tt('set key', 'definir')}
+      {capturing === side ? 'press…' : value || 'set key'}
     </button>
   );
 
@@ -147,8 +147,7 @@ export function RemapSection() {
     <div className="flex flex-col gap-1.5 px-2.5 py-1">
       {remaps.entries.length === 0 && !addOpen && (
         <div className="text-[11px] text-text-tertiary leading-relaxed">
-          {tt('Nothing yet. A remap turns one key into another — CapsLock → Esc — or disables it.',
-            'Nada por aqui. Um remap troca uma tecla por outra — CapsLock → Esc — ou desativa a tecla.')}
+          {'Nothing yet. A remap turns one key into another — CapsLock → Esc — or disables it.'}
         </div>
       )}
 
@@ -188,7 +187,7 @@ export function RemapSection() {
               <span className="truncate">{r.to}</span>
             ) : (
               <span className="text-text-tertiary flex items-center gap-1 min-w-0">
-                <Ban size={9} className="shrink-0" /> <span className="truncate">{tt('disabled', 'desativada')}</span>
+                <Ban size={9} className="shrink-0" /> <span className="truncate">{'disabled'}</span>
               </span>
             )}
           </span>
@@ -212,23 +211,22 @@ export function RemapSection() {
           <label className="flex items-center gap-1.5 text-[11px] text-text-tertiary cursor-pointer select-none">
             <input type="checkbox" checked={disableMode}
               onChange={(e) => { setDisableMode(e.target.checked); if (capturing === 'to') stopCapture(); }} />
-            {tt('Just disable the key', 'Só desativar a tecla')}
+            {'Just disable the key'}
           </label>
           {captureError && <div className="text-[10px]" style={{ color: 'var(--color-recording-fg)' }}>{captureError}</div>}
           {duplicateFrom && (
             <div className="text-[10px]" style={{ color: 'var(--color-recording-fg)' }}>
-              {tt('That key is already remapped.', 'Essa tecla já está remapeada.')}
+              {'That key is already remapped.'}
             </div>
           )}
           {selfRemap && (
             <div className="text-[10px]" style={{ color: 'var(--color-recording-fg)' }}>
-              {tt('Source and target are the same key.', 'Origem e destino são a mesma tecla.')}
+              {'Source and target are the same key.'}
             </div>
           )}
           {hotkeyCollision && (
             <div className="text-[10px]" style={{ color: 'var(--color-recording-fg)' }}>
-              {tt(`This key is also the ${hotkeyCollision} — the remap will override it and that hotkey will stop firing.`,
-                `Essa tecla também é ${hotkeyCollision} — o remap vai sobrepor e essa hotkey deixará de disparar.`)}
+              {`This key is also the ${hotkeyCollision} — the remap will override it and that hotkey will stop firing.`}
             </div>
           )}
           <div className="flex gap-2">

@@ -135,7 +135,6 @@ function HeaderMenu({
   onAction: (a: HeaderMenuAction) => void;
   onClose: () => void;
 }) {
-  const tt = useTt();
   const popRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const [armedDelete, setArmedDelete] = useState(false);
@@ -229,20 +228,20 @@ function HeaderMenu({
     >
       <button type="button" className={itemCls} disabled={!valid} onClick={() => { onAction('copy'); onClose(); }}>
         <Copy size={12} className="shrink-0" />
-        <span className="font-mono truncate">{valid ? `Copy {row:${name}}` : tt('Invalid token name', 'Nome de token inválido')}</span>
+        <span className="font-mono truncate">{valid ? `Copy {row:${name}}` : 'Invalid token name'}</span>
       </button>
       <div className="h-px bg-border-subtle my-1" />
       <button type="button" className={itemCls} onClick={() => { onAction('insert-left'); onClose(); }}>
-        <Plus size={12} className="shrink-0" /> {tt('Insert column left', 'Inserir coluna à esquerda')}
+        <Plus size={12} className="shrink-0" /> {'Insert column left'}
       </button>
       <button type="button" className={itemCls} onClick={() => { onAction('insert-right'); onClose(); }}>
-        <Plus size={12} className="shrink-0" /> {tt('Insert column right', 'Inserir coluna à direita')}
+        <Plus size={12} className="shrink-0" /> {'Insert column right'}
       </button>
       <button type="button" className={itemCls} disabled={colIndex === 0} onClick={() => { onAction('move-left'); onClose(); }}>
-        ← {tt('Move left', 'Mover à esquerda')}
+        ← {'Move left'}
       </button>
       <button type="button" className={itemCls} disabled={colIndex === colCount - 1} onClick={() => { onAction('move-right'); onClose(); }}>
-        → {tt('Move right', 'Mover à direita')}
+        → {'Move right'}
       </button>
       <div className="h-px bg-border-subtle my-1" />
       <button
@@ -260,7 +259,7 @@ function HeaderMenu({
         }}
       >
         <Trash2 size={12} className="shrink-0" />
-        {armedDelete ? tt('Really delete column?', 'Apagar a coluna mesmo?') : tt('Delete column', 'Apagar coluna')}
+        {armedDelete ? 'Really delete column?' : 'Delete column'}
       </button>
     </div>,
     document.body,
@@ -888,37 +887,37 @@ export function DataPanel({ onClose }: DataPanelProps) {
   // ── Status strip ──
   const stripLeft = (
     <span className="text-[11px] text-text-tertiary tabular-nums whitespace-nowrap">
-      {grid.headers.length} {tt('columns', 'colunas')} · {grid.rows.length} {tt('rows', 'linhas')}
+      {grid.headers.length} {'columns'} · {grid.rows.length} {'rows'}
       {loopOverData && grid.rows.length > 0 && (
-        <span style={{ color: 'var(--color-replay-fg)' }}> · {grid.rows.length} {tt('iterations/run', 'iterações/execução')}</span>
+        <span style={{ color: 'var(--color-replay-fg)' }}> · {grid.rows.length} {'iterations/run'}</span>
       )}
-      {dirty && <span className="text-warning-ink"> · {tt('unsaved', 'não salvo')}</span>}
-      {invalidCount > 0 && <span className="text-warning-ink"> · {invalidCount} {tt('invalid', 'inválido(s)')}</span>}
+      {dirty && <span className="text-warning-ink"> · {'unsaved'}</span>}
+      {invalidCount > 0 && <span className="text-warning-ink"> · {invalidCount} {'invalid'}</span>}
     </span>
   );
   // Hint ladder — first match wins.
   const stripRight = (() => {
     const cls = 'text-[10px] truncate';
-    if (editing) return <span className={`${cls} text-text-tertiary`}>{tt('Enter commits · Alt+Enter line break · Esc reverts', 'Enter confirma · Alt+Enter quebra linha · Esc reverte')}</span>;
-    if (willClear) return <span className={`${cls} text-warning-ink`}>{tt('Saving now clears the stored table.', 'Salvar agora apaga a tabela armazenada.')}</span>;
-    if (loopOverData && grid.rows.length === 0) return <span className={`${cls} text-warning-ink`}>{tt('Replay will refuse to start: no rows.', 'O replay vai recusar iniciar: sem linhas.')}</span>;
-    if (escArmed) return <span className={`${cls} text-warning-ink`}>{tt('Unsaved changes — press Esc again to discard.', 'Alterações não salvas — pressione Esc de novo para descartar.')}</span>;
-    if (readOnly) return <span className={`${cls} text-warning-ink`}>{tt('Large table — grid is read-only; edit via Paste / bulk edit.', 'Tabela grande — grade somente leitura; edite via Paste / bulk edit.')}</span>;
-    if (grid.rows.length >= LARGE_TABLE_WARN) return <span className={`${cls} text-text-tertiary`}>{tt('Large table — the profile file grows with it.', 'Tabela grande — o arquivo do perfil cresce junto.')}</span>;
-    if (!loopOverData && !emptyGrid) return <span className={`${cls} text-text-tertiary`}>{tt(`Loop off: each run uses the next row — now row ${cursorRow + 1}. Click a row number to move the cursor.`, `Loop desligado: cada execução usa a próxima linha — agora a ${cursorRow + 1}. Clique num número de linha para mover o cursor.`)}</span>;
-    return <span className={`${cls} text-text-tertiary`}>{tt('Click a cell to edit · Ctrl+Enter saves', 'Clique numa célula para editar · Ctrl+Enter salva')}</span>;
+    if (editing) return <span className={`${cls} text-text-tertiary`}>{'Enter commits · Alt+Enter line break · Esc reverts'}</span>;
+    if (willClear) return <span className={`${cls} text-warning-ink`}>{'Saving now clears the stored table.'}</span>;
+    if (loopOverData && grid.rows.length === 0) return <span className={`${cls} text-warning-ink`}>{'Replay will refuse to start: no rows.'}</span>;
+    if (escArmed) return <span className={`${cls} text-warning-ink`}>{'Unsaved changes — press Esc again to discard.'}</span>;
+    if (readOnly) return <span className={`${cls} text-warning-ink`}>{'Large table — grid is read-only; edit via Paste / bulk edit.'}</span>;
+    if (grid.rows.length >= LARGE_TABLE_WARN) return <span className={`${cls} text-text-tertiary`}>{'Large table — the profile file grows with it.'}</span>;
+    if (!loopOverData && !emptyGrid) return <span className={`${cls} text-text-tertiary`}>{`Loop off: each run uses the next row — now row ${cursorRow + 1}. Click a row number to move the cursor.`}</span>;
+    return <span className={`${cls} text-text-tertiary`}>{'Click a cell to edit · Ctrl+Enter saves'}</span>;
   })();
 
   // ── Footer (swaps while the paste surface is open) ──
   const footerHint = pasteOpen ? (
-    <>{tt('Tabs, quotes and line breaks survive the paste', 'Tabs, aspas e quebras de linha sobrevivem à colagem')}</>
+    <>{'Tabs, quotes and line breaks survive the paste'}</>
   ) : (
-    <>{tt('Loop on: one run per row. Loop off: each run advances one row (the cursor).', 'Loop ligado: uma execução por linha. Loop desligado: cada execução avança uma linha (o cursor).')}</>
+    <>{'Loop on: one run per row. Loop off: each run advances one row (the cursor).'}</>
   );
 
   const applyLabel = pasteMode === 'replace'
-    ? tt('Replace table', 'Substituir tabela')
-    : `${tt('Append', 'Adicionar')} ${pasteParsed.rows.length} ${tt('rows', 'linhas')}`;
+    ? 'Replace table'
+    : `${'Append'} ${pasteParsed.rows.length} ${'rows'}`;
 
   return (
     <DialogShell
@@ -980,19 +979,16 @@ export function DataPanel({ onClose }: DataPanelProps) {
           {emptyGrid ? (
             <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-3 bg-bg-surface">
               <Table2 size={24} className="text-text-tertiary" />
-              <div className="text-sm text-text-primary">{tt('No data table', 'Sem tabela de dados')}</div>
+              <div className="text-sm text-text-primary">{'No data table'}</div>
               <div className="text-xs text-text-tertiary max-w-[340px] text-center leading-relaxed">
-                {tt(
-                  'Each row runs the profile once; columns become {row:column} tokens.',
-                  'Cada linha executa o perfil uma vez; colunas viram tokens {row:coluna}.',
-                )}
+                {'Each row runs the profile once; columns become {row:column} tokens.'}
               </div>
               <div className="flex items-center gap-2 mt-1">
                 <Button variant="primary" size="sm" onClick={openPaste}>
-                  {tt('Paste table…', 'Colar tabela…')}
+                  {'Paste table…'}
                 </Button>
                 <Button variant="ghost" size="sm" onClick={seedSample}>
-                  {tt('Start with sample data', 'Começar com dados de exemplo')}
+                  {'Start with sample data'}
                 </Button>
               </div>
             </div>
@@ -1045,7 +1041,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
                                 className={`truncate ${meta.dup ? 'underline decoration-dotted decoration-warning-ink underline-offset-2' : ''} ${readOnly ? '' : 'cursor-text'}`}
                                 data-tip={meta.dup ? tt('Duplicate column — the last one wins at replay.', 'Coluna duplicada — a última vence no replay.') : undefined}
                               >
-                                {meta.name || <span className="text-text-disabled italic">({tt('empty', 'vazio')})</span>}
+                                {meta.name || <span className="text-text-disabled italic">({'empty'})</span>}
                               </button>
                               <button
                                 type="button"
@@ -1101,7 +1097,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
                           className="w-full h-row flex items-center gap-1.5 px-3 text-[11px] text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
                         >
                           <Plus size={12} />
-                          {tt('Add row', 'Adicionar linha')}
+                          {'Add row'}
                         </button>
                       </td>
                     </tr>
@@ -1145,10 +1141,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
                   color: 'var(--color-replay-fg)',
                 }}
               >
-                {tt(
-                  `${grid.rows.length} iterations — one full run per row. Overrides Loop count and WhilePressed/Toggle infinite.`,
-                  `${grid.rows.length} iterações — uma execução completa por linha. Sobrepõe o Loop count e o infinito de WhilePressed/Toggle.`,
-                )}
+                {`${grid.rows.length} iterations — one full run per row. Overrides Loop count and WhilePressed/Toggle infinite.`}
               </div>
             ) : loopOverData ? (
               <div
@@ -1159,14 +1152,11 @@ export function DataPanel({ onClose }: DataPanelProps) {
                   color: 'var(--color-recording-fg)',
                 }}
               >
-                {tt('Replay will refuse to start: the table has no rows.', 'O replay vai se recusar a iniciar: a tabela não tem linhas.')}
+                {'Replay will refuse to start: the table has no rows.'}
               </div>
             ) : (
               <div className="border-l-2 border-border-subtle rounded px-2.5 py-2 text-[11px] leading-relaxed text-text-tertiary">
-                {tt(
-                  'Cursor mode: each run uses the next row and advances (wrapping). The row it will use is marked; click any row number to move the cursor there. The advance happens when the run STARTS, so a run you stop has still consumed its row — move the cursor back.',
-                  'Modo cursor: cada execução usa a próxima linha e avança (dá a volta). A linha que ela vai usar fica marcada; clique em qualquer número de linha para mover o cursor. O avanço acontece quando a execução COMEÇA, então uma execução que você parou já consumiu a linha — mova o cursor de volta.',
-                )}
+                {'Cursor mode: each run uses the next row and advances (wrapping). The row it will use is marked; click any row number to move the cursor there. The advance happens when the run STARTS, so a run you stop has still consumed its row — move the cursor back.'}
               </div>
             )}
             {/* Lap notice — the cursor-mode counterpart of "On row error": it only means
@@ -1186,14 +1176,14 @@ export function DataPanel({ onClose }: DataPanelProps) {
                 )}
               >
                 <CheckboxBox checked={notifyLap} />
-                <span className="flex items-center gap-1.5"><Bell size={12} /> {tt('Notify on list complete', 'Avisar ao concluir a lista')}</span>
+                <span className="flex items-center gap-1.5"><Bell size={12} /> {'Notify on list complete'}</span>
               </button>
             )}
             {/* Per-row error policy — only meaningful while looping over data, so it only
                 renders then (no dead control in cursor mode). */}
             {loopOverData && (
               <div className="pt-2">
-                <div className="label-micro text-text-tertiary pb-1">{tt('On row error', 'Em erro na linha')}</div>
+                <div className="label-micro text-text-tertiary pb-1">{'On row error'}</div>
                 <SegmentedControl<'halt' | 'skip'>
                   ariaLabel="On row error"
                   grow
@@ -1211,7 +1201,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
           {/* COLUMNS · TOKENS */}
           {(grid.headers.length > 0 || orphans.length > 0) && (
             <>
-              <div className="label-micro text-text-tertiary px-3 pt-2 pb-1">{tt('Columns · tokens', 'Colunas · tokens')}</div>
+              <div className="label-micro text-text-tertiary px-3 pt-2 pb-1">{'Columns · tokens'}</div>
               <div className="flex flex-col">
                 {grid.headers.map((_, c) => {
                   const meta = headerMeta[c];
@@ -1232,7 +1222,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
                           >
                             {copiedKey === `h${c}` ? (
                               <span className="flex items-center gap-1" style={{ color: 'var(--color-replay-fg)' }}>
-                                <Check size={11} /> {tt('Copied', 'Copiado')}
+                                <Check size={11} /> {'Copied'}
                               </span>
                             ) : (
                               <span className="truncate">{`{row:${meta.name}}`}</span>
@@ -1242,14 +1232,14 @@ export function DataPanel({ onClose }: DataPanelProps) {
                             className={`text-[10px] tabular-nums ml-auto shrink-0 ${count > 0 ? 'text-text-tertiary' : 'text-text-disabled'}`}
                             data-tip={count > 0 ? tt(`Used in ${count} action(s)`, `Usado em ${count} action(s)`) : undefined}
                           >
-                            {count > 0 ? `×${count}` : tt('unused', 'sem uso')}
+                            {count > 0 ? `×${count}` : 'unused'}
                           </span>
                         </>
                       ) : (
                         <>
                           <TriangleAlert size={11} className="text-warning-ink shrink-0" />
                           <span className="text-[11px] font-mono text-warning-ink truncate">
-                            {meta.name || `(${tt('empty', 'vazio')})`}
+                            {meta.name || `(${'empty'})`}
                           </span>
                           <button
                             type="button"
@@ -1275,13 +1265,13 @@ export function DataPanel({ onClose }: DataPanelProps) {
                       className="text-[10px] text-warning-ink ml-auto shrink-0"
                       data-tip={tt('An action references this column, but the table has no such header — it will type empty text.', 'Uma action referencia esta coluna, mas a tabela não tem esse cabeçalho — vai digitar texto vazio.')}
                     >
-                      ×{count} · {tt('no column', 'sem coluna')}
+                      ×{count} · {'no column'}
                     </span>
                   </div>
                 ))}
               </div>
               <div className="text-[10px] text-text-tertiary px-3 pt-1 pb-2">
-                {tt('Lookup is case-insensitive. {row} = row number. Cells accept clipboard-style transforms — click a {row:…} chip in a text editor, or type {row:name:trim:upper}.', 'A busca ignora maiúsculas. {row} = número da linha. Células aceitam transformações estilo clipboard — clique num chip {row:…} num editor de texto, ou digite {row:nome:trim:upper}.')}
+                {'Lookup is case-insensitive. {row} = row number. Cells accept clipboard-style transforms — click a {row:…} chip in a text editor, or type {row:name:trim:upper}.'}
               </div>
             </>
           )}
@@ -1295,7 +1285,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
                 value={find}
                 onChange={(e) => setFind(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') jumpToMatch(e.shiftKey ? -1 : 1); }}
-                placeholder={tt('Find in table…', 'Buscar na tabela…')}
+                placeholder={'Find in table…'}
                 className="w-full h-7 pl-7 pr-14 text-[11px] bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid"
               />
               {find && (
@@ -1311,7 +1301,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
             </div>
             {findLower !== '' && (
               <div className="flex items-center gap-2 mt-1 px-0.5 text-[10px] text-text-tertiary">
-                <span>{matchRows.length === 0 ? tt('No matches', 'Nenhum resultado') : `${matchRows.length} row${matchRows.length === 1 ? '' : 's'}`}</span>
+                <span>{matchRows.length === 0 ? 'No matches' : `${matchRows.length} row${matchRows.length === 1 ? '' : 's'}`}</span>
                 {matchRows.length > 0 && (
                   <span className="ml-auto flex items-center gap-1">
                     <button type="button" onClick={() => jumpToMatch(-1)} className="px-1 hover:text-text-primary" data-tip={tt('Previous (Shift+Enter)', 'Anterior (Shift+Enter)')}>↑</button>
@@ -1332,7 +1322,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
               className="flex items-center gap-2 px-3 h-7 text-[11px] text-text-secondary hover:text-text-primary hover:bg-bg-card transition-colors"
             >
               <ClipboardPaste size={12} className="shrink-0" />
-              {tt('Paste / bulk edit…', 'Colar / edição em massa…')}
+              {'Paste / bulk edit…'}
             </button>
             <input
               ref={csvInputRef}
@@ -1351,7 +1341,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
               className="flex items-center gap-2 px-3 h-7 text-[11px] text-text-secondary hover:text-text-primary hover:bg-bg-card transition-colors"
             >
               <FileUp size={12} className="shrink-0" />
-              {tt('Import CSV…', 'Importar CSV…')}
+              {'Import CSV…'}
             </button>
             <button
               type="button"
@@ -1366,7 +1356,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
               disabled={emptyGrid}
               className="flex items-center gap-2 px-3 h-7 text-[11px] text-text-secondary hover:text-text-primary hover:bg-bg-card transition-colors disabled:opacity-40 disabled:cursor-not-allowed"            >
               {copiedKey === '__table' ? <Check size={12} className="shrink-0" style={{ color: 'var(--color-replay-fg)' }} /> : <Copy size={12} className="shrink-0" />}
-              {tt('Copy table (TSV)', 'Copiar tabela (TSV)')}
+              {'Copy table (TSV)'}
             </button>
             <button
               type="button"
@@ -1380,7 +1370,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
               }`}
             >
               <Trash2 size={12} className="shrink-0" />
-              {armedClear ? tt('Really clear?', 'Limpar mesmo?') : tt('Clear table…', 'Limpar tabela…')}
+              {armedClear ? 'Really clear?' : 'Clear table…'}
             </button>
           </div>
         </div>

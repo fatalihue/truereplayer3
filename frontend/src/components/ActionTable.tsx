@@ -2373,7 +2373,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                       {/* Phase C indicator — the sub-profile runs once per row of ITS data
                           table (Repeat is ignored, so the ×N badge above yields to this). */}
                       {action.actionType === 'RunProfile' && action.runOverData && (
-                        <span className="ml-0.5 opacity-75">{tt('· per row', '· por linha')}</span>
+                        <span className="ml-0.5 opacity-75">{'· per row'}</span>
                       )}
                       {/* Focus-click indicator — a small icon inside the Action pill (never a new
                           column) marking combined clicks that replay twice to focus a small
@@ -2442,7 +2442,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                             (the user just pressed Enter). Clears on the next keystroke. */}
                         {editInvalid && (
                           <span className="absolute left-0 top-full mt-1 z-20 px-2 py-1 rounded text-[10px] whitespace-nowrap bg-bg-card border border-recording/40 text-recording pointer-events-none">
-                            {tt('Needs both coordinates — e.g. 960, 540', 'Precisa das duas coordenadas — ex.: 960, 540')}
+                            {'Needs both coordinates — e.g. 960, 540'}
                           </span>
                         )}
                       </span>

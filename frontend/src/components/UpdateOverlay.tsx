@@ -39,7 +39,7 @@ export function UpdateOverlay() {
         case 'update:available':
           // In silent (auto-apply) mode, skip the gate and transition straight into the
           // downloading splash — the backend has already kicked off HandleUpdateApply.
-          // Without this, the user would see the "Baixar e Instalar" button briefly and
+          // Without this, the user would see the "Download and install" button briefly and
           // then the splash would jump as the download started without their click.
           setPhase((prev) => {
             // Never walk the flow BACKWARDS. The overlay renders nothing during 'checking'
@@ -174,37 +174,37 @@ export function UpdateOverlay() {
             ...(isComplete || isInstalling ? { color: 'var(--color-replay-fg)' } : {}),
           }}
         >
-          {phase.step === 'available' && 'Atualização disponível'}
-          {phase.step === 'downloading' && 'Baixando atualização'}
-          {phase.step === 'installing' && `Atualizando para v${version}`}
-          {phase.step === 'complete' && 'Atualizado com sucesso!'}
+          {phase.step === 'available' && 'Update available'}
+          {phase.step === 'downloading' && 'Downloading update'}
+          {phase.step === 'installing' && `Updating to v${version}`}
+          {phase.step === 'complete' && 'Updated successfully!'}
         </div>
 
         {/* Subtitle */}
         <div style={subtitleStyle}>
-          {phase.step === 'available' && 'Uma nova versão do TrueReplayer está pronta'}
-          {phase.step === 'downloading' && 'Não feche o aplicativo'}
-          {phase.step === 'installing' && 'Encerrando TrueReplayer...'}
-          {phase.step === 'complete' && 'Você está agora na versão mais recente'}
+          {phase.step === 'available' && 'A new version of TrueReplayer is ready'}
+          {phase.step === 'downloading' && 'Do not close the app'}
+          {phase.step === 'installing' && 'Closing TrueReplayer...'}
+          {phase.step === 'complete' && 'You are now on the latest version'}
         </div>
 
         {/* Version chips (current ➜ new), or a single chip on the 'complete' phase. */}
         {isComplete ? (
           <div style={versionRowStyle}>
             <div style={{ ...versionChipStyle, ...versionChipNewStyle, minWidth: 120 }}>
-              <div style={{ ...versionLabelStyle, color: 'var(--color-accent)' }}>Versão atual</div>
+              <div style={{ ...versionLabelStyle, color: 'var(--color-accent)' }}>Current version</div>
               <div style={{ ...versionValueStyle, color: 'var(--color-accent)' }}>v{version}</div>
             </div>
           </div>
         ) : (
           <div style={versionRowStyle}>
             <div style={versionChipStyle}>
-              <div style={versionLabelStyle}>Versão atual</div>
+              <div style={versionLabelStyle}>Current version</div>
               <div style={versionValueStyle}>v{currentVersion}</div>
             </div>
             <div style={versionArrowStyle}>&#10132;</div>
             <div style={{ ...versionChipStyle, ...versionChipNewStyle }}>
-              <div style={{ ...versionLabelStyle, color: 'var(--color-accent)' }}>Nova versão</div>
+              <div style={{ ...versionLabelStyle, color: 'var(--color-accent)' }}>New version</div>
               <div style={{ ...versionValueStyle, color: 'var(--color-accent)' }}>v{version}</div>
             </div>
           </div>
@@ -215,7 +215,7 @@ export function UpdateOverlay() {
           <div style={changelogStyle}>
             <div style={changelogTitleStyle}>
               <span style={changelogDotStyle} />
-              O que há de novo
+              What's new
             </div>
             <ul style={changelogListStyle} className="update-changelog-list">
               {phase.notes.slice(0, 6).map((note, i) => (
@@ -246,15 +246,15 @@ export function UpdateOverlay() {
               </div>
               {phase.step === 'downloading' && (
                 <div style={progressMetaStyle}>
-                  <span>Baixando...</span>
+                  <span>Downloading...</span>
                   <span style={{ color: 'var(--color-accent)', fontWeight: 600 }}>{phase.percent}%</span>
                 </div>
               )}
             </div>
             {phase.step === 'installing' && (
               <>
-                <div style={statusStyle}>Aplicando atualização, aguarde...</div>
-                <div style={hintStyle}>O aplicativo será reiniciado automaticamente</div>
+                <div style={statusStyle}>Applying update, please wait...</div>
+                <div style={hintStyle}>The app will restart automatically</div>
               </>
             )}
           </>
@@ -278,7 +278,7 @@ export function UpdateOverlay() {
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
-            Baixar e Instalar
+            Download and install
           </button>
         )}
       </div>

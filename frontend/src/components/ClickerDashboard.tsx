@@ -3,7 +3,7 @@ import { useAppState, useClickerLive } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
 import { usePauseTick } from '../hooks/usePauseTick';
 import { formatClickerStats, formatEta, formatRate, targetCps } from '../utils/clickerFormat';
-import { useTt } from '../state/LanguageContext';
+
 import { ClickerEmptyState } from './ClickerEmptyState';
 
 // Live dashboard for Clicker runs. Three visual states:
@@ -16,7 +16,6 @@ export function ClickerDashboard() {
   // AppState is what stops every other panel re-rendering at that cadence.
   const { clickerStats, loopProgress } = useClickerLive();
   const { send } = useBridge();
-  const tt = useTt();
   usePauseTick(pauseState);
 
   const isReplaying = status === 'replaying';
@@ -63,14 +62,14 @@ export function ClickerDashboard() {
     limitBits.push(`${Math.round((parseInt(settings.cursorClickMaxDuration, 10) || 0) / 1000)}s`);
   }
   configBits.push(limitBits.length
-    ? limitBits.join(tt(' or ', ' ou '))
-    : tt('no limit', 'sem limite'));
+    ? limitBits.join(' or ')
+    : 'no limit');
   if (settings.cursorClickUseArea && settings.cursorClickArea) {
     configBits.push(`Area ${settings.cursorClickArea.w}×${settings.cursorClickArea.h}`);
   } else if (settings.cursorClickUseFixed) {
     configBits.push(settings.cursorClickFixedPoint
       ? `Fixed ${settings.cursorClickFixedPoint.x},${settings.cursorClickFixedPoint.y}`
-      : tt('Fixed at start', 'Fixo no início'));
+      : 'Fixed at start');
   } else if (settings.cursorClickUsePositionJitter && parseInt(settings.cursorClickPositionJitter, 10) > 0) {
     configBits.push(`±${settings.cursorClickPositionJitter} px`);
   }
@@ -160,14 +159,14 @@ export function ClickerDashboard() {
       )}
 
       <div className="text-[11px] text-text-tertiary flex items-center gap-1.5">
-        {tt('Press', 'Pressione')}
+        {'Press'}
         <kbd className="kbd kbd-accent">{settings.cursorClickStartHotkey}</kbd>
-        {isReplaying ? tt('to stop', 'para parar') : tt('to run again', 'para rodar de novo')}
+        {isReplaying ? 'to stop' : 'to run again'}
         {isReplaying && (
           <>
             <span className="opacity-40">·</span>
             <kbd className="kbd kbd-accent">{settings.cursorClickPauseHotkey}</kbd>
-            {tt('to pause', 'para pausar')}
+            {'to pause'}
           </>
         )}
       </div>
@@ -199,14 +198,14 @@ export function ClickerDashboard() {
             <div className="text-[11px] text-text-secondary text-center">
               {pauseState.hotkey || pauseState.timeoutMs > 0 ? (
                 <>
-                  {pauseState.hotkey && <>{tt('Press', 'Pressione')} <kbd className="kbd kbd-accent">{pauseState.hotkey}</kbd></>}
-                  {pauseState.hotkey && pauseState.timeoutMs > 0 ? tt(' or ', ' ou ') : ''}
-                  {pauseState.timeoutMs > 0 && <>{tt('wait', 'aguarde')} <span className="font-mono">{pauseRemainingSec}s</span></>}
+                  {pauseState.hotkey && <>{'Press'} <kbd className="kbd kbd-accent">{pauseState.hotkey}</kbd></>}
+                  {pauseState.hotkey && pauseState.timeoutMs > 0 ? ' or ' : ''}
+                  {pauseState.timeoutMs > 0 && <>{'wait'} <span className="font-mono">{pauseRemainingSec}s</span></>}
                 </>
               ) : (
                 <>
-                  {tt('Press', 'Pressione')} <kbd className="kbd kbd-accent">{settings.cursorClickPauseHotkey}</kbd>
-                  {tt(' or click Resume', ' ou clique em Resume')}
+                  {'Press'} <kbd className="kbd kbd-accent">{settings.cursorClickPauseHotkey}</kbd>
+                  {' or click Resume'}
                 </>
               )}
             </div>

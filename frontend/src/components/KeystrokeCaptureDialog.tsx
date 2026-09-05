@@ -8,7 +8,7 @@ import { KeyCaps } from './common/KeyCaps';
 import { chipDotOn, chipDotOff } from './common/chipStyles';
 import { DurationChips } from './common/DurationChips';
 import { useBridge } from '../bridge/BridgeContext';
-import { useLanguage, useTt } from '../state/LanguageContext';
+import { useTt } from '../state/LanguageContext';
 import { useWindowFocused } from '../hooks/useWindowFocused';
 
 /**
@@ -102,7 +102,6 @@ export function KeystrokeCaptureDialog({
   onConfirm,
   onClose,
 }: KeystrokeCaptureDialogProps) {
-  const { language } = useLanguage();
   const tt = useTt();
 
   // `isEditing` flips Esc behaviour and the button label. Decoupled from mode so
@@ -303,9 +302,9 @@ export function KeystrokeCaptureDialog({
       // (outside input focus, Enter would be CAPTURED as the combo, not confirm).
       // Manual mode owns the keyboard, so there Enter/Esc read as usual.
       footerHint={manualEntry
-        ? tt('Enter confirms · Esc cancels', 'Enter confirma · Esc cancela')
+        ? 'Enter confirms · Esc cancels'
         : captured
-          ? tt('Press another combo to replace', 'Pressione outra combinação para substituir')
+          ? 'Press another combo to replace'
           : ''}
       footer={
         <>
@@ -362,19 +361,12 @@ export function KeystrokeCaptureDialog({
                   {mode === 'hold' ? (
                     // Hold goes through SimulateKey (single virtual-key) — a token
                     // resolving to a combo would silently no-op, so don't teach it here.
-                    language === 'pt-BR'
-                      ? <>Para Hold, um token <code className="text-accent-light">{'{var:name}'}</code> precisa
-                        resolver para uma <span className="text-text-secondary">única tecla</span> (F5, W, Space…).</>
-                      : <>For Hold, a <code className="text-accent-light">{'{var:name}'}</code> token must
-                        resolve to a <span className="text-text-secondary">single key</span> (F5, W, Space…).</>
+                    <>For Hold, a <code className="text-accent-light">{'{var:name}'}</code> token must
+                      resolve to a <span className="text-text-secondary">single key</span> (F5, W, Space…).</>
                   ) : (
-                    language === 'pt-BR'
-                      ? <>Tokens como <code className="text-accent-light">{'{var:name}'}</code> ou{' '}
-                        <code className="text-accent-light">{'{clipboard}'}</code> são resolvidos no replay —
-                        até em uma combinação completa como Ctrl+V.</>
-                      : <>Tokens like <code className="text-accent-light">{'{var:name}'}</code> or{' '}
-                        <code className="text-accent-light">{'{clipboard}'}</code> resolve at replay —
-                        even into a full combo like Ctrl+V.</>
+                    <>Tokens like <code className="text-accent-light">{'{var:name}'}</code> or{' '}
+                      <code className="text-accent-light">{'{clipboard}'}</code> resolve at replay —
+                      even into a full combo like Ctrl+V.</>
                   )}
                 </div>
               </>
@@ -385,8 +377,8 @@ export function KeystrokeCaptureDialog({
                     it would be inviting a press that (correctly) goes to that other app. */}
                 <div className="text-[12px] text-text-secondary mb-1">
                   {windowFocused
-                    ? tt('Press any key or combo', 'Pressione qualquer tecla ou combinação')
-                    : tt('Click TrueReplayer to capture keys', 'Clique no TrueReplayer para capturar teclas')}
+                    ? 'Press any key or combo'
+                    : 'Click TrueReplayer to capture keys'}
                 </div>
                 <div className="text-[10px] font-mono text-text-tertiary">A · F5 · Ctrl+S · Win+A</div>
               </>
@@ -563,14 +555,11 @@ export function KeystrokeCaptureDialog({
                 className={`warning-band rounded-r px-2.5 py-2 text-[10px] leading-relaxed text-text-secondary ${hasModifiers ? '' : 'invisible'}`}
                 aria-hidden={!hasModifiers}
               >
-                {tt('Hold mode supports single keys only. Saving will hold', 'O modo Hold aceita apenas teclas únicas. Salvar vai segurar')}{' '}
+                {'Hold mode supports single keys only. Saving will hold'}{' '}
                 <kbd className="px-1 py-px bg-bg-elevated border border-border-default rounded font-mono text-[10px] text-warning-ink">
                   {keystrokeDisplay(heldKey)}
                 </kbd>{' '}
-                {tt(
-                  'and ignore the modifiers. To hold a combo, insert two rows: a Hold for the modifier, plus the action under it.',
-                  'e ignorar os modificadores. Para segurar uma combinação, insira duas linhas: um Hold para o modificador e a ação abaixo.',
-                )}
+                {'and ignore the modifiers. To hold a combo, insert two rows: a Hold for the modifier, plus the action under it.'}
               </div>
             </div>
           </div>

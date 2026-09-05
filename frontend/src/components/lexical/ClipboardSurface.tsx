@@ -47,42 +47,25 @@ const IDENTITY_LABELS: Record<ChainHead['kind'], string> = {
   winclip: 'History item',
 };
 
-type Tt = (en: string, ptBr: string) => string;
-
-const IDENTITY_HINTS: Record<ChainHead['kind'], (tt: Tt) => string> = {
-  clipboard: () => '',
-  row: (tt) => tt(
-    "Replaced with this column's cell of the current data row (loop over data).",
-    'Substituído pela célula desta coluna na linha de dados atual (loop sobre dados).',
-  ),
-  rownext: (tt) => tt(
-    'Each use pulls the NEXT data row for this column — 1st use → row 1, 2nd → row 2… Resets each run.',
-    'Cada uso puxa a PRÓXIMA linha de dados desta coluna — 1º uso → linha 1, 2º → linha 2… Reinicia a cada execução.',
-  ),
-  var: (tt) => tt(
-    'Replaced with the value a Set Variable action stored under this name.',
-    'Substituído pelo valor que uma ação Set Variable guardou com este nome.',
-  ),
-  clip: (tt) => tt(
-    'Replaced with the selection a Copy to Slot action (or the capture hotkey) stored in this slot.',
-    'Substituído pela seleção que uma ação Copy to Slot (ou o atalho de captura) guardou neste slot.',
-  ),
-  winclip: (tt) => tt(
-    'Item of the Windows clipboard history (Win+V), newest first. Needs history turned on, and it can hold anything recently copied by any app — including passwords.',
-    'Item do histórico de área de transferência do Windows (Win+V), do mais recente para o mais antigo. Precisa do histórico ligado, e ele pode guardar qualquer coisa copiada recentemente por qualquer app — inclusive senhas.',
-  ),
+const IDENTITY_HINTS: Record<ChainHead['kind'], string> = {
+  clipboard: '',
+  row: "Replaced with this column's cell of the current data row (loop over data).",
+  rownext: 'Each use pulls the NEXT data row for this column — 1st use → row 1, 2nd → row 2… Resets each run.',
+  var: 'Replaced with the value a Set Variable action stored under this name.',
+  clip: 'Replaced with the selection a Copy to Slot action (or the capture hotkey) stored in this slot.',
+  winclip: 'Item of the Windows clipboard history (Win+V), newest first. Needs history turned on, and it can hold anything recently copied by any app — including passwords.',
 };
 
 // What to say when there is no source to preview against. Each reason is DIFFERENT, and saying
 // the wrong one is worse than saying nothing: "nothing captured yet" is fixable by the user,
 // "only the engine has it" is not.
-const UNKNOWN_SOURCE_COPY: Record<ChainHead['kind'], (tt: Tt) => string> = {
-  clipboard: () => '',
-  row: (tt) => tt('No column by that name in the data table', 'Nenhuma coluna com esse nome na tabela de dados'),
-  rownext: (tt) => tt('No column by that name in the data table', 'Nenhuma coluna com esse nome na tabela de dados'),
-  var: (tt) => tt('Not set — variables are cleared at the start of every run', 'Não definida — as variáveis são apagadas no começo de cada execução'),
-  clip: (tt) => tt('Nothing captured in this slot yet', 'Nada capturado neste slot ainda'),
-  winclip: (tt) => tt('Read from Windows when the macro runs', 'Lido do Windows quando a macro roda'),
+const UNKNOWN_SOURCE_COPY: Record<ChainHead['kind'], string> = {
+  clipboard: '',
+  row: 'No column by that name in the data table',
+  rownext: 'No column by that name in the data table',
+  var: 'Not set — variables are cleared at the start of every run',
+  clip: 'Nothing captured in this slot yet',
+  winclip: 'Read from Windows when the macro runs',
 };
 
 interface ClipboardSurfaceProps {
@@ -156,7 +139,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
           ? { raw: '', ready: true, unknown: true, label: 'Variable value' }
           // Variables are cleared at the start of every run, so anything here came from the LAST
           // one. Saying that is the difference between a useful preview and a misleading one.
-          : { raw: v, ready: true, unknown: false, label: 'Variable value', note: tt('from the last run', 'da última execução') };
+          : { raw: v, ready: true, unknown: false, label: 'Variable value', note: 'from the last run' };
       }
       case 'winclip':
         // The Windows clipboard history lives in the engine only — nothing to preview against.
@@ -164,7 +147,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
         // that picks WHICH item, and the same words over both boxes read as one repeated thing.
         return { raw: '', ready: true, unknown: true, label: 'Item text' };
     }
-  }, [head, clipRaw, clipReady, dataTable, runState, tt]);
+  }, [head, clipRaw, clipReady, dataTable, runState]);
 
   const preview = useMemo(() => applyTransformPreview(source.raw, state), [source.raw, state]);
   // A reference argument has no value until the macro runs — never fabricate one in the preview.
@@ -220,10 +203,8 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
               backgroundColor: 'color-mix(in srgb, var(--color-recording) 10%, transparent)',
             }}>
             {state.unmodeledRefArg
-              ? tt('This token takes a line argument from a variable, which these controls can only show as a literal — so it is read-only here. It still runs; if the variable is missing or does not hold a valid value, the step yields nothing. Edit the token text directly in the editor to change it.',
-                   'Este token pega um argumento de linha de uma variável, e estes controles só conseguem mostrar um valor literal — por isso está só para leitura. Ele roda normalmente; se a variável não existir ou não tiver um valor válido, o passo não devolve nada. Edite o texto do token direto no editor para mudá-lo.')
-              : tt('This builder cannot rebuild this token exactly as written — a modifier it does not know, one used twice, or a different order — so it is read-only here. Edit the token text directly in the editor instead.',
-                   'Este construtor não consegue reconstruir este token exatamente como está escrito — um modificador que ele não conhece, um usado duas vezes, ou em outra ordem — então está só para leitura. Edite o texto do token direto no editor.')}
+              ? 'This token takes a line argument from a variable, which these controls can only show as a literal — so it is read-only here. It still runs; if the variable is missing or does not hold a valid value, the step yields nothing. Edit the token text directly in the editor to change it.'
+              : 'This builder cannot rebuild this token exactly as written — a modifier it does not know, one used twice, or a different order — so it is read-only here. Edit the token text directly in the editor instead.'}
           </div>
           <div className="text-[10px] uppercase tracking-wide text-text-tertiary">Token</div>
           <div className="font-mono text-[12px] px-2 py-1 rounded break-all"
@@ -310,7 +291,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                 />
               )}
               <div className="text-[11px] text-text-tertiary mt-1.5 leading-snug">
-                {IDENTITY_HINTS[head.kind](tt)}
+                {IDENTITY_HINTS[head.kind]}
               </div>
               {/* Reserved validation line — ALWAYS mounted, so emptying the field cannot grow the
                   identity block. An empty name builds a broken token ({clip:}), which the footer's
@@ -340,14 +321,8 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
             />
             <div className="text-[11px] text-text-tertiary leading-snug mt-1">
               {state.next
-                ? tt(
-                    'Each use takes the next line and moves on; copying something new starts over. The preview always shows line 1 — the real position lives in the run.',
-                    'Cada uso pega a próxima linha e avança; copiar algo novo recomeça do início. A prévia sempre mostra a linha 1 — a posição real fica na execução.',
-                  )
-                : tt(
-                    'Off: every use pastes the whole clipboard.',
-                    'Desligado: cada uso cola a área de transferência inteira.',
-                  )}
+                ? 'Each use takes the next line and moves on; copying something new starts over. The preview always shows line 1 — the real position lives in the run.'
+                : 'Off: every use pastes the whole clipboard.'}
             </div>
           </Step>
           )}
@@ -401,14 +376,8 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
               </div>
               <div className="text-[11px] text-text-tertiary leading-snug">
                 {state.split === 'none'
-                  ? tt(
-                      'Off: the whole text goes on to the next step.',
-                      'Desligado: o texto inteiro segue para a próxima etapa.',
-                    )
-                  : tt(
-                      'If the delimiter is not in the text, this step yields nothing — not everything. That is deliberate: the other answer pastes a whole clipboard where you asked for a fragment.',
-                      'Se o delimitador não estiver no texto, esta etapa não devolve nada — e não devolve tudo. É de propósito: a outra resposta colaria a área de transferência inteira onde você pediu um pedaço.',
-                    )}
+                  ? 'Off: the whole text goes on to the next step.'
+                  : 'If the delimiter is not in the text, this step yields nothing — not everything. That is deliberate: the other answer pastes a whole clipboard where you asked for a fragment.'}
               </div>
             </div>
           </Step>
@@ -431,14 +400,8 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
               </div>
               <div className="text-[11px] text-text-tertiary leading-snug">
                 {state.dropNumSuffix.length === 0
-                  ? tt(
-                      'Off: leave empty to keep any leading count.',
-                      'Desligado: deixe vazio para manter qualquer quantidade inicial.',
-                    )
-                  : tt(
-                      'Only strips when the text STARTS with digits followed by this exact suffix — otherwise it passes through unchanged. "1x Caixa" → "Caixa"; "Caixa" stays "Caixa".',
-                      'Só remove quando o texto COMEÇA com dígitos seguidos deste sufixo exato — senão passa intacto. "1x Caixa" → "Caixa"; "Caixa" continua "Caixa".',
-                    )}
+                  ? 'Off: leave empty to keep any leading count.'
+                  : 'Only strips when the text STARTS with digits followed by this exact suffix — otherwise it passes through unchanged. "1x Caixa" → "Caixa"; "Caixa" stays "Caixa".'}
               </div>
             </div>
           </Step>
@@ -673,7 +636,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
               style={{ lineHeight: 1.35 }}
             >
               {source.unknown ? (
-                <span className="italic text-text-disabled">{UNKNOWN_SOURCE_COPY[head.kind](tt)}</span>
+                <span className="italic text-text-disabled">{UNKNOWN_SOURCE_COPY[head.kind]}</span>
               ) : source.ready ? (
                 source.raw === '' ? <span className="italic text-text-disabled">(empty)</span> : source.raw
               ) : (
@@ -697,18 +660,15 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                   it on. Unfinished then FIRST among the rest — see ClipboardModifierBody. */}
               {source.unknown
                 ? <span className="italic text-text-disabled">
-                    {tt('No preview until there is something to transform.',
-                        'Sem prévia enquanto não houver algo para transformar.')}
+                    {'No preview until there is something to transform.'}
                   </span>
                 : refUnfinished
                 ? <span className="italic" style={{ color: 'var(--color-recording-fg)' }}>
-                    {tt('Finish the name after @ — until then the token keeps the fixed number.',
-                        'Complete o nome depois do @ — até lá o token mantém o número fixo.')}
+                    {'Finish the name after @ — until then the token keeps the fixed number.'}
                   </span>
                 : runtimeDependent
                   ? <span className="italic text-text-disabled">
-                      {tt('Resolved when the macro runs — the index comes from a variable.',
-                          'Resolvido quando a macro roda — o índice vem de uma variável.')}
+                      {'Resolved when the macro runs — the index comes from a variable.'}
                     </span>
                   : preview === '' ? <span className="italic text-text-disabled">(empty)</span> : preview}
             </div>

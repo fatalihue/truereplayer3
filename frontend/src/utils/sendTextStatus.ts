@@ -57,7 +57,7 @@ export function pickStatusNote(
   if (richWillDegrade && sendMethod === 'paste') {
     return {
       tone: 'warn',
-      text: tt('Formatting will be dropped at replay', 'A formatação será descartada no replay'),
+      text: 'Formatting will be dropped at replay',
       tip: tt(
         'Rich formatting is attached only when the payload is ONE run of text. An {Enter}, {Tab} or {Delay:N} with text on BOTH sides splits it, so this action pastes as plain text. Fixes: move the key token to the start or the end, split it into two Insert Text actions, or switch Delivery to Markdown or Discord — those paste their marks as literal text and are not affected by this rule.',
         'A formatação só é anexada quando o texto forma UM bloco contínuo. Um {Enter}, {Tab} ou {Delay:N} com texto dos DOIS lados divide esse bloco, e a ação cola como texto puro. Saídas: mova o token de tecla para o início ou o fim, divida em duas ações Insert Text, ou troque o Delivery para Markdown ou Discord — esses colam as marcas como texto literal e não são afetados por esta regra.',
@@ -72,7 +72,7 @@ export function pickStatusNote(
   if (sendMethod === 'type' && sendMode === 'rich' && hasFormatting) {
     return {
       tone: 'warn',
-      text: tt('Typing sends no formatting', 'Digitar não envia formatação'),
+      text: 'Typing sends no formatting',
       tip: tt(
         'Type sends keystrokes, one character at a time — there is no clipboard, so the HTML flavor is never attached. The formatting stays saved with the action and comes back the moment you switch to Paste. To keep it WHILE typing, switch Delivery to Markdown or Discord: their marks are literal characters and are typed exactly as written.',
         'O modo Type envia teclas, um caractere por vez — não existe área de transferência, então o formato HTML nunca é anexado. A formatação continua salva na ação e volta assim que você escolher Paste. Para mantê-la DIGITANDO, troque o Delivery para Markdown ou Discord: as marcas deles são caracteres literais e são digitadas exatamente como estão.',
@@ -87,8 +87,7 @@ export function pickStatusNote(
   if (sendMode === 'plain' && hasFormatting) {
     return {
       tone: 'warn',
-      text: tt('Plain delivery — formatting is kept, but not sent',
-               'Entrega Plain — a formatação fica salva, mas não é enviada'),
+      text: 'Plain delivery — formatting is kept, but not sent',
       // The REMEDY is method-dependent even though the diagnosis is not: under Type, "switch to
       // Rich" is advice that delivers nothing (rung 2 is the proof — typing has no clipboard, so
       // there is no HTML flavor to attach). Rungs 1 and 2 got their method leg with the transport
@@ -110,8 +109,7 @@ export function pickStatusNote(
   if (tokenCount > 0) {
     return {
       tone: 'muted',
-      text: tt('Click any chip in the editor to edit its parameters',
-               'Clique em qualquer chip no editor para editar seus parâmetros'),
+      text: 'Click any chip in the editor to edit its parameters',
     };
   }
 

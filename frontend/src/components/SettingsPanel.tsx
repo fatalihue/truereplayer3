@@ -229,12 +229,11 @@ function ValueField({ value, unit, min, max, onCommitValue }: {
 // the engine behaves exactly as if it were OFF, and nothing else in the panel would say so. Aligned
 // with SettingRow's px-2.5 and right-aligned so it reads as an annotation on the field above it.
 function PathStepZeroNote({ step }: { step: string }) {
-  const tt = useTt();
   const s = parseInt(step, 10);
   if (!Number.isFinite(s) || s > 0) return null;
   return (
     <div className="px-2.5 pb-1 text-[11px] text-text-tertiary text-right">
-      {tt('No walk — single jump', 'Sem caminho — salto único')}
+      {'No walk — single jump'}
     </div>
   );
 }
@@ -254,12 +253,10 @@ function ClickerRateClampNote({ clamped, ceiling, holdMs }: {
   ceiling: number;
   holdMs: number;
 }) {
-  const tt = useTt();
   if (!clamped) return null;
   return (
     <div className="px-2.5 pb-1 text-[11px] text-text-tertiary text-right">
-      {tt(`max ≈ ${formatRate(ceiling)}/s (hold ${holdMs} ms)`,
-          `máx ≈ ${formatRate(ceiling)}/s (hold ${holdMs} ms)`)}
+      {`max ≈ ${formatRate(ceiling)}/s (hold ${holdMs} ms)`}
     </div>
   );
 }
@@ -268,11 +265,10 @@ function ClickerRateClampNote({ clamped, ceiling, holdMs }: {
 // IS the live cursor, so the setting is switched on and doing nothing — say so rather than let
 // the switch imply an effect it cannot have. Same shape as PathStepZeroNote and the rate note.
 function GameMoveNote({ on, useArea, useFixed }: { on: boolean; useArea: boolean; useFixed: boolean }) {
-  const tt = useTt();
   if (!on || useArea || useFixed) return null;
   return (
     <div className="px-2.5 pb-1 text-[11px] text-text-tertiary text-right">
-      {tt('no effect in cursor mode', 'sem efeito no modo cursor')}
+      {'no effect in cursor mode'}
     </div>
   );
 }
@@ -768,7 +764,7 @@ function ClickerSection({
           </SettingRow>
           {useLoops && useMaxDuration && (
             <div className="px-2.5 pb-1 text-[11px] text-text-tertiary text-right">
-              {tt('whichever comes first', 'o que vier primeiro')}
+              {'whichever comes first'}
             </div>
           )}
         </Section>
