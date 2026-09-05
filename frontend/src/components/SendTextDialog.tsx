@@ -15,8 +15,9 @@ import {
   type LexicalEditorHandle,
 } from './lexical/LexicalTokenEditor';
 import type { ClipboardChipEditRequest } from './lexical/TokenChip';
-import { richFlavorSurvives } from './lexical/tokenNormalize';
+import { normalizeToken, richFlavorSurvives } from './lexical/tokenNormalize';
 import { tokenTip } from './lexical/tokenDescriptions';
+import { PopoverHeader, Section } from './lexical/popoverAtoms';
 import { FieldError } from './common/FieldError';
 import { pickStatusNote } from '../utils/sendTextStatus';
 import type { SendMode, SendMethod } from '../utils/sendTextTypes';
@@ -410,6 +411,19 @@ function NamePromptPopover({
     ? { visibility: 'visible', left: pos.left, top: pos.top }
     : { visibility: 'hidden', left: 0, top: 0 };
 
+  // The header shows the token the way it will land in the editor — normalizeToken's casing,
+  // growing as the name is typed; "…" stands in for the name until there is one. The description
+  // is the one the chip popover shows for the same token, so the prompt and the chip read as two
+  // moments of one thing; the section below only adds what the CONTROL needs.
+  const shown = normalizeToken(`{${kind}:${name || 'x'}}`);
+  const headerToken = name ? shown : shown.replace(/x\}$/, '…}');
+  const description = tokenTip(`{${kind}:x}`, (en) => en, { withRaw: false });
+  const hint = kind === 'input'
+    ? 'Click the chip afterwards to add dropdown options.'
+    : kind === 'clip'
+      ? 'The capture hotkey fills slots 1–9.'
+      : '';
+
   return ReactDOM.createPortal(
     <div
       ref={popRef}
@@ -419,36 +433,30 @@ function NamePromptPopover({
       style={{ position: 'fixed', ...visibilityStyle, zIndex: 100, width: 260, borderColor: 'color-mix(in srgb, var(--color-accent-solid) 35%, transparent)' }}
       className="menu-surface pop-in overflow-hidden"
     >
-      <div className="px-3 pt-2.5 pb-2">
-        <div className="label-micro text-text-tertiary mb-1.5">
-          {kind === 'var' ? 'Variable name' : kind === 'input' ? 'Prompt label' : kind === 'clip' ? 'Slot name' : 'Data column'}
+      {/* Same skeleton as TokenChipPopover: header (wand · token · ✕) → Section → footer. */}
+      <PopoverHeader token={headerToken} description={description} onClose={onClose} />
+      <Section label={kind === 'var' ? 'Variable name' : kind === 'input' ? 'Prompt label' : kind === 'clip' ? 'Slot name' : 'Data column'}>
+        <div className="py-1">
+          <input
+            ref={inputRef}
+            type="text"
+            value={name}
+            // Input labels allow spaces (only the token-breaking { } | are stripped); var/row
+            // names are the tight [A-Za-z0-9_] the typing grammar chips.
+            onChange={(e) => setName(e.target.value.replace(kind === 'input' ? /[{}|]/g : /[^A-Za-z0-9_]/g, ''))}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); commit(); }
+            }}
+            spellCheck={false}
+            placeholder={kind === 'var' ? 'name' : kind === 'input' ? 'What to ask' : kind === 'clip' ? '1' : 'column'}
+            // h-7 like every input in the chip popovers — the popover scale; h-8 is the surface's.
+            className={`h-7 w-full px-2 text-xs bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid placeholder:text-text-disabled ${kind === 'input' ? '' : 'font-mono'}`}
+          />
         </div>
-        <input
-          ref={inputRef}
-          type="text"
-          value={name}
-          // Input labels allow spaces (only the token-breaking { } | are stripped); var/row
-          // names are the tight [A-Za-z0-9_] the typing grammar chips.
-          onChange={(e) => setName(e.target.value.replace(kind === 'input' ? /[{}|]/g : /[^A-Za-z0-9_]/g, ''))}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); commit(); }
-          }}
-          spellCheck={false}
-          placeholder={kind === 'var' ? 'name' : kind === 'input' ? 'What to ask' : kind === 'clip' ? '1' : 'column'}
-          className={`h-8 w-full px-2 text-xs bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid placeholder:text-text-disabled ${kind === 'input' ? '' : 'font-mono'}`}
-        />
-        <div className="text-[10px] text-text-tertiary mt-1.5 leading-relaxed">
-          {kind === 'var'
-            ? 'Value stored by Set Variable under this name.'
-            : kind === 'input'
-            ? 'Replay pauses and asks. Click the chip to add dropdown options.'
-            : kind === 'clip'
-            ? 'What Copy to Slot or the capture hotkey stored here (slots 1–9).'
-            : kind === 'rownext'
-            ? 'Each use takes the next row (1st → row 1, 2nd → row 2…). Resets each run.'
-            : "Column header from the profile's Data table."}
-        </div>
-      </div>
+        {hint && (
+          <div className="text-[10px] text-text-tertiary mt-1 leading-relaxed">{hint}</div>
+        )}
+      </Section>
       {/* Two buttons, no fifth palette section: the chain builder gets an entry point for the
           other heads right where their identity is already being typed. The `<span />` keeps
           justify-between pinning Insert to the right when there is no Advanced button, so the

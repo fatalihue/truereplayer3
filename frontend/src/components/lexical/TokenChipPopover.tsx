@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
-import { Trash2, Wand2 } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 import { ClipboardModifierBody } from './ClipboardModifierBody';
 import { useClipboardContent } from './useClipboardContent';
 import {
@@ -16,7 +16,7 @@ import {
   parseWinClipToken,
   type TransformState,
 } from './clipboardModifiers';
-import { NumInput, Section } from './popoverAtoms';
+import { NumInput, PopoverHeader, Section } from './popoverAtoms';
 import { normalizeToken } from './tokenNormalize';
 import { tokenTip } from './tokenDescriptions';
 import { useAppState } from '../../state/AppStateContext';
@@ -242,7 +242,15 @@ export function TokenChipPopover({
       className="menu-surface pop-in overflow-hidden flex flex-col"
     >
 
-      <Header token={liveToken} onClose={onClose} />
+      {/* The KEYBOARD-reachable copy of the chip's hover tip. TooltipLayer is hover-only — it
+          listens on mouseover/mouseout with no focusin path — so a user who reached this popover
+          with Enter/Space has no way to read the chip's data-tip. Unknown names fall back rather
+          than collapsing the row. withRaw:false because the header already prints the raw token. */}
+      <PopoverHeader
+        token={liveToken}
+        description={tokenTip(liveToken, (en) => en, { withRaw: false }) || 'Token substituted while replaying.'}
+        onClose={onClose}
+      />
 
       <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
         {kind === 'clipboard' && <ClipboardEditor token={token} onChange={updateLive} />}
@@ -262,38 +270,6 @@ export function TokenChipPopover({
       <Footer kind={kind} onDelete={onDelete} />
     </div>,
     document.body,
-  );
-}
-
-function Header({ token, onClose }: { token: string; onClose: () => void }) {
-  // The KEYBOARD-reachable copy of the chip's hover tip. TooltipLayer is hover-only — it listens
-  // on mouseover/mouseout with no focusin path — so a user who reached this popover with
-  // Enter/Space has no way to read the chip's data-tip. Always mounted, never conditional: the
-  // popover re-places itself on token change and a line that appears and disappears would make
-  // it hop. Unknown names fall back rather than collapsing the row.
-  // withRaw:false because the header already prints the raw token on the line above.
-  const tip = tokenTip(token, (en) => en, { withRaw: false })
-    || 'Token substituted while replaying.';
-  return (
-    <div className="px-3.5 py-2.5 border-b border-border-subtle bg-bg-card shrink-0">
-      <div className="flex items-center gap-2">
-        <Wand2 size={14} className="text-accent-light shrink-0" />
-        <div
-          className="text-xs font-mono flex-1 truncate"
-          style={{ color: 'var(--color-action-sendtext-fg)' }}
-        >
-          {token}
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="text-text-tertiary hover:text-text-primary text-sm leading-none px-1"
-        >
-          ✕
-        </button>
-      </div>
-      <div className="text-[10px] text-text-tertiary leading-relaxed mt-1">{tip}</div>
-    </div>
   );
 }
 
@@ -500,10 +476,10 @@ function WinClipEditor({ token, onChange }: { token: string; onChange: (t: strin
           <NumInput value={index} onChange={update} min={1} width={70} disabled={state.unmodeled} />
           <span className="text-[11px] text-text-tertiary">1 = most recent</span>
         </div>
+        {/* Read-only is said ONCE, by the body's Callout below — this line keeps describing the
+            token in that state instead of repeating the warning. */}
         <div className="text-[10px] text-text-tertiary mt-1 leading-relaxed">
-          {state.unmodeled
-            ? 'Read-only — the modifier chain can’t be rebuilt here (see below).'
-            : `Item ${index} of the Win+V history, newest first. Needs history on; may hold anything any app copied — including passwords.`}
+          {`Item ${index} of the Win+V history, newest first. Needs history on; may hold anything any app copied — including passwords.`}
         </div>
       </Section>
       <ClipboardModifierBody
@@ -513,7 +489,9 @@ function WinClipEditor({ token, onChange }: { token: string; onChange: (t: strin
         clipReady
         sourceUnknown
         token={displayToken}
-        sourceLabel="History item"
+        // "Item text", not "History item": that name belongs to the field above that picks WHICH
+        // item — the same split ClipboardSurface makes.
+        sourceLabel="Item text"
       />
     </>
   );
@@ -582,11 +560,9 @@ function NameEditor({
           />
         </div>
         <div className="text-[10px] text-text-tertiary mt-1">
-          {state.unmodeled
-            ? 'Read-only — the modifier chain can’t be rebuilt here (see below).'
-            : tokenName === 'var'
-              ? 'Value stored by Set Variable under this name.'
-              : 'What Copy to Slot or the capture hotkey stored in this slot.'}
+          {tokenName === 'var'
+            ? 'Value stored by Set Variable under this name.'
+            : 'What Copy to Slot or the capture hotkey stored in this slot.'}
         </div>
       </Section>
       <ClipboardModifierBody
@@ -694,11 +670,9 @@ function RowColEditor({ token, onChange, head = 'row' }: { token: string; onChan
           />
         </div>
         <div className="text-[10px] text-text-tertiary mt-1">
-          {state.unmodeled
-            ? 'Read-only — the modifier chain can’t be rebuilt here (see below).'
-            : isNext
-              ? 'Each use takes the next row (1st → row 1, 2nd → row 2…). Resets each run.'
-              : 'Cell of this column in the current data row.'}
+          {isNext
+            ? 'Each use takes the next row (1st → row 1, 2nd → row 2…). Resets each run.'
+            : 'Cell of this column in the current data row.'}
         </div>
       </Section>
       <ClipboardModifierBody
@@ -803,7 +777,9 @@ function PickEditor({ token, onChange }: { token: string; onChange: (t: string) 
   };
 
   return (
-    <Section label="Options — one per line">
+    // The label names the thing; the instruction lives in the hint line like every other
+    // Section — "Options — one per line" was the one label carrying a sentence.
+    <Section label="Options">
       <div className="py-1">
         <textarea
           value={text}
@@ -816,7 +792,7 @@ function PickEditor({ token, onChange }: { token: string; onChange: (t: string) 
         />
       </div>
       <div className="text-[10px] text-text-tertiary mt-1">
-        One line at random per use.
+        One per line — one is picked at random per use.
       </div>
     </Section>
   );
@@ -848,14 +824,15 @@ function StaticInfo({ token }: { token: string }) {
   const { value, note } = staticTokenInfo(token);
   if (value) {
     return (
-      <div className="px-3.5 py-3">
-        <div className="text-[10px] uppercase tracking-wide font-semibold text-text-tertiary mb-1">
-          Resolves now to
+      // The same Section shell every parameter editor uses — this was the one label with its own
+      // uppercase recipe instead of label-micro.
+      <Section label="Resolves now to">
+        <div className="py-1">
+          <div className="text-xs font-mono text-text-primary bg-bg-input border border-border-subtle rounded px-2 py-1">
+            {value}
+          </div>
         </div>
-        <div className="text-xs font-mono text-text-primary bg-bg-input border border-border-subtle rounded px-2 py-1">
-          {value}
-        </div>
-      </div>
+      </Section>
     );
   }
   return (

@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { StepSection, CheckRow, RadioRow, RadioGroup, NumInput, ArgInput } from './popoverAtoms';
-import { CheckboxBox } from '../Checkbox';
 import { SegmentedControl } from '../common/SegmentedControl';
+import { Callout } from '../common/Callout';
 import { useTt } from '../../state/LanguageContext';
 import {
   applyTransformPreview,
@@ -11,6 +11,7 @@ import {
   linesStepActive,
   splitStepActive,
   dropNumStepActive,
+  type CaseTransform,
   type Extract,
   type Limit,
   type ListPick,
@@ -26,8 +27,8 @@ interface ClipboardModifierBodyProps {
   /** Override the displayed token — the row-cell chip passes its {row:col:mods}
    *  build; clipboard consumers omit it and get the {clipboard:mods} build. */
   token?: string;
-  /** Label above the raw-source box (default "Clipboard"; the row-cell chip
-   *  passes "Cell (first row)"). */
+  /** Label above the raw-source box (default "Clipboard now", the same words ClipboardSurface
+   *  uses; the row-cell chip passes "Cell (first row)"). */
   sourceLabel?: string;
   /** The source text is not knowable while editing — {var:}, {clip:} and {winclip:} read run
    *  state that lives in the engine, not in this process. The source and preview boxes then say
@@ -52,7 +53,7 @@ export function ClipboardModifierBody({
   clipRaw,
   clipReady,
   token: tokenOverride,
-  sourceLabel = 'Clipboard',
+  sourceLabel = 'Clipboard now',
   sourceUnknown = false,
   showNext = false,
 }: ClipboardModifierBodyProps) {
@@ -69,8 +70,10 @@ export function ClipboardModifierBody({
   // is no longer using.
   const refUnfinished = argRefIsUnfinished(state);
 
-  const toggleCase = (v: 'upper' | 'lower' | 'sentence' | 'title') =>
-    setState((s) => ({ ...s, case: s.case === v ? 'none' : v }));
+  // A real radio: one of five values, "None" included — the checkboxes that used to act as radios
+  // here lied about what they were, and the surface's segmented control had a None the popover
+  // did not.
+  const setCase = (v: CaseTransform) => setState((s) => ({ ...s, case: v }));
 
   // Step-badge activity, from the same predicates ClipboardSurface lights its ladder with — the
   // two UIs must never disagree about which step is doing work.
@@ -104,17 +107,14 @@ export function ClipboardModifierBody({
   // the user poke at dead checkboxes, and point at the one place that CAN edit it losslessly.
   if (state.unmodeled) {
     return (
-      <div className="p-1 space-y-2">
-        <div className="rounded border px-2.5 py-2 text-[11px] leading-relaxed"
-          style={{
-            color: 'var(--color-recording-fg)',
-            borderColor: 'color-mix(in srgb, var(--color-recording) 40%, transparent)',
-            backgroundColor: 'color-mix(in srgb, var(--color-recording) 10%, transparent)',
-          }}>
+      <div className="px-3.5 py-2 space-y-2">
+        {/* A warning, not an error: nothing is broken — the token runs; only THIS editor declines
+            to rebuild it. The app's Callout, so read-only looks the same here and in the surface. */}
+        <Callout tone="warn" still role="status">
           {state.unmodeledRefArg
             ? 'Read-only: the line argument comes from a variable, which these controls can’t show. It still runs; an invalid variable yields nothing.'
             : 'Read-only: a modifier here can’t be rebuilt as written (unknown, repeated or reordered).'}
-        </div>
+        </Callout>
         <div className="label-micro text-text-tertiary">Token</div>
         <div className="font-mono text-[12px] px-2 py-0.5 rounded break-all"
           style={{
@@ -196,17 +196,13 @@ export function ClipboardModifierBody({
             )}
             className="h-7 w-[104px] px-1.5 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid disabled:opacity-50"
           />
-          <button
-            type="button"
-            role="checkbox"
-            aria-checked={state.splitLast}
+          <CheckRow
+            checked={state.splitLast}
+            onChange={() => setState((s) => ({ ...s, splitLast: !s.splitLast }))}
+            label="Last match"
+            className=""
             disabled={state.split === 'none'}
-            onClick={() => setState((s) => ({ ...s, splitLast: !s.splitLast }))}
-            className="flex items-center gap-2 text-xs text-text-secondary hover:text-text-primary disabled:opacity-50"
-          >
-            <CheckboxBox checked={state.splitLast} />
-            <span>Last match</span>
-          </button>
+          />
         </div>
       </StepSection>
 
@@ -299,18 +295,13 @@ export function ClipboardModifierBody({
           />
         </div>
         <div className="flex items-center gap-2 py-0.5">
-          {/* Hand-rolled CheckRow variant: the separator input needs to sit inline,
-              and CheckRow's button spans the full row width. */}
-          <button
-            type="button"
-            role="checkbox"
-            aria-checked={state.join}
-            onClick={() => setState((s) => ({ ...s, join: !s.join }))}
-            className="flex items-center gap-2 text-xs text-text-secondary hover:text-text-primary"
-          >
-            <CheckboxBox checked={state.join} />
-            <span>Join with</span>
-          </button>
+          {/* className="" keeps the row inline so the separator input sits beside it. */}
+          <CheckRow
+            checked={state.join}
+            onChange={() => setState((s) => ({ ...s, join: !s.join }))}
+            label="Join with"
+            className=""
+          />
           <input
             type="text"
             value={state.joinSep}
@@ -469,32 +460,19 @@ export function ClipboardModifierBody({
         </div>
       </StepSection>
 
-      {/* LAST, because the backend applies case last. The four options share one radio-style
-          state, so UPPERCASE + Sentence case is impossible by construction. 2x2 grid keeps the
-          step to two rows in a popover this narrow. */}
+      {/* LAST, because the backend applies case last. The same five values and the same labels as
+          the surface's segmented control (None / UPPER / lower / Sentence / Title), as a radio
+          group in two columns so the step stays three rows in a popover this narrow. */}
       <StepSection n={sn(9)} label="Case" active={state.case !== 'none'}>
-        <div className="grid grid-flow-col grid-rows-2 gap-x-3">
-          <CheckRow
-            checked={state.case === 'upper'}
-            onChange={() => toggleCase('upper')}
-            label="UPPERCASE"
-          />
-          <CheckRow
-            checked={state.case === 'lower'}
-            onChange={() => toggleCase('lower')}
-            label="lowercase"
-          />
-          <CheckRow
-            checked={state.case === 'sentence'}
-            onChange={() => toggleCase('sentence')}
-            label="Sentence case"
-          />
-          <CheckRow
-            checked={state.case === 'title'}
-            onChange={() => toggleCase('title')}
-            label="Title Case"
-          />
-        </div>
+        <RadioGroup label="Case">
+          <div className="grid grid-cols-2 gap-x-3">
+            <RadioRow checked={state.case === 'none'} onChange={() => setCase('none')} label="None" />
+            <RadioRow checked={state.case === 'upper'} onChange={() => setCase('upper')} label="UPPER" />
+            <RadioRow checked={state.case === 'lower'} onChange={() => setCase('lower')} label="lower" />
+            <RadioRow checked={state.case === 'sentence'} onChange={() => setCase('sentence')} label="Sentence" />
+            <RadioRow checked={state.case === 'title'} onChange={() => setCase('title')} label="Title" />
+          </div>
+        </RadioGroup>
       </StepSection>
 
       <div className="px-3.5 py-1.5 bg-bg-surface border-b border-border-subtle">
@@ -517,19 +495,11 @@ export function ClipboardModifierBody({
             <span className="italic text-text-disabled">Reading...</span>
           )}
         </div>
-        <div className="label-micro text-text-tertiary mb-0.5">Token</div>
+        {/* Source → Result → Token, the order and the words ClipboardSurface uses: what goes in,
+            what comes out, what gets written. It used to read Source → Token → Preview here. */}
+        <div className="label-micro text-text-tertiary mb-0.5">Result</div>
         <div
-          className="font-mono text-[12px] px-2 py-0.5 mb-1.5 rounded break-all"
-          style={{
-            color: 'var(--color-action-sendtext-fg)',
-            background: 'color-mix(in srgb, var(--color-action-sendtext-fg) 10%, transparent)',
-          }}
-        >
-          {token}
-        </div>
-        <div className="label-micro text-text-tertiary mb-0.5">Preview</div>
-        <div
-          className="font-mono text-[11px] px-2 py-0.5 rounded border-l-2 whitespace-pre-wrap break-all min-h-[20px] max-h-[72px] overflow-auto"
+          className="font-mono text-[11px] px-2 py-0.5 mb-1.5 rounded border-l-2 whitespace-pre-wrap break-all min-h-[20px] max-h-[72px] overflow-auto"
           style={{
             background: 'color-mix(in srgb, var(--color-replay) 8%, transparent)',
             borderColor: 'color-mix(in srgb, var(--color-replay) 50%, transparent)',
@@ -551,6 +521,16 @@ export function ClipboardModifierBody({
                   {'Resolved when the macro runs — the index comes from a variable.'}
                 </span>
               : preview === '' ? <span className="italic text-text-disabled">(empty)</span> : preview}
+        </div>
+        <div className="label-micro text-text-tertiary mb-0.5">Token</div>
+        <div
+          className="font-mono text-[12px] px-2 py-0.5 rounded break-all"
+          style={{
+            color: 'var(--color-action-sendtext-fg)',
+            background: 'color-mix(in srgb, var(--color-action-sendtext-fg) 10%, transparent)',
+          }}
+        >
+          {token}
         </div>
       </div>
     </>

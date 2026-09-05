@@ -1,9 +1,47 @@
 import React from 'react';
+import { Wand2, X } from 'lucide-react';
 import { NumberInput } from '../common/NumberInput';
+import { IconButton } from '../common/IconButton';
 import { CheckboxBox } from '../Checkbox';
 
 // Small UI primitives shared by the Advanced Clipboard insert popover and the
 // chip click-to-edit popover. Pure presentational — no business logic here.
+
+/**
+ * THE header of every token editor that floats — the chip popover and the name prompt. Wand ·
+ * the token as it will be written (mono, Send Text ink) · ✕ as the app's IconButton (the same X
+ * glyph the DialogShell and the toasts close with). The description sits on its own line and is
+ * ALWAYS mounted: a popover re-places itself on token change, and a line that appears and
+ * disappears would make it hop. One component so the two editors cannot drift apart again — the
+ * 2026-09-05 review found a text "✕" glyph on one and no header at all on the other.
+ */
+export function PopoverHeader({
+  token,
+  description,
+  onClose,
+}: {
+  token: string;
+  description: string;
+  onClose: () => void;
+}) {
+  return (
+    <div className="px-3.5 py-2.5 border-b border-border-subtle bg-bg-card shrink-0">
+      <div className="flex items-center gap-2">
+        <Wand2 size={14} className="text-accent-light shrink-0" />
+        <div
+          className="text-xs font-mono flex-1 truncate"
+          style={{ color: 'var(--color-action-sendtext-fg)' }}
+        >
+          {token}
+        </div>
+        <IconButton size="sm" onClick={onClose} aria-label="Close" className="-mr-1.5">
+          <X size={14} />
+        </IconButton>
+      </div>
+      <div className="text-[10px] text-text-tertiary leading-relaxed mt-1">{description}</div>
+    </div>
+  );
+}
 
 // Section + step badge — the popover-scale twin of ClipboardSurface's `Step` (that one is
 // dialog-scale: a w-4 h-4 badge, text-[9px], a pl-6 indent and a 1.5-unit gap). Here the badge is
@@ -58,16 +96,20 @@ export interface CheckRowProps {
   /** Popovers stack rows full-width (the whole line is the target); the clipboard surface lays
    *  them inline in a wrapping row and passes an empty string. */
   className?: string;
+  /** Inert while the step it belongs to is off ("Last match" under Split = Off). Stays mounted
+   *  so the row never changes shape — the same rule the number inputs beside it follow. */
+  disabled?: boolean;
 }
 
-export function CheckRow({ checked, onChange, label, className = 'w-full' }: CheckRowProps) {
+export function CheckRow({ checked, onChange, label, className = 'w-full', disabled = false }: CheckRowProps) {
   return (
     <button
       type="button"
       role="checkbox"
       aria-checked={checked}
+      disabled={disabled}
       onClick={onChange}
-      className={`flex items-center gap-2 py-0.5 text-xs text-text-secondary hover:text-text-primary transition-colors ${className}`}
+      className={`flex items-center gap-2 py-0.5 text-xs text-text-secondary enabled:hover:text-text-primary disabled:opacity-50 disabled:cursor-default transition-colors ${className}`}
     >
       <CheckboxBox checked={checked} />
       <span className="flex-1 text-left">{label}</span>

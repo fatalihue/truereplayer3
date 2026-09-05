@@ -3,6 +3,7 @@ import { ChevronLeft, RefreshCw, RotateCcw, Wand2 } from 'lucide-react';
 import { SegmentedControl } from '../common/SegmentedControl';
 import { NumberInput } from '../common/NumberInput';
 import { FieldError } from '../common/FieldError';
+import { Callout } from '../common/Callout';
 import { useTt } from '../../state/LanguageContext';
 import { ArgInput, CheckRow as PopoverCheckRow, type CheckRowProps } from './popoverAtoms';
 
@@ -198,16 +199,13 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
           <div className="text-xs font-semibold text-text-primary flex-1">{HEAD_TITLES[head.kind]}</div>
         </div>
         <div className="flex-1 p-4 space-y-3">
-          <div className="rounded border px-3 py-2 text-[11px] leading-relaxed"
-            style={{
-              color: 'var(--color-recording-fg)',
-              borderColor: 'color-mix(in srgb, var(--color-recording) 40%, transparent)',
-              backgroundColor: 'color-mix(in srgb, var(--color-recording) 10%, transparent)',
-            }}>
+          {/* A warning, not an error: the token runs — only the builder declines to rebuild it.
+              The same Callout the popover body shows, so read-only has one look. */}
+          <Callout tone="warn" still role="status">
             {state.unmodeledRefArg
               ? 'Read-only: the line argument comes from a variable, which these controls can’t show. It still runs; an invalid variable yields nothing. Edit the token text in the editor to change it.'
               : 'Read-only: a modifier here can’t be rebuilt as written (unknown, repeated or reordered). Edit the token text in the editor instead.'}
-          </div>
+          </Callout>
           <div className="label-micro text-text-tertiary">Token</div>
           <div className="font-mono text-[12px] px-2 py-1 rounded break-all"
             style={{
@@ -336,9 +334,13 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
             />
           </Step>
 
+          {/* Every step with arguments is ONE wrapping row: the mode, then its arguments — ALWAYS
+              mounted and inert while the mode does not use them (Join with already worked this way,
+              and so does the popover ladder). The column keeps its shape when a mode changes, and
+              the user sees what each mode asks for before choosing it. */}
           <Step n={sn(3)} title="Split at" active={splitActive}>
             <div className="space-y-2">
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-3 flex-wrap">
                 <SegmentedControl<Split>
                   ariaLabel="Split at a delimiter"
                   options={[
@@ -349,31 +351,29 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                   value={state.split}
                   onChange={(v) => set({ split: v })}
                 />
-                {state.split !== 'none' && (
-                  <>
-                    <input
-                      type="text"
-                      value={state.splitDelim}
-                      // A SPACE is deliberately allowed — " - " is the delimiter this control
-                      // exists for. So is a COLON: buildModifierParts doubles it into "::" on
-                      // the way out. Only the braces are unrepresentable, since they end the
-                      // token itself.
-                      onChange={(e) => set({ splitDelim: e.target.value.replace(/[{}]/g, '') })}
-                      placeholder=" - "
-                      aria-label="Delimiter"
-                      data-tip={tt(
-                        'Cut here — the delimiter is dropped. Spaces and : allowed, { } not.',
-                        'Corta aqui — o delimitador é descartado. Espaços e : podem, { } não.',
-                      )}
-                      className="h-8 w-28 px-2 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid placeholder:text-text-disabled"
-                    />
-                    <CheckRow
-                      checked={state.splitLast}
-                      onChange={() => set({ splitLast: !state.splitLast })}
-                      label="Last match"
-                    />
-                  </>
-                )}
+                <input
+                  type="text"
+                  value={state.splitDelim}
+                  // A SPACE is deliberately allowed — " - " is the delimiter this control
+                  // exists for. So is a COLON: buildModifierParts doubles it into "::" on
+                  // the way out. Only the braces are unrepresentable, since they end the
+                  // token itself.
+                  onChange={(e) => set({ splitDelim: e.target.value.replace(/[{}]/g, '') })}
+                  disabled={state.split === 'none'}
+                  placeholder=" - "
+                  aria-label="Delimiter"
+                  data-tip={tt(
+                    'Cut here — the delimiter is dropped. Spaces and : allowed, { } not.',
+                    'Corta aqui — o delimitador é descartado. Espaços e : podem, { } não.',
+                  )}
+                  className="h-8 w-28 px-2 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid disabled:opacity-50 placeholder:text-text-disabled"
+                />
+                <CheckRow
+                  checked={state.splitLast}
+                  onChange={() => set({ splitLast: !state.splitLast })}
+                  label="Last match"
+                  disabled={state.split === 'none'}
+                />
               </div>
               <div className="text-[11px] text-text-tertiary leading-snug">
                 {state.split === 'none'
@@ -409,7 +409,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
 
           <Step n={sn(5)} title="Lines" active={linesActive}>
             <div className="space-y-2">
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-3 flex-wrap">
                 <SegmentedControl<ListPick>
                   ariaLabel="Lines"
                   options={[
@@ -420,44 +420,45 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                   value={state.listPick}
                   onChange={(v) => set({ listPick: v })}
                 />
-                {state.listPick === 'range' && (
-                  <span className="flex items-center gap-1">
-                    <NumberInput
-                      value={state.rangeFrom}
-                      onChange={(n) => set({ rangeFrom: Math.max(1, n) })}
-                      onClear={() => set({ rangeFrom: null })}
-                      min={1}
-                      placeholder="1"
-                      ariaLabel="First line"
-                      inputWidth="w-14"
-                      inputHeight="h-8"
-                    />
-                    <span className="text-[11px] text-text-tertiary">–</span>
-                    <NumberInput
-                      value={state.rangeTo}
-                      onChange={(n) => set({ rangeTo: Math.max(1, n) })}
-                      onClear={() => set({ rangeTo: null })}
-                      min={1}
-                      placeholder="end"
-                      ariaLabel="Last line"
-                      inputWidth="w-14"
-                      inputHeight="h-8"
-                    />
-                  </span>
-                )}
-                {state.listPick === 'lines' && (
-                  <input
-                    type="text"
-                    value={state.linesSpec}
-                    onChange={(e) => set({ linesSpec: e.target.value.replace(/[^0-9,]/g, '') })}
-                    placeholder="3,1,2"
-                    data-tip={tt(
-                      'Comma-separated line numbers; repeats allowed',
-                      'Números de linha separados por vírgula; repetição permitida',
-                    )}
-                    className="h-8 w-24 px-2 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid placeholder:text-text-disabled"
+                {/* Range pair, then the Pick #s spec — the same order as the segments. */}
+                <span className="flex items-center gap-1">
+                  <NumberInput
+                    value={state.rangeFrom}
+                    onChange={(n) => set({ rangeFrom: Math.max(1, n) })}
+                    onClear={() => set({ rangeFrom: null })}
+                    disabled={state.listPick !== 'range'}
+                    min={1}
+                    placeholder="1"
+                    ariaLabel="First line"
+                    inputWidth="w-14"
+                    inputHeight="h-8"
                   />
-                )}
+                  <span className="text-[11px] text-text-tertiary">–</span>
+                  <NumberInput
+                    value={state.rangeTo}
+                    onChange={(n) => set({ rangeTo: Math.max(1, n) })}
+                    onClear={() => set({ rangeTo: null })}
+                    disabled={state.listPick !== 'range'}
+                    min={1}
+                    placeholder="end"
+                    ariaLabel="Last line"
+                    inputWidth="w-14"
+                    inputHeight="h-8"
+                  />
+                </span>
+                <input
+                  type="text"
+                  value={state.linesSpec}
+                  onChange={(e) => set({ linesSpec: e.target.value.replace(/[^0-9,]/g, '') })}
+                  disabled={state.listPick !== 'lines'}
+                  placeholder="3,1,2"
+                  aria-label="Line numbers"
+                  data-tip={tt(
+                    'Comma-separated line numbers; repeats allowed',
+                    'Números de linha separados por vírgula; repetição permitida',
+                  )}
+                  className="h-8 w-24 px-2 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid disabled:opacity-50 placeholder:text-text-disabled"
+                />
               </div>
               <div className="flex items-center gap-4 flex-wrap">
                 <CheckRow checked={state.sort} onChange={() => set({ sort: !state.sort })} label="Sort A–Z" />
@@ -486,30 +487,30 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
           </Step>
 
           <Step n={sn(6)} title="Extract" active={state.extract !== 'none'}>
-            <div className="flex items-center gap-2 flex-wrap">
-              <SegmentedControl<Extract>
-                ariaLabel="Extract"
-                options={[
-                  { value: 'none', label: 'Everything' },
-                  { value: 'line', label: 'Line #' },
-                  { value: 'word', label: 'Word #' },
-                  { value: 'words', label: 'Words' },
-                ]}
-                value={state.extract}
-                onChange={(v) => set({ extract: v })}
-              />
-              {(state.extract === 'line' || state.extract === 'word') && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-3 flex-wrap">
+                <SegmentedControl<Extract>
+                  ariaLabel="Extract"
+                  options={[
+                    { value: 'none', label: 'Everything' },
+                    { value: 'line', label: 'Line #' },
+                    { value: 'word', label: 'Word #' },
+                    { value: 'words', label: 'Words' },
+                  ]}
+                  value={state.extract}
+                  onChange={(v) => set({ extract: v })}
+                />
+                {/* The # for Line/Word, then the Words span — the same order as the segments. */}
                 <ArgInput
                   value={state.extractN}
                   onChange={(n) => set({ extractN: Math.max(1, n) })}
                   refValue={state.extractRef}
                   onRefChange={(r) => set({ extractRef: r })}
+                  disabled={state.extract !== 'line' && state.extract !== 'word'}
                   min={1}
                   refTip={refTip}
                   numTip={numTip}
                 />
-              )}
-              {state.extract === 'words' && (
                 <span
                   className="flex items-center gap-1"
                   data-tip={tt(
@@ -521,6 +522,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                     value={state.wordsFrom}
                     onChange={(n) => set({ wordsFrom: Math.max(1, n) })}
                     onClear={() => set({ wordsFrom: null })}
+                    disabled={state.extract !== 'words'}
                     min={1}
                     placeholder="1"
                     ariaLabel="First word"
@@ -532,6 +534,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                     value={state.wordsTo}
                     onChange={(n) => set({ wordsTo: Math.max(1, n) })}
                     onClear={() => set({ wordsTo: null })}
+                    disabled={state.extract !== 'words'}
                     min={1}
                     placeholder="end"
                     ariaLabel="Last word"
@@ -539,33 +542,34 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                     inputHeight="h-8"
                   />
                 </span>
-              )}
+              </div>
             </div>
           </Step>
 
           <Step n={sn(7)} title="Limit length" active={state.limit !== 'none'}>
-            <div className="flex items-center gap-2 flex-wrap">
-              <SegmentedControl<Limit>
-                ariaLabel="Limit length"
-                options={[
-                  { value: 'none', label: 'None' },
-                  { value: 'first', label: 'First N chars' },
-                  { value: 'last', label: 'Last N chars' },
-                ]}
-                value={state.limit}
-                onChange={(v) => set({ limit: v })}
-              />
-              {state.limit !== 'none' && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-3 flex-wrap">
+                <SegmentedControl<Limit>
+                  ariaLabel="Limit length"
+                  options={[
+                    { value: 'none', label: 'None' },
+                    { value: 'first', label: 'First N chars' },
+                    { value: 'last', label: 'Last N chars' },
+                  ]}
+                  value={state.limit}
+                  onChange={(v) => set({ limit: v })}
+                />
                 <ArgInput
                   value={state.limitN}
                   onChange={(n) => set({ limitN: Math.max(0, n) })}
                   refValue={state.limitRef}
                   onRefChange={(r) => set({ limitRef: r })}
+                  disabled={state.limit === 'none'}
                   min={0}
                   refTip={refTip}
                   numTip={numTip}
                 />
-              )}
+              </div>
             </div>
           </Step>
 
