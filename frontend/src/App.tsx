@@ -410,6 +410,7 @@ function AppShell() {
           ) : (
             <ActionTable
               columnVisibility={columnVisibility}
+              editorIndex={sheetActionIndex}
               onOpenSheet={handleOpenSheet}
               onPickCoords={handlePickCoordsForRow}
             />

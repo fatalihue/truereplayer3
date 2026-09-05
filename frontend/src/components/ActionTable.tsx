@@ -6,7 +6,7 @@ import type { CollisionDetection, DragStartEvent, DragEndEvent } from '@dnd-kit/
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { CSS } from '@dnd-kit/utilities';
-import { Mouse, MousePointerClick, MousePointer2, Keyboard, ArrowUp, ArrowDown, Zap, Type, Trash2, ChevronRight, ChevronDown, ChevronsDownUp, ChevronsUpDown, Plus, Pencil, ScanSearch, Pipette, Globe, CheckCheck, Check, Code2, Files, Hourglass, Repeat2, ExternalLink, Crosshair, Link, GripVertical, Timer, GitBranch, ArrowRightLeft, Combine, Split, MoreHorizontal, Focus, Braces, AppWindow, Clipboard, ClipboardCopy, EyeOff, RotateCcw, Dice5, Cpu, FileCheck, Clock, ShieldCheck, CircleStop, CornerDownLeft, IterationCw, ChevronUp, ArrowRightFromLine, SkipForward, Table2 } from 'lucide-react';
+import { Mouse, MousePointerClick, MousePointer2, Keyboard, ArrowUp, ArrowDown, Zap, Type, Trash2, ChevronRight, ChevronDown, ChevronsDownUp, ChevronsUpDown, Plus, Pencil, ScanSearch, Pipette, Globe, CheckCheck, Check, Code2, Files, Hourglass, Repeat2, ExternalLink, Crosshair, Link, GripVertical, Timer, GitBranch, ArrowRightLeft, Combine, Split, MoreHorizontal, Focus, Braces, AppWindow, Clipboard, ClipboardCopy, EyeOff, RotateCcw, Dice5, Cpu, FileCheck, Clock, ShieldCheck, CircleStop, CornerDownLeft, IterationCw, ChevronUp, ArrowRightFromLine, SkipForward, Table2, ArrowUpFromDot } from 'lucide-react';
 import { canCollapse, canExpand, expandKeystroke } from '../utils/keyRepeat';
 import type { ActionItem } from '../bridge/messageTypes';
 import { useAppState } from '../state/AppStateContext';
@@ -79,6 +79,11 @@ const BLOCK_LEVEL_COLORS = [
 // Cycle by level; the double-mod keeps it safe for any (even negative) input.
 const blockColor = (level: number): string =>
   BLOCK_LEVEL_COLORS[((level % BLOCK_LEVEL_COLORS.length) + BLOCK_LEVEL_COLORS.length) % BLOCK_LEVEL_COLORS.length];
+
+// The rows that open, branch or close a block — both families. The two ENDS are split out
+// because only they cap a rail (an ElseIf / Else sits mid-block and its rail runs through).
+const BLOCK_OPENERS = new Set(['If', 'While', 'ForEachRow']);
+const STRUCTURAL_TYPES = new Set(['If', 'ElseIf', 'Else', 'EndIf', 'While', 'ForEachRow', 'EndLoop']);
 
 export function ActionIcon({ actionType, size = 12 }: { actionType: string; size?: number }) {
   // ShieldCheck (verify-or-fail) before the generic Browser→Globe so Assert reads distinctly.
@@ -502,9 +507,12 @@ interface ActionTableProps {
   // sheet-open-with-seed) because the sheet's own correlation is disarmed on open.
   // This table only says WHICH row asked.
   onPickCoords?: (index: number) => void;
+  // The row open in the SheetPanel (null = closed). Its block's rail stays lit while the editor
+  // is open — the "bracket match at the caret" — so editing inside a long block keeps its context.
+  editorIndex?: number | null;
 }
 
-export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: ActionTableProps) {
+export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, editorIndex = null }: ActionTableProps) {
   // pauseState is not read here any more: its only use was the paused-here row treatment,
   // which needs the replay index to be meaningful — both now live in ReplayRowMarker.
   const { actions, buttonStates, activeProfile, dataTable } = useAppState();
@@ -574,9 +582,11 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
   // Bracket-match probe. Hovering a STRUCTURAL marker lights its whole block span — the rail at
   // that block's own nesting level runs full strength from opener to closer and the rows in
   // between take a wash: the affordance a code editor gives when the caret touches a brace.
-  // Wired only to structural rows' mouseenter, so hovering an ordinary body row costs no state
-  // update and no re-render of the table.
-  const [hoverBlock, setHoverBlock] = useState<{ open: number; close: number; level: number } | null>(null);
+  // Since 2026-09-05 (B1) it is no state at all: a delegated mouseover on the tbody toggles a
+  // data-lit attribute on the rails of the block under the pointer — any row of it, body rows
+  // included — and CSS does the rest (see .block-rail). The old probe was wired to structural
+  // rows' mouseenter because a handler on every row re-rendered the grid on each move; with the
+  // DOM toggled directly there is nothing to re-render. See litBlock / handleRailHover below.
 
   // ── Conditional logic block map ────────────────────────────────────
   // Single-pass O(n) walk over the action list produces 4 parallel structures used
@@ -610,14 +620,21 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
     // anchors on this: a new arm must land BEFORE the Else (nothing after an unconditional
     // branch is reachable), so the ghost row renders above it rather than above the EndIf.
     const elseOf = new Map<number, number>();
+    // railOpeners[i][level] — the opener whose rail is drawn at that level on row i (one entry
+    // per rail the row renders). Rails carry it as data-rail-block so the lit states can find
+    // every rail of one block with a single attribute query, whatever the row.
+    const railOpeners = new Array<number[]>(n);
     const stack: { kind: 'If' | 'Loop'; idx: number }[] = [];
+    const openersOnStack = () => stack.map(s => s.idx);
     for (let i = 0; i < n; i++) {
       const t = actions[i].actionType;
       if (t === 'If') {
+        railOpeners[i] = [...openersOnStack(), i];
         stack.push({ kind: 'If', idx: i });
         depth[i] = stack.length - 1;
         blockOpenerOf[i] = i; // opener rows self-reference for skip propagation
       } else if (t === 'While' || t === 'ForEachRow') {
+        railOpeners[i] = [...openersOnStack(), i];
         stack.push({ kind: 'Loop', idx: i });
         depth[i] = stack.length - 1;
         blockOpenerOf[i] = i;
@@ -631,7 +648,8 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
           const ifIdx = stack[stack.length - 1].idx;
           depth[i] = stack.length - 1;
           blockOpenerOf[i] = ifIdx;
-        }
+          railOpeners[i] = openersOnStack();
+        } else railOpeners[i] = [i]; // orphan: its single rail answers to nobody but itself
       } else if (t === 'Else') {
         if (stack.length && stack[stack.length - 1].kind === 'If') {
           const ifIdx = stack[stack.length - 1].idx;
@@ -639,41 +657,77 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
           blockOpenerOf[i] = ifIdx;
           hasElse.add(ifIdx);
           elseOf.set(ifIdx, i);
-        }
+          railOpeners[i] = openersOnStack();
+        } else railOpeners[i] = [i];
       } else if (t === 'EndIf') {
         if (stack.length && stack[stack.length - 1].kind === 'If') {
           const ifIdx = stack[stack.length - 1].idx;
           depth[i] = stack.length - 1;
           blockOpenerOf[i] = ifIdx;
           closerOf.set(ifIdx, i);
+          railOpeners[i] = openersOnStack();
           stack.pop();
-        }
+        } else railOpeners[i] = [i];
       } else if (t === 'EndLoop') {
         if (stack.length && stack[stack.length - 1].kind === 'Loop') {
           const openIdx = stack[stack.length - 1].idx;
           depth[i] = stack.length - 1;
           blockOpenerOf[i] = openIdx;
           closerOf.set(openIdx, i);
+          railOpeners[i] = openersOnStack();
           stack.pop();
-        }
+        } else railOpeners[i] = [i];
       } else {
         // Non-structural body row — depth equals the number of currently-open blocks,
         // and the containing block is the innermost open opener (top of stack).
         depth[i] = stack.length;
         if (stack.length) blockOpenerOf[i] = stack[stack.length - 1].idx;
+        railOpeners[i] = openersOnStack();
       }
     }
-    return { depth, blockOpenerOf, closerOf, hasElse, elseOf };
+    return { depth, blockOpenerOf, closerOf, hasElse, elseOf, railOpeners };
   }, [actions]);
 
-  // Indices in hoverBlock address the list as it was when the pointer entered; a delete, reorder
-  // or undo would leave the span painted over unrelated rows until the pointer happens to leave
-  // the marker. Setting null when it is already null is a React bail-out, so the common case is free.
-  useEffect(() => { setHoverBlock(null); }, [actions]);
-
-  // Suppressed during a row drag: dnd-kit moves rows under a stationary pointer, so the span would
-  // strobe across whatever slid beneath it. One gate here beats a guard at every consumer below.
-  const hoverSpan = dragIndices === null ? hoverBlock : null;
+  // ── Bracket-match lighting: attribute + CSS, no React state ──
+  // Every rail carries data-rail-block=<opener index>; every row (ghost rows included) carries
+  // data-block-open=<the block it belongs to>. Lighting a block is one attribute query on the
+  // tbody, so the pointer crossing rows costs no render. Two independent channels:
+  //   data-lit      — the block under the pointer (cleared when it leaves the tbody / on drag)
+  //   data-lit-sel  — the block of the row open in the SheetPanel, else of a single selected row
+  // React never writes these attributes (they are not in the JSX), so a re-render leaves them be.
+  const litBlockRef = useRef<string | null>(null);
+  const setLitBlock = useCallback((open: string | null, attr: 'data-lit' | 'data-lit-sel', ref: { current: string | null }) => {
+    if (ref.current === open) return;
+    const tb = tbodyRef.current;
+    if (!tb) return;
+    if (ref.current !== null) tb.querySelectorAll(`[${attr}]`).forEach(el => el.removeAttribute(attr));
+    ref.current = open;
+    if (open !== null) tb.querySelectorAll(`[data-rail-block="${open}"]`).forEach(el => el.setAttribute(attr, ''));
+  }, []);
+  // Suppressed during a row drag: dnd-kit moves rows under a stationary pointer, so the lit span
+  // would strobe across whatever slid beneath it.
+  const dragIndicesRef = useRef(dragIndices);
+  dragIndicesRef.current = dragIndices;
+  const handleRailHover = useCallback((e: React.MouseEvent<HTMLTableSectionElement>) => {
+    if (dragIndicesRef.current !== null) return;
+    const tr = (e.target as Element).closest?.('tr');
+    setLitBlock(tr?.getAttribute('data-block-open') ?? null, 'data-lit', litBlockRef);
+  }, [setLitBlock]);
+  const clearRailHover = useCallback(() => setLitBlock(null, 'data-lit', litBlockRef), [setLitBlock]);
+  useEffect(() => { if (dragIndices !== null) setLitBlock(null, 'data-lit', litBlockRef); }, [dragIndices, setLitBlock]);
+  // Indices address the list as it was when the pointer entered; a delete, reorder or undo would
+  // leave the wrong rails lit until the pointer happens to move.
+  useEffect(() => { setLitBlock(null, 'data-lit', litBlockRef); }, [actions, setLitBlock]);
+  // Persistent channel (B2): the row open in the editor wins; else a lone selected row. Runs after
+  // every commit (no deps on purpose: a row that re-mounts must get its attribute back) — the
+  // early return in setLitBlock makes the unchanged case a string compare.
+  const litSelRef = useRef<string | null>(null);
+  const editorRow = editorIndex ?? null;
+  useEffect(() => {
+    const row = editorRow !== null ? editorRow : selectedIndices.size === 1 ? [...selectedIndices][0] : null;
+    const open = row !== null && row < actions.length ? blockInfo.blockOpenerOf[row] : null;
+    setLitBlock(open === null || open === undefined ? null : String(open), 'data-lit-sel', litSelRef);
+  });
 
   // Block-snap a selection ONLY when it includes a structural marker (If/Else/EndIf): a selection
   // touching a marker expands to whole IF…EndIf blocks so the marker can't be orphaned; a PURE
@@ -1842,7 +1896,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
           </thead>
           )}
           <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
-          <tbody ref={tbodyRef}>
+          <tbody ref={tbodyRef} onMouseOver={handleRailHover} onMouseLeave={clearRailHover}>
             {actions.map((action, idx) => {
               const colors = getActionTypeColors(action.actionType);
               // No isHighlighted / isPausedHere here on purpose. Both used to be derived per
@@ -1963,12 +2017,28 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
               // families share the treatment — a loop is bracketed exactly like a conditional.
               const isBlockOpener = action.actionType === 'If' || action.actionType === 'While' || action.actionType === 'ForEachRow';
               const isBlockCloser = action.actionType === 'EndIf' || action.actionType === 'EndLoop';
-              // Bracket-match span for THIS row. hoverRailLevel = -1 means "no rail on this row is
-              // lit"; otherwise it is the nesting level of the hovered block, which is exactly the
-              // rail INDEX to light, since rail i sits at level i.
-              const inHoverSpan = hoverSpan !== null && idx >= hoverSpan.open && idx <= hoverSpan.close;
-              const hoverRailLevel = inHoverSpan ? hoverSpan.level : -1;
               const depth = blockInfo.depth[idx] || 0;
+              // The block this row belongs to (its own for structural rows, the enclosing one for
+              // body rows) — what the tbody's mouseover reads to light the rails, and what the
+              // tooltips below describe.
+              const rowOwner = blockInfo.blockOpenerOf[idx];
+              const rowCloser = rowOwner !== null ? blockInfo.closerOf.get(rowOwner) : undefined;
+              // A marker with nothing to pair with: an else/endif/end loop the walk could not attach
+              // (orphan) or an opener with no closer. The load-time validator strips these, but a
+              // paste or a hand-edited file can leave one — it used to render as an ordinary
+              // depth-0 row. Now its own rail and wash go recording-red and the pill says why.
+              const broken = isStructural && (rowOwner === null || (isBlockOpener && rowCloser === undefined));
+              const blockTip = !isStructural ? undefined
+                : broken
+                  ? (isBlockOpener
+                      ? tt(`No matching ${action.actionType === 'If' ? 'endif' : 'end loop'}`, `Sem ${action.actionType === 'If' ? 'endif' : 'end loop'} correspondente`)
+                      : tt(`No matching ${action.actionType === 'EndLoop' ? 'loop' : 'if'}`, `Sem ${action.actionType === 'EndLoop' ? 'loop' : 'if'} correspondente`))
+                  : isBlockOpener
+                    ? tt(`Ends at row ${(rowCloser as number) + 1}`, `Termina na linha ${(rowCloser as number) + 1}`)
+                    : isBlockCloser
+                      ? tt(`Closes ${actionPillLabel(actions[rowOwner as number])} · row ${(rowOwner as number) + 1} · ${idx - (rowOwner as number) - 1} ${idx - (rowOwner as number) - 1 === 1 ? 'row' : 'rows'}`,
+                           `Fecha ${actionPillLabel(actions[rowOwner as number])} · linha ${(rowOwner as number) + 1} · ${idx - (rowOwner as number) - 1} linha${idx - (rowOwner as number) - 1 === 1 ? '' : 's'}`)
+                      : tt(`Branch of if · row ${(rowOwner as number) + 1}`, `Ramo do if · linha ${(rowOwner as number) + 1}`);
               // Body rows of a conditional block (depth ≥ 1, non-structural) get a
               // softer wash of the same IF hue so the whole block reads as one band,
               // not just its If/Else/EndIf brackets.
@@ -1995,7 +2065,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
               // block that encloses it (= depth − 1). Exposed via the --row-block-color custom
               // prop so the row's bg AND its hover variant can both reference it. Level 0 resolves
               // to the user's IF colour, so a single-level block looks exactly as it did before.
-              const rowBlockColor = blockColor(isStructural ? depth : depth - 1);
+              const rowBlockColor = broken ? 'var(--color-recording)' : blockColor(isStructural ? depth : depth - 1);
 
               // Ghost "+ Add Else If / + Add Else" row — rendered just BEFORE the ANCHOR of
               // the block's branch chain: the terminal ELSE when the block has one, otherwise
@@ -2050,6 +2120,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                       transition: profileDragTransition,
                     } as React.CSSProperties}
                     className="h-row border-b border-border-subtle relative pointer-events-none bg-[color-mix(in_srgb,var(--row-block-color)_6%,transparent)]"
+                    data-block-open={chainOpener ?? undefined}
                   >
                     <td colSpan={99} className="p-0 relative">
                       {/* The ghost slot used to render NO rails, so every block with an Add-Else row
@@ -2062,15 +2133,11 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                       {Array.from({ length: addElseDepth + 1 }, (_, i) => (
                         <div
                           key={`rail-${i}`}
-                          className="absolute top-0 bottom-0 pointer-events-none"
-                          style={{
-                            left: `${78 + i * 14}px`,
-                            width: '2px',
-                            background: i === hoverRailLevel
-                              ? blockColor(i)
-                              : `color-mix(in srgb, ${blockColor(i)} 35%, transparent)`,
-                            transition: 'background 120ms ease-out',
-                          }}
+                          className="block-rail"
+                          // The ghost sits at body position right before the anchor (Else / EndIf),
+                          // so it draws exactly the anchor's rails and answers to the same blocks.
+                          data-rail-block={chainAnchor !== null ? blockInfo.railOpeners[chainAnchor]?.[i] : undefined}
+                          style={{ left: `${78 + i * 14}px`, ['--rail-color' as string]: blockColor(i) } as React.CSSProperties}
                         />
                       ))}
                       <span
@@ -2164,19 +2231,10 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                   {...sortable.listeners}
                   onClick={(e) => handleRowClick(idx, e)}
                   onContextMenu={(e) => handleRowContextMenu(idx, e)}
-                  // Bracket-match probe, wired ONLY to structural markers. The rows are an inline
-                  // map with no memo boundary, so any state set here re-renders the whole grid —
-                  // hanging this on every row would pay that on each mouse move between rows.
-                  // On a marker it fires at most twice per visit (enter + leave), which is the
-                  // same cadence the context menu already sets state at.
-                  onMouseEnter={isStructural ? () => {
-                    const open = blockInfo.blockOpenerOf[idx];
-                    if (open === null) return;                       // orphan marker — nothing to pair
-                    const close = blockInfo.closerOf.get(open);
-                    if (close === undefined) return;                 // unclosed block — same
-                    setHoverBlock({ open, close, level: blockInfo.depth[open] ?? 0 });
-                  } : undefined}
-                  onMouseLeave={isStructural ? () => setHoverBlock(null) : undefined}
+                  // Which block the tbody's delegated mouseover lights when the pointer is on this
+                  // row — its own block for a marker, the enclosing one for a body row. Absent
+                  // outside any block, so the lighting clears there.
+                  data-block-open={rowOwner ?? undefined}
                   // The transform/transition pair is dnd-kit's live slide for row reorder;
                   // the profileShift branch reuses the same language for profiles dragged
                   // over the grid (rows at/below the insert point slide down one slot to
@@ -2255,39 +2313,38 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                       // ElseIf/Else never cap — their rail runs through the block they belong to.
                       const capTop = isBlockOpener && isInnermost;
                       const capBottom = isBlockCloser && isInnermost;
-                      // Bracket-match: the hovered block's rail goes full strength AND 3px wide along
-                      // its WHOLE span, body rows included, so the pair reads as one solid bracket.
-                      // This is the ONLY channel the probe uses. It deliberately does not wash the
-                      // rows: a translucent tint behind text demotes whatever already sits near the
-                      // contrast floor, and measured over 37 themes x 5 nesting levels a 12% wash
-                      // pushed 522 samples of grid text from >=4.5:1 to below it in 14 themes.
-                      // Dimming the wash does not fix it — at 6% it is still 175 demotions and the
-                      // lit state becomes INVISIBLE on structural rows, which already carry a 6%
-                      // band of the same hue. A neutral bg-elevated wash was worse still (1254).
-                      // The rail carries no text, so widening and saturating it costs nothing. It
-                      // grows rightward from a fixed `left`, so nothing else on the row moves.
-                      const lit = i === hoverRailLevel;
+                      // Bracket-match: the lit block's rail goes full strength AND 3px wide along
+                      // its WHOLE span, body rows included, so the pair reads as one solid bracket
+                      // (.block-rail[data-lit] / [data-lit-sel], toggled on the DOM by the tbody
+                      // handler and the selection effect — never by this render). It deliberately
+                      // does not wash the rows: a translucent tint behind text demotes whatever
+                      // already sits near the contrast floor, and measured over 37 themes x 5
+                      // nesting levels a 12% wash pushed 522 samples of grid text from >=4.5:1 to
+                      // below it in 14 themes. Dimming the wash does not fix it — at 6% it is still
+                      // 175 demotions and the lit state becomes INVISIBLE on structural rows, which
+                      // already carry a 6% band of the same hue. A neutral bg-elevated wash was
+                      // worse still (1254). The rail carries no text, so widening and saturating it
+                      // costs nothing. It grows rightward from a fixed `left`, so nothing moves.
+                      //
+                      // Rail i sits at nesting level i, so it takes that level's colour — each
+                      // enclosing block contributes its own coloured rail (rainbow brackets); a
+                      // broken marker's own rail goes recording-red instead. data-rail-block names
+                      // the block whose rail this is, so lighting one block finds all of its rails.
                       return (
                         <div
                           key={`rail-${i}`}
-                          className="absolute top-0 bottom-0 pointer-events-none"
+                          className="block-rail"
+                          data-rail-block={blockInfo.railOpeners[idx]?.[i]}
+                          data-strong={strong ? '' : undefined}
                           style={{
                             left: `${78 + i * 14}px`,
-                            width: strong || lit ? '3px' : '2px',
-                            // Undefined leaves the top-0 / bottom-0 classes in force; only a capped
-                            // end overrides, so an uncapped rail still meets its neighbour exactly.
+                            ['--rail-color' as string]: broken && isInnermost ? 'var(--color-recording)' : blockColor(i),
+                            // Undefined leaves the utility's top/bottom in force; only a capped end
+                            // overrides, so an uncapped rail still meets its neighbour exactly.
                             top: capTop ? '4px' : undefined,
                             bottom: capBottom ? '4px' : undefined,
                             borderRadius: capTop ? '2px 2px 0 0' : capBottom ? '0 0 2px 2px' : undefined,
-                            // Rail i sits at nesting level i, so it takes that level's colour —
-                            // each enclosing block contributes its own coloured rail (rainbow
-                            // brackets). The innermost rail of a structural row is full strength;
-                            // outer/body rails use the 35% wash the old --if-border used.
-                            background: strong || lit
-                              ? blockColor(i)
-                              : `color-mix(in srgb, ${blockColor(i)} 35%, transparent)`,
-                            transition: 'background 120ms ease-out',
-                          }}
+                          } as React.CSSProperties}
                         />
                       );
                     })}
@@ -2337,6 +2394,9 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                       // the state survives light themes and grayscale.
                       className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium ${isSkipped ? 'line-through' : ''}`}
                       style={{ background: colors.bg, color: colors.fg }}
+                      // Structural rows only: where the block ends / what it closes / that it has
+                      // no pair — the orientation a long block with scrolling otherwise lacks.
+                      data-tip={blockTip}
                     >
                       <ActionIcon actionType={action.actionType} />
                       {actionPillLabel(action)}
@@ -3017,6 +3077,37 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
             <Pencil size={13} className="text-text-tertiary" />
             Edit
           </button>
+
+          {/* Go to the matching marker — structural rows with a pair. An opener jumps to its
+              closer; an else / else if / closer jumps to its opener. Scrolls there and selects
+              it, which also lights the block's rail (data-lit-sel). The pair is already in
+              blockInfo; this just gives it a door for long blocks. */}
+          {(() => {
+            const row = actions[contextMenu.rowIndex];
+            if (!row || !STRUCTURAL_TYPES.has(row.actionType)) return null;
+            const owner = blockInfo.blockOpenerOf[contextMenu.rowIndex];
+            if (owner === null) return null;
+            const target = BLOCK_OPENERS.has(row.actionType) ? blockInfo.closerOf.get(owner) : owner;
+            if (target === undefined) return null;
+            const label = BLOCK_OPENERS.has(row.actionType)
+              ? `Go to ${actionPillLabel(actions[target])} (row ${target + 1})`
+              : `Go to ${actionPillLabel(actions[owner])} (row ${owner + 1})`;
+            return (
+              <button
+                onMouseEnter={() => setActiveSubmenu(null)}
+                onClick={() => {
+                  scrollRowIntoView(target);
+                  setSelectedIndices(new Set([target]));
+                  lastClickedIndex.current = target;
+                  closeContextMenu();
+                }}
+                className="menu-item text-text-primary"
+              >
+                <ArrowUpFromDot size={13} className="text-text-tertiary" />
+                {label}
+              </button>
+            );
+          })()}
 
           {/* Pick from screen — click rows only, same gate as the sheet's own Pick button
               (isClickHalf, DoubleClick included). Starts the SAME native pick the sheet

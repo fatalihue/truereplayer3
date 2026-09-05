@@ -143,11 +143,21 @@
      mouse/clicker/waitimage/pause) — the action palette fills most of the wheel, so
      the only perceptually-free zones are pink/rose and the muted earth tones; these
      two pairs (rose + indigo, bronze + olive) read distinctly "not an action".
-     Consumed by the scope rails (full strength) + row wash (low opacity). */
+     Consumed by the scope rails (full strength) + row wash (low opacity).
+
+     TWO sets, one per kind of surface (2026-09-05, B6). A rail is a non-text UI element and owes
+     3:1 against the row it sits on; measured against every preset's bg-surface, one fixed set
+     failed 51 times across the 37 themes — the indigo on 10 dark presets (nord 1.93), the rose,
+     bronze and olive on every light preset (ultra-apricot 2.03 / 2.23 / 1.95). Same hues, only
+     the lightness moves: the defaults below clear 3:1 on all 23 dark surfaces (min 3.06); the
+     -light variants clear it on all 14 light surfaces (min 3.01). applyThemeConfig points
+     --color-block-N at the -light set when the theme's bg-surface has HSL lightness >= 55 —
+     the same rule the measurement grouped by — so a custom theme is covered too. */
   --color-block-1: #ef5da8; /* rose */
-  --color-block-2: #5d5fd1; /* indigo */
-  --color-block-3: #b3814e; /* bronze */
+  --color-block-2: #8586dc; /* indigo, lifted from #5d5fd1 for the dark surfaces */
+  --color-block-3: #b58452; /* bronze, a hair up from #b3814e */
   --color-block-4: #9a9a3e; /* olive */
+  /* The -light set lives in the plain :root block after this @theme — see the note there. */
 
   /* Hotkey badge — follows accent color */
   --color-hotkey-fg: var(--color-accent);
@@ -225,6 +235,19 @@
   --mark-steel: #a0a9b6;
   --mark-visor: #1c2230;
   --mark-eye: #ff3b3b;
+}
+
+/* Light-surface variants of the block-rail palette (the dark set is --color-block-1…4 in @theme
+   above; the measurement behind both is documented there). Kept OUT of @theme on purpose:
+   Tailwind drops a theme variable that no utility and no var() in this file references, and
+   these four are consumed only at runtime — themes.ts applyThemeConfig points --color-block-N at
+   them when the theme's surface is light. Inside @theme they compiled to nothing and the rails
+   went transparent on every light preset (caught by the harness, 2026-09-05). */
+:root {
+  --color-block-1-light: #df167d;
+  --color-block-2-light: #5d5fd1;
+  --color-block-3-light: #976d41;
+  --color-block-4-light: #76762f;
 }
 
 /* Global resets */
@@ -934,6 +957,24 @@ html[data-animations="true"] .callout-enter {
   animation: fade-in var(--motion-base) var(--ease-enter);
 }
 /* Kbd tag utilities */
+/* CONDITIONAL-BLOCK RAILS — the vertical brackets in the action grid. One element per nesting
+   level per row; ActionTable sets --rail-color (that level's colour) and `left` inline. Rest =
+   2 px at 35 %; the row's own innermost rail (data-strong), the block under the pointer
+   (data-lit) and the block of the selected / open row (data-lit-sel) = 3 px, full colour. The
+   two lit states are attributes ActionTable toggles on the DOM with no React state: a hover that
+   set state re-rendered the whole grid on every move between rows, which is why the old probe
+   was wired to structural rows only (perf doctrine — high-frequency state leaves render). */
+@utility block-rail {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--rail-color) 35%, transparent);
+  transition: background 120ms ease-out, width 120ms ease-out;
+  &[data-strong], &[data-lit], &[data-lit-sel] { width: 3px; background: var(--rail-color); }
+}
+
 @utility kbd {
   display: inline-flex;
   align-items: center;

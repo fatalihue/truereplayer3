@@ -1711,6 +1711,13 @@ export function applyThemeConfig(colors: ThemeColors, uiSettings: ThemeUISetting
   for (const [key, value] of Object.entries(colors)) {
     parts.push(`--color-${key}: ${value};`);
   }
+  // Conditional-block rail palette: the :root defaults are solved for dark surfaces; a light
+  // surface points the four levels at the -light set (index.css). Grouped by bg-surface HSL
+  // lightness >= 55 — the same rule the 37-theme contrast measurement used (B6, 2026-09-05) —
+  // so a custom theme lands in the right set too. Dark: nothing to write, the defaults hold.
+  if (hexToHSL(colors['bg-surface']).l >= 55) {
+    for (let n = 1; n <= 4; n++) parts.push(`--color-block-${n}: var(--color-block-${n}-light);`);
+  }
   // Layout
   parts.push(`--ui-font-size: ${uiSettings.fontSize}px;`);
   parts.push(`--ui-border-radius: ${uiSettings.borderRadius}px;`);
