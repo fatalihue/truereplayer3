@@ -146,6 +146,12 @@ interface LexicalTokenEditorProps {
   contentClassName?: string;
   /** Placeholder classes — must mirror contentClassName's padding. */
   placeholderClassName?: string;
+  /**
+   * What the empty document says. Default is the one line both surfaces always showed; the
+   * Insert Text dialog passes a two-line version that also teaches what a token is, which the
+   * 340 px sheet field has no room for. A slot, not a flag: the caller owns the words.
+   */
+  placeholder?: React.ReactNode;
   /** When provided, clicking a {clipboard...} chip routes HERE instead of the
    *  built-in 300px popover (see ClipboardChipEditContext). */
   onClipboardChipEdit?: (req: ClipboardChipEditRequest) => void;
@@ -940,11 +946,13 @@ export type EditorDensity = 'dialog' | 'sheet';
 const EDITOR_DENSITY: Record<EditorDensity, { content: string; placeholder: string }> = {
   dialog: {
     content: 'w-full h-full px-4 py-3 text-sm leading-[1.6] outline-none whitespace-pre-wrap break-words text-text-primary overflow-auto',
-    placeholder: 'absolute top-3 left-4 text-sm text-text-disabled pointer-events-none select-none',
+    // `right-*` mirrors the left padding so a placeholder longer than one line wraps inside
+    // the writing surface instead of running past its right edge.
+    placeholder: 'absolute top-3 left-4 right-4 text-sm text-text-disabled pointer-events-none select-none',
   },
   sheet: {
     content: 'w-full min-h-[3.25rem] px-2 py-1.5 text-ui leading-[1.5] outline-none whitespace-pre-wrap break-words text-text-primary overflow-auto',
-    placeholder: 'absolute top-1.5 left-2 text-ui text-text-disabled pointer-events-none select-none',
+    placeholder: 'absolute top-1.5 left-2 right-2 text-ui text-text-disabled pointer-events-none select-none',
   },
 };
 
@@ -956,6 +964,7 @@ export function LexicalTokenEditor({
   density = 'dialog',
   contentClassName = EDITOR_DENSITY[density].content,
   placeholderClassName = EDITOR_DENSITY[density].placeholder,
+  placeholder: placeholderContent = 'Type the text to send...',
   onClipboardChipEdit,
   onFormattingChange,
   richMode = false,
@@ -1005,7 +1014,7 @@ export function LexicalTokenEditor({
   );
   const placeholder = (
     <div className={placeholderClassName}>
-      Type the text to send...
+      {placeholderContent}
     </div>
   );
 

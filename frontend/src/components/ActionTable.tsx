@@ -2804,6 +2804,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
             initialMode={sendTextEdit.mode}
             initialMethod={sendTextEdit.method}
             initialCharDelayMs={sendTextEdit.charDelayMs}
+            actionIndex={sendTextEdit.index}
             onConfirm={(r) => {
               send({
                 type: 'actions:editSendText',

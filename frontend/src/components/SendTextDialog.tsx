@@ -15,7 +15,7 @@ import {
   type LexicalEditorHandle,
 } from './lexical/LexicalTokenEditor';
 import type { ClipboardChipEditRequest } from './lexical/TokenChip';
-import { normalizeToken, richFlavorSurvives } from './lexical/tokenNormalize';
+import { normalizeToken, parseSendTextSegments, richFlavorSurvives, splitTokenSegments } from './lexical/tokenNormalize';
 import { tokenTip } from './lexical/tokenDescriptions';
 import { PopoverHeader, Section } from './lexical/popoverAtoms';
 import { FieldError } from './common/FieldError';
@@ -51,6 +51,11 @@ interface SendTextDialogProps {
   initialMethod?: SendMethod;
   /** Saved per-character pause for the typed transport; null/0 = unpaced. */
   initialCharDelayMs?: number | null;
+  /**
+   * Edit mode: 0-based row of the action being edited, shown as "Action #N" beside the title —
+   * the pairing the sheet header uses. The add path has no row yet and passes nothing.
+   */
+  actionIndex?: number | null;
   /**
    * html/markdown are null when the doc carries no formatting → the action stays plain.
    * A RESULT OBJECT, not positional args: six of them, three nullable strings among them, is
@@ -215,6 +220,31 @@ function SnippetEditForm({
         </Button>
       </div>
     </div>
+  );
+}
+
+// Snippet rows read their text through the same walker as the grid preview and the Preview tab,
+// so a token is a chip here too — this list was the one surface in the window that still showed
+// `{clipboard}` raw. The chips are the muted kind the Preview tab uses for a not-yet-resolved
+// token, not the pink editor chips: nothing in a row is live, and pink at 11 px across a
+// two-line clamp would out-shout the snippet names. Unknown `{words}` stay text, as at replay.
+function SnippetText({ text }: { text: string }) {
+  const segments = useMemo(() => splitTokenSegments(text), [text]);
+  return (
+    <>
+      {segments.map((segment, idx) =>
+        segment.kind === 'token' ? (
+          <span
+            key={idx}
+            className="inline-flex items-center px-1 mx-[1px] rounded text-[10px] font-mono align-baseline select-none border text-text-secondary bg-bg-input border-border-default"
+          >
+            {segment.value.slice(1, -1)}
+          </span>
+        ) : (
+          <span key={idx}>{segment.value}</span>
+        ),
+      )}
+    </>
   );
 }
 
@@ -490,7 +520,7 @@ type SurfaceSession =
   | { mode: 'insert' }
   | { mode: 'edit'; token: string; commit: (next: string) => void; remove: () => void };
 
-export function SendTextDialog({ mode, initialText = '', initialHtml = null, initialMode = 'rich', initialMethod = 'paste', initialCharDelayMs = null, onConfirm, onClose }: SendTextDialogProps) {
+export function SendTextDialog({ mode, initialText = '', initialHtml = null, initialMode = 'rich', initialMethod = 'paste', initialCharDelayMs = null, actionIndex = null, onConfirm, onClose }: SendTextDialogProps) {
   const tt = useTt();
   const [text, setText] = useState(initialText);
   // Delivery mode: Rich (HTML where accepted) · Markdown (*bold* as plain text, for
@@ -812,9 +842,25 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
     return (lexicalApiRef.current?.getHtml() ?? null) !== base.html;
   };
 
-  // Status strip counts. Lines: 0 for an empty payload, else newline count + 1.
+  // Status strip counts. "Lines" is what the PAYLOAD produces at the target, not the newlines
+  // in the string. A paragraph break is '\n' once the doc has been edited, but until the first
+  // keystroke `text` is the SAVED key, and a saved key can spell the same break as `{enter}`
+  // (hand-typed rows, pre-rich actions) — and an Enter chip anywhere is a line break at replay
+  // too. A bare split('\n') saw neither and read a two-line row as "1 line". The engine's own
+  // segment grammar decides what is an Enter and how many times `{enter:N}` presses it.
   const tokenCount = useMemo(() => countKnownTokens(text), [text]);
-  const lineCount = text.length === 0 ? 0 : text.split('\n').length;
+  const lineCount = useMemo(() => {
+    if (text.length === 0) return 0;
+    let enters = 0;
+    for (const seg of parseSendTextSegments(text)) {
+      if (seg.kind === 'key' && seg.name === 'enter') enters += seg.count;
+    }
+    return text.split('\n').length + enters;
+  }, [text]);
+  // The one reason the text-gated controls (Add/Save, save-as-snippet) can be off. index.css
+  // keeps [data-tip][disabled] hoverable for exactly this: a disabled control that explains
+  // itself. undefined while there is text, so the live button carries no stale reason.
+  const needsTextTip = text.trim() ? undefined : tt('Type something first', 'Digite algo primeiro');
 
   // Rich degradation: the engine attaches the HTML flavor only when the resolved payload is
   // EXACTLY ONE text run (ActionExecution.cs:7163), so an {Enter}/{Tab}/{Delay:N} with text on
@@ -987,6 +1033,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
     <DialogShell
       icon={<Type size={14} style={{ color: 'var(--color-action-sendtext-fg)' }} />}
       title={mode === 'add' ? 'Insert Text' : 'Edit Text'}
+      titleMeta={mode === 'edit' && actionIndex != null ? `Action #${actionIndex + 1}` : undefined}
       size="full"
       onClose={onClose}
       // Text-entry dialog: a stray scrim click must not discard typed text —
@@ -1054,7 +1101,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                 they exist because React reconciled the primary "Insert" here against the secondary
                 "Cancel" in the surface footer and cross-faded accent into grey. */}
             <Button variant="secondary" size="md" onClick={requestClose}>Cancel</Button>
-            <Button variant="primary" size="md" onClick={handleConfirm} disabled={!text.trim()}>
+            <Button variant="primary" size="md" onClick={handleConfirm} disabled={!text.trim()} data-tip={needsTextTip}>
               {mode === 'add' ? 'Add' : 'Save'}
             </Button>
           </React.Fragment>
@@ -1096,6 +1143,19 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
               apiRef={lexicalApiRef}
               density="dialog"
               onClipboardChipEdit={handleClipboardChipEdit}
+              // Two lines, only here: the empty state of this window is ninety percent of the
+              // screen with one line in it, and the panel on the right cannot say the one thing
+              // a newcomer needs — that a brace word is a token, filled in at replay. Placeholder
+              // ink throughout (it is not content) and gone at the first character, so it costs
+              // the writing surface nothing. The sheet keeps the one-line default.
+              placeholder={
+                <>
+                  Type the text to send...
+                  <span className="block mt-1.5 text-xs leading-relaxed">
+                    Tokens like <span className="font-mono">{'{clipboard}'}</span>, <span className="font-mono">{'{date}'}</span> and <span className="font-mono">{'{enter}'}</span> are filled in at replay · pick them in the Insert panel or type them
+                  </span>
+                </>
+              }
             />
           </div>
           <div className="h-7 shrink-0 px-4 flex items-center justify-between gap-3 bg-bg-card border-t border-border-subtle">
@@ -1268,8 +1328,9 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                       type="button"
                       onClick={() => setSavingSnippet(true)}
                       disabled={!text.trim()}
+                      // Off → the reason; on → what it does. Same rule as the footer button.
                       className={iconButtonClass('sm')}
-                      data-tip={tt('Save as snippet', 'Salvar como snippet')}
+                      data-tip={needsTextTip ?? tt('Save as snippet', 'Salvar como snippet')}
                     >
                       <BookmarkPlus size={14} />
                     </button>
@@ -1346,7 +1407,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                       <span>No saved snippets yet</span>
                       {/* The empty state offers the one action that fills it — the same one the
                           bookmark icon above does, with a label this time. */}
-                      <Button variant="secondary" size="xs" onClick={() => setSavingSnippet(true)} disabled={!text.trim()}>
+                      <Button variant="secondary" size="xs" onClick={() => setSavingSnippet(true)} disabled={!text.trim()} data-tip={needsTextTip}>
                         <BookmarkPlus size={12} /> Save current text as a snippet
                       </Button>
                     </div>
@@ -1380,7 +1441,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                             data-tip={s.text}
                           >
                             <div className="text-xs font-medium text-text-primary truncate">{s.name}</div>
-                            <div className="text-[11px] text-text-tertiary line-clamp-2 mt-0.5">{s.text}</div>
+                            <div className="text-[11px] text-text-tertiary line-clamp-2 mt-0.5"><SnippetText text={s.text} /></div>
                           </button>
                           {/* Keyed fragments: unkeyed, child[1] is the Trash button in one
                               branch and the red confirm button in the other — both <button> —

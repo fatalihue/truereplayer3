@@ -117,6 +117,9 @@ export interface DialogShellProps {
   /** Icon rendered before the title (usually the action's Lucide icon, size 14). */
   icon?: ReactNode;
   title: string;
+  /** Muted 11 px note on the title's baseline — WHICH thing the dialog edits ("Action #3"),
+   *  the pairing the sheet header uses. Not part of the headline and not the aria-label. */
+  titleMeta?: ReactNode;
   /** Width on the five-step scale above. Default md (440). */
   size?: DialogSize;
   /** Extra classes on the card — height caps (`max-h-[90vh]`, a vh-tracking height). */
@@ -165,6 +168,7 @@ export interface DialogShellProps {
 export function DialogShell({
   icon,
   title,
+  titleMeta,
   size = 'md',
   cardClassName = '',
   zClass = 'z-50',
@@ -287,7 +291,12 @@ export function DialogShell({
             whether or not the caller passed one. */}
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border-subtle">
           {icon && <span className="shrink-0 flex items-center">{icon}</span>}
-          <h3 className="text-sm font-semibold text-text-primary truncate">{title}</h3>
+          {/* Title and meta share one BASELINE (items-baseline, as the sheet header pairs its
+              name with "Action #n"); centring two type sizes would float the small one. */}
+          <div className="min-w-0 flex items-baseline gap-2">
+            <h3 className="text-sm font-semibold text-text-primary truncate">{title}</h3>
+            {titleMeta != null && <span className="text-[11px] text-text-tertiary shrink-0">{titleMeta}</span>}
+          </div>
           {showClose && (
             <IconButton size="sm" aria-label="Close" className="ml-auto" onClick={requestClose}>
               <X size={14} />
