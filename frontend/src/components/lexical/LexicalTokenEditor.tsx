@@ -50,6 +50,7 @@ import { $dfs, mergeRegister } from '@lexical/utils';
 import {
   Bold, Italic, Underline, Strikethrough, Code, List, ListOrdered, Link2, Check, X,
 } from 'lucide-react';
+import { iconButtonClass } from '../common/IconButton';
 import { useTt } from '../../state/LanguageContext';
 import { TokenNode, $createTokenNode, $isTokenNode } from './TokenNode';
 import { ClipboardChipEditContext, OPEN_TOKEN_CHIP_COMMAND, type ClipboardChipEditRequest } from './TokenChip';
@@ -140,6 +141,8 @@ interface LexicalTokenEditorProps {
   apiRef: React.MutableRefObject<LexicalEditorHandle | null>;
   /** ContentEditable classes. Default = the compact SheetPanel look; the Insert
    *  Text dialog passes its roomier full-bleed recipe. */
+  /** Padding / type density: the dialog writing surface or the sheet field. */
+  density?: EditorDensity;
   contentClassName?: string;
   /** Placeholder classes — must mirror contentClassName's padding. */
   placeholderClassName?: string;
@@ -761,12 +764,10 @@ function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDe
     editor.focus();
   };
 
+  // The app's icon button (24 px, 14 px glyph, elevated hover). Active formatting keeps the accent
+  // tint — that is "this is ON", not the IconButton's "a menu is open" state.
   const btnClass = (active: boolean) =>
-    `h-6 w-6 flex items-center justify-center rounded transition-colors ${
-      active
-        ? 'text-accent bg-[color-mix(in_srgb,var(--color-accent)_14%,transparent)]'
-        : 'text-text-tertiary hover:text-text-secondary hover:bg-[rgba(127,127,127,0.12)]'
-    }`;
+    iconButtonClass('sm', { className: active ? 'text-accent bg-[color-mix(in_srgb,var(--color-accent)_14%,transparent)] enabled:hover:text-accent' : '' });
 
   const fmtBtn = (fmt: TextFormatType, active: boolean, Icon: typeof Bold, tip: string) => (
     <button
@@ -776,7 +777,7 @@ function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDe
       className={btnClass(active)}
       data-tip={tip}
     >
-      <Icon size={13} />
+      <Icon size={14} />
     </button>
   );
 
@@ -798,7 +799,7 @@ function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDe
       {fmtBtn('underline', formats.underline, Underline, tt('Underline (Ctrl+U)', 'Sublinhado (Ctrl+U)'))}
       {fmtBtn('strikethrough', formats.strikethrough, Strikethrough, tt('Strikethrough', 'Tachado'))}
       {fmtBtn('code', formats.code, Code, tt('Inline code', 'Código inline'))}
-      <div className="w-px h-4 mx-1 bg-border-subtle" />
+      <div className="w-px h-4 mx-1 bg-border-default" />
       <button
         type="button"
         onMouseDown={(e) => e.preventDefault()}
@@ -806,7 +807,7 @@ function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDe
         className={btnClass(formats.ul)}
         data-tip={tt('Bullet list', 'Lista com marcadores')}
       >
-        <List size={13} />
+        <List size={14} />
       </button>
       <button
         type="button"
@@ -815,9 +816,9 @@ function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDe
         className={btnClass(formats.ol)}
         data-tip={tt('Numbered list', 'Lista numerada')}
       >
-        <ListOrdered size={13} />
+        <ListOrdered size={14} />
       </button>
-      <div className="w-px h-4 mx-1 bg-border-subtle" />
+      <div className="w-px h-4 mx-1 bg-border-default" />
       <button
         type="button"
         onMouseDown={(e) => e.preventDefault()}
@@ -833,7 +834,7 @@ function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDe
         className={btnClass(formats.link || linkInputOpen)}
         data-tip={formats.link ? tt('Remove link', 'Remover link') : tt('Link', 'Inserir link')}
       >
-        <Link2 size={13} />
+        <Link2 size={14} />
       </button>
       {linkInputOpen && (
         <div className="flex items-center gap-1 ml-1">
@@ -851,7 +852,7 @@ function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDe
             className="h-6 w-52 min-w-[7rem] shrink px-1.5 text-[11px] font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid"
           />
           <button type="button" onClick={applyLink} className={btnClass(false)} data-tip={tt('Apply link', 'Aplicar link')}>
-            <Check size={13} />
+            <Check size={14} />
           </button>
           <button
             type="button"
@@ -859,7 +860,7 @@ function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDe
             className={btnClass(false)}
             data-tip={tt('Cancel', 'Cancelar')}
           >
-            <X size={13} />
+            <X size={14} />
           </button>
         </div>
       )}
@@ -929,13 +930,32 @@ function SubmitPlugin({ onSubmit }: { onSubmit?: () => void }) {
   return null;
 }
 
+/**
+ * Two editor densities, declared once. Before this the Insert Text dialog, the sheet's Send Text
+ * editor and the component default each wrote their own padding / size / line-height (16-12 /
+ * 8-6 / 12-8 px) — three densities for one editor (2026-09-04 sweep). `dialog` is the
+ * full-height writing surface; `sheet` is the compact field inside the 340 px panel.
+ */
+export type EditorDensity = 'dialog' | 'sheet';
+const EDITOR_DENSITY: Record<EditorDensity, { content: string; placeholder: string }> = {
+  dialog: {
+    content: 'w-full h-full px-4 py-3 text-sm leading-[1.6] outline-none whitespace-pre-wrap break-words text-text-primary overflow-auto',
+    placeholder: 'absolute top-3 left-4 text-sm text-text-disabled pointer-events-none select-none',
+  },
+  sheet: {
+    content: 'w-full min-h-[3.25rem] px-2 py-1.5 text-ui leading-[1.5] outline-none whitespace-pre-wrap break-words text-text-primary overflow-auto',
+    placeholder: 'absolute top-1.5 left-2 text-ui text-text-disabled pointer-events-none select-none',
+  },
+};
+
 export function LexicalTokenEditor({
   initialText,
   onChange,
   onSubmit,
   apiRef,
-  contentClassName = 'w-full h-full px-3 py-2 text-sm leading-[1.5] outline-none whitespace-pre-wrap break-words text-text-primary overflow-auto',
-  placeholderClassName = 'absolute top-2 left-3 text-sm text-text-disabled pointer-events-none select-none',
+  density = 'dialog',
+  contentClassName = EDITOR_DENSITY[density].content,
+  placeholderClassName = EDITOR_DENSITY[density].placeholder,
   onClipboardChipEdit,
   onFormattingChange,
   richMode = false,

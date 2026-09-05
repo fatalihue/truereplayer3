@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffe
 import ReactDOM from 'react-dom';
 import { AlertTriangle, Smile, Braces, BookmarkPlus, Trash2, ChevronRight, Wand2, Pencil, Search, Check, X, Type,
   TriangleAlert, Eye, Download, Upload, } from 'lucide-react';
+import { iconButtonClass } from './common/IconButton';
 import EmojiPicker, { Theme } from 'emoji-picker-react';
 import type { EmojiClickData } from 'emoji-picker-react';
 import { DialogShell, DialogFooter  } from './common/DialogShell';
@@ -301,9 +302,11 @@ const MORE_ROW_CHIPS: PaletteChip[] = [
   { label: 'Row column (next)…', prompt: 'rownext' },
 ];
 
-// One chip recipe everywhere (SheetPanel parity): neutral surface, gold hover.
+// One chip recipe everywhere (SheetPanel parity). border-default, not border-subtle: at 6 % the
+// chips — the rail's main affordance — vanished on light presets. Hover is the app's accent
+// "lit" tint (12 % fill / 40 % border), the same pair every toggle and chip uses when on.
 const CHIP_CLASS =
-  'h-6 px-2 inline-flex items-center text-[11px] font-mono bg-bg-surface border border-border-subtle rounded text-text-secondary hover:text-warning-ink hover:border-warning-ink/40 transition-colors';
+  'h-6 px-2 inline-flex items-center text-[11px] font-mono bg-bg-surface border border-border-default rounded text-text-secondary hover:text-accent hover:border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)] hover:bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)] transition-colors';
 
 // ── Name prompt popover ({Variable…} / {Row column…}) ──────────────────────
 //
@@ -411,16 +414,10 @@ function NamePromptPopover({
     <div
       ref={popRef}
       onMouseDown={(e) => e.stopPropagation()}
-      style={{
-        position: 'fixed',
-        ...visibilityStyle,
-        zIndex: 100,
-        width: 260,
-        background: 'var(--color-bg-elevated, #2d2d2d)',
-        border: '1px solid color-mix(in srgb, var(--color-accent-solid) 35%, transparent)',
-        boxShadow: 'var(--shadow-dialog)',
-      }}
-      className="rounded-lg overflow-hidden"
+      // menu-surface + the gated pop-in like every other floating surface; the accent-tinted
+      // border stays as the token popover's own signature.
+      style={{ position: 'fixed', ...visibilityStyle, zIndex: 100, width: 260, borderColor: 'color-mix(in srgb, var(--color-accent-solid) 35%, transparent)' }}
+      className="menu-surface pop-in overflow-hidden"
     >
       <div className="px-3 pt-2.5 pb-2">
         <div className="label-micro text-text-tertiary mb-1.5">
@@ -877,7 +874,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
         />
       )}
       {/* The toolbar's own divider recipe, so six segments never read as one control. */}
-      <div className="w-px h-4 mx-0.5 bg-border-subtle" />
+      <div className="w-px h-4 mx-0.5 bg-border-default" />
     <SegmentedControl<SendMode>
       dense
       ariaLabel="Delivery mode"
@@ -970,9 +967,9 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
     <button
       type="button"
       onClick={toggle}
-      className="w-full flex items-center gap-1 px-3 py-1 text-[10px] font-semibold text-text-tertiary uppercase tracking-wide hover:text-text-primary transition-colors"
+      className="w-full flex items-center gap-1 px-3 py-1 label-micro text-text-tertiary hover:text-text-primary transition-colors"
     >
-      <ChevronRight size={11} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
+      <ChevronRight size={12} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
       {label}
     </button>
   );
@@ -1089,8 +1086,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
               onFormattingChange={setHasFormatting}
               onSubmit={handleConfirm}
               apiRef={lexicalApiRef}
-              contentClassName="w-full h-full px-4 py-3 text-sm leading-[1.6] outline-none whitespace-pre-wrap break-words text-text-primary overflow-auto"
-              placeholderClassName="absolute top-3 left-4 text-sm text-text-disabled pointer-events-none select-none"
+              density="dialog"
               onClipboardChipEdit={handleClipboardChipEdit}
             />
           </div>
@@ -1247,27 +1243,27 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                       type="button"
                       onClick={handleExportSnippets}
                       disabled={snippets.length === 0}
-                      className="w-6 h-6 flex items-center justify-center rounded text-text-tertiary hover:text-accent-light hover:bg-bg-card transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      className={iconButtonClass('sm')}
                       data-tip={tt('Save all snippets to a file', 'Salvar todos os snippets em um arquivo')}
                     >
-                      <Download size={13} />
+                      <Download size={14} />
                     </button>
                     <button
                       type="button"
                       onClick={() => snippetFileRef.current?.click()}
-                      className="w-6 h-6 flex items-center justify-center rounded text-text-tertiary hover:text-accent-light hover:bg-bg-card transition-colors"
+                      className={iconButtonClass('sm')}
                       data-tip={tt('Load from a file — ADDED to the ones you have', 'Carregar de um arquivo — SOMADOS aos que você já tem')}
                     >
-                      <Upload size={13} />
+                      <Upload size={14} />
                     </button>
                     <button
                       type="button"
                       onClick={() => setSavingSnippet(true)}
                       disabled={!text.trim()}
-                      className="w-6 h-6 flex items-center justify-center rounded text-text-tertiary hover:text-accent-light hover:bg-bg-card transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      className={iconButtonClass('sm')}
                       data-tip={tt('Save current text as a snippet', 'Salvar o texto atual como snippet')}
                     >
-                      <BookmarkPlus size={13} />
+                      <BookmarkPlus size={14} />
                     </button>
                   </div>
                 </div>
@@ -1338,8 +1334,13 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
 
                 <div className="flex-1 min-h-0 overflow-y-auto border-t border-border-subtle">
                   {snippets.length === 0 ? (
-                    <div className="px-3 py-4 text-center text-[11px] text-text-disabled">
-                      {'No saved snippets yet'}
+                    <div className="px-3 py-4 flex flex-col items-center gap-2.5 text-center text-[11px] text-text-tertiary">
+                      <span>No saved snippets yet</span>
+                      {/* The empty state offers the one action that fills it — the same one the
+                          bookmark icon above does, with a label this time. */}
+                      <Button variant="secondary" size="xs" onClick={() => setSavingSnippet(true)} disabled={!text.trim()}>
+                        <BookmarkPlus size={12} /> Save current text as a snippet
+                      </Button>
                     </div>
                   ) : filteredSnippets.length === 0 ? (
                     <div className="px-3 py-4 text-center text-[11px] text-text-disabled">

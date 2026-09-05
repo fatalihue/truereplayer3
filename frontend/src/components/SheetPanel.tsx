@@ -3707,6 +3707,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
               <div className="min-h-8 bg-bg-input border border-border-default rounded focus-within:border-accent-solid text-ui font-mono">
                 <Suspense fallback={null}>
                   <LexicalTokenEditor
+                    density="sheet"
                     /* Key by actionIndex so opening a different action re-initialises the
                        editor with that action's text. Without this the Lexical state
                        would persist across action switches and the displayed content
@@ -3738,7 +3739,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                     key={item.var}
                     type="button"
                     onClick={() => browserTextEditorRef.current?.insertText(item.var)}
-                    className="h-6 px-2 inline-flex items-center text-[11px] font-mono bg-bg-surface border border-border-subtle rounded text-text-secondary hover:text-warning-ink hover:border-warning-ink/40 transition-colors"
+                    className="h-6 px-2 inline-flex items-center text-[11px] font-mono bg-bg-surface border border-border-default rounded text-text-secondary hover:text-accent hover:border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)] hover:bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)] transition-colors"
                   >
                     {item.label}
                   </button>
@@ -4030,8 +4031,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                       initialText={key}
                       onChange={setKey}
                       apiRef={sendTextEditorRef}
-                      contentClassName="w-full min-h-[3.25rem] px-2 py-1.5 text-ui leading-[1.5] outline-none whitespace-pre-wrap break-words text-text-primary overflow-auto"
-                      placeholderClassName="absolute top-1.5 left-2 text-ui text-text-disabled pointer-events-none select-none"
+                      density="sheet"
                     />
                   </Suspense>
                 </div>
@@ -4048,7 +4048,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                       key={item.var}
                       type="button"
                       onClick={() => sendTextEditorRef.current?.insertText(item.var)}
-                      className="h-6 px-2 inline-flex items-center text-[11px] font-mono bg-bg-surface border border-border-subtle rounded text-text-secondary hover:text-warning-ink hover:border-warning-ink/40 transition-colors"
+                      className="h-6 px-2 inline-flex items-center text-[11px] font-mono bg-bg-surface border border-border-default rounded text-text-secondary hover:text-accent hover:border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)] hover:bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)] transition-colors"
                     >
                       {item.label}
                     </button>

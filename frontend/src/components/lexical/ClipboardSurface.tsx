@@ -2,10 +2,12 @@ import React, { useMemo } from 'react';
 import { ChevronLeft, RefreshCw, RotateCcw, Wand2 } from 'lucide-react';
 import { SegmentedControl } from '../common/SegmentedControl';
 import { NumberInput } from '../common/NumberInput';
-import { CheckboxBox } from '../Checkbox';
 import { FieldError } from '../common/FieldError';
 import { useTt } from '../../state/LanguageContext';
-import { ArgInput } from './popoverAtoms';
+import { ArgInput, CheckRow as PopoverCheckRow, type CheckRowProps } from './popoverAtoms';
+
+// Inline (not full-width) so the Lines / Clean up rows keep wrapping side by side.
+const CheckRow = (props: CheckRowProps) => <PopoverCheckRow {...props} className="" />;
 import { useClipboardContent } from './useClipboardContent';
 import {
   applyTransformPreview,
@@ -206,7 +208,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
               ? 'This token takes a line argument from a variable, which these controls can only show as a literal — so it is read-only here. It still runs; if the variable is missing or does not hold a valid value, the step yields nothing. Edit the token text directly in the editor to change it.'
               : 'This builder cannot rebuild this token exactly as written — a modifier it does not know, one used twice, or a different order — so it is read-only here. Edit the token text directly in the editor instead.'}
           </div>
-          <div className="text-[10px] uppercase tracking-wide text-text-tertiary">Token</div>
+          <div className="label-micro text-text-tertiary">Token</div>
           <div className="font-mono text-[12px] px-2 py-1 rounded break-all"
             style={{
               color: 'var(--color-action-sendtext-fg)',
@@ -723,26 +725,3 @@ function Step({
   );
 }
 
-// Dialog-scale checkbox row (the popoverAtoms CheckRow is popover-compact).
-function CheckRow({
-  checked,
-  onChange,
-  label,
-}: {
-  checked: boolean;
-  onChange: () => void;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      role="checkbox"
-      aria-checked={checked}
-      onClick={onChange}
-      className="flex items-center gap-2 py-0.5 text-xs text-text-secondary hover:text-text-primary transition-colors"
-    >
-      <CheckboxBox checked={checked} />
-      <span>{label}</span>
-    </button>
-  );
-}

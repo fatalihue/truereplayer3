@@ -228,23 +228,19 @@ export function TokenChipPopover({
       // is open, its own capture-phase Esc owns the key — routers must stand down.
       data-token-popover=""
       onMouseDown={(e) => e.stopPropagation()}
+      // menu-surface + the gated pop-in (index.css) like every other floating surface — the inline
+      // keyframes this used to inject ignored the animations toggle. The accent-tinted border
+      // stays as the token popover's own signature.
       style={{
         position: 'fixed',
         ...visibilityStyle,
         zIndex: 100,
         width: kind === 'clipboard' || kind === 'rowcol' || kind === 'rownextcol' || kind === 'pick' ? 300 : 260,
-        background: 'var(--color-bg-elevated, #2d2d2d)',
-        border: '1px solid color-mix(in srgb, var(--color-accent-solid) 35%, transparent)',
-        boxShadow: 'var(--shadow-dialog)',
-        animation: 'token-chip-pop-in 0.14s ease',
+        borderColor: 'color-mix(in srgb, var(--color-accent-solid) 35%, transparent)',
         maxHeight: 'calc(100vh - 24px)',
       }}
-      className="rounded-lg overflow-hidden flex flex-col"
+      className="menu-surface pop-in overflow-hidden flex flex-col"
     >
-      <style>{`@keyframes token-chip-pop-in {
-        from { opacity: 0; transform: translateY(-3px) scale(0.98); }
-        to   { opacity: 1; transform: translateY(0)    scale(1); }
-      }`}</style>
 
       <Header token={liveToken} onClose={onClose} />
 

@@ -34,11 +34,6 @@
       "count": 1
     }
   },
-  "src/components/SendTextDialog.tsx": {
-    "no-restricted-syntax": {
-      "count": 1
-    }
-  },
   "src/components/SettingsPanel.tsx": {
     "no-restricted-syntax": {
       "count": 3
@@ -62,16 +57,6 @@
   "src/components/common/ErrorBoundary.tsx": {
     "no-restricted-syntax": {
       "count": 8
-    }
-  },
-  "src/components/lexical/LexicalTokenEditor.tsx": {
-    "no-restricted-syntax": {
-      "count": 1
-    }
-  },
-  "src/components/lexical/TokenChipPopover.tsx": {
-    "no-restricted-syntax": {
-      "count": 1
     }
   }
 }

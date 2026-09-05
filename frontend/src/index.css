@@ -880,6 +880,16 @@ tbody tr[data-replay] [data-rownum-value] {
   margin: 0;
 }
 
+/* Floating-surface entrance — token popovers and the name prompt. One keyframe, gated like the
+   dialog and menu motions; TokenChipPopover used to inject its own ungated copy inline. */
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(-3px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+html[data-animations="true"] .pop-in {
+  animation: pop-in var(--motion-base) var(--ease-enter);
+}
+
 /* Callout entrance — inline note cards appear in REACTION to something (a probe finished, a
    field went invalid), so they fade in like every other reactive surface. Gated. */
 html[data-animations="true"] .callout-enter {
