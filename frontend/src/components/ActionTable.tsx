@@ -3455,7 +3455,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords }: Act
                   : deleteScope === 'arm' ? 'Delete arm'
                     : 'Delete'}
             </span>
-            <span className="text-[10px] text-text-disabled font-mono">Del</span>
+            <span className="kbd">Del</span>
           </button>
 
         </div>,

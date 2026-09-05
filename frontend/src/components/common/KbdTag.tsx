@@ -20,6 +20,25 @@ export function splitCombo(combo: string): string[] {
 }
 
 /**
+ * Physical-keyboard abbreviations for the long key names the hook reports. What a keycap says
+ * is what the chip says: PgUp, not PageUp. This is what let the settings column stop clipping
+ * "Ctrl+PageDown" without growing — and it is the ONE place the names are shortened, so the
+ * settings field, the profile list and the menus all spell a key the same way.
+ */
+const COMPACT_KEY: Record<string, string> = {
+  PageUp: 'PgUp', 'Page Up': 'PgUp', Prior: 'PgUp',
+  PageDown: 'PgDn', 'Page Down': 'PgDn', Next: 'PgDn',
+  ScrollLock: 'ScrLk', 'Scroll Lock': 'ScrLk',
+  CapsLock: 'Caps', 'Caps Lock': 'Caps',
+  NumLock: 'NumLk', 'Num Lock': 'NumLk',
+  PrintScreen: 'PrtSc',
+  Insert: 'Ins',
+  Delete: 'Del',
+  Escape: 'Esc',
+};
+export const compactKey = (key: string): string => COMPACT_KEY[key] ?? key;
+
+/**
  * Renders a keyboard shortcut combo.
  *  default  → one chip per key:  "Ctrl+PageDown" → [Ctrl] [PageDown]
  *  unified  → one chip total:    "Ctrl+PageDown" → [Ctrl+PageDown]
@@ -28,7 +47,7 @@ export function KbdTag({ combo, accent = false, unified = false }: KbdTagProps) 
   if (!combo) return null;
   const cls = accent ? 'kbd kbd-accent' : 'kbd';
 
-  const parts = splitCombo(combo);
+  const parts = splitCombo(combo).map(compactKey);
 
   if (unified) {
     // One chip, keys joined with a spaced separator ("Alt + A", not "Alt+A").
