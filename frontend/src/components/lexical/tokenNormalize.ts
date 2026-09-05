@@ -174,7 +174,7 @@ export interface TokenSegment {
  * Splits `text` into alternating literal runs and engine-resolved token runs.
  *
  * This is a port of how the ENGINE finds a token, which is deliberately WIDER than the
- * editor's typing grammar (LexicalTokenEditor's TOKEN_REGEX, which only auto-chips tokens
+ * editor's typing grammar (lexical/typingGrammar's TOKEN_REGEX, which only auto-chips tokens
  * whose arguments are `[a-zA-Z0-9,_-]`). Three rules, each taken from the C# side:
  *
  *   1. A token spans '{' to the FIRST '}'. Every engine matcher bounds its argument with
@@ -189,8 +189,11 @@ export interface TokenSegment {
  *   3. A run whose name is unknown re-anchors the scan at start+1 instead of skipping past its
  *      '}'. The engine's regexes are leftmost-first over the whole string, so the `{clipboard}`
  *      inside `{x{clipboard}` IS found there and must be found here; skipping would hide it.
+ *
+ * `scope` names the engine(s) behind the payload (TokenScope below); the default is SendText's.
+ * A name the scope does not resolve is handled exactly like an unknown one — rule 3.
  */
-export function splitTokenSegments(text: string): TokenSegment[] {
+export function splitTokenSegments(text: string, scope: TokenScope = 'desktop'): TokenSegment[] {
   const segments: TokenSegment[] = [];
   let lastIndex = 0;   // start of the literal run still waiting to be emitted
   let i = 0;
@@ -204,7 +207,7 @@ export function splitTokenSegments(text: string): TokenSegment[] {
     const inner = text.slice(open + 1, close);
     const colon = inner.indexOf(':');
     const name = (colon < 0 ? inner : inner.slice(0, colon)).toLowerCase();
-    if (!KNOWN_TOKEN_NAMES.has(name)) {
+    if (!tokenResolvesIn(name, colon >= 0, scope)) {
       i = open + 1;   // rule 3 — re-anchor, don't skip the run
       continue;
     }
@@ -266,6 +269,43 @@ export const SEGMENTING_TOKEN_NAMES: ReadonlySet<string> = new Set([
   'enter', 'tab', 'space', 'backspace', 'delete', 'escape', 'esc',
   'home', 'end', 'pageup', 'pagedown', 'up', 'down', 'left', 'right',
 ]);
+
+// ── The BROWSER path: two engines, and only the keys differ ──────────────────
+// A BrowserType payload is resolved in two places. The C# side runs the SAME ResolveTokensAsync
+// over it (ResolveBrowserTextPlaceholdersAsync), so every DATA token above substitutes exactly as
+// it does for SendText. The KEY tokens it leaves alone — ParseSendTextSegments never runs on that
+// path — and hands the text to the Chrome extension, whose own parser is the whole key grammar
+// there (ChromeExtension/content.js, KEY_CHIP_PATTERN):
+//
+//     /\{(enter|tab|esc|escape|backspace|delete|up|down|left|right)\}/gi
+//
+// Ten names, NO argument: {enter:3} does not match it and is typed out, and neither {space},
+// {home}, {end}, {pageup}, {pagedown} nor {delay:N} exist there at all. Everything this set does
+// not name reaches the page as literal text — so in the browser scope those are NOT tokens, and a
+// surface that chips them (or offers them from the `{` catalog) is promising a key press the run
+// never makes. Ported name-for-name; a name added to the extension's pattern is added here.
+export const BROWSER_KEY_NAMES: ReadonlySet<string> = new Set([
+  'enter', 'tab', 'esc', 'escape', 'backspace', 'delete', 'up', 'down', 'left', 'right',
+]);
+
+/**
+ * Which engine(s) sit behind the payload being edited. 'desktop' is SendText (the C# resolver +
+ * ParseSendTextSegments); 'browser' is BrowserType (the C# resolver + the extension's key parser).
+ */
+export type TokenScope = 'desktop' | 'browser';
+
+/**
+ * Would the engine behind `scope` substitute a token with this NAME (already lower-cased) and
+ * argument? The one question every chip-or-text decision asks — the walker above, the typing
+ * transform and the `{` catalog — so the three cannot answer it differently.
+ */
+export function tokenResolvesIn(name: string, hasArg: boolean, scope: TokenScope): boolean {
+  if (!KNOWN_TOKEN_NAMES.has(name)) return false;
+  if (scope === 'desktop') return true;
+  // Data tokens resolve on the C# side for both paths; the key/delay family is the extension's.
+  if (!SEGMENTING_TOKEN_NAMES.has(name)) return true;
+  return BROWSER_KEY_NAMES.has(name) && !hasArg;
+}
 
 // ActionExecution.cs:8016-8017 — OpenBraceSentinel / CloseBraceSentinel. Runtime-only (nothing
 // the user can author contains them), ported anyway so the walk is comparable line for line.

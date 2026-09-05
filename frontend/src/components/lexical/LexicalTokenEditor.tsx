@@ -60,30 +60,19 @@ import {
 import { iconButtonClass } from '../common/IconButton';
 import { useTt } from '../../state/LanguageContext';
 import { TokenNode, $createTokenNode, $isTokenNode } from './TokenNode';
-import { ClipboardChipEditContext, OPEN_TOKEN_CHIP_COMMAND, type ClipboardChipEditRequest } from './TokenChip';
+import { ClipboardChipEditContext, OPEN_TOKEN_CHIP_COMMAND, TokenScopeContext, type ClipboardChipEditRequest } from './TokenChip';
 // The whitelist of names the backend resolves, and the walker that finds them the way the
 // ENGINE does, both live in tokenNormalize — see the "What the ENGINE calls a token" banner
 // there. They are imported rather than restated because the grid's SendTextPreview needs the
 // identical answer and a second copy of a list is how the two drifted in the first place.
-import { KNOWN_TOKEN_NAMES, splitTokenSegments, normalizeToken } from './tokenNormalize';
+import { splitTokenSegments, normalizeToken, tokenResolvesIn, type TokenScope } from './tokenNormalize';
+// The TYPING grammar — what auto-chips as you type, deliberately narrower than what the engine
+// resolves — lives in ./typingGrammar. Only TokenAutoTransformPlugin asks it; everything that
+// reports on a FINISHED payload (the token count below, the grid preview, the load and paste
+// paths) asks splitTokenSegments, whose grammar is the engine's.
+import { TOKEN_REGEX_WHOLE, findTypedToken } from './typingGrammar';
 import { TOKEN_CATALOG, type CatalogEntry } from './tokenCatalog';
 import { uiZoom, rectToLayout, viewportInLayout, type Box } from '../../utils/zoomSpace';
-
-// The TYPING grammar — narrower than what the engine resolves, on purpose. Modifier segments
-// allow digits/letters plus ',', '-' and '_' so {Random:1-10}, {Clipboard:lines:3,1,2} and
-// {var:my_name} chip as you type. Separators with other characters (e.g. join:" - ") stay
-// plain text when typed — they still work at runtime, and chips built via the popover keep
-// chip-ness regardless (insertToken bypasses this gate).
-//
-// Only auto-chipping uses this. Anything that reports on a FINISHED payload — the token count
-// below, the grid preview — must instead ask splitTokenSegments, whose grammar is the engine's:
-// gating those on this regex is what made a payload holding {clipboard:join: - } report "0 tokens".
-const TOKEN_REGEX = /\{[a-zA-Z]+(?::[a-zA-Z0-9,_-]+)*\}/g;
-// Non-global form for single-match .exec() — stateless, so safe to share across calls.
-const TOKEN_REGEX_SINGLE = new RegExp(TOKEN_REGEX.source);
-// Anchored, for asking "would the typing grammar have accepted this WHOLE token?" — used by the
-// load path below to keep chipping exactly what it has always chipped.
-const TOKEN_REGEX_WHOLE = new RegExp(`^${TOKEN_REGEX.source}$`);
 
 // Counts the tokens a serialized payload contains — powers the "N tokens" figure in the
 // Insert Text status strip. Asks splitTokenSegments, i.e. the engine's grammar, so the figure
@@ -169,6 +158,16 @@ interface LexicalTokenEditorProps {
    * sheet's discard guard.
    */
   tokenAutocomplete?: boolean;
+  /**
+   * Which engine(s) sit behind the payload — TokenScope in tokenNormalize. 'desktop' (the
+   * default, SendText) chips everything the C# resolver and ParseSendTextSegments substitute.
+   * 'browser' is the BrowserType "Text to Type" field: the C# side resolves the data tokens and
+   * the Chrome extension presses the keys, and that parser knows ten key names with no argument —
+   * {space}, {home}, {delay:N} and a repeat like {Enter:3} are typed out literally there. In this
+   * scope those stay TEXT (no chip, no `{` list entry, no repeat control on the chips that do
+   * exist), because a chip is a promise the run keeps.
+   */
+  tokenScope?: TokenScope;
   /** When provided, clicking a {clipboard...} chip routes HERE instead of the
    *  built-in 300px popover (see ClipboardChipEditContext). */
   onClipboardChipEdit?: (req: ClipboardChipEditRequest) => void;
@@ -200,20 +199,20 @@ interface LexicalTokenEditorProps {
 }
 
 // Splits `text` into alternating plain TextNodes and TokenNodes. Unknown tokens
-// (matching the syntax but not in KNOWN_TOKEN_NAMES) stay folded into the
+// (matching the syntax but not resolved in `scope`) stay folded into the
 // surrounding text run so the user sees their typo as plain text.
 //
-// Asks splitTokenSegments — the ENGINE's grammar — not the TYPING grammar above, because this
+// Asks splitTokenSegments — the ENGINE's grammar — not the TYPING grammar, because this
 // loads a FINISHED payload: reopening a saved action, or pasting one. That is the same rule the
-// token count and the grid preview already follow (see the banner on TOKEN_REGEX), and leaving
+// token count and the grid preview already follow (see the banner in typingGrammar.ts), and leaving
 // this one site on the narrow regex is what made a chip built through the popover come back as
 // RAW TEXT the next time the editor opened — the grid kept drawing it, the engine kept running
 // it, and only the editor forgot what it was. Any delimiter the typing grammar rejects hit this:
 // {clipboard:after: - } since 2.20.0, {clipboard:after: :: } since the colon escape.
 //
-// The live-typing plugin stays on TOKEN_REGEX on purpose — a half-typed token must not chip.
-function buildNodesFromText(text: string): LexicalNode[] {
-  return splitTokenSegments(text).map((seg) => {
+// The live-typing plugin stays on the typing grammar on purpose — a half-typed token must not chip.
+function buildNodesFromText(text: string, scope: TokenScope): LexicalNode[] {
+  return splitTokenSegments(text, scope).map((seg) => {
     if (seg.kind !== 'token') return $createTextNode(seg.value);
     // EVERY token the engine resolves comes back as a chip. What differs is whether the node is
     // allowed to REWRITE it on the way in:
@@ -402,7 +401,7 @@ function $serializeMarkdownForSend(marks: MdMarks): string {
 // Rich mode with a saved KeyHtml rebuilds the formatted document from the HTML
 // fragment (lists/links/format bits restored; `<span data-token>` re-chips via
 // TokenNode.importDOM); otherwise the plain text is parsed into text+chip runs.
-function InitialContentPlugin({ initialText, initialHtml }: { initialText: string; initialHtml?: string | null }) {
+function InitialContentPlugin({ initialText, initialHtml, scope }: { initialText: string; initialHtml?: string | null; scope: TokenScope }) {
   const [editor] = useLexicalComposerContext();
   const didInit = useRef(false);
 
@@ -422,11 +421,11 @@ function InitialContentPlugin({ initialText, initialHtml }: { initialText: strin
         return;
       }
       const para = $createParagraphNode();
-      const nodes = buildNodesFromText(initialText);
+      const nodes = buildNodesFromText(initialText, scope);
       if (nodes.length > 0) para.append(...nodes);
       root.append(para);
     });
-  }, [editor, initialText, initialHtml]);
+  }, [editor, initialText, initialHtml, scope]);
 
   return null;
 }
@@ -435,10 +434,12 @@ function InitialContentPlugin({ initialText, initialHtml }: { initialText: strin
 function ImperativeAPIPlugin({
   apiRef,
   richMode,
+  scope,
 }: {
   apiRef: React.MutableRefObject<LexicalEditorHandle | null>;
   /** Picks the same serializer onChange uses, so getText() and the reported text agree. */
   richMode: boolean;
+  scope: TokenScope;
 }) {
   const [editor] = useLexicalComposerContext();
 
@@ -470,7 +471,7 @@ function ImperativeAPIPlugin({
     };
 
     apiRef.current = {
-      insertText: (text: string) => insertNodesAtCursor(() => buildNodesFromText(text)),
+      insertText: (text: string) => insertNodesAtCursor(() => buildNodesFromText(text, scope)),
       // No regex gate: the caller vouches this is one well-formed token (the
       // Advanced popover builds it via buildClipboardToken).
       insertToken: (token: string) => insertNodesAtCursor(() => [$createTokenNode(token)]),
@@ -510,7 +511,7 @@ function ImperativeAPIPlugin({
     return () => {
       apiRef.current = null;
     };
-  }, [editor, apiRef, richMode]);
+  }, [editor, apiRef, richMode, scope]);
 
   return null;
 }
@@ -610,27 +611,24 @@ function ChipKeyboardPlugin() {
   return null;
 }
 
-// Watches every TextNode mutation: when the text contains a complete `{name}`
-// or `{name:mods}` sequence and `name` is in KNOWN_TOKEN_NAMES, splits the text
-// node and inserts a chip in place. Mirrors the paste behaviour so live typing
-// produces the same result. Unknown tokens stay as plain text.
-function TokenAutoTransformPlugin() {
+// Watches every TextNode mutation: when the text contains a complete token the typing grammar
+// accepts and `scope` resolves (findTypedToken), splits the text node and inserts a chip in
+// place. Mirrors the paste behaviour so live typing produces the same result. Unknown tokens —
+// and, in the browser scope, the key tokens the extension does not press — stay as plain text.
+function TokenAutoTransformPlugin({ scope }: { scope: TokenScope }) {
   const [editor] = useLexicalComposerContext();
 
   useEffect(() => {
     return editor.registerNodeTransform(TextNode, (textNode: TextNode) => {
       const text = textNode.getTextContent();
-      if (!text.includes('{')) return;
-      const match = TOKEN_REGEX_SINGLE.exec(text);
+      const match = findTypedToken(text, scope);
       if (!match) return;
-      const name = match[0].slice(1, -1).split(':')[0].toLowerCase();
-      if (!KNOWN_TOKEN_NAMES.has(name)) return;
 
       const start = match.index;
-      const end = start + match[0].length;
+      const end = start + match.token.length;
       const before = text.slice(0, start);
       const after = text.slice(end);
-      const chip = $createTokenNode(match[0]);
+      const chip = $createTokenNode(match.token);
 
       // Only steal the caret when it actually lived in the node being split —
       // re-chipping pasted/imported content must not yank the cursor around.
@@ -654,7 +652,7 @@ function TokenAutoTransformPlugin() {
       chip.insertAfter(trailing);
       if (anchorWasHere) trailing.select(0, 0);
     });
-  }, [editor]);
+  }, [editor, scope]);
 
   return null;
 }
@@ -664,7 +662,7 @@ function TokenAutoTransformPlugin() {
 // formatting (text/html flavor) is left to Lexical's rich clipboard pipeline —
 // hijacking it here would silently strip the formatting; the TokenAutoTransform
 // node transform re-chips any tokens in the imported text afterwards.
-function TokenPastePlugin({ richMode }: { richMode?: boolean }) {
+function TokenPastePlugin({ richMode, scope }: { richMode?: boolean; scope: TokenScope }) {
   const [editor] = useLexicalComposerContext();
 
   useEffect(() => {
@@ -681,14 +679,14 @@ function TokenPastePlugin({ richMode }: { richMode?: boolean }) {
         editor.update(() => {
           const selection = $getSelection();
           if (!$isRangeSelection(selection)) return;
-          const nodes = buildNodesFromText(text);
+          const nodes = buildNodesFromText(text, scope);
           if (nodes.length > 0) selection.insertNodes(nodes);
         });
         return true;
       },
       COMMAND_PRIORITY_LOW,
     );
-  }, [editor, richMode]);
+  }, [editor, richMode, scope]);
 
   return null;
 }
@@ -710,17 +708,29 @@ const TRIGGER_RE = /\{([A-Za-z0-9_-]*)$/;
 
 interface TriggerMatch { query: string; nodeKey: string; end: number }
 
+// The catalog as `scope` sees it: the Insert palette's list whole for SendText, and for the browser
+// field only the entries whose token the extension presses or the C# side resolves —
+// tokenResolvesIn, the same gate the transform and the load path apply, so the list can never
+// offer a chip the field would then refuse to draw. A direct entry's `insert` is the whole token
+// ({delay:500} has an argument, {enter} has none); a prompt entry's is the open half, and every
+// prompt head is a data token, which resolves on both paths.
+function catalogFor(scope: TokenScope): CatalogEntry[] {
+  if (scope === 'desktop') return TOKEN_CATALOG;
+  return TOKEN_CATALOG.filter((e) => tokenResolvesIn(e.name, e.insert.includes(':'), scope));
+}
+
 // Prefix matches first (label or token name), then substring matches, palette order within each.
-function filterCatalog(query: string): CatalogEntry[] {
-  if (!query) return TOKEN_CATALOG;
+function filterCatalog(catalog: CatalogEntry[], query: string): CatalogEntry[] {
+  if (!query) return catalog;
   const q = query.toLowerCase();
-  const starts = TOKEN_CATALOG.filter((e) => e.label.toLowerCase().startsWith(q) || e.name.startsWith(q));
-  const within = TOKEN_CATALOG.filter((e) => !starts.includes(e) && (e.label.toLowerCase().includes(q) || e.name.includes(q)));
+  const starts = catalog.filter((e) => e.label.toLowerCase().startsWith(q) || e.name.startsWith(q));
+  const within = catalog.filter((e) => !starts.includes(e) && (e.label.toLowerCase().includes(q) || e.name.includes(q)));
   return [...starts, ...within];
 }
 
-function TokenAutocompletePlugin() {
+function TokenAutocompletePlugin({ scope }: { scope: TokenScope }) {
   const [editor] = useLexicalComposerContext();
+  const catalog = useMemo(() => catalogFor(scope), [scope]);
   const [match, setMatch] = useState<TriggerMatch | null>(null);
   const [caret, setCaret] = useState<Box | null>(null);
   const [active, setActive] = useState(0);
@@ -786,7 +796,7 @@ function TokenAutocompletePlugin() {
     };
   }, [match]);
 
-  const options = useMemo(() => (match ? filterCatalog(match.query) : []), [match]);
+  const options = useMemo(() => (match ? filterCatalog(catalog, match.query) : []), [match, catalog]);
   const open = match !== null && options.length > 0;
   useEffect(() => { setActive(0); }, [match?.query]);
 
@@ -1309,6 +1319,7 @@ export function LexicalTokenEditor({
   placeholderClassName = EDITOR_DENSITY[density].placeholder,
   placeholder: placeholderContent = 'Type the text to send...',
   tokenAutocomplete = false,
+  tokenScope = 'desktop',
   onClipboardChipEdit,
   onFormattingChange,
   richMode = false,
@@ -1366,6 +1377,7 @@ export function LexicalTokenEditor({
     <LexicalComposer initialConfig={initialConfig}>
       {/* Context flows through Lexical's decorator portals, so TokenChip sees it. */}
       <ClipboardChipEditContext.Provider value={onClipboardChipEdit ?? null}>
+      <TokenScopeContext.Provider value={tokenScope}>
       <div className={richMode ? 'w-full h-full flex flex-col' : 'relative w-full h-full'}>
         {richMode && <RichToolbarPlugin formattingDelivered={formattingDelivered} toolbarExtra={toolbarExtra} />}
         <div className="relative flex-1 min-h-0">
@@ -1387,7 +1399,7 @@ export function LexicalTokenEditor({
         {richMode && <ListPlugin />}
         {richMode && <LinkPlugin />}
         {richMode && <AutoLinkPlugin matchers={AUTO_LINK_MATCHERS} />}
-        {tokenAutocomplete && <TokenAutocompletePlugin />}
+        {tokenAutocomplete && <TokenAutocompletePlugin scope={tokenScope} />}
         <OnChangePlugin
           // ignoreSelectionChange: without it (the default is false) this fires on every
           // selection-only change too — arrow keys, clicks, focus — and each fire walks the whole
@@ -1409,14 +1421,15 @@ export function LexicalTokenEditor({
             });
           }}
         />
-        <InitialContentPlugin initialText={initialText} initialHtml={richMode ? initialHtml : null} />
-        <ImperativeAPIPlugin apiRef={apiRef} richMode={richMode} />
-        <TokenPastePlugin richMode={richMode} />
-        <TokenAutoTransformPlugin />
+        <InitialContentPlugin initialText={initialText} initialHtml={richMode ? initialHtml : null} scope={tokenScope} />
+        <ImperativeAPIPlugin apiRef={apiRef} richMode={richMode} scope={tokenScope} />
+        <TokenPastePlugin richMode={richMode} scope={tokenScope} />
+        <TokenAutoTransformPlugin scope={tokenScope} />
         <ChipKeyboardPlugin />
         <ChipActivationPlugin />
         <SubmitPlugin onSubmit={onSubmit} />
       </div>
+      </TokenScopeContext.Provider>
       </ClipboardChipEditContext.Provider>
     </LexicalComposer>
   );

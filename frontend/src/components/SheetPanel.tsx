@@ -3768,9 +3768,16 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
             {/* Text — only for BrowserType. Uses the same Lexical-based editor as the
                 SendText dialog so tokens (`{Enter}`, `{Clipboard}`, etc.) render as
                 inline chips directly inside the input — no separate preview row needed.
-                Chip buttons below insert at the cursor via the imperative handle. */}
+                Chip buttons below insert at the cursor via the imperative handle.
+                tokenScope="browser": the extension's key parser knows ten names and no
+                argument, so {space}, {home}, {delay:N} and {Enter:3} stay TEXT here and leave
+                the `{` list — a chip would promise a key press the page never gets. The hint
+                says which keys DO press, the one fact the field cannot show. */}
             {isBrowserType && (
-            <Field label="Text to Type">
+            <Field
+              label="Text to Type"
+              hint={'Keys the extension presses: Enter, Tab, Esc, Backspace, Delete and the arrows. Other key tokens are typed as text.'}
+            >
               <div className="min-h-8 bg-bg-input border border-border-default rounded focus-within:border-accent-solid text-ui font-mono">
                 <Suspense fallback={null}>
                   <LexicalTokenEditor
@@ -3791,6 +3798,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                     onChange={setBrowserText}
                     apiRef={browserTextEditorRef}
                     tokenAutocomplete
+                    tokenScope="browser"
                   />
                 </Suspense>
               </div>

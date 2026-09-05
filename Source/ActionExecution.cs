@@ -6496,8 +6496,10 @@ namespace TrueReplayer.Services
             if (string.IsNullOrEmpty(name) || !VariableNameRegex.IsMatch(name))
                 return; // unusable name — no-op, same forgiveness as an unknown clipboard modifier
             var key = name.ToLowerInvariant();
-            // escapeBracesInSubstitution:false — the dict stores raw text; brace-escaping (for the
-            // SendText segment parser) happens later, at {var} substitution time on that path.
+            // escapeBracesInSubstitution:false — the dict stores raw text, braces and all. The
+            // resolver escapes them only while it runs (so a clipboard holding "{counter}" is
+            // stored as those nine characters, never as the count), and the escaping the SendText
+            // segment parser needs happens later, at {var} substitution time on that path.
             var value = await ResolveTokens(action.VariableValue ?? string.Empty);
 
             if (string.Equals(action.VariableMode, "cycle", StringComparison.OrdinalIgnoreCase))
@@ -6761,8 +6763,10 @@ namespace TrueReplayer.Services
             dispatcherQueue.TryEnqueue(() => OnVariablesChanged?.Invoke(vars, slots, row));
         }
 
-        // Instance entry to the unified resolver for the SendText/paste path: passes the saved
-        // clipboard backup + brace-escaping so ParseSendTextSegments doesn't re-interpret substituted braces.
+        // Instance entry to the unified resolver. The SendText/paste path passes the saved clipboard
+        // backup and asks for the brace SENTINELS back (escapeBracesInSubstitution: true) so
+        // ParseSendTextSegments sees substituted braces as text; every other caller takes the
+        // default and gets real braces back — see the note inside ResolveTokensAsync.
         private Task<string> ResolveTokens(string text, string? clipboardOverride = null, bool escapeBracesInSubstitution = false, TokenFlavorSync? flavorSync = null)
             => ResolveTokensAsync(text, dispatcherQueue, CurrentRunCtx, clipboardOverride, escapeBracesInSubstitution, htmlEncodeSubstitution: false, flavorSync);
 
@@ -7096,21 +7100,25 @@ namespace TrueReplayer.Services
         /// Resolves data placeholders ({clipboard[:mods]}, {datetime}, {date}, {time}) for
         /// BrowserType actions via the unified resolver. Special-key placeholders ({enter}, {tab}, …)
         /// are left untouched — they are interpreted by the Chrome extension's own parser, so the
-        /// Browser path must NOT brace-escape. Static so the Test Action path can call it without an
-        /// ActionReplayer instance (runCtx defaults to RunCtx.Empty there).
+        /// Browser path asks for real braces back (escapeBracesInSubstitution: false). The resolvers
+        /// still escape while they run and ResolveTokensAsync restores the characters at the end, so
+        /// a substituted value is never re-read as a token on this path either. Static so the Test
+        /// Action path can call it without an ActionReplayer instance (runCtx defaults to RunCtx.Empty there).
         /// </summary>
         internal static Task<string> ResolveBrowserTextPlaceholdersAsync(string text, DispatcherQueue dispatcherQueue, RunCtx runCtx = default)
             => ResolveTokensAsync(text, dispatcherQueue, runCtx, clipboardOverride: null, escapeBracesInSubstitution: false);
 
         /// <summary>
-        /// The single token-resolution pipeline for user text (SendText + BrowserType). Order:
-        /// {clipboard[:mods]} first, then {datetime}/{date}/{time}. Stateful tokens
-        /// ({var:name}/{counter}/{row}) will resolve here from <paramref name="runCtx"/> in a later
-        /// phase — today runCtx is reserved (default = RunCtx.Empty), so output is byte-identical to
-        /// the previous scattered resolvers. <paramref name="escapeBracesInSubstitution"/> escapes
-        /// '{' / '}' in substituted clipboard values for the Win32 SendText path so
-        /// ParseSendTextSegments does not re-interpret them; the Browser path passes false. Static so
-        /// the Test Action path resolves without a live ActionReplayer.
+        /// The single token-resolution pipeline for user text (SendText, BrowserType, variable
+        /// values, condition operands, file paths, launch arguments, hotkey names). Order:
+        /// {clipboard[:mods]}, {winclip}, {datetime}/{date}/{time}, {random}, {pick}, {input}, then
+        /// the run-state tokens ({var}/{row:col}/{clip}/{counter}/{row}) and {rownext}, all from
+        /// <paramref name="runCtx"/> (RunCtx.Empty on the static Test-Action path).
+        /// <paramref name="escapeBracesInSubstitution"/> decides what the caller gets BACK for a
+        /// '{' / '}' inside a substituted value: true hands over the private-use sentinels (the
+        /// Win32 SendText path, whose ParseSendTextSegments emits them as literal text); false
+        /// restores the real characters. Inside the pipeline the braces are ALWAYS escaped — see
+        /// the note in the body. Static so the Test Action path resolves without a live ActionReplayer.
         /// </summary>
         internal static async Task<string> ResolveTokensAsync(
             string text, DispatcherQueue dispatcherQueue, RunCtx runCtx = default,
@@ -7118,18 +7126,30 @@ namespace TrueReplayer.Services
             bool htmlEncodeSubstitution = false, TokenFlavorSync? flavorSync = null)
         {
             if (string.IsNullOrEmpty(text)) return text;
-            text = await ResolveClipboardTokensAsync(text, dispatcherQueue, clipboardOverride, escapeBracesInSubstitution, htmlEncodeSubstitution, runCtx, flavorSync);
-            text = await ResolveWinClipTokensAsync(text, dispatcherQueue, escapeBracesInSubstitution, htmlEncodeSubstitution, flavorSync, runCtx);
+            // Every resolver escapes the braces of what it SUBSTITUTES, whatever the caller asked
+            // for. The passes below run in sequence over ONE string, and to the next pass a
+            // substituted value with real braces in it is indistinguishable from authored text.
+            // Measured before this was unconditional: on the Browser path a clipboard holding
+            // "{input:Senha}" raised the Ask-Input prompt, one holding "{rownext:Nome}" advanced
+            // the data cursor, and "{var:x}" pasted the variable's value — while the SAME
+            // clipboard on the SendText path (which always asked for the escape) pasted the
+            // braces as text. Same data, a different meaning per delivery, and asymmetric even
+            // within one pass order (clipboard→var expanded, var→clipboard never did, because var
+            // runs later). The caller's flag now decides only what it gets back at the end.
+            const bool escapeWhileResolving = true;
+            text = await ResolveClipboardTokensAsync(text, dispatcherQueue, clipboardOverride, escapeWhileResolving, htmlEncodeSubstitution, runCtx, flavorSync);
+            text = await ResolveWinClipTokensAsync(text, dispatcherQueue, escapeWhileResolving, htmlEncodeSubstitution, flavorSync, runCtx);
             text = ResolveDateTimeTokens(text, flavorSync);
             text = ResolveRandomTokens(text, flavorSync);
-            text = ResolvePickTokens(text, escapeBracesInSubstitution, htmlEncodeSubstitution, flavorSync);
+            text = ResolvePickTokens(text, escapeWhileResolving, htmlEncodeSubstitution, flavorSync);
             // {input:Label} runs BEFORE run-state so a {var:Label} in the same text sees the answer
             // the prompt just stored. On the static Test-Action path runCtx.InputProvider is null →
             // resolves empty (consume-always), keeping that path byte-identical.
-            text = await ResolveInputTokensAsync(text, runCtx, escapeBracesInSubstitution, htmlEncodeSubstitution);
-            text = ResolveRunStateTokens(text, runCtx, escapeBracesInSubstitution, htmlEncodeSubstitution);
-            text = ResolveRowNextTokens(text, runCtx, escapeBracesInSubstitution, htmlEncodeSubstitution, flavorSync);
-            return text;
+            text = await ResolveInputTokensAsync(text, runCtx, escapeWhileResolving, htmlEncodeSubstitution);
+            text = ResolveRunStateTokens(text, runCtx, escapeWhileResolving, htmlEncodeSubstitution);
+            text = ResolveRowNextTokens(text, runCtx, escapeWhileResolving, htmlEncodeSubstitution, flavorSync);
+            // The sentinels are a private contract with ParseSendTextSegments; nobody else sees them.
+            return escapeBracesInSubstitution ? text : UnescapeBraceSentinels(text);
         }
 
         // Matches {input:Label} and {input:Label|menu:a,b,c}. The label allows any char except '}'
