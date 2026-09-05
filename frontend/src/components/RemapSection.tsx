@@ -53,6 +53,21 @@ function KeyLabel({ name, className = '' }: { name: string; className?: string }
   );
 }
 
+/**
+ * A remap side as a keycap — the same `.kbd` chip the Hotkeys section above draws, so one key
+ * has one face in the panel (it was mono text + arrow here, keycaps 100px up). Neutral tone on
+ * purpose: the row's own wash carries on/off, and accent-on-accent would shout. `.kbd` pins
+ * min-width at 20px rather than auto, so the chip can shrink and the KeyLabel inside truncates
+ * instead of the row overflowing.
+ */
+function KeyCap({ name }: { name: string }) {
+  return (
+    <span className="kbd">
+      <KeyLabel name={name} />
+    </span>
+  );
+}
+
 // ── Hotkey collisions ─────────────────────────────────────────────────────────
 // "LeftCtrl" / "RightAlt" (a hand-edited file) count as their family: the hook captures the
 // generic names (KeyUtils maps both sides to Ctrl / Alt / Shift / Win) and every stored hotkey
@@ -248,6 +263,15 @@ export function RemapSection() {
       && normProcess(r.process) === normProcess(processKey));
   const selfRemap = fromKey !== '' && !disableMode && fromKey.toLowerCase() === toKey.toLowerCase();
   const atCap = editIndex === null && remaps.entries.length >= MAX_REMAPS;
+  const nearCap = remaps.entries.length >= MAX_REMAPS * 0.75;
+
+  // A transfer note is a moment, not a state: it clears itself so the reserved line goes back to
+  // the count (or to blank) instead of announcing "Added 2" for the rest of the session.
+  useEffect(() => {
+    if (transferNote === '') return;
+    const t = window.setTimeout(() => setTransferNote(''), 5000);
+    return () => window.clearTimeout(t);
+  }, [transferNote]);
   const canSave = fromKey !== '' && (disableMode || toKey !== '') && !duplicate && !selfRemap && !atCap;
 
   // Every hotkey the app listens for, with the name a message uses. The Clicker pair stays out
@@ -423,14 +447,16 @@ export function RemapSection() {
           // are deliberate: lower-casing them would make "CapsLock" and "capslock" collide in a
           // hand-edited file, which raw keys keep distinct.
           key={`${r.from}|${r.process ?? ''}`}
-          className={`h-7 flex items-center rounded border overflow-hidden ${editIndex === i ? 'ring-1 ring-accent-solid' : ''}`}
+          // Master switch off dims every row — none of them is doing anything — while each dot
+          // keeps its own on/off, so the two channels stop disagreeing about one key.
+          className={`h-7 flex items-center rounded border overflow-hidden transition-opacity ${editIndex === i ? 'ring-1 ring-accent-solid' : ''} ${remaps.enabled ? '' : 'opacity-50'}`}
           style={r.enabled ? chipOn : chipOff}
         >
           <button
             type="button"
             onClick={() => saveList(remaps.entries.map((e, j) => (j === i ? { ...e, enabled: !r.enabled } : e)))}
             aria-label={r.enabled ? 'Disable remap' : 'Enable remap'}
-            className="h-full pl-2 pr-1.5 flex items-center shrink-0 cursor-pointer transition-colors hover:bg-[rgba(127,127,127,0.18)]"
+            className="h-full pl-1.5 pr-1 flex items-center shrink-0 cursor-pointer transition-colors hover:bg-[rgba(127,127,127,0.18)]"
           >
             <span
               className="w-2 h-2 rounded-full block shrink-0"
@@ -441,14 +467,14 @@ export function RemapSection() {
             type="button"
             onClick={() => startEdit(i)}
             data-tip={tt(`Edit ${describeRule(r)}`, `Editar ${describeRule(r)}`)}
-            className={`flex-1 min-w-0 h-full flex items-center gap-1 text-[11px] font-mono text-left cursor-pointer ${r.enabled ? 'text-text-primary' : 'text-text-tertiary'}`}
+            className={`flex-1 min-w-0 h-full flex items-center gap-1 text-left cursor-pointer ${r.enabled ? '' : 'opacity-60'}`}
           >
-            <KeyLabel name={r.from} />
+            <KeyCap name={r.from} />
             <ArrowRight size={10} className="text-text-tertiary shrink-0" />
             {r.to ? (
-              <KeyLabel name={r.to} />
+              <KeyCap name={r.to} />
             ) : (
-              <span className="text-text-tertiary flex items-center gap-1 min-w-0">
+              <span className="text-[10px] font-mono text-text-tertiary flex items-center gap-1 min-w-0">
                 <Ban size={9} className="shrink-0" /> <span className="truncate">{'disabled'}</span>
               </span>
             )}
@@ -466,7 +492,8 @@ export function RemapSection() {
           <button
             type="button"
             onClick={() => { if (editIndex === i) closeForm(); saveList(remaps.entries.filter((_, j) => j !== i)); }}
-            className="shrink-0 h-full px-1.5 flex items-center text-text-tertiary hover:text-text-primary transition-colors"
+            aria-label="Remove remap"
+            className="shrink-0 h-full px-1 flex items-center text-text-tertiary hover:text-text-primary transition-colors"
           >
             <X size={11} />
           </button>
@@ -551,7 +578,8 @@ export function RemapSection() {
       ) : (
         <div className="flex items-center justify-between gap-2">
           <Button variant="ghost" size="sm" onClick={() => { resetForm(); setAddOpen(true); }}
-            disabled={remaps.entries.length >= MAX_REMAPS}>
+            disabled={remaps.entries.length >= MAX_REMAPS}
+            data-tip={remaps.entries.length >= MAX_REMAPS ? tt(`${MAX_REMAPS} is the limit`, `${MAX_REMAPS} é o limite`) : undefined}>
             <Plus size={11} /> Add remap
           </Button>
           {/* Export / import — the same two glyphs the snippets library uses. Profiles and
@@ -584,9 +612,13 @@ export function RemapSection() {
           </div>
         </div>
       )}
-      {/* Transfer outcome — a reserved line, so a message appearing cannot push the rows. */}
-      <FieldError show={transferNote !== ''} className="text-[10px] text-text-tertiary">
-        {transferNote}
+      {/* Reserved line (never pushes the rows): a transfer outcome while it is fresh, otherwise
+          the count once the cap is near — from 24 of 32 — so the Add button going grey at 32 is
+          a number the user watched climb, not a bug. It lives HERE rather than beside Add
+          because that row is already full at 224px: "32/32" next to the button wrapped the
+          button's label onto two lines in the capture. */}
+      <FieldError show={transferNote !== '' || nearCap} className="text-[10px] text-text-tertiary tabular-nums">
+        {transferNote !== '' ? transferNote : `${remaps.entries.length}/${MAX_REMAPS} remaps`}
       </FieldError>
     </div>
   );
