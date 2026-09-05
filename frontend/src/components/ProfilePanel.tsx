@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, lazy, Suspense } from 'react';
+import { Fragment, useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import { AlertTriangle, Search, SearchX, X, Pencil, Copy, Trash2, FolderOpen, FolderMinus, Keyboard, AppWindow, ArrowLeftRight, ArrowDownUp, Type, Ban, Power, FolderInput, ChevronsLeft, ChevronsRight, ChevronsDownUp, ChevronsUpDown, Pin, PinOff, FolderPlus, FilePlus, Plus, ChevronRight, ChevronDown, Palette, Zap, Repeat, Repeat2, Hourglass, ArrowUpFromDot, ExternalLink, Info, MoreHorizontal, Hash, Upload, Download, Check } from 'lucide-react';
 import type { ProfileEntry, ImportPreviewPayload, ImportResultPayload, ImportConflictResolution, TriggerMode } from '../bridge/messageTypes';
 import { useAppState } from '../state/AppStateContext';
 import { carriesConditionProbe } from '../utils/conditionalBlocks';
 import { useBridge } from '../bridge/BridgeContext';
-import { KbdTag } from './common/KbdTag';
+import { KbdTag, splitCombo } from './common/KbdTag';
+import { compactKey } from '../utils/keyNames';
 import { RemovableChip } from './common/RemovableChip';
 import { CheckboxBox } from './Checkbox';
 import { DialogShell, DialogFooter  } from './common/DialogShell';
@@ -71,6 +72,33 @@ const CONVERTIBLE_CLICK_TYPES = new Set([
 // dependency the memos below could never list truthfully.
 const sortByName = (a: ProfileEntry, b: ProfileEntry) =>
   a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+
+/**
+ * Collapsed-rail avatar text when the profile has neither an emoji nor an app icon. One letter
+ * stops identifying anything once names follow a pattern — the owner's rail showed nine "F" in
+ * a row for Fila 2 … Fila 11 — so: a name ending in a number gives letter + number ("F2",
+ * "F10"); two or more words give two initials ("TR" for Trade Roblox, "BV" for Boas-vindas,
+ * "WA" for WhatsApp via the camel-case seam); anything else keeps the first letter. Short
+ * connectives ("da", "de", "e") are skipped when a real word follows.
+ */
+function railInitials(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return '?';
+  const numbered = /^(.*?\D)\s*(\d{1,3})$/.exec(trimmed);
+  if (numbered && numbered[1].trim()) return `${numbered[1].trim().charAt(0)}${numbered[2]}`.toUpperCase();
+  const words = trimmed
+    .replace(/([a-zà-ú])([A-ZÀ-Ú])/g, '$1 $2')
+    .split(/[\s\-_./]+/)
+    .filter(Boolean);
+  if (words.length >= 2) {
+    const second = words.slice(1).find((w) => w.length >= 3) ?? words[1];
+    return `${words[0].charAt(0)}${second.charAt(0)}`.toUpperCase();
+  }
+  return trimmed.charAt(0).toUpperCase();
+}
+
+// Rail tooltip spelling for a hotkey: the keycap names (PgDn, Esc), joined tight.
+const railHotkey = (combo: string) => splitCombo(combo).map(compactKey).join('+');
 
 export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePanelProps) {
   const tt = useTt();
@@ -267,6 +295,26 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
     }
     return out;
   }, [pinnedProfiles, folderSections, ungroupedProfiles]);
+
+  // Which of the rail's three groups a profile sits in — pinned, a folder, loose. The rail
+  // draws a thin divider where the group changes, so the boundaries the panel shows as
+  // sections are visible in the strip too (the folder dot says "in a folder", not where the
+  // folders start). Pinned wins over folder, matching railProfiles' dedup order.
+  type RailGroup = 'pinned' | 'folder' | 'loose';
+  const railGroupOf = useMemo(() => {
+    const m = new Map<string, RailGroup>();
+    for (const p of ungroupedProfiles) m.set(p.name, 'loose');
+    for (const f of folderSections) for (const p of f.profiles) m.set(p.name, 'folder');
+    for (const p of pinnedProfiles) m.set(p.name, 'pinned');
+    return m;
+  }, [pinnedProfiles, folderSections, ungroupedProfiles]);
+  const railBoundaries = useMemo(() => {
+    let n = 0;
+    for (let i = 1; i < railProfiles.length; i++) {
+      if (railGroupOf.get(railProfiles[i].name) !== railGroupOf.get(railProfiles[i - 1].name)) n++;
+    }
+    return n;
+  }, [railProfiles, railGroupOf]);
 
   // Off-screen-measure-then-reposition for both menus, one hook call each — the two
   // stay independent, so a folder menu opening never disturbs a profile menu's
@@ -1012,6 +1060,14 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
     }
     return null;
   }, [profileOrder?.folders]);
+  // Folder NAME for the rail tooltip — the expanded list shows it as the section header, and
+  // the tooltip is the rail's only detail read, so it should say what the row says.
+  const getProfileFolderName = useCallback((name: string): string | null => {
+    for (const f of profileOrder?.folders ?? []) {
+      if (f.items.includes(name)) return f.name;
+    }
+    return null;
+  }, [profileOrder?.folders]);
 
   // Collapsed-rail "search" action: expand the panel with the search field
   // already focused (mirrors the SettingsPanel rail's expand-into-section flow).
@@ -1030,20 +1086,20 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
   // becomes the "+N expand" chip, so the rail always fills the visible space
   // exactly instead of a fixed cap of 10.
   const railRef = useRef<HTMLDivElement>(null);
-  const [railCapacity, setRailCapacity] = useState(10);
+  const [railHeight, setRailHeight] = useState(356);
   useEffect(() => {
     const el = railRef.current;
     if (!el) return;
-    const measure = () => {
-      const h = el.clientHeight;
-      // N avatars take 36N − 4 px (no trailing gap) → N ≤ (H + 4) / 36.
-      setRailCapacity(Math.max(1, Math.floor((h + 4) / 36)));
-    };
+    const measure = () => setRailHeight(el.clientHeight);
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
   }, [collapsed]);
+  // N avatars take 36N − 4 px (no trailing gap); each group divider takes 9 more (1px line +
+  // 4px margins), and comes out of the avatar budget so it never pushes the last slot off the
+  // strip → N ≤ (H + 4 − 9·dividers) / 36.
+  const railCapacity = Math.max(1, Math.floor((railHeight + 4 - railBoundaries * 9) / 36));
 
   // ── Drag & Drop handlers (mouse-based, works in WebView2) ──
   const dragStartPos = useRef<{ x: number; y: number } | null>(null);
@@ -1822,11 +1878,16 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                 const overflow = railProfiles.length - visible.length;
                 return (
                   <>
-                    {visible.map((p) => {
+                    {visible.map((p, idx) => {
                       const folderColor = getProfileFolderColor(p.name);
+                      const initials = railInitials(p.name);
+                      // Group boundary (pinned → folders → loose): a hairline, like the settings
+                      // rail between its three tabs. Costs 9px, already taken out of railCapacity.
+                      const newGroup = idx > 0 && railGroupOf.get(p.name) !== railGroupOf.get(visible[idx - 1].name);
                       return (
+                        <Fragment key={p.name}>
+                        {newGroup && <div className="w-6 my-0.5 border-t border-border-subtle shrink-0" aria-hidden />}
                         <button
-                          key={p.name}
                           onClick={(e) => { send({ type: 'profile:click', payload: { name: p.name } }); (e.currentTarget as HTMLElement).blur(); }}
                           onContextMenu={(e) => handleContextMenu(e, p.name)}
                           className={`relative w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold transition-colors shrink-0 ${
@@ -1841,16 +1902,24 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                             : p.hotkeyConflict
                               ? { boxShadow: '0 0 0 1.5px color-mix(in srgb, var(--color-recording) 60%, transparent)' }
                               : undefined}
+                          // Everything the expanded row says, in one line: name · trigger (hotkey
+                          // in keycap spelling, hotstring with the ⚡/↵ mark the row's chip wears) ·
+                          // folder · target · disabled. A hotstring-only profile used to show no
+                          // trigger at all, and a disabled one was merely dimmer.
                           data-tip={[
                             p.name,
-                            p.hotkey,
+                            p.hotkey ? railHotkey(p.hotkey) : null,
+                            p.hotstring ? `${p.hotstringInstant ? '⚡' : '↵'}${p.hotstring}` : null,
+                            getProfileFolderName(p.name),
                             p.hasEffectiveTarget ? targetLabel(p.effectiveTargetProcessName, p.effectiveTargetWindowTitle) : null,
+                            p.isDisabled ? tt('disabled', 'desativado') : null,
                           ].filter(Boolean).join(' · ')}
                           data-tip-pos="right"
                         >
                           {/* Identity, best source first: the user's own emoji, the target
                               app's icon (55% when folder-inherited, same as the expanded
-                              rows), then the first letter as the fallback of last resort. */}
+                              rows), then initials that distinguish (railInitials) as the
+                              fallback of last resort — three or four characters step down a size. */}
                           {p.iconEmoji ? (
                             <span className="text-[15px] leading-none pointer-events-none">{p.iconEmoji}</span>
                           ) : p.appIconBase64 ? (
@@ -1860,7 +1929,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                               className={`w-[18px] h-[18px] object-contain pointer-events-none ${p.effectiveTargetSource === 'folder' ? 'opacity-55' : ''}`}
                             />
                           ) : (
-                            p.name.charAt(0).toUpperCase()
+                            <span className={`pointer-events-none ${initials.length > 2 ? 'text-[10px] tracking-tight' : ''}`}>{initials}</span>
                           )}
                           {folderColor && (
                             <span
@@ -1877,16 +1946,40 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                             />
                           )}
                         </button>
+                        </Fragment>
                       );
                     })}
-                    {overflow > 0 && (
-                      <button
-                        onClick={onToggleCollapse}
-                        className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-semibold bg-bg-elevated text-text-tertiary hover:bg-bg-card hover:text-text-primary transition-colors shrink-0"
-                      >
-                        +{overflow}
-                      </button>
-                    )}
+                    {overflow > 0 && (() => {
+                      // The cut keeps the ACTIVE profile visible but nothing else — an armed
+                      // automation or a hotkey conflict that fell past the fold simply vanished.
+                      // The "+N" chip inherits those two cues (same dot, same ring) and its
+                      // tooltip counts them, so a state that asks for attention survives the cut.
+                      const hidden = railProfiles.filter(p => !visible.some(v => v.name === p.name));
+                      const armed = hidden.filter(p => p.triggerArmed).length;
+                      const conflicts = hidden.filter(p => p.hotkeyConflict).length;
+                      const tip = [
+                        tt(`${overflow} more`, `${overflow} a mais`),
+                        armed > 0 ? tt(`${armed} armed`, `${armed} armado${armed > 1 ? 's' : ''}`) : null,
+                        conflicts > 0 ? tt(`${conflicts} in conflict`, `${conflicts} em conflito`) : null,
+                      ].filter(Boolean).join(' · ');
+                      return (
+                        <button
+                          onClick={onToggleCollapse}
+                          className="relative w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-semibold bg-bg-elevated text-text-tertiary hover:bg-bg-card hover:text-text-primary transition-colors shrink-0"
+                          style={conflicts > 0 ? { boxShadow: '0 0 0 1.5px color-mix(in srgb, var(--color-recording) 60%, transparent)' } : undefined}
+                          data-tip={tip}
+                          data-tip-pos="right"
+                        >
+                          +{overflow}
+                          {armed > 0 && (
+                            <span
+                              className="absolute -right-px -top-px w-1.5 h-1.5 rounded-full"
+                              style={{ background: 'var(--color-replay)', outline: '1.5px solid var(--color-bg-surface)' }}
+                            />
+                          )}
+                        </button>
+                      );
+                    })()}
                   </>
                 );
               })()}

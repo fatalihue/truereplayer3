@@ -152,10 +152,13 @@ function AppShell() {
     }
     setSheetLeaving(true);
   }, []);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  // Settings panel collapse persists across restarts (unlike the profiles
-  // sidebar, which is a transient workspace toggle) — users who tuck it away
-  // tend to want it to stay tucked away.
+  // Both collapses persist across restarts (ui:sidebarCollapsed / ui:settingsCollapsed): users
+  // who tuck a panel away tend to want it to stay tucked away. The profiles sidebar used to be
+  // the exception ("a transient workspace toggle"); since 2026-09-05 its rail is a working
+  // surface of its own — avatars that identify, cues, full tooltips — so someone who works with
+  // it closed no longer reopens the panel at every start. Only MANUAL toggles write the keys: the
+  // narrow-window auto-collapse below is a layout reaction and must not become a preference.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('ui:sidebarCollapsed') === '1');
   const [settingsCollapsed, setSettingsCollapsed] = useState(() => localStorage.getItem('ui:settingsCollapsed') === '1');
   // setter prefixed with _ so the strict noUnusedLocals lint allows it through —
   // the Toggle Columns toolbar button is currently disabled so nothing mutates
@@ -292,7 +295,10 @@ function AppShell() {
   const handleToggleSidebar = useCallback(() => {
     // A manual toggle takes ownership — the auto logic must not fight it.
     autoCollapsedRef.current.sidebar = false;
-    setSidebarCollapsed(prev => !prev);
+    setSidebarCollapsed(prev => {
+      localStorage.setItem('ui:sidebarCollapsed', prev ? '0' : '1');
+      return !prev;
+    });
   }, []);
 
   const handleToggleSettings = useCallback(() => {
@@ -309,7 +315,10 @@ function AppShell() {
   useEffect(() => {
     const handler = () => {
       autoCollapsedRef.current.sidebar = false;
-      setSidebarCollapsed(prev => !prev);
+      setSidebarCollapsed(prev => {
+        localStorage.setItem('ui:sidebarCollapsed', prev ? '0' : '1');
+        return !prev;
+      });
     };
     window.addEventListener('cmd:togglesidebar', handler);
     return () => window.removeEventListener('cmd:togglesidebar', handler);
