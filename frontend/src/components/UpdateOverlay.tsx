@@ -140,11 +140,10 @@ export function UpdateOverlay() {
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center">
-      {/* Backdrop — the theme's base ground at 65 % plus a blur, not a fixed black: on a light
-          preset the old rgba(0,0,0,.65) turned the whole app into a night scene behind the card. */}
+      {/* Backdrop — the app's strong scrim token plus a blur, the same smoke the dialogs use. */}
       <div
         className="absolute inset-0 backdrop-blur-xl update-fade-in"
-        style={{ background: 'color-mix(in srgb, var(--color-bg-base) 65%, transparent)' }}
+        style={{ background: 'var(--color-scrim-strong)' }}
       />
 
       {/* Card */}

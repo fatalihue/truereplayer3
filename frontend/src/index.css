@@ -71,6 +71,12 @@
      (solarized-light 2.00), and so did solarized-dark at 4.24. */
   --color-warning-ink: color-mix(in srgb, var(--color-warning) 40%, var(--color-text-primary));
 
+  /* Scrims — the smoke behind a sheet or a splash. Dark on EVERY theme (Fluent smoke is dark on
+     light surfaces too); a bg-base mix turned into a white fog on the light presets. Literal
+     rgba is allowed here: index.css is the palette source. */
+  --color-scrim: rgba(0, 0, 0, 0.3);
+  --color-scrim-strong: rgba(0, 0, 0, 0.6);
+
   /* Static fallback for the UI zoom, overwritten by applyTheme on every theme apply.
      Must exist here too: a `calc(... / var(--ui-zoom))` with the var unset is an INVALID
      declaration, so a panel sized that way would fall back to height:auto on the first

@@ -31,9 +31,9 @@ const HANDLE_PX = 12;
 // rectangle keeps enough contrast against any background. The handles are solid accent with
 // a 2 px ring in the card colour, so they read on a light image as well as on a dark one.
 const ACCENT_RGBA = 'color-mix(in srgb, var(--color-accent) 65%, transparent)';
-// The four dimming panes outside the crop: the theme's base ground at 62 %, not a fixed black —
-// on a light preset a black wash turned the whole picture into a night scene.
-const DIM = 'color-mix(in srgb, var(--color-bg-base) 62%, transparent)';
+// The four dimming panes outside the crop: the app's strong scrim token (dark on every theme,
+// like the dialogs' smoke), so the kept region reads as the lit one.
+const DIM = 'var(--color-scrim-strong)';
 
 // Modal cropper for tightening an existing reference image. Operates purely in image-pixel
 // coordinates (the parent persists those via the bridge); display scaling is calculated

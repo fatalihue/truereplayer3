@@ -2351,7 +2351,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       <div
         className="fixed inset-0 z-[60]"
         style={{
-          background: 'color-mix(in srgb, var(--color-bg-base) 45%, transparent)',
+          background: 'var(--color-scrim)',
           animation: leaving ? 'fade-in var(--motion-base) var(--ease-exit) reverse forwards' : undefined,
         }}
       />
