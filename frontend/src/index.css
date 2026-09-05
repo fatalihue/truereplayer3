@@ -857,6 +857,34 @@ tbody tr[data-replay] [data-rownum-value] {
   &:disabled { color: var(--color-text-disabled); cursor: default; }
 }
 
+/* FORM INPUT — the one text-field recipe for sheets, dialogs and popovers. The 2026-09-04
+   sweep counted four input heights (h-8 / h-7 / h-6 / h-5) and three font sizes for the same
+   role; these are the two that remain: `input-field` 32 px for forms, `input-inline` 28 px for
+   popovers, the palette and inline rows. Mono by default because nearly every field here holds
+   a value (coordinates, paths, selectors); add font-sans at the call site for prose. */
+@utility input-field {
+  @apply w-full h-8 px-2 text-ui font-mono text-text-primary bg-bg-input border border-border-default rounded outline-none placeholder:text-text-tertiary focus:border-accent-solid disabled:opacity-50;
+}
+@utility input-inline {
+  @apply w-full h-7 px-1.5 text-xs font-mono text-text-primary bg-bg-input border border-border-default rounded outline-none placeholder:text-text-tertiary focus:border-accent-solid disabled:opacity-50;
+}
+
+/* NumberInput (compact NumberBox): the native spinner must never show next to ours. */
+.numberbox .numberbox-input {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.numberbox .numberbox-input::-webkit-inner-spin-button,
+.numberbox .numberbox-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Callout entrance — inline note cards appear in REACTION to something (a probe finished, a
+   field went invalid), so they fade in like every other reactive surface. Gated. */
+html[data-animations="true"] .callout-enter {
+  animation: fade-in var(--motion-base) var(--ease-enter);
+}
 /* Kbd tag utilities */
 @utility kbd {
   display: inline-flex;
