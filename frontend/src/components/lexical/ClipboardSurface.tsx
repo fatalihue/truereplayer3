@@ -30,10 +30,11 @@ import {
 import { useRunStateSnapshot, lookupRunState } from './useRunStateSnapshot';
 import { useAppState } from '../../state/AppStateContext';
 
-// The surface is the ONE place a modifier chain is built, so its title names the token it is
-// building for rather than always claiming to be about the clipboard.
+// The surface is the ONE place a modifier chain is built, so its title names the SOURCE the
+// token reads — "Clipboard" beside "Variable" and "Data column", not "Advanced Clipboard": no head
+// is more advanced than the others, and "Advanced…" is the button that opens this, not its name.
 const HEAD_TITLES: Record<ChainHead['kind'], string> = {
-  clipboard: 'Advanced Clipboard',
+  clipboard: 'Clipboard',
   row: 'Data column',
   rownext: 'Data column (next row)',
   var: 'Variable',
@@ -56,7 +57,8 @@ const IDENTITY_HINTS: Record<ChainHead['kind'], string> = {
   rownext: 'Each use takes the next row (1st → row 1, 2nd → row 2…). Resets each run.',
   var: 'Value stored by Set Variable under this name.',
   clip: 'What Copy to Slot or the capture hotkey stored in this slot.',
-  winclip: 'Win+V history, newest first. Needs history on; may hold anything any app copied — including passwords.',
+  // One line at the column's width — the identity card is what pushes the ladder past the fold.
+  winclip: 'Newest first. Needs Win+V history on; may hold anything any app copied — passwords too.',
 };
 
 // What to say when there is no source to preview against. Each reason is DIFFERENT, and saying
@@ -250,12 +252,12 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
             is a segmented control plus two number inputs, so past ~560px it just grows
             whitespace. Everything left over goes to the preview rail, which is the part
             that actually benefits from width (long clipboard lines wrap less). */}
-        <div className="min-w-0 flex-1 max-w-[560px] overflow-y-auto p-4 space-y-4">
+        <div className="min-w-0 flex-1 max-w-[560px] overflow-y-auto p-4 space-y-3">
           {/* Identity, NOT a pipeline step — which slot, which variable, which column, which
               history item. Unnumbered on purpose: the ladder's numbers mean "order the backend
               applies these in", and this is not one of them. */}
           {head.kind !== 'clipboard' && (
-            <div className="rounded border border-border-subtle bg-bg-card px-3 py-2">
+            <div className="rounded border border-border-subtle bg-bg-card px-3 py-1.5">
               <div className="label-micro text-text-tertiary mb-1">{IDENTITY_LABELS[head.kind]}</div>
               {head.kind === 'winclip' ? (
                 <div className="flex items-center gap-2">
@@ -289,7 +291,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                   className="h-8 w-full px-2 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid placeholder:text-text-disabled"
                 />
               )}
-              <div className="text-[11px] text-text-tertiary mt-1.5 leading-snug">
+              <div className="text-[11px] text-text-tertiary mt-1 leading-snug">
                 {IDENTITY_HINTS[head.kind]}
               </div>
               {/* Reserved validation line — ALWAYS mounted, so emptying the field cannot grow the
@@ -298,7 +300,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                   FieldError call site. winclip never shows it — chainHeadIsUsable is true for it. */}
               <FieldError
                 show={!chainHeadIsUsable(head)}
-                className="text-[11px] mt-1.5"
+                className="text-[11px] mt-1"
                 style={{ color: 'var(--color-recording-fg)' }}
               >
                 {head.kind === 'row' || head.kind === 'rownext'
@@ -318,11 +320,14 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
               onChange={() => set({ next: !state.next })}
               label="One line per use"
             />
-            <div className="text-[11px] text-text-tertiary leading-snug mt-1">
-              {state.next
-                ? 'Each use takes the next line; a new copy starts over. The preview always shows line 1.'
-                : 'Off: pastes the whole clipboard.'}
-            </div>
+            {/* The ON state is the one that needs a sentence; "Off: pastes the whole clipboard"
+                only repeated the unchecked box, and the three Off lines together cost the ladder
+                a step's worth of height. */}
+            {state.next && (
+              <div className="text-[11px] text-text-tertiary leading-snug mt-1">
+                Each use takes the next line; a new copy starts over. The preview always shows line 1.
+              </div>
+            )}
           </Step>
           )}
 
@@ -375,11 +380,11 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                   disabled={state.split === 'none'}
                 />
               </div>
-              <div className="text-[11px] text-text-tertiary leading-snug">
-                {state.split === 'none'
-                  ? 'Off: the whole text passes through.'
-                  : 'No delimiter in the text = nothing, not the whole text.'}
-              </div>
+              {state.split !== 'none' && (
+                <div className="text-[11px] text-text-tertiary leading-snug">
+                  No delimiter in the text = nothing, not the whole text.
+                </div>
+              )}
             </div>
           </Step>
 
@@ -399,11 +404,11 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                   className="h-8 w-28 px-2 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid placeholder:text-text-disabled"
                 />
               </div>
-              <div className="text-[11px] text-text-tertiary leading-snug">
-                {state.dropNumSuffix.length === 0
-                  ? 'Off: keeps any leading count.'
-                  : 'Strips only a leading count with this exact suffix: "1x Caixa" → "Caixa".'}
-              </div>
+              {state.dropNumSuffix.length > 0 && (
+                <div className="text-[11px] text-text-tertiary leading-snug">
+                  Strips only a leading count with this exact suffix: "1x Caixa" → "Caixa".
+                </div>
+              )}
             </div>
           </Step>
 
@@ -614,8 +619,13 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
 
         {/* Preview rail — permanent, unlike the old popover's cramped strip. Takes all the
             width the capped config column leaves (was a fixed 320px with ~400px sitting
-            empty beside it); min-w keeps it readable if the dialog is ever narrow. */}
-        <div className="flex-1 min-w-[320px] border-l border-border-subtle bg-bg-surface p-3 flex flex-col gap-2 min-h-0">
+            empty beside it); min-w keeps it readable if the dialog is ever narrow.
+            Source, Result and Token stack at the TOP and size to their content: the Result used
+            to be flex-1, which turned "(empty)" into a green panel the height of the dialog with
+            the Token pinned to the footer — the loudest thing on the screen, saying nothing. Now
+            it grows with the text up to ~40 % of the viewport and scrolls inside, the way the
+            rail's Preview tab already does. */}
+        <div className="flex-1 min-w-[320px] border-l border-border-subtle bg-bg-surface p-3 flex flex-col gap-2 min-h-0 overflow-y-auto">
           <div className="shrink-0">
             <div className="flex items-center justify-between mb-1">
               <div className="label-micro text-text-tertiary">
@@ -650,10 +660,10 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
             </div>
           </div>
 
-          <div className="flex-1 min-h-0 flex flex-col">
+          <div className="shrink-0 flex flex-col">
             <div className="label-micro text-text-tertiary mb-1 shrink-0">Result</div>
             <div
-              className="flex-1 min-h-0 font-mono text-[11px] px-2 py-1 rounded border-l-2 whitespace-pre-wrap break-all overflow-auto"
+              className="min-h-[64px] max-h-[40vh] font-mono text-[11px] px-2 py-1 rounded border-l-2 whitespace-pre-wrap break-all overflow-auto"
               style={{
                 background: 'color-mix(in srgb, var(--color-replay) 8%, transparent)',
                 borderColor: 'color-mix(in srgb, var(--color-replay) 40%, transparent)',
@@ -711,7 +721,7 @@ function Step({
 }) {
   return (
     <div>
-      <div className="flex items-center gap-2 mb-1.5">
+      <div className="flex items-center gap-2 mb-1">
         <span
           className={`w-4 h-4 rounded-full text-[10px] font-semibold flex items-center justify-center border transition-colors ${
             active
