@@ -107,7 +107,8 @@ export function normalizeToken(token: string): string {
 // The name gate is the whitelist right here; the argument gate is engineAcceptsToken further
 // down, ported matcher by matcher from the same resolvers ({date:x} is literal because that
 // resolver is an exact Replace; a bare {var} is literal because VarTokenRegex demands ':name';
-// {var:Ação} and {row:First Name} are literal because the name charset is [A-Za-z0-9_]). It
+// {var:Ação} is literal because the variable-name charset is [A-Za-z0-9_], while {row:First
+// Name} resolves since 2.37.0 — a column is [^:}]+, whatever the spreadsheet header said). It
 // used to stop at the name, on the theory that narrowing per name would split the preview from
 // the chip pipeline — and the message preview grew its own copy of the argument shapes instead,
 // so the editor drew a {date:x} chip whose popover printed today's date while the preview called
@@ -333,7 +334,11 @@ export function tokenResolvesIn(name: string, _hasArg: boolean, _scope: TokenSco
 // accepts but whose ARGUMENT fails here is text, not a token — to the engine, and therefore to
 // every surface. This table lived in messagePreview until 2026-09-05, where only the Preview tab
 // could see it; the walker applies it now, so the chip, the count, the grid and the preview agree.
-const NAME_ARG = '[A-Za-z0-9_]+';   // VarTokenRegex / RowDataTokenRegex / RowNextTokenRegex / ClipSlotTokenRegex
+const NAME_ARG = '[A-Za-z0-9_]+';   // VarTokenRegex / ClipSlotTokenRegex — a variable or slot NAME
+// RowDataTokenRegex / RowNextTokenRegex (2.37.0): a column is whatever the header says — spaces,
+// accents, parentheses — up to the first ':' (the chain) or '}' (the token's end). Matched trimmed
+// and case-insensitively at replay, like BuildRowDict keys its headers.
+const COLUMN_ARG = '[^:}]+';
 const TOKEN_ARG_GATE: Record<string, RegExp> = {
   // DateTokenRegex: \{(datetime|date|time)(?::([^}]+))?\} — offsets and a format, at least one
   // character after the colon. Whether .NET accepts the FORMAT is the second stage below.
@@ -348,14 +353,14 @@ const TOKEN_ARG_GATE: Record<string, RegExp> = {
   // ClipboardTokenRegex: \{clipboard(?::([^}]+))?\} — the modifier group needs at least one
   // character, so `{clipboard:}` is literal.
   clipboard: /^clipboard(:[^}]+)?$/i,
-  // The four name-first regexes require the tight name charset, then an optional chain. The
-  // chain is spelled (?::([^}]+))? — at least ONE character — so a trailing bare colon
-  // ({var:x:}) does not match and the engine pastes it literally.
+  // The four name-first regexes require a name (tight for var/clip, any header for row/rownext),
+  // then an optional chain. The chain is spelled (?::([^}]+))? — at least ONE character — so a
+  // trailing bare colon ({var:x:}, {row:Nome:}) does not match and the engine pastes it literally.
   var: new RegExp(`^var:${NAME_ARG}(:[^}]+)?$`, 'i'),
   clip: new RegExp(`^clip:${NAME_ARG}(:[^}]+)?$`, 'i'),
-  rownext: new RegExp(`^rownext:${NAME_ARG}(:[^}]+)?$`, 'i'),
+  rownext: new RegExp(`^rownext:${COLUMN_ARG}(:[^}]+)?$`, 'i'),
   // Bare {row} is a literal Replace; {row:Column[:chain]} is the regex.
-  row: new RegExp(`^row(:${NAME_ARG}(:[^}]+)?)?$`, 'i'),
+  row: new RegExp(`^row(:${COLUMN_ARG}(:[^}]+)?)?$`, 'i'),
   // WinClipTokenRegex is \{winclip(?::(\d+))?(?::((?![0-9])[^}]+))?\} — BOTH groups optional, so
   // {winclip} (index defaults to 1), {winclip:upper} and {winclip:2:upper} all resolve. The
   // negative lookahead is what keeps {winclip:2-4} and a trailing bare colon literal on both

@@ -20,7 +20,10 @@ interface DataPanelProps {
   onClose: () => void;
 }
 
-const VALID_HEADER = /^[A-Za-z0-9_]+$/;
+// A header is a {row:…} token name when it holds none of the three characters the token grammar
+// spends: '{' and '}' bound the token, ':' starts the modifier chain (RowDataTokenRegex, 2.37.0 —
+// spaces, accents and punctuation are fine). Matched trimmed and case-insensitively at replay.
+const VALID_HEADER = /^[^{}:]+$/;
 // One chip recipe everywhere (SheetPanel / Insert Text parity).
 const CHIP_CLASS =
   'h-6 px-2 inline-flex items-center text-[11px] font-mono bg-bg-surface border border-border-subtle rounded text-text-secondary hover:text-warning-ink hover:border-warning-ink/40 transition-colors';
@@ -685,7 +688,9 @@ export function DataPanel({ onClose }: DataPanelProps) {
   const fixHeader = (c: number) => {
     updateGrid((g) => {
       const headers = [...g.headers];
-      let base = headers[c].trim().replace(/[^A-Za-z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
+      // Only the token grammar's three characters are swapped for '_' — the rest of the header
+      // (spaces, accents) IS a valid column name now, and rewriting it would rename the column.
+      let base = headers[c].trim().replace(/[{}:]+/g, '_').replace(/^_+|_+$/g, '').trim();
       if (base === '') base = `col${c + 1}`;
       // Dedupe against the OTHER headers (case-insensitive).
       const others = new Set(headers.filter((_, i) => i !== c).map((h) => h.trim().toLowerCase()));
@@ -1271,8 +1276,8 @@ export function DataPanel({ onClose }: DataPanelProps) {
                             onClick={() => fixHeader(c)}
                             className="w-6 h-6 flex items-center justify-center rounded text-text-tertiary hover:text-text-primary hover:bg-bg-card transition-colors ml-auto shrink-0"
                             data-tip={tt(
-                              'Not a valid token name (A–Z, 0–9, _) — click to fix',
-                              'Nome inválido para token (A–Z, 0–9, _) — clique para corrigir',
+                              'Not a valid token name ({ } : not allowed) — click to fix',
+                              'Nome inválido para token ({ } : não podem) — clique para corrigir',
                             )}
                           >
                             <Wand2 size={12} />

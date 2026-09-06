@@ -557,6 +557,14 @@ namespace TrueReplayer.Services
             (p => p.Actions.Any(UsesBrowserKeyGrammar),
                 new Version(2, 37, 0), "Browser Type key tokens (space/home/end/page, repeat, delay)"),
 
+            // A data column named with anything beyond letters, digits and '_' — {row:Nome Completo},
+            // {rownext:Preço (R$)}. An older build's RowDataTokenRegex / RowNextTokenRegex stop at
+            // the old charset, so the whole token is typed verbatim (the literal-token class), and
+            // its Data panel flags the header as an invalid token name. Introduced after 2.36.0 —
+            // bump at release if the release number differs.
+            (p => p.Actions.Any(UsesWideColumnName),
+                new Version(2, 37, 0), "Data column names with spaces or accents"),
+
             // CopyToSlot Clear mode — an older build drops the unknown SlotMode property and
             // runs the row in CAPTURE mode, grabbing the current selection into the slot
             // instead of emptying it (silent semantic flip, and it fires a synthetic Ctrl+C
@@ -684,10 +692,11 @@ namespace TrueReplayer.Services
         };
 
         // {row:column:mods} — a row token carrying at least one modifier segment after the
-        // column name. Mirrors ActionExecution.RowDataTokenRegex's modified form; the plain
-        // {row:column} shape is NOT matched (already covered by the Data-loop table pin).
+        // column name. Mirrors ActionExecution.RowDataTokenRegex's modified form (column [^:}]+
+        // since 2.37.0 — the wider names have their own pin below); the plain {row:column} shape
+        // is NOT matched (already covered by the Data-loop table pin).
         private static readonly Regex ModifiedRowTokenRegex = new(
-            @"\{row:[A-Za-z0-9_]+:[^}]+\}",
+            @"\{row:[^:}]+:[^}]+\}",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         // Key is resolved only on the key-simulation family + SendText; BrowserText only on
@@ -748,7 +757,7 @@ namespace TrueReplayer.Services
         // {rownext:column} / {rownext:column:mods} — mirrors ActionExecution.RowNextTokenRegex. Same
         // token-resolved field set as the modified-row / winclip scans (where a {rownext} can take effect).
         private static readonly Regex RowNextTokenRegex = new(
-            @"\{rownext:[A-Za-z0-9_]+(?::[^}]+)?\}",
+            @"\{rownext:[^:}]+(?::[^}]+)?\}",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static bool UsesRowNextToken(ActionItem a) =>
@@ -808,7 +817,7 @@ namespace TrueReplayer.Services
         // head gained a chain — a pin that only knew the first two would miss "{clip:pedido:line:@i}"
         // entirely, and one that stopped at four would miss "{counter:line:@i}".
         private static readonly Regex ModifierChainHeadRegex = new(
-            @"\{(?:clipboard(?::([^}]*))?|(?:row|rownext):[A-Za-z0-9_]+(?::([^}]*))?|(?:var|clip):[A-Za-z0-9_]+(?::([^}]*))?|winclip(?::\d+)?(?::([^}]*))?|(?:counter|loop|datarow)(?::([^}]*))?|(?:uuid|timestamp)(?::([^}]*))?|env:[A-Za-z0-9_()]+(?::([^}]*))?)\}",
+            @"\{(?:clipboard(?::([^}]*))?|(?:row|rownext):[^:}]+(?::([^}]*))?|(?:var|clip):[A-Za-z0-9_]+(?::([^}]*))?|winclip(?::\d+)?(?::([^}]*))?|(?:counter|loop|datarow)(?::([^}]*))?|(?:uuid|timestamp)(?::([^}]*))?|env:[A-Za-z0-9_()]+(?::([^}]*))?)\}",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         // The chain of every chain-bearing token in `text`, so each detector below states WHICH
@@ -1147,6 +1156,29 @@ namespace TrueReplayer.Services
             string.Equals(a.ActionType, "BrowserType", StringComparison.OrdinalIgnoreCase)
             && !string.IsNullOrEmpty(a.BrowserText) && a.BrowserText.IndexOf('{') >= 0
             && BrowserKeyGrammarRegex.IsMatch(a.BrowserText);
+
+        // ── {row:…} / {rownext:…} whose column has a character outside [A-Za-z0-9_] ──────────
+        // The lookahead demands one such character inside the column segment (anything up to the
+        // first ':' or '}'); the tail mirrors the engine's optional NON-EMPTY chain, so a dangling
+        // "{row:Nome Completo:}" — literal on every build — does not pin.
+        private static readonly Regex WideColumnTokenRegex = new(
+            @"\{(?:row|rownext):(?=[^:}]*[^A-Za-z0-9_:}])[^:}]+(?::[^}]+)?\}",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static bool UsesWideColumnName(ActionItem a) =>
+            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsWideColumnToken(a.Key)) ||
+            ContainsWideColumnToken(a.KeyHtml) ||
+            ContainsWideColumnToken(a.KeyMarkdown) ||
+            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsWideColumnToken(a.BrowserText)) ||
+            ContainsWideColumnToken(a.VariableValue) ||
+            ContainsWideColumnToken(a.ConditionOperand) ||
+            ContainsWideColumnToken(a.FilePath) ||
+            ContainsWideColumnToken(a.LaunchPath) ||
+            ContainsWideColumnToken(a.LaunchArgs);
+
+        private static bool ContainsWideColumnToken(string? text) =>
+            !string.IsNullOrEmpty(text) && text.Contains("{row", StringComparison.OrdinalIgnoreCase)
+                && WideColumnTokenRegex.IsMatch(text);
 
         // ── A colon INSIDE a split delimiter, written "::" ──────────────────────────────────
         private static bool UsesEscapedColonDelimiter(ActionItem a) =>

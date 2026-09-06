@@ -8,10 +8,11 @@
 // is exactly as orphaned as a {row:Ghost}. The scan used to see only {row:}, so a column driven by
 // the sequential token read "unused" and its misspelt twin raised no warning.
 //
-// Name charset and the case-insensitive, trimmed key match BuildRowDict; the optional tail matches
-// modifier chains ({row:name:trim:upper}) so a transformed token still counts as usage of its
-// column, and it is NON-EMPTY on purpose ([^}]+): a dangling {row:name:} stays literal at runtime,
-// so counting it would claim usage the engine never resolves.
+// The column is [^:}]+ (the engine's RowDataTokenRegex / RowNextTokenRegex since 2.37.0 — spaces
+// and accents included) and the key is trimmed and case-insensitive, matching BuildRowDict; the
+// optional tail matches modifier chains ({row:name:trim:upper}) so a transformed token still counts
+// as usage of its column, and it is NON-EMPTY on purpose ([^}]+): a dangling {row:name:} stays
+// literal at runtime, so counting it would claim usage the engine never resolves.
 //
 // Pure and React-free so it can be proven head-lessly against the engine's regexes.
 
@@ -24,7 +25,7 @@ export interface ColumnUsage {
   heads: Set<RowTokenHead>;
 }
 
-const ROW_TOKEN_SOURCE = /\{(row|rownext):([A-Za-z0-9_]+)(?::[^}]+)?\}/.source;
+const ROW_TOKEN_SOURCE = /\{(row|rownext):([^:}]+)(?::[^}]+)?\}/.source;
 
 /** Lower-cased column name → usage, scanning the serialised form of every action. */
 export function scanRowTokenUsage(actions: readonly unknown[]): Map<string, ColumnUsage> {
@@ -35,7 +36,7 @@ export function scanRowTokenUsage(actions: readonly unknown[]): Map<string, Colu
     const re = new RegExp(ROW_TOKEN_SOURCE, 'gi');
     let m: RegExpExecArray | null;
     while ((m = re.exec(s)) !== null) {
-      const key = m[2].toLowerCase();
+      const key = m[2].trim().toLowerCase();
       const entry = usage.get(key) ?? { count: 0, heads: new Set<RowTokenHead>() };
       entry.count++;
       entry.heads.add(m[1].toLowerCase() as RowTokenHead);

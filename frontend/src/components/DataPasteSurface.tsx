@@ -6,7 +6,8 @@ import type { Grid } from '../lib/tsv';
 
 export type PasteMode = 'replace' | 'append';
 
-const VALID_HEADER = /^[A-Za-z0-9_]+$/;
+// Same rule as DataPanel: a header is a {row:…} token name unless it holds '{', '}' or ':'.
+const VALID_HEADER = /^[^{}:]+$/;
 
 interface DataPasteSurfaceProps {
   /** All state is lifted into DataPanel — the DialogShell footer (swapped while
@@ -141,7 +142,7 @@ export function DataPasteSurface({
 
           {invalidHeaders.length > 0 && (
             <div className="text-[10px] text-text-tertiary leading-relaxed">
-              {'⚠ headers can’t be {row:…} tokens (letters, digits, _ only) but still save.'}
+              {'⚠ headers holding { } or : can’t be {row:…} tokens, but still save.'}
             </div>
           )}
 

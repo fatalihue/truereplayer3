@@ -345,9 +345,9 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                 <input
                   type="text"
                   value={head.column}
-                  // Same charset the typing grammar chips ([A-Za-z0-9_]) — anything else would
-                  // produce a token the editor immediately un-chips on round-trip.
-                  onChange={(e) => onHeadChange({ kind: head.kind, column: e.target.value.replace(/[^A-Za-z0-9_]/g, '') })}
+                  // A column is any header (RowDataTokenRegex, 2.37.0) — only the token grammar's
+                  // own { } : are out, since they would end the token or start the chain.
+                  onChange={(e) => onHeadChange({ kind: head.kind, column: e.target.value.replace(/[{}:]/g, '') })}
                   autoFocus
                   spellCheck={false}
                   placeholder="column"

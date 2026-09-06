@@ -698,9 +698,9 @@ function RowColEditor({ token, onChange, head = 'row' }: { token: string; onChan
     // represent disappears. The input is readOnly in that case; this guard is the state's own
     // copy of that rule, so re-enabling the field can never silently resurrect the discard.
     if (state.unmodeled) return;
-    // Same charset the typing grammar chips ([A-Za-z0-9_]) — anything else
-    // would produce a token the editor immediately un-chips on round-trip.
-    const clean = raw.replace(/[^A-Za-z0-9_]/g, '');
+    // A column is any header (RowDataTokenRegex, 2.37.0) — only the token grammar's own { } :
+    // are out, since they would end the token or start the chain.
+    const clean = raw.replace(/[{}:]/g, '');
     setColumn(clean);
     emit(clean, state);
   };

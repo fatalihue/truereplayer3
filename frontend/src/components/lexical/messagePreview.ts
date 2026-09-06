@@ -12,8 +12,8 @@
 //
 //   1. NAME-ONLY IS NOT ENOUGH — and the walker knows it now. splitTokenSegments applies the
 //      engine's argument shapes too (engineAcceptsToken in tokenNormalize, which used to be this
-//      module's private TOKEN_ARG_GATE): {var:Ação} and {row:First Name} fail the
-//      `[A-Za-z0-9_]+` gate on the four name-first regexes and paste LITERALLY, and {date:x},
+//      module's private TOKEN_ARG_GATE): {var:Ação} fails the `[A-Za-z0-9_]+` gate of the
+//      variable/slot regexes and pastes LITERALLY (a column may hold spaces since 2.37.0), and {date:x},
 //      {random:abc} and {clipboard:} are literal because those resolvers reject the argument or
 //      require a non-empty modifier group. Every segment the walker hands back has therefore
 //      already passed the gate; the 'literal' branches below stay as the belt to that brace, so

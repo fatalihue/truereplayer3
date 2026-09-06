@@ -407,10 +407,11 @@ function NamePromptPopover({
             ref={inputRef}
             type="text"
             value={name}
-            // Input labels allow spaces (only the token-breaking { } | are stripped); var/row
-            // names are the tight [A-Za-z0-9_] the typing grammar chips; an environment variable
-            // name adds the parentheses of ProgramFiles(x86) (EnvTokenRegex's charset).
-            onChange={(e) => setName(e.target.value.replace(kind === 'input' ? /[{}|]/g : kind === 'env' ? /[^A-Za-z0-9_()]/g : /[^A-Za-z0-9_]/g, ''))}
+            // Input labels allow spaces (only the token-breaking { } | are stripped); a column name
+            // is any header — only { } : are out (RowDataTokenRegex, 2.37.0); var/clip names are the
+            // tight [A-Za-z0-9_] of their regexes; an environment variable name adds the parentheses
+            // of ProgramFiles(x86) (EnvTokenRegex's charset).
+            onChange={(e) => setName(e.target.value.replace(kind === 'input' ? /[{}|]/g : kind === 'row' || kind === 'rownext' ? /[{}:]/g : kind === 'env' ? /[^A-Za-z0-9_()]/g : /[^A-Za-z0-9_]/g, ''))}
             onKeyDown={(e) => {
               if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); commit(); }
             }}

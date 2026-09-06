@@ -7518,8 +7518,12 @@ namespace TrueReplayer.Services
         // the literal match), and this regex requires the ':name' tail so it never matches
         // bare {row}. Group 2 is the optional clipboard-style modifier chain (same grammar
         // as {clipboard:mods} — the FIRST segment is always the column, the rest modifiers).
+        // The column is [^:}]+ since 2.37.0 — a header is whatever the spreadsheet said
+        // ("Nome Completo", "Preço (R$)"), and BuildRowDict already keyed it trimmed and
+        // case-insensitively; only ':' (the chain separator) and '}' (the token's end) are out.
+        // The first ':' after the column still starts the chain, exactly as before.
         private static readonly Regex RowDataTokenRegex = new(
-            @"\{row:([A-Za-z0-9_]+)(?::([^}]+))?\}",
+            @"\{row:([^:}]+)(?::([^}]+))?\}",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         // Sequential data-row token {rownext:column} / {rownext:column:mods}. A run-local,
@@ -7528,8 +7532,9 @@ namespace TrueReplayer.Services
         // DISJOINT from {row}/{row:column}: "{rownext:" shares no literal prefix with the bare "{row}"
         // replace and never matches RowDataTokenRegex ("{row:" needs ':' as the 5th char, here it's
         // 'n'). Group 2 is the optional clipboard-style modifier chain, same as {row:column:mods}.
+        // Same [^:}]+ column as RowDataTokenRegex (2.37.0).
         private static readonly Regex RowNextTokenRegex = new(
-            @"\{rownext:([A-Za-z0-9_]+)(?::([^}]+))?\}",
+            @"\{rownext:([^:}]+)(?::([^}]+))?\}",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         // Clipboard-slot token {clip:name}. Disjoint from {clipboard...}: this regex requires
@@ -7589,7 +7594,8 @@ namespace TrueReplayer.Services
             {
                 text = RowDataTokenRegex.Replace(text, m =>
                 {
-                    var col = m.Groups[1].Value.ToLowerInvariant();
+                    // Trimmed like the header BuildRowDict keyed it, so "{row: Nome }" finds "Nome".
+                    var col = m.Groups[1].Value.Trim().ToLowerInvariant();
                     string value = string.Empty;
                     runCtx.RowData?.TryGetValue(col, out value!);
                     value ??= string.Empty;
@@ -7759,7 +7765,7 @@ namespace TrueReplayer.Services
                 }
                 else
                 {
-                    var col = m.Groups[1].Value.ToLowerInvariant();
+                    var col = m.Groups[1].Value.Trim().ToLowerInvariant();   // trimmed like BuildRowDict's headers
                     value = string.Empty;
                     if (cursors != null && rowN > 0)
                     {
