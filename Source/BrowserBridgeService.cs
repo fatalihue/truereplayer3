@@ -53,7 +53,11 @@ namespace TrueReplayer.Services
         // MV3 service worker, whose top-level connect() spawned a NativeHost), text= resolution
         // computes aggregate text in one post-order pass instead of textContent per node, and
         // isTextUnique drops its three per-node array allocations for a sibling walk.
-        public const string ExpectedExtensionVersion = "1.4.17";
+        // 1.4.18 = BrowserType's key grammar is Send Text's (ParseSendTextSegments, ported): all
+        // fifteen key names, {key:N} repeats and {delay:N} pauses, plus the default actions a
+        // synthetic key never has — Tab moves focus, Space types, Home/End place the caret,
+        // PageUp/PageDown scroll — and only focus-moving keys re-arm the non-append clear.
+        public const string ExpectedExtensionVersion = "1.4.18";
         private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
         private NamedPipeServerStream? _pipeServer;
         private StreamReader? _reader;
@@ -673,6 +677,30 @@ namespace TrueReplayer.Services
         /// back to the active tab) and do NOT adopt the tab it used. For the editor's "Test action",
         /// which is not a run and must not write to run state — see TestActionAsync.
         /// </param>
+        // The key tokens content.js honours in a type payload (its KEY_CHIP_PATTERN, 1.4.18), read
+        // with the same rules: a missing or unparsable N is one press / 500 ms, N is capped at 100
+        // presses / 60 s. Each press costs the extension a 30 ms settle.
+        private static readonly System.Text.RegularExpressions.Regex TypeKeyTokenRegex = new(
+            @"\{(enter|tab|esc|escape|backspace|delete|up|down|left|right|space|home|end|pageup|pagedown|delay)(?::([^}]*))?\}",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        /// <summary>Milliseconds the extension will spend on the pauses and repeats in a type payload.</summary>
+        internal static int TypeKeyBudgetMs(string? text)
+        {
+            if (string.IsNullOrEmpty(text) || text.IndexOf('{') < 0) return 0;
+            long total = 0;
+            foreach (System.Text.RegularExpressions.Match m in TypeKeyTokenRegex.Matches(text))
+            {
+                int n = 0;
+                bool hasN = m.Groups[2].Success && int.TryParse(m.Groups[2].Value, out n) && n > 0;
+                if (string.Equals(m.Groups[1].Value, "delay", StringComparison.OrdinalIgnoreCase))
+                    total += hasN ? Math.Min(n, 60000) : 500;
+                else
+                    total += 30L * (hasN ? Math.Min(n, 100) : 1);
+            }
+            return (int)Math.Min(total, 10 * 60 * 1000);
+        }
+
         public async Task<JsonElement> ExecuteBrowserCommandAsync(
             TrueReplayer.Models.ActionItem action, CancellationToken token, int timeoutMs = 5000,
             string? resolvedText = null, bool ignoreTabPin = false)
@@ -743,7 +771,12 @@ namespace TrueReplayer.Services
             // Costs nothing on success, and the fast failures still answer fast: a closed tab replies
             // TAB_GONE in ~0 ms and a page with no content script NO_CONTENT_SCRIPT in ~300 ms.
             const int PipeGraceMs = 2000;
-            var pipeTimeout = command == "navigate" ? Math.Max(timeoutMs * 6, 30000) : timeoutMs + PipeGraceMs;
+            // A type payload's {delay:N} pauses and {key:N} repeats run INSIDE the command, on the
+            // extension's side of the pipe (1.4.18), so they are added to the budget here — or a
+            // "{delay:3000}" in a 5 s action would trip this backstop while the page was doing
+            // exactly what it was told.
+            var pipeTimeout = command == "navigate" ? Math.Max(timeoutMs * 6, 30000)
+                : timeoutMs + PipeGraceMs + (command == "type" ? TypeKeyBudgetMs(resolvedText ?? action.BrowserText) : 0);
 
             bool sent = SendMessage(new
             {

@@ -21,7 +21,7 @@ import {
   type TransformState,
 } from './clipboardModifiers';
 import { NumInput, PopoverHeader, RadioGroup, RadioRow, Section } from './popoverAtoms';
-import { normalizeToken, type TokenScope } from './tokenNormalize';
+import { normalizeToken } from './tokenNormalize';
 import { DEFAULT_DATE_FORMAT, parseDateTokenArgs, resolveDateToken, type DateHead, type DateUnit } from './dateFormat';
 import { tokenTip } from './tokenDescriptions';
 import { useAppState } from '../../state/AppStateContext';
@@ -134,12 +134,6 @@ function parseRandom(token: string): { min: number; max: number } {
 interface TokenChipPopoverProps {
   anchor: HTMLElement;
   token: string;
-  /**
-   * Which engine(s) the editor edits for (TokenChip reads it from TokenScopeContext). In the
-   * browser scope a key chip gets no repeat control: the extension presses the key once and its
-   * parser takes no argument, so {Enter:3} from here would be typed into the page as text.
-   */
-  scope?: TokenScope;
   onLiveChange: (newToken: string) => void;
   onDelete: () => void;
   onClose: () => void;
@@ -153,7 +147,6 @@ interface TokenChipPopoverProps {
 export function TokenChipPopover({
   anchor,
   token,
-  scope = 'desktop',
   onLiveChange,
   onDelete,
   onClose,
@@ -275,9 +268,7 @@ export function TokenChipPopover({
       <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
         {kind === 'clipboard' && <ClipboardEditor token={token} onChange={updateLive} />}
         {kind === 'delay' && <DelayEditor token={token} onChange={updateLive} />}
-        {kind === 'repeatable' && (scope === 'browser'
-          ? <BrowserKeyInfo />
-          : <RepeatableEditor token={token} onChange={updateLive} />)}
+        {kind === 'repeatable' && <RepeatableEditor token={token} onChange={updateLive} />}
         {kind === 'random' && <RandomEditor token={token} onChange={updateLive} />}
         {kind === 'var' && <NameEditor token={token} tokenName="var" onChange={updateLive} />}
         {kind === 'rowcol' && <RowColEditor token={token} onChange={updateLive} />}
@@ -1027,13 +1018,3 @@ function StaticInfo() {
   );
 }
 
-// The browser field's key chips ({Enter}, {Tab}, {Esc}, …). The extension presses each once and
-// its parser takes no argument, so the repeat control is withheld rather than offered — a
-// {Enter:3} written from here would reach the page as text (TokenScope, tokenNormalize).
-function BrowserKeyInfo() {
-  return (
-    <div className="px-3.5 py-3 text-[11px] text-text-tertiary">
-      Pressed once by the browser extension. Repeat is a Send Text feature.
-    </div>
-  );
-}

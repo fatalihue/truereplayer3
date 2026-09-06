@@ -60,7 +60,7 @@ import {
 import { iconButtonClass } from '../common/IconButton';
 import { useTt } from '../../state/LanguageContext';
 import { TokenNode, $createTokenNode, $isTokenNode } from './TokenNode';
-import { ClipboardChipEditContext, OPEN_TOKEN_CHIP_COMMAND, TokenScopeContext, type ClipboardChipEditRequest } from './TokenChip';
+import { ClipboardChipEditContext, OPEN_TOKEN_CHIP_COMMAND, type ClipboardChipEditRequest } from './TokenChip';
 // The whitelist of names the backend resolves, and the walker that finds them the way the
 // ENGINE does, both live in tokenNormalize — see the "What the ENGINE calls a token" banner
 // there. They are imported rather than restated because the grid's SendTextPreview needs the
@@ -160,12 +160,11 @@ interface LexicalTokenEditorProps {
   tokenAutocomplete?: boolean;
   /**
    * Which engine(s) sit behind the payload — TokenScope in tokenNormalize. 'desktop' (the
-   * default, SendText) chips everything the C# resolver and ParseSendTextSegments substitute.
-   * 'browser' is the BrowserType "Text to Type" field: the C# side resolves the data tokens and
-   * the Chrome extension presses the keys, and that parser knows ten key names with no argument —
-   * {space}, {home}, {delay:N} and a repeat like {Enter:3} are typed out literally there. In this
-   * scope those stay TEXT (no chip, no `{` list entry, no repeat control on the chips that do
-   * exist), because a chip is a promise the run keeps.
+   * default, SendText) is the C# resolver plus ParseSendTextSegments; 'browser' is the BrowserType
+   * "Text to Type" field, where the C# side resolves the data tokens and the Chrome extension
+   * presses the keys. Since extension 1.4.18 the two key grammars are the same (see the banner in
+   * tokenNormalize), so both scopes chip the same tokens; the prop keeps naming the engine so a
+   * future difference has a place to live.
    */
   tokenScope?: TokenScope;
   /** When provided, clicking a {clipboard...} chip routes HERE instead of the
@@ -1377,7 +1376,6 @@ export function LexicalTokenEditor({
     <LexicalComposer initialConfig={initialConfig}>
       {/* Context flows through Lexical's decorator portals, so TokenChip sees it. */}
       <ClipboardChipEditContext.Provider value={onClipboardChipEdit ?? null}>
-      <TokenScopeContext.Provider value={tokenScope}>
       <div className={richMode ? 'w-full h-full flex flex-col' : 'relative w-full h-full'}>
         {richMode && <RichToolbarPlugin formattingDelivered={formattingDelivered} toolbarExtra={toolbarExtra} />}
         <div className="relative flex-1 min-h-0">
@@ -1429,7 +1427,6 @@ export function LexicalTokenEditor({
         <ChipActivationPlugin />
         <SubmitPlugin onSubmit={onSubmit} />
       </div>
-      </TokenScopeContext.Provider>
       </ClipboardChipEditContext.Provider>
     </LexicalComposer>
   );

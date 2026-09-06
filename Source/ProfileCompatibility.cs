@@ -548,6 +548,15 @@ namespace TrueReplayer.Services
             (p => p.Actions.Any(UsesMachineValueToken),
                 new Version(2, 37, 0), "UUID/timestamp/env tokens"),
 
+            // Browser Type key grammar = Send Text's (extension 1.4.18, shipped inside this build):
+            // {space}, {home}, {end}, {pageup}, {pagedown}, a repeat count on any key ({tab:2}) and
+            // {delay:N}. The extension that ships with an older build knows ten bare names and
+            // types every one of these into the page as text (the literal-token class). Only the
+            // BrowserType text: the other browser actions never press keys. Introduced after
+            // 2.36.0 — bump at release if the release number differs.
+            (p => p.Actions.Any(UsesBrowserKeyGrammar),
+                new Version(2, 37, 0), "Browser Type key tokens (space/home/end/page, repeat, delay)"),
+
             // CopyToSlot Clear mode — an older build drops the unknown SlotMode property and
             // runs the row in CAPTURE mode, grabbing the current selection into the slot
             // instead of emptying it (silent semantic flip, and it fires a synthetic Ctrl+C
@@ -1125,6 +1134,19 @@ namespace TrueReplayer.Services
 
         private static bool ContainsMachineValueToken(string? text) =>
             !string.IsNullOrEmpty(text) && text.IndexOf('{') >= 0 && MachineValueTokenRegex.IsMatch(text);
+
+        // ── Browser Type key grammar beyond the ten bare names of extension ≤ 1.4.17 ─────────
+        // The five new names with or without an argument, any of the ten old names WITH one (a
+        // repeat count — and an unparsable one still changes the meaning: 1.4.17 typed "{enter:abc}"
+        // out, 1.4.18 presses once), and {delay} in any form.
+        private static readonly Regex BrowserKeyGrammarRegex = new(
+            @"\{(?:space|home|end|pageup|pagedown|delay)(?::[^}]*)?\}|\{(?:enter|tab|esc|escape|backspace|delete|up|down|left|right):[^}]*\}",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static bool UsesBrowserKeyGrammar(ActionItem a) =>
+            string.Equals(a.ActionType, "BrowserType", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrEmpty(a.BrowserText) && a.BrowserText.IndexOf('{') >= 0
+            && BrowserKeyGrammarRegex.IsMatch(a.BrowserText);
 
         // ── A colon INSIDE a split delimiter, written "::" ──────────────────────────────────
         private static bool UsesEscapedColonDelimiter(ActionItem a) =>

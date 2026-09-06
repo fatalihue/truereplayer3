@@ -3770,14 +3770,14 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 SendText dialog so tokens (`{Enter}`, `{Clipboard}`, etc.) render as
                 inline chips directly inside the input — no separate preview row needed.
                 Chip buttons below insert at the cursor via the imperative handle.
-                tokenScope="browser": the extension's key parser knows ten names and no
-                argument, so {space}, {home}, {delay:N} and {Enter:3} stay TEXT here and leave
-                the `{` list — a chip would promise a key press the page never gets. The hint
-                says which keys DO press, the one fact the field cannot show. */}
+                tokenScope="browser" names the engine behind the field (the Chrome extension
+                presses the keys); since extension 1.4.18 its key grammar is Send Text's, so the
+                same tokens chip here. The hint says what the field cannot show: that the
+                extension presses them, and that repeat and pause work. */}
             {isBrowserType && (
             <Field
               label="Text to Type"
-              hint={'Keys the extension presses: Enter, Tab, Esc, Backspace, Delete and the arrows. Other key tokens are typed as text.'}
+              hint={'The extension presses the key tokens like Send Text does: {enter}, {tab:2}, {space}, {home}, {delay:500}…'}
             >
               <div className="min-h-8 bg-bg-input border border-border-default rounded focus-within:border-accent-solid text-ui font-mono">
                 <Suspense fallback={null}>

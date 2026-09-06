@@ -10,7 +10,6 @@ import { TokenNode } from './TokenNode';
 import { TokenChipPopover } from './TokenChipPopover';
 import { tokenTip } from './tokenDescriptions';
 import { chainHeadKind } from './clipboardModifiers';
-import type { TokenScope } from './tokenNormalize';
 
 // Host-provided handler for editing a chain-bearing chip ({clipboard}, {row:col}, {rownext:col},
 // {var:name}, {clip:name}, {winclip:N}) in a LARGER surface than the default 300px popover.
@@ -27,13 +26,6 @@ export interface ClipboardChipEditRequest {
 }
 export const ClipboardChipEditContext =
   createContext<((req: ClipboardChipEditRequest) => void) | null>(null);
-
-// Which engine(s) the surrounding editor edits for — TokenScope in tokenNormalize. Provided by
-// LexicalTokenEditor (it flows through Lexical's decorator portals like the context above) and
-// read by the chip so its popover can withhold a control the scope's engine ignores: a repeat
-// count on an {Enter} chip in the browser field would write {Enter:3}, which the extension types
-// out as text. Same home, same reason: no import cycle through LexicalTokenEditor.
-export const TokenScopeContext = createContext<TokenScope>('desktop');
 
 /**
  * Open a chip's parameter editor by node key. Dispatched by ChipActivationPlugin when the user
@@ -56,7 +48,6 @@ export const OPEN_TOKEN_CHIP_COMMAND: LexicalCommand<NodeKey> = createCommand('O
 export function TokenChip({ nodeKey, token }: { nodeKey: NodeKey; token: string }) {
   const [editor] = useLexicalComposerContext();
   const onClipboardChipEdit = useContext(ClipboardChipEditContext);
-  const scope = useContext(TokenScopeContext);
   const [open, setOpen] = useState(false);
   // Use the state-setter as the ref callback so we never read a ref value
   // during render — the popover anchor lives in state and updates when the
@@ -192,7 +183,6 @@ export function TokenChip({ nodeKey, token }: { nodeKey: NodeKey; token: string 
         <TokenChipPopover
           anchor={anchorEl}
           token={token}
-          scope={scope}
           onLiveChange={handleLiveChange}
           onClose={handleClose}
           onDelete={handleDelete}

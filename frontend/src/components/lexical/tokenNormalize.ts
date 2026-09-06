@@ -296,23 +296,21 @@ export const SEGMENTING_TOKEN_NAMES: ReadonlySet<string> = new Set([
   'home', 'end', 'pageup', 'pagedown', 'up', 'down', 'left', 'right',
 ]);
 
-// ── The BROWSER path: two engines, and only the keys differ ──────────────────
+// ── The BROWSER path: two engines, one grammar ───────────────────────────────
 // A BrowserType payload is resolved in two places. The C# side runs the SAME ResolveTokensAsync
 // over it (ResolveBrowserTextPlaceholdersAsync), so every DATA token above substitutes exactly as
 // it does for SendText. The KEY tokens it leaves alone — ParseSendTextSegments never runs on that
 // path — and hands the text to the Chrome extension, whose own parser is the whole key grammar
-// there (ChromeExtension/content.js, KEY_CHIP_PATTERN):
+// there (ChromeExtension/content.js, KEY_CHIP_PATTERN).
 //
-//     /\{(enter|tab|esc|escape|backspace|delete|up|down|left|right)\}/gi
-//
-// Ten names, NO argument: {enter:3} does not match it and is typed out, and neither {space},
-// {home}, {end}, {pageup}, {pagedown} nor {delay:N} exist there at all. Everything this set does
-// not name reaches the page as literal text — so in the browser scope those are NOT tokens, and a
-// surface that chips them (or offers them from the `{` catalog) is promising a key press the run
-// never makes. Ported name-for-name; a name added to the extension's pattern is added here.
-export const BROWSER_KEY_NAMES: ReadonlySet<string> = new Set([
-  'enter', 'tab', 'esc', 'escape', 'backspace', 'delete', 'up', 'down', 'left', 'right',
-]);
+// Since extension 1.4.18 that parser is a port of ParseSendTextSegments: the same fifteen key
+// names, {key:N} repeats capped at 100, {delay:N} pauses (500 ms default, 60 s cap), names
+// case-insensitive. Up to 1.4.17 it knew ten bare names and typed everything else out as text,
+// which is why this scope used to withhold {space}, {home}, {delay:N} and {Enter:3} — a chip would
+// have promised a key press the page never got. The two grammars are now proven equal segment for
+// segment (memory: tool-proof-ext-parity.mjs), so nothing is withheld here any more. The scope
+// stays declared, because there ARE two engines: the day one of them moves, this is where the
+// difference is written down.
 
 /**
  * Which engine(s) sit behind the payload being edited. 'desktop' is SendText (the C# resolver +
@@ -324,14 +322,10 @@ export type TokenScope = 'desktop' | 'browser';
  * Would the engine behind `scope` substitute a token with this NAME (already lower-cased) and
  * argument? The NAME half of the chip-or-text question, asked by the walker above, the typing
  * transform and the `{` catalog; the ARGUMENT half is engineAcceptsToken below, and the walker
- * and the transform ask both.
+ * and the transform ask both. Both engines answer alike since extension 1.4.18 (see the banner).
  */
-export function tokenResolvesIn(name: string, hasArg: boolean, scope: TokenScope): boolean {
-  if (!KNOWN_TOKEN_NAMES.has(name)) return false;
-  if (scope === 'desktop') return true;
-  // Data tokens resolve on the C# side for both paths; the key/delay family is the extension's.
-  if (!SEGMENTING_TOKEN_NAMES.has(name)) return true;
-  return BROWSER_KEY_NAMES.has(name) && !hasArg;
+export function tokenResolvesIn(name: string, _hasArg: boolean, _scope: TokenScope): boolean {
+  return KNOWN_TOKEN_NAMES.has(name);
 }
 
 // ── The engine's own ARGUMENT shapes ─────────────────────────────────────────
