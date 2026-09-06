@@ -7357,6 +7357,9 @@ namespace TrueReplayer.Services
             // resolves empty (consume-always), keeping that path byte-identical.
             text = await ResolveInputTokensAsync(text, runCtx, escapeWhileResolving, htmlEncodeSubstitution);
             text = ResolveRunStateTokens(text, runCtx, escapeWhileResolving, htmlEncodeSubstitution);
+            // {uuid} / {timestamp} / {env:NAME} — generated and machine values, after run-state so a
+            // chain on them can read @var references the same way every other head does.
+            text = ResolveMachineTokens(text, runCtx, escapeWhileResolving, htmlEncodeSubstitution, flavorSync);
             text = ResolveRowNextTokens(text, runCtx, escapeWhileResolving, htmlEncodeSubstitution, flavorSync);
             // The sentinels are a private contract with ParseSendTextSegments; nobody else sees them.
             return escapeBracesInSubstitution ? text : UnescapeBraceSentinels(text);
@@ -7443,6 +7446,8 @@ namespace TrueReplayer.Services
             public Queue<string>? ClipNextReplay; // replayed on the html pass so one paste eats one line
             public List<string>? PickRecord;      // {pick:a|b|c} drawn options — recording (plain) pass
             public Queue<string>? PickReplay;     // replayed on the html pass so both flavors agree
+            public List<string>? UuidRecord;      // {uuid} generated ids — recording (plain) pass
+            public Queue<string>? UuidReplay;     // replayed on the html pass so both flavors paste ONE id
         }
 
         private static string ResolveRandomTokens(string text, TokenFlavorSync? sync = null)
@@ -7639,6 +7644,92 @@ namespace TrueReplayer.Services
             }
             if (text.Contains("{row}", StringComparison.OrdinalIgnoreCase))
                 text = text.Replace("{row}", runCtx.Row > 0 ? runCtx.Row.ToString() : string.Empty, StringComparison.OrdinalIgnoreCase);
+
+            return text;
+        }
+
+        // ── Generated and machine values (2.37.0): {uuid}, {timestamp}, {env:NAME} ──────────
+        // {uuid[:mods]} — a fresh GUID per OCCURRENCE (the {random} contract: two tokens are two
+        // ids; a Set Variable holding one is how a macro reuses it). Lowercase "D" form, 36 chars;
+        // the chain shapes it ({uuid:upper}, {uuid:replace:-:} for the dashless form).
+        private static readonly Regex UuidTokenRegex = new(
+            @"\{uuid(?::([^}]+))?\}",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        // {timestamp[:ms][:mods]} — Unix time: seconds since 1970-01-01 UTC, or milliseconds when
+        // the FIRST segment is the unit `ms`. The unit is one fixed word, never a modifier name, so
+        // {timestamp:upper} is a chain and {timestamp:ms:upper} is a unit and a chain.
+        private static readonly Regex TimestampTokenRegex = new(
+            @"\{timestamp(?::(ms))?(?::([^}]+))?\}",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        // {env:NAME[:mods]} — an environment variable as the TrueReplayer process sees it. The name
+        // charset is the {var} one plus parentheses, for ProgramFiles(x86); Windows compares names
+        // case-insensitively, so {ENV:path} and {env:PATH} read the same variable.
+        private static readonly Regex EnvTokenRegex = new(
+            @"\{env:([A-Za-z0-9_()]+)(?::([^}]+))?\}",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        // Resolves the three. Each substituted value gets the {var} treatment for the target
+        // context (html-encode, then the brace escape) — an environment variable can hold anything,
+        // and a chain's default text is whatever the author typed.
+        private static string ResolveMachineTokens(string text, RunCtx runCtx,
+            bool escapeBracesInSubstitution, bool htmlEncodeSubstitution, TokenFlavorSync? sync = null)
+        {
+            if (string.IsNullOrEmpty(text) || text.IndexOf('{') < 0) return text;
+
+            string Finish(string value)
+            {
+                if (htmlEncodeSubstitution) value = HtmlEncodeValue(value);
+                return escapeBracesInSubstitution ? EscapeBracesForParser(value) : value;
+            }
+
+            if (text.IndexOf("{uuid", StringComparison.OrdinalIgnoreCase) >= 0 && UuidTokenRegex.IsMatch(text))
+            {
+                text = UuidTokenRegex.Replace(text, m =>
+                {
+                    // Rich double-resolve: the plain pass RECORDS each id and the html pass REPLAYS
+                    // it, so both flavors paste the SAME identifier (the {random} discipline). Falls
+                    // through to a fresh id only if the occurrence counts diverge (defensive).
+                    string raw;
+                    if (sync?.UuidReplay is { Count: > 0 } replay) raw = replay.Dequeue();
+                    else
+                    {
+                        raw = Guid.NewGuid().ToString("D");
+                        sync?.UuidRecord?.Add(raw);
+                    }
+                    if (m.Groups[1].Success) raw = ApplyClipboardModifiers(raw, m.Groups[1].Value, runCtx);
+                    return Finish(raw);
+                });
+            }
+
+            if (text.IndexOf("{timestamp", StringComparison.OrdinalIgnoreCase) >= 0 && TimestampTokenRegex.IsMatch(text))
+            {
+                // The date tokens' clock: one instant for every token in the text and for both
+                // flavors of a rich paste. sync.Now is a LOCAL DateTime and Unix time counts from
+                // UTC, so the zone conversion happens here, in the DateTimeOffset, never by hand.
+                var now = new DateTimeOffset(sync?.Now ?? DateTime.Now);
+                text = TimestampTokenRegex.Replace(text, m =>
+                {
+                    bool ms = m.Groups[1].Success;
+                    string raw = (ms ? now.ToUnixTimeMilliseconds() : now.ToUnixTimeSeconds())
+                        .ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    if (m.Groups[2].Success) raw = ApplyClipboardModifiers(raw, m.Groups[2].Value, runCtx);
+                    return Finish(raw);
+                });
+            }
+
+            if (text.IndexOf("{env:", StringComparison.OrdinalIgnoreCase) >= 0 && EnvTokenRegex.IsMatch(text))
+            {
+                text = EnvTokenRegex.Replace(text, m =>
+                {
+                    // Missing → EMPTY (consume-always, the {var} rule). Read at replay, never cached:
+                    // the value is whatever the process sees at that moment.
+                    string raw = Environment.GetEnvironmentVariable(m.Groups[1].Value) ?? string.Empty;
+                    if (m.Groups[2].Success) raw = ApplyClipboardModifiers(raw, m.Groups[2].Value, runCtx);
+                    return Finish(raw);
+                });
+            }
 
             return text;
         }
@@ -7865,7 +7956,7 @@ namespace TrueReplayer.Services
             // value so content like "{enter}" is pasted as text, not re-interpreted as a key press.
             // The flavor sync RECORDS this pass's {random} draws + DateTime.Now snapshot so the
             // html pass below replays the exact same values (one paste = one set of values).
-            var flavorSync = new TokenFlavorSync { RandomRecord = new List<string>(), WinClipRecord = new List<string>(), RowNextRecord = new List<string>(), ClipNextRecord = new List<string>(), PickRecord = new List<string>() };
+            var flavorSync = new TokenFlavorSync { RandomRecord = new List<string>(), WinClipRecord = new List<string>(), RowNextRecord = new List<string>(), ClipNextRecord = new List<string>(), PickRecord = new List<string>(), UuidRecord = new List<string>() };
             text = await ResolveTokens(text, originalClipboard.Text ?? string.Empty, escapeBracesInSubstitution: true, flavorSync);
 
             if (string.IsNullOrEmpty(text) || token.IsCancellationRequested)
@@ -7900,6 +7991,7 @@ namespace TrueReplayer.Services
                     RowNextReplay = new Queue<string>(flavorSync.RowNextRecord!),
                     ClipNextReplay = new Queue<string>(flavorSync.ClipNextRecord!),
                     PickReplay = new Queue<string>(flavorSync.PickRecord!),
+                    UuidReplay = new Queue<string>(flavorSync.UuidRecord!),
                 };
                 resolvedHtml = await ResolveTokensAsync(PrepareRichHtmlForSend(html), dispatcherQueue, CurrentRunCtx,
                     originalClipboard.Text ?? string.Empty, escapeBracesInSubstitution: true,
@@ -8498,6 +8590,10 @@ namespace TrueReplayer.Services
             // poll tick and compare the variable against a moving target. Found by re-reading the
             // resolver rather than by trusting a review that had declared this case refuted.
             if (PickTokenRegex.IsMatch(text)) return true;     // re-rolls per resolution
+            // {uuid} is a fresh identifier per resolution — the {random} case exactly. {timestamp}
+            // is a CLOCK and stays live like {date}; {env:} is a pure read like {var}. Neither of
+            // those two belongs here: hoisting a clock is the "wait until A equals B" failure.
+            if (UuidTokenRegex.IsMatch(text)) return true;     // fresh id per resolution
             if (RowNextTokenRegex.IsMatch(text)) return true;  // advances the per-column data cursor
             // {clipboard:next} ONLY — a plain {clipboard} or {clipboard:upper} is a pure read, and
             // `next` is legal anywhere in the modifier chain, so the chain is split the same way

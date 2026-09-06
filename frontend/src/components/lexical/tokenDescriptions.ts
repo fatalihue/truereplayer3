@@ -100,6 +100,17 @@ const BY_NAME: Record<KnownTokenName, TokenDescription> = {
     paletteTip: ['Win+V history (must be enabled) — 1 is the most recent. Click the chip to change the item.', 'Histórico do Win+V (precisa estar ligado) — 1 é o mais recente. Clique no chip para trocar o item.'],
   },
   input: { tip: ['Prompt for a value at replay time (pauses the run)', 'Pergunta um valor durante a execução (pausa o replay)'] },
+  // Generated and machine values (2.37.0). Each occurrence of {uuid} is a NEW id — a Set Variable
+  // is how a macro reuses one — and that is the whole point of saying "each use" here.
+  uuid: {
+    tip: ['Fresh unique identifier (UUID) at each use', 'Identificador único (UUID) novo a cada uso'],
+    paletteTip: ['Fresh unique identifier (UUID) at each use. Click the chip to shape it (upper, no dashes…).', 'Identificador único (UUID) novo a cada uso. Clique no chip para moldar (maiúsculas, sem traços…).'],
+  },
+  timestamp: {
+    tip: ['Unix time — seconds since 1970 (UTC)', 'Unix time — segundos desde 1970 (UTC)'],
+    paletteTip: ['Unix time — seconds since 1970 (UTC). Click the chip for milliseconds.', 'Unix time — segundos desde 1970 (UTC). Clique no chip para milissegundos.'],
+  },
+  env: { tip: ['Value of an environment variable on this machine', 'Valor de uma variável de ambiente desta máquina'] },
 };
 
 const CLIPBOARD_NEXT: TokenDescription = {
@@ -129,6 +140,10 @@ const DATETIME_SHIFTED: TokenDescription = { tip: ['Date and time with an offset
 const COUNTER_SHAPED: TokenDescription = { tip: ['Run repeat number, shaped by its modifiers', 'Número da repetição da execução, moldado pelos modificadores'] };
 const LOOP_SHAPED: TokenDescription = { tip: ['Iteration of the innermost While / For Each block, shaped by its modifiers', 'Volta do bloco While / For Each mais interno, moldada pelos modificadores'] };
 const DATAROW_SHAPED: TokenDescription = { tip: ['Number of the current data row, shaped by its modifiers', 'Número da linha de dados atual, moldado pelos modificadores'] };
+const UUID_SHAPED: TokenDescription = { tip: ['Fresh unique identifier (UUID) at each use, shaped by its modifiers', 'Identificador único (UUID) novo a cada uso, moldado pelos modificadores'] };
+// The unit is the FIRST segment; anything after it is the chain, and a chain alone is still seconds.
+const TIMESTAMP_MS: TokenDescription = { tip: ['Unix time in milliseconds since 1970 (UTC)', 'Unix time em milissegundos desde 1970 (UTC)'] };
+const TIMESTAMP_SHAPED: TokenDescription = { tip: ['Unix time (seconds), shaped by its modifiers', 'Unix time (segundos), moldado pelos modificadores'] };
 
 // Tokens whose ARGUMENT changes what they mean. Checked before BY_NAME; first match wins.
 const VARIANTS: readonly { name: string; when: (token: string, mods: string[]) => boolean; desc: TokenDescription }[] = [
@@ -140,6 +155,9 @@ const VARIANTS: readonly { name: string; when: (token: string, mods: string[]) =
   { name: 'counter', when: (_token, mods) => mods.length > 0, desc: COUNTER_SHAPED },
   { name: 'loop', when: (_token, mods) => mods.length > 0, desc: LOOP_SHAPED },
   { name: 'datarow', when: (_token, mods) => mods.length > 0, desc: DATAROW_SHAPED },
+  { name: 'uuid', when: (_token, mods) => mods.length > 0, desc: UUID_SHAPED },
+  { name: 'timestamp', when: (_token, mods) => mods[0]?.toLowerCase() === 'ms', desc: TIMESTAMP_MS },
+  { name: 'timestamp', when: (_token, mods) => mods.length > 0, desc: TIMESTAMP_SHAPED },
 ];
 
 // Same split every other surface does — normalizeToken, splitTokenSegments and chainHeadKind all

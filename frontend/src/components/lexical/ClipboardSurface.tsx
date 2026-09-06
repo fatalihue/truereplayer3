@@ -46,10 +46,14 @@ const HEAD_TITLES: Record<ChainHead['kind'], string> = {
   counter: 'Run repeat',
   loop: 'Loop iteration',
   datarow: 'Data row number',
+  uuid: 'UUID',
+  timestamp: 'Timestamp',
+  env: 'Environment variable',
 };
 
-// The three counters have no identity: the head IS the value, so the card above the ladder is
-// not drawn for them at all (see the render), and these entries exist to satisfy the Record.
+// The three counters and {uuid} have no identity: the head IS the value, so the card above the
+// ladder is not drawn for them at all (see HEAD_ONLY and the render), and these entries exist to
+// satisfy the Record.
 const IDENTITY_LABELS: Record<ChainHead['kind'], string> = {
   clipboard: '',
   row: 'Data column',
@@ -60,7 +64,13 @@ const IDENTITY_LABELS: Record<ChainHead['kind'], string> = {
   counter: '',
   loop: '',
   datarow: '',
+  uuid: '',
+  timestamp: 'Unit',
+  env: 'Variable name',
 };
+
+// Heads with nothing above the ladder — the identity card is skipped for them.
+const HEAD_ONLY: ReadonlySet<ChainHead['kind']> = new Set(['clipboard', 'counter', 'loop', 'datarow', 'uuid']);
 
 const IDENTITY_HINTS: Record<ChainHead['kind'], string> = {
   clipboard: '',
@@ -73,6 +83,11 @@ const IDENTITY_HINTS: Record<ChainHead['kind'], string> = {
   counter: '',
   loop: '',
   datarow: '',
+  uuid: '',
+  timestamp: 'Unix time: seconds since 1970-01-01 UTC, or milliseconds.',
+  // The same caution as the history item, for the same reason: a variable set by an installer or
+  // a shell profile can hold a key or a token, and nothing here can tell.
+  env: 'Read from this machine when the macro runs. May hold anything the system or an app stored — keys too.',
 };
 
 // What to say when there is no source to preview against. Each reason is DIFFERENT, and saying
@@ -88,6 +103,9 @@ const UNKNOWN_SOURCE_COPY: Record<ChainHead['kind'], string> = {
   counter: 'Counted while the macro runs',
   loop: 'Counted while the macro runs',
   datarow: 'Counted while the macro runs',
+  uuid: 'Generated when the macro runs',
+  timestamp: '',
+  env: 'Read from the machine when the macro runs',
 };
 
 interface ClipboardSurfaceProps {
@@ -174,6 +192,18 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
         // A run counter exists only inside a run — previewing a chain against "" would claim the
         // chain yields nothing, a statement about the user's work rather than about the source.
         return { raw: '', ready: true, unknown: true, label: 'Value' };
+      case 'uuid':
+        // Drawn at replay, a new one per use; a sample here would be an id the run never pastes.
+        return { raw: '', ready: true, unknown: true, label: 'Value' };
+      case 'env':
+        // The machine has it; a WebView does not.
+        return { raw: '', ready: true, unknown: true, label: 'Variable value' };
+      case 'timestamp': {
+        // The one source this surface DOES know: the clock. Read when the head changes (opening
+        // the surface, switching the unit) — a ticking preview would redraw the ladder every second.
+        const t = Date.now();
+        return { raw: String(head.ms ? t : Math.floor(t / 1000)), ready: true, unknown: false, label: 'Now', note: 'preview time' };
+      }
     }
   }, [head, clipRaw, clipReady, dataTable, runState]);
 
@@ -281,10 +311,10 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
             that actually benefits from width (long clipboard lines wrap less). */}
         <div className="min-w-0 flex-1 max-w-[560px] overflow-y-auto p-4 space-y-3">
           {/* Identity, NOT a pipeline step — which slot, which variable, which column, which
-              history item. Unnumbered on purpose: the ladder's numbers mean "order the backend
-              applies these in", and this is not one of them. The counters have none: the head is
-              the value, so nothing is drawn above their ladder. */}
-          {head.kind !== 'clipboard' && head.kind !== 'counter' && head.kind !== 'loop' && head.kind !== 'datarow' && (
+              history item, which unit. Unnumbered on purpose: the ladder's numbers mean "order
+              the backend applies these in", and this is not one of them. The head-only kinds have
+              none: the head is the value, so nothing is drawn above their ladder. */}
+          {!HEAD_ONLY.has(head.kind) && (
             <div className="rounded border border-border-subtle bg-bg-card px-3 py-1.5">
               <div className="label-micro text-text-tertiary mb-1">{IDENTITY_LABELS[head.kind]}</div>
               {head.kind === 'winclip' ? (
@@ -299,26 +329,46 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                   />
                   <span className="text-[11px] text-text-tertiary">1 = most recent</span>
                 </div>
-              ) : (
+              ) : head.kind === 'timestamp' ? (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <SegmentedControl<'s' | 'ms'>
+                    ariaLabel="Unit"
+                    options={[
+                      { value: 's', label: 'Seconds' },
+                      { value: 'ms', label: 'Milliseconds' },
+                    ]}
+                    value={head.ms ? 'ms' : 's'}
+                    onChange={(v) => onHeadChange({ kind: 'timestamp', ms: v === 'ms' })}
+                  />
+                </div>
+              ) : head.kind === 'row' || head.kind === 'rownext' ? (
                 <input
                   type="text"
-                  value={head.kind === 'row' || head.kind === 'rownext' ? head.column : head.name}
+                  value={head.column}
                   // Same charset the typing grammar chips ([A-Za-z0-9_]) — anything else would
                   // produce a token the editor immediately un-chips on round-trip.
+                  onChange={(e) => onHeadChange({ kind: head.kind, column: e.target.value.replace(/[^A-Za-z0-9_]/g, '') })}
+                  autoFocus
+                  spellCheck={false}
+                  placeholder="column"
+                  className="h-8 w-full px-2 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid placeholder:text-text-disabled"
+                />
+              ) : head.kind === 'var' || head.kind === 'clip' || head.kind === 'env' ? (
+                <input
+                  type="text"
+                  value={head.name}
+                  // The same charset, plus the parentheses an environment variable name can carry
+                  // (ProgramFiles(x86)) — EnvTokenRegex's charset, so the token round-trips.
                   onChange={(e) => {
-                    const clean = e.target.value.replace(/[^A-Za-z0-9_]/g, '');
-                    onHeadChange(
-                      head.kind === 'row' || head.kind === 'rownext'
-                        ? { kind: head.kind, column: clean }
-                        : { kind: head.kind, name: clean },
-                    );
+                    const clean = e.target.value.replace(head.kind === 'env' ? /[^A-Za-z0-9_()]/g : /[^A-Za-z0-9_]/g, '');
+                    onHeadChange({ kind: head.kind, name: clean });
                   }}
                   autoFocus
                   spellCheck={false}
-                  placeholder={head.kind === 'row' || head.kind === 'rownext' ? 'column' : 'name'}
+                  placeholder={head.kind === 'env' ? 'USERNAME' : 'name'}
                   className="h-8 w-full px-2 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid placeholder:text-text-disabled"
                 />
-              )}
+              ) : null /* the head-only kinds never reach this card (HEAD_ONLY above) */}
               <div className="text-[11px] text-text-tertiary mt-1 leading-snug">
                 {IDENTITY_HINTS[head.kind]}
               </div>

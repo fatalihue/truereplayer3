@@ -540,6 +540,14 @@ namespace TrueReplayer.Services
             (p => p.Actions.Any(UsesCounterChainToken),
                 new Version(2, 37, 0), "Modifiers on counter/loop/datarow tokens"),
 
+            // Generated and machine values — {uuid} (a fresh identifier), {timestamp} (Unix time,
+            // `:ms` for milliseconds) and {env:NAME} (an environment variable), each taking the
+            // modifier chain. An older build has no resolver for any of them and types the token
+            // verbatim (the literal-token class). Introduced after 2.36.0 — bump at release if the
+            // release number differs.
+            (p => p.Actions.Any(UsesMachineValueToken),
+                new Version(2, 37, 0), "UUID/timestamp/env tokens"),
+
             // CopyToSlot Clear mode — an older build drops the unknown SlotMode property and
             // runs the row in CAPTURE mode, grabbing the current selection into the slot
             // instead of emptying it (silent semantic flip, and it fires a synthetic Ctrl+C
@@ -784,13 +792,14 @@ namespace TrueReplayer.Services
         }
 
         // ── Modifier chains, wherever they can appear ───────────────────────────────────────
-        // Every token head the shared applier serves. Groups 1-5 are the chains of {clipboard},
-        // {row|rownext:col}, {var|clip:name}, {winclip[:N]} and {counter|loop|datarow}; at most one
-        // is set per match. Each joined the list when its head gained a chain — a pin that only knew
-        // the first two would miss "{clip:pedido:line:@i}" entirely, and one that stopped at four
-        // would miss "{counter:line:@i}".
+        // Every token head the shared applier serves. Groups 1-7 are the chains of {clipboard},
+        // {row|rownext:col}, {var|clip:name}, {winclip[:N]}, {counter|loop|datarow}, {uuid|timestamp}
+        // (a leading `ms` unit rides inside the timestamp chain — the walk steps over it as an
+        // unknown name) and {env:name}; at most one is set per match. Each joined the list when its
+        // head gained a chain — a pin that only knew the first two would miss "{clip:pedido:line:@i}"
+        // entirely, and one that stopped at four would miss "{counter:line:@i}".
         private static readonly Regex ModifierChainHeadRegex = new(
-            @"\{(?:clipboard(?::([^}]*))?|(?:row|rownext):[A-Za-z0-9_]+(?::([^}]*))?|(?:var|clip):[A-Za-z0-9_]+(?::([^}]*))?|winclip(?::\d+)?(?::([^}]*))?|(?:counter|loop|datarow)(?::([^}]*))?)\}",
+            @"\{(?:clipboard(?::([^}]*))?|(?:row|rownext):[A-Za-z0-9_]+(?::([^}]*))?|(?:var|clip):[A-Za-z0-9_]+(?::([^}]*))?|winclip(?::\d+)?(?::([^}]*))?|(?:counter|loop|datarow)(?::([^}]*))?|(?:uuid|timestamp)(?::([^}]*))?|env:[A-Za-z0-9_()]+(?::([^}]*))?)\}",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         // The chain of every chain-bearing token in `text`, so each detector below states WHICH
@@ -799,7 +808,7 @@ namespace TrueReplayer.Services
         {
             foreach (Match m in ModifierChainHeadRegex.Matches(text))
             {
-                for (int g = 1; g <= 5; g++)
+                for (int g = 1; g <= 7; g++)
                 {
                     if (!m.Groups[g].Success) continue;
                     yield return m.Groups[g].Value;
@@ -1095,6 +1104,27 @@ namespace TrueReplayer.Services
 
         private static bool ContainsCounterChainToken(string? text) =>
             !string.IsNullOrEmpty(text) && text.IndexOf('{') >= 0 && CounterChainTokenRegex.IsMatch(text);
+
+        // ── {uuid} / {timestamp} / {env:NAME} ──────────────────────────────────────────────
+        // Mirrors ActionExecution.UuidTokenRegex, TimestampTokenRegex (unit and chain folded into
+        // one optional argument — the pin asks "is this the token", not which unit) and EnvTokenRegex.
+        private static readonly Regex MachineValueTokenRegex = new(
+            @"\{(?:uuid|timestamp)(?::[^}]+)?\}|\{env:[A-Za-z0-9_()]+(?::[^}]+)?\}",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static bool UsesMachineValueToken(ActionItem a) =>
+            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsMachineValueToken(a.Key)) ||
+            ContainsMachineValueToken(a.KeyHtml) ||
+            ContainsMachineValueToken(a.KeyMarkdown) ||
+            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsMachineValueToken(a.BrowserText)) ||
+            ContainsMachineValueToken(a.VariableValue) ||
+            ContainsMachineValueToken(a.ConditionOperand) ||
+            ContainsMachineValueToken(a.FilePath) ||
+            ContainsMachineValueToken(a.LaunchPath) ||
+            ContainsMachineValueToken(a.LaunchArgs);
+
+        private static bool ContainsMachineValueToken(string? text) =>
+            !string.IsNullOrEmpty(text) && text.IndexOf('{') >= 0 && MachineValueTokenRegex.IsMatch(text);
 
         // ── A colon INSIDE a split delimiter, written "::" ──────────────────────────────────
         private static bool UsesEscapedColonDelimiter(ActionItem a) =>

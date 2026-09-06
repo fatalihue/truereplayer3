@@ -10,8 +10,8 @@
 
 export interface PaletteChip {
   label: string;
-  insert?: string;                                       // direct-insert seed (byte-identical to 2.7.x)
-  prompt?: 'var' | 'row' | 'rownext' | 'clip' | 'input'; // opens the name/label prompt instead
+  insert?: string;                                               // direct-insert seed (byte-identical to 2.7.x)
+  prompt?: 'var' | 'row' | 'rownext' | 'clip' | 'input' | 'env'; // opens the name/label prompt instead
 }
 
 // The token a palette chip stands for. Descriptions used to live inline on every chip, one copy
@@ -30,6 +30,16 @@ export const VALUE_CHIPS: PaletteChip[] = [
   // a normalization fixed point survives the load gate as a chip. Click the chip to edit the
   // options one-per-line in its popover.
   { label: 'Pick', insert: '{Pick:a|b|c}' },
+];
+
+// Collapsed: the machine values (2.37.0) are the rare end of the Values row — a Unix time and an
+// identifier for forms and file names, and an environment variable for paths and user names.
+// Env… is a prompt chip like Variable…: the name is the user's, and the prompt's Advanced… goes
+// straight to the chain builder.
+export const MORE_VALUE_CHIPS: PaletteChip[] = [
+  { label: 'Timestamp', insert: '{timestamp}' },
+  { label: 'UUID', insert: '{uuid}' },
+  { label: 'Env…', prompt: 'env' },
 ];
 
 export const KEY_CHIPS: PaletteChip[] = [
@@ -109,7 +119,7 @@ function entries(group: string, chips: PaletteChip[]): CatalogEntry[] {
 // beside "Advanced…" (the chain builder needs its own surface and is not a list entry).
 export const TOKEN_CATALOG: CatalogEntry[] = [
   ...entries('Keys & timing', [...KEY_CHIPS, ...MORE_KEY_CHIPS]),
-  ...entries('Values', VALUE_CHIPS),
+  ...entries('Values', [...VALUE_CHIPS, ...MORE_VALUE_CHIPS]),
   ...entries('Clipboard', [{ label: 'Clipboard', insert: '{clipboard}' }, ...CLIPBOARD_CHIPS, ...MORE_CLIPBOARD_CHIPS]),
   ...entries('Run state', [...RUN_STATE_CHIPS, ...MORE_ROW_CHIPS]),
 ];

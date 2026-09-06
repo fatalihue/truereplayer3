@@ -57,6 +57,11 @@ const REASON_TIP: Record<PendingReason, [string, string]> = {
   ],
   'unknown-column': ['No column by that name in the Data table.', 'Nenhuma coluna com esse nome na tabela de dados.'],
   unset: ['Nothing stored under that name yet.', 'Nada guardado com esse nome ainda.'],
+  generated: ['A fresh identifier at every use — store it in a variable to reuse one.', 'Um identificador novo a cada uso — guarde numa variável para reaproveitar.'],
+  'runtime-env': [
+    'Read from this machine’s environment when the macro runs; the editor cannot see it.',
+    'Lido do ambiente desta máquina quando a macro roda; o editor não enxerga.',
+  ],
 };
 
 const NOTE_TIP: Record<string, [string, string]> = {

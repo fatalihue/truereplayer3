@@ -62,7 +62,9 @@ export type PendingReason =
   | 'runtime-cursor'     // an auto-advancing read whose cursor lives in the run
   | 'unmodeled-chain'    // a chain this builder cannot model, so it will not guess
   | 'unknown-column'     // no such column in the data table
-  | 'unset';             // nothing stored under that name yet
+  | 'unset'              // nothing stored under that name yet
+  | 'generated'          // a fresh identifier every use ({uuid})
+  | 'runtime-env';       // an environment variable — the machine has it, this editor does not
 
 export type PreviewPiece =
   | { kind: 'text'; text: string }
@@ -204,6 +206,17 @@ export function resolveMessagePreview(text: string, src: PreviewSources, now: Da
       case 'datarow':
         push({ kind: 'pending', token, label: 'data row number', reason: 'runtime-datarow' });
         continue;
+      // {uuid} is drawn fresh at every use, like {random}; {env:NAME} lives on the machine, where
+      // a WebView cannot read it. Both stay pending whatever chain they carry. {timestamp} is a
+      // clock and resolves below, through the chain block, like {date}.
+      case 'uuid':
+        push({ kind: 'pending', token, label: 'new UUID', reason: 'generated' });
+        continue;
+      case 'env': {
+        const m = /^env:([^:}]+)/i.exec(token.slice(1, -1));
+        push({ kind: 'pending', token, label: m ? m[1] : token, reason: 'runtime-env' });
+        continue;
+      }
       case 'random':
         push({ kind: 'pending', token, label: `${arg(token)} at random`, reason: 'random' });
         continue;
@@ -324,6 +337,11 @@ export function resolveMessagePreview(text: string, src: PreviewSources, now: Da
         raw = v;
         break;
       }
+      case 'timestamp':
+        // Unix time from the SAME `now` the clock tokens use; ms is the unit the head carries.
+        raw = String(head.ms ? now.getTime() : Math.floor(now.getTime() / 1000));
+        note = 'clock';
+        break;
       default:
         push({ kind: 'pending', token, label: token, reason: 'runtime' });
         continue;

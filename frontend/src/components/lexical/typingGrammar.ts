@@ -38,9 +38,12 @@ export const TOKEN_REGEX_WHOLE = new RegExp(`^${TOKEN_REGEX.source}$`);
 //     PickTokenRegex   \{pick:([^}]+)\}
 //     DateTokenRegex   \{(datetime|date|time)(?::([^}]+))?\}   — an offset and/or a .NET format,
 //                                                                which carries '/', '+', spaces
+//     EnvTokenRegex    \{env:([A-Za-z0-9_()]+)(?::([^}]+))?\}   — the parentheses of
+//                                                                ProgramFiles(x86); the chain after
+//                                                                the name keeps the strict grammar
 //
 // '\n' is excluded only because a Lexical TextNode never holds one (line breaks are nodes).
-const FREE_ARG_TOKEN_REGEX = /\{(?:input:[^}|\n]+(?:\|menu:[^}\n]*)?|pick:[^}\n]+|(?:datetime|date|time):[^}\n]+)\}/i;
+const FREE_ARG_TOKEN_REGEX = /\{(?:input:[^}|\n]+(?:\|menu:[^}\n]*)?|pick:[^}\n]+|(?:datetime|date|time):[^}\n]+|env:[A-Za-z0-9_()]+(?::[a-zA-Z0-9,_-]+)*)\}/i;
 
 export interface TypedToken {
   /** Offset of the '{' in the text. */

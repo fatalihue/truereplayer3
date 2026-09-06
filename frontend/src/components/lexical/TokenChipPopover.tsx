@@ -20,7 +20,7 @@ import {
   type ChainHead,
   type TransformState,
 } from './clipboardModifiers';
-import { NumInput, PopoverHeader, Section } from './popoverAtoms';
+import { NumInput, PopoverHeader, RadioGroup, RadioRow, Section } from './popoverAtoms';
 import { normalizeToken, type TokenScope } from './tokenNormalize';
 import { DEFAULT_DATE_FORMAT, parseDateTokenArgs, resolveDateToken, type DateHead, type DateUnit } from './dateFormat';
 import { tokenTip } from './tokenDescriptions';
@@ -55,7 +55,7 @@ const REPEATABLE_TOKEN_NAMES = new Set([
 // and in the editor's update (what a new value may become).
 const MAX_KEY_REPEAT = 100;
 
-type TokenKind = 'clipboard' | 'delay' | 'repeatable' | 'random' | 'var' | 'rowcol' | 'rownextcol' | 'clip' | 'winclip' | 'input' | 'pick' | 'date' | 'runstate' | 'static';
+type TokenKind = 'clipboard' | 'delay' | 'repeatable' | 'random' | 'var' | 'rowcol' | 'rownextcol' | 'clip' | 'winclip' | 'input' | 'pick' | 'date' | 'runstate' | 'env' | 'timestamp' | 'static';
 
 function getTokenKind(token: string): TokenKind {
   const inner = token.slice(1, -1);
@@ -78,8 +78,12 @@ function getTokenKind(token: string): TokenKind {
   if (name === 'pick') return 'pick';
   // {date} / {time} / {datetime} — an offset and a format (2.37.0).
   if (name === 'date' || name === 'time' || name === 'datetime') return 'date';
-  // {counter} / {loop} / {datarow} — the run counters take the modifier chain (2.37.0).
-  if (name === 'counter' || name === 'loop' || name === 'datarow') return 'runstate';
+  // {counter} / {loop} / {datarow} — the run counters take the modifier chain (2.37.0); {uuid}
+  // is the same head-only shape (a value plus a chain, nothing to name).
+  if (name === 'counter' || name === 'loop' || name === 'datarow' || name === 'uuid') return 'runstate';
+  // {env:NAME} — a name-first head like {var}; {timestamp[:ms]} — a unit and a chain.
+  if (name === 'env') return 'env';
+  if (name === 'timestamp') return 'timestamp';
   if (REPEATABLE_TOKEN_NAMES.has(name)) return 'repeatable';
   return 'static';
 }
@@ -251,7 +255,7 @@ export function TokenChipPopover({
         position: 'fixed',
         ...visibilityStyle,
         zIndex: 100,
-        width: kind === 'clipboard' || kind === 'rowcol' || kind === 'rownextcol' || kind === 'pick' || kind === 'date' || kind === 'runstate' ? 300 : 260,
+        width: kind === 'clipboard' || kind === 'rowcol' || kind === 'rownextcol' || kind === 'pick' || kind === 'date' || kind === 'runstate' || kind === 'timestamp' ? 300 : 260,
         borderColor: 'color-mix(in srgb, var(--color-accent-solid) 35%, transparent)',
         maxHeight: 'calc(100vh - 24px)',
       }}
@@ -283,7 +287,9 @@ export function TokenChipPopover({
         {kind === 'input' && <InputEditor token={token} onChange={updateLive} />}
         {kind === 'pick' && <PickEditor token={token} onChange={updateLive} />}
         {kind === 'date' && <DateEditor token={token} onChange={updateLive} />}
-        {kind === 'runstate' && <RunStateEditor token={token} onChange={updateLive} />}
+        {kind === 'runstate' && <HeadOnlyEditor token={token} onChange={updateLive} />}
+        {kind === 'env' && <NameEditor token={token} tokenName="env" onChange={updateLive} />}
+        {kind === 'timestamp' && <TimestampEditor token={token} onChange={updateLive} />}
         {kind === 'static' && <StaticInfo />}
       </div>
 
@@ -514,24 +520,28 @@ function WinClipEditor({ token, onChange }: { token: string; onChange: (t: strin
   );
 }
 
-// Shared editor for the simple name-bearing tokens: {var:name} (runtime variable)
-// and {clip:name} (clipboard slot). Emits only on real input with a non-empty
-// name — clearing the field never emits a broken `{var:}`, and merely opening
-// then closing the chip never rewrites it (same guard family as DelayEditor).
-// {row:column} gets its own editor below (column + clipboard-style transforms).
+// Shared editor for the simple name-bearing tokens: {var:name} (runtime variable),
+// {clip:name} (clipboard slot) and {env:NAME} (an environment variable of the machine).
+// Emits only on real input with a non-empty name — clearing the field never emits a
+// broken `{var:}`, and merely opening then closing the chip never rewrites it (same guard
+// family as DelayEditor). {row:column} gets its own editor below (column + clipboard-style
+// transforms).
 function NameEditor({
   token,
   tokenName,
   onChange,
 }: {
   token: string;
-  tokenName: 'var' | 'clip';
+  tokenName: 'var' | 'clip' | 'env';
   onChange: (t: string) => void;
 }) {
   const [name, setName] = useState(() => parseNameToken(token, tokenName).name);
   const [state, setState] = useState<TransformState>(() => parseNameToken(token, tokenName).state);
   const [displayToken, setDisplayToken] = useState(() => normalizeToken(token));
-  const label = tokenName === 'var' ? 'Variable name' : 'Slot name';
+  const label = tokenName === 'var' ? 'Variable name' : tokenName === 'clip' ? 'Slot name' : 'Environment variable';
+  // The typing grammar's [A-Za-z0-9_], plus the parentheses an environment variable name can
+  // carry (ProgramFiles(x86)) — EnvTokenRegex's charset, so the token never un-chips on round-trip.
+  const nameFilter = tokenName === 'env' ? /[^A-Za-z0-9_()]/g : /[^A-Za-z0-9_]/g;
 
   // The name used to be "everything after the first ':'", so a {clip:pedido:trim} arrived here as
   // the name "pedido:trim", got its colon stripped by the charset filter, and was committed as
@@ -546,9 +556,9 @@ function NameEditor({
 
   const update = (raw: string) => {
     if (state.unmodeled) return;
-    // Same charset the typing grammar chips ([A-Za-z0-9_]) — anything else
-    // would produce a token the editor immediately un-chips on round-trip.
-    const clean = raw.replace(/[^A-Za-z0-9_]/g, '');
+    // Anything outside the head's charset would produce a token the editor immediately
+    // un-chips on round-trip.
+    const clean = raw.replace(nameFilter, '');
     setName(clean);
     emit(clean, state);
   };
@@ -570,7 +580,7 @@ function NameEditor({
             readOnly={state.unmodeled}
             autoFocus={!state.unmodeled}
             spellCheck={false}
-            placeholder={tokenName === 'var' ? 'name' : '1'}
+            placeholder={tokenName === 'var' ? 'name' : tokenName === 'clip' ? '1' : 'USERNAME'}
             className={`h-7 w-full px-2 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none placeholder:text-text-disabled ${
               state.unmodeled ? 'opacity-60 cursor-not-allowed' : 'focus:border-accent-solid'
             }`}
@@ -586,7 +596,57 @@ function NameEditor({
         clipReady
         sourceUnknown
         token={displayToken}
-        sourceLabel={tokenName === 'var' ? 'Variable value' : 'Slot text'}
+        sourceLabel={tokenName === 'clip' ? 'Slot text' : 'Variable value'}
+      />
+    </>
+  );
+}
+
+// {timestamp[:ms][:mods]} — Unix time. One identity (the unit) above the shared ladder, and a
+// source the editor DOES know: the clock, read once when the chip opens, the way the date chip
+// says "Resolves now to". Same emit discipline as the other chain editors.
+function TimestampEditor({ token, onChange }: { token: string; onChange: (t: string) => void }) {
+  const parsed = parseChainToken(token);
+  const [ms, setMs] = useState(() => (parsed?.head.kind === 'timestamp' ? parsed.head.ms : false));
+  const [state, setState] = useState<TransformState>(() => parsed?.state ?? { ...DEFAULT_TRANSFORM });
+  const [displayToken, setDisplayToken] = useState(() => normalizeToken(token));
+  const [openedAt] = useState(() => Date.now());
+  const nowValue = ms ? String(openedAt) : String(Math.floor(openedAt / 1000));
+
+  const emit = (unitMs: boolean, s: TransformState) => {
+    if (s.unmodeled) return;
+    const t = buildChainToken({ kind: 'timestamp', ms: unitMs }, s);
+    setDisplayToken(t);
+    onChange(t);
+  };
+  const setUnit = (unitMs: boolean) => {
+    if (state.unmodeled) return;
+    setMs(unitMs);
+    emit(unitMs, state);
+  };
+  const updateState: React.Dispatch<React.SetStateAction<TransformState>> = (action) => {
+    const next = typeof action === 'function' ? action(state) : action;
+    setState(next);
+    emit(ms, next);
+  };
+
+  return (
+    <>
+      <Section label="Unit">
+        <RadioGroup label="Unit">
+          <div className="grid grid-cols-2 gap-x-3">
+            <RadioRow checked={!ms} onChange={() => setUnit(false)} label="Seconds" />
+            <RadioRow checked={ms} onChange={() => setUnit(true)} label="Milliseconds" />
+          </div>
+        </RadioGroup>
+      </Section>
+      <ClipboardModifierBody
+        state={state}
+        setState={updateState}
+        clipRaw={nowValue}
+        clipReady
+        token={displayToken}
+        sourceLabel="Now"
       />
     </>
   );
@@ -922,12 +982,12 @@ function DateEditor({ token, onChange }: { token: string; onChange: (t: string) 
   );
 }
 
-// {counter} / {loop} / {datarow} with a chain ({counter:pad:3}). No identity to edit — the head IS
-// the value — so this is the shared body alone, with the source marked unknown: a run counter
-// exists only inside a run, and previewing a chain against "" would claim it yields nothing. Same
-// emit discipline as ClipboardEditor: only on real input, never for a chain the parser could not
-// represent.
-function RunStateEditor({ token, onChange }: { token: string; onChange: (t: string) => void }) {
+// {counter} / {loop} / {datarow} / {uuid} with a chain ({counter:pad:3}). No identity to edit —
+// the head IS the value — so this is the shared body alone, with the source marked unknown: a run
+// counter exists only inside a run and an id is drawn there, and previewing a chain against ""
+// would claim it yields nothing. Same emit discipline as ClipboardEditor: only on real input,
+// never for a chain the parser could not represent.
+function HeadOnlyEditor({ token, onChange }: { token: string; onChange: (t: string) => void }) {
   const parsed = parseChainToken(token);
   const head: ChainHead = parsed?.head ?? { kind: 'counter' };
   const [state, setState] = useState<TransformState>(() => parsed?.state ?? { ...DEFAULT_TRANSFORM });

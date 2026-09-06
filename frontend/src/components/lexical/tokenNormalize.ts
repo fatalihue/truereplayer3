@@ -24,6 +24,8 @@ const COMPOUND_NAMES: Record<string, string> = {
   winclip: 'WinClip',
   rownext: 'RowNext',
   datarow: 'DataRow',
+  // An initialism, not a word: "Uuid" reads as a typo on a chip.
+  uuid: 'UUID',
 };
 
 // {input:...} is the one token whose WHOLE argument is free text — the Ask-Input label plus its
@@ -43,7 +45,9 @@ const COMPOUND_NAMES: Record<string, string> = {
 const VERBATIM_ARG_NAMES = new Set(['input', 'pick', 'date', 'time', 'datetime']);
 
 // Heads whose first argument is a user-chosen name/column, followed by an optional modifier chain.
-const NAME_FIRST_ARG_NAMES = new Set(['row', 'rownext', 'var', 'clip']);
+// {env:NAME} joined in 2.37.0: Windows compares the name case-insensitively, so folding it would
+// only rewrite what the user typed.
+const NAME_FIRST_ARG_NAMES = new Set(['row', 'rownext', 'var', 'clip', 'env']);
 
 export function normalizeToken(token: string): string {
   if (token.length < 2 || token[0] !== '{' || token[token.length - 1] !== '}') {
@@ -96,8 +100,8 @@ export function normalizeToken(token: string): string {
 // {delay:N} branch of ParseSendTextSegments; ClipboardTokenRegex; WinClipTokenRegex;
 // RandomTokenRegex; InputTokenRegex; VarTokenRegex; RowDataTokenRegex;
 // RowNextTokenRegex; ClipSlotTokenRegex; DateTokenRegex; RunStateChainTokenRegex
-// ({counter}/{loop}/{datarow} with a chain); and the literal {row} replace in
-// ResolveRunStateTokens.
+// ({counter}/{loop}/{datarow} with a chain); UuidTokenRegex / TimestampTokenRegex /
+// EnvTokenRegex (ResolveMachineTokens); and the literal {row} replace in ResolveRunStateTokens.
 //
 // ARGUMENT SHAPES — the walker below is a NAME test AND an argument test, both the engine's.
 // The name gate is the whitelist right here; the argument gate is engineAcceptsToken further
@@ -167,6 +171,12 @@ export const KNOWN_TOKEN_NAME_LIST = [
   // Random text choice: {pick:a|b|c} draws one '|'-separated option per use. Options are
   // free text (VERBATIM_ARG_NAMES) and chip through the same free-argument branch as {input}.
   'pick',
+  // Generated and machine values (2.37.0, ResolveMachineTokens): {uuid[:mods]} is a fresh
+  // identifier per occurrence, {timestamp[:ms][:mods]} is Unix time, {env:NAME[:mods]} an
+  // environment variable of the machine. All three take the modifier chain.
+  'uuid',
+  'timestamp',
+  'env',
 ] as const;
 
 /** Every token NAME the engine resolves, as a union — the key type of the description table
@@ -363,6 +373,13 @@ const TOKEN_ARG_GATE: Record<string, RegExp> = {
   pick: /^pick:[^}]+$/i,
   // InputTokenRegex: \{input:([^}|]+)(?:\|menu:([^}]*))?\}
   input: /^input:[^}|]+(\|menu:[^}]*)?$/i,
+  // UuidTokenRegex \{uuid(?::([^}]+))?\} and TimestampTokenRegex \{timestamp(?::(ms))?(?::([^}]+))?\}
+  // — the unit and the chain fold into one optional argument here; EnvTokenRegex
+  // \{env:([A-Za-z0-9_()]+)(?::([^}]+))?\} — the {var} name charset plus parentheses
+  // (ProgramFiles(x86)).
+  uuid: /^uuid(:[^}]+)?$/i,
+  timestamp: /^timestamp(:[^}]+)?$/i,
+  env: /^env:[A-Za-z0-9_()]+(:[^}]+)?$/i,
 };
 
 /**

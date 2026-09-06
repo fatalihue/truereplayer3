@@ -19,7 +19,7 @@ import { normalizeToken, parseSendTextSegments, richFlavorSurvives, splitTokenSe
 import { tokenTip } from './lexical/tokenDescriptions';
 import {
   type PaletteChip, paletteToken,
-  VALUE_CHIPS, KEY_CHIPS, MORE_KEY_CHIPS, CLIPBOARD_CHIPS, MORE_CLIPBOARD_CHIPS, RUN_STATE_CHIPS, MORE_ROW_CHIPS,
+  VALUE_CHIPS, MORE_VALUE_CHIPS, KEY_CHIPS, MORE_KEY_CHIPS, CLIPBOARD_CHIPS, MORE_CLIPBOARD_CHIPS, RUN_STATE_CHIPS, MORE_ROW_CHIPS,
 } from './lexical/tokenCatalog';
 import { PopoverHeader, Section } from './lexical/popoverAtoms';
 import { FieldError } from './common/FieldError';
@@ -96,8 +96,8 @@ const MORE_OPEN_KEY = 'tr-sendtext-more';
 
 /** The three palette disclosures. One key, one JSON blob — three keys would be three writes
  *  per toggle for state that is always read together. */
-type MoreOpen = { keys: boolean; clipboard: boolean; rows: boolean };
-const MORE_OPEN_DEFAULT: MoreOpen = { keys: false, clipboard: false, rows: false };
+type MoreOpen = { keys: boolean; values: boolean; clipboard: boolean; rows: boolean };
+const MORE_OPEN_DEFAULT: MoreOpen = { keys: false, values: false, clipboard: false, rows: false };
 
 function loadMoreOpen(): MoreOpen {
   try {
@@ -111,6 +111,7 @@ function loadMoreOpen(): MoreOpen {
     // `=== true`, not truthiness: a stored "yes"/1 must read as closed, not as open.
     return {
       keys: parsed.keys === true,
+      values: parsed.values === true,
       clipboard: parsed.clipboard === true,
       rows: parsed.rows === true,
     };
@@ -284,7 +285,7 @@ function NamePromptPopover({
   onAdvanced,
   onClose,
 }: {
-  kind: 'var' | 'row' | 'rownext' | 'clip' | 'input';
+  kind: 'var' | 'row' | 'rownext' | 'clip' | 'input' | 'env';
   anchor: HTMLElement;
   onInsert: (token: string) => void;
   /** Skip the bare token and go straight to the chain builder with this head. */
@@ -366,7 +367,7 @@ function NamePromptPopover({
   const advanced = () => {
     const n = name.trim();
     if (!n || !onAdvanced) return;
-    onAdvanced(kind === 'row' || kind === 'rownext' ? { kind, column: n } : { kind: kind as 'var' | 'clip', name: n });
+    onAdvanced(kind === 'row' || kind === 'rownext' ? { kind, column: n } : { kind: kind as 'var' | 'clip' | 'env', name: n });
     onClose();
   };
 
@@ -385,7 +386,9 @@ function NamePromptPopover({
     ? 'Click the chip afterwards to add dropdown options.'
     : kind === 'clip'
       ? 'The capture hotkey fills slots 1–9.'
-      : '';
+      : kind === 'env'
+        ? 'Read from this machine when the macro runs — USERNAME, USERPROFILE, TEMP…'
+        : '';
 
   return ReactDOM.createPortal(
     <div
@@ -398,20 +401,21 @@ function NamePromptPopover({
     >
       {/* Same skeleton as TokenChipPopover: header (wand · token · ✕) → Section → footer. */}
       <PopoverHeader token={headerToken} description={description} onClose={onClose} />
-      <Section label={kind === 'var' ? 'Variable name' : kind === 'input' ? 'Prompt label' : kind === 'clip' ? 'Slot name' : 'Data column'}>
+      <Section label={kind === 'var' ? 'Variable name' : kind === 'input' ? 'Prompt label' : kind === 'clip' ? 'Slot name' : kind === 'env' ? 'Environment variable' : 'Data column'}>
         <div className="py-1">
           <input
             ref={inputRef}
             type="text"
             value={name}
             // Input labels allow spaces (only the token-breaking { } | are stripped); var/row
-            // names are the tight [A-Za-z0-9_] the typing grammar chips.
-            onChange={(e) => setName(e.target.value.replace(kind === 'input' ? /[{}|]/g : /[^A-Za-z0-9_]/g, ''))}
+            // names are the tight [A-Za-z0-9_] the typing grammar chips; an environment variable
+            // name adds the parentheses of ProgramFiles(x86) (EnvTokenRegex's charset).
+            onChange={(e) => setName(e.target.value.replace(kind === 'input' ? /[{}|]/g : kind === 'env' ? /[^A-Za-z0-9_()]/g : /[^A-Za-z0-9_]/g, ''))}
             onKeyDown={(e) => {
               if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); commit(); }
             }}
             spellCheck={false}
-            placeholder={kind === 'var' ? 'name' : kind === 'input' ? 'What to ask' : kind === 'clip' ? '1' : 'column'}
+            placeholder={kind === 'var' ? 'name' : kind === 'input' ? 'What to ask' : kind === 'clip' ? '1' : kind === 'env' ? 'USERNAME' : 'column'}
             // h-7 like every input in the chip popovers — the popover scale; h-8 is the surface's.
             className={`h-7 w-full px-2 text-xs bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid placeholder:text-text-disabled ${kind === 'input' ? '' : 'font-mono'}`}
           />
@@ -501,7 +505,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
   // byte-identical for hand-typed edge cases, so open+Apply must not rewrite.
   const [clipDirty, setClipDirty] = useState(false);
   // {Variable…}/{Row column…} name prompt.
-  const [namePrompt, setNamePrompt] = useState<{ kind: 'var' | 'row' | 'rownext' | 'clip' | 'input'; anchor: HTMLElement } | null>(null);
+  const [namePrompt, setNamePrompt] = useState<{ kind: 'var' | 'row' | 'rownext' | 'clip' | 'input' | 'env'; anchor: HTMLElement } | null>(null);
   const lexicalApiRef = useRef<LexicalEditorHandle | null>(null);
   // Unsaved-work gate. Rendered as a SIBLING of DialogShell (see the end of this file) and
   // reached ONLY through DialogShell.canClose — never through onClose, which the shell calls
@@ -1199,9 +1203,15 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                 )}
 
                 {sectionLabel('Values')}
-                <div className="flex flex-wrap gap-1 px-3 pb-2">
+                <div className="flex flex-wrap gap-1 px-3 pb-1">
                   {VALUE_CHIPS.map((c) => renderChip(c))}
                 </div>
+                {moreRow('More values', moreOpen.values, () => toggleMore('values'))}
+                {moreOpen.values && (
+                  <div className="flex flex-wrap gap-1 px-3 pb-2">
+                    {MORE_VALUE_CHIPS.map((c) => renderChip(c))}
+                  </div>
+                )}
 
                 {sectionLabel('Clipboard')}
                 <div className="flex flex-wrap gap-1 px-3 pb-1">

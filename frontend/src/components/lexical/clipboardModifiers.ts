@@ -745,12 +745,16 @@ export function parseRowToken(token: string): { column: string; state: Transform
 // {var:name[:mods]} and {clip:name[:mods]} — the same modifier tail as the row tokens, on a head
 // whose first argument is a user-chosen NAME. No mods → plain {var:name}, byte-identical to what
 // NamePromptPopover inserts.
-export function buildNameToken(head: 'var' | 'clip', name: string, s: TransformState): string {
+// The three name-first heads whose name is a free identifier: a runtime variable, a clipboard
+// slot, or (2.37.0) an environment variable of the machine.
+export type NameHeadKind = 'var' | 'clip' | 'env';
+
+export function buildNameToken(head: NameHeadKind, name: string, s: TransformState): string {
   return '{' + [head, name, ...buildModifierParts(s)].join(':') + '}';
 }
 
-export function parseNameToken(token: string, head: 'var' | 'clip'): { name: string; state: TransformState } {
-  const re = head === 'var' ? /^\{var:/i : /^\{clip:/i;
+export function parseNameToken(token: string, head: NameHeadKind): { name: string; state: TransformState } {
+  const re = head === 'var' ? /^\{var:/i : head === 'clip' ? /^\{clip:/i : /^\{env:/i;
   if (!re.test(token)) return { name: '', state: { ...DEFAULT_TRANSFORM } };
   const parts = token.slice(1, -1).split(':');
   const name = parts[1] ?? '';
@@ -802,10 +806,16 @@ export type ChainHead =
   // value, so the builder has nothing to fill in above the ladder.
   | { kind: 'counter' }
   | { kind: 'loop' }
-  | { kind: 'datarow' };
+  | { kind: 'datarow' }
+  // Generated and machine values (2.37.0). {uuid} is head-only like the counters; {timestamp}
+  // carries ONE identity, its unit ({timestamp:ms}); {env:NAME} is a name-first head like {var}.
+  | { kind: 'uuid' }
+  | { kind: 'timestamp'; ms: boolean }
+  | { kind: 'env'; name: string };
 
 export type ChainHeadKind = ChainHead['kind'];
-export type CounterHeadKind = 'counter' | 'loop' | 'datarow';
+/** The heads with no identity above the ladder: the token is the name plus the chain. */
+export type HeadOnlyKind = 'counter' | 'loop' | 'datarow' | 'uuid';
 
 /** The head kind of a chain-bearing token, or null for anything else ({enter}, {date}, …). */
 export function chainHeadKind(token: string): ChainHeadKind | null {
@@ -823,11 +833,13 @@ export function chainHeadKind(token: string): ChainHeadKind | null {
     case 'rownext':
     case 'var':
     case 'clip':
+    case 'env':
       return inner.includes(':') ? name as ChainHeadKind : null;
     case 'winclip': return 'winclip';
     // The counters need no argument to be a token, so even a bare {counter} routes to the
-    // builder — a chip the user can give a chain to, with nothing to fill in first.
-    case 'counter': case 'loop': case 'datarow': return name as ChainHeadKind;
+    // builder — a chip the user can give a chain to, with nothing to fill in first. {uuid} and
+    // {timestamp} are the same shape.
+    case 'counter': case 'loop': case 'datarow': case 'uuid': case 'timestamp': return name as ChainHeadKind;
     default: return null;
   }
 }
@@ -847,7 +859,8 @@ export function parseChainToken(token: string): { head: ChainHead; state: Transf
       return { head: { kind, column: r.column }, state: r.state };
     }
     case 'var':
-    case 'clip': {
+    case 'clip':
+    case 'env': {
       const r = parseNameToken(token, kind);
       return { head: { kind, name: r.name }, state: r.state };
     }
@@ -858,7 +871,12 @@ export function parseChainToken(token: string): { head: ChainHead; state: Transf
     case 'counter':
     case 'loop':
     case 'datarow':
-      return { head: { kind }, state: parseCounterToken(token, kind) };
+    case 'uuid':
+      return { head: { kind }, state: parseHeadOnlyToken(token, kind) };
+    case 'timestamp': {
+      const r = parseTimestampToken(token);
+      return { head: { kind, ms: r.ms }, state: r.state };
+    }
   }
 }
 
@@ -869,29 +887,47 @@ export function buildChainToken(head: ChainHead, s: TransformState): string {
     case 'rownext': return buildRowNextToken(head.column, s);
     case 'var': return buildNameToken('var', head.name, s);
     case 'clip': return buildNameToken('clip', head.name, s);
+    case 'env': return buildNameToken('env', head.name, s);
     case 'winclip': return buildWinClipToken(head.index, s);
-    case 'counter': case 'loop': case 'datarow': return buildCounterToken(head.kind, s);
+    case 'counter': case 'loop': case 'datarow': case 'uuid': return buildHeadOnlyToken(head.kind, s);
+    case 'timestamp': return buildTimestampToken(head.ms, s);
   }
 }
 
-// {counter[:mods]} / {loop[:mods]} / {datarow[:mods]} — the run counters, whose head is the whole
-// identity. The same tail as every other head; no 'next' (there is nothing to walk).
-export function buildCounterToken(kind: CounterHeadKind, s: TransformState): string {
+// {counter[:mods]} / {loop[:mods]} / {datarow[:mods]} / {uuid[:mods]} — the heads whose name is
+// the whole identity. The same tail as every other head; no 'next' (there is nothing to walk).
+export function buildHeadOnlyToken(kind: HeadOnlyKind, s: TransformState): string {
   return '{' + [kind, ...buildModifierParts(s)].join(':') + '}';
 }
 
-export function parseCounterToken(token: string, kind: CounterHeadKind): TransformState {
+export function parseHeadOnlyToken(token: string, kind: HeadOnlyKind): TransformState {
   const parts = token.slice(1, -1).split(':');
   if (parts[0].toLowerCase() !== kind) return { ...DEFAULT_TRANSFORM };
   const state = parseModifierParts(parts, 1);
-  return assertRebuildable(state, token, buildCounterToken(kind, state));
+  return assertRebuildable(state, token, buildHeadOnlyToken(kind, state));
+}
+
+// {timestamp[:ms][:mods]} — Unix time. The unit is the FIRST segment when it is the word `ms`
+// (TimestampTokenRegex reads it the same way); the builder writes it only for milliseconds, so
+// seconds is the bare head. A hand-typed `{timestamp:s}` is a chain whose first name the engine
+// skips — seconds either way — and parses read-only here, since this builder never writes it.
+export function buildTimestampToken(ms: boolean, s: TransformState): string {
+  return '{' + ['timestamp', ...(ms ? ['ms'] : []), ...buildModifierParts(s)].join(':') + '}';
+}
+
+export function parseTimestampToken(token: string): { ms: boolean; state: TransformState } {
+  const parts = token.slice(1, -1).split(':');
+  if (parts[0].toLowerCase() !== 'timestamp') return { ms: false, state: { ...DEFAULT_TRANSFORM } };
+  const ms = parts[1]?.toLowerCase() === 'ms';
+  const state = parseModifierParts(parts, ms ? 2 : 1);
+  return { ms, state: assertRebuildable(state, token, buildTimestampToken(ms, state)) };
 }
 
 /** Whether the head's identity is filled in — an empty column or name would build a broken token. */
 export function chainHeadIsUsable(head: ChainHead): boolean {
   switch (head.kind) {
     case 'row': case 'rownext': return head.column.length > 0;
-    case 'var': case 'clip': return head.name.length > 0;
+    case 'var': case 'clip': case 'env': return head.name.length > 0;
     default: return true;
   }
 }
