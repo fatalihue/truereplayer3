@@ -1773,6 +1773,14 @@ namespace TrueReplayer.Services
         // the caller's next iteration re-stamps it before any of its own tokens resolve, so no
         // save/restore is needed around the recursion.
         private int _currentActionRow;
+        // {loop}: iteration of the innermost While / For Each Data Row block enclosing the executing
+        // action — the run repeat (_currentIteration) when no block does. Stamped per action next to
+        // _currentActionRow, from the block map and the live loop counters of the executing list.
+        private int _currentLoopIteration;
+        // {datarow}: 1-based number of the data row the current row context came from — the batch
+        // iteration, the Model-B cursor row, the ForEachRow cursor or the sub-profile's row. 0 = no
+        // row context (resolves empty). Saved and restored with the data context (DataCtxSnapshot).
+        private int _currentDataRow;
         // {rownext:column} source — a run-local, per-column cursor. The Nth {rownext:col} resolved
         // in a run reads the Nth row of that column (0-based here), advancing on EACH resolution
         // across all actions in the run. Keyed by lowercased column name. UNLIKE _rowCursors /
@@ -2430,6 +2438,8 @@ namespace TrueReplayer.Services
                 _pendingTokenKeyDowns.Clear();
                 _currentIteration = 0;
                 _currentActionRow = 0;
+                _currentLoopIteration = 0;
+                _currentDataRow = 0;
                 _rowNextCursors.Clear();   // {rownext:col} — restart the per-column walk each run
                 _currentRowData = null;
                 _rowFaulted = false;
@@ -2452,6 +2462,7 @@ namespace TrueReplayer.Services
                 // iteration) so an inner loop repeats the SAME row — "each run = one row".
                 // Batch mode (_dataLoopOver) leaves this null and stamps per-iteration below.
                 IReadOnlyDictionary<string, string>? cursorRowData = null;
+                int cursorRow = 0;   // {datarow} under Model B: the cursor row, 1-based
                 int lapCompletedRows = 0;
                 if (!_dataLoopOver && _dataTable != null && (_dataTable.Rows?.Count ?? 0) > 0)
                 {
@@ -2459,6 +2470,7 @@ namespace TrueReplayer.Services
                     int rowN = _dataTable.Rows!.Count;
                     int cur = RunCursorService.TryGetRow(rowKey, out var cv) ? ((cv % rowN) + rowN) % rowN : 0;
                     cursorRowData = BuildRowDict(_dataTable, cur);
+                    cursorRow = cur + 1;
                     // ADVANCE HAPPENS HERE, at the TOP of the run — before a single action has
                     // executed. So one hotkey press consumes exactly one row no matter what
                     // follows, including a run the user Stops and a run that dies on its first
@@ -2501,6 +2513,8 @@ namespace TrueReplayer.Services
                         _currentRowData = (_dataLoopOver && _dataTable != null && iteration - 1 < (_dataTable.Rows?.Count ?? 0))
                             ? BuildRowDict(_dataTable, iteration - 1)
                             : cursorRowData;
+                        // {datarow}: the same choice as a NUMBER — the batch iteration, or the cursor row.
+                        _currentDataRow = _currentRowData == null ? 0 : (_dataLoopOver ? iteration : cursorRow);
                         _rowFaulted = false;
                         _rowFaultReason = null;
 
@@ -2925,6 +2939,20 @@ namespace TrueReplayer.Services
             || (action.ConditionTimeout > 0
                 && string.Equals(action.ActionType, "Assert", StringComparison.OrdinalIgnoreCase));
 
+        /// <summary>
+        /// The innermost loop opener (While / ForEachRow row index) whose block encloses
+        /// <paramref name="idx"/>, or -1. Innermost = the enclosing opener with the highest index:
+        /// blocks nest, so of two openers both before idx with EndLoops both past it, the later
+        /// one opened inside the earlier. Pure, so the {loop} stamp can be proven head-lessly.
+        /// </summary>
+        internal static int InnermostEnclosingLoop(int idx, IReadOnlyDictionary<int, int> endLoopOf)
+        {
+            int best = -1;
+            foreach (var (open, end) in endLoopOf)
+                if (open < idx && idx < end && open > best) best = open;
+            return best;
+        }
+
         // One live For-Each-Data-Row activation: where the cursor is, what data context to
         // restore on exit, and the skip tally for the end-of-block summary.
         private sealed class ForEachFrame
@@ -2945,6 +2973,7 @@ namespace TrueReplayer.Services
             public Models.ProfileDataTable? Table { get; init; }
             public bool LoopOver { get; init; }
             public IReadOnlyDictionary<string, string>? RowData { get; init; }
+            public int DataRow { get; init; }                                // {datarow} of that row context
             public Dictionary<string, int>? RowNextCursors { get; init; }   // null = leave untouched
             public bool SoftOverride { get; init; }
         }
@@ -2954,6 +2983,7 @@ namespace TrueReplayer.Services
             Table = _dataTable,
             LoopOver = _dataLoopOver,
             RowData = _currentRowData,
+            DataRow = _currentDataRow,
             // The sub-call swaps in a fresh {rownext} cursor dict (it walks the SUB's
             // table); the inline ForEachRow keeps the ambient one (same table, same walk).
             RowNextCursors = swapRowNextCursors ? _rowNextCursors : null,
@@ -2965,6 +2995,7 @@ namespace TrueReplayer.Services
             _dataTable = s.Table;
             _dataLoopOver = s.LoopOver;
             _currentRowData = s.RowData;
+            _currentDataRow = s.DataRow;
             if (s.RowNextCursors != null) _rowNextCursors = s.RowNextCursors;
             _softFaultOverride = s.SoftOverride;
             PushVariablesSnapshot();   // live pane: back on the caller's row
@@ -3038,6 +3069,19 @@ namespace TrueReplayer.Services
                 if (fe.Skipped > 0 && (!token.IsCancellationRequested || _authoredStop))
                     OnReplayError?.Invoke($"For Each Data Row: {fe.Skipped} row(s) skipped after errors"
                         + (fe.FirstReason != null ? $" — first: {fe.FirstReason}" : ""));
+            }
+
+            // {loop}: the iteration of the innermost While / ForEachRow block enclosing row idx —
+            // the most recently opened one whose EndLoop lies past it — read from the same live
+            // counters the blocks keep (loopIterations is done+1 once a body runs; fe.Cursor is
+            // 1-based once the row is stamped). No enclosing block: the run repeat, so {loop}
+            // reads as "the loop I am in" at every depth, the outermost being the profile's own.
+            int InnermostLoopIteration(int idx)
+            {
+                int opener = InnermostEnclosingLoop(idx, map.EndLoopOf);
+                if (opener < 0) return _currentIteration;
+                if (feState.TryGetValue(opener, out var frame)) return frame.Cursor;
+                return loopIterations.GetValueOrDefault(opener);
             }
 
             // A skip-absorb reentry jumps from deep inside the block back to the opener,
@@ -3615,6 +3659,7 @@ namespace TrueReplayer.Services
                     }
                     _currentRowData = BuildRowDict(_dataTable!, fe.Cursor);
                     fe.Cursor++;   // advanced at STAMP time — a skip-absorb reentry is already "next row"
+                    _currentDataRow = fe.Cursor;   // {datarow}: 1-based once advanced
                     PushVariablesSnapshot();
                     nextTickMs = sw.ElapsedMilliseconds;   // fresh row, fresh schedule
                     continue;
@@ -3642,6 +3687,7 @@ namespace TrueReplayer.Services
                 else
                     nextTickMs = sw.ElapsedMilliseconds;
                 _currentActionRow = i + 1; // {row} token source (1-based grid row)
+                _currentLoopIteration = InnermostLoopIteration(i);   // {loop} token source
                 dispatcherQueue.TryEnqueue(() => OnActionExecuting?.Invoke(action));
                 InputHookManager.IsReplayingAction = true;
 
@@ -4463,6 +4509,7 @@ namespace TrueReplayer.Services
                 for (int i = 0; i < rowCount && !token.IsCancellationRequested; i++)
                 {
                     _currentRowData = BuildRowDict(subTable, i);
+                    _currentDataRow = i + 1;   // {datarow} counts the SUB's own table
                     PushVariablesSnapshot();   // live pane: show which row {row:col} resolves from (throttled)
                     _rowFaulted = false;
                     _rowFaultReason = null;
@@ -5586,8 +5633,9 @@ namespace TrueReplayer.Services
         // ── Reference arguments: "@name" in an argument position ────────────────────────────
         //
         // A modifier argument is normally a literal ("line:3"). It may instead be a REFERENCE to
-        // run state — "line:@i" takes the index from the variable `i`. Reserved: @counter (the
-        // loop iteration) and @row (the data-loop row number).
+        // run state — "line:@i" takes the index from the variable `i`. Reserved: @counter (the run
+        // repeat), @loop (the innermost While / For Each iteration), @row (the action's own grid
+        // row, like {row}) and @datarow (the data-loop row number).
         //
         // Why a sigil and not the obvious `{clipboard:line:{i}}`: '@' is not '{', '}' or ':', so
         // every token regex, every Split(':') and every positional mirror in this file AND in the
@@ -5643,6 +5691,16 @@ namespace TrueReplayer.Services
             if (string.Equals(name, "row", StringComparison.OrdinalIgnoreCase))
             {
                 value = ctx.Row.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                return true;
+            }
+            if (string.Equals(name, "loop", StringComparison.OrdinalIgnoreCase))
+            {
+                value = ctx.Loop.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                return true;
+            }
+            if (string.Equals(name, "datarow", StringComparison.OrdinalIgnoreCase))
+            {
+                value = ctx.DataRow.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 return true;
             }
             // Lowercased lookup, mirroring how {var:name} reads the same dictionary.
@@ -5829,6 +5887,29 @@ namespace TrueReplayer.Services
             {
                 i = StepModifier(parts, i, out var isRef);
                 if (isRef) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// True when the chain references the loop-block state — "@loop" or "@datarow" in an
+        /// argument position. The pin for the tokens that shipped with those names delegates here,
+        /// on the same walk as <see cref="ChainUsesTokenArg"/>, so a join separator that merely
+        /// spells "@loop" ({clipboard:join:@loop}) is an argument to the pin exactly as it is to
+        /// the applier, and never pins.
+        /// </summary>
+        internal static bool ChainUsesLoopRef(string? modifierChain)
+        {
+            if (string.IsNullOrEmpty(modifierChain)) return false;
+            if (modifierChain.IndexOf(ArgRefSigil[0]) < 0) return false;
+            var parts = modifierChain.Split(':');
+            for (int i = 0; i < parts.Length;)
+            {
+                int at = i;
+                i = StepModifier(parts, at, out var isRef);
+                if (isRef && (string.Equals(parts[at + 1], "@loop", StringComparison.OrdinalIgnoreCase)
+                              || string.Equals(parts[at + 1], "@datarow", StringComparison.OrdinalIgnoreCase)))
+                    return true;
             }
             return false;
         }
@@ -6418,6 +6499,10 @@ namespace TrueReplayer.Services
             public IReadOnlyDictionary<string, string>? Variables { get; init; }
             public int Iteration { get; init; }
             public int Row { get; init; }
+            // {loop}: iteration of the innermost While / ForEachRow block (the run repeat outside one).
+            public int Loop { get; init; }
+            // {datarow}: 1-based data row of the current row context; 0 = none (resolves empty).
+            public int DataRow { get; init; }
             // Data-loop current row: column name (lowercased) → cell value. Non-null only
             // while a "loop over data" run is stamping rows. {row:column} resolves from here.
             public IReadOnlyDictionary<string, string>? RowData { get; init; }
@@ -6449,6 +6534,8 @@ namespace TrueReplayer.Services
             Variables = _runtimeVariables,
             Iteration = _currentIteration,
             Row = _currentActionRow,
+            Loop = _currentLoopIteration,
+            DataRow = _currentDataRow,
             RowData = _currentRowData,
             DataTable = _dataTable,
             RowNextCursors = _rowNextCursors,
@@ -6490,6 +6577,12 @@ namespace TrueReplayer.Services
         // line, wrapping around. Resolution happens before the split on purpose — a
         // value of just {clipboard} cycles through the clipboard's lines. The modulo
         // keeps an old cursor valid when the list shrinks between presses.
+        //
+        // Add mode (VariableMode == "add"): the RESOLVED value is a number added to the variable's
+        // current value, an unset or non-numeric current counting as 0 (so a first "add 1" yields
+        // 1) and a negative step subtracting. A non-numeric step leaves the variable untouched and
+        // logs — a typo must never overwrite a counter. This is the "i = i + 1" a While needs; the
+        // arithmetic lives in TryAddVariable so it can be proven without a replayer.
         private async Task ExecuteSetVariable(ActionItem action)
         {
             var name = action.Key?.Trim();
@@ -6522,11 +6615,52 @@ namespace TrueReplayer.Services
                 return;
             }
 
+            if (string.Equals(action.VariableMode, "add", StringComparison.OrdinalIgnoreCase))
+            {
+                string? current;
+                lock (_runStateLock) _runtimeVariables.TryGetValue(key, out current);
+                if (!TryAddVariable(current, value, out var sum))
+                {
+                    Services.DiagnosticLog.Info($"Set Variable '{name}' (add): \"{value}\" is not a number — variable left unchanged");
+                    return;
+                }
+                lock (_runStateLock) _runtimeVariables[key] = sum;
+                PushVariablesSnapshot(force: true);
+                return;
+            }
+
             if (string.IsNullOrEmpty(value))
                 lock (_runStateLock) _runtimeVariables.Remove(key);   // empty value = delete (documented contract)
             else
                 lock (_runStateLock) _runtimeVariables[key] = value;
             PushVariablesSnapshot(force: true);
+        }
+
+        /// <summary>
+        /// Set Variable's add mode, as arithmetic on the text store: current + delta as decimals.
+        /// Invariant culture with ',' accepted as the decimal separator (the owner's locale writes
+        /// "1,5"; a thousands separator is not a thing in a counter or a step). A missing or
+        /// non-numeric current value counts as 0, so a first "add 1" yields 1; a non-numeric delta
+        /// refuses (false) so a typo never overwrites a counter. Integers stay integers ("3", never
+        /// "3.0") and scale is trimmed ("2.50" + 0 = "2.5"): the store is text, and {var:i} feeds
+        /// conditions, file names and regexes that compare it as such.
+        /// </summary>
+        internal static bool TryAddVariable(string? current, string delta, out string result)
+        {
+            result = current ?? string.Empty;
+            if (!TryParseNumber(delta, out var d)) return false;
+            var c = TryParseNumber(current, out var cv) ? cv : 0m;
+            result = (c + d).ToString("0.############################", System.Globalization.CultureInfo.InvariantCulture);
+            return true;
+        }
+
+        private static bool TryParseNumber(string? s, out decimal n)
+        {
+            n = 0m;
+            if (string.IsNullOrWhiteSpace(s)) return false;
+            var t = s.Trim();
+            if (t.IndexOf('.') < 0) t = t.Replace(',', '.');
+            return decimal.TryParse(t, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out n);
         }
 
         // {input:Label} provider handed to the resolver via RunCtx. Ask-once-per-Label-per-run:
@@ -7401,6 +7535,11 @@ namespace TrueReplayer.Services
                 text = text.Replace("{counter}", runCtx.Iteration > 0 ? runCtx.Iteration.ToString() : string.Empty, StringComparison.OrdinalIgnoreCase);
             if (text.Contains("{row}", StringComparison.OrdinalIgnoreCase))
                 text = text.Replace("{row}", runCtx.Row > 0 ? runCtx.Row.ToString() : string.Empty, StringComparison.OrdinalIgnoreCase);
+            // {loop} / {datarow} — the block iteration and the data row number; same <= 0 → empty rule.
+            if (text.Contains("{loop}", StringComparison.OrdinalIgnoreCase))
+                text = text.Replace("{loop}", runCtx.Loop > 0 ? runCtx.Loop.ToString() : string.Empty, StringComparison.OrdinalIgnoreCase);
+            if (text.Contains("{datarow}", StringComparison.OrdinalIgnoreCase))
+                text = text.Replace("{datarow}", runCtx.DataRow > 0 ? runCtx.DataRow.ToString() : string.Empty, StringComparison.OrdinalIgnoreCase);
 
             return text;
         }

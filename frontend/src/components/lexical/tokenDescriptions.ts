@@ -64,7 +64,11 @@ const BY_NAME: Record<KnownTokenName, TokenDescription> = {
     paletteTip: ['Types ONE of the options, drawn each run. Click the chip to edit the list.', 'Digita UMA das opções, sorteada a cada execução. Clique no chip para editar.'],
   },
   var: { tip: ['Value stored by a Set Variable action', 'Valor gravado por uma action Set Variable'] },
-  counter: { tip: ['Current loop iteration (1, 2, 3…)', 'Iteração atual do loop (1, 2, 3…)'] },
+  counter: { tip: ['Run repeat number (1, 2, 3…)', 'Número da repetição da execução (1, 2, 3…)'] },
+  // The block-level twin of {counter}: While and For Each keep their own count, and outside a
+  // block it reads the run repeat, so it is "the loop I am in" at every depth.
+  loop: { tip: ['Iteration of the innermost While / For Each block (the run repeat outside one)', 'Volta do bloco While / For Each mais interno (a repetição da execução fora de um)'] },
+  datarow: { tip: ['Number of the current data row (1 = first)', 'Número da linha de dados atual (1 = primeira)'] },
   // Bare {row}. The {row:Column} form is a different token entirely — see ROW_COLUMN below.
   row: { tip: ["Current action's grid row number (not the data table)", 'Número da linha da action na grade (não é a tabela de dados)'] },
   // No paletteTip: the name prompt for {rownext:} now offers an Advanced… button, so the old

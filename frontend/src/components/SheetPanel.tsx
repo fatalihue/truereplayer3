@@ -293,8 +293,9 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   const [browserText, setBrowserText] = useState('');
   // SetVariable — the value half of "name = value"; the name reuses the `key` state.
   const [variableValue, setVariableValue] = useState('');
-  // SetVariable mode: 'set' (default) | 'cycle' (value = list, next line per execution).
-  const [variableMode, setVariableMode] = useState<'set' | 'cycle'>('set');
+  // SetVariable mode: 'set' (default) | 'cycle' (value = list, next line per execution) |
+  // 'add' (value = a number added to the current one — the While counter).
+  const [variableMode, setVariableMode] = useState<'set' | 'cycle' | 'add'>('set');
   // CopyToSlot mode: 'capture' (default) | 'clear' (empty the slot / all slots).
   const [slotMode, setSlotMode] = useState<'capture' | 'clear'>('capture');
   // Imperative handle to the Lexical-based BrowserType editor — used by the chip
@@ -746,7 +747,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       setConfidence(String(Math.round((action.confidence || 0.8) * 100)));
       setBrowserText(action.browserText || '');
       setVariableValue(action.variableValue ?? '');
-      setVariableMode(action.variableMode === 'cycle' ? 'cycle' : 'set');
+      setVariableMode(action.variableMode === 'cycle' || action.variableMode === 'add' ? action.variableMode : 'set');
       setSlotMode(action.slotMode === 'clear' ? 'clear' : 'capture');
       setNewTab(action.newTab || false);
       setWaitMode(action.waitMode || 'appears');
@@ -1291,10 +1292,10 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       if (variableValue !== (action.variableValue ?? '')) {
         send({ type: 'actions:edit', payload: { index: actionIndex, field: 'variableValue', value: variableValue } });
       }
-      const currentVarMode = action.variableMode === 'cycle' ? 'cycle' : 'set';
+      const currentVarMode = action.variableMode === 'cycle' || action.variableMode === 'add' ? action.variableMode : 'set';
       if (variableMode !== currentVarMode) {
-        // Backend persists only 'cycle'; 'set' round-trips to null on disk.
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'variableMode', value: variableMode === 'cycle' ? 'cycle' : '' } });
+        // Backend persists only the non-default modes ('cycle', 'add'); 'set' round-trips to null on disk.
+        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'variableMode', value: variableMode === 'set' ? '' : variableMode } });
       }
     }
 
@@ -1600,7 +1601,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
 
     if (actionType === 'SetVariable') {
       if (variableValue !== (action.variableValue ?? '')) return true;
-      const currentVarMode = action.variableMode === 'cycle' ? 'cycle' : 'set';
+      const currentVarMode = action.variableMode === 'cycle' || action.variableMode === 'add' ? action.variableMode : 'set';
       if (variableMode !== currentVarMode) return true;
     }
 
@@ -4163,7 +4164,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 />
               </Field>
               <Field label="Mode">
-                <SegmentedControl<'set' | 'cycle'>
+                <SegmentedControl<'set' | 'cycle' | 'add'>
                   ariaLabel="Variable mode"
                   grow
                   value={variableMode}
@@ -4171,20 +4172,23 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                   options={[
                     { value: 'set', label: 'Set' },
                     { value: 'cycle', label: 'Cycle' },
+                    { value: 'add', label: 'Add' },
                   ]}
                 />
               </Field>
               <Field
-                label={variableMode === 'cycle' ? 'List (one item per line)' : 'Value'}
+                label={variableMode === 'cycle' ? 'List (one item per line)' : variableMode === 'add' ? 'Amount' : 'Value'}
                 hint={variableMode === 'cycle'
                   ? 'One line per run, then back to the first.'
-                  : 'Tokens resolve here. Empty deletes the variable.'}
+                  : variableMode === 'add'
+                    ? 'Added to the current value (unset counts as 0). Negative subtracts.'
+                    : 'Tokens resolve here. Empty deletes the variable.'}
               >
                 <textarea
                   rows={variableMode === 'cycle' ? 4 : 2}
                   value={variableValue}
                   onChange={(e) => setVariableValue(e.target.value)}
-                  placeholder={variableMode === 'cycle' ? 'item 1\nitem 2\nitem 3' : undefined}
+                  placeholder={variableMode === 'cycle' ? 'item 1\nitem 2\nitem 3' : variableMode === 'add' ? '1' : undefined}
                   spellCheck={false}
                   className="w-full min-h-[3.25rem] px-2 py-1.5 text-ui font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid resize-y"
                 />

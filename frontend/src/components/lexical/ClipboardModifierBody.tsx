@@ -94,7 +94,7 @@ export function ClipboardModifierBody({
   const setLimitN = (n: number) => setState((s) => ({ ...s, limitN: Math.max(0, n) }));
   const setExtractRef = (r: string) => setState((s) => ({ ...s, extractRef: r }));
   const setLimitRef = (r: string) => setState((s) => ({ ...s, limitRef: r }));
-  const refTip = tt('Use a variable instead — @name, @counter or @row', 'Usar uma variável — @nome, @counter ou @row');
+  const refTip = tt('Use a variable instead — @name, @counter, @loop, @row or @datarow', 'Usar uma variável — @nome, @counter, @loop, @row ou @datarow');
   const numTip = tt('Back to a fixed number', 'Voltar para um número fixo');
   const setListPick = (v: ListPick) => setState((s) => ({ ...s, listPick: v }));
   // A span bound of null is an OPEN end ("word 6 onwards"), which is why these go through

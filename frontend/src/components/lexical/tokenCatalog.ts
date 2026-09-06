@@ -71,6 +71,8 @@ export const MORE_CLIPBOARD_CHIPS: PaletteChip[] = [
 export const RUN_STATE_CHIPS: PaletteChip[] = [
   { label: 'Variable…', prompt: 'var' },
   { label: 'Counter', insert: '{counter}' },
+  // The block iteration (While / For Each) — inline next to Counter, its run-level twin.
+  { label: 'Loop', insert: '{loop}' },
   { label: 'Ask input…', prompt: 'input' },
 ];
 
@@ -78,6 +80,7 @@ export const RUN_STATE_CHIPS: PaletteChip[] = [
 // resolve to anything in a profile that loops over data. They also carry the longest
 // labels in the palette, so parking them keeps Run state to a single line.
 export const MORE_ROW_CHIPS: PaletteChip[] = [
+  { label: 'Data row #', insert: '{datarow}' },
   { label: 'Action row #', insert: '{row}' },
   { label: 'Row column…', prompt: 'row' },
   { label: 'Row column (next)…', prompt: 'rownext' },

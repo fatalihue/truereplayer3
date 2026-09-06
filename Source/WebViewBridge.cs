@@ -3853,9 +3853,9 @@ namespace TrueReplayer
                     action.VariableValue = value;
                     break;
                 case "variableMode":
-                    // Only the non-default "cycle" is persisted; "set" stays null on disk
-                    // (same convention as waitImageOnTimeout / activateOnTimeout).
-                    action.VariableMode = value == "cycle" ? "cycle" : null;
+                    // Only the non-default modes ("cycle", "add") are persisted; "set" stays null on
+                    // disk (same convention as waitImageOnTimeout / activateOnTimeout).
+                    action.VariableMode = value is "cycle" or "add" ? value : null;
                     break;
                 case "slotMode":
                     // CopyToSlot: only the non-default "clear" is persisted; "capture"

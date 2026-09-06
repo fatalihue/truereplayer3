@@ -22,6 +22,7 @@ const COMPOUND_NAMES: Record<string, string> = {
   pagedown: 'PageDown',
   winclip: 'WinClip',
   rownext: 'RowNext',
+  datarow: 'DataRow',
 };
 
 // {input:...} is the one token whose WHOLE argument is free text — the Ask-Input label plus its
@@ -139,6 +140,11 @@ export const KNOWN_TOKEN_NAME_LIST = [
   // takes the clipboard-style modifier chain: {row:column:trim:upper}).
   'var',
   'counter',
+  // {loop} — the iteration of the innermost While / For Each Data Row block (the run repeat
+  // outside one) — and {datarow}, the number of the current data row. Run-state literals like
+  // {counter} and {row}: an exact Replace in ResolveRunStateTokens, no argument.
+  'loop',
+  'datarow',
   'row',
   // {rownext:column} — like {row:column} but auto-advancing: each use pulls the NEXT
   // data row for that column (1st use → row 1, 2nd → row 2…), resetting each run.
@@ -324,8 +330,10 @@ const TOKEN_ARG_GATE: Record<string, RegExp> = {
   date: /^date$/i,
   time: /^time$/i,
   datetime: /^datetime$/i,
-  // Same for {counter}; bare {row} is handled by the row entry below.
+  // Same for {counter}, {loop} and {datarow}; bare {row} is handled by the row entry below.
   counter: /^counter$/i,
+  loop: /^loop$/i,
+  datarow: /^datarow$/i,
   // ClipboardTokenRegex: \{clipboard(?::([^}]+))?\} — the modifier group needs at least one
   // character, so `{clipboard:}` is literal.
   clipboard: /^clipboard(:[^}]+)?$/i,

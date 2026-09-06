@@ -52,7 +52,9 @@ export type PendingReason =
   | 'ask'                // the run stops and asks
   | 'runtime'            // only the engine has the value (winclip, an @ref index)
   | 'runtime-clipreading' // the clipboard read has not come back yet
-  | 'runtime-counter'    // loop iteration — no value outside a run
+  | 'runtime-counter'    // run repeat number — no value outside a run
+  | 'runtime-loop'       // innermost While / For Each iteration — no value outside a run
+  | 'runtime-datarow'    // the data row number — no value outside a run
   | 'runtime-row'        // the action's own grid row — no value outside a run
   | 'runtime-rowcursor'  // {row:col} with loop-over-data OFF — the row comes from the run cursor
   | 'runtime-norows'     // {row:col} against a Data table with no rows at all
@@ -193,7 +195,13 @@ export function resolveMessagePreview(text: string, src: PreviewSources, now: Da
         push({ kind: 'resolved', text: clockNow(name, now), token, note: 'clock' });
         continue;
       case 'counter':
-        push({ kind: 'pending', token, label: 'loop iteration', reason: 'runtime-counter' });
+        push({ kind: 'pending', token, label: 'run repeat', reason: 'runtime-counter' });
+        continue;
+      case 'loop':
+        push({ kind: 'pending', token, label: 'block iteration', reason: 'runtime-loop' });
+        continue;
+      case 'datarow':
+        push({ kind: 'pending', token, label: 'data row number', reason: 'runtime-datarow' });
         continue;
       case 'random':
         push({ kind: 'pending', token, label: `${arg(token)} at random`, reason: 'random' });

@@ -153,7 +153,9 @@ export interface ActionItem {
   // SetVariable mode: null/undefined = 'set' (store resolved value as-is) |
   // 'cycle' (value is a list, one item per line; each execution stores the NEXT
   // line, wrapping; the cursor survives across runs so repeated hotkey presses
-  // walk the list — resets on app restart).
+  // walk the list — resets on app restart) |
+  // 'add' (the resolved value is a number added to the variable's current value,
+  // unset counting as 0; negative subtracts — the counter a While needs).
   variableMode?: string | null;
   // CopyToSlot mode: null/undefined = 'capture' (grab the current selection into the
   // slot named in `key`) | 'clear' (empty that slot; a blank `key` wipes all slots 1–9

@@ -501,6 +501,22 @@ namespace TrueReplayer.Services
             (p => p.Actions.Any(a => string.Equals(a.VariableMode, "cycle", StringComparison.OrdinalIgnoreCase)),
                 new Version(2, 8, 0), "Set Variable cycle mode"),
 
+            // Set Variable Add mode — an older build drops the unknown VariableMode and runs the
+            // row in SET mode: the counter the author increments is OVERWRITTEN with the step
+            // ("1" forever) and a While guarded by it never advances — the cycle-mode silent
+            // class. Introduced after 2.36.0 — bump at release if the release number differs.
+            (p => p.Actions.Any(a => string.Equals(a.VariableMode, "add", StringComparison.OrdinalIgnoreCase)),
+                new Version(2, 37, 0), "Set Variable add mode"),
+
+            // Loop-block tokens {loop} (iteration of the innermost While / For Each block) and
+            // {datarow} (number of the current data row), plus the @loop / @datarow references in
+            // a modifier chain. An older build types the tokens verbatim (the literal-token class)
+            // and resolves the references EMPTY (TryResolveRefArg fails on an unknown name and the
+            // int-argument modifiers fail empty rather than paste everything). Introduced after
+            // 2.36.0 — bump at release if the release number differs.
+            (p => p.Actions.Any(UsesLoopToken),
+                new Version(2, 37, 0), "Loop iteration tokens"),
+
             // CopyToSlot Clear mode — an older build drops the unknown SlotMode property and
             // runs the row in CAPTURE mode, grabbing the current selection into the slot
             // instead of emptying it (silent semantic flip, and it fires a synthetic Ctrl+C
@@ -965,6 +981,32 @@ namespace TrueReplayer.Services
             && (text.Contains("{counter}", StringComparison.OrdinalIgnoreCase)
                 || text.Contains("{row}", StringComparison.OrdinalIgnoreCase)
                 || (text.Contains("{var:", StringComparison.OrdinalIgnoreCase) && VariableTokenRegex.IsMatch(text)));
+
+        // ── Loop-block tokens {loop} / {datarow} and the @loop / @datarow references ─────────
+        // Exact, case-insensitive literals in ResolveRunStateTokens ("{loop:5}" is literal on every
+        // build, so it must not pin); the references ride a modifier chain and delegate to the
+        // engine walk (ChainUsesLoopRef) for the reason every other chain pin does.
+        private static bool UsesLoopToken(ActionItem a) =>
+            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsLoopToken(a.Key)) ||
+            ContainsLoopToken(a.KeyHtml) ||
+            ContainsLoopToken(a.KeyMarkdown) ||
+            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsLoopToken(a.BrowserText)) ||
+            ContainsLoopToken(a.VariableValue) ||
+            ContainsLoopToken(a.ConditionOperand) ||
+            ContainsLoopToken(a.FilePath) ||
+            ContainsLoopToken(a.LaunchPath) ||
+            ContainsLoopToken(a.LaunchArgs);
+
+        private static bool ContainsLoopToken(string? text)
+        {
+            if (string.IsNullOrEmpty(text) || text.IndexOf('{') < 0) return false;
+            if (text.Contains("{loop}", StringComparison.OrdinalIgnoreCase)
+                || text.Contains("{datarow}", StringComparison.OrdinalIgnoreCase)) return true;
+            if (text.IndexOf('@') < 0) return false;
+            foreach (var chain in ModifierChainsIn(text))
+                if (ActionReplayer.ChainUsesLoopRef(chain)) return true;
+            return false;
+        }
 
         // ── A colon INSIDE a split delimiter, written "::" ──────────────────────────────────
         private static bool UsesEscapedColonDelimiter(ActionItem a) =>

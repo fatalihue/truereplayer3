@@ -161,8 +161,8 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
   // and the caller gets everything. Say that, rather than a preview built from a number the user
   // is no longer using.
   const refUnfinished = argRefIsUnfinished(state);
-  const refTip = tt('Take this number from a variable instead — @name, @counter or @row',
-                    'Pegar este número de uma variável — @nome, @counter ou @row');
+  const refTip = tt('Take this number from a variable instead — @name, @counter, @loop, @row or @datarow',
+                    'Pegar este número de uma variável — @nome, @counter, @loop, @row ou @datarow');
   const numTip = tt('Back to a fixed number', 'Voltar para um número fixo');
 
   const set = (patch: Partial<TransformState>) => onStateChange((s) => ({ ...s, ...patch }));

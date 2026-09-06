@@ -1959,6 +1959,9 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                                 const n = (action.variableValue ?? '').split('\n').filter(l => l.trim()).length;
                                 return `${action.key} ⟳ ${n} item${n === 1 ? '' : 's'}`;
                               })()
+                          // Add mode reads "name += step" — the assignment it is NOT is "=".
+                          : action.variableMode === 'add'
+                            ? `${action.key} += ${action.variableValue ?? ''}`
                             : `${action.key} = ${action.variableValue ?? ''}`)
                       : action.actionType === 'CopyToSlot'
                         // Show the read-back token — the one thing the user needs to reuse
@@ -2555,7 +2558,9 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                           : action.actionType === 'SetVariable' && action.key
                             ? (action.variableMode === 'cycle'
                                 ? `${action.key} ⟳ ${(action.variableValue ?? '').split('\n').filter(l => l.trim()).join(' · ')}`
-                                : `${action.key} = ${action.variableValue ?? ''}`)
+                                : action.variableMode === 'add'
+                                  ? `${action.key} += ${action.variableValue ?? ''}`
+                                  : `${action.key} = ${action.variableValue ?? ''}`)
                           : undefined
                         }
                         // dblclick handler lives on the parent <td> (see above) so

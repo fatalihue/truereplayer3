@@ -264,6 +264,9 @@ namespace TrueReplayer.Models
         public string? VariableValue { get; set; }
 
         // SetVariable mode. null (default) = "set": store the resolved value as-is.
+        // "add": the resolved value is a NUMBER added to the variable's current value (unset
+        // counts as 0, negative subtracts; a non-numeric step leaves it untouched) — the
+        // counter a While needs. See ActionReplayer.TryAddVariable for the arithmetic.
         // "cycle": treat the resolved value as a LIST (one item per line) and store the
         // NEXT line on each execution, wrapping around. The cursor lives OUTSIDE the
         // run state (ActionReplayer._cycleCursors, keyed by this action's Id), so

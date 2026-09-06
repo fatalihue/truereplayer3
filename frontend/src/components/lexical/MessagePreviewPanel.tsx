@@ -35,7 +35,9 @@ const REASON_TIP: Record<PendingReason, [string, string]> = {
   ],
   runtime: ['Only the engine has this value, and only while the macro runs.', 'Só o motor tem este valor, e só enquanto a macro roda.'],
   'runtime-clipreading': ['Reading the clipboard…', 'Lendo a área de transferência…'],
-  'runtime-counter': ['The loop iteration — there is no value outside a run.', 'A iteração do loop — não existe valor fora de uma execução.'],
+  'runtime-counter': ['The run repeat number — there is no value outside a run.', 'O número da repetição da execução — não existe valor fora de uma execução.'],
+  'runtime-loop': ['The iteration of the innermost While / For Each block — there is no value outside a run.', 'A volta do bloco While / For Each mais interno — não existe valor fora de uma execução.'],
+  'runtime-datarow': ['The number of the current data row — there is no value outside a run.', 'O número da linha de dados atual — não existe valor fora de uma execução.'],
   'runtime-row': ["The action's own grid row — there is no value outside a run.", 'A linha da action na grade — não existe valor fora de uma execução.'],
   'runtime-rowcursor': [
     'Loop over data is off: each run takes the NEXT row, and that position lives between runs.',
