@@ -36,9 +36,21 @@ export interface TokenDescription {
 // whitelist in tokenNormalize gains a name and this table does not.
 const BY_NAME: Record<KnownTokenName, TokenDescription> = {
   clipboard: { tip: ['Paste the clipboard text', 'Cola o texto da área de transferência'] },
-  date: { tip: ['Current date (dd/MM/yyyy)', 'Data atual (dd/MM/aaaa)'] },
-  time: { tip: ['Current time (HH:mm:ss)', 'Hora atual (HH:mm:ss)'] },
-  datetime: { tip: ['Current date and time', 'Data e hora atuais'] },
+  // The three clock tokens take an offset and a format since 2.37.0; the chip popover builds
+  // both, so the palette says where to click. A token that already carries them gets the
+  // VARIANT below instead of a tip promising dd/MM/yyyy.
+  date: {
+    tip: ['Current date (dd/MM/yyyy)', 'Data atual (dd/MM/aaaa)'],
+    paletteTip: ['Current date (dd/MM/yyyy). Click the chip to shift it or change the format.', 'Data atual (dd/MM/aaaa). Clique no chip para deslocar ou mudar o formato.'],
+  },
+  time: {
+    tip: ['Current time (HH:mm:ss)', 'Hora atual (HH:mm:ss)'],
+    paletteTip: ['Current time (HH:mm:ss). Click the chip to shift it or change the format.', 'Hora atual (HH:mm:ss). Clique no chip para deslocar ou mudar o formato.'],
+  },
+  datetime: {
+    tip: ['Current date and time', 'Data e hora atuais'],
+    paletteTip: ['Current date and time. Click the chip to shift it or change the format.', 'Data e hora atuais. Clique no chip para deslocar ou mudar o formato.'],
+  },
   enter: { tip: ['Press Enter', 'Pressiona Enter'] },
   tab: { tip: ['Press Tab', 'Pressiona Tab'] },
   space: { tip: ['Press Space', 'Pressiona Espaço'] },
@@ -107,10 +119,18 @@ const ROW_COLUMN: TokenDescription = {
   tip: ['Data table column of the current row', 'Coluna da tabela de dados na linha atual'],
 };
 
+// A clock token carrying an offset and/or a format: the base tip's "(dd/MM/yyyy)" would be a lie.
+const DATE_SHIFTED: TokenDescription = { tip: ['Date with an offset and/or a custom format', 'Data com deslocamento e/ou formato próprio'] };
+const TIME_SHIFTED: TokenDescription = { tip: ['Time with an offset and/or a custom format', 'Hora com deslocamento e/ou formato próprio'] };
+const DATETIME_SHIFTED: TokenDescription = { tip: ['Date and time with an offset and/or a custom format', 'Data e hora com deslocamento e/ou formato próprio'] };
+
 // Tokens whose ARGUMENT changes what they mean. Checked before BY_NAME; first match wins.
 const VARIANTS: readonly { name: string; when: (token: string, mods: string[]) => boolean; desc: TokenDescription }[] = [
   { name: 'clipboard', when: (token) => hasNextModifier(token), desc: CLIPBOARD_NEXT },
   { name: 'row', when: (_token, mods) => mods.length > 0, desc: ROW_COLUMN },
+  { name: 'date', when: (_token, mods) => mods.length > 0, desc: DATE_SHIFTED },
+  { name: 'time', when: (_token, mods) => mods.length > 0, desc: TIME_SHIFTED },
+  { name: 'datetime', when: (_token, mods) => mods.length > 0, desc: DATETIME_SHIFTED },
 ];
 
 // Same split every other surface does — normalizeToken, splitTokenSegments and chainHeadKind all

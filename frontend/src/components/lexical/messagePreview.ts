@@ -41,6 +41,7 @@ import {
   previewIsRuntimeDependent,
   hasNextModifier,
 } from './clipboardModifiers';
+import { resolveDateToken } from './dateFormat';
 
 /** Why a piece could not be resolved. Each one is a DIFFERENT statement to the user. */
 export type PendingReason =
@@ -118,16 +119,11 @@ function findColumn(headers: string[], column: string): number {
   return idx;
 }
 
-// The engine formats with the machine's CurrentCulture and no CultureInfo argument, so in a .NET
-// custom format string the '/' and ':' are the CULTURE's separators. These match the pattern the
-// engine asks for; the panel's tip says the separators come from the machine's locale rather than
-// claiming this is exactly what will be typed.
-function pad2(n: number): string { return n < 10 ? `0${n}` : String(n); }
-function clockNow(kind: 'date' | 'time' | 'datetime', now: Date): string {
-  const d = `${pad2(now.getDate())}/${pad2(now.getMonth() + 1)}/${now.getFullYear()}`;
-  const t = `${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
-  return kind === 'date' ? d : kind === 'time' ? t : `${d} - ${t}`;
-}
+// The clock tokens go through the TS port of ResolveDateTimeTokens (dateFormat.ts): offsets,
+// formats and the head's default. The engine formats with the machine's culture and '/' and ':'
+// pinned, so what differs at replay is only the month and day NAMES — the panel's tip says so.
+// No navigator in a node harness, hence the guard.
+const previewLocale = (): string => (typeof navigator !== 'undefined' && navigator.language) || 'en-US';
 
 /**
  * Resolve a whole SendText payload into display pieces.
@@ -191,9 +187,14 @@ export function resolveMessagePreview(text: string, src: PreviewSources, now: Da
     switch (name) {
       case 'date':
       case 'time':
-      case 'datetime':
-        push({ kind: 'resolved', text: clockNow(name, now), token, note: 'clock' });
+      case 'datetime': {
+        // null = a format .NET rejects, which the engine leaves literal (the gate already says
+        // so, so this branch is the belt to that brace).
+        const clock = resolveDateToken(token, now, previewLocale());
+        if (clock === null) push({ kind: 'pending', token, label: token, reason: 'literal' });
+        else push({ kind: 'resolved', text: clock, token, note: 'clock' });
         continue;
+      }
       case 'counter':
         push({ kind: 'pending', token, label: 'run repeat', reason: 'runtime-counter' });
         continue;

@@ -36,9 +36,11 @@ export const TOKEN_REGEX_WHOLE = new RegExp(`^${TOKEN_REGEX.source}$`);
 //     InputTokenRegex  \{input:([^}|]+)(?:\|menu:([^}]*))?\}   — a '|' not followed by "menu:"
 //                                                                is literal on both sides
 //     PickTokenRegex   \{pick:([^}]+)\}
+//     DateTokenRegex   \{(datetime|date|time)(?::([^}]+))?\}   — an offset and/or a .NET format,
+//                                                                which carries '/', '+', spaces
 //
 // '\n' is excluded only because a Lexical TextNode never holds one (line breaks are nodes).
-const FREE_ARG_TOKEN_REGEX = /\{(?:input:[^}|\n]+(?:\|menu:[^}\n]*)?|pick:[^}\n]+)\}/i;
+const FREE_ARG_TOKEN_REGEX = /\{(?:input:[^}|\n]+(?:\|menu:[^}\n]*)?|pick:[^}\n]+|(?:datetime|date|time):[^}\n]+)\}/i;
 
 export interface TypedToken {
   /** Offset of the '{' in the text. */

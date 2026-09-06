@@ -18,6 +18,7 @@ import {
 } from './clipboardModifiers';
 import { NumInput, PopoverHeader, Section } from './popoverAtoms';
 import { normalizeToken, type TokenScope } from './tokenNormalize';
+import { DEFAULT_DATE_FORMAT, parseDateTokenArgs, resolveDateToken, type DateHead, type DateUnit } from './dateFormat';
 import { tokenTip } from './tokenDescriptions';
 import { useAppState } from '../../state/AppStateContext';
 import { uiZoom, rectToLayout, viewportInLayout } from '../../utils/zoomSpace';
@@ -50,7 +51,7 @@ const REPEATABLE_TOKEN_NAMES = new Set([
 // and in the editor's update (what a new value may become).
 const MAX_KEY_REPEAT = 100;
 
-type TokenKind = 'clipboard' | 'delay' | 'repeatable' | 'random' | 'var' | 'rowcol' | 'rownextcol' | 'clip' | 'winclip' | 'input' | 'pick' | 'static';
+type TokenKind = 'clipboard' | 'delay' | 'repeatable' | 'random' | 'var' | 'rowcol' | 'rownextcol' | 'clip' | 'winclip' | 'input' | 'pick' | 'date' | 'static';
 
 function getTokenKind(token: string): TokenKind {
   const inner = token.slice(1, -1);
@@ -71,6 +72,8 @@ function getTokenKind(token: string): TokenKind {
   if (name === 'input') return 'input';
   // {pick:a|b|c} — random text choice among the options.
   if (name === 'pick') return 'pick';
+  // {date} / {time} / {datetime} — an offset and a format (2.37.0).
+  if (name === 'date' || name === 'time' || name === 'datetime') return 'date';
   if (REPEATABLE_TOKEN_NAMES.has(name)) return 'repeatable';
   return 'static';
 }
@@ -242,7 +245,7 @@ export function TokenChipPopover({
         position: 'fixed',
         ...visibilityStyle,
         zIndex: 100,
-        width: kind === 'clipboard' || kind === 'rowcol' || kind === 'rownextcol' || kind === 'pick' ? 300 : 260,
+        width: kind === 'clipboard' || kind === 'rowcol' || kind === 'rownextcol' || kind === 'pick' || kind === 'date' ? 300 : 260,
         borderColor: 'color-mix(in srgb, var(--color-accent-solid) 35%, transparent)',
         maxHeight: 'calc(100vh - 24px)',
       }}
@@ -273,7 +276,8 @@ export function TokenChipPopover({
         {kind === 'winclip' && <WinClipEditor token={token} onChange={updateLive} />}
         {kind === 'input' && <InputEditor token={token} onChange={updateLive} />}
         {kind === 'pick' && <PickEditor token={token} onChange={updateLive} />}
-        {kind === 'static' && <StaticInfo token={token} />}
+        {kind === 'date' && <DateEditor token={token} onChange={updateLive} />}
+        {kind === 'static' && <StaticInfo />}
       </div>
 
       <Footer onDelete={onDelete} />
@@ -802,43 +806,118 @@ function PickEditor({ token, onChange }: { token: string; onChange: (t: string) 
   );
 }
 
-// Zero-pads to two digits — matches the backend's dd/MM/yyyy HH:mm:ss formats.
-function p2(n: number): string {
-  return n < 10 ? '0' + n : String(n);
+// ── {date} / {time} / {datetime}: shift + format ─────────────────────────────
+// The token keeps the engine's grammar (ActionExecution.ResolveDateTimeTokens): offset segments
+// like "+7" / "-1mo" and the format as whatever segments remain. The UI models ONE offset; a
+// hand-typed chain with several goes read-only rather than being collapsed into one on the first
+// click (the assertRebuildable posture of the chain editors). The preview runs the same port the
+// Preview tab uses (lexical/dateFormat), with the machine's locale for names. Emits only on real
+// input, the DelayEditor rule.
+const DATE_UNITS: { unit: DateUnit; label: string }[] = [
+  { unit: 'd', label: 'days' },
+  { unit: 'w', label: 'weeks' },
+  { unit: 'mo', label: 'months' },
+  { unit: 'y', label: 'years' },
+  { unit: 'h', label: 'hours' },
+  { unit: 'min', label: 'minutes' },
+];
+const DATE_PRESETS: Record<DateHead, { label: string; format: string }[]> = {
+  date: [{ label: 'Default', format: '' }, { label: 'ISO', format: 'yyyy-MM-dd' }, { label: 'Long', format: 'D' }],
+  time: [{ label: 'Default', format: '' }, { label: 'HH:mm', format: 'HH:mm' }, { label: '12-hour', format: 'h:mm tt' }],
+  datetime: [{ label: 'Default', format: '' }, { label: 'ISO', format: 'yyyy-MM-dd HH:mm' }, { label: 'Long', format: 'F' }],
+};
+// Two channels for the chosen option (fill and ink), never a hue alone.
+const PILL = 'h-6 px-1.5 text-[10px] rounded border transition-colors disabled:opacity-40';
+const PILL_ON = 'text-text-primary bg-[color-mix(in_srgb,var(--color-accent)_18%,transparent)] border-[color-mix(in_srgb,var(--color-accent)_45%,transparent)]';
+const PILL_OFF = 'text-text-secondary border-border-default hover:text-text-primary hover:bg-bg-elevated';
+
+function buildDateToken(head: DateHead, n: number, unit: DateUnit, format: string): string {
+  const parts: string[] = [head];
+  if (n !== 0) parts.push(`${n > 0 ? '+' : ''}${n}${unit === 'd' ? '' : unit}`);
+  if (format.trim().length > 0) parts.push(format);
+  return `{${parts.join(':')}}`;
 }
 
-// Live resolved value for tokens without editable parameters. Date/time formats mirror the
-// backend's ResolveDateTimeTokens exactly. {counter} and {row} used to carry a note here that
-// restated the header's description word for word; the header is the one place that says what a
-// token is, so the body of a parameterless token only says that there is nothing to edit.
-function staticTokenValue(token: string): string | null {
-  const name = token.slice(1, -1).split(':')[0].toLowerCase();
-  const now = new Date();
-  const date = `${p2(now.getDate())}/${p2(now.getMonth() + 1)}/${now.getFullYear()}`;
-  const time = `${p2(now.getHours())}:${p2(now.getMinutes())}:${p2(now.getSeconds())}`;
-  switch (name) {
-    case 'date': return date;
-    case 'time': return time;
-    case 'datetime': return `${date} - ${time}`;
-    default: return null;
-  }
-}
+function DateEditor({ token, onChange }: { token: string; onChange: (t: string) => void }) {
+  const inner = token.slice(1, -1);
+  const head = inner.split(':')[0].toLowerCase() as DateHead;
+  const args = parseDateTokenArgs(inner.split(':').slice(1));
+  const several = args.offsets.length > 1;
+  const first = args.offsets[0];
+  const [magnitude, setMagnitude] = useState(first ? Math.abs(first.n) : 0);
+  const [back, setBack] = useState(first ? first.n < 0 : false);
+  const [unit, setUnit] = useState<DateUnit>(first ? first.unit : 'd');
+  const [format, setFormat] = useState(args.format ?? '');
+  const [live, setLive] = useState(token);
 
-function StaticInfo({ token }: { token: string }) {
-  const value = staticTokenValue(token);
-  if (value) {
-    return (
-      // The same Section shell every parameter editor uses — this was the one label with its own
-      // uppercase recipe instead of label-micro.
+  const emit = (mag: number, isBack: boolean, u: DateUnit, f: string) => {
+    if (several) return;
+    const t = buildDateToken(head, isBack ? -mag : mag, u, f);
+    setLive(t);
+    onChange(t);
+  };
+  const preview = resolveDateToken(live, new Date(), typeof navigator !== 'undefined' ? navigator.language : 'en-US');
+
+  return (
+    <>
+      <Section label="Shift">
+        {several ? (
+          <div className="text-[10px] text-text-tertiary py-1">Several offsets in this token — edit it by hand.</div>
+        ) : (
+          <>
+            <div className="flex items-center gap-2 py-1">
+              <NumInput value={magnitude} onChange={(v) => { setMagnitude(v); emit(v, back, unit, format); }} min={0} width={70} />
+              <div className="flex gap-1">
+                <button type="button" onClick={() => { setBack(true); emit(magnitude, true, unit, format); }} className={`${PILL} ${back ? PILL_ON : PILL_OFF}`}>back</button>
+                <button type="button" onClick={() => { setBack(false); emit(magnitude, false, unit, format); }} className={`${PILL} ${!back ? PILL_ON : PILL_OFF}`}>ahead</button>
+              </div>
+              {magnitude === 0 && <span className="text-[11px] text-text-tertiary">now</span>}
+            </div>
+            <div className="flex flex-wrap gap-1 py-1">
+              {DATE_UNITS.map((u) => (
+                <button key={u.unit} type="button" onClick={() => { setUnit(u.unit); emit(magnitude, back, u.unit, format); }} className={`${PILL} ${unit === u.unit ? PILL_ON : PILL_OFF}`}>
+                  {u.label}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </Section>
+      <Section label="Format">
+        <div className="flex flex-wrap gap-1 py-1">
+          {DATE_PRESETS[head].map((p) => (
+            <button key={p.label} type="button" disabled={several} onClick={() => { setFormat(p.format); emit(magnitude, back, unit, p.format); }} className={`${PILL} ${format === p.format ? PILL_ON : PILL_OFF}`}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <input
+          type="text"
+          value={format}
+          disabled={several}
+          onChange={(e) => { setFormat(e.target.value); emit(magnitude, back, unit, e.target.value); }}
+          placeholder={DEFAULT_DATE_FORMAT[head]}
+          spellCheck={false}
+          className="h-7 w-full px-2 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid placeholder:text-text-disabled disabled:opacity-40"
+        />
+        <div className="text-[10px] text-text-tertiary mt-1">.NET pattern. MM = month, mm = minutes.</div>
+      </Section>
       <Section label="Resolves now to">
         <div className="py-1">
-          <div className="text-xs font-mono text-text-primary bg-bg-input border border-border-subtle rounded px-2 py-1">
-            {value}
-          </div>
+          {preview === null ? (
+            <div className="text-xs text-warning-ink">Invalid format — the token is typed as text.</div>
+          ) : (
+            <div className="text-xs font-mono text-text-primary bg-bg-input border border-border-subtle rounded px-2 py-1 break-all">{preview}</div>
+          )}
         </div>
       </Section>
-    );
-  }
+    </>
+  );
+}
+
+// {counter}, {row}, {loop}, {datarow}: nothing to set. The header is the one place that says what a
+// token is, so the body only says that there is nothing to edit.
+function StaticInfo() {
   return (
     <div className="px-3.5 py-3 text-[11px] text-text-tertiary">
       No editable parameters.

@@ -517,6 +517,13 @@ namespace TrueReplayer.Services
             (p => p.Actions.Any(UsesLoopToken),
                 new Version(2, 37, 0), "Loop iteration tokens"),
 
+            // Date/time tokens with an argument — an offset ({date:+7}), a format ({time:HH:mm})
+            // or both. An older build resolves only the bare {date}/{time}/{datetime} literals, so
+            // the whole token is typed verbatim (the literal-token class). Introduced after 2.36.0 —
+            // bump at release if the release number differs.
+            (p => p.Actions.Any(UsesDateFormatToken),
+                new Version(2, 37, 0), "Date/time format and offset"),
+
             // CopyToSlot Clear mode — an older build drops the unknown SlotMode property and
             // runs the row in CAPTURE mode, grabbing the current selection into the slot
             // instead of emptying it (silent semantic flip, and it fires a synthetic Ctrl+C
@@ -1007,6 +1014,29 @@ namespace TrueReplayer.Services
                 if (ActionReplayer.ChainUsesLoopRef(chain)) return true;
             return false;
         }
+
+        // ── Date/time tokens with an argument ────────────────────────────────────────────────
+        // Mirrors ActionExecution.DateTokenRegex with the argument made MANDATORY: the bare
+        // {date}/{time}/{datetime} have resolved since 1.0 and must not pin.
+        private static readonly Regex DateFormatTokenRegex = new(
+            @"\{(?:datetime|date|time):[^}]+\}",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static bool UsesDateFormatToken(ActionItem a) =>
+            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsDateFormatToken(a.Key)) ||
+            ContainsDateFormatToken(a.KeyHtml) ||
+            ContainsDateFormatToken(a.KeyMarkdown) ||
+            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsDateFormatToken(a.BrowserText)) ||
+            ContainsDateFormatToken(a.VariableValue) ||
+            ContainsDateFormatToken(a.ConditionOperand) ||
+            ContainsDateFormatToken(a.FilePath) ||
+            ContainsDateFormatToken(a.LaunchPath) ||
+            ContainsDateFormatToken(a.LaunchArgs);
+
+        private static bool ContainsDateFormatToken(string? text) =>
+            !string.IsNullOrEmpty(text)
+            && (text.Contains("{date", StringComparison.OrdinalIgnoreCase) || text.Contains("{time", StringComparison.OrdinalIgnoreCase))
+            && DateFormatTokenRegex.IsMatch(text);
 
         // ── A colon INSIDE a split delimiter, written "::" ──────────────────────────────────
         private static bool UsesEscapedColonDelimiter(ActionItem a) =>

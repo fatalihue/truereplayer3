@@ -7590,20 +7590,91 @@ namespace TrueReplayer.Services
             });
         }
 
-        // Resolves {datetime}/{date}/{time} ({datetime} first to avoid partial matches). The
-        // substituted values contain no braces, so no brace-escaping is needed here.
+        // {date} / {time} / {datetime}, optionally with a chain of OFFSETS and a FORMAT:
+        //   {date:+7}   {date:-1:yyyy-MM-dd}   {time:HH:mm}   {datetime:+1mo:dd/MM/yyyy HH:mm}   {date:D}
+        // The segments after the head are split on ':'. Every segment shaped like an offset — [+-]N
+        // with an optional unit: d (days, the default), w, mo (months), y, h, min or m (minutes), s —
+        // is applied in order; the remaining segments, re-joined with ':', are the .NET format
+        // (custom, or a single-letter standard one). No format → the classic dd/MM/yyyy · HH:mm:ss ·
+        // dd/MM/yyyy - HH:mm:ss. Formatting uses TokenCulture, so month and day NAMES follow the
+        // machine while '/' and ':' are always themselves — the output the manual documents, on
+        // every locale. A format .NET rejects (an unterminated quote, an unknown single letter) or
+        // an offset past the calendar leaves the token LITERAL, like every other malformed token.
+        // The substituted values carry no braces unless the author quoted some into the format, so
+        // no brace-escaping is needed here. The TS port (lexical/dateFormat.ts) mirrors all of it.
+        private static readonly Regex DateTokenRegex = new(
+            @"\{(datetime|date|time)(?::([^}]+))?\}",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Regex DateOffsetRegex = new(
+            @"^([+-]\d{1,6})(d|w|mo|y|h|min|m|s)?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        // The machine's culture with the date and time separators pinned to '/' and ':'. Names
+        // (dddd, MMMM) stay local; a pattern prints as it is typed. Built once — the culture does
+        // not change while the app runs. The AM/PM designators get a fallback: pt-BR's are EMPTY
+        // in .NET's data (measured: "h:mm tt" printed "2:07 " with a trailing space), which would
+        // make a 12-hour format silently useless on the very machines this app runs on.
+        private static readonly System.Globalization.CultureInfo TokenCulture = BuildTokenCulture();
+
+        private static System.Globalization.CultureInfo BuildTokenCulture()
+        {
+            var ci = (System.Globalization.CultureInfo)System.Globalization.CultureInfo.CurrentCulture.Clone();
+            ci.DateTimeFormat.DateSeparator = "/";
+            ci.DateTimeFormat.TimeSeparator = ":";
+            if (string.IsNullOrEmpty(ci.DateTimeFormat.AMDesignator)) ci.DateTimeFormat.AMDesignator = "AM";
+            if (string.IsNullOrEmpty(ci.DateTimeFormat.PMDesignator)) ci.DateTimeFormat.PMDesignator = "PM";
+            return ci;
+        }
+
         private static string ResolveDateTimeTokens(string text, TokenFlavorSync? sync = null)
         {
-            if (string.IsNullOrEmpty(text)) return text;
+            if (string.IsNullOrEmpty(text) || text.IndexOf('{') < 0) return text;
+            if (!DateTokenRegex.IsMatch(text)) return text;
+            // One clock for every token in the text, and for both flavors of a rich paste.
             var now = sync?.Now ?? DateTime.Now;
-            if (text.Contains("{datetime}", StringComparison.OrdinalIgnoreCase))
-                text = text.Replace("{datetime}", now.ToString("dd/MM/yyyy - HH:mm:ss"), StringComparison.OrdinalIgnoreCase);
-            if (text.Contains("{date}", StringComparison.OrdinalIgnoreCase))
-                text = text.Replace("{date}", now.ToString("dd/MM/yyyy"), StringComparison.OrdinalIgnoreCase);
-            if (text.Contains("{time}", StringComparison.OrdinalIgnoreCase))
-                text = text.Replace("{time}", now.ToString("HH:mm:ss"), StringComparison.OrdinalIgnoreCase);
-            return text;
+            return DateTokenRegex.Replace(text, m =>
+            {
+                try
+                {
+                    var head = m.Groups[1].Value.ToLowerInvariant();
+                    var when = now;
+                    string? format = null;
+                    if (m.Groups[2].Success)
+                    {
+                        var formatParts = new List<string>();
+                        foreach (var seg in m.Groups[2].Value.Split(':'))
+                        {
+                            var om = DateOffsetRegex.Match(seg);
+                            if (om.Success)
+                                when = ApplyDateOffset(when, int.Parse(om.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture), om.Groups[2].Value);
+                            else
+                                formatParts.Add(seg);
+                        }
+                        var joined = string.Join(":", formatParts);
+                        if (joined.Trim().Length > 0) format = joined;
+                    }
+                    format ??= head switch { "date" => "dd/MM/yyyy", "time" => "HH:mm:ss", _ => "dd/MM/yyyy - HH:mm:ss" };
+                    return when.ToString(format, TokenCulture);
+                }
+                catch (FormatException) { return m.Value; }
+                catch (ArgumentOutOfRangeException) { return m.Value; }
+            });
         }
+
+        // The unit letters of a date offset. Weeks are seven days; months and years go through
+        // AddMonths/AddYears, which clamp the day to the target month (Jan 31 + 1mo = Feb 28).
+        private static DateTime ApplyDateOffset(DateTime when, int n, string unit) => unit.ToLowerInvariant() switch
+        {
+            "" or "d" => when.AddDays(n),
+            "w" => when.AddDays(7L * n),
+            "mo" => when.AddMonths(n),
+            "y" => when.AddYears(n),
+            "h" => when.AddHours(n),
+            "min" or "m" => when.AddMinutes(n),
+            "s" => when.AddSeconds(n),
+            _ => when,
+        };
 
         // The editor exports every token chip as <span data-token="{token}">{token}</span> so a
         // saved KeyHtml round-trips back into chips. At SEND time those markers must go: the

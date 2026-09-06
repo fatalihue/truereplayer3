@@ -15,6 +15,7 @@
 // saved actions that contain `{enter}` continue to work and get normalised on
 // next edit.
 import { verbatimArgIndices } from './clipboardModifiers';
+import { resolveDateToken } from './dateFormat';
 
 const COMPOUND_NAMES: Record<string, string> = {
   datetime: 'DateTime',
@@ -37,7 +38,9 @@ const COMPOUND_NAMES: Record<string, string> = {
 // {pick:a|b|c} joins {input} here for the same reason: its whole argument is free text (the
 // '|'-separated options, which may carry spaces, ':' and accents). Without this, the pure-alpha
 // segment fold below would rewrite the OPTIONS on every chip creation ({Pick:Sim} → {Pick:sim}).
-const VERBATIM_ARG_NAMES = new Set(['input', 'pick']);
+// The date heads join them because a .NET format is CASE-SENSITIVE: MM is the month and mm the
+// minute, so folding {date:MMMM} to {date:mmmm} would change what the run types.
+const VERBATIM_ARG_NAMES = new Set(['input', 'pick', 'date', 'time', 'datetime']);
 
 // Heads whose first argument is a user-chosen name/column, followed by an optional modifier chain.
 const NAME_FIRST_ARG_NAMES = new Set(['row', 'rownext', 'var', 'clip']);
@@ -326,11 +329,12 @@ export function tokenResolvesIn(name: string, hasArg: boolean, scope: TokenScope
 // could see it; the walker applies it now, so the chip, the count, the grid and the preview agree.
 const NAME_ARG = '[A-Za-z0-9_]+';   // VarTokenRegex / RowDataTokenRegex / RowNextTokenRegex / ClipSlotTokenRegex
 const TOKEN_ARG_GATE: Record<string, RegExp> = {
-  // ResolveDateTimeTokens does a Contains/Replace on the exact literals, so any argument is text.
-  date: /^date$/i,
-  time: /^time$/i,
-  datetime: /^datetime$/i,
-  // Same for {counter}, {loop} and {datarow}; bare {row} is handled by the row entry below.
+  // DateTokenRegex: \{(datetime|date|time)(?::([^}]+))?\} — offsets and a format, at least one
+  // character after the colon. Whether .NET accepts the FORMAT is the second stage below.
+  date: /^date(:[^}]+)?$/i,
+  time: /^time(:[^}]+)?$/i,
+  datetime: /^datetime(:[^}]+)?$/i,
+  // {counter}, {loop} and {datarow} are exact literals; bare {row} is handled by the row entry below.
   counter: /^counter$/i,
   loop: /^loop$/i,
   datarow: /^datarow$/i,
@@ -363,12 +367,21 @@ const TOKEN_ARG_GATE: Record<string, RegExp> = {
  * anything: ParseSendTextSegments reads the name before the first ':' and an unparsable parameter
  * just falls back to the default (one press, 500 ms).
  */
+// A fixed instant for the date heads' second stage: whether .NET rejects a format does not depend
+// on the clock, and a gate must answer the same thing every time it is asked.
+const DATE_PROBE = new Date(2026, 0, 31, 13, 45, 30);
+
 export function engineAcceptsToken(token: string): boolean {
   const inner = token.slice(1, -1);
   const name = inner.split(':')[0].toLowerCase();
   if (SEGMENTING_TOKEN_NAMES.has(name)) return true;
   const gate = TOKEN_ARG_GATE[name];
-  return gate ? gate.test(inner) : false;
+  if (!gate || !gate.test(inner)) return false;
+  // The date heads have a second stage the regex cannot see: a format .NET throws on (an
+  // unterminated quote, an unknown single letter) leaves the token literal at replay, and the
+  // port (dateFormat.ts) says so without a clock.
+  if (name === 'date' || name === 'time' || name === 'datetime') return resolveDateToken(token, DATE_PROBE, 'en-US') !== null;
+  return true;
 }
 
 // ActionExecution.cs:8016-8017 — OpenBraceSentinel / CloseBraceSentinel. Runtime-only (nothing

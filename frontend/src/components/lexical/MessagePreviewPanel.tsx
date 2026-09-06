@@ -61,8 +61,8 @@ const REASON_TIP: Record<PendingReason, [string, string]> = {
 
 const NOTE_TIP: Record<string, [string, string]> = {
   clock: [
-    'Preview time. At replay the machine locale applies, so separators can differ.',
-    'Hora da prévia. No replay vale o idioma da máquina, então os separadores podem mudar.',
+    'Preview time. Month and day names follow the machine locale at replay.',
+    'Hora da prévia. Nomes de mês e dia seguem o idioma da máquina no replay.',
   ],
   'first-data-row': [
     'The FIRST data row. A run uses the row it is on; ForEach and Run Profile can use another table.',
