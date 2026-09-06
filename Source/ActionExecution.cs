@@ -5749,8 +5749,9 @@ namespace TrueReplayer.Services
         {
             None,       // takes no argument
             Raw,        // `join` — eats the next segment whatever it says, even a modifier name
-            RawSplit,   // the split family + dropnum — like Raw, but "::" inside the argument is
-                        // one literal ':', so it can span several segments (see ReadSplitDelimiter)
+            RawPair,    // `replace` — eats the next TWO segments whatever they say (FROM, TO)
+            RawSplit,   // the split family, dropnum and default — like Raw, but "::" inside the
+                        // argument is one literal ':', so it can span several segments (see ReadSplitDelimiter)
             Count1,     // line/word — a 1-based index
             Count0,     // first/last — a length
             Span,       // range/words — "a-b", either side optional ("6-", "-5")
@@ -5769,9 +5770,13 @@ namespace TrueReplayer.Services
             // and its "::" is spoken for. The split family never emits an empty delimiter (one
             // leaves the modifier inert), so ITS "::" was free to mean an escaped colon.
             "join" => ModifierArg.Raw,
-            "before" or "after" or "beforelast" or "afterlast" or "dropnum" => ModifierArg.RawSplit,
+            // replace takes TWO raw segments, FROM and TO — see its case in the applier for why
+            // neither can hold a colon (an empty TO is meaningful, so "::" is spoken for, as join's).
+            "replace" => ModifierArg.RawPair,
+            // default joins the split family: an empty text is inert, so its "::" is free to escape.
+            "before" or "after" or "beforelast" or "afterlast" or "dropnum" or "default" => ModifierArg.RawSplit,
             "line" or "word" => ModifierArg.Count1,
-            "first" or "last" => ModifierArg.Count0,
+            "first" or "last" or "pad" => ModifierArg.Count0,
             "range" or "words" => ModifierArg.Span,
             "lines" => ModifierArg.Indices,
             _ => ModifierArg.None,
@@ -5854,6 +5859,9 @@ namespace TrueReplayer.Services
                 ReadSplitDelimiter(parts, i, out var afterSplit);
                 return afterSplit;
             }
+            // Two raw segments, unconditionally — a missing one reads as empty, and the step lands
+            // past the end safely (the applier reads what is there).
+            if (kind == ModifierArg.RawPair) return i + 3;
             // No argument left to take. `join` still steps 2 — the applier does, falling safely
             // past the end — and every other modifier degrades to argument-less.
             if (i + 1 >= parts.Length) return kind == ModifierArg.Raw ? i + 2 : i + 1;
@@ -5932,6 +5940,12 @@ namespace TrueReplayer.Services
         private static readonly HashSet<string> TextFilterModifierNames = new(StringComparer.OrdinalIgnoreCase)
             { "noaccents", "digits" };
 
+        // The value-shaping modifiers that shipped in 2.37.0: replace, count, pad and default. Its
+        // own pin, for the DropNum reason — sharing an older pinned set would let a profile using
+        // them import where they silently do nothing.
+        private static readonly HashSet<string> ShapeModifierNames = new(StringComparer.OrdinalIgnoreCase)
+            { "replace", "count", "pad", "default" };
+
         /// <summary>
         /// True when the chain uses a modifier the walk LANDS on — never one it steps over as
         /// somebody's argument. Both pins below delegate here for the reason the {clipboard:next}
@@ -5972,6 +5986,10 @@ namespace TrueReplayer.Services
         /// <summary>The text-filter modifiers (`noaccents` / `digits`), for their own pin.</summary>
         internal static bool ChainUsesTextFilter(string? modifierChain)
             => ChainUsesAnyOf(modifierChain, TextFilterModifierNames, openSpanCounts: false);
+
+        /// <summary>The value-shaping modifiers (`replace` / `count` / `pad` / `default`), for their own pin.</summary>
+        internal static bool ChainUsesShapeModifier(string? modifierChain)
+            => ChainUsesAnyOf(modifierChain, ShapeModifierNames, openSpanCounts: false);
 
         /// <summary>
         /// True when a split-family delimiter carries an escaped colon ("after: :: "). Asked by the
@@ -6416,6 +6434,64 @@ namespace TrueReplayer.Services
                         }
                         // Steps 2, landing safely past-the-end when there was no arg at all.
                         i = StepModifier(parts, i, out _);
+                        break;
+
+                    // ── Value shaping (2.37.0) ──────────────────────────────────────────────
+                    case "replace":
+                        // replace:FROM:TO → every occurrence of FROM becomes TO, case-insensitive
+                        // like every other match here. TWO raw segments, ALWAYS consumed (the join
+                        // rule, twice): an argument that spells a modifier name is still an
+                        // argument, and a missing TO is the empty string, so "replace:x" deletes
+                        // every x. Neither side can hold a colon — join's limit, for join's reason:
+                        // an EMPTY TO is meaningful, so "::" cannot double as an escape here. An
+                        // empty FROM has nothing to find and leaves the content untouched.
+                        {
+                            string from = i + 1 < parts.Length ? parts[i + 1] : string.Empty;
+                            string to = i + 2 < parts.Length ? parts[i + 2] : string.Empty;
+                            if (from.Length > 0)
+                                result = result.Replace(from, to, StringComparison.OrdinalIgnoreCase);
+                            i = StepModifier(parts, i, out _);
+                        }
+                        break;
+                    case "count":
+                        // The number of non-blank lines — "items", the way {clipboard:next} and
+                        // Set Variable's Cycle count them. Runs on the value at THIS point of the
+                        // chain, so "dedupe:count" counts distinct lines.
+                        {
+                            int n = 0;
+                            foreach (var l in SplitContentLines(result))
+                                if (!string.IsNullOrWhiteSpace(l)) n++;
+                            result = n.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                        }
+                        i++;
+                        break;
+                    case "pad":
+                        // pad:N → left-pad with zeros to N characters ("7" → "007"); a value already
+                        // that long is untouched. The int-argument shape of first/last: a literal or
+                        // an "@name" reference, and a reference that fails resolves EMPTY (the
+                        // fail-empty rule — a typo'd variable must not paste the bare value).
+                        {
+                            int next = StepModifier(parts, i, out _);
+                            if (next == i + 2)
+                            {
+                                if (TryReadIntArg(parts[i + 1], ctx, 0, out var width, out _))
+                                    result = result.PadLeft(width, '0');
+                                else result = string.Empty;
+                            }
+                            i = next;
+                        }
+                        break;
+                    case "default":
+                        // default:TEXT → TEXT when the value at this point is EMPTY, otherwise the
+                        // value. The fallback the fail-empty doctrine needed: an unset variable, a
+                        // missing delimiter or a line past the end pasted nothing, with nothing to
+                        // say about it. RawSplit shape like the split family — "::" is a literal
+                        // colon ("default:12::00"), free here because an empty TEXT is inert.
+                        {
+                            string text = ReadSplitDelimiter(parts, i, out int afterText);
+                            if (result.Length == 0 && text.Length > 0) result = text;
+                            i = afterText;
+                        }
                         break;
 
                     default:
@@ -7459,6 +7535,14 @@ namespace TrueReplayer.Services
             @"\{clip:([A-Za-z0-9_]+)(?::([^}]+))?\}",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+        // The run counters with a chain: {counter[:mods]} / {loop[:mods]} / {datarow[:mods]}
+        // ({counter:pad:3} → "007"). Group 2 is the same clipboard-style chain every other head
+        // takes. Bare {row} is NOT here: "{row:" is the data-column token, so the action row cannot
+        // take a chain and stays a literal Replace below.
+        private static readonly Regex RunStateChainTokenRegex = new(
+            @"\{(counter|loop|datarow)(?::([^}]+))?\}",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
         /// <summary>
         /// Resolves the run-state tokens {var:name} / {counter} / {row} from
         /// <paramref name="runCtx"/>. With RunCtx.Empty (the Test Action path) every {var}
@@ -7529,17 +7613,32 @@ namespace TrueReplayer.Services
                 });
             }
 
-            // Numeric run-state tokens — no braces in the substituted value, so no escaping.
-            // <= 0 means "no live run" (Test Action) → empty, consistent with {var} above.
-            if (text.Contains("{counter}", StringComparison.OrdinalIgnoreCase))
-                text = text.Replace("{counter}", runCtx.Iteration > 0 ? runCtx.Iteration.ToString() : string.Empty, StringComparison.OrdinalIgnoreCase);
+            // Numeric run-state tokens. {counter}, {loop} and {datarow} take the modifier chain
+            // ({counter:pad:3} → "007") on the SAME applier as every other head; the value is the
+            // number, or EMPTY when <= 0 ("no live run" on the Test Action path — consistent with
+            // {var}), so a "default:" in the chain is what a macro reads outside a run. A chain's
+            // output is text the author shaped (a default, a replacement), so it gets the {var}
+            // treatment for the target context. Bare {row} stays a literal Replace: "{row:" is the
+            // data-column token, so the action row cannot take a chain.
+            if (RunStateChainTokenRegex.IsMatch(text))
+            {
+                text = RunStateChainTokenRegex.Replace(text, m =>
+                {
+                    int n = m.Groups[1].Value.ToLowerInvariant() switch
+                    {
+                        "counter" => runCtx.Iteration,
+                        "loop" => runCtx.Loop,
+                        _ => runCtx.DataRow,
+                    };
+                    string value = n > 0 ? n.ToString(System.Globalization.CultureInfo.InvariantCulture) : string.Empty;
+                    if (m.Groups[2].Success)
+                        value = ApplyClipboardModifiers(value, m.Groups[2].Value, runCtx);
+                    if (htmlEncodeSubstitution) value = HtmlEncodeValue(value);
+                    return escapeBracesInSubstitution ? EscapeBracesForParser(value) : value;
+                });
+            }
             if (text.Contains("{row}", StringComparison.OrdinalIgnoreCase))
                 text = text.Replace("{row}", runCtx.Row > 0 ? runCtx.Row.ToString() : string.Empty, StringComparison.OrdinalIgnoreCase);
-            // {loop} / {datarow} — the block iteration and the data row number; same <= 0 → empty rule.
-            if (text.Contains("{loop}", StringComparison.OrdinalIgnoreCase))
-                text = text.Replace("{loop}", runCtx.Loop > 0 ? runCtx.Loop.ToString() : string.Empty, StringComparison.OrdinalIgnoreCase);
-            if (text.Contains("{datarow}", StringComparison.OrdinalIgnoreCase))
-                text = text.Replace("{datarow}", runCtx.DataRow > 0 ? runCtx.DataRow.ToString() : string.Empty, StringComparison.OrdinalIgnoreCase);
 
             return text;
         }

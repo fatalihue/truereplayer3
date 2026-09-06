@@ -124,6 +124,12 @@ const DATE_SHIFTED: TokenDescription = { tip: ['Date with an offset and/or a cus
 const TIME_SHIFTED: TokenDescription = { tip: ['Time with an offset and/or a custom format', 'Hora com deslocamento e/ou formato próprio'] };
 const DATETIME_SHIFTED: TokenDescription = { tip: ['Date and time with an offset and/or a custom format', 'Data e hora com deslocamento e/ou formato próprio'] };
 
+// A run counter carrying a chain ({counter:pad:3}): the base tip's "(1, 2, 3…)" would promise the
+// bare number.
+const COUNTER_SHAPED: TokenDescription = { tip: ['Run repeat number, shaped by its modifiers', 'Número da repetição da execução, moldado pelos modificadores'] };
+const LOOP_SHAPED: TokenDescription = { tip: ['Iteration of the innermost While / For Each block, shaped by its modifiers', 'Volta do bloco While / For Each mais interno, moldada pelos modificadores'] };
+const DATAROW_SHAPED: TokenDescription = { tip: ['Number of the current data row, shaped by its modifiers', 'Número da linha de dados atual, moldado pelos modificadores'] };
+
 // Tokens whose ARGUMENT changes what they mean. Checked before BY_NAME; first match wins.
 const VARIANTS: readonly { name: string; when: (token: string, mods: string[]) => boolean; desc: TokenDescription }[] = [
   { name: 'clipboard', when: (token) => hasNextModifier(token), desc: CLIPBOARD_NEXT },
@@ -131,6 +137,9 @@ const VARIANTS: readonly { name: string; when: (token: string, mods: string[]) =
   { name: 'date', when: (_token, mods) => mods.length > 0, desc: DATE_SHIFTED },
   { name: 'time', when: (_token, mods) => mods.length > 0, desc: TIME_SHIFTED },
   { name: 'datetime', when: (_token, mods) => mods.length > 0, desc: DATETIME_SHIFTED },
+  { name: 'counter', when: (_token, mods) => mods.length > 0, desc: COUNTER_SHAPED },
+  { name: 'loop', when: (_token, mods) => mods.length > 0, desc: LOOP_SHAPED },
+  { name: 'datarow', when: (_token, mods) => mods.length > 0, desc: DATAROW_SHAPED },
 ];
 
 // Same split every other surface does — normalizeToken, splitTokenSegments and chainHeadKind all

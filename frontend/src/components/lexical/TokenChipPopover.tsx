@@ -14,6 +14,10 @@ import {
   parseRowNextToken,
   parseNameToken,
   parseWinClipToken,
+  parseChainToken,
+  buildChainToken,
+  DEFAULT_TRANSFORM,
+  type ChainHead,
   type TransformState,
 } from './clipboardModifiers';
 import { NumInput, PopoverHeader, Section } from './popoverAtoms';
@@ -51,7 +55,7 @@ const REPEATABLE_TOKEN_NAMES = new Set([
 // and in the editor's update (what a new value may become).
 const MAX_KEY_REPEAT = 100;
 
-type TokenKind = 'clipboard' | 'delay' | 'repeatable' | 'random' | 'var' | 'rowcol' | 'rownextcol' | 'clip' | 'winclip' | 'input' | 'pick' | 'date' | 'static';
+type TokenKind = 'clipboard' | 'delay' | 'repeatable' | 'random' | 'var' | 'rowcol' | 'rownextcol' | 'clip' | 'winclip' | 'input' | 'pick' | 'date' | 'runstate' | 'static';
 
 function getTokenKind(token: string): TokenKind {
   const inner = token.slice(1, -1);
@@ -74,6 +78,8 @@ function getTokenKind(token: string): TokenKind {
   if (name === 'pick') return 'pick';
   // {date} / {time} / {datetime} — an offset and a format (2.37.0).
   if (name === 'date' || name === 'time' || name === 'datetime') return 'date';
+  // {counter} / {loop} / {datarow} — the run counters take the modifier chain (2.37.0).
+  if (name === 'counter' || name === 'loop' || name === 'datarow') return 'runstate';
   if (REPEATABLE_TOKEN_NAMES.has(name)) return 'repeatable';
   return 'static';
 }
@@ -245,7 +251,7 @@ export function TokenChipPopover({
         position: 'fixed',
         ...visibilityStyle,
         zIndex: 100,
-        width: kind === 'clipboard' || kind === 'rowcol' || kind === 'rownextcol' || kind === 'pick' || kind === 'date' ? 300 : 260,
+        width: kind === 'clipboard' || kind === 'rowcol' || kind === 'rownextcol' || kind === 'pick' || kind === 'date' || kind === 'runstate' ? 300 : 260,
         borderColor: 'color-mix(in srgb, var(--color-accent-solid) 35%, transparent)',
         maxHeight: 'calc(100vh - 24px)',
       }}
@@ -277,6 +283,7 @@ export function TokenChipPopover({
         {kind === 'input' && <InputEditor token={token} onChange={updateLive} />}
         {kind === 'pick' && <PickEditor token={token} onChange={updateLive} />}
         {kind === 'date' && <DateEditor token={token} onChange={updateLive} />}
+        {kind === 'runstate' && <RunStateEditor token={token} onChange={updateLive} />}
         {kind === 'static' && <StaticInfo />}
       </div>
 
@@ -915,8 +922,43 @@ function DateEditor({ token, onChange }: { token: string; onChange: (t: string) 
   );
 }
 
-// {counter}, {row}, {loop}, {datarow}: nothing to set. The header is the one place that says what a
-// token is, so the body only says that there is nothing to edit.
+// {counter} / {loop} / {datarow} with a chain ({counter:pad:3}). No identity to edit — the head IS
+// the value — so this is the shared body alone, with the source marked unknown: a run counter
+// exists only inside a run, and previewing a chain against "" would claim it yields nothing. Same
+// emit discipline as ClipboardEditor: only on real input, never for a chain the parser could not
+// represent.
+function RunStateEditor({ token, onChange }: { token: string; onChange: (t: string) => void }) {
+  const parsed = parseChainToken(token);
+  const head: ChainHead = parsed?.head ?? { kind: 'counter' };
+  const [state, setState] = useState<TransformState>(() => parsed?.state ?? { ...DEFAULT_TRANSFORM });
+  const [displayToken, setDisplayToken] = useState(() => normalizeToken(token));
+
+  const update: React.Dispatch<React.SetStateAction<TransformState>> = (action) => {
+    if (state.unmodeled) return;
+    const next = typeof action === 'function'
+      ? (action as (prev: TransformState) => TransformState)(state)
+      : action;
+    setState(next);
+    const t = buildChainToken(head, next);
+    setDisplayToken(t);
+    onChange(t);
+  };
+
+  return (
+    <ClipboardModifierBody
+      state={state}
+      setState={update}
+      clipRaw=""
+      clipReady
+      token={displayToken}
+      sourceLabel="Value"
+      sourceUnknown
+    />
+  );
+}
+
+// {row}: nothing to set. The header is the one place that says what a token is, so the body only
+// says that there is nothing to edit.
 function StaticInfo() {
   return (
     <div className="px-3.5 py-3 text-[11px] text-text-tertiary">

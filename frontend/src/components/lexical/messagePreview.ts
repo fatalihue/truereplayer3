@@ -14,7 +14,7 @@
 //      engine's argument shapes too (engineAcceptsToken in tokenNormalize, which used to be this
 //      module's private TOKEN_ARG_GATE): {var:Ação} and {row:First Name} fail the
 //      `[A-Za-z0-9_]+` gate on the four name-first regexes and paste LITERALLY, and {date:x},
-//      {counter:5} and {clipboard:} are literal because those resolvers match an exact string or
+//      {random:abc} and {clipboard:} are literal because those resolvers reject the argument or
 //      require a non-empty modifier group. Every segment the walker hands back has therefore
 //      already passed the gate; the 'literal' branches below stay as the belt to that brace, so
 //      a consumer that feeds this module a token from elsewhere still cannot print a value

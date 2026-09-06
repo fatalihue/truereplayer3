@@ -11,6 +11,9 @@ import {
   linesStepActive,
   splitStepActive,
   dropNumStepActive,
+  replaceStepActive,
+  shapeStepActive,
+  defaultStepActive,
   type CaseTransform,
   type Extract,
   type Limit,
@@ -80,6 +83,9 @@ export function ClipboardModifierBody({
   const linesActive = linesStepActive(state);
   const splitActive = splitStepActive(state);
   const dropNumActive = dropNumStepActive(state);
+  const replaceActive = replaceStepActive(state);
+  const shapeActive = shapeStepActive(state);
+  const defaultActive = defaultStepActive(state);
 
   // `next` is clipboard-only (see showNext), so five of the six heads have no step 1 and the
   // ladder has to RENUMBER rather than start at 2 — the numbers exist to communicate pipeline
@@ -162,9 +168,37 @@ export function ClipboardModifierBody({
         />
       </StepSection>
 
-      {/* Cuts the RAW text at a delimiter — in the emitted chain it runs right after trim,
+      {/* Replace runs right after trim in the emitted chain — on the raw text, before any cut.
+          Two raw arguments like the join separator: no colon in either, and an EMPTY "with"
+          deletes every match. */}
+      <StepSection n={sn(3)} label="Replace" active={replaceActive}>
+        <div className="flex items-center gap-2 py-0.5">
+          <input
+            type="text"
+            value={state.replaceFrom}
+            onChange={(e) => setState((s) => ({ ...s, replaceFrom: e.target.value.replace(/[{}:]/g, '') }))}
+            placeholder="find"
+            aria-label="Find"
+            data-tip={tt('Every match, ignoring case. { } : not allowed.', 'Toda ocorrência, sem diferenciar maiúsculas. { } : não podem.')}
+            className="h-7 w-[92px] px-1.5 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid"
+          />
+          <span className="text-[11px] text-text-tertiary">→</span>
+          <input
+            type="text"
+            value={state.replaceTo}
+            onChange={(e) => setState((s) => ({ ...s, replaceTo: e.target.value.replace(/[{}:]/g, '') }))}
+            disabled={state.replaceFrom.length === 0}
+            placeholder="(nothing)"
+            aria-label="Replace with"
+            data-tip={tt('Empty deletes the match. { } : not allowed.', 'Vazio apaga a ocorrência. { } : não podem.')}
+            className="h-7 w-[92px] px-1.5 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid disabled:opacity-50"
+          />
+        </div>
+      </StepSection>
+
+      {/* Cuts the RAW text at a delimiter — in the emitted chain it runs right after replace,
           ahead of every line op. */}
-      <StepSection n={sn(3)} label="Split at" active={splitActive}>
+      <StepSection n={sn(4)} label="Split at" active={splitActive}>
         <div className="py-0.5">
           <SegmentedControl<Split>
             dense
@@ -207,7 +241,7 @@ export function ClipboardModifierBody({
       </StepSection>
 
       {/* Strip a leading "<digits><suffix>" — runs right after the split in the emitted chain. */}
-      <StepSection n={sn(4)} label="Drop count" active={dropNumActive}>
+      <StepSection n={sn(5)} label="Drop count" active={dropNumActive}>
         <div className="flex items-center gap-2 py-0.5">
           <input
             type="text"
@@ -226,7 +260,7 @@ export function ClipboardModifierBody({
 
       {/* List ops — they operate on the content as LINES, and the backend applies them BEFORE
           the single-line Extract below. They used to be drawn after it. */}
-      <StepSection n={sn(5)} label="Lines" active={linesActive}>
+      <StepSection n={sn(6)} label="Lines" active={linesActive}>
         <RadioGroup label="Lines">
           <RadioRow
             checked={state.listPick === 'none'}
@@ -323,7 +357,7 @@ export function ClipboardModifierBody({
         </div>
       </StepSection>
 
-      <StepSection n={sn(6)} label="Extract" active={state.extract !== 'none'}>
+      <StepSection n={sn(7)} label="Extract" active={state.extract !== 'none'}>
         <RadioGroup label="Extract">
           <RadioRow
             checked={state.extract === 'none'}
@@ -401,7 +435,7 @@ export function ClipboardModifierBody({
         </RadioGroup>
       </StepSection>
 
-      <StepSection n={sn(7)} label="Limit length" active={state.limit !== 'none'}>
+      <StepSection n={sn(8)} label="Limit length" active={state.limit !== 'none'}>
         <RadioGroup label="Limit length">
           <RadioRow
             checked={state.limit === 'none'}
@@ -447,7 +481,7 @@ export function ClipboardModifierBody({
 
       {/* Character-class filters over the value at THIS point of the chain — the builder emits
           them after the slice/limit steps and before Case. */}
-      <StepSection n={sn(8)} label="Clean up" active={state.noAccents || state.digitsOnly}>
+      <StepSection n={sn(9)} label="Clean up" active={state.noAccents || state.digitsOnly}>
         <div className="grid grid-cols-2 gap-x-3">
           <CheckRow
             checked={state.noAccents}
@@ -462,10 +496,37 @@ export function ClipboardModifierBody({
         </div>
       </StepSection>
 
-      {/* LAST, because the backend applies case last. The same five values and the same labels as
-          the surface's segmented control (None / UPPER / lower / Sentence / Title), as a radio
-          group in two columns so the step stays three rows in a popover this narrow. */}
-      <StepSection n={sn(9)} label="Case" active={state.case !== 'none'}>
+      {/* count → pad, then case, then default: the number of lines is what gets padded. */}
+      <StepSection n={sn(10)} label="Count & pad" active={shapeActive}>
+        <CheckRow
+          checked={state.count}
+          onChange={() => setState((s) => ({ ...s, count: !s.count }))}
+          label="Count lines"
+        />
+        <div className="flex items-center gap-2 py-0.5">
+          <CheckRow
+            checked={state.pad}
+            onChange={() => setState((s) => ({ ...s, pad: !s.pad }))}
+            label="Zero-pad to"
+            className=""
+          />
+          <ArgInput
+            value={state.padN}
+            onChange={(n) => setState((s) => ({ ...s, padN: Math.max(0, n) }))}
+            refValue={state.padRef}
+            onRefChange={(r) => setState((s) => ({ ...s, padRef: r }))}
+            disabled={!state.pad}
+            min={0}
+            refTip={refTip}
+            numTip={numTip}
+          />
+        </div>
+      </StepSection>
+
+      {/* The same five values and the same labels as the surface's segmented control (None / UPPER
+          / lower / Sentence / Title), as a radio group in two columns so the step stays three rows
+          in a popover this narrow. */}
+      <StepSection n={sn(11)} label="Case" active={state.case !== 'none'}>
         <RadioGroup label="Case">
           <div className="grid grid-cols-2 gap-x-3">
             <RadioRow checked={state.case === 'none'} onChange={() => setCase('none')} label="None" />
@@ -475,6 +536,21 @@ export function ClipboardModifierBody({
             <RadioRow checked={state.case === 'title'} onChange={() => setCase('title')} label="Title" />
           </div>
         </RadioGroup>
+      </StepSection>
+
+      {/* LAST: the fallback sees the FINAL value, and only an empty one. */}
+      <StepSection n={sn(12)} label="Default" active={defaultActive}>
+        <div className="py-0.5">
+          <input
+            type="text"
+            value={state.defaultText}
+            onChange={(e) => setState((s) => ({ ...s, defaultText: e.target.value.replace(/[{}]/g, '') }))}
+            placeholder="when empty"
+            aria-label="Default text"
+            data-tip={tt('Used when the result is empty. Spaces and : allowed, { } not.', 'Usado quando o resultado fica vazio. Espaços e : podem, { } não.')}
+            className="h-7 w-full px-1.5 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid"
+          />
+        </div>
       </StepSection>
 
       <div className="px-3.5 py-1.5 bg-bg-surface border-b border-border-subtle">

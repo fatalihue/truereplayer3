@@ -3,12 +3,15 @@
 // popovers (clipboard + data-row cell — both run the SAME backend modifier pipeline).
 //
 // Modifier order in the emitted chain MUST match the backend pipeline:
-// next → trim → before/after(+last) → dropnum → range/lines → sort → dedupe → reverse → join →
-// words → line/word → first/last → noaccents → digits → upper/lower/sentence/title.
+// next → trim → replace → before/after(+last) → dropnum → range/lines → sort → dedupe → reverse →
+// join → words → line/word → first/last → noaccents → digits → count → pad →
+// upper/lower/sentence/title → default.
 // ('next' picks WHICH text the rest sees and is handled in ResolveClipboardTokensAsync, ahead
-// of ApplyClipboardModifiers; the split cuts the RAW text at a delimiter, dropnum strips a
-// leading count, list ops then narrow/reshape the multiline content, words takes a span and
-// line/word a single piece, limit slices, the character-class filters clean, case finishes.)
+// of ApplyClipboardModifiers; replace rewrites the raw text, the split cuts it at a delimiter,
+// dropnum strips a leading count, list ops then narrow/reshape the multiline content, words takes
+// a span and line/word a single piece, limit slices, the character-class filters clean, count
+// turns lines into a number, pad zero-fills it, case finishes the text, and default is the
+// fallback for an EMPTY final value.)
 //
 // This list is the ground truth the two editing UIs order themselves by, so it has to stay in
 // lockstep with buildModifierParts below — it was stale once already, missing `dropnum` and the
@@ -132,7 +135,7 @@ function spanText(from: number | null, to: number | null): string | null {
   return `${from ?? ''}-${to ?? ''}`;
 }
 
-type ArgKind = 'none' | 'raw' | 'rawsplit' | 'count1' | 'count0' | 'span' | 'indices';
+type ArgKind = 'none' | 'raw' | 'rawpair' | 'rawsplit' | 'count1' | 'count0' | 'span' | 'indices';
 
 const argOf = (modifier: string): ArgKind => {
   switch (modifier) {
@@ -144,9 +147,13 @@ const argOf = (modifier: string): ArgKind => {
     // spoken for. The split family never emits an empty delimiter (one leaves the modifier
     // inert), so ITS "::" was free to mean an escaped colon. Mirror of the backend's ArgOf.
     case 'join': return 'raw';
-    case 'before': case 'after': case 'beforelast': case 'afterlast': case 'dropnum': return 'rawsplit';
+    // replace takes TWO raw segments (FROM, TO): an empty TO is meaningful ("delete"), so its "::"
+    // is spoken for exactly as join's is, and neither side can hold a colon.
+    case 'replace': return 'rawpair';
+    // default joins the split family: an empty text is inert, so its "::" is free to escape.
+    case 'before': case 'after': case 'beforelast': case 'afterlast': case 'dropnum': case 'default': return 'rawsplit';
     case 'line': case 'word': return 'count1';
-    case 'first': case 'last': return 'count0';
+    case 'first': case 'last': case 'pad': return 'count0';
     case 'range': case 'words': return 'span';
     case 'lines': return 'indices';
     default: return 'none';
@@ -195,6 +202,8 @@ function stepModifier(parts: string[], i: number): { next: number; argIsRef: boo
   // readSplitDelimiter is the single place that decides how many — so every walk routing
   // through here inherits the escape instead of re-deriving it.
   if (kind === 'rawsplit') return { next: readSplitDelimiter(parts, i).next, argIsRef: false };
+  // Two raw segments, unconditionally — a missing one reads as empty (the backend's RawPair).
+  if (kind === 'rawpair') return { next: i + 3, argIsRef: false };
   if (i + 1 >= parts.length) return { next: kind === 'raw' ? i + 2 : i + 1, argIsRef: false };
 
   const arg = parts[i + 1];
@@ -235,7 +244,9 @@ export function verbatimArgIndices(parts: string[], from: number): Set<number> {
   for (let i = from; i < parts.length;) {
     const { next } = stepModifier(parts, i);
     const kind = argOf(parts[i].toLowerCase());
-    if (kind === 'rawsplit') for (let k = i + 1; k < next; k++) out.add(k);
+    // Every consumed segment of a free-text argument: a split delimiter across a "::" seam, or
+    // both halves of a replace.
+    if (kind === 'rawsplit' || kind === 'rawpair') for (let k = i + 1; k < next; k++) out.add(k);
     else if (next === i + 2 && kind === 'raw') out.add(i + 1);
     i = next;
   }
@@ -300,6 +311,16 @@ export interface TransformState {
   // slice/limit steps and before the case tail (slice, then clean, then case).
   noAccents: boolean;   // strip diacritics: NFD → drop \p{Mn} → NFC (backend algorithm, exactly)
   digitsOnly: boolean;  // keep ASCII 0-9 only (backend walks '0'..'9'; never \p{Nd})
+  // Value shaping (2.37.0). `replace` runs EARLY (right after trim, on the raw text); count, pad
+  // and default close the chain. from/to are raw single segments like the join separator (no
+  // colon); `defaultText` is split-family text ("::" escapes a colon on the way out).
+  replaceFrom: string;  // '' = the step is off and nothing is emitted
+  replaceTo: string;    // '' is a legal "delete every FROM"
+  count: boolean;       // the value becomes its number of non-blank lines
+  pad: boolean;         // left-pad with zeros to padN characters
+  padN: number;
+  padRef: string;       // "@name" instead of padN — same shape as extractRef / limitRef
+  defaultText: string;  // '' = off; otherwise the text an EMPTY result becomes
 }
 
 export const DEFAULT_TRANSFORM: TransformState = {
@@ -331,6 +352,13 @@ export const DEFAULT_TRANSFORM: TransformState = {
   joinSep: ',',
   noAccents: false,
   digitsOnly: false,
+  replaceFrom: '',
+  replaceTo: '',
+  count: false,
+  pad: false,
+  padN: 3,
+  padRef: '',
+  defaultText: '',
 };
 
 export function buildClipboardToken(s: TransformState): string {
@@ -359,6 +387,10 @@ export function buildRowNextToken(column: string, s: TransformState): string {
 function buildModifierParts(s: TransformState): string[] {
   const parts: string[] = [];
   if (s.trim) parts.push('trim');
+  // replace:FROM:TO — two raw parts, always both (an empty TO deletes). Off when FROM is empty:
+  // the backend leaves the content untouched for one, so emitting it would be a step that does
+  // nothing.
+  if (s.replaceFrom.length > 0) parts.push('replace', s.replaceFrom, s.replaceTo);
   // An empty delimiter is not a cut point — the backend leaves the content untouched for one,
   // so emitting the modifier would put a step in the token that does nothing. Same care the
   // `lines` spec takes about needing a digit.
@@ -404,10 +436,16 @@ function buildModifierParts(s: TransformState): string[] {
   // emits only this order, and a hand-typed other order goes read-only via assertRebuildable.)
   if (s.noAccents) parts.push('noaccents');
   if (s.digitsOnly) parts.push('digits');
+  // count → pad → case → default: the number of lines is what gets padded ("count:pad:3" is
+  // "007"), case cannot touch digits, and the fallback has to see the FINAL value.
+  if (s.count) parts.push('count');
+  if (s.pad) parts.push('pad', isArgRef(s.padRef) ? s.padRef : String(s.padN));
   if (s.case === 'upper') parts.push('upper');
   else if (s.case === 'lower') parts.push('lower');
   else if (s.case === 'sentence') parts.push('sentence');
   else if (s.case === 'title') parts.push('title');
+  // Split-family text: a colon is doubled on the way out, as the delimiter's is.
+  if (s.defaultText.length > 0) parts.push('default', s.defaultText.replace(/:/g, '::'));
   return parts;
 }
 
@@ -465,9 +503,14 @@ export const dropNumStepActive = (s: TransformState): boolean => s.dropNumSuffix
  *  this step set to something other than its default? */
 export const linesStepActive = (s: TransformState): boolean =>
   s.listPick !== 'none' || s.sort || s.dedupe || s.reverse || s.join;
+/** Mirrors of the three 2.37.0 emit gates: a replace with no FROM, a default with no text and a
+ *  count/pad pair both off emit nothing, so their badges stay dark. */
+export const replaceStepActive = (s: TransformState): boolean => s.replaceFrom.length > 0;
+export const shapeStepActive = (s: TransformState): boolean => s.count || s.pad;
+export const defaultStepActive = (s: TransformState): boolean => s.defaultText.length > 0;
 
 export const previewIsRuntimeDependent = (s: TransformState): boolean =>
-  (extractUsesRef(s) && isArgRef(s.extractRef)) || (s.limit !== 'none' && isArgRef(s.limitRef));
+  (extractUsesRef(s) && isArgRef(s.extractRef)) || (s.limit !== 'none' && isArgRef(s.limitRef)) || (s.pad && isArgRef(s.padRef));
 
 /**
  * The reference field holds something the backend would NOT read as a reference — in practice just
@@ -480,7 +523,26 @@ export const previewIsRuntimeDependent = (s: TransformState): boolean =>
  */
 export const argRefIsUnfinished = (s: TransformState): boolean =>
   (extractUsesRef(s) && !!s.extractRef && !isArgRef(s.extractRef)) ||
-  (s.limit !== 'none' && !!s.limitRef && !isArgRef(s.limitRef));
+  (s.limit !== 'none' && !!s.limitRef && !isArgRef(s.limitRef)) ||
+  (s.pad && !!s.padRef && !isArgRef(s.padRef));
+
+// OrdinalIgnoreCase, the way the backend's Replace and split matches compare: fold both sides
+// per character (upper, like the sort comparer) and cut the ORIGINAL. A fold that changes the
+// length (ß → SS) would misalign the cut, so such a string is matched as it is.
+const foldForMatch = (t: string): string => { const u = t.toUpperCase(); return u.length === t.length ? u : t; };
+function replaceAllFolded(text: string, from: string, to: string): string {
+  const hay = foldForMatch(text);
+  const needle = foldForMatch(from);
+  let out = '';
+  let at = 0;
+  for (;;) {
+    const idx = hay.indexOf(needle, at);
+    if (idx < 0) { out += text.slice(at); break; }
+    out += text.slice(at, idx) + to;
+    at = idx + needle.length;
+  }
+  return out;
+}
 
 // A lone surrogate half. With the u flag the class matches UNPAIRED halves only — a proper
 // pair reads as one astral code point, outside this range. Mirror of the backend's
@@ -498,6 +560,9 @@ export function applyTransformPreview(raw: string, s: TransformState): string {
     r = items.length > 0 ? items[0] : '';
   }
   if (s.trim) r = r.trim();
+  // Every occurrence, case-insensitively — on the raw text, before any cut, where the builder
+  // emits it. An empty FROM is inert on the backend and emits nothing here.
+  if (s.replaceFrom.length > 0) r = replaceAllFolded(r, s.replaceFrom, s.replaceTo);
   if (s.split !== 'none' && s.splitDelim.length > 0) {
     // OrdinalIgnoreCase on the backend — fold both sides to find the index, then cut the
     // ORIGINAL so the surviving text keeps its own casing.
@@ -587,10 +652,16 @@ export function applyTransformPreview(raw: string, s: TransformState): string {
   // what replay will actually paste. digits mirrors the ASCII walk — [0-9], never \p{Nd}.
   if (s.noAccents && !hasLoneSurrogate(r)) r = r.normalize('NFD').replace(/\p{Mn}/gu, '').normalize('NFC');
   if (s.digitsOnly) r = r.replace(/[^0-9]/g, '');
+  // count: non-blank lines, the backend's IsNullOrWhiteSpace test per line. pad: PadLeft with
+  // zeros; a reference has no number here (previewIsRuntimeDependent), so it is skipped.
+  if (s.count) r = String(splitLines(r).filter((l) => l.trim() !== '').length);
+  if (s.pad && !isArgRef(s.padRef)) r = r.padStart(Math.max(0, s.padN), '0');
   if (s.case === 'upper') r = r.toUpperCase();
   else if (s.case === 'lower') r = r.toLowerCase();
   else if (s.case === 'sentence') r = r.length > 0 ? r[0].toUpperCase() + r.slice(1) : r;
   else if (s.case === 'title') r = r.replace(/(^|\s)(\S)/g, (_, ws, ch) => ws + ch.toUpperCase());
+  // The fallback sees the FINAL value — an empty one, and only an empty one.
+  if (s.defaultText.length > 0 && r === '') r = s.defaultText;
   return r;
 }
 
@@ -726,9 +797,15 @@ export type ChainHead =
   | { kind: 'rownext'; column: string }
   | { kind: 'var'; name: string }
   | { kind: 'clip'; name: string }
-  | { kind: 'winclip'; index: number };
+  | { kind: 'winclip'; index: number }
+  // The run counters (2.37.0): no identity, only the chain — {counter:pad:3}. The head IS the
+  // value, so the builder has nothing to fill in above the ladder.
+  | { kind: 'counter' }
+  | { kind: 'loop' }
+  | { kind: 'datarow' };
 
 export type ChainHeadKind = ChainHead['kind'];
+export type CounterHeadKind = 'counter' | 'loop' | 'datarow';
 
 /** The head kind of a chain-bearing token, or null for anything else ({enter}, {date}, …). */
 export function chainHeadKind(token: string): ChainHeadKind | null {
@@ -748,6 +825,9 @@ export function chainHeadKind(token: string): ChainHeadKind | null {
     case 'clip':
       return inner.includes(':') ? name as ChainHeadKind : null;
     case 'winclip': return 'winclip';
+    // The counters need no argument to be a token, so even a bare {counter} routes to the
+    // builder — a chip the user can give a chain to, with nothing to fill in first.
+    case 'counter': case 'loop': case 'datarow': return name as ChainHeadKind;
     default: return null;
   }
 }
@@ -775,6 +855,10 @@ export function parseChainToken(token: string): { head: ChainHead; state: Transf
       const r = parseWinClipToken(token);
       return { head: { kind, index: r.index }, state: r.state };
     }
+    case 'counter':
+    case 'loop':
+    case 'datarow':
+      return { head: { kind }, state: parseCounterToken(token, kind) };
   }
 }
 
@@ -786,7 +870,21 @@ export function buildChainToken(head: ChainHead, s: TransformState): string {
     case 'var': return buildNameToken('var', head.name, s);
     case 'clip': return buildNameToken('clip', head.name, s);
     case 'winclip': return buildWinClipToken(head.index, s);
+    case 'counter': case 'loop': case 'datarow': return buildCounterToken(head.kind, s);
   }
+}
+
+// {counter[:mods]} / {loop[:mods]} / {datarow[:mods]} — the run counters, whose head is the whole
+// identity. The same tail as every other head; no 'next' (there is nothing to walk).
+export function buildCounterToken(kind: CounterHeadKind, s: TransformState): string {
+  return '{' + [kind, ...buildModifierParts(s)].join(':') + '}';
+}
+
+export function parseCounterToken(token: string, kind: CounterHeadKind): TransformState {
+  const parts = token.slice(1, -1).split(':');
+  if (parts[0].toLowerCase() !== kind) return { ...DEFAULT_TRANSFORM };
+  const state = parseModifierParts(parts, 1);
+  return assertRebuildable(state, token, buildCounterToken(kind, state));
 }
 
 /** Whether the head's identity is filled in — an empty column or name would build a broken token. */
@@ -943,6 +1041,27 @@ function parseModifierParts(parts: string[], from: number): TransformState {
         // with no argument falls back to a space, as the backend does.
         state.join = true;
         state.joinSep = parts[i + 1] !== undefined ? parts[i + 1] : ' ';
+        break;
+      case 'replace':
+        // Two raw parts, verbatim (the join rule twice); a missing TO is the empty string, exactly
+        // as the backend reads it. An empty FROM is inert there and emits nothing here, so the
+        // rebuild differs and assertRebuildable sends the chip read-only — honest, since these
+        // controls cannot show a replace that does nothing.
+        state.replaceFrom = parts[i + 1] ?? '';
+        state.replaceTo = parts[i + 2] ?? '';
+        break;
+      case 'count':
+        state.count = true;
+        break;
+      case 'pad':
+        // The int-argument shape of first/last: a reference or a bare digit string.
+        if (argIsRef) { state.pad = true; state.padRef = arg!; }
+        else if (arg !== undefined && /^\d+$/.test(arg)) { state.pad = true; state.padN = Number(arg); }
+        else lose();
+        break;
+      case 'default':
+        // Split-family text, read across any "::" seam and re-emitted verbatim.
+        state.defaultText = readSplitDelimiter(parts, i).delim;
         break;
       default:
         // Anything this editor does not know: a modifier added to the backend but not here yet,

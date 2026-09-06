@@ -524,6 +524,22 @@ namespace TrueReplayer.Services
             (p => p.Actions.Any(UsesDateFormatToken),
                 new Version(2, 37, 0), "Date/time format and offset"),
 
+            // The value-shaping modifiers (replace / count / pad / default) — an older build skips
+            // the unknown names through the silent default (and, for `replace`, its two arguments
+            // too): `default` then pastes nothing where the author asked for a fallback and `pad`
+            // pastes "7" for "007" — the {clipboard:next} silent class. Detection delegates to the
+            // engine walk (ChainUsesShapeModifier): "join:default" is a separator and must not pin.
+            // Introduced after 2.36.0 — bump at release if the release number differs.
+            (p => p.Actions.Any(UsesShapeModifier),
+                new Version(2, 37, 0), "Replace/count/pad/default modifiers"),
+
+            // A modifier chain on {counter} / {loop} / {datarow}. Those heads carried no chain before
+            // this version, so an older build's literal Replace does not match the token at all and
+            // types it out verbatim — the 2.20.0 slot/variable/history chain pin, for the counters.
+            // Introduced after 2.36.0 — bump at release if the release number differs.
+            (p => p.Actions.Any(UsesCounterChainToken),
+                new Version(2, 37, 0), "Modifiers on counter/loop/datarow tokens"),
+
             // CopyToSlot Clear mode — an older build drops the unknown SlotMode property and
             // runs the row in CAPTURE mode, grabbing the current selection into the slot
             // instead of emptying it (silent semantic flip, and it fires a synthetic Ctrl+C
@@ -768,12 +784,13 @@ namespace TrueReplayer.Services
         }
 
         // ── Modifier chains, wherever they can appear ───────────────────────────────────────
-        // Every token head the shared applier serves. Groups 1-4 are the chains of {clipboard},
-        // {row|rownext:col}, {var|clip:name} and {winclip[:N]}; at most one is set per match.
-        // The last two joined the list when those heads gained a chain — a pin that only knew the
-        // first two would miss "{clip:pedido:line:@i}" entirely.
+        // Every token head the shared applier serves. Groups 1-5 are the chains of {clipboard},
+        // {row|rownext:col}, {var|clip:name}, {winclip[:N]} and {counter|loop|datarow}; at most one
+        // is set per match. Each joined the list when its head gained a chain — a pin that only knew
+        // the first two would miss "{clip:pedido:line:@i}" entirely, and one that stopped at four
+        // would miss "{counter:line:@i}".
         private static readonly Regex ModifierChainHeadRegex = new(
-            @"\{(?:clipboard(?::([^}]*))?|(?:row|rownext):[A-Za-z0-9_]+(?::([^}]*))?|(?:var|clip):[A-Za-z0-9_]+(?::([^}]*))?|winclip(?::\d+)?(?::([^}]*))?)\}",
+            @"\{(?:clipboard(?::([^}]*))?|(?:row|rownext):[A-Za-z0-9_]+(?::([^}]*))?|(?:var|clip):[A-Za-z0-9_]+(?::([^}]*))?|winclip(?::\d+)?(?::([^}]*))?|(?:counter|loop|datarow)(?::([^}]*))?)\}",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         // The chain of every chain-bearing token in `text`, so each detector below states WHICH
@@ -782,7 +799,7 @@ namespace TrueReplayer.Services
         {
             foreach (Match m in ModifierChainHeadRegex.Matches(text))
             {
-                for (int g = 1; g <= 4; g++)
+                for (int g = 1; g <= 5; g++)
                 {
                     if (!m.Groups[g].Success) continue;
                     yield return m.Groups[g].Value;
@@ -1037,6 +1054,47 @@ namespace TrueReplayer.Services
             !string.IsNullOrEmpty(text)
             && (text.Contains("{date", StringComparison.OrdinalIgnoreCase) || text.Contains("{time", StringComparison.OrdinalIgnoreCase))
             && DateFormatTokenRegex.IsMatch(text);
+
+        // ── The value-shaping modifiers — replace / count / pad / default ────────────────────
+        private static bool UsesShapeModifier(ActionItem a) =>
+            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsShapeModifier(a.Key)) ||
+            ContainsShapeModifier(a.KeyHtml) ||
+            ContainsShapeModifier(a.KeyMarkdown) ||
+            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsShapeModifier(a.BrowserText)) ||
+            ContainsShapeModifier(a.VariableValue) ||
+            ContainsShapeModifier(a.ConditionOperand) ||
+            ContainsShapeModifier(a.FilePath) ||
+            ContainsShapeModifier(a.LaunchPath) ||
+            ContainsShapeModifier(a.LaunchArgs);
+
+        private static bool ContainsShapeModifier(string? text)
+        {
+            if (string.IsNullOrEmpty(text) || text.IndexOf('{') < 0) return false;
+            foreach (var chain in ModifierChainsIn(text))
+                if (ActionReplayer.ChainUsesShapeModifier(chain)) return true;
+            return false;
+        }
+
+        // ── A chain on {counter} / {loop} / {datarow} ────────────────────────────────────────
+        // Mirrors ActionExecution.RunStateChainTokenRegex with the chain made mandatory: the bare
+        // counters have their own, older pins.
+        private static readonly Regex CounterChainTokenRegex = new(
+            @"\{(?:counter|loop|datarow):[^}]+\}",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static bool UsesCounterChainToken(ActionItem a) =>
+            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsCounterChainToken(a.Key)) ||
+            ContainsCounterChainToken(a.KeyHtml) ||
+            ContainsCounterChainToken(a.KeyMarkdown) ||
+            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsCounterChainToken(a.BrowserText)) ||
+            ContainsCounterChainToken(a.VariableValue) ||
+            ContainsCounterChainToken(a.ConditionOperand) ||
+            ContainsCounterChainToken(a.FilePath) ||
+            ContainsCounterChainToken(a.LaunchPath) ||
+            ContainsCounterChainToken(a.LaunchArgs);
+
+        private static bool ContainsCounterChainToken(string? text) =>
+            !string.IsNullOrEmpty(text) && text.IndexOf('{') >= 0 && CounterChainTokenRegex.IsMatch(text);
 
         // ── A colon INSIDE a split delimiter, written "::" ──────────────────────────────────
         private static bool UsesEscapedColonDelimiter(ActionItem a) =>

@@ -95,8 +95,9 @@ export function normalizeToken(token: string): string {
 // SpecialKeyPlaceholders (keyed WITH the braces — "{enter}" … "{esc}") plus the
 // {delay:N} branch of ParseSendTextSegments; ClipboardTokenRegex; WinClipTokenRegex;
 // RandomTokenRegex; InputTokenRegex; VarTokenRegex; RowDataTokenRegex;
-// RowNextTokenRegex; ClipSlotTokenRegex; and the literal {date}/{time}/{datetime}/
-// {counter}/{row} replaces in ResolveDateTimeTokens / ResolveRunStateTokens.
+// RowNextTokenRegex; ClipSlotTokenRegex; DateTokenRegex; RunStateChainTokenRegex
+// ({counter}/{loop}/{datarow} with a chain); and the literal {row} replace in
+// ResolveRunStateTokens.
 //
 // ARGUMENT SHAPES — the walker below is a NAME test AND an argument test, both the engine's.
 // The name gate is the whitelist right here; the argument gate is engineAcceptsToken further
@@ -144,8 +145,9 @@ export const KNOWN_TOKEN_NAME_LIST = [
   'var',
   'counter',
   // {loop} — the iteration of the innermost While / For Each Data Row block (the run repeat
-  // outside one) — and {datarow}, the number of the current data row. Run-state literals like
-  // {counter} and {row}: an exact Replace in ResolveRunStateTokens, no argument.
+  // outside one) — and {datarow}, the number of the current data row. With {counter} they take
+  // the modifier chain since 2.37.0 (RunStateChainTokenRegex: {counter:pad:3}); bare {row} stays
+  // an exact Replace with no argument, because "{row:" is the data-column token.
   'loop',
   'datarow',
   'row',
@@ -201,7 +203,7 @@ export interface TokenSegment {
  *      '}'. The engine's regexes are leftmost-first over the whole string, so the `{clipboard}`
  *      inside `{x{clipboard}` IS found there and must be found here; skipping would hide it.
  *   4. The ARGUMENT must have the shape that name's own matcher demands (engineAcceptsToken
- *      below): {date:x}, {counter:5}, {clipboard:}, {var:Ação} and {row:First Name} are text
+ *      below): {date:x}, {random:abc}, {clipboard:}, {var:Ação} and {row:First Name} are text
  *      here exactly as they are to the engine, and get rule 3's re-anchor like any unknown run.
  *
  * `scope` names the engine(s) behind the payload (TokenScope below); the default is SendText's.
@@ -334,10 +336,11 @@ const TOKEN_ARG_GATE: Record<string, RegExp> = {
   date: /^date(:[^}]+)?$/i,
   time: /^time(:[^}]+)?$/i,
   datetime: /^datetime(:[^}]+)?$/i,
-  // {counter}, {loop} and {datarow} are exact literals; bare {row} is handled by the row entry below.
-  counter: /^counter$/i,
-  loop: /^loop$/i,
-  datarow: /^datarow$/i,
+  // RunStateChainTokenRegex: \{(counter|loop|datarow)(?::([^}]+))?\} — the counters take a chain
+  // since 2.37.0 ({counter:pad:3}); bare {row} is handled by the row entry below.
+  counter: /^counter(:[^}]+)?$/i,
+  loop: /^loop(:[^}]+)?$/i,
+  datarow: /^datarow(:[^}]+)?$/i,
   // ClipboardTokenRegex: \{clipboard(?::([^}]+))?\} — the modifier group needs at least one
   // character, so `{clipboard:}` is literal.
   clipboard: /^clipboard(:[^}]+)?$/i,

@@ -19,6 +19,9 @@ import {
   linesStepActive,
   splitStepActive,
   dropNumStepActive,
+  replaceStepActive,
+  shapeStepActive,
+  defaultStepActive,
   type CaseTransform,
   type ChainHead,
   type Extract,
@@ -40,8 +43,13 @@ const HEAD_TITLES: Record<ChainHead['kind'], string> = {
   var: 'Variable',
   clip: 'Clipboard slot',
   winclip: 'Clipboard history',
+  counter: 'Run repeat',
+  loop: 'Loop iteration',
+  datarow: 'Data row number',
 };
 
+// The three counters have no identity: the head IS the value, so the card above the ladder is
+// not drawn for them at all (see the render), and these entries exist to satisfy the Record.
 const IDENTITY_LABELS: Record<ChainHead['kind'], string> = {
   clipboard: '',
   row: 'Data column',
@@ -49,6 +57,9 @@ const IDENTITY_LABELS: Record<ChainHead['kind'], string> = {
   var: 'Variable name',
   clip: 'Slot name',
   winclip: 'History item',
+  counter: '',
+  loop: '',
+  datarow: '',
 };
 
 const IDENTITY_HINTS: Record<ChainHead['kind'], string> = {
@@ -59,6 +70,9 @@ const IDENTITY_HINTS: Record<ChainHead['kind'], string> = {
   clip: 'What Copy to Slot or the capture hotkey stored in this slot.',
   // One line at the column's width — the identity card is what pushes the ladder past the fold.
   winclip: 'Newest first. Needs Win+V history on; may hold anything any app copied — passwords too.',
+  counter: '',
+  loop: '',
+  datarow: '',
 };
 
 // What to say when there is no source to preview against. Each reason is DIFFERENT, and saying
@@ -71,6 +85,9 @@ const UNKNOWN_SOURCE_COPY: Record<ChainHead['kind'], string> = {
   var: 'Not set — variables are cleared at the start of every run',
   clip: 'Nothing captured in this slot yet',
   winclip: 'Read from Windows when the macro runs',
+  counter: 'Counted while the macro runs',
+  loop: 'Counted while the macro runs',
+  datarow: 'Counted while the macro runs',
 };
 
 interface ClipboardSurfaceProps {
@@ -97,9 +114,9 @@ interface ClipboardSurfaceProps {
 // underneath never unmounts (undo stack, caret and selection all survive a
 // round-trip through this surface).
 //
-// The NINE config sections are laid out in the BACKEND PIPELINE ORDER
-// (sequence → trim → split → drop count → lines → extract → limit → clean up → case — see the
-// clipboardModifiers.ts header), each with a step badge that lights up while its step is
+// The TWELVE config sections are laid out in the BACKEND PIPELINE ORDER
+// (sequence → trim → replace → split → drop count → lines → extract → limit → clean up →
+// count & pad → case → default — see the clipboardModifiers.ts header), each with a step badge that lights up while its step is
 // active, so the UI reads as the data flow it actually is. sn() renumbers when the head is not
 // the clipboard, because a gap at the top would say nothing true. Serialization stays
 // exclusively in buildClipboardToken — this component emits no token strings of its own.
@@ -151,6 +168,12 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
         // Labelled "Item text", not "History item": that name already belongs to the field above
         // that picks WHICH item, and the same words over both boxes read as one repeated thing.
         return { raw: '', ready: true, unknown: true, label: 'Item text' };
+      case 'counter':
+      case 'loop':
+      case 'datarow':
+        // A run counter exists only inside a run — previewing a chain against "" would claim the
+        // chain yields nothing, a statement about the user's work rather than about the source.
+        return { raw: '', ready: true, unknown: true, label: 'Value' };
     }
   }, [head, clipRaw, clipReady, dataTable, runState]);
 
@@ -177,6 +200,10 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
 
   // Same rule for dropnum: an empty suffix is never emitted, so the badge stays dark.
   const dropNumActive = dropNumStepActive(state);
+  // And for the three 2.37.0 steps, from the same predicates the popover ladder lights.
+  const replaceActive = replaceStepActive(state);
+  const shapeActive = shapeStepActive(state);
+  const defaultActive = defaultStepActive(state);
 
   // `next` is clipboard-only: the other heads have no cursor, so offering the control would
   // promise a behaviour their runtime never performs (the same rule ClipboardModifierBody's
@@ -255,8 +282,9 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
         <div className="min-w-0 flex-1 max-w-[560px] overflow-y-auto p-4 space-y-3">
           {/* Identity, NOT a pipeline step — which slot, which variable, which column, which
               history item. Unnumbered on purpose: the ladder's numbers mean "order the backend
-              applies these in", and this is not one of them. */}
-          {head.kind !== 'clipboard' && (
+              applies these in", and this is not one of them. The counters have none: the head is
+              the value, so nothing is drawn above their ladder. */}
+          {head.kind !== 'clipboard' && head.kind !== 'counter' && head.kind !== 'loop' && head.kind !== 'datarow' && (
             <div className="rounded border border-border-subtle bg-bg-card px-3 py-1.5">
               <div className="label-micro text-text-tertiary mb-1">{IDENTITY_LABELS[head.kind]}</div>
               {head.kind === 'winclip' ? (
@@ -339,11 +367,41 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
             />
           </Step>
 
+          {/* Replace runs right after trim in the emitted chain — on the raw text, before any cut.
+              Two raw arguments like the join separator: no colon in either, and an EMPTY "with"
+              deletes every match. */}
+          <Step n={sn(3)} title="Replace" active={replaceActive}>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <input
+                  type="text"
+                  value={state.replaceFrom}
+                  onChange={(e) => set({ replaceFrom: e.target.value.replace(/[{}:]/g, '') })}
+                  placeholder="find"
+                  aria-label="Find"
+                  data-tip={tt('Every match, ignoring case. { } : not allowed.', 'Toda ocorrência, sem diferenciar maiúsculas. { } : não podem.')}
+                  className="h-8 w-28 px-2 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid placeholder:text-text-disabled"
+                />
+                <span className="text-[11px] text-text-tertiary">→</span>
+                <input
+                  type="text"
+                  value={state.replaceTo}
+                  onChange={(e) => set({ replaceTo: e.target.value.replace(/[{}:]/g, '') })}
+                  disabled={state.replaceFrom.length === 0}
+                  placeholder="(nothing)"
+                  aria-label="Replace with"
+                  data-tip={tt('Empty deletes the match. { } : not allowed.', 'Vazio apaga a ocorrência. { } : não podem.')}
+                  className="h-8 w-28 px-2 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid disabled:opacity-50 placeholder:text-text-disabled"
+                />
+              </div>
+            </div>
+          </Step>
+
           {/* Every step with arguments is ONE wrapping row: the mode, then its arguments — ALWAYS
               mounted and inert while the mode does not use them (Join with already worked this way,
               and so does the popover ladder). The column keeps its shape when a mode changes, and
               the user sees what each mode asks for before choosing it. */}
-          <Step n={sn(3)} title="Split at" active={splitActive}>
+          <Step n={sn(4)} title="Split at" active={splitActive}>
             <div className="space-y-2">
               <div className="flex items-center gap-3 flex-wrap">
                 <SegmentedControl<Split>
@@ -388,7 +446,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
             </div>
           </Step>
 
-          <Step n={sn(4)} title="Drop count" active={dropNumActive}>
+          <Step n={sn(5)} title="Drop count" active={dropNumActive}>
             <div className="space-y-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <input
@@ -412,7 +470,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
             </div>
           </Step>
 
-          <Step n={sn(5)} title="Lines" active={linesActive}>
+          <Step n={sn(6)} title="Lines" active={linesActive}>
             <div className="space-y-2">
               <div className="flex items-center gap-3 flex-wrap">
                 <SegmentedControl<ListPick>
@@ -491,7 +549,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
             </div>
           </Step>
 
-          <Step n={sn(6)} title="Extract" active={state.extract !== 'none'}>
+          <Step n={sn(7)} title="Extract" active={state.extract !== 'none'}>
             <div className="space-y-2">
               <div className="flex items-center gap-3 flex-wrap">
                 <SegmentedControl<Extract>
@@ -551,7 +609,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
             </div>
           </Step>
 
-          <Step n={sn(7)} title="Limit length" active={state.limit !== 'none'}>
+          <Step n={sn(8)} title="Limit length" active={state.limit !== 'none'}>
             <div className="space-y-2">
               <div className="flex items-center gap-3 flex-wrap">
                 <SegmentedControl<Limit>
@@ -578,7 +636,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
             </div>
           </Step>
 
-          <Step n={sn(8)} title="Clean up" active={state.noAccents || state.digitsOnly}>
+          <Step n={sn(9)} title="Clean up" active={state.noAccents || state.digitsOnly}>
             {/* Character-class filters over the value at THIS point of the chain — the
                 builder emits them after the slice/limit steps and before Case (slice,
                 then clean, then case), which is why the step sits here in the ladder. */}
@@ -596,7 +654,33 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
             </div>
           </Step>
 
-          <Step n={sn(9)} title="Case" active={state.case !== 'none'}>
+          {/* count → pad, then case, then default: the number of lines is what gets padded. */}
+          <Step n={sn(10)} title="Count & pad" active={shapeActive}>
+            <div className="flex items-center gap-4 flex-wrap">
+              <CheckRow
+                checked={state.count}
+                onChange={() => set({ count: !state.count })}
+                label="Count lines"
+              />
+              <CheckRow
+                checked={state.pad}
+                onChange={() => set({ pad: !state.pad })}
+                label="Zero-pad to"
+              />
+              <ArgInput
+                value={state.padN}
+                onChange={(n) => set({ padN: Math.max(0, n) })}
+                refValue={state.padRef}
+                onRefChange={(r) => set({ padRef: r })}
+                disabled={!state.pad}
+                min={0}
+                refTip={refTip}
+                numTip={numTip}
+              />
+            </div>
+          </Step>
+
+          <Step n={sn(11)} title="Case" active={state.case !== 'none'}>
             {/* Wrap like Steps 2-4 so the block-level SegmentedControl track hugs its
                 buttons instead of stretching to the full config-column width (which left
                 a wide empty pill after the last "Title" segment). */}
@@ -613,6 +697,26 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                 value={state.case}
                 onChange={(v) => set({ case: v })}
               />
+            </div>
+          </Step>
+
+          {/* LAST: the fallback sees the FINAL value, and only an empty one. */}
+          <Step n={sn(12)} title="Default" active={defaultActive}>
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={state.defaultText}
+                onChange={(e) => set({ defaultText: e.target.value.replace(/[{}]/g, '') })}
+                placeholder="when empty"
+                aria-label="Default text"
+                data-tip={tt('Used when the result is empty. Spaces and : allowed, { } not.', 'Usado quando o resultado fica vazio. Espaços e : podem, { } não.')}
+                className="h-8 w-full px-2 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid placeholder:text-text-disabled"
+              />
+              {state.defaultText.length > 0 && (
+                <div className="text-[11px] text-text-tertiary leading-snug">
+                  An unset variable, a missing delimiter or a line past the end pastes this instead of nothing.
+                </div>
+              )}
             </div>
           </Step>
         </div>
