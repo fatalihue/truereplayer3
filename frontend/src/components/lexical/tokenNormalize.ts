@@ -94,12 +94,15 @@ export function normalizeToken(token: string): string {
 // RowNextTokenRegex; ClipSlotTokenRegex; and the literal {date}/{time}/{datetime}/
 // {counter}/{row} replaces in ResolveDateTimeTokens / ResolveRunStateTokens.
 //
-// SCOPE — this is a NAME test, exactly as wide as the chip pipeline's whitelist. It
-// deliberately does NOT re-check each name's argument shape, which the engine also
-// enforces: a bare {var} (VarTokenRegex requires ':name') or {winclip:abc} (requires
-// digits) is counted and drawn here but pastes literally at replay. Narrowing it per
-// name would split the preview from the chip pipeline again — the very divergence
-// this set exists to close — so that is a separate finding, not a silent difference.
+// ARGUMENT SHAPES — the walker below is a NAME test AND an argument test, both the engine's.
+// The name gate is the whitelist right here; the argument gate is engineAcceptsToken further
+// down, ported matcher by matcher from the same resolvers ({date:x} is literal because that
+// resolver is an exact Replace; a bare {var} is literal because VarTokenRegex demands ':name';
+// {var:Ação} and {row:First Name} are literal because the name charset is [A-Za-z0-9_]). It
+// used to stop at the name, on the theory that narrowing per name would split the preview from
+// the chip pipeline — and the message preview grew its own copy of the argument shapes instead,
+// so the editor drew a {date:x} chip whose popover printed today's date while the preview called
+// it literal and the run typed the braces. One gate, asked by every surface, ends that.
 export const KNOWN_TOKEN_NAME_LIST = [
   'clipboard',
   'date',
@@ -147,12 +150,11 @@ export const KNOWN_TOKEN_NAME_LIST = [
   // (1 = most recent). Distinct from {clip:name} (in-app slots) and {clipboard}.
   'winclip',
   // Ask-Input (Text Blaze style): {input:Label} / {input:Label|menu:a,b,c} prompts the user at
-  // replay time. A spaced label or the |menu: variant falls outside the editor's TYPING grammar,
-  // so those chip only via insertToken (the palette prompt); a bare {input:Name} chips when typed.
-  // Both shapes are tokens to the walker below, because both resolve.
+  // replay time. The label is free text (spaces, ':'), which is why the typing grammar carries a
+  // second branch for this head (typingGrammar.ts) — both shapes chip as typed and resolve.
   'input',
   // Random text choice: {pick:a|b|c} draws one '|'-separated option per use. Options are
-  // free text (VERBATIM_ARG_NAMES), so like {input} it chips via insertToken / on load.
+  // free text (VERBATIM_ARG_NAMES) and chip through the same free-argument branch as {input}.
   'pick',
 ] as const;
 
@@ -189,6 +191,9 @@ export interface TokenSegment {
  *   3. A run whose name is unknown re-anchors the scan at start+1 instead of skipping past its
  *      '}'. The engine's regexes are leftmost-first over the whole string, so the `{clipboard}`
  *      inside `{x{clipboard}` IS found there and must be found here; skipping would hide it.
+ *   4. The ARGUMENT must have the shape that name's own matcher demands (engineAcceptsToken
+ *      below): {date:x}, {counter:5}, {clipboard:}, {var:Ação} and {row:First Name} are text
+ *      here exactly as they are to the engine, and get rule 3's re-anchor like any unknown run.
  *
  * `scope` names the engine(s) behind the payload (TokenScope below); the default is SendText's.
  * A name the scope does not resolve is handled exactly like an unknown one — rule 3.
@@ -207,7 +212,7 @@ export function splitTokenSegments(text: string, scope: TokenScope = 'desktop'):
     const inner = text.slice(open + 1, close);
     const colon = inner.indexOf(':');
     const name = (colon < 0 ? inner : inner.slice(0, colon)).toLowerCase();
-    if (!tokenResolvesIn(name, colon >= 0, scope)) {
+    if (!tokenResolvesIn(name, colon >= 0, scope) || !engineAcceptsToken(text.slice(open, close + 1))) {
       i = open + 1;   // rule 3 — re-anchor, don't skip the run
       continue;
     }
@@ -296,8 +301,9 @@ export type TokenScope = 'desktop' | 'browser';
 
 /**
  * Would the engine behind `scope` substitute a token with this NAME (already lower-cased) and
- * argument? The one question every chip-or-text decision asks — the walker above, the typing
- * transform and the `{` catalog — so the three cannot answer it differently.
+ * argument? The NAME half of the chip-or-text question, asked by the walker above, the typing
+ * transform and the `{` catalog; the ARGUMENT half is engineAcceptsToken below, and the walker
+ * and the transform ask both.
  */
 export function tokenResolvesIn(name: string, hasArg: boolean, scope: TokenScope): boolean {
   if (!KNOWN_TOKEN_NAMES.has(name)) return false;
@@ -305,6 +311,56 @@ export function tokenResolvesIn(name: string, hasArg: boolean, scope: TokenScope
   // Data tokens resolve on the C# side for both paths; the key/delay family is the extension's.
   if (!SEGMENTING_TOKEN_NAMES.has(name)) return true;
   return BROWSER_KEY_NAMES.has(name) && !hasArg;
+}
+
+// ── The engine's own ARGUMENT shapes ─────────────────────────────────────────
+// Ported matcher by matcher from Source/ActionExecution.cs. A token whose NAME the whitelist
+// accepts but whose ARGUMENT fails here is text, not a token — to the engine, and therefore to
+// every surface. This table lived in messagePreview until 2026-09-05, where only the Preview tab
+// could see it; the walker applies it now, so the chip, the count, the grid and the preview agree.
+const NAME_ARG = '[A-Za-z0-9_]+';   // VarTokenRegex / RowDataTokenRegex / RowNextTokenRegex / ClipSlotTokenRegex
+const TOKEN_ARG_GATE: Record<string, RegExp> = {
+  // ResolveDateTimeTokens does a Contains/Replace on the exact literals, so any argument is text.
+  date: /^date$/i,
+  time: /^time$/i,
+  datetime: /^datetime$/i,
+  // Same for {counter}; bare {row} is handled by the row entry below.
+  counter: /^counter$/i,
+  // ClipboardTokenRegex: \{clipboard(?::([^}]+))?\} — the modifier group needs at least one
+  // character, so `{clipboard:}` is literal.
+  clipboard: /^clipboard(:[^}]+)?$/i,
+  // The four name-first regexes require the tight name charset, then an optional chain. The
+  // chain is spelled (?::([^}]+))? — at least ONE character — so a trailing bare colon
+  // ({var:x:}) does not match and the engine pastes it literally.
+  var: new RegExp(`^var:${NAME_ARG}(:[^}]+)?$`, 'i'),
+  clip: new RegExp(`^clip:${NAME_ARG}(:[^}]+)?$`, 'i'),
+  rownext: new RegExp(`^rownext:${NAME_ARG}(:[^}]+)?$`, 'i'),
+  // Bare {row} is a literal Replace; {row:Column[:chain]} is the regex.
+  row: new RegExp(`^row(:${NAME_ARG}(:[^}]+)?)?$`, 'i'),
+  // WinClipTokenRegex is \{winclip(?::(\d+))?(?::((?![0-9])[^}]+))?\} — BOTH groups optional, so
+  // {winclip} (index defaults to 1), {winclip:upper} and {winclip:2:upper} all resolve. The
+  // negative lookahead is what keeps {winclip:2-4} and a trailing bare colon literal on both
+  // sides, so it has to be carried over too.
+  winclip: /^winclip(:[0-9]+)?(:(?![0-9])[^}]+)?$/i,
+  // RandomTokenRegex: \{random:(\d+)-(\d+)\}
+  random: /^random:[0-9]+-[0-9]+$/i,
+  // PickTokenRegex: \{pick:([^}]+)\}
+  pick: /^pick:[^}]+$/i,
+  // InputTokenRegex: \{input:([^}|]+)(?:\|menu:([^}]*))?\}
+  input: /^input:[^}|]+(\|menu:[^}]*)?$/i,
+};
+
+/**
+ * Does the ENGINE accept this whole `{...}` token, arguments included? Key and delay tokens take
+ * anything: ParseSendTextSegments reads the name before the first ':' and an unparsable parameter
+ * just falls back to the default (one press, 500 ms).
+ */
+export function engineAcceptsToken(token: string): boolean {
+  const inner = token.slice(1, -1);
+  const name = inner.split(':')[0].toLowerCase();
+  if (SEGMENTING_TOKEN_NAMES.has(name)) return true;
+  const gate = TOKEN_ARG_GATE[name];
+  return gate ? gate.test(inner) : false;
 }
 
 // ActionExecution.cs:8016-8017 — OpenBraceSentinel / CloseBraceSentinel. Runtime-only (nothing

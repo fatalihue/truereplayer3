@@ -233,6 +233,33 @@ namespace TrueReplayer.Services
             (p => p.Actions.Any(UsesPickToken),
                 new Version(2, 25, 0), "Random choice token"),
 
+            // Ask-Input token {input:Label} / {input:Label|menu:a,b,c} — an older build has no
+            // InputTokenRegex, so the whole token stays literal and gets typed into the target
+            // verbatim (the winclip literal-token failure class), and the prompt the author built
+            // the macro around never appears. Shipped in 2.9.0.
+            (p => p.Actions.Any(UsesInputToken),
+                new Version(2, 9, 0), "Ask-Input token"),
+
+            // Clipboard-slot token {clip:name} — the READ half of Copy to Slot. The action is pinned
+            // below (2.9.0), but a slot is also filled by the capture hotkey with no action in the
+            // profile at all, and then nothing pinned the token: an older build has no
+            // ClipSlotTokenRegex and types "{clip:1}" verbatim. Shipped in 2.9.0.
+            (p => p.Actions.Any(UsesClipSlotToken),
+                new Version(2, 9, 0), "Clipboard slot token"),
+
+            // Random number token {random:a-b} — an older build has no RandomTokenRegex and types
+            // the token verbatim (the literal-token class). Shipped in 2.8.0.
+            (p => p.Actions.Any(UsesRandomToken),
+                new Version(2, 8, 0), "Random number token"),
+
+            // Run-state tokens {var:name}, {counter} and bare {row} — shipped together with Set
+            // Variable in 2.6.12, and only the ACTION was pinned. A {var:} fed by a later feature
+            // ({input:}, a slot), a {counter} in a plain repeating macro or a {row} anywhere had no
+            // pin of their own, and an older build types them verbatim. Same floor as Set Variable,
+            // so no profile that already carries that action changes its number.
+            (p => p.Actions.Any(UsesRunStateToken),
+                new Version(2, 6, 12), "Run-state tokens"),
+
             // The Stop action — ends the run early AS SUCCESS. An older build has no case for
             // it in the replay switch: the row is silently skipped and the run KEEPS GOING past
             // the point the author said "we're done" — the If/Else no-op class, and the rows
@@ -845,6 +872,99 @@ namespace TrueReplayer.Services
         private static bool ContainsPickToken(string? text) =>
             !string.IsNullOrEmpty(text) && text.Contains("{pick", StringComparison.OrdinalIgnoreCase)
                 && PickTokenRegex.IsMatch(text);
+
+        // ── Ask-Input token {input:Label} / {input:Label|menu:a,b,c} ─────────────────────────
+        // Mirrors ActionExecution.InputTokenRegex: the label is [^}|]+ (spaces and ':' allowed),
+        // the menu is optional, and a stray '|' that is not "|menu:" leaves the token literal on
+        // BOTH builds, so it must not pin.
+        private static readonly Regex AskInputTokenRegex = new(
+            @"\{input:[^}|]+(?:\|menu:[^}]*)?\}",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static bool UsesInputToken(ActionItem a) =>
+            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsInputToken(a.Key)) ||
+            ContainsInputToken(a.KeyHtml) ||
+            ContainsInputToken(a.KeyMarkdown) ||
+            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsInputToken(a.BrowserText)) ||
+            ContainsInputToken(a.VariableValue) ||
+            ContainsInputToken(a.ConditionOperand) ||
+            ContainsInputToken(a.FilePath) ||
+            ContainsInputToken(a.LaunchPath) ||
+            ContainsInputToken(a.LaunchArgs);
+
+        private static bool ContainsInputToken(string? text) =>
+            !string.IsNullOrEmpty(text) && text.Contains("{input", StringComparison.OrdinalIgnoreCase)
+                && AskInputTokenRegex.IsMatch(text);
+
+        // ── Clipboard-slot token {clip:name} / {clip:name:mods} ──────────────────────────────
+        // Mirrors ActionExecution.ClipSlotTokenRegex. The ':' right after "clip" is what keeps it
+        // disjoint from {clipboard…}, whose fifth character is 'b'.
+        private static readonly Regex SlotTokenRegex = new(
+            @"\{clip:[A-Za-z0-9_]+(?::[^}]+)?\}",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static bool UsesClipSlotToken(ActionItem a) =>
+            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsClipSlotToken(a.Key)) ||
+            ContainsClipSlotToken(a.KeyHtml) ||
+            ContainsClipSlotToken(a.KeyMarkdown) ||
+            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsClipSlotToken(a.BrowserText)) ||
+            ContainsClipSlotToken(a.VariableValue) ||
+            ContainsClipSlotToken(a.ConditionOperand) ||
+            ContainsClipSlotToken(a.FilePath) ||
+            ContainsClipSlotToken(a.LaunchPath) ||
+            ContainsClipSlotToken(a.LaunchArgs);
+
+        private static bool ContainsClipSlotToken(string? text) =>
+            !string.IsNullOrEmpty(text) && text.Contains("{clip:", StringComparison.OrdinalIgnoreCase)
+                && SlotTokenRegex.IsMatch(text);
+
+        // ── Random number token {random:a-b} ─────────────────────────────────────────────────
+        // Mirrors ActionExecution.RandomTokenRegex: two digit runs and a hyphen, nothing else —
+        // "{random:abc}" is literal on both builds and must not pin.
+        private static readonly Regex RandomNumberTokenRegex = new(
+            @"\{random:\d+-\d+\}",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static bool UsesRandomToken(ActionItem a) =>
+            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsRandomToken(a.Key)) ||
+            ContainsRandomToken(a.KeyHtml) ||
+            ContainsRandomToken(a.KeyMarkdown) ||
+            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsRandomToken(a.BrowserText)) ||
+            ContainsRandomToken(a.VariableValue) ||
+            ContainsRandomToken(a.ConditionOperand) ||
+            ContainsRandomToken(a.FilePath) ||
+            ContainsRandomToken(a.LaunchPath) ||
+            ContainsRandomToken(a.LaunchArgs);
+
+        private static bool ContainsRandomToken(string? text) =>
+            !string.IsNullOrEmpty(text) && text.Contains("{random", StringComparison.OrdinalIgnoreCase)
+                && RandomNumberTokenRegex.IsMatch(text);
+
+        // ── Run-state tokens {var:name}, {counter}, bare {row} ───────────────────────────────
+        // {var:} mirrors ActionExecution.VarTokenRegex (a chain after the name is the 2.20.0 pin's
+        // business; it matches here too and the higher pin wins). {counter} and {row} are exact,
+        // case-insensitive literals in ResolveRunStateTokens — "{row:" is a different token (the
+        // Data-loop pins) and "{counter:5}" is literal on every build, so neither pins here.
+        private static readonly Regex VariableTokenRegex = new(
+            @"\{var:[A-Za-z0-9_]+(?::[^}]+)?\}",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static bool UsesRunStateToken(ActionItem a) =>
+            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsRunStateToken(a.Key)) ||
+            ContainsRunStateToken(a.KeyHtml) ||
+            ContainsRunStateToken(a.KeyMarkdown) ||
+            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsRunStateToken(a.BrowserText)) ||
+            ContainsRunStateToken(a.VariableValue) ||
+            ContainsRunStateToken(a.ConditionOperand) ||
+            ContainsRunStateToken(a.FilePath) ||
+            ContainsRunStateToken(a.LaunchPath) ||
+            ContainsRunStateToken(a.LaunchArgs);
+
+        private static bool ContainsRunStateToken(string? text) =>
+            !string.IsNullOrEmpty(text)
+            && (text.Contains("{counter}", StringComparison.OrdinalIgnoreCase)
+                || text.Contains("{row}", StringComparison.OrdinalIgnoreCase)
+                || (text.Contains("{var:", StringComparison.OrdinalIgnoreCase) && VariableTokenRegex.IsMatch(text)));
 
         // ── A colon INSIDE a split delimiter, written "::" ──────────────────────────────────
         private static bool UsesEscapedColonDelimiter(ActionItem a) =>

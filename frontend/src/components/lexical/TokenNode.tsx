@@ -27,12 +27,12 @@ export class TokenNode extends DecoratorNode<ReactNode> {
   //
   // Set only by the LOAD path (LexicalTokenEditor.buildNodesFromText) for a token whose canonical
   // form would REWRITE it. Every token whose argument holds a space or a colon reaches the editor
-  // with a lower-case head ({clipboard:after: - }, {row:First Name}) because that is what the
-  // builders and the docs emit, and title-casing the head is a payload edit the user never made.
-  // Two things that costs: an untouched action opens DIRTY (OnChangePlugin writes the editor's
-  // serialisation straight back), and for a token the engine cannot resolve — {row:First Name},
-  // {var:Ação}, whose regexes demand [A-Za-z0-9_] — the macro types the token out verbatim, so the
-  // rewrite changes what it types.
+  // with a lower-case head ({clipboard:after: - }, {input:Nome do cliente}) because that is what
+  // the builders and the docs emit, and title-casing the head is a payload edit the user never
+  // made. What that costs: an untouched action opens DIRTY (OnChangePlugin writes the editor's
+  // serialisation straight back). (A token the engine cannot resolve — {row:First Name},
+  // {var:Ação}, whose regexes demand [A-Za-z0-9_] — no longer reaches this node at all: the
+  // walker applies the engine's argument shapes, so it stays text on every surface.)
   //
   // Preserving the bytes is what lets the load path chip those at all. The alternative that
   // shipped was to leave them as raw TEXT, which made the editor the only surface that forgot a

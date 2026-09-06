@@ -10,12 +10,15 @@
 // fabricated value. Three classes of trap, each of which would produce an authoritative-looking
 // lie, are handled explicitly:
 //
-//   1. NAME-ONLY IS NOT ENOUGH. splitTokenSegments is deliberately a NAME test that does not
-//      re-check arguments (see its banner). The engine does: {var:Ação} and {row:First Name}
-//      fail the `[A-Za-z0-9_]+` gate on the four name-first regexes and paste LITERALLY, and
-//      {date:x}, {counter:5} and {clipboard:} are literal too because those resolvers match an
-//      exact string or require a non-empty modifier group. Previewing them as resolved would
-//      print a value replay never pastes. TOKEN_ARG_GATE below re-classifies them.
+//   1. NAME-ONLY IS NOT ENOUGH — and the walker knows it now. splitTokenSegments applies the
+//      engine's argument shapes too (engineAcceptsToken in tokenNormalize, which used to be this
+//      module's private TOKEN_ARG_GATE): {var:Ação} and {row:First Name} fail the
+//      `[A-Za-z0-9_]+` gate on the four name-first regexes and paste LITERALLY, and {date:x},
+//      {counter:5} and {clipboard:} are literal because those resolvers match an exact string or
+//      require a non-empty modifier group. Every segment the walker hands back has therefore
+//      already passed the gate; the 'literal' branches below stay as the belt to that brace, so
+//      a consumer that feeds this module a token from elsewhere still cannot print a value
+//      replay never pastes.
 //   2. {row:col} DEPENDS ON THE RUN, NOT THE TABLE — and "loop over data off" does NOT mean
 //      "no row". With the toggle ON the engine runs one iteration per row, so the first
 //      iteration is row 1 and previewing it is honest, labelled as the FIRST row rather than
@@ -31,7 +34,7 @@
 // surface's field holds a bare "@" while the token still carries a number. This module parses a
 // token STRING, and parseModifierParts only sets those fields when the argument already passes
 // isArgRef — so a branch for it would be dead code wearing the costume of diligence.
-import { splitTokenSegments, parseSendTextSegments, SEGMENTING_TOKEN_NAMES } from './tokenNormalize';
+import { splitTokenSegments, parseSendTextSegments, SEGMENTING_TOKEN_NAMES, engineAcceptsToken } from './tokenNormalize';
 import {
   applyTransformPreview,
   parseChainToken,
@@ -75,53 +78,9 @@ export interface PreviewSources {
   slots: Record<string, string>;
 }
 
-// ── The engine's own argument shapes ────────────────────────────────────────
-// Ported matcher by matcher from Source/ActionExecution.cs. A token whose NAME the walker
-// accepts but whose ARGUMENT fails here is text, not a token.
-const NAME_ARG = '[A-Za-z0-9_]+';   // VarTokenRegex / RowDataTokenRegex / RowNextTokenRegex / ClipSlotTokenRegex
-const TOKEN_ARG_GATE: Record<string, RegExp> = {
-  // ResolveDateTimeTokens does a Contains/Replace on the exact literals, so any argument is text.
-  date: /^date$/i,
-  time: /^time$/i,
-  datetime: /^datetime$/i,
-  // Same for {counter}; bare {row} is handled by the row entry below.
-  counter: /^counter$/i,
-  // ClipboardTokenRegex: \{clipboard(?::([^}]+))?\} — the modifier group needs at least one
-  // character, so `{clipboard:}` is literal.
-  clipboard: /^clipboard(:[^}]+)?$/i,
-  // The four name-first regexes require the tight name charset, then an optional chain. The
-  // chain is spelled (?::([^}]+))? — at least ONE character — so a trailing bare colon
-  // ({var:x:}) does not match and the engine pastes it literally.
-  var: new RegExp(`^var:${NAME_ARG}(:[^}]+)?$`, 'i'),
-  clip: new RegExp(`^clip:${NAME_ARG}(:[^}]+)?$`, 'i'),
-  rownext: new RegExp(`^rownext:${NAME_ARG}(:[^}]+)?$`, 'i'),
-  // Bare {row} is a literal Replace; {row:Column[:chain]} is the regex.
-  row: new RegExp(`^row(:${NAME_ARG}(:[^}]+)?)?$`, 'i'),
-  // WinClipTokenRegex is \{winclip(?::(\d+))?(?::((?![0-9])[^}]+))?\} — BOTH groups optional, so
-  // {winclip} (index defaults to 1), {winclip:upper} and {winclip:2:upper} all resolve. Gating on
-  // a mandatory digit run made every chain buildWinClipToken emits preview as "literal" — i.e.
-  // the panel told the user a token the chip popover had just built would paste verbatim.
-  // The negative lookahead is what keeps {winclip:2-4} and a trailing bare colon literal on both
-  // sides, so it has to be carried over too.
-  winclip: /^winclip(:[0-9]+)?(:(?![0-9])[^}]+)?$/i,
-  // RandomTokenRegex: \{random:(\d+)-(\d+)\}
-  random: /^random:[0-9]+-[0-9]+$/i,
-  // PickTokenRegex: \{pick:([^}]+)\}
-  pick: /^pick:[^}]+$/i,
-  // InputTokenRegex: \{input:([^}|]+)(?:\|menu:([^}]*))?\}
-  input: /^input:[^}|]+(\|menu:[^}]*)?$/i,
-};
-
-/** Does the ENGINE accept this whole token, arguments included? */
-function engineAccepts(token: string): boolean {
-  const inner = token.slice(1, -1);
-  const name = inner.split(':')[0].toLowerCase();
-  // Key and delay tokens: the parser takes the name before the first ':' and does not constrain
-  // what follows — an unparsable parameter just falls back to the default.
-  if (SEGMENTING_TOKEN_NAMES.has(name)) return true;
-  const gate = TOKEN_ARG_GATE[name];
-  return gate ? gate.test(inner) : false;
-}
+// The engine's argument shapes moved to tokenNormalize (engineAcceptsToken) on 2026-09-05 so the
+// walker applies them for every surface; this module keeps calling the same gate.
+const engineAccepts = engineAcceptsToken;
 
 function arg(token: string, n = 1): string {
   return token.slice(1, -1).split(':')[n] ?? '';

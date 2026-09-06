@@ -223,17 +223,17 @@ function buildNodesFromText(text: string, scope: TokenScope): LexicalNode[] {
     //
     // The rewrite is the whole hazard, not the chipping: TokenNode normalises whatever it is
     // handed and OnChangePlugin writes the editor's serialisation straight back, so a rewritten
-    // token marks an untouched action dirty, and for a token the engine cannot resolve
-    // ({var:Ação}, {row:First Name}: their regexes demand [A-Za-z0-9_]) it changes what the macro
-    // TYPES. Preserving the bytes removes it, so the gate no longer has to choose between
-    // rewriting the payload and forgetting that a token is a token.
+    // token marks an untouched action dirty. Preserving the bytes removes it, so the gate no
+    // longer has to choose between rewriting the payload and forgetting that a token is a token.
     //
     // Measured: EVERY shape that reached this function and lost its chip differed from its
     // canonical form in the HEAD CASE ALONE — {clipboard:after: - }, {clipboard:join: - },
-    // {clipboard:line:@i}, {rownext:Coluna: - }, {input:…}, {pick:…}, {row:First Name}. That is
-    // what the builders emit (clipboardModifiers joins a lower-case head) and what the manual
-    // shows, so it is also what a paste carries. They chipped in the grid preview and ran in the
-    // engine while the editor alone drew them as raw text.
+    // {clipboard:line:@i}, {rownext:Coluna: - }, {input:…}, {pick:…}. That is what the builders
+    // emit (clipboardModifiers joins a lower-case head) and what the manual shows, so it is also
+    // what a paste carries. They chipped in the grid preview and ran in the engine while the
+    // editor alone drew them as raw text. ({row:First Name} and {var:Ação} were on that list too;
+    // since the walker applies the engine's argument shapes they are text on every surface, which
+    // is what the run makes of them.)
     const canonical = TOKEN_REGEX_WHOLE.test(seg.value) || normalizeToken(seg.value) === seg.value;
     return $createTokenNode(seg.value, !canonical);
   });

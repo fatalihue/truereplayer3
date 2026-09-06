@@ -12,7 +12,7 @@
 //
 // Pure and React-free on purpose, the sendTextStatus rule: the earliest-match walk below is the
 // part worth proving head-lessly, and a component import would drag JSX into a node harness.
-import { tokenResolvesIn, type TokenScope } from './tokenNormalize';
+import { engineAcceptsToken, tokenResolvesIn, type TokenScope } from './tokenNormalize';
 
 const TOKEN_REGEX = /\{[a-zA-Z]+(?::[a-zA-Z0-9,_-]+)*\}/;
 
@@ -49,7 +49,7 @@ export interface TypedToken {
 
 /**
  * The first `{...}` in `text` that the typing grammar accepts AND the engine behind `scope`
- * substitutes, or null.
+ * substitutes — name and argument shape both (tokenResolvesIn + engineAcceptsToken) — or null.
  *
  * Candidates from both branches are walked by position and the first one that RESOLVES wins —
  * not the first that merely matches. The transform used to stop at the first syntactic match, so
@@ -72,7 +72,7 @@ export function findTypedToken(text: string, scope: TokenScope): TypedToken | nu
     const inner = c.token.slice(1, -1);
     const colon = inner.indexOf(':');
     const name = (colon < 0 ? inner : inner.slice(0, colon)).toLowerCase();
-    if (tokenResolvesIn(name, colon >= 0, scope)) return c;
+    if (tokenResolvesIn(name, colon >= 0, scope) && engineAcceptsToken(c.token)) return c;
   }
   return null;
 }

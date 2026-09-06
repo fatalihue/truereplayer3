@@ -13,6 +13,7 @@ import { useAppState } from '../state/AppStateContext';
 import { useTt } from '../state/LanguageContext';
 import { DataPasteSurface, type PasteMode } from './DataPasteSurface';
 import { parseTsv, encodeTsv, deepEqualGrid, tokenizeTsvGrid, sniffDelimiter, type Grid } from '../lib/tsv';
+import { scanRowTokenUsage, orphanHead } from '../lib/rowTokenUsage';
 import { uiZoom, rectToLayout, viewportInLayout } from '../utils/zoomSpace';
 
 interface DataPanelProps {
@@ -559,25 +560,10 @@ export function DataPanel({ onClose }: DataPanelProps) {
   }, [grid.headers]);
   const invalidCount = headerMeta.filter((m) => !m.valid).length;
 
-  // One shared scan: where {row:name} tokens are used across the profile's
-  // actions (case-insensitive, trimmed — matching BuildRowDict semantics).
-  // The optional tail matches modifier chains ({row:name:trim:upper}) so a
-  // transformed token still counts as usage of its column. Non-empty tail only
-  // ([^}]+) — a dangling '{row:name:}' stays literal at runtime, so counting it
-  // here would claim usage the backend never resolves.
-  const usage = useMemo(() => {
-    const counts = new Map<string, number>();
-    const re = /\{row:([A-Za-z0-9_]+)(?::[^}]+)?\}/gi;
-    for (const a of actions) {
-      const s = JSON.stringify(a);
-      let m: RegExpExecArray | null;
-      while ((m = re.exec(s)) !== null) {
-        const k = m[1].toLowerCase();
-        counts.set(k, (counts.get(k) ?? 0) + 1);
-      }
-    }
-    return counts;
-  }, [actions]);
+  // One shared scan: where {row:name} AND {rownext:name} tokens are used across the profile's
+  // actions — lib/rowTokenUsage owns the rules (both heads read the same column; BuildRowDict key
+  // semantics; a modifier tail counts, an empty one does not).
+  const usage = useMemo(() => scanRowTokenUsage(actions), [actions]);
   const orphans = useMemo(() => {
     const have = new Set(grid.headers.map((h) => h.trim().toLowerCase()));
     return [...usage.entries()].filter(([k]) => !have.has(k));
@@ -1245,7 +1231,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
                 {grid.headers.map((_, c) => {
                   const meta = headerMeta[c];
                   const key = meta.name.toLowerCase();
-                  const count = meta.valid ? (usage.get(key) ?? 0) : 0;
+                  const count = meta.valid ? (usage.get(key)?.count ?? 0) : 0;
                   return (
                     <div key={c} className="flex items-center gap-1.5 px-3 py-1 min-w-0">
                       {meta.valid ? (
@@ -1296,15 +1282,16 @@ export function DataPanel({ onClose }: DataPanelProps) {
                     </div>
                   );
                 })}
-                {orphans.map(([name, count]) => (
+                {orphans.map(([name, u]) => (
                   <div key={name} className="flex items-center gap-1.5 px-3 py-1 min-w-0">
                     <TriangleAlert size={11} className="text-warning-ink shrink-0" />
-                    <span className="text-[11px] font-mono text-warning-ink truncate">{`{row:${name}}`}</span>
+                    {/* Drawn with the head the author wrote, so a {rownext:Ghost} reads as itself. */}
+                    <span className="text-[11px] font-mono text-warning-ink truncate">{`{${orphanHead(u)}:${name}}`}</span>
                     <span
                       className="text-[10px] text-warning-ink ml-auto shrink-0"
                       data-tip={tt('Referenced by an action, but no such column — types empty text', 'Referenciada por uma action, mas a coluna não existe — digita texto vazio')}
                     >
-                      ×{count} · {'no column'}
+                      ×{u.count} · {'no column'}
                     </span>
                   </div>
                 ))}
