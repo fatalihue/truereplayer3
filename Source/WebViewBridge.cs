@@ -931,6 +931,11 @@ namespace TrueReplayer
         // Previous run status — lets PushStatusChange detect the replaying→ready
         // edge (a run just finished) for the out-of-window notification below.
         private string _lastRunStatus = "ready";
+        // How the last run ENDED — "completed" | "stopped" | "failed" — decided once on the
+        // replaying→ready edge, where userStopped is still known, and replayed on every later
+        // push of the same report. An authored Stop action and a quiet Assert stop are
+        // "completed": those are an authored ending, not an interruption.
+        private string? _lastRunOutcome;
 
         public void PushStatusChange(string status)
         {
@@ -964,7 +969,18 @@ namespace TrueReplayer
             // opens it after watching something fail — asking them to hit refresh at the moment
             // they most want an answer is the wrong shape. Cheap: one message per run, and only
             // when a run actually finished.
-            if (status == "ready" && _lastRunStatus == "replaying") PushRunReport();
+            // The outcome is decided HERE, on the edge, and stored — not passed to PushRunReport.
+            // The run report is re-pushed whenever the panel opens or the user hits Refresh
+            // (replay:reportRequest), and a parameter would arrive empty on those, silently
+            // relabelling a stopped run as a clean one. Reading the step statuses instead cannot
+            // work: a user Stop marks the in-flight step "skipped", which is indistinguishable
+            // from a skipped row.
+            if (status == "replaying") _lastRunOutcome = null;
+            if (status == "ready" && _lastRunStatus == "replaying")
+            {
+                _lastRunOutcome = wasError ? "failed" : userStopped ? "stopped" : "completed";
+                PushRunReport();
+            }
             _lastRunStatus = status;
 
             // Reflect the live run-state in the tray hover tooltip (Replaying…/Recording…/idle).
@@ -1548,11 +1564,15 @@ namespace TrueReplayer
         /// </summary>
         public void PushRunReport()
         {
-            var (steps, overflow, startedAt) = replayService.GetRunReport();
+            var (steps, overflow, startedAt, elapsedMs) = replayService.GetRunReport();
             SendMessage("replay:report", new
             {
                 profile = CurrentProfileName,
                 startedAt = steps.Count > 0 ? startedAt.ToString("o") : null,
+                // Wall clock minus pauses, stamped when the run ended. The status bar used to add
+                // the per-step numbers up, but those deliberately exclude the configured Delay.
+                elapsedMs = steps.Count > 0 ? elapsedMs : (long?)null,
+                outcome = _lastRunOutcome,
                 overflow,
                 steps = steps.Select(s => new
                 {

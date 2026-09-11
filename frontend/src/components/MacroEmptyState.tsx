@@ -2,6 +2,7 @@ import { List, Circle, Type } from 'lucide-react';
 import { useAppState } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
 import { Button } from './common/Button';
+import { KbdTag } from './common/KbdTag';
 
 // Shown inside the ActionTable when the grid has zero actions (Macro mode only —
 // Clicker mode swaps the whole table for ClickerDashboard / ClickerEmptyState).
@@ -47,7 +48,12 @@ export function MacroEmptyState() {
           >
             <Circle size={10} fill="currentColor" style={{ color: 'var(--color-recording-fg)' }} />
             Start recording
-            <kbd className="kbd">{settings.recordingHotkey}</kbd>
+            {/* KbdTag, not a raw kbd: key display goes through the keycap spelling everywhere
+                (Ctrl+PageDown reads [Ctrl][PgDn], the way the Settings field shows it), and it
+                renders nothing at all when the hotkey has been cleared — a raw kbd left an empty
+                20×20 capsule hanging off the button. No `accent` here: the button already carries
+                the red recording dot, and accent-on-accent would shout. */}
+            <KbdTag combo={settings.recordingHotkey} />
           </Button>
           <Button
             variant="secondary"

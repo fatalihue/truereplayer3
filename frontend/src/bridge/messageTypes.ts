@@ -554,6 +554,14 @@ export interface RunReport {
    *  RunStep.profile, which is stamped at execution time and is the field to trust. */
   profile: string;
   startedAt: string | null;       // ISO; null when no run has been recorded yet
+  /** Wall clock of the run minus the time it sat in a Pause action, stamped by the engine when
+   *  the run ended. NOT the sum of step durations: a step's stopwatch wraps only its own work and
+   *  excludes the Delay configured before it, so that sum reads 0.2 s for a ten-second run. Null
+   *  on a report from a build that predates the field, and when no run has been recorded. */
+  elapsedMs: number | null;
+  /** How the run ENDED, decided on the replaying→ready edge. 'stopped' is the user's Stop; an
+   *  authored Stop action and a quiet Assert stop are 'completed'. Null from an older build. */
+  outcome: 'completed' | 'stopped' | 'failed' | null;
   overflow: number;               // steps dropped past the cap
   steps: RunStep[];
 }

@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
-import { Play, Pause as PauseIcon, MousePointerClick, Folder, List, Gauge, Clock, Repeat, Unplug, Chrome, Timer, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Play, Pause as PauseIcon, MousePointerClick, Folder, List, Gauge, Clock, Repeat, Unplug, Chrome, Timer, CheckCircle2, XCircle, AlertTriangle, Square } from 'lucide-react';
 import { useAppState, useClickerLive, useHighlightedAction } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
 import { usePauseTick } from '../hooks/usePauseTick';
 import { useBrowserConnection } from '../hooks/useBrowserConnection';
 import { useTt, useLanguage } from '../state/LanguageContext';
 import type { RunReport } from '../bridge/messageTypes';
+import { skippedRowMask } from '../utils/conditionalBlocks';
 import { describeClickerConfig, formatClickerStats, formatRate } from '../utils/clickerFormat';
 import { formatKeyCombo } from '../utils/displayUtils';
 import { APP_VERSION } from '../appVersion';
@@ -14,7 +15,22 @@ import { APP_VERSION } from '../appVersion';
 // step 7" beside the profile it belongs to, and to open the full report on click. Derived from the
 // replay:report the backend pushes on its own at the end of every run (WebViewBridge, the
 // ready-after-replaying edge), so no new message and nothing polled.
-interface LastRunSummary { profile: string; total: number; ok: number; failedRow: number | null; durationMs: number; }
+interface LastRunSummary {
+  profile: string;
+  total: number;
+  ok: number;
+  /** Set only when the run actually HALTED on that step. A failure the Data-loop's skip policy
+   *  absorbed leaves this null — the run carried on to the end — and is reported by failedCount. */
+  failedRow: number | null;
+  /** Steps that failed, however the run ended. Non-zero with a null failedRow means "finished,
+   *  but some rows did not". */
+  failedCount: number;
+  durationMs: number;
+  /** Whether the duration came from the engine's own clock. A report from a build without the
+   *  field falls back to the sum of step costs, which is the old, smaller number. */
+  durationIsWallClock: boolean;
+  outcome: 'completed' | 'stopped' | 'failed' | null;
+}
 
 // Per-action cost the estimate adds on top of the delays: the engine's dispatch, a click's hold,
 // a keystroke's press/release. Deliberately a floor — smooth mouse moves (distance-bound) and
@@ -25,6 +41,34 @@ function fmtDuration(ms: number, language: 'en' | 'pt-BR'): string {
   if (ms < 1000) return `${Math.round(ms)} ms`;
   return `${(ms / 1000).toLocaleString(language === 'pt-BR' ? 'pt-BR' : 'en-US', { maximumFractionDigits: 1 })} s`;
 }
+
+/**
+ * The three endings the chip can report, and they are not the same thing:
+ *   halted     — the run stopped on a failing step (red, names the step)
+ *   stopped    — the USER pressed Stop (neutral square, says so)
+ *   completed  — reached the end; amber when rows failed on the way and the skip policy
+ *                absorbed them, green only when nothing failed at all
+ * The green check used to cover all four, so a run the user aborted and a batch with failed
+ * rows both read as a clean finish.
+ */
+const lastRunTone = (r: LastRunSummary): string =>
+  r.failedRow != null || r.outcome === 'failed' ? 'var(--color-recording-fg)'
+    : r.failedCount > 0 ? 'var(--color-warning-ink)'
+      : r.outcome === 'stopped' ? 'var(--color-text-secondary)'
+        : 'var(--color-replay-fg)';
+
+const lastRunIcon = (r: LastRunSummary) =>
+  r.failedRow != null || r.outcome === 'failed' ? <XCircle size={11} />
+    : r.failedCount > 0 ? <AlertTriangle size={11} />
+      : r.outcome === 'stopped' ? <Square size={11} />
+        : <CheckCircle2 size={11} />;
+
+const lastRunLabel = (r: LastRunSummary): string =>
+  r.failedRow != null ? `stopped at step ${r.failedRow}`
+    : r.outcome === 'failed' ? 'run failed'
+      : r.failedCount > 0 ? `${r.failedCount} step${r.failedCount === 1 ? '' : 's'} failed`
+        : r.outcome === 'stopped' ? 'stopped by you'
+          : 'last run';
 
 // Thin vertical divider between status segments.
 const Sep = () => <div className="w-px h-3 bg-border-subtle mx-3 shrink-0" />;
@@ -51,18 +95,37 @@ export function StatusBar() {
     const r = msg.payload as RunReport;
     if (!r.startedAt || r.steps.length === 0 || r.steps.some(s => s.status === 'running')) return;
     const counted = r.steps.filter(s => s.status !== 'skipped');
-    const failed = r.steps.find(s => s.status === 'failed');
+    const failures = r.steps.filter(s => s.status === 'failed');
+    // A failure only HALTED the run when nothing ran after it. Under the Data loop's skip policy
+    // the engine faults the row and carries on, so the old "first failed step" reading printed
+    // "stopped at step N" for a run that went all the way through.
+    const lastIdx = r.steps.length - 1;
+    const halted = failures.length > 0 && r.steps[lastIdx].status === 'failed';
     setLastRun({
       profile: r.steps[0].profile || r.profile,
       total: counted.length,
       ok: counted.filter(s => s.status === 'ok').length,
-      failedRow: failed ? failed.row : null,
-      durationMs: r.steps.reduce((a, s) => a + s.durationMs, 0),
+      failedRow: halted ? failures[failures.length - 1].row : null,
+      failedCount: failures.length,
+      // The engine's own clock when the build provides it; the step sum is the legacy fallback.
+      durationMs: r.elapsedMs ?? r.steps.reduce((a, s) => a + s.durationMs, 0),
+      durationIsWallClock: r.elapsedMs != null,
+      outcome: r.outcome ?? null,
     });
   }), [subscribe]);
 
   // The delays added up plus a per-action floor — the number the grid can promise before a run.
-  const estimateMs = actions.reduce((sum, a) => sum + (a.delay > 0 ? a.delay : 0) + PER_ACTION_OVERHEAD_MS, 0);
+  // Rows the engine will skip are left out: `if (action.IsSkipped) continue;` happens BEFORE the
+  // delay is waited, and a skipped block opener jumps past its whole body, so charging for those
+  // delays made the estimate promise time nobody pays (three 5 s rows with the middle one
+  // disabled estimated 15 s for a 10 s run).
+  const estimateMs = useMemo(() => {
+    const skipped = skippedRowMask(actions);
+    return actions.reduce(
+      (sum, a, i) => (skipped[i] ? sum : sum + (a.delay > 0 ? a.delay : 0) + PER_ACTION_OVERHEAD_MS),
+      0,
+    );
+  }, [actions]);
   const isReplaying = status === 'replaying';
   const isClicker = settings.useCursorClick;
   // The engine's stack already includes the root profile at index 0, so we only
@@ -174,6 +237,27 @@ export function StatusBar() {
           // Button-start countdown: nothing has been clicked yet, so "Clicked 0 · 0.0/s" would
           // read as a broken run. Say what the engine is waiting for instead.
           if (isReplaying && clickerStats.countdownMs > 0) {
+            // The dashboard hides its Pause button during the countdown by choice, but the PAUSE
+            // HOTKEY still works — the engine's countdown uses ClickerWaitAsync precisely so Stop
+            // and Pause stay responsive. This branch returns before the shared PAUSED segment
+            // below, so a countdown paused by the hotkey used to sit frozen on "Starting in 2 s"
+            // with nothing to press. Say it is paused, and offer Resume.
+            if (pauseState.isPaused) {
+              return (
+                <span className="flex items-center gap-2 font-mono" style={{ color: 'var(--color-action-pause-fg)' }}>
+                  <PauseIcon size={11} className="shrink-0" fill="currentColor" />
+                  <span className="font-medium">PAUSED</span>
+                  <span className="text-text-secondary">— resumes at</span>
+                  <strong className="text-text-primary">{Math.ceil(clickerStats.countdownMs / 1000)} s</strong>
+                  <button
+                    onClick={() => send({ type: 'replay:resume', payload: {} })}
+                    className="px-2 py-0.5 text-[10px] font-medium rounded border border-border-default text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors shrink-0"
+                  >
+                    Resume
+                  </button>
+                </span>
+              );
+            }
             return (
               <span className="flex items-center gap-2 font-mono" style={{ color: 'var(--color-clicker-fg)' }}>
                 <MousePointerClick size={11} className="shrink-0" />
@@ -289,11 +373,11 @@ export function StatusBar() {
                     type="button"
                     onClick={() => window.dispatchEvent(new CustomEvent('cmd:runreport'))}
                     className="flex items-center gap-1.5 px-1 -mx-1 rounded hover:bg-bg-elevated transition-colors"
-                    style={{ color: lastRun.failedRow == null ? 'var(--color-replay-fg)' : 'var(--color-recording-fg)' }}
+                    style={{ color: lastRunTone(lastRun) }}
                     data-tip={tt('Open the run report', 'Abrir o relatório da execução')}
                   >
-                    {lastRun.failedRow == null ? <CheckCircle2 size={11} /> : <XCircle size={11} />}
-                    <span className="font-medium">{lastRun.failedRow == null ? 'last run' : `stopped at step ${lastRun.failedRow}`}</span>
+                    {lastRunIcon(lastRun)}
+                    <span className="font-medium">{lastRunLabel(lastRun)}</span>
                     <span className="font-mono text-text-secondary">{lastRun.ok}/{lastRun.total} · {fmtDuration(lastRun.durationMs, language)}</span>
                   </button>
                 </>

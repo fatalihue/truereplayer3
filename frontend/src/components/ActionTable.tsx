@@ -18,7 +18,7 @@ import type { Language } from '../state/LanguageContext';
 import { useSelectionRef } from '../state/SelectionContext';
 import { useToast } from '../state/ToastContext';
 import { getDisplayKey, getDisplayX, getDisplayY, getActionTypeColors, formatKeyCombo, formatMs } from '../utils/displayUtils';
-import { snapIndicesToBlocks, carriesConditionProbe, hasConditionFields } from '../utils/conditionalBlocks';
+import { snapIndicesToBlocks, carriesConditionProbe, hasConditionFields, skippedRowMask } from '../utils/conditionalBlocks';
 import { uiZoom } from '../utils/zoomSpace';
 // Deferred: already rendered conditionally, but a static import pulls the whole Lexical editor
 // stack and emoji-picker-react (~300 KB minified) into the startup chunk for a dialog most sessions
@@ -606,6 +606,10 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
   // a null blockIfOf — the load-time validator should have stripped them, but the
   // grid stays graceful if a hand-edited profile bypassed validation. Cost: ~32 B
   // per IF row in dictionary overhead, negligible at the action-counts users hit.
+  // Rows the engine will not run — the Skip marks plus everything inside a skipped block, walked
+  // transitively. Shared with the status bar's duration estimate so the grid and the number agree.
+  const skippedMask = useMemo(() => skippedRowMask(actions), [actions]);
+
   const blockInfo = useMemo(() => {
     const n = actions.length;
     const depth = new Array<number>(n).fill(0);
@@ -723,6 +727,13 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
   // early return in setLitBlock makes the unchanged case a string compare.
   const litSelRef = useRef<string | null>(null);
   const editorRow = editorIndex ?? null;
+  // Drop the marks whenever the LIST changes, before the persistent effect below re-applies them.
+  // Without this, the early return in setLitBlock ("same opener, nothing to do") skipped the
+  // re-apply after an insert/duplicate/paste, so the new row's rails never got the attribute and
+  // the 3 px bracket had a gap; and a row dragged OUT of the block kept a mark that now lights a
+  // block it no longer belongs to. Declared BEFORE the persistent effect so both run in the same
+  // commit with no paint in between — no flicker.
+  useEffect(() => { setLitBlock(null, 'data-lit-sel', litSelRef); }, [actions, setLitBlock]);
   useEffect(() => {
     const row = editorRow !== null ? editorRow : selectedIndices.size === 1 ? [...selectedIndices][0] : null;
     const open = row !== null && row < actions.length ? blockInfo.blockOpenerOf[row] : null;
@@ -1995,11 +2006,10 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
               const isDragged = dragIndexSet?.has(idx) ?? false;
               // Skip propagation: when an opener row (If / While / ForEachRow) carries
               // IsSkipped, every row inside its block renders dimmed (opacity-40) too.
-              // blockOpenerOf points to the containing opener; self-references on the
-              // opener row mean its own isSkipped already covers it.
-              const blockIf = blockInfo.blockOpenerOf[idx];
-              const isInSkippedBlock = blockIf !== null && actions[blockIf]?.isSkipped === true;
-              const isSkipped = action.isSkipped || isInSkippedBlock;
+              // One transitive walk shared with the status bar's estimate: blockOpenerOf only
+              // knows the INNERMOST opener, so an enabled If nested inside a disabled If used to
+              // paint as if it would run, while the engine elides the whole outer block.
+              const isSkipped = skippedMask[idx] === true;
               // Profile-drag insertion preview — rows at/below the drop position
               // slide down one row height (transform, not layout) so the list
               // physically parts to open space, matching the dnd-kit row-reorder
@@ -2077,8 +2087,9 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
               // affordance sits where the row it creates will appear. For a block with no ELSE
               // this is byte-identical to the old "before the EndIf" placement. Disabled during
               // recording/replay to avoid mid-run mutations.
-              const chainOpener = blockIf !== null && actions[blockIf]?.actionType === 'If'
-                ? blockIf                    // typed stack makes this a tautology; belt for hand-fed lists
+              const enclosingOpener = blockInfo.blockOpenerOf[idx];
+              const chainOpener = enclosingOpener !== null && actions[enclosingOpener]?.actionType === 'If'
+                ? enclosingOpener            // typed stack makes this a tautology; belt for hand-fed lists
                 : null;
               const chainAnchor = chainOpener !== null
                 ? (blockInfo.elseOf.get(chainOpener) ?? blockInfo.closerOf.get(chainOpener) ?? null)
@@ -2122,10 +2133,18 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                       transform: profileShift ? 'translateY(var(--ui-row-height))' : undefined,
                       transition: profileDragTransition,
                     } as React.CSSProperties}
-                    className="h-row border-b border-border-subtle relative pointer-events-none bg-[color-mix(in_srgb,var(--row-block-color)_6%,transparent)]"
+                    // No pointer-events-none on the TR: it carries data-block-open, and the
+                    // delegated mouseover looks for the nearest tr. With the row inert, the hit
+                    // test fell through to the tbody outside the two buttons, closest('tr') was
+                    // null, and the block rail went DARK as the pointer crossed this band — then
+                    // lit again on the EndIf. Nothing here is clickable: the row has no onClick,
+                    // no context menu and no sortable listeners, and .block-rail sets its own
+                    // pointer-events: none. The inert td below keeps the cell itself out of the
+                    // way; the tr stays the hit target underneath it.
+                    className="h-row border-b border-border-subtle relative bg-[color-mix(in_srgb,var(--row-block-color)_6%,transparent)]"
                     data-block-open={chainOpener ?? undefined}
                   >
-                    <td colSpan={99} className="p-0 relative">
+                    <td colSpan={99} className="p-0 relative pointer-events-none">
                       {/* The ghost slot used to render NO rails, so every block with an Add-Else row
                           had its bracket cut in two just above the endif — a gap that now reads as
                           "one block ended, another began". It sits at BODY position inside the block
@@ -3105,6 +3124,10 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                   scrollRowIntoView(target);
                   setSelectedIndices(new Set([target]));
                   lastClickedIndex.current = target;
+                  // The keyboard cursor has to follow too. handleGridKeyDown reads kbCursorRef
+                  // first, so leaving it on the marker meant the next Arrow key jumped the
+                  // selection back next to the row the user had just navigated AWAY from.
+                  kbCursorRef.current = target;
                   closeContextMenu();
                 }}
                 className="menu-item text-text-primary"

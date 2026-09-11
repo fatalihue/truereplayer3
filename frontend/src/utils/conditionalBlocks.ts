@@ -27,6 +27,35 @@ function buildCloserOf(actions: ActionItem[]): Map<number, number> {
   return closerOf;
 }
 
+/**
+ * Which rows the engine will NOT execute: the ones marked Skip, plus everything inside a block
+ * whose OPENER is marked Skip — for all three opener families, because If, While and ForEachRow
+ * all jump `i` past their closer when skipped (ActionExecution.cs).
+ *
+ * Transitive on purpose. The grid's own `isInSkippedBlock` reads only the innermost opener, so an
+ * enabled If nested inside a disabled If came out as "not skipped" while the engine elided the
+ * whole outer block. That made the status bar's duration estimate charge for delays nobody pays,
+ * and left the nested rows painted as if they would run.
+ */
+export function skippedRowMask(actions: ActionItem[]): boolean[] {
+  const mask = new Array<boolean>(actions.length).fill(false);
+  const closerOf = buildCloserOf(actions);
+  // `until` is the end of the outermost skipped block still open; anything before it is elided
+  // regardless of how deeply it nests, which is what makes the walk transitive in one pass.
+  let until = -1;
+  for (let i = 0; i < actions.length; i++) {
+    if (i > until) until = -1;
+    const a = actions[i];
+    const skippedHere = until >= 0 || !!a?.isSkipped;
+    mask[i] = skippedHere;
+    if (until < 0 && a?.isSkipped) {
+      const closer = closerOf.get(i);
+      if (closer !== undefined) until = closer;   // the block's rows, closer included
+    }
+  }
+  return mask;
+}
+
 // Block-snap a selection: if it TOUCHES a structural marker, expand every selected index
 // to the INNERMOST block span that encloses it, so a marker can never be operated on as a
 // half-block and orphaned. A PURE body-row selection is returned untouched (referentially

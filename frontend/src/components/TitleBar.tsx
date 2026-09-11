@@ -39,8 +39,14 @@ export function TitleBar({ onOpenCommandPalette }: TitleBarProps) {
     prevStatus.current = status;
     if (was !== 'replaying' || status !== 'ready') return;
     setRunDone(true);
+    // Clear on CLEANUP, which runs the moment status leaves 'ready'. Only clearing the timer left
+    // runDone stuck true when a recording started inside the 1.5 s window (the common case: finish
+    // a run, hit the record hotkey) — the next ready edge then pulsed the green "run finished"
+    // ring at the end of the RECORDING, and the class stayed on the pill until the next real run.
+    // Doing it on the early-return path instead would still paint one frame of the ring, since a
+    // passive effect runs after paint.
     const t = setTimeout(() => setRunDone(false), 1500);
-    return () => clearTimeout(t);
+    return () => { clearTimeout(t); setRunDone(false); };
   }, [status]);
   // Signal ring in the mode's colour: recording red while a capture is live, clicker purple in
   // Clicker mode, the theme accent otherwise.

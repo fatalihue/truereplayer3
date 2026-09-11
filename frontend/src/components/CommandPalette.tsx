@@ -281,12 +281,12 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh]"
+      className="fixed inset-0 z-[100] flex items-start justify-center pt-[calc(15vh/var(--ui-zoom))]"
       style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="command-enter w-[520px] bg-bg-card border border-border-default rounded-dialog overflow-hidden"
+        className="command-enter w-[520px] flex flex-col max-h-[calc(83vh/var(--ui-zoom))] bg-bg-card border border-border-default rounded-dialog overflow-hidden"
         style={{ boxShadow: 'var(--shadow-dialog)' }}
       >
         {/* Search input */}
@@ -303,12 +303,18 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
           <span className="kbd">Esc</span>
         </div>
 
-        {/* Command list — sized by its content, so the whole (deliberately small) command set
-            is always on screen without scrolling. The old px cap (480) was outgrown the moment
-            Run Report arrived: 14 rows came to 539px and the last two sat under the footer with
-            no scrollbar to hint at them, at every window size. 85vh is a safety net only — the
-            window's minimum height (780 DIP) already fits the full list with room. */}
-        <div className="max-h-[85vh] overflow-y-auto py-1.5">
+        {/* Command list — sized by its content, so the whole (deliberately small) command set is
+            normally on screen without scrolling. The old px cap (480) was outgrown the moment Run
+            Report arrived: 14 rows came to 539px and the last two sat under the footer with no
+            scrollbar to hint at them.
+            The cap lives on the CARD now, not here: header and footer sit outside a cap set on
+            the list, so the card could still end past the bottom of the window. And every
+            viewport unit is divided by --ui-zoom, the house idiom (DialogShell, RunReportPanel):
+            `zoom` on <html> scales what is painted while vh keeps resolving against the unzoomed
+            viewport, so a raw 85vh paints 93.5vh at 110% zoom — which is how the footer went back
+            under the window edge above ~105%. With the cap on the card, top (15vh) + card (83vh)
+            never exceeds the window at any zoom, and the list scrolls when it has to. */}
+        <div className="flex-1 min-h-0 overflow-y-auto py-1.5">
           {filteredGroups.length === 0 && (
             <div className="px-4 py-6 text-center text-xs text-text-tertiary">
               No results found

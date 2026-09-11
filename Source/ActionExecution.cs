@@ -110,7 +110,7 @@ namespace TrueReplayer.Services
         private readonly ActionReplayer replayer;
 
         /// <summary>Last run's per-step diagnostics — see ActionReplayer.RunStepRecord.</summary>
-        public (List<ActionReplayer.RunStepRecord> Steps, int Overflow, DateTime StartedAt) GetRunReport()
+        public (List<ActionReplayer.RunStepRecord> Steps, int Overflow, DateTime StartedAt, long ElapsedMs) GetRunReport()
             => replayer.GetRunReport();
         private readonly DispatcherQueue dispatcherQueue;
         private readonly Action updateButtonStates;
@@ -1952,10 +1952,31 @@ namespace TrueReplayer.Services
         // on a path that runs once per executed action of an unbounded loop.
         private volatile bool _runStepsFull;
 
+        // How long the run actually took, captured when it ENDS. The status bar used to add the
+        // step durations up, but a step's stopwatch deliberately wraps only its own work — the
+        // configured Delay is waited before the record is even created — so ten clicks with a 1 s
+        // delay each reported "0.2 s" for a run the user watched take ten seconds. Computing it in
+        // the frontend instead was not an option: opening the run report re-pushes the same report
+        // minutes later, and a wall-clock-now calculation would rewrite the number every time.
+        private long _runElapsedMs;
+        // Wall-clock minus the time the user had it paused, the same subtraction the live clock in
+        // the status bar and the clicker loop already make.
+        private long _runPausedAccumMs;
+
         /// <summary>Snapshot of the last run's step records (a copy — the list keeps mutating).</summary>
-        public (List<RunStepRecord> Steps, int Overflow, DateTime StartedAt) GetRunReport()
+        public (List<RunStepRecord> Steps, int Overflow, DateTime StartedAt, long ElapsedMs) GetRunReport()
         {
-            lock (_runSteps) return (new List<RunStepRecord>(_runSteps), _runStepsOverflow, _runStartedAt);
+            lock (_runSteps) return (new List<RunStepRecord>(_runSteps), _runStepsOverflow, _runStartedAt, _runElapsedMs);
+        }
+
+        /// <summary>Stamp the run's wall-clock duration. Called once, as the run finishes.</summary>
+        private void FinishRunReport()
+        {
+            lock (_runSteps)
+            {
+                var total = (long)(DateTime.Now - _runStartedAt).TotalMilliseconds;
+                _runElapsedMs = Math.Max(0, total - _runPausedAccumMs);
+            }
         }
 
         private void ResetRunReport()
@@ -1966,6 +1987,8 @@ namespace TrueReplayer.Services
                 _runStepsOverflow = 0;
                 _runStepsFull = false;
                 _runStartedAt = DateTime.Now;
+                _runElapsedMs = 0;
+                _runPausedAccumMs = 0;
             }
         }
 
@@ -2639,6 +2662,9 @@ namespace TrueReplayer.Services
 
                 _callStack.Clear();
                 NotifyChainChanged();
+                // Stamp the duration here, at the one place every ending passes through — normal
+                // finish, Stop, error — so a report pulled minutes later still reports the run.
+                FinishRunReport();
                 PushVariablesSnapshot(force: true); // live pane: land on the final state
             }
         }
@@ -9186,6 +9212,11 @@ namespace TrueReplayer.Services
             if (hotkey != null)
                 InputHookManager.SetReplayPauseListener(hotkey, () => resumeTcs.TrySetResult(true));
 
+            // Time spent sitting in a Pause action is not time the macro took. The status bar's
+            // live clock already subtracts it, so the duration the run REPORTS has to subtract it
+            // too, or a run paused for two minutes ends by printing a number the user never saw on
+            // screen.
+            var pausedWatch = System.Diagnostics.Stopwatch.StartNew();
             try
             {
                 var resumeTask = resumeTcs.Task;
@@ -9195,6 +9226,8 @@ namespace TrueReplayer.Services
             }
             finally
             {
+                pausedWatch.Stop();
+                lock (_runSteps) _runPausedAccumMs += pausedWatch.ElapsedMilliseconds;
                 InputHookManager.ClearReplayPauseListener();
                 dispatcherQueue.TryEnqueue(() => OnReplayResumed?.Invoke());
             }
