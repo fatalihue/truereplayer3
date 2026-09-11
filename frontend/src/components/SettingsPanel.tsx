@@ -493,6 +493,26 @@ function ClickerSection({ unit, onUnitChange, settings, onChange }: {
     setLocalDelayMs(Math.max(1, parseInt(rate, 10) || 100));
   }, [rate]);
 
+  // Seeding a chip ON writes a value (Position and Rate jitter → "10", Clicks → "100") so the
+  // switch does not look dead. Turning the chip back OFF has to be able to UNDO that write, or a
+  // pointless on/off leaves a number the user never asked for: the preset chip then reads
+  // "Custom" against a preset that differs only in a dormant field, and SaveGlobalSettings puts
+  // the stray value on disk. We remember what was there before the seed, and restore it only if
+  // the field still holds exactly what we wrote — any edit of the user's clears the memory, so
+  // their value is never touched.
+  const seedUndo = useRef<Record<string, string | null>>({});
+  const seedOnEnable = (key: string, current: string, seed: string) => {
+    seedUndo.current[key] = current;
+    onChange(key, seed);
+  };
+  const unseedOnDisable = (key: string, current: string, seed: string) => {
+    const prev = seedUndo.current[key];
+    if (prev != null && current === seed) onChange(key, prev);
+    seedUndo.current[key] = null;
+  };
+  /** The user typed in this field: their value now, so a later toggle-off must not overwrite it. */
+  const forgetSeed = (key: string) => { seedUndo.current[key] = null; };
+
   // The two values that make the ENGINE's period differ from the raw delay. The interval
   // is added to every cycle (in Clicker mode one iteration is one click, so it is not a
   // pause between bursts — it is part of the cadence); the hold sets the floor.
@@ -514,7 +534,12 @@ function ClickerSection({ unit, onUnitChange, settings, onChange }: {
   const holdCapped = holdCapsRate(localDelayMs, gapMs, holdMs);
   // The floor clamp IS about the last commit (the stored delay is not the one asked for), so
   // that one stays transient. The hold case wins when both apply — it is the lower ceiling.
-  const [floorClamped, setFloorClamped] = useState(false);
+  // …but a plain boolean got STUCK: applying a preset, resetting, or loading a profile changes
+  // the delay by echo, not through commitRate, so the note kept claiming the last request hit the
+  // 5 ms floor while the field already showed 200 ms. Remember the VALUE that was clamped
+  // instead — any other delay invalidates it on its own, with no new effect dependency. Same
+  // shape as holdCapped, which was already made derived for exactly this reason.
+  const [floorClampedAt, setFloorClampedAt] = useState<number | null>(null);
   const commitRate = (raw: string) => {
     const num = parseFloat(raw);
     if (isNaN(num) || num <= 0) return;
@@ -529,7 +554,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange }: {
       requestedMs = Math.round(num);
       ms = Math.min(MAX_DELAY_MS, Math.max(CLICK_PERIOD_FLOOR_MS, requestedMs));
     }
-    setFloorClamped(ms !== requestedMs);
+    setFloorClampedAt(ms !== requestedMs ? ms : null);
     setLocalDelayMs(ms);              // optimistic — keeps the input stable on next render
     onChange('cursorClickDelay', String(ms));
   };
@@ -624,7 +649,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange }: {
               thing the field itself cannot — why the rate is lower than delay + gap would give
               (the hold), or that the last request landed on the engine's floor. */}
           <ClickerRateClampNote
-            reason={holdCapped ? 'hold' : floorClamped ? 'floor' : null}
+            reason={holdCapped ? 'hold' : floorClampedAt !== null && floorClampedAt === localDelayMs ? 'floor' : null}
             ceiling={rateCeiling}
             holdMs={holdMs}
           />
@@ -638,13 +663,14 @@ function ClickerSection({ unit, onUnitChange, settings, onChange }: {
               value={positionJitter}
               isOn={usePositionJitter}
               min={0} max={MAX_POSITION_PX}
-              onCommitValue={(v) => onChange('cursorClickPositionJitter', v)}
+              onCommitValue={(v) => { forgetSeed('cursorClickPositionJitter'); onChange('cursorClickPositionJitter', v); }}
               onToggle={(v) => {
                 setClickMode('cursorClickUsePositionJitter', v);
                 // Seed a visible scatter when switching ON from the 1 px default: ±1 px is
                 // imperceptible, so the switch looked dead. Same seed-on-enable the Clicks
                 // chip uses (0 → 100). A value the user typed (≥ 2) is left alone.
-                if (v && (parseInt(positionJitter, 10) || 0) < 2) onChange('cursorClickPositionJitter', '10');
+                if (v && (parseInt(positionJitter, 10) || 0) < 2) seedOnEnable('cursorClickPositionJitter', positionJitter, '10');
+                else if (!v) unseedOnDisable('cursorClickPositionJitter', positionJitter, '10');
               }}
               onEnterActivate={() => setClickMode('cursorClickUsePositionJitter', true)}
             />
@@ -661,7 +687,15 @@ function ClickerSection({ unit, onUnitChange, settings, onChange }: {
             >
               <button
                 type="button"
-                onClick={() => setClickMode('cursorClickUseArea', !useArea)}
+                // Arming Area with no box drawn is a state the engine ignores and the backend
+                // normalises away the moment a preset is applied — so a preset saved from it came
+                // back as "Custom" against itself. The dot can no longer produce it: with no box,
+                // turning it on opens the picker, and the backend arms the mode on a successful
+                // draw (Esc leaves everything as it was).
+                onClick={() => {
+                  if (!useArea && !area) send({ type: 'clicker:configureArea', payload: {} });
+                  else setClickMode('cursorClickUseArea', !useArea);
+                }}
                 aria-label={useArea ? 'Disable area' : 'Enable area'}
                 className="h-full pl-2 pr-1 flex items-center shrink-0 cursor-pointer transition-colors hover:bg-[rgba(127,127,127,0.18)]"
               >
@@ -775,14 +809,15 @@ function ClickerSection({ unit, onUnitChange, settings, onChange }: {
                  used — the chip used to display "0" beside a tooltip promising "0 = forever"
                  while the backend quietly substituted a single click. */
               offDisplay="∞"
-              onCommitValue={(v) => onChange('cursorClickLoops', v)}
+              onCommitValue={(v) => { forgetSeed('cursorClickLoops'); onChange('cursorClickLoops', v); }}
               onToggle={(v) => {
                 onChange('cursorClickUseLoops', v);
                 // Seed a real limit when switching ON. Toggling the dot never runs commit(),
                 // so a stored "0" would otherwise mean "limit enabled" and still run forever
                 // — with the chip now showing 0. Same seed-on-enable pattern the SheetPanel
                 // jitter chip uses.
-                if (v && (parseInt(loops, 10) || 0) < 1) onChange('cursorClickLoops', '100');
+                if (v && (parseInt(loops, 10) || 0) < 1) seedOnEnable('cursorClickLoops', loops, '100');
+                else if (!v) unseedOnDisable('cursorClickLoops', loops, '100');
               }}
               onEnterActivate={() => activateIfOff(useLoops, 'cursorClickUseLoops')}
             />
@@ -824,12 +859,13 @@ function ClickerSection({ unit, onUnitChange, settings, onChange }: {
               value={rateJitter}
               isOn={useRateJitter}
               unit="%" min={0} max={100}
-              onCommitValue={(v) => onChange('cursorClickDelayJitter', v)}
+              onCommitValue={(v) => { forgetSeed('cursorClickDelayJitter'); onChange('cursorClickDelayJitter', v); }}
               onToggle={(v) => {
                 onChange('cursorClickUseJitter', v);
                 // Same seed-on-enable as Position: ±1 % of a 100 ms period is ±1 ms, nothing a
                 // human or a detector would notice. 10 % was the original intended seed.
-                if (v && (parseInt(rateJitter, 10) || 0) < 2) onChange('cursorClickDelayJitter', '10');
+                if (v && (parseInt(rateJitter, 10) || 0) < 2) seedOnEnable('cursorClickDelayJitter', rateJitter, '10');
+                else if (!v) unseedOnDisable('cursorClickDelayJitter', rateJitter, '10');
               }}
               onEnterActivate={() => activateIfOff(useRateJitter, 'cursorClickUseJitter')}
             />

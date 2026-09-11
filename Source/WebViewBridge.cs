@@ -622,6 +622,18 @@ namespace TrueReplayer
             // displaying a key that does nothing.
             CursorClickStartHotkey = DropBareWheelHotkey(saved.CursorClickStartHotkey, nameof(saved.CursorClickStartHotkey));
             CursorClickPauseHotkey = DropBareWheelHotkey(saved.CursorClickPauseHotkey, nameof(saved.CursorClickPauseHotkey));
+            // A collision between a Clicker hotkey and one of the mode-agnostic utilities is
+            // refused when the user EDITS either field, but files written by 2.36.0 and earlier
+            // are full of them: back then this pairing was allowed. The Clicker key is the one
+            // that wins at runtime, so the utility it shadows simply stops working with nothing
+            // on screen to say why.
+            //
+            // Detected here, reported after ui:ready — and the stored value is NOT cleared. The
+            // DropBareWheelHotkey precedent above does not transfer: that value "has never
+            // fired", while this one works and is the half the user is actually using. Clearing
+            // it would take away a working binding and leave the Clicker surfaces rendering an
+            // empty keycap. The user fixes it on the Keys tab, which is where both fields live.
+            _pendingHotkeyConflict = DescribeLoadedClickerConflict(saved);
             // Clicker v2 — migrate from the legacy "Clicker reuses profile settings" behaviour
             // on first launch after upgrade. The sentinel CursorClickDelayMs == -1 means
             // "fresh appsettings.json or freshly upgraded from v1.9.53 or earlier" — copy the
@@ -2974,6 +2986,15 @@ namespace TrueReplayer
             // would never hear anything and could only show "unknown" until the first flap. One
             // message at boot is what makes the indicator honest from the first frame.
             SendMessage("browser:status", new { connected = browserBridge?.IsConnected ?? false });
+
+            // A Clicker/utility hotkey collision found while LOADING settings (see the load path)
+            // — said once, now that there is a UI to say it to. Cleared after, so a UI reload
+            // does not repeat it.
+            if (_pendingHotkeyConflict != null)
+            {
+                SendMessage("alert:show", new { message = _pendingHotkeyConflict });
+                _pendingHotkeyConflict = null;
+            }
 
             // Check for updates in the background after UI is ready
             _ = CheckForUpdateAsync();
@@ -10312,6 +10333,38 @@ namespace TrueReplayer
         {
             "recordingHotkey", "replayHotkey", "profileKeyToggleHotkey", "foregroundHotkey", "modeToggleHotkey", "captureSlotHotkey"
         };
+
+        // A collision found at load, waiting for a UI to tell. Null once said.
+        private string? _pendingHotkeyConflict;
+
+        /// <summary>
+        /// The message for a Clicker hotkey that already matches a mode-agnostic utility in the
+        /// file being loaded. Same sentence the edit path uses, so the two read alike. Null when
+        /// nothing collides. Reads `saved` rather than UserProfile.Current: at load time the
+        /// profile fields are not populated yet.
+        /// </summary>
+        private string? DescribeLoadedClickerConflict(AppSettingsManager.AppSettings saved)
+        {
+            var utilities = new (string Key, string? Value)[]
+            {
+                ("profileKeyToggleHotkey", saved.ProfileKeyToggleHotkey),
+                ("foregroundHotkey", saved.ForegroundHotkey),
+                ("modeToggleHotkey", saved.ModeToggleHotkey),
+                ("captureSlotHotkey", saved.CaptureSlotHotkey),
+            };
+            foreach (var clicker in new[] { CursorClickStartHotkey, CursorClickPauseHotkey })
+            {
+                if (string.IsNullOrEmpty(clicker)) continue;
+                foreach (var (key, value) in utilities)
+                {
+                    if (string.IsNullOrEmpty(value)) continue;
+                    if (!string.Equals(value, clicker, StringComparison.OrdinalIgnoreCase)) continue;
+                    DiagnosticLog.Info($"Hotkey conflict in settings: \"{clicker}\" is used by both a Clicker hotkey and {HotkeyDisplayNames[key]}.");
+                    return $"\"{clicker}\" is already used by {HotkeyDisplayNames[key]}.";
+                }
+            }
+            return null;
+        }
 
         private static readonly Dictionary<string, string> HotkeyDisplayNames = new()
         {

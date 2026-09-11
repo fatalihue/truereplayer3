@@ -169,14 +169,33 @@ export function NumberInput({
     onBlur?.();
   };
 
-  const handleWheel = (e: React.WheelEvent<HTMLInputElement>) => {
-    // Only react when the input has focus — otherwise scrolling over the panel would
-    // accidentally bump numbers. preventDefault keeps the page from also scrolling.
-    if (document.activeElement !== e.currentTarget) return;
-    e.preventDefault();
-    const base = value ?? (min ?? 0);
-    commit(base + (e.deltaY > 0 ? -step : step));
-  };
+  // Wheel-to-adjust, registered by hand because React attaches its delegated 'wheel' listener as
+  // PASSIVE: the preventDefault in a plain onWheel is ignored, so the value changed AND the panel
+  // scrolled away underneath. A non-passive listener on the input itself is the only way to hold
+  // the page still.
+  //
+  // Two things this has to get right. The React onWheel prop is gone from the element below —
+  // keeping both would run commit twice per notch and double the step. And the handler reads
+  // everything through refs with an empty dependency list: `commit` closes over `onChange`, which
+  // every call site passes as a fresh arrow, so a dependency array would re-register the listener
+  // on every render. Same shape as SliderSetting in the theme editor.
+  const wheelStateRef = useRef({ value, min, step, commit });
+  wheelStateRef.current = { value, min, step, commit };
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    const onWheelNative = (e: WheelEvent) => {
+      // Only react when the input has focus — otherwise scrolling over the panel would
+      // accidentally bump numbers. No e.currentTarget on a native listener: compare the node.
+      if (document.activeElement !== input) return;
+      e.preventDefault();
+      const s = wheelStateRef.current;
+      const base = s.value ?? (s.min ?? 0);
+      s.commit(base + (e.deltaY > 0 ? -s.step : s.step));
+    };
+    input.addEventListener('wheel', onWheelNative, { passive: false });
+    return () => input.removeEventListener('wheel', onWheelNative);
+  }, []);
 
   // − and + treat null as `min ?? 0`. + then adds step (so first click on a blank
   // field sets it to step, intuitive); − is disabled (can't go below "unset").
@@ -227,7 +246,6 @@ export function NumberInput({
           if (e.key === 'ArrowUp') inc(); else dec();
         }
       }}
-      onWheel={handleWheel}
       min={min}
       max={max}
       step={step}

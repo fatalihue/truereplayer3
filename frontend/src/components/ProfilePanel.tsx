@@ -2,6 +2,7 @@ import { Fragment, useState, useRef, useEffect, useLayoutEffect, useCallback, us
 import { AlertTriangle, Search, SearchX, X, Pencil, Copy, Trash2, FolderOpen, FolderMinus, Keyboard, AppWindow, ArrowLeftRight, ArrowDownUp, Type, Ban, Power, FolderInput, ChevronsLeft, ChevronsRight, ChevronsDownUp, ChevronsUpDown, Pin, PinOff, FolderPlus, FilePlus, Plus, ChevronRight, ChevronDown, Palette, Zap, Repeat, Repeat2, Hourglass, ArrowUpFromDot, ExternalLink, Info, MoreHorizontal, Hash, Upload, Download, Check } from 'lucide-react';
 import type { ProfileEntry, ImportPreviewPayload, ImportResultPayload, ImportConflictResolution, TriggerMode } from '../bridge/messageTypes';
 import { useAppState } from '../state/AppStateContext';
+import { railInitials, glyphCount } from '../utils/profileInitials';
 import { carriesConditionProbe } from '../utils/conditionalBlocks';
 import { useBridge } from '../bridge/BridgeContext';
 import { KbdTag, splitCombo } from './common/KbdTag';
@@ -81,21 +82,6 @@ const sortByName = (a: ProfileEntry, b: ProfileEntry) =>
  * "WA" for WhatsApp via the camel-case seam); anything else keeps the first letter. Short
  * connectives ("da", "de", "e") are skipped when a real word follows.
  */
-function railInitials(name: string): string {
-  const trimmed = name.trim();
-  if (!trimmed) return '?';
-  const numbered = /^(.*?\D)\s*(\d{1,3})$/.exec(trimmed);
-  if (numbered && numbered[1].trim()) return `${numbered[1].trim().charAt(0)}${numbered[2]}`.toUpperCase();
-  const words = trimmed
-    .replace(/([a-zà-ú])([A-ZÀ-Ú])/g, '$1 $2')
-    .split(/[\s\-_./]+/)
-    .filter(Boolean);
-  if (words.length >= 2) {
-    const second = words.slice(1).find((w) => w.length >= 3) ?? words[1];
-    return `${words[0].charAt(0)}${second.charAt(0)}`.toUpperCase();
-  }
-  return trimmed.charAt(0).toUpperCase();
-}
 
 // Rail tooltip spelling for a hotkey: the keycap names (PgDn, Esc), joined tight.
 const railHotkey = (combo: string) => splitCombo(combo).map(compactKey).join('+');
@@ -1929,7 +1915,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                               className={`w-[18px] h-[18px] object-contain pointer-events-none ${p.effectiveTargetSource === 'folder' ? 'opacity-55' : ''}`}
                             />
                           ) : (
-                            <span className={`pointer-events-none ${initials.length > 2 ? 'text-[10px] tracking-tight' : ''}`}>{initials}</span>
+                            <span className={`pointer-events-none ${glyphCount(initials) > 2 ? 'text-[10px] tracking-tight' : ''}`}>{initials}</span>
                           )}
                           {folderColor && (
                             <span

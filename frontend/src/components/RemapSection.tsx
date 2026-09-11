@@ -140,8 +140,13 @@ export function RemapSection() {
   const remaps = settings.remaps;
 
   const [addOpen, setAddOpen] = useState(false);
-  // Index of the row being edited in place; null = adding a new one.
-  const [editIndex, setEditIndex] = useState<number | null>(null);
+  // IDENTITY of the row being edited, not its index: the list is re-sent by the backend on every
+  // save, and a plain index went stale the moment a row ABOVE the edited one was removed — the
+  // highlight ring jumped to the next rule, the duplicate check compared the edited row against
+  // itself ("That key is already remapped."), and Save overwrote the wrong entry. ruleKey is
+  // FROM + scope, which is what makes a rule unique; captured when editing starts, so changing
+  // FROM in the form does not move the target. null = adding a new one.
+  const [editKey, setEditKey] = useState<string | null>(null);
   const [fromKey, setFromKey] = useState('');
   const [toKey, setToKey] = useState('');
   const [disableMode, setDisableMode] = useState(false);
@@ -231,7 +236,7 @@ export function RemapSection() {
     setDisableMode(false);
     setProcessKey('');
     setCaptureError(null);
-    setEditIndex(null);
+    setEditKey(null);
     setMouseMenuOpen(false);
   };
   const closeForm = () => {
@@ -251,9 +256,16 @@ export function RemapSection() {
     setProcessKey(r.process ?? '');
     setCaptureError(null);
     setMouseMenuOpen(false);
-    setEditIndex(i);
+    setEditKey(ruleKey(r));
     setAddOpen(true);
   };
+
+  // Derived per render: where the edited rule sits NOW. -1 → the rule is gone (removed by the
+  // row's own ✕, or by an edit elsewhere), and everything below treats that as "not editing", so
+  // the form can never write to a row it did not open.
+  const editIndex = editKey === null
+    ? null
+    : (() => { const i = remaps.entries.findIndex(e => ruleKey(e) === editKey); return i === -1 ? null : i; })();
 
   // The same FROM in the same scope is a duplicate; the same FROM in another app is a second
   // rule (the hook picks the one whose app is in front). The row being edited is not its own

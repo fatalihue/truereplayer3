@@ -175,10 +175,13 @@ export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogPro
       // tags, icon emoji) — a stray click on the scrim must not discard
       // unsaved edits. Dismissal is Esc or Cancel; Save commits.
       closeOnBackdrop={false}
-      // max-h keeps the card inside the viewport so the body below can scroll
-      // (the emoji picker alone is 320px tall).
+      // max-h keeps the card inside the viewport so the body below can scroll.
+      // `relative` is the anchor for the emoji picker, which is positioned against the CARD
+      // rather than the body: inside the body it was a normal flex child and grew the dialog by
+      // ~340 px on open (dialog height must never change with state), and an absolute inside the
+      // body would be clipped by that body's own overflow-y-auto.
       size="lg"
-      cardClassName="max-h-[90vh]"
+      cardClassName="max-h-[90vh] relative"
       footer={<DialogFooter secondary={{ label: 'Cancel', onClick: onClose }} primary={{ label: 'Save', onClick: handleSave, disabled: !loaded }} />}
     >
         {/* Body */}
@@ -222,24 +225,6 @@ export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogPro
                   </div>
                 </div>
               </div>
-
-              {/* Emoji picker dropdown */}
-              {showEmojiPicker && (
-                <div className="border border-border-subtle rounded overflow-hidden">
-                  <EmojiPicker
-                    onEmojiClick={(emojiData) => {
-                      setIconEmoji(emojiData.emoji);
-                      setShowEmojiPicker(false);
-                    }}
-                    theme={EmojiTheme.DARK}
-                    emojiStyle={EmojiStyle.NATIVE}
-                    width="100%"
-                    height={320}
-                    previewConfig={{ showPreview: false }}
-                    searchPlaceholder="Search emoji…"
-                  />
-                </div>
-              )}
 
               {/* Description */}
               <div className="flex flex-col gap-1">
@@ -342,6 +327,29 @@ export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogPro
             </>
           )}
         </div>
+
+        {/* Emoji picker — a SIBLING of the scrolling body and absolutely positioned against the
+            card. Two constraints meet here: out of flow so opening it cannot change the dialog's
+            height (the house rule), and outside the body so the body's overflow-y-auto cannot
+            clip the bottom of a 320 px picker. Still inside the card, so DialogShell's Tab trap —
+            which enumerates the card only — keeps the picker's search field reachable. `top` is
+            the header (49 px) plus the icon row; Esc is handled by this dialog's own listener. */}
+        {showEmojiPicker && (
+          <div className="absolute left-4 right-4 top-[7.5rem] z-30 border border-border-subtle rounded overflow-hidden bg-bg-card shadow-[var(--shadow-dialog)]">
+            <EmojiPicker
+              onEmojiClick={(emojiData) => {
+                setIconEmoji(emojiData.emoji);
+                setShowEmojiPicker(false);
+              }}
+              theme={EmojiTheme.DARK}
+              emojiStyle={EmojiStyle.NATIVE}
+              width="100%"
+              height={320}
+              previewConfig={{ showPreview: false }}
+              searchPlaceholder="Search emoji…"
+            />
+          </div>
+        )}
     </DialogShell>
   );
 }

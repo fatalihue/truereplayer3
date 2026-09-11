@@ -16,12 +16,18 @@ export function ClickerDashboard() {
   const { status, pauseState, settings } = useAppState();
   // Separate context on purpose: these two update ~4×/s during a run, and keeping them out of
   // AppState is what stops every other panel re-rendering at that cadence.
-  const { clickerStats, loopProgress } = useClickerLive();
+  const { clickerStats } = useClickerLive();
   const { send } = useBridge();
   usePauseTick(pauseState);
 
   const isReplaying = status === 'replaying';
-  if (!isReplaying && clickerStats.count === 0) return <ClickerEmptyState />;
+  // `blocked` too, not just `count`: when another process holds BlockInput, SendInput returns 0,
+  // every click is rejected and clickCount stays at 0 — so a run of a hundred rejected clicks
+  // fell back to the empty state and the "N clicks were rejected by Windows" line, which only
+  // renders below this gate, was never mounted. Gating on `blocked` rather than on "a run ended"
+  // keeps a Stop during the 3 s countdown (reason 'stopped', nothing clicked, nothing blocked)
+  // showing the instructions instead of a dead all-zeros panel.
+  if (!isReplaying && clickerStats.count === 0 && clickerStats.blocked === 0) return <ClickerEmptyState />;
 
   // Button-start countdown (ClickerRunConfig.StartDelayMs): the engine is waiting for the user
   // to move the mouse off the button that has just become "Stop". Nothing has been clicked yet.
@@ -29,26 +35,34 @@ export function ClickerDashboard() {
   const countdownSec = Math.ceil(clickerStats.countdownMs / 1000);
 
   const { elapsed, rate, rateLabel } = formatClickerStats(clickerStats.count, clickerStats.elapsedMs);
-  // The two limits, from the RUN's own snapshot: the click limit rides on macro:loopProgress
-  // (total; 0 = infinite, and single-shot runs never send it), the time limit on clicker:stats
-  // (capMs; 0 = none). Either, both or neither may be armed.
+  // The two limits. The click limit comes from SETTINGS (see below); the time limit rides on
+  // clicker:stats (capMs; 0 = none). Either, both or neither may be armed.
   //
-  // Unit coupling (why mixing loopProgress + clickerStats here is sound): formatEta does
-  // remaining = total - current, then etaSec = remaining / rate, so total/current/rate must
-  // share a unit. `rate` is clicks/sec. In Clicker mode the backend runs exactly ONE click
-  // per loop iteration (ToggleCursorClickReplay in ActionExecution.cs increments clickCount
-  // and iteration in lockstep), so loopProgress.total (= loopCount, the iteration cap) is
-  // measured in CLICKS — same unit as clickerStats.count and rate. If the clicker ever runs N
-  // clicks per iteration, total would become iterations and this would silently break — keep
-  // it 1:1 (or convert total to clicks before passing).
-  const clickLimit = loopProgress.active ? loopProgress.total : 0;
+  // Unit note: formatEta does remaining = total - current, then etaSec = remaining / rate, so
+  // total, current and rate must share a unit. Rate is clicks per second, and in Clicker mode the
+  // backend runs exactly ONE click per loop iteration (ToggleCursorClickReplay increments
+  // clickCount and iteration in lockstep), so the Loops setting is measured in CLICKS. If the
+  // clicker ever runs N clicks per iteration, convert before passing.
+  //
+  // The click limit is read from SETTINGS rather than from loopProgress. The engine only emits
+  // macro:loopProgress for `isInfinite || loopCount > 1`, so a run with Loops = 1 never set
+  // `active` and the Limit cell fell through to "∞" for the most bounded run there is — and
+  // during the 3 s countdown nothing had been emitted yet either, so every run started by
+  // claiming to be unbounded. Settings are the same source describeClickerConfig reads two lines
+  // up, which makes the cell and the config line structurally unable to disagree. The trade: a
+  // settings edit mid-run shows the new limit rather than the running one.
+  const settingsLoops = settings.cursorClickUseLoops ? parseInt(settings.cursorClickLoops, 10) : 0;
+  const clickLimit = Number.isFinite(settingsLoops) && settingsLoops > 0 ? settingsLoops : 0;
   const capMs = clickerStats.capMs;
   // A finished run has no time-to-finish — gate on isReplaying so a completed limit renders
   // "—" instead of "~0s"; the countdown has no samples yet, so it reads "—" too.
   const etaText = formatEta(isReplaying && !counting, clickLimit, clickerStats.count, rate, capMs, clickerStats.elapsedMs);
   // Progress toward whichever armed limit is closer — the bar answers "how far along is this
   // run", and with both limits armed the nearer one is the one that will end it.
-  const clickPct = clickLimit > 0 ? Math.min(100, (loopProgress.current / clickLimit) * 100) : null;
+  // Progress uses the live click count, not loopProgress.current: with the limit now coming from
+  // settings, a Loops = 1 run has a limit but never receives a loopProgress frame, and the two
+  // are the same number anyway (one click per iteration in Clicker mode).
+  const clickPct = clickLimit > 0 ? Math.min(100, (clickerStats.count / clickLimit) * 100) : null;
   const timePct = capMs > 0 ? Math.min(100, (clickerStats.elapsedMs / capMs) * 100) : null;
   const progressPct = clickPct === null && timePct === null ? null : Math.max(clickPct ?? 0, timePct ?? 0);
   // The Limit cell shows the TARGET, not the running count: the hero already IS the count, and
