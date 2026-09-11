@@ -249,8 +249,8 @@ namespace TrueReplayer
         // asked for, emitted right after a hotstring expansion or a replay start.
         private static readonly HashSet<int> _remapInjectedDowns = new();
 
-        // FROM keys whose DOWN escaped RAW because a gate (a modal scope, IgnoreProfileHotkeys)
-        // was up when it arrived: the foreground app is holding that key itself, so no pairing may
+        // FROM keys whose DOWN escaped RAW because a gate (a modal scope, Profile Keys switched
+        // off) was up when it arrived: the foreground app is holding that key itself, so no pairing may
         // open on top of it — the pairing would swallow the release the app is waiting for and
         // leave the key held forever. The branch below already refuses to start a pairing mid-hold,
         // but it decides that from _vkCodesCurrentlyDown, and a gated event never reaches the line
@@ -343,9 +343,23 @@ namespace TrueReplayer
         // scrolls another notch (hold to keep scrolling), a mouse button stays down, a disabled or
         // hotkey-consumed key stays swallowed. No hotstring feed here — the callers that want the
         // logical keystream to see the repeat do that themselves.
-        private static void EchoRemappedDown(RemapTarget t)
+        // fromVk is recorded for a Key target so the eventual release knows a TO DOWN went out on
+        // this FROM. Before, only the FIRST down registered: an auto-repeat whose first down had
+        // been consumed by a hotstring (or had passed under a modal gate) echoed the TO DOWN
+        // without the mark, and CloseRemapPairing then skipped the TO UP — leaving the target key
+        // logically held by Windows until it was pressed physically. HashSet.Add is O(1) and
+        // idempotent, so paying it on every ~30 ms repeat costs nothing on this hot path.
+        // Wheel needs no mark (CloseRemapPairing returns early for it); Mouse and Disable inject
+        // nothing here.
+        private static void EchoRemappedDown(int fromVk, RemapTarget t)
         {
-            if (t.Kind == RemapTargetKind.Key || t.Kind == RemapTargetKind.Wheel) InjectRemapped(t, down: true);
+            if (t.Kind == RemapTargetKind.Key)
+            {
+                InjectRemapped(t, down: true);
+                _remapInjectedDowns.Add(fromVk);
+                return;
+            }
+            if (t.Kind == RemapTargetKind.Wheel) InjectRemapped(t, down: true);
         }
 
         // Another FROM key still holding the same TO — the refcount that keeps a shared target
@@ -1636,7 +1650,11 @@ namespace TrueReplayer
                         // Same pick as the keyboard branch: an open pairing continues; a new one
                         // starts only if a rule for this button applies to the app in front.
                         bool xHeld = _activeRemapDowns.TryGetValue(xVk, out var xTarget);
-                        bool xStart = !xHeld && xRemaps.ContainsKey(xVk) && TryPickRemap(xVk, xRemaps, out xTarget);
+                        // Profile Keys off pauses the layer here too — but only for a NEW pairing.
+                        // The release of an open one is hoisted above these gates, so nothing is
+                        // left held.
+                        bool xStart = !xHeld && UserProfile.Current.ProfileKeyEnabled
+                            && xRemaps.ContainsKey(xVk) && TryPickRemap(xVk, xRemaps, out xTarget);
                         if (xHeld || xStart)
                         {
                             if (!xHeld)
@@ -2428,6 +2446,11 @@ namespace TrueReplayer
                 // the gate's "yes", which is exactly the split the block exists to make impossible.
                 bool suppressAll = SuppressAllHotkeys;
                 bool ignoreProfileKeys = IgnoreProfileHotkeys;
+                // Profile Keys off is the app's "let me type normally" switch, and the remap layer
+                // is part of what the user is asking to get out of the way — the toggle's tooltip
+                // and the manual both say so. Read with the other two so all three reach one
+                // verdict for this event.
+                bool profileKeysOn = UserProfile.Current.ProfileKeyEnabled;
                 var remaps = _remapMap;
 
                 // ── Remap pairing: the DOWN half, brought up to meet the UP half ──
@@ -2462,7 +2485,12 @@ namespace TrueReplayer
                 // which a gated event never reaches — open a pairing halfway through the hold and
                 // swallow the release the app was waiting for. Marking the key here is what makes
                 // that test see the hold.
-                bool remapDownBypassed = suppressAll || ignoreProfileKeys
+                // `!profileKeysOn` gates only the START of a pairing: the block below still serves
+                // an already-open one (swallowing the FROM, echoing the TO), so turning Profile
+                // Keys off mid-hold cannot strand a key down, and it marks the raw key in
+                // _remapBypassedDowns so the branch further down refuses to open a new pairing
+                // halfway through the hold.
+                bool remapDownBypassed = suppressAll || ignoreProfileKeys || !profileKeysOn
                     || remaps == null || MainController.Instance == null;
                 if (remapDownBypassed && (_activeRemapDowns.Count > 0 || remaps != null))
                 {
@@ -2479,7 +2507,7 @@ namespace TrueReplayer
                             // and we are still swallowing the RAlt that was supposed to justify
                             // it. A gate being up does not change who is left holding the Ctrl.
                             NeutraliseAltGrPhantomCtrl(heldVk);
-                            EchoRemappedDown(heldTarget);
+                            EchoRemappedDown(heldVk, heldTarget);
                             return (IntPtr)1;
                         }
                         if (remaps != null && remaps.ContainsKey(heldVk)) _remapBypassedDowns.Add(heldVk);
@@ -2632,7 +2660,7 @@ namespace TrueReplayer
                                 // button stays down, a disabled or hotkey-consumed key stays swallowed.
                                 if (target.Kind == RemapTargetKind.Key && ProcessHotstringKeyDown(target.Vk))
                                     return (IntPtr)1;
-                                EchoRemappedDown(target);
+                                EchoRemappedDown(vkCode, target);
                                 return (IntPtr)1;
                             }
 
@@ -2669,8 +2697,9 @@ namespace TrueReplayer
                                     if (ProcessHotstringKeyDown(target.Vk))
                                         return (IntPtr)1;   // hotstring consumed the logical key — nothing to inject
                                     InjectRemappedKey(target.Vk, down: true);
-                                    // Recorded only here, on the path that actually reached SendInput,
-                                    // so the release knows whether it has anything to undo.
+                                    // Recorded on every path that actually reaches SendInput, so the
+                                    // release knows whether it has anything to undo — here for the
+                                    // first down, and inside EchoRemappedDown for the auto-repeats.
                                     _remapInjectedDowns.Add(vkCode);
                                     break;
                                 case RemapTargetKind.Mouse:

@@ -57,7 +57,17 @@ namespace TrueReplayer.Services
         // fifteen key names, {key:N} repeats and {delay:N} pauses, plus the default actions a
         // synthetic key never has — Tab moves focus, Space types, Home/End place the caret,
         // PageUp/PageDown scroll — and only focus-moving keys re-arm the non-append clear.
-        public const string ExpectedExtensionVersion = "1.4.18";
+        // 1.4.19 = hotfix for what 1.4.18's default actions got wrong once they met real fields.
+        // A key that edits inside the field ({space}, {home}, {backspace}) now starts the entry
+        // itself, so a leading {space} is no longer wiped by the non-append clear; a {home}/{end}
+        // pin survives the keys that follow it; Paste + "keep existing text" writes at the caret
+        // instead of reporting success after writing nothing; number/date/time fields are typed
+        // through a shadow buffer their sanitizer cannot eat; Enter clicks a focused button
+        // instead of submitting the form around it; text aimed at a non-text element fails loudly
+        // rather than corrupting its value; keyup follows the key's default action; and Tab from
+        // an element outside the tab order continues in tree order instead of jumping to the top
+        // of the page.
+        public const string ExpectedExtensionVersion = "1.4.19";
         private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
         private NamedPipeServerStream? _pipeServer;
         private StreamReader? _reader;
@@ -685,18 +695,38 @@ namespace TrueReplayer.Services
             System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
 
         /// <summary>Milliseconds the extension will spend on the pauses and repeats in a type payload.</summary>
-        internal static int TypeKeyBudgetMs(string? text)
+        /// <param name="charDelayMs">
+        /// The action's per-character "Delay per char". The extension sleeps it once per typed
+        /// character INSIDE the same command (content.js), so it belongs in the same budget: 150
+        /// characters at 50 ms is 7.5 s of typing, which used to blow the 7 s backstop and report
+        /// ELEMENT_NOT_FOUND about a field that was being filled at that very moment. Zero for a
+        /// Paste action, which writes in one shot and never sleeps.
+        /// </param>
+        internal static int TypeKeyBudgetMs(string? text, int charDelayMs = 0)
         {
-            if (string.IsNullOrEmpty(text) || text.IndexOf('{') < 0) return 0;
+            if (string.IsNullOrEmpty(text)) return 0;
             long total = 0;
-            foreach (System.Text.RegularExpressions.Match m in TypeKeyTokenRegex.Matches(text))
+            if (text.IndexOf('{') >= 0)
             {
-                int n = 0;
-                bool hasN = m.Groups[2].Success && int.TryParse(m.Groups[2].Value, out n) && n > 0;
-                if (string.Equals(m.Groups[1].Value, "delay", StringComparison.OrdinalIgnoreCase))
-                    total += hasN ? Math.Min(n, 60000) : 500;
-                else
-                    total += 30L * (hasN ? Math.Min(n, 100) : 1);
+                foreach (System.Text.RegularExpressions.Match m in TypeKeyTokenRegex.Matches(text))
+                {
+                    int n = 0;
+                    bool hasN = m.Groups[2].Success && int.TryParse(m.Groups[2].Value, out n) && n > 0;
+                    if (string.Equals(m.Groups[1].Value, "delay", StringComparison.OrdinalIgnoreCase))
+                        total += hasN ? Math.Min(n, 60000) : 500;
+                    else
+                        total += 30L * (hasN ? Math.Min(n, 100) : 1);
+                }
+            }
+            if (charDelayMs > 0)
+            {
+                // Only the characters the extension actually types: the key tokens are removed
+                // first so "{delay:3000}" does not also bill twelve keystrokes. Counting UTF-16
+                // units, and counting them for a contentEditable target that does not sleep per
+                // character, only widens a backstop — the content script's own timer stays the
+                // authority on "not found".
+                int typed = TypeKeyTokenRegex.Replace(text, string.Empty).Length;
+                total += (long)charDelayMs * typed;
             }
             return (int)Math.Min(total, 10 * 60 * 1000);
         }
@@ -771,12 +801,14 @@ namespace TrueReplayer.Services
             // Costs nothing on success, and the fast failures still answer fast: a closed tab replies
             // TAB_GONE in ~0 ms and a page with no content script NO_CONTENT_SCRIPT in ~300 ms.
             const int PipeGraceMs = 2000;
-            // A type payload's {delay:N} pauses and {key:N} repeats run INSIDE the command, on the
-            // extension's side of the pipe (1.4.18), so they are added to the budget here — or a
-            // "{delay:3000}" in a 5 s action would trip this backstop while the page was doing
-            // exactly what it was told.
+            // A type payload's {delay:N} pauses, {key:N} repeats and per-character Delay all run
+            // INSIDE the command, on the extension's side of the pipe (1.4.18), so they are added
+            // to the budget here — or a "{delay:3000}" in a 5 s action, or 150 characters at 50 ms,
+            // would trip this backstop while the page was doing exactly what it was told.
             var pipeTimeout = command == "navigate" ? Math.Max(timeoutMs * 6, 30000)
-                : timeoutMs + PipeGraceMs + (command == "type" ? TypeKeyBudgetMs(resolvedText ?? action.BrowserText) : 0);
+                : timeoutMs + PipeGraceMs + (command == "type"
+                    ? TypeKeyBudgetMs(resolvedText ?? action.BrowserText, action.TypePaste ? 0 : (action.TypeDelay ?? 0))
+                    : 0);
 
             bool sent = SendMessage(new
             {

@@ -1592,10 +1592,13 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
             <Section title="Key Remaps">
               <SettingRow
                 label="Enable Key Remaps"
-                // The layer also pauses while recording and while Profile Keys are off (the hook's
-                // IgnoreProfileHotkeys gate lets the FROM key through raw so a pairing never ends
-                // half-way). Deliberate — Profile Keys off is the app's "type normally" mode — and
-                // said here because the manual used to call the layer "independent of profiles".
+                // The layer also pauses while recording and while Profile Keys are off. The gate is
+                // `!ProfileKeyEnabled` in the hook's remapDownBypassed: it blocks a NEW pairing
+                // only, so a pairing already open when the toggle flips is still served to its
+                // release and no key is left held. Deliberate — Profile Keys off is the app's "type
+                // normally" mode — and said here because the manual used to call the layer
+                // "independent of profiles". (Until 2.37.1 this comment named IgnoreProfileHotkeys,
+                // a V1 focus gate nothing sets any more, so the layer never actually paused.)
                 tooltip={tt('Also in the tray menu. Pauses while recording and while Profile Keys are off',
                             'Também no menu da bandeja. Pausa durante a gravação e com Profile Keys desligadas')}
               >

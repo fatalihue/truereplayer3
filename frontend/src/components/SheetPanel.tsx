@@ -1960,6 +1960,26 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
 
     // Safety timeout — recover the UI if the bridge never responds (extension crash, pipe drop).
     // Wait the full backend timeout plus 5 s overhead before giving up.
+    //
+    // Plus everything the extension spends INSIDE the type command, mirroring
+    // BrowserBridgeService.TypeKeyBudgetMs: {delay:N} pauses (500 ms bare, capped at 60 s), 30 ms
+    // per {key:N} press (N capped at 100) and the per-character Delay over the characters left
+    // once the key tokens are removed. Without it this net fires first and the late
+    // browser:testResult is dropped, so a Test that legitimately types for 12 s reported
+    // NO_RESPONSE at 10 s and swallowed the success.
+    const KEY_TOKEN_RE = /\{(enter|tab|esc|escape|backspace|delete|up|down|left|right|space|home|end|pageup|pagedown|delay)(?::([^}]*))?\}/gi;
+    const typeBudgetMs = (() => {
+      if (actionType !== 'BrowserType' || !browserText) return 0;
+      let total = 0;
+      for (const m of browserText.matchAll(KEY_TOKEN_RE)) {
+        const n = m[2] != null && /^\d+$/.test(m[2]) ? parseInt(m[2], 10) : 0;
+        if (m[1].toLowerCase() === 'delay') total += n > 0 ? Math.min(n, 60000) : 500;
+        else total += 30 * (n > 0 ? Math.min(n, 100) : 1);
+      }
+      const charDelay = !typePaste && tdParsed != null && !isNaN(tdParsed) && tdParsed > 0 ? tdParsed : 0;
+      if (charDelay > 0) total += charDelay * browserText.replace(KEY_TOKEN_RE, '').length;
+      return Math.min(total, 10 * 60 * 1000);
+    })();
     clearTestTimeout();
     testTimeoutRef.current = setTimeout(() => {
       testTimeoutRef.current = null;
@@ -1976,7 +1996,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
         });
         return null;
       });
-    }, timeoutMs + 5000);
+    }, timeoutMs + 5000 + typeBudgetMs);
 
     send({
       type: 'browser:testAction',
@@ -3843,15 +3863,17 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
               <div className="flex items-center gap-2">
                 <label className="text-xs text-text-secondary">Char delay</label>
                 <NumberInput
-                  // typeDelay '' = "auto" (engine picks a default per text length). Pass
-                  // null so the placeholder shows; user clearing the field via onClear
-                  // restores the auto state.
+                  // typeDelay '' = no pause between characters. The engine used to pick a
+                  // default from the text length; since 2.37.0 content.js reads a blank field
+                  // as 0 and keeps one event per character, so "auto" would name a behaviour
+                  // that no longer exists. Pass null so the placeholder shows; onClear puts
+                  // the field back to blank.
                   value={typeDelay === '' ? null : (Number.isFinite(parseInt(typeDelay, 10)) ? parseInt(typeDelay, 10) : null)}
                   onChange={(n) => setTypeDelay(String(n))}
                   onClear={() => setTypeDelay('')}
                   min={0}
                   disabled={typePaste}
-                  placeholder="auto"
+                  placeholder="none"
                   thousands
                   suffix="ms" suffixInside
                   inputWidth="w-16"

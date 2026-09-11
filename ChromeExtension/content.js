@@ -1248,8 +1248,38 @@
     }
   }
 
+  // The prelude every delivery path runs when it starts writing into a field: in non-append mode
+  // the field is emptied, in append mode the caret goes to the end so "append" means "after what is
+  // there". Extracted because a key that EDITS the field ({space}, {backspace}, {home}…) can now be
+  // the first thing that touches a freshly focused field — before any text segment — and it has to
+  // run the same prelude. Without it, "{space}hello" in the default mode typed the space into the
+  // old contents and the text segment's clear then wiped both.
+  //
+  // contentEditable is cleared through the selection API, not through `value`: the input-value
+  // setter throws on a <div> and would silently leave the old content in place.
+  function beginEntry(el, append) {
+    if (!append) {
+      if (el.isContentEditable) {
+        try {
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+          document.execCommand('delete', false);
+        } catch { /* detached or non-selectable host */ }
+      } else if ('value' in el) {
+        setNativeValue(el, '');
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      return;
+    }
+    moveCaret(el, true);
+  }
+
   // #5 — Paste text via clipboard for fast bulk entry
-  async function typeViaPaste(el, text, append) {
+  // keepCaret: a {home}/{end} just placed the caret on purpose — paste there instead of at the end.
+  async function typeViaPaste(el, text, append, keepCaret = false) {
     el.focus();
     // Clear first if not appending, so paste replaces existing content
     if (!append) {
@@ -1260,6 +1290,17 @@
       }
       el.dispatchEvent(new Event('input', { bubbles: true }));
     }
+    // Append means "after what is there", the same rule the typed path applies — el.focus() alone
+    // restores whatever caret the field last held.
+    if (!keepCaret) moveCaret(el, true);
+
+    // The fallback below writes only when the paste changed NOTHING. It used to test "is the field
+    // empty", which is true only in non-append mode: Paste + "Keep existing text" into a field that
+    // already had text wrote nothing at all and still reported success, because a dispatched
+    // ClipboardEvent has no default action and execCommand('paste') needs the clipboardRead
+    // permission this extension does not declare.
+    const read = () => (el.isContentEditable ? (el.textContent || '') : (typeof el.value === 'string' ? el.value : ''));
+    const before = read();
 
     let clipboardOk = false;
     // Snapshot the user's clipboard so it can be restored — typeViaPaste otherwise permanently
@@ -1284,15 +1325,11 @@
       } catch { /* fallback */ }
     }
 
-    // Fallback / final write — covers apps that ignore the synthetic paste event
-    const empty = (el.isContentEditable ? !el.textContent : !el.value);
-    if (empty) {
-      if (el.isContentEditable) {
-        el.textContent = text;
-      } else {
-        setNativeValue(el, text);
-      }
-      el.dispatchEvent(new Event('input', { bubbles: true }));
+    // Fallback / final write — covers apps that ignore the synthetic paste event. Writing AT THE
+    // CARET (rather than replacing the whole value) is what makes append and {home}/{end} work.
+    if (read() === before) {
+      if (el.isContentEditable) typeIntoContentEditable(el, text, true, true);
+      else insertTypedText(el, text); // writes, then fires input
     }
     el.dispatchEvent(new Event('change', { bubbles: true }));
 
@@ -1374,12 +1411,23 @@
    * the whole point, we apply the effect ourselves after the dispatch, unless a handler called
    * preventDefault on keydown — the same contract a real key has with the page.
    *
-   * Returns true when the key placed the CARET inside a text field on purpose (Home/End), so the
-   * typing loop leaves it there instead of re-pinning it to the end of the value.
+   * Returns { pinned, acted }:
+   *   pinned — the key placed the CARET inside a text field on purpose (Home/End) AND the field
+   *            accepted it, so the typing loop leaves it there instead of re-pinning to the end.
+   *   acted  — Enter actually did something (the page cancelled it, or a form/button was
+   *            activated), which is what tells the loop a transition happened. An Enter that fell
+   *            through every branch changed nothing, and treating it as a transition made the next
+   *            text segment wipe the field in non-append mode.
+   *
+   * KEYUP ORDER: the key's default action runs BEFORE keyup, the same order a real key produces
+   * and the same order the per-character loop was fixed to use. A keyup handler that reads the
+   * field (the live-validation pattern) used to see the value without the Space that had just been
+   * typed. The two exceptions are marked below: Space on a button (Chrome activates on keyUP) and
+   * Tab (the keyup belongs to the element the focus MOVED to).
    */
   function dispatchSpecialKey(el, name) {
     const meta = KEY_CHIP_MAP[name];
-    if (!meta) return false;
+    if (!meta) return { pinned: false, acted: false };
     const opts = {
       key: meta.key, code: meta.code,
       keyCode: meta.keyCode, which: meta.keyCode,
@@ -1388,49 +1436,75 @@
     const downEvt = new KeyboardEvent('keydown', opts);
     el.dispatchEvent(downEvt);
     el.dispatchEvent(new KeyboardEvent('keypress', opts));
-    el.dispatchEvent(new KeyboardEvent('keyup', opts));
 
-    if (downEvt.defaultPrevented) return false;
+    let pinned = false;
+    // A cancelled keydown IS the page acting: a chat composer that preventDefaults Enter handled
+    // the send itself, which is exactly the transition the flag exists for.
+    let acted = downEvt.defaultPrevented;
+    let upTarget = el;
+    let upSent = false;
 
-    switch (name) {
-      case 'backspace':
-        applyEditDelete(el, -1);
-        return false;
-      case 'delete':
-        applyEditDelete(el, +1);
-        return false;
-      case 'enter':
-        // Enter form-submit fallback (synthetic events skip the browser's default submit)
-        if (el.tagName !== 'TEXTAREA') {
-          const form = el.form || (el.closest && el.closest('form'));
-          if (form && typeof form.requestSubmit === 'function') {
-            try { form.requestSubmit(); } catch { /* ignore */ }
+    if (!downEvt.defaultPrevented) {
+      switch (name) {
+        case 'backspace':
+          applyEditDelete(el, -1);
+          break;
+        case 'delete':
+          applyEditDelete(el, +1);
+          break;
+        case 'enter':
+          // On a button/summary/link Enter CLICKS — it does not submit the surrounding form. The
+          // click is also the right primitive for a submit button: a real Enter clicks it, the
+          // page's onclick runs, and the click submits with that button as the submitter.
+          if (isEnterActivated(el)) {
+            try { el.click(); acted = true; } catch { /* ignore */ }
+            break;
           }
+          // Enter form-submit fallback (synthetic events skip the browser's default submit)
+          if (el.tagName !== 'TEXTAREA') {
+            const form = el.form || (el.closest && el.closest('form'));
+            if (form && typeof form.requestSubmit === 'function') {
+              try { form.requestSubmit(); acted = true; } catch { /* ignore */ }
+            }
+          }
+          break;
+        case 'tab': {
+          // "user{tab}pass" depends on the focus MOVING, and a synthetic Tab never moves it — until
+          // 1.4.18 both halves landed in the first field.
+          focusNextTabbable(el);
+          const landed = document.activeElement;
+          if (landed && landed !== document.body && landed.isConnected) upTarget = landed;
+          break;
         }
-        return false;
-      case 'tab':
-        // "user{tab}pass" depends on the focus MOVING, and a synthetic Tab never moves it — until
-        // 1.4.18 both halves landed in the first field.
-        focusNextTabbable(el);
-        return false;
-      case 'space':
-        // In a text field Space is a character; on a button or a checkbox it activates.
-        if (isTextEntry(el)) insertTypedText(el, ' ');
-        else if (isSpaceActivated(el)) { try { el.click(); } catch { /* ignore */ } }
-        return false;
-      case 'home':
-      case 'end':
-        if (isTextEntry(el)) { moveCaret(el, name === 'end'); return true; }
-        // Outside a field the page scrolls, like the real key.
-        try { window.scrollTo({ top: name === 'end' ? document.documentElement.scrollHeight : 0, behavior: 'instant' }); } catch { /* ignore */ }
-        return false;
-      case 'pageup':
-      case 'pagedown':
-        scrollByPage(el, name === 'pagedown' ? 1 : -1);
-        return false;
-      default:
-        return false;
+        case 'space':
+          // In a text field Space is a character; on a button or a checkbox it activates.
+          if (isTextEntry(el)) {
+            // …except where the sanitizer would reject it and blank the field: a real Space does
+            // nothing to a number or a date input.
+            if (!isSanitizingInput(el)) insertTypedText(el, ' ');
+          } else if (isSpaceActivated(el)) {
+            el.dispatchEvent(new KeyboardEvent('keyup', opts));
+            upSent = true;
+            try { el.click(); } catch { /* ignore */ }
+          }
+          break;
+        case 'home':
+        case 'end':
+          if (isTextEntry(el)) { pinned = moveCaret(el, name === 'end'); break; }
+          // Outside a field the page scrolls, like the real key.
+          try { window.scrollTo({ top: name === 'end' ? document.documentElement.scrollHeight : 0, behavior: 'instant' }); } catch { /* ignore */ }
+          break;
+        case 'pageup':
+        case 'pagedown':
+          scrollByPage(el, name === 'pagedown' ? 1 : -1);
+          break;
+        default:
+          break;
+      }
     }
+    // Always, even on a cancelled keydown: a real key still comes back up.
+    if (!upSent) upTarget.dispatchEvent(new KeyboardEvent('keyup', opts));
+    return { pinned, acted };
   }
 
   // A value-bearing input that takes typed text (not a checkbox, a button, a file picker…), a
@@ -1446,6 +1520,26 @@
     if (el.tagName === 'INPUT') return /^(checkbox|radio|button|submit|reset)$/i.test(el.type || '');
     const role = el.getAttribute && el.getAttribute('role');
     return role === 'button' || role === 'checkbox' || role === 'switch';
+  }
+  // What a real Enter ACTIVATES. Narrower than isSpaceActivated on purpose: Space toggles a
+  // checkbox or a radio, Enter does not, so reusing that predicate would trade one divergence for
+  // another. role="button" is deliberately out — an ARIA button is activated by the page's own
+  // keydown handler, which already received our synthetic keydown; clicking it too would fire the
+  // action twice.
+  function isEnterActivated(el) {
+    if (el.tagName === 'BUTTON' || el.tagName === 'SUMMARY') return true;
+    if (el.tagName === 'INPUT') return /^(button|submit|reset|image)$/i.test(el.type || '');
+    if (el.tagName === 'A') return el.hasAttribute('href');
+    return false;
+  }
+  // Input types whose value sanitizer REJECTS partial input and blanks the field: typing "1.5"
+  // one character at a time passes through "1." — not a valid floating-point number — and Chrome
+  // sets the value to "", so the field ended up holding "5". Same for "-5", and every date-ish
+  // type whose value must be a complete well-formed string. Measured on Chrome 2026-09: email,
+  // tel, url and search sanitize nothing, so they keep the one-input-event-per-character cadence
+  // that site autocompletes and live filters are written against.
+  function isSanitizingInput(el) {
+    return el.tagName === 'INPUT' && /^(number|date|time|datetime-local|month|week)$/i.test(el.type || '');
   }
 
   // Insert text where the caret is — what a keystroke does: the selection, if any, is replaced and
@@ -1472,6 +1566,11 @@
 
   // Caret to the start or the end of a text entry — Home/End's default action, and the pin the
   // typing loop applies before a text segment so "append" keeps meaning "after what is there".
+  //
+  // Returns whether the caret actually moved. number/date/time inputs throw InvalidStateError from
+  // setSelectionRange; swallowing that silently let {home} report a pin it never placed, so the
+  // next text segment typed at the caret the browser happened to hold ("{home}9" on "12" gave
+  // "129"). The caller pins only on true.
   function moveCaret(el, toEnd) {
     if (el.isContentEditable) {
       try {
@@ -1481,20 +1580,24 @@
         const sel = window.getSelection();
         sel.removeAllRanges();
         sel.addRange(range);
-      } catch { /* detached or non-selectable host */ }
-      return;
+        return true;
+      } catch { return false; /* detached or non-selectable host */ }
     }
-    if (typeof el.value !== 'string') return;
+    if (typeof el.value !== 'string') return false;
     const pos = toEnd ? el.value.length : 0;
-    try { el.setSelectionRange(pos, pos); } catch { /* selection unsupported on this input type */ }
+    try { el.setSelectionRange(pos, pos); return true; } catch { return false; /* selection unsupported on this input type */ }
   }
 
   // Tab's default action: focus the next element in tab order — positive tabindex ascending first,
   // then document order, skipping the disabled, the hidden and the negative-tabindex, the way
-  // Chrome walks it. From an element outside the order (or the last one) it goes to the first.
+  // Chrome walks it. From the LAST element it wraps to the first; from an element outside the
+  // order (tabindex="-1", an unlisted host) Chrome does not wrap — it continues in TREE ORDER from
+  // where that element sits, which is what the else branch below reproduces. Sending those to the
+  // first tabbable on the page meant "value{tab}other" in an editable grid typed `other` into the
+  // page header.
   function focusNextTabbable(from) {
     const all = Array.from(document.querySelectorAll(
-      'a[href], button, input, select, textarea, summary, [tabindex], [contenteditable=""], [contenteditable="true"]'));
+      'a[href], button, input, select, textarea, summary, [tabindex], [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"]'));
     const tabbable = all.filter((el) => {
       if (el.disabled || el.getAttribute('aria-hidden') === 'true') return false;
       if (el.tagName === 'INPUT' && el.type === 'hidden') return false;
@@ -1508,7 +1611,18 @@
     if (tabbable.length === 0) return;
     const rank = (el) => { const ti = Number(el.getAttribute('tabindex') || 0); return ti > 0 ? ti : 1e9; };
     const sorted = tabbable.map((el, i) => ({ el, i })).sort((a, b) => rank(a.el) - rank(b.el) || a.i - b.i).map((x) => x.el);
-    const next = sorted[(sorted.indexOf(from) + 1) % sorted.length];
+    const idx = sorted.indexOf(from);
+    let next;
+    if (idx >= 0) {
+      next = sorted[(idx + 1) % sorted.length];
+    } else if (from && from.isConnected) {
+      // `tabbable` is in document order; a positive tabindex that sits right after `from` is where
+      // Chrome goes, so the tree-order scan wins over the rank-sorted list here. A detached `from`
+      // has no FOLLOWING bit at all, hence the isConnected guard.
+      next = tabbable.find((el) => from.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) || sorted[0];
+    } else {
+      next = sorted[0];
+    }
     try { next.focus(); } catch { /* ignore */ }
   }
 
@@ -1766,9 +1880,22 @@
             if (seg.kind === 'key') {
               // {key:N} presses N times, and the active element is re-read after EVERY press, so
               // {tab:3} lands three fields over rather than pressing Tab three times on the first.
+              // Keys that write or move the caret INSIDE the field. When one of them is the first
+              // thing to touch a freshly focused field, it — not the text segment behind it — is
+              // what starts the entry, so it runs the prelude and clears the flag.
+              const editsInField = seg.name === 'space' || seg.name === 'backspace' || seg.name === 'delete'
+                || seg.name === 'home' || seg.name === 'end';
               for (let k = 0; k < seg.count; k++) {
                 const before = currentEl;
-                caretPinned = dispatchSpecialKey(currentEl, seg.name);
+                if (justTransitioned && editsInField && isTextEntry(currentEl)) {
+                  beginEntry(currentEl, typeAppend);
+                  justTransitioned = false;
+                }
+                const res = dispatchSpecialKey(currentEl, seg.name);
+                // A key that does not POSITION the caret must not undo a pin: after {home}, the
+                // {delete} or {space} that follows kept editing at the caret but reported false,
+                // and the next text segment jumped back to the end of the field.
+                if (res.pinned) caretPinned = true;
                 // Let async handlers / focus moves settle, then track the new active element
                 await new Promise(r => setTimeout(r, 30));
                 const active = document.activeElement;
@@ -1776,12 +1903,20 @@
                   currentEl = active;
                 }
                 // A transition re-applies the typeAppend rule to the NEXT text segment (a fresh
-                // field is cleared in non-append mode). The focus actually moving is one; Enter,
-                // Tab and Escape count too, since what they trigger (a submit, a closed dialog) is
-                // the kind of change the flag exists for. A Backspace, a Space or a Home is editing
-                // INSIDE the field and must not wipe it — every key used to set this, so a
-                // non-append "abc{backspace}d" ended up typing just "d".
-                if (currentEl !== before || seg.name === 'enter' || seg.name === 'tab' || seg.name === 'esc' || seg.name === 'escape') {
+                // field is cleared in non-append mode), and drops the caret pin, since in a new
+                // field "append" means the end again.
+                //
+                // The focus moving is the honest signal. Enter counts too when it ACTED (the page
+                // cancelled it, or a form/button was activated) — the submit or closed dialog is
+                // the kind of change the flag exists for. Tab and Escape used to count
+                // unconditionally, but when they are the deciding term the focus did NOT move: the
+                // next text segment lands in the very field being wiped, so "a{tab}b" against a
+                // page that swallows Tab typed just "b". A Backspace, a Space or a Home edits
+                // INSIDE the field and never counted.
+                if (currentEl !== before) {
+                  justTransitioned = true;
+                  caretPinned = false;
+                } else if (seg.name === 'enter' && res.acted) {
                   justTransitioned = true;
                 }
               }
@@ -1792,8 +1927,24 @@
             const value = seg.value;
             const shouldClear = !typeAppend && justTransitioned;
 
+            // The target has to be able to HOLD text. A {tab} that lands on a button, a select or a
+            // checkbox used to fall through to the native path, where `'value' in el` is true for
+            // all of them: non-append blanked the element's value first (on a file input that
+            // clears the chosen file, and the next character threw out of the handler), then every
+            // character overwrote the last, and the action still reported success. Faithful to the
+            // keyboard, the characters are announced and nothing is written.
+            if (!isTextEntry(currentEl)) {
+              for (const char of value) {
+                currentEl.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
+                currentEl.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
+              }
+              const what = `<${currentEl.tagName.toLowerCase()}${currentEl.id ? ' id="' + currentEl.id + '"' : ''}>`;
+              throw mkError('TYPE_TARGET_NOT_TEXT', `Focus is on ${what}, which does not accept typed text.`,
+                'Check the {tab} count, or target the field with its own selector.');
+            }
+
             if (typePaste) {
-              await typeViaPaste(currentEl, value, !shouldClear);
+              await typeViaPaste(currentEl, value, !shouldClear, caretPinned);
               justTransitioned = false;
               caretPinned = false;
               continue;
@@ -1802,7 +1953,10 @@
             if (currentEl.isContentEditable) {
               typeIntoContentEditable(currentEl, value, !shouldClear, caretPinned);
               justTransitioned = false;
-              caretPinned = false;
+              // The caret stays where insertText left it: the next segment continues from there,
+              // which is what a keyboard does. Re-pinning to the end here sent the Y of
+              // "{home}X{delete}Y" to the far end of the field.
+              caretPinned = true;
               continue;
             }
 
@@ -1814,6 +1968,13 @@
               currentEl.dispatchEvent(new Event('input', { bubbles: true }));
             }
             if (!caretPinned) moveCaret(currentEl, true);
+            // number/date/time reject every partial value on the way in and blank the field, so
+            // "1.5" typed one character at a time ended as "5". For those types the segment is
+            // re-written whole from a shadow buffer on each keystroke — the per-character event
+            // stream is unchanged, and each write restores what the sanitizer just threw away.
+            const sanitizing = isSanitizingInput(currentEl);
+            const prefix = sanitizing ? (typeof currentEl.value === 'string' ? currentEl.value : '') : '';
+            let buffer = '';
             for (const char of value) {
               // keydown → write → input → keyup, which is the order a real keystroke produces.
               // This used to run write → input → keydown → keyup, so a keydown handler inspecting
@@ -1826,14 +1987,28 @@
               // Fixing that needs the value to be compared across the dispatch and the insert
               // skipped when the page already did it — a real change, not a reordering.
               currentEl.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
-              if ('value' in currentEl) insertTypedText(currentEl, char); // writes, then fires input
-              else currentEl.dispatchEvent(new Event('input', { bubbles: true }));
+              if (sanitizing) {
+                buffer += char;
+                setNativeValue(currentEl, prefix + buffer);
+                currentEl.dispatchEvent(new Event('input', { bubbles: true }));
+              } else if ('value' in currentEl) {
+                insertTypedText(currentEl, char); // writes, then fires input
+              } else {
+                currentEl.dispatchEvent(new Event('input', { bubbles: true }));
+              }
               currentEl.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
               if (charDelay > 0) await new Promise(r => setTimeout(r, charDelay));
             }
             currentEl.dispatchEvent(new Event('change', { bubbles: true }));
             justTransitioned = false;
-            caretPinned = false;
+            caretPinned = true;
+            // A sanitizing field that ends EMPTY after a non-empty segment rejected the whole
+            // value ("abc" into a number, a half-written date). Saying so beats the silent
+            // success that left the user to discover the blank field on the submitted form.
+            if (sanitizing && value && currentEl.value === '') {
+              throw mkError('VALUE_REJECTED', `The ${currentEl.type} field rejected "${value}".`,
+                'Type a complete value for the field type, or use Paste.');
+            }
           }
 
           flashHighlight(el, 'success', 200);

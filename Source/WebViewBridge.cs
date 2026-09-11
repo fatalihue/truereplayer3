@@ -7012,8 +7012,11 @@ namespace TrueReplayer
                     && (actionType == "BrowserType" || actionType == "BrowserSelectOption" || actionType == "BrowserAssert"))
                     resolvedText = await ActionReplayer.ResolveBrowserTextPlaceholdersAsync(browserText, dispatcherQueue);
 
-                // The 1000 ms floor here mirrors the minimum the editor allows. The Timeout field
-                // isn't shown for BrowserType, so this is a safety net for older payloads only.
+                // The 1000 ms floor here mirrors the minimum the editor allows, for a payload that
+                // arrives without one. What the field covers is finding the ELEMENT: the pauses and
+                // the per-character delay a type payload spends afterwards are added on top by
+                // BrowserBridgeService.TypeKeyBudgetMs, so a slow deliberate typing run does not
+                // eat the element's own budget.
                 var temp = new ActionItem
                 {
                     ActionType = actionType,

@@ -2807,8 +2807,12 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
 
       {/* Delete Confirm Dialog */}
       {showDeleteConfirm && (
-        <DialogShell icon={<Trash2 size={14} style={{ color: 'var(--color-recording-fg)' }} />} title="Delete Profile" size="sm" onClose={() => setShowDeleteConfirm(null)} onCardKeyDown={(e) => { if (e.key === 'Enter') confirmDelete(); }}
-          footer={<DialogFooter danger secondary={{ label: 'Cancel', onClick: () => setShowDeleteConfirm(null) }} primary={{ label: 'Delete', onClick: confirmDelete }} />}>
+        <DialogShell icon={<Trash2 size={14} style={{ color: 'var(--color-recording-fg)' }} />} title="Delete Profile" size="sm" onClose={() => setShowDeleteConfirm(null)} onCardKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); confirmDelete(); } }}
+          /* Cancel takes the initial focus: deleting a profile is irreversible (the file and the
+             image directory go, with no undo toast), so the destructive action must never be what
+             a reflexive Enter runs. The shell already refuses to read Enter-on-a-button as a
+             dialog shortcut; this makes the safe button the one that Enter lands on. */
+          footer={<DialogFooter danger secondary={{ label: 'Cancel', onClick: () => setShowDeleteConfirm(null), autoFocus: true }} primary={{ label: 'Delete', onClick: confirmDelete }} />}>
           <div className="p-4 flex flex-col">
             <p className="text-sm text-text-secondary">
               Delete profile <span className="text-text-primary font-medium">'{showDeleteConfirm}'</span>?
@@ -2821,8 +2825,11 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
           hotstring / profile target / folder target). Same shape as the delete
           dialog; Enter confirms, Esc cancels. */}
       {confirmRemoval && (
-        <DialogShell icon={<AlertTriangle size={14} style={{ color: 'var(--color-warning-ink)' }} />} title="Are you sure?" size="sm" onClose={() => setConfirmRemoval(null)} onCardKeyDown={(e) => { if (e.key === 'Enter') runConfirmedRemoval(); }}
-          footer={<DialogFooter danger secondary={{ label: 'No', onClick: () => setConfirmRemoval(null) }} primary={{ label: 'Yes, remove', onClick: runConfirmedRemoval }} />}>
+        <DialogShell icon={<AlertTriangle size={14} style={{ color: 'var(--color-warning-ink)' }} />} title="Are you sure?" size="sm" onClose={() => setConfirmRemoval(null)} onCardKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); runConfirmedRemoval(); } }}
+          /* Same rule as Delete Profile — "No" holds the focus. This one is recoverable (each
+             removal posts a 10 s Undo toast), but a destructive primary should not be the implicit
+             default either way. */
+          footer={<DialogFooter danger secondary={{ label: 'No', onClick: () => setConfirmRemoval(null), autoFocus: true }} primary={{ label: 'Yes, remove', onClick: runConfirmedRemoval }} />}>
           <div className="p-4 flex flex-col">
             <p className="text-sm text-text-secondary">
               Remove {confirmRemoval.label} from <span className="text-text-primary font-medium">'{confirmRemoval.name}'</span>?

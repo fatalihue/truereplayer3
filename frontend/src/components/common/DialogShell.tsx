@@ -284,6 +284,26 @@ export function DialogShell({
             }
             return;
           }
+          // A bare Enter on a focused button belongs to THAT button — the browser turns the
+          // keydown into a click on it. Forwarding it to the dialog's Enter rule meant the rule
+          // ran FIRST (the click is the keydown's default action, dispatched after bubbling), so
+          // Enter with the focus on Cancel ran the primary action: in Delete Profile that deleted
+          // the profile and its images, with no undo, for the user who had just tabbed to Cancel
+          // to back out. The button still activates on its own; we only stop the key from being
+          // read as a dialog-level shortcut.
+          //
+          // Modifier combos are dialog-level by design (Ctrl+Enter saves the Data panel and the
+          // Insert Text dialog from anywhere in the card, including a focused footer button), so
+          // they still go through.
+          if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            const target = e.target as HTMLElement | null;
+            if (target && (target.tagName === 'BUTTON' || target.getAttribute('role') === 'button')) {
+              // Still contain the key: a modal must not leak keystrokes to app-level shortcuts,
+              // which is the whole job of ImportPreviewDialog's handler.
+              e.stopPropagation();
+              return;
+            }
+          }
           onCardKeyDown?.(e);
         }}
       >
