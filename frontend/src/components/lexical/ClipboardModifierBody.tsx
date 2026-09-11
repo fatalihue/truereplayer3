@@ -14,6 +14,7 @@ import {
   replaceStepActive,
   shapeStepActive,
   defaultStepActive,
+  MAX_PAD_WIDTH,
   type CaseTransform,
   type Extract,
   type Limit,
@@ -512,11 +513,12 @@ export function ClipboardModifierBody({
           />
           <ArgInput
             value={state.padN}
-            onChange={(n) => setState((s) => ({ ...s, padN: Math.max(0, n) }))}
+            onChange={(n) => setState((s) => ({ ...s, padN: Math.min(Math.max(0, n), MAX_PAD_WIDTH) }))}
             refValue={state.padRef}
             onRefChange={(r) => setState((s) => ({ ...s, padRef: r }))}
             disabled={!state.pad}
             min={0}
+            max={MAX_PAD_WIDTH}
             refTip={refTip}
             numTip={numTip}
           />

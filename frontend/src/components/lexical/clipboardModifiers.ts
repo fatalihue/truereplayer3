@@ -35,6 +35,10 @@ export type Split = 'none' | 'before' | 'after';
  */
 const LETTER_OR_DIGIT = /[\p{L}\p{Nd}]/u;   // char.IsLetterOrDigit: any Unicode letter or decimal digit
 
+/** Mirror of ActionExecution.MaxPadWidth — the widest zero-pad the engine will build. Past it the
+ *  engine fails empty, so every surface that previews a chain has to agree. */
+export const MAX_PAD_WIDTH = 4096;
+
 export const isArgRef = (seg: string | undefined): boolean => {
   if (seg === undefined || seg.length < 2) return false;
   if (seg[0] !== '@') return false;
@@ -655,7 +659,11 @@ export function applyTransformPreview(raw: string, s: TransformState): string {
   // count: non-blank lines, the backend's IsNullOrWhiteSpace test per line. pad: PadLeft with
   // zeros; a reference has no number here (previewIsRuntimeDependent), so it is skipped.
   if (s.count) r = String(splitLines(r).filter((l) => l.trim() !== '').length);
-  if (s.pad && !isArgRef(s.padRef)) r = r.padStart(Math.max(0, s.padN), '0');
+  // Above the ceiling the engine takes its fail-empty exit (ActionExecution.MaxPadWidth), so the
+  // preview shows the same empty string. Clamping instead would print a width nobody asked for,
+  // and actually building the string was its own bug: padStart of a few hundred million threw
+  // RangeError out of the preview, and a merely large one pasted tens of megabytes into the DOM.
+  if (s.pad && !isArgRef(s.padRef)) r = s.padN > MAX_PAD_WIDTH ? '' : r.padStart(Math.max(0, s.padN), '0');
   if (s.case === 'upper') r = r.toUpperCase();
   else if (s.case === 'lower') r = r.toLowerCase();
   else if (s.case === 'sentence') r = r.length > 0 ? r[0].toUpperCase() + r.slice(1) : r;

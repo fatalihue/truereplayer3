@@ -262,6 +262,12 @@ namespace TrueReplayer
         // tested by the new-pairing guard, cleared by Stop().
         private static readonly HashSet<int> _remapBypassedDowns = new();
 
+        // Mouse buttons the USER is physically holding (0x01/0x02/0x04 and the two X pseudo-vks).
+        // The mouse half of the mirrorWasOurs rule: a key→click remap must not inject a button UP
+        // for a button the user's own finger is still on, which used to end a drag or a held fire
+        // mid-gesture. Maintained at the very top of the mouse hook so no gate can hide a press.
+        private static readonly HashSet<int> _physicalMouseDowns = new();
+
         // X-button downs we swallowed (trigger dispatch, remap, capture). Their paired UP
         // must be consumed too: Windows synthesizes WM_APPCOMMAND Back/Forward from a
         // DELIVERED WM_XBUTTONUP even without its down, so an orphan up would navigate the
@@ -314,6 +320,14 @@ namespace TrueReplayer
         // Mouse-side targets go out through SendInput's MOUSE path: a button flag with WHICH
         // side button in mouseData, or one wheel notch. Injected, therefore LLMHF_INJECTED, so the
         // mouse hook's trigger path ignores them exactly as it ignores replayed clicks.
+        // True for the duration of our own mouse SendInput. Both hooks are installed from the UI
+        // thread and this runs inside their callbacks, so the injected event re-enters
+        // MouseHookCallbackCore synchronously and this flag is still up when it arrives. The
+        // keyboard hook has a blanket LLKHF_INJECTED gate; the mouse hook does not (third-party
+        // mouse software injects clicks that recordings are supposed to capture), so the recorder
+        // is told to skip only OUR injections.
+        [ThreadStatic] private static bool _injectingRemapMouse;
+
         private static void InjectRemappedMouse(uint flags, uint mouseData)
         {
             var input = new NativeMethods.INPUT
@@ -324,7 +338,29 @@ namespace TrueReplayer
                     mi = new NativeMethods.MOUSEINPUT { dwFlags = flags, mouseData = mouseData },
                 },
             };
-            NativeMethods.SendInput(1, ref input, NativeMethods.InputSize);
+            _injectingRemapMouse = true;
+            try { NativeMethods.SendInput(1, ref input, NativeMethods.InputSize); }
+            finally { _injectingRemapMouse = false; }
+        }
+
+        /// <summary>
+        /// The pseudo-vk of a Mouse target's button, for comparing against _physicalMouseDowns.
+        /// Reads the DOWN flag rather than storing a second field on RemapTarget, so the mapping
+        /// cannot drift from what is actually injected. Returns 0 for a non-mouse target, which no
+        /// button ever equals.
+        /// </summary>
+        private static int MouseTargetVk(RemapTarget t)
+        {
+            if (t.Kind != RemapTargetKind.Mouse) return 0;
+            if ((t.MouseDownFlags & NativeMethods.MOUSEEVENTF_LEFTDOWN) != 0) return 0x01;
+            if ((t.MouseDownFlags & NativeMethods.MOUSEEVENTF_RIGHTDOWN) != 0) return 0x02;
+            if ((t.MouseDownFlags & NativeMethods.MOUSEEVENTF_MIDDLEDOWN) != 0) return 0x04;
+            // A target's MouseData is what SendInput wants — XBUTTON1/2 in the LOW word — while
+            // the hook's MSLLHOOKSTRUCT carries the button in the HIGH word, which is what
+            // XButtonName decodes. Comparing directly keeps the two encodings from being confused.
+            if ((t.MouseDownFlags & NativeMethods.MOUSEEVENTF_XDOWN) != 0)
+                return t.MouseData == NativeMethods.XBUTTON2 ? 0x06 : 0x05;
+            return 0;
         }
 
         // One entry point per kind. A wheel target has no "up": the notch IS the whole event.
@@ -848,6 +884,9 @@ namespace TrueReplayer
             // stay marked as "the app is holding this one raw", or the remap layer would refuse
             // to ever pair it again in the new session.
             _remapBypassedDowns.Clear();
+            // Same reason: a button held across Stop()/Start() would otherwise look user-held
+            // forever and suppress every mouse-target injection in the new session.
+            _physicalMouseDowns.Clear();
             _swallowedXDowns.Clear();
             _captureSwallowedXDowns.Clear();
             _lastTapKey = null;
@@ -1535,6 +1574,31 @@ namespace TrueReplayer
             if ((int)wParam == NativeMethods.WM_MOUSEMOVE)
                 return NativeMethods.CallNextHookEx(_mouseHookId, nCode, wParam, lParam);
 
+            // Which mouse buttons the USER is physically holding. Tracked here, above every gate,
+            // for the same reason _remapBypassedDowns exists on the keyboard side: with a modal
+            // scope open the physical events never reach the switch further down, and a set that
+            // misses a press is worse than no set at all. Injected events are filtered out, or our
+            // own remap DOWN would mark the button as user-held and then suppress its own UP,
+            // leaving the button stuck. An UP only ever removes — fail-safe.
+            //
+            // The marshal is paid only by button and wheel messages: WM_MOUSEMOVE, which is three
+            // orders of magnitude more frequent, already returned above.
+            var hookStruct0 = Marshal.PtrToStructure<NativeMethods.MSLLHOOKSTRUCT>(lParam);
+            if ((hookStruct0.flags & 0x1) == 0)
+            {
+                switch ((int)wParam)
+                {
+                    case NativeMethods.WM_LBUTTONDOWN: _physicalMouseDowns.Add(0x01); break;
+                    case NativeMethods.WM_LBUTTONUP: _physicalMouseDowns.Remove(0x01); break;
+                    case NativeMethods.WM_RBUTTONDOWN: _physicalMouseDowns.Add(0x02); break;
+                    case NativeMethods.WM_RBUTTONUP: _physicalMouseDowns.Remove(0x02); break;
+                    case NativeMethods.WM_MBUTTONDOWN: _physicalMouseDowns.Add(0x04); break;
+                    case NativeMethods.WM_MBUTTONUP: _physicalMouseDowns.Remove(0x04); break;
+                    case NativeMethods.WM_XBUTTONDOWN: _physicalMouseDowns.Add(XButtonVk(XButtonName(hookStruct0.mouseData))); break;
+                    case NativeMethods.WM_XBUTTONUP: _physicalMouseDowns.Remove(XButtonVk(XButtonName(hookStruct0.mouseData))); break;
+                }
+            }
+
             // X-button remap pairing release runs BEFORE the capture/suppress gates — same
             // stuck-injected-key hazard as the keyboard hoist above it. Physical ups only.
             if ((int)wParam == NativeMethods.WM_XBUTTONUP && _activeRemapDowns.Count > 0)
@@ -1686,8 +1750,12 @@ namespace TrueReplayer
                                             // Side button → another mouse button (XButton1 → middle
                                             // click). The injected event is LLMHF_INJECTED and the
                                             // injected-gate above passes it to the app untouched.
-                                            InjectRemapped(xTarget, down: true);
-                                            _remapInjectedDowns.Add(xVk);
+                                            // Same physical-hold guard as the keyboard branch.
+                                            if (!_physicalMouseDowns.Contains(MouseTargetVk(xTarget)))
+                                            {
+                                                InjectRemapped(xTarget, down: true);
+                                                _remapInjectedDowns.Add(xVk);
+                                            }
                                             break;
                                         case RemapTargetKind.Wheel:
                                             InjectRemapped(xTarget, down: true);
@@ -1833,8 +1901,15 @@ namespace TrueReplayer
                     // popup + pick option clicks don't bleed into the macro alongside the
                     // BrowserSelectOption action that semantically captures the change.
                     bool skipRecording = SuppressMouseRecording && button != "Scroll";
+                    // …and never record the button events WE inject to serve a key→click remap.
+                    // Closing such a pairing while recording is on wrote an orphan LeftClickUp into
+                    // the macro — on replay it releases a button nobody pressed. Both conditions
+                    // are required: the flag alone would be enough while delivery is synchronous,
+                    // and the LLMHF_INJECTED bit alone would also swallow the third-party injected
+                    // clicks that recordings do capture today.
+                    bool ourInjection = _injectingRemapMouse && (hookStruct.flags & 0x1) != 0;
 
-                    if (!skipRecording)
+                    if (!skipRecording && !ourInjection)
                         OnMouseEvent?.Invoke(button, hookStruct.pt.x, hookStruct.pt.y, isDown, scrollDelta);
 
                     // In capture mode, swallow mouse clicks so they don't reach the target app
@@ -2703,8 +2778,19 @@ namespace TrueReplayer
                                     _remapInjectedDowns.Add(vkCode);
                                     break;
                                 case RemapTargetKind.Mouse:
-                                    InjectRemapped(target, down: true);
-                                    _remapInjectedDowns.Add(vkCode);
+                                    // Skip entirely when the user's own finger is already on that
+                                    // button: injecting a second DOWN restarts a selection
+                                    // rectangle in most apps, and the UP at release would end a
+                                    // drag or a held fire the user is still performing. Not
+                                    // marking _remapInjectedDowns is what makes CloseRemapPairing
+                                    // and ReleaseActiveRemapDowns skip that UP — the same
+                                    // fail-safe asymmetry mirrorWasOurs gives the key path,
+                                    // decided when the pairing opens.
+                                    if (!_physicalMouseDowns.Contains(MouseTargetVk(target)))
+                                    {
+                                        InjectRemapped(target, down: true);
+                                        _remapInjectedDowns.Add(vkCode);
+                                    }
                                     break;
                                 case RemapTargetKind.Wheel:
                                     // One notch per press; nothing to release on the way up.

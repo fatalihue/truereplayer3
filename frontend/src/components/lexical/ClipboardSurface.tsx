@@ -22,6 +22,7 @@ import {
   replaceStepActive,
   shapeStepActive,
   defaultStepActive,
+  MAX_PAD_WIDTH,
   type CaseTransform,
   type ChainHead,
   type Extract,
@@ -719,11 +720,12 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
               />
               <ArgInput
                 value={state.padN}
-                onChange={(n) => set({ padN: Math.max(0, n) })}
+                onChange={(n) => set({ padN: Math.min(Math.max(0, n), MAX_PAD_WIDTH) })}
                 refValue={state.padRef}
                 onRefChange={(r) => set({ padRef: r })}
                 disabled={!state.pad}
                 min={0}
+                max={MAX_PAD_WIDTH}
                 refTip={refTip}
                 numTip={numTip}
               />

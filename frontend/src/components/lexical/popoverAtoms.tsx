@@ -219,6 +219,7 @@ export function ArgInput({
   onRefChange,
   disabled,
   min = 0,
+  max,
   width = 54,
   refPlaceholder = '@name',
   refTip,
@@ -230,6 +231,9 @@ export function ArgInput({
   onRefChange: (r: string) => void;
   disabled?: boolean;
   min?: number;
+  /** Upper clamp for the literal form. `pad` passes the engine's ceiling so the UI cannot author
+   *  a width the engine refuses to build. */
+  max?: number;
   width?: number;
   refPlaceholder?: string;
   refTip?: string;
@@ -259,6 +263,7 @@ export function ArgInput({
             value={value}
             onChange={onChange}
             min={min}
+            max={max}
             disabled={disabled}
             inputWidth="w-full"
             inputHeight="h-7"

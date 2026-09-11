@@ -1009,9 +1009,12 @@ namespace TrueReplayer.Services
 
         // ── Run-state tokens {var:name}, {counter}, bare {row} ───────────────────────────────
         // {var:} mirrors ActionExecution.VarTokenRegex (a chain after the name is the 2.20.0 pin's
-        // business; it matches here too and the higher pin wins). {counter} and {row} are exact,
-        // case-insensitive literals in ResolveRunStateTokens — "{row:" is a different token (the
-        // Data-loop pins) and "{counter:5}" is literal on every build, so neither pins here.
+        // business; it matches here too and the higher pin wins). Bare {counter} is the no-chain
+        // branch of RunStateChainTokenRegex and bare {row} a literal Replace in
+        // ResolveRunStateTokens, so both are exact, case-insensitive substrings here. "{row:" is a
+        // different token (the Data-loop pins), and "{counter:5}" — a chain, inert or not —
+        // RESOLVES since 2.37.0 and is the counter-chain pin's business (UsesCounterChainToken):
+        // its floor is not this one.
         private static readonly Regex VariableTokenRegex = new(
             @"\{var:[A-Za-z0-9_]+(?::[^}]+)?\}",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -1034,9 +1037,11 @@ namespace TrueReplayer.Services
                 || (text.Contains("{var:", StringComparison.OrdinalIgnoreCase) && VariableTokenRegex.IsMatch(text)));
 
         // ── Loop-block tokens {loop} / {datarow} and the @loop / @datarow references ─────────
-        // Exact, case-insensitive literals in ResolveRunStateTokens ("{loop:5}" is literal on every
-        // build, so it must not pin); the references ride a modifier chain and delegate to the
-        // engine walk (ChainUsesLoopRef) for the reason every other chain pin does.
+        // The bare tokens are the no-chain branch of RunStateChainTokenRegex, matched here as
+        // exact, case-insensitive substrings. "{loop:5}" is a chain (inert since 2.37.0) and pins
+        // through UsesCounterChainToken, not here — the same 2.37.0 today, but a different entry.
+        // The references ride a modifier chain and delegate to the engine walk (ChainUsesLoopRef)
+        // for the reason every other chain pin does.
         private static bool UsesLoopToken(ActionItem a) =>
             (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsLoopToken(a.Key)) ||
             ContainsLoopToken(a.KeyHtml) ||
@@ -1060,11 +1065,11 @@ namespace TrueReplayer.Services
         }
 
         // ── Date/time tokens with an argument ────────────────────────────────────────────────
-        // Mirrors ActionExecution.DateTokenRegex with the argument made MANDATORY: the bare
-        // {date}/{time}/{datetime} have resolved since 1.0 and must not pin.
-        private static readonly Regex DateFormatTokenRegex = new(
-            @"\{(?:datetime|date|time):[^}]+\}",
-            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        // The instant every pin probe formats against. FIXED, never DateTime.Now: whether a
+        // profile exports as 2.37.0 must not depend on the clock it was exported at, and a
+        // calendar-overflow offset has to fall the same way on both surfaces. Same value as the
+        // frontend gate's DATE_PROBE (tokenNormalize.ts).
+        private static readonly DateTime DateProbe = new(2026, 1, 31, 13, 45, 30);
 
         private static bool UsesDateFormatToken(ActionItem a) =>
             (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsDateFormatToken(a.Key)) ||
@@ -1077,10 +1082,28 @@ namespace TrueReplayer.Services
             ContainsDateFormatToken(a.LaunchPath) ||
             ContainsDateFormatToken(a.LaunchArgs);
 
-        private static bool ContainsDateFormatToken(string? text) =>
-            !string.IsNullOrEmpty(text)
-            && (text.Contains("{date", StringComparison.OrdinalIgnoreCase) || text.Contains("{time", StringComparison.OrdinalIgnoreCase))
-            && DateFormatTokenRegex.IsMatch(text);
+        // Pins only when the ENGINE actually resolves the token. A regex that merely sees an
+        // argument also caught "{date:x}", "{time:5}" and "{date:+999999y}", which .NET rejects
+        // and the engine therefore leaves literal — on 2.36.0 too. Those profiles were exported
+        // with a 2.37.0 floor and refused by a machine that would have run them identically, and
+        // the Info tab named a feature the profile does not use. The bare {date}/{time}/{datetime}
+        // have resolved since 1.0, so the argument is still required.
+        //
+        // Same doctrine the file already applies to {random:abc}, {pick} and {row:Nome Completo:}:
+        // literal on every build does not pin. Ask ActionReplayer rather than re-implementing the
+        // offset/format grammar here — one parser, one verdict.
+        private static bool ContainsDateFormatToken(string? text)
+        {
+            if (string.IsNullOrEmpty(text)) return false;
+            if (!text.Contains("{date", StringComparison.OrdinalIgnoreCase)
+                && !text.Contains("{time", StringComparison.OrdinalIgnoreCase)) return false;
+            foreach (Match m in ActionReplayer.DateTokenMatcher.Matches(text))
+            {
+                if (!m.Groups[2].Success) continue;   // bare token — resolved since 1.0
+                if (ActionReplayer.TryFormatDateToken(m.Groups[1].Value, m.Groups[2].Value, DateProbe, out _)) return true;
+            }
+            return false;
+        }
 
         // ── The value-shaping modifiers — replace / count / pad / default ────────────────────
         private static bool UsesShapeModifier(ActionItem a) =>

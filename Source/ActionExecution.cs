@@ -726,6 +726,13 @@ namespace TrueReplayer.Services
                     bool probeElevation = !ProcessIntegrity.SelfElevated;
                     IntPtr lastRootHwnd = IntPtr.Zero;
                     bool reportedElevated = false;
+                    // The probe keeps its own clock so it can fire on the FIRST tick and then
+                    // settle into the stats cadence. Sharing the stats gate meant a run whose
+                    // clicks all fit inside 250 ms — Loops = 1, or ten clicks at 100/s — never
+                    // probed at all: every click was dropped by UIPI, the counter filled up, and
+                    // nothing on screen said why.
+                    bool probedOnce = false;
+                    long lastProbeMs = 0;
 
                     while (!token.IsCancellationRequested && (isInfinite || iteration < loopCount))
                     {
@@ -882,32 +889,38 @@ namespace TrueReplayer.Services
                         // (not iteration count) makes the cadence stable across slow/fast
                         // configurations.
                         var elapsedMs = sw.ElapsedMilliseconds - pausedAccumMs;
+
+                        // The one failure the click counter cannot see: the click landed on an
+                        // elevated window. Reported on the CHANGE, in both directions, so the
+                        // dashboard line follows the cursor rather than latching for the run.
+                        // Its own gate — first tick, then every 250 ms — because the expensive
+                        // part is OpenProcess/OpenProcessToken, not WindowFromPoint, and because a
+                        // short run has to be covered too.
+                        if (probeElevation && (!probedOnce || elapsedMs - lastProbeMs >= 250))
+                        {
+                            probedOnce = true;
+                            lastProbeMs = elapsedMs;
+                            var root = ProcessIntegrity.RootWindowAt(targetX, targetY);
+                            if (root != lastRootHwnd)
+                            {
+                                lastRootHwnd = root;
+                                bool elevated = ProcessIntegrity.IsWindowElevated(root) == true;
+                                if (elevated != reportedElevated)
+                                {
+                                    reportedElevated = elevated;
+                                    if (elevated)
+                                        DiagnosticLog.Warn("Clicker: the window under the cursor runs elevated and this process does not — SendInput reports success but UIPI drops every click. Run TrueReplayer as administrator.");
+                                    dispatcherQueue.TryEnqueue(() => OnClickerWarning?.Invoke(elevated ? "elevatedTarget" : null));
+                                }
+                            }
+                        }
+
                         if (elapsedMs - lastStatsPushMs >= 250)
                         {
                             lastStatsPushMs = elapsedMs;
                             var snapshotCount = clickCount;
                             var snapshotElapsed = elapsedMs;
                             dispatcherQueue.TryEnqueue(() => OnClickerStats?.Invoke(snapshotCount, snapshotElapsed, maxDurationMs));
-
-                            // The one failure the counter above cannot see: the click landed on an
-                            // elevated window. Reported on the CHANGE, in both directions, so the
-                            // dashboard line follows the cursor rather than latching for the run.
-                            if (probeElevation)
-                            {
-                                var root = ProcessIntegrity.RootWindowAt(targetX, targetY);
-                                if (root != lastRootHwnd)
-                                {
-                                    lastRootHwnd = root;
-                                    bool elevated = ProcessIntegrity.IsWindowElevated(root) == true;
-                                    if (elevated != reportedElevated)
-                                    {
-                                        reportedElevated = elevated;
-                                        if (elevated)
-                                            DiagnosticLog.Warn("Clicker: the window under the cursor runs elevated and this process does not — SendInput reports success but UIPI drops every click. Run TrueReplayer as administrator.");
-                                        dispatcherQueue.TryEnqueue(() => OnClickerWarning?.Invoke(elevated ? "elevatedTarget" : null));
-                                    }
-                                }
-                            }
 
                             // Loop progress for genuine loops only (single-shot keeps "—").
                             // total=0 signals infinite — matches Macro engine convention.
@@ -3147,6 +3160,22 @@ namespace TrueReplayer.Services
                 if (token.IsCancellationRequested || _rowFaulted || _returnRequested) break;
                 var action = actions[i];
 
+                // {loop} / {datarow} stamp, at the TOP of the iteration rather than only on the
+                // leaf path further down. Structural lines resolve tokens too — an If/ElseIf
+                // condition and a While guard both call ProbeVariableAsync, which reads
+                // _currentLoopIteration through CurrentRunCtx — and they `continue` long before
+                // the leaf stamp ran, so they used to see whatever the LAST executed leaf had
+                // left there: on the first lap nothing at all, and afterwards one lap behind.
+                // "If Variable x eq {loop}" inside a While therefore took the wrong arm, which is
+                // exactly the comparison eb8ea6c advertises. Stamping here means no future
+                // structural line has to remember to do it.
+                //
+                // Cost: InnermostEnclosingLoop is O(number of block openers) per line, now paid on
+                // structural lines too. A profile has one or two loops and a median of two
+                // actions, so this is a handful of int comparisons per line.
+                _currentActionRow = i + 1;                           // {row} token source (1-based grid row)
+                _currentLoopIteration = InnermostLoopIteration(i);   // {loop} token source
+
                 // Chain read-out progress — see OnChainStep. Emitted only from inside a sub-profile
                 // (Count >= 2); at depth 1 the status bar hides the chain entirely and the root's
                 // own highlight-derived counter already covers it. The number is POSITION in the
@@ -3415,6 +3444,15 @@ namespace TrueReplayer.Services
                             i = actions.Count;
                         continue;
                     }
+                    // {loop} inside THIS guard means the lap the guard is about to decide, not the
+                    // lap of whatever block encloses the While. The top-of-iteration stamp reads
+                    // the ENCLOSING opener — InnermostEnclosingLoop requires `open < idx`, so a
+                    // While never encloses itself — which for a top-level While is the run's
+                    // repeat count, constant all run. That would quietly kill
+                    // "While … {clipboard:line:@loop}", the walk eb8ea6c exists for. `done` is the
+                    // number of laps finished, so the lap being decided is done + 1.
+                    _currentLoopIteration = done + 1;
+
                     // Delay BEFORE the probe, PER ITERATION — double duty: the If's "let the
                     // screen settle before checking" plus the pacing between iterations.
                     int whileDelay = Math.Max(0, action.Delay);
@@ -5846,6 +5884,14 @@ namespace TrueReplayer.Services
         /// consumed; a literal only when it satisfies that modifier's gate, which is what keeps a
         /// typo'd `line:upper` from eating the next modifier.
         /// </summary>
+        /// <summary>
+        /// Widest zero-pad `pad:N` will build. Above this the modifier fails empty instead of
+        /// allocating: no real zero-pad needs four thousand characters, and the values that reach
+        /// this far are typos. Mirrored by MAX_PAD_WIDTH in clipboardModifiers.ts — the preview
+        /// must refuse exactly what the engine refuses.
+        /// </summary>
+        internal const int MaxPadWidth = 4096;
+
         private static int StepModifier(string[] parts, int i, out bool argIsRef)
         {
             argIsRef = false;
@@ -6470,11 +6516,18 @@ namespace TrueReplayer.Services
                         // that long is untouched. The int-argument shape of first/last: a literal or
                         // an "@name" reference, and a reference that fails resolves EMPTY (the
                         // fail-empty rule — a typo'd variable must not paste the bare value).
+                        //
+                        // pad is the one modifier whose COST is its argument: first/last can only
+                        // shrink, pad allocates the width it is given. "{counter:pad:2000000000}"
+                        // — a plausible slip of the hand — asked for a 4 GB string and ended the
+                        // run with OutOfMemoryException from inside the Replace lambda. Above the
+                        // ceiling it takes the same fail-empty exit the unreadable argument takes,
+                        // rather than being silently clamped to a width the user did not ask for.
                         {
                             int next = StepModifier(parts, i, out _);
                             if (next == i + 2)
                             {
-                                if (TryReadIntArg(parts[i + 1], ctx, 0, out var width, out _))
+                                if (TryReadIntArg(parts[i + 1], ctx, 0, out var width, out _) && width <= MaxPadWidth)
                                     result = result.PadLeft(width, '0');
                                 else result = string.Empty;
                             }
@@ -6697,7 +6750,7 @@ namespace TrueReplayer.Services
                 lock (_runStateLock) _runtimeVariables.TryGetValue(key, out current);
                 if (!TryAddVariable(current, value, out var sum))
                 {
-                    Services.DiagnosticLog.Info($"Set Variable '{name}' (add): \"{value}\" is not a number — variable left unchanged");
+                    Services.DiagnosticLog.Info($"Set Variable '{name}' (add): \"{value}\" could not be added — not a number, or the sum leaves the numeric range — variable left unchanged");
                     return;
                 }
                 lock (_runStateLock) _runtimeVariables[key] = sum;
@@ -6717,7 +6770,8 @@ namespace TrueReplayer.Services
         /// Invariant culture with ',' accepted as the decimal separator (the owner's locale writes
         /// "1,5"; a thousands separator is not a thing in a counter or a step). A missing or
         /// non-numeric current value counts as 0, so a first "add 1" yields 1; a non-numeric delta
-        /// refuses (false) so a typo never overwrites a counter. Integers stay integers ("3", never
+        /// — or a sum that would leave decimal's range — refuses (false) so a typo never
+        /// overwrites a counter and never ends the run. Integers stay integers ("3", never
         /// "3.0") and scale is trimmed ("2.50" + 0 = "2.5"): the store is text, and {var:i} feeds
         /// conditions, file names and regexes that compare it as such.
         /// </summary>
@@ -6726,6 +6780,13 @@ namespace TrueReplayer.Services
             result = current ?? string.Empty;
             if (!TryParseNumber(delta, out var d)) return false;
             var c = TryParseNumber(current, out var cv) ? cv : 0m;
+            // decimal addition is checked and THROWS on overflow, which would have escaped this
+            // method — past ExecuteSetVariable, into the per-action catch — and ended the run with
+            // "Value was either too large or too small for a Decimal". TryParseNumber accepts an
+            // exponent (NumberStyles.Float), so "7e28" parses fine and two of them overflow. The
+            // range test keeps the method total, as the doc above promises, and it cannot overflow
+            // itself: MaxValue - d with d > 0 (and MinValue - d with d < 0) always fits.
+            if ((d > 0m && c > decimal.MaxValue - d) || (d < 0m && c < decimal.MinValue - d)) return false;
             result = (c + d).ToString("0.############################", System.Globalization.CultureInfo.InvariantCulture);
             return true;
         }
@@ -7830,33 +7891,56 @@ namespace TrueReplayer.Services
             // One clock for every token in the text, and for both flavors of a rich paste.
             var now = sync?.Now ?? DateTime.Now;
             return DateTokenRegex.Replace(text, m =>
-            {
-                try
-                {
-                    var head = m.Groups[1].Value.ToLowerInvariant();
-                    var when = now;
-                    string? format = null;
-                    if (m.Groups[2].Success)
-                    {
-                        var formatParts = new List<string>();
-                        foreach (var seg in m.Groups[2].Value.Split(':'))
-                        {
-                            var om = DateOffsetRegex.Match(seg);
-                            if (om.Success)
-                                when = ApplyDateOffset(when, int.Parse(om.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture), om.Groups[2].Value);
-                            else
-                                formatParts.Add(seg);
-                        }
-                        var joined = string.Join(":", formatParts);
-                        if (joined.Trim().Length > 0) format = joined;
-                    }
-                    format ??= head switch { "date" => "dd/MM/yyyy", "time" => "HH:mm:ss", _ => "dd/MM/yyyy - HH:mm:ss" };
-                    return when.ToString(format, TokenCulture);
-                }
-                catch (FormatException) { return m.Value; }
-                catch (ArgumentOutOfRangeException) { return m.Value; }
-            });
+                TryFormatDateToken(m.Groups[1].Value, m.Groups[2].Success ? m.Groups[2].Value : null, now, out var v)
+                    ? v
+                    : m.Value);
         }
+
+        /// <summary>
+        /// One date/time token, resolved. False when .NET rejects the format (an unterminated
+        /// quote, an unknown single letter) or the offset walks off the calendar — the caller then
+        /// leaves the token literal, like every other malformed token.
+        ///
+        /// Shared with ProfileCompatibility so the export floor is decided by the RESOLVER rather
+        /// than by a regex that only knows the token has an argument: "{date:x}" is literal on
+        /// every build, so pinning it to 2.37.0 would refuse a profile a 2.36.0 machine runs
+        /// identically. Same doctrine as ChainUsesShapeModifier and ChainUsesLoopRef.
+        /// </summary>
+        internal static bool TryFormatDateToken(string head, string? arg, DateTime now, out string value)
+        {
+            value = string.Empty;
+            try
+            {
+                var h = head.ToLowerInvariant();
+                var when = now;
+                string? format = null;
+                if (arg != null)
+                {
+                    var formatParts = new List<string>();
+                    foreach (var seg in arg.Split(':'))
+                    {
+                        var om = DateOffsetRegex.Match(seg);
+                        if (om.Success)
+                            when = ApplyDateOffset(when, int.Parse(om.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture), om.Groups[2].Value);
+                        else
+                            formatParts.Add(seg);
+                    }
+                    var joined = string.Join(":", formatParts);
+                    if (joined.Trim().Length > 0) format = joined;
+                }
+                format ??= h switch { "date" => "dd/MM/yyyy", "time" => "HH:mm:ss", _ => "dd/MM/yyyy - HH:mm:ss" };
+                value = when.ToString(format, TokenCulture);
+                return true;
+            }
+            catch (FormatException) { return false; }
+            catch (ArgumentOutOfRangeException) { return false; }
+        }
+
+        /// <summary>
+        /// The regex ProfileCompatibility walks to ask the resolver about each date token. Same
+        /// shape as DateTokenRegex, exposed so the pin does not re-implement the grammar.
+        /// </summary>
+        internal static Regex DateTokenMatcher => DateTokenRegex;
 
         // The unit letters of a date offset. Weeks are seven days; months and years go through
         // AddMonths/AddYears, which clamp the day to the target month (Jan 31 + 1mo = Feb 28).
