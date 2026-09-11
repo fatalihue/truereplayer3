@@ -872,6 +872,12 @@ function TokenAutocompletePlugin({ scope }: { scope: TokenScope }) {
     };
     const pick = (e: KeyboardEvent | null) => {
       if (e && (e.ctrlKey || e.metaKey || e.altKey)) return false;
+      // Shift+Tab is focus navigation (the sheet is a form), not "insert the highlighted item".
+      // Lexical dispatches KEY_TAB_COMMAND for Tab with OR without Shift, so the list used to
+      // swallow it and insert a chip. Closing the list here matters as much as returning false:
+      // the menu is a fixed portal cleared only by a selection update, Esc, an outside mousedown
+      // or a commit — none of which a keyboard focus move produces, so it would be left floating.
+      if (e && e.shiftKey && e.key === 'Tab') { setMatch(null); return false; }
       e?.preventDefault();
       const live = liveRef.current;
       if (live) commit(live.options[live.active] ?? live.options[0], live.match);
@@ -903,10 +909,14 @@ function TokenAutocompletePlugin({ scope }: { scope: TokenScope }) {
       setMatch(null);
     };
     document.addEventListener('keydown', onKey, true);
-    document.addEventListener('mousedown', onMouseDown);
+    // Capture, like the Esc above and for the same reason: TokenChip stops propagation on its
+    // own mousedown, which in React 18 also stops the native event at the React root — below
+    // document — so a bubble-phase listener here never fired and clicking a chip left the list
+    // open on top of the popover it had just opened.
+    document.addEventListener('mousedown', onMouseDown, true);
     return () => {
       document.removeEventListener('keydown', onKey, true);
-      document.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('mousedown', onMouseDown, true);
     };
   }, [open, match]);
 
@@ -1000,11 +1010,14 @@ function $clearFormatting(): void {
   }
   const hadLink = sel.getNodes().some($insideDeliberateLink);
   for (const node of sel.extract()) {
-    const texts = $isTextNode(node) ? [node] : $isElementNode(node) ? node.getAllTextNodes() : [];
-    for (const t of texts) {
-      if (t.getFormat() !== 0) t.setFormat(0);
-      if (t.getStyle() !== '') t.setStyle('');
-    }
+    // Only the LEAVES the selection actually covers. RangeSelection.getNodes() also returns the
+    // ELEMENTS it crosses — the first and last paragraph, a ListNode on the way out of a list, a
+    // partially covered link — and extract() keeps them; calling getAllTextNodes() on those
+    // cleared formatting from text the user never selected, so erasing across a paragraph
+    // boundary wiped the bold off the whole of both paragraphs.
+    if (!$isTextNode(node)) continue;
+    if (node.getFormat() !== 0) node.setFormat(0);
+    if (node.getStyle() !== '') node.setStyle('');
   }
   if (hadLink) $toggleLink(null);
 }

@@ -455,7 +455,11 @@ function NamePromptPopover({
 
 // Clipboard-surface session: insert (from the palette) or edit (from a chip).
 type SurfaceSession =
-  | { mode: 'insert' }
+  // startHead: where Reset goes back to. An insert session opened from the name prompt starts
+  // on THAT head (Variable, Data column…), so resetting to {clipboard} silently retargeted the
+  // token the Insert button would write — the title, the identity card and the inserted chip
+  // all changed under the user, who had only asked to clear the chain.
+  | { mode: 'insert'; startHead: ChainHead }
   | { mode: 'edit'; token: string; commit: (next: string) => void; remove: () => void };
 
 export function SendTextDialog({ mode, initialText = '', initialHtml = null, initialMode = 'rich', initialMethod = 'paste', initialCharDelayMs = null, actionIndex = null, onConfirm, onClose }: SendTextDialogProps) {
@@ -508,6 +512,24 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
   // {Variable…}/{Row column…} name prompt.
   const [namePrompt, setNamePrompt] = useState<{ kind: 'var' | 'row' | 'rownext' | 'clip' | 'input' | 'env'; anchor: HTMLElement } | null>(null);
   const lexicalApiRef = useRef<LexicalEditorHandle | null>(null);
+
+  /**
+   * Close the name prompt and put the keyboard back where it belongs.
+   *
+   * The prompt's input holds the focus; removing it leaves document.activeElement on <body>, and
+   * from there the card is deaf — Esc, Ctrl+Enter and typing all stop working until the user
+   * clicks something. Restoring UNCONDITIONALLY would be worse: this same close runs when
+   * "Advanced…" hands over to the surface (the editor is under an overlay by then) and from the
+   * outside-mousedown handler, which fires BEFORE the click sets focus on whatever was clicked.
+   * So: only when the focus actually fell to the body, and on the next frame, after React has
+   * removed the portal.
+   */
+  const closeNamePrompt = useCallback(() => {
+    setNamePrompt(null);
+    requestAnimationFrame(() => {
+      if (document.activeElement === document.body) lexicalApiRef.current?.focus();
+    });
+  }, []);
   // Unsaved-work gate. Rendered as a SIBLING of DialogShell (see the end of this file) and
   // reached ONLY through DialogShell.canClose — never through onClose, which the shell calls
   // after it has already committed to leaving.
@@ -561,7 +583,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
     setClipState(DEFAULT_TRANSFORM); // fresh every time, as the old popover did
     setClipHead({ kind: 'clipboard' });
     setClipDirty(false);
-    setSurface({ mode: 'insert' });
+    setSurface({ mode: 'insert', startHead: { kind: 'clipboard' } });
   }, []);
 
   // Same insert session, arbitrary head. Reached from the name prompt's Advanced… button, so the
@@ -572,7 +594,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
     setClipState(DEFAULT_TRANSFORM);
     setClipHead(head);
     setClipDirty(false);
-    setSurface({ mode: 'insert' });
+    setSurface({ mode: 'insert', startHead: head });
   }, []);
 
   // Chip click → edit session (routed here by ClipboardChipEditContext; the
@@ -619,7 +641,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
     setClipState(parsed ? parsed.state : DEFAULT_TRANSFORM);
     // The head resets too — a renamed slot is an edit like any other, and leaving it behind
     // would make Reset restore the chain onto the WRONG token.
-    setClipHead(parsed ? parsed.head : { kind: 'clipboard' });
+    setClipHead(surface?.mode === 'insert' ? surface.startHead : (parsed ? parsed.head : { kind: 'clipboard' }));
     setClipDirty(false); // back to the session's starting point = nothing to apply
   }, [surface]);
 
@@ -918,7 +940,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
       e.preventDefault();
       e.stopPropagation();
       if (confirmDiscard) { setConfirmDiscard(false); lexicalApiRef.current?.focus(); }
-      else if (namePrompt) setNamePrompt(null);
+      else if (namePrompt) closeNamePrompt();
       else if (surface) closeSurface();
       else if (savingSnippet) setSavingSnippet(false);
       else if (deletingSnippetId !== null) setDeletingSnippetId(null);
@@ -926,7 +948,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
     };
     document.addEventListener('keydown', onEsc, true);
     return () => document.removeEventListener('keydown', onEsc, true);
-  }, [escLayerActive, confirmDiscard, namePrompt, surface, savingSnippet, deletingSnippetId, editingSnippetId, closeSurface]);
+  }, [escLayerActive, confirmDiscard, namePrompt, surface, savingSnippet, deletingSnippetId, editingSnippetId, closeSurface, closeNamePrompt]);
 
   // ── Palette chip renderer ──
   const renderChip = (chip: PaletteChip, extraClass = '') => (
@@ -1485,7 +1507,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
           // both open would make one Esc close a prompt that is already off screen.
           onAdvanced={(head) => { setNamePrompt(null); openInsertSurfaceForHead(head); }}
           onInsert={(token) => lexicalApiRef.current?.insertToken(token)}
-          onClose={() => setNamePrompt(null)}
+          onClose={() => closeNamePrompt()}
         />
       )}
     </DialogShell>

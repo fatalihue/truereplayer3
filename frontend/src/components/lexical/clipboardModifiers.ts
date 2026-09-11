@@ -533,7 +533,24 @@ export const argRefIsUnfinished = (s: TransformState): boolean =>
 // OrdinalIgnoreCase, the way the backend's Replace and split matches compare: fold both sides
 // per character (upper, like the sort comparer) and cut the ORIGINAL. A fold that changes the
 // length (ß → SS) would misalign the cut, so such a string is matched as it is.
-const foldForMatch = (t: string): string => { const u = t.toUpperCase(); return u.length === t.length ? u : t; };
+/**
+ * Ordinal ignore-case folding, the way .NET's StringComparison.OrdinalIgnoreCase does it: ONE
+ * code point in, one out, never an expansion. char.ToUpperInvariant leaves 'ß' as 'ß' and 'ﬁ' as
+ * 'ﬁ', while JS toUpperCase() turns them into "SS" and "FI".
+ *
+ * Folding the whole string and giving up when the LENGTH changed — the previous rule — switched
+ * case-insensitivity off for the entire text because of one character anywhere in it: a clipboard
+ * holding "Straße" made {clipboard:replace:hello:x} miss a "Hello" on another line, so the
+ * preview showed text the engine does replace. Folding per code point (not per UTF-16 unit) also
+ * keeps astral casing, which .NET performs — Deseret and Adlam fold — and, because the result is
+ * always the same number of UTF-16 units, the indices still line up with the ORIGINAL string, so
+ * the slices below stay correct.
+ */
+const foldForMatch = (t: string): string => {
+  // Fast path: ASCII cannot expand, and this is the overwhelmingly common case.
+  if (!/[^\x00-\x7F]/.test(t)) return t.toUpperCase();
+  return Array.from(t).map((c) => { const u = c.toUpperCase(); return u.length === c.length ? u : c; }).join('');
+};
 function replaceAllFolded(text: string, from: string, to: string): string {
   const hay = foldForMatch(text);
   const needle = foldForMatch(from);
@@ -934,7 +951,12 @@ export function parseTimestampToken(token: string): { ms: boolean; state: Transf
 /** Whether the head's identity is filled in — an empty column or name would build a broken token. */
 export function chainHeadIsUsable(head: ChainHead): boolean {
   switch (head.kind) {
-    case 'row': case 'rownext': return head.column.length > 0;
+    // A column name is TRIMMED at lookup (BuildRowDict, and the engine trims the token's own
+    // argument), so a name made only of spaces resolves to nothing. Since A6 let spaces into the
+    // field, " " passed this check: no error line, Insert enabled, and a {row: } chip that pastes
+    // nothing. Only row/rownext need the trim — the var/clip/env fields filter spaces out
+    // entirely, so trimming there would be noise.
+    case 'row': case 'rownext': return head.column.trim().length > 0;
     case 'var': case 'clip': case 'env': return head.name.length > 0;
     default: return true;
   }

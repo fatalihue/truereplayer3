@@ -54,6 +54,10 @@ const REPEATABLE_TOKEN_NAMES = new Set([
 // backend's gates are mirrored below, in parseRepeatable (what an existing token really means)
 // and in the editor's update (what a new value may become).
 const MAX_KEY_REPEAT = 100;
+// Six digits is what the offset grammar accepts on BOTH sides (dateFormat.OFFSET_RE and
+// ActionExecution.DateOffsetRegex, [+-]d{1,6}). A seventh digit stops matching as an offset and
+// the segment is re-read as a FORMAT, so the token silently means something else.
+const MAX_DATE_OFFSET = 999999;
 
 type TokenKind = 'clipboard' | 'delay' | 'repeatable' | 'random' | 'var' | 'rowcol' | 'rownextcol' | 'clip' | 'winclip' | 'input' | 'pick' | 'date' | 'runstate' | 'env' | 'timestamp' | 'static';
 
@@ -680,7 +684,9 @@ function RowColEditor({ token, onChange, head = 'row' }: { token: string; onChan
   // After a real edit the canonical rebuild IS the intent — the token box shows
   // exactly what will run. Clearing the column never emits a broken `{row:}`.
   const emit = (col: string, s: TransformState) => {
-    if (!col) return;
+    // …and a column of nothing but spaces is the same as empty: the engine trims at lookup,
+    // so it would resolve to nothing. Same shape as InputEditor.emit below.
+    if (!col.trim()) return;
     // Same refusal as the clipboard editor: a chain carrying something the parser could not
     // represent must never be rebuilt, because the rebuild is where the unrepresented part
     // disappears — and it disappears into the saved profile.
@@ -924,13 +930,18 @@ function DateEditor({ token, onChange }: { token: string; onChange: (t: string) 
         ) : (
           <>
             <div className="flex items-center gap-2 py-1">
-              <NumInput value={magnitude} onChange={(v) => { setMagnitude(v); emit(v, back, unit, format); }} min={0} width={70} />
+              <NumInput value={magnitude} onChange={(v) => { setMagnitude(v); emit(v, back, unit, format); }} min={0} max={MAX_DATE_OFFSET} width={70} />
               <div className="flex gap-1">
                 <button type="button" onClick={() => { setBack(true); emit(magnitude, true, unit, format); }} className={`${PILL} ${back ? PILL_ON : PILL_OFF}`}>back</button>
                 <button type="button" onClick={() => { setBack(false); emit(magnitude, false, unit, format); }} className={`${PILL} ${!back ? PILL_ON : PILL_OFF}`}>ahead</button>
               </div>
               {magnitude === 0 && <span className="text-[11px] text-text-tertiary">now</span>}
             </div>
+            {magnitude >= MAX_DATE_OFFSET && (
+              <div className="text-[10px] text-text-tertiary">
+                {`${MAX_DATE_OFFSET} is the engine's limit for one shift.`}
+              </div>
+            )}
             <div className="flex flex-wrap gap-1 py-1">
               {DATE_UNITS.map((u) => (
                 <button key={u.unit} type="button" onClick={() => { setUnit(u.unit); emit(magnitude, back, u.unit, format); }} className={`${PILL} ${unit === u.unit ? PILL_ON : PILL_OFF}`}>

@@ -96,21 +96,50 @@ export function applyDateOffsets(now: Date, offsets: readonly DateOffset[]): Dat
 // ── The .NET format port ─────────────────────────────────────────────────────
 const pad = (n: number, w: number) => String(n).padStart(w, '0');
 
-function intlPart(d: Date, locale: string, opts: Intl.DateTimeFormatOptions, type: string): string {
+/**
+ * Which clock a format reads. .NET's 'U' converts the value to UTC before formatting, and the
+ * ONLY correct way to do that in JS is to read the same instant through the UTC getters —
+ * shifting the Date by getTimezoneOffset() re-reads the shifted instant with the DESTINATION
+ * offset, which is wrong by an hour in the window around every DST transition.
+ */
+type Clock = { utc: boolean };
+const LOCAL: Clock = { utc: false };
+const UTC: Clock = { utc: true };
+
+const yearOf = (d: Date, k: Clock) => (k.utc ? d.getUTCFullYear() : d.getFullYear());
+const monthOf = (d: Date, k: Clock) => (k.utc ? d.getUTCMonth() : d.getMonth());
+const dateOf = (d: Date, k: Clock) => (k.utc ? d.getUTCDate() : d.getDate());
+const hoursOf = (d: Date, k: Clock) => (k.utc ? d.getUTCHours() : d.getHours());
+const minutesOf = (d: Date, k: Clock) => (k.utc ? d.getUTCMinutes() : d.getMinutes());
+const secondsOf = (d: Date, k: Clock) => (k.utc ? d.getUTCSeconds() : d.getSeconds());
+const msOf = (d: Date, k: Clock) => (k.utc ? d.getUTCMilliseconds() : d.getMilliseconds());
+
+// Intl.DateTimeFormat is expensive to construct and this file builds one per specifier run — a
+// payload with {date:dddd} rebuilt hundreds of them on every keystroke, because engineAcceptsToken
+// resolves every date token again to decide whether it is a chip. There are only a handful of
+// distinct (locale, options) pairs in this module, so a plain module-scope map bounds itself. The
+// throwing path is deliberately NOT cached: an invalid locale must keep throwing, not become a
+// permanent hit.
+const intlCache = new Map<string, Intl.DateTimeFormat>();
+function intlPart(d: Date, locale: string, opts: Intl.DateTimeFormatOptions, type: string, k: Clock = LOCAL): string {
+  const options = k.utc ? { ...opts, timeZone: 'UTC' } : opts;
+  const key = locale + '|' + JSON.stringify(options);
   try {
-    return new Intl.DateTimeFormat(locale, opts).formatToParts(d).find((p) => p.type === type)?.value ?? '';
+    let fmt = intlCache.get(key);
+    if (!fmt) { fmt = new Intl.DateTimeFormat(locale, options); intlCache.set(key, fmt); }
+    return fmt.formatToParts(d).find((p) => p.type === type)?.value ?? '';
   } catch {
     return '';
   }
 }
 
-function dayPeriod(d: Date, locale: string): string {
-  const p = intlPart(d, locale, { hour: 'numeric', hour12: true }, 'dayPeriod');
-  return p || (d.getHours() < 12 ? 'AM' : 'PM');
+function dayPeriod(d: Date, locale: string, k: Clock = LOCAL): string {
+  const p = intlPart(d, locale, { hour: 'numeric', hour12: true }, 'dayPeriod', k);
+  return p || (hoursOf(d, k) < 12 ? 'AM' : 'PM');
 }
 
-function tzOffset(d: Date, run: number): string {
-  const off = -d.getTimezoneOffset();
+function tzOffset(d: Date, run: number, k: Clock = LOCAL): string {
+  const off = k.utc ? 0 : -d.getTimezoneOffset();
   const sign = off < 0 ? '-' : '+';
   const h = Math.floor(Math.abs(off) / 60);
   const m = Math.abs(off) % 60;
@@ -119,51 +148,68 @@ function tzOffset(d: Date, run: number): string {
 
 // One specifier run — the character and how many times it repeats. null = not a specifier at
 // all, and the caller emits the run as literal text, as .NET does.
-function specifier(d: Date, c: string, run: number, locale: string): string | null {
+function specifier(d: Date, c: string, run: number, locale: string, k: Clock = LOCAL): string | null {
   switch (c) {
     case 'd':
-      return run === 1 ? String(d.getDate())
-        : run === 2 ? pad(d.getDate(), 2)
-        : run === 3 ? intlPart(d, locale, { weekday: 'short' }, 'weekday')
-        : intlPart(d, locale, { weekday: 'long' }, 'weekday');
+      return run === 1 ? String(dateOf(d, k))
+        : run === 2 ? pad(dateOf(d, k), 2)
+        : run === 3 ? intlPart(d, locale, { weekday: 'short' }, 'weekday', k)
+        : intlPart(d, locale, { weekday: 'long' }, 'weekday', k);
     case 'M':
-      return run === 1 ? String(d.getMonth() + 1)
-        : run === 2 ? pad(d.getMonth() + 1, 2)
-        : run === 3 ? intlPart(d, locale, { month: 'short' }, 'month')
-        : intlPart(d, locale, { month: 'long' }, 'month');
+      return run === 1 ? String(monthOf(d, k) + 1)
+        : run === 2 ? pad(monthOf(d, k) + 1, 2)
+        : run === 3 ? intlPart(d, locale, { month: 'short' }, 'month', k)
+        : intlPart(d, locale, { month: 'long' }, 'month', k);
     case 'y': {
-      const y = d.getFullYear();
+      const y = yearOf(d, k);
       return run === 1 ? String(y % 100) : run === 2 ? pad(y % 100, 2) : pad(y, run);
     }
-    case 'H': return run === 1 ? String(d.getHours()) : pad(d.getHours(), 2);
-    case 'h': { const h = d.getHours() % 12 || 12; return run === 1 ? String(h) : pad(h, 2); }
-    case 'm': return run === 1 ? String(d.getMinutes()) : pad(d.getMinutes(), 2);
-    case 's': return run === 1 ? String(d.getSeconds()) : pad(d.getSeconds(), 2);
+    case 'H': return run === 1 ? String(hoursOf(d, k)) : pad(hoursOf(d, k), 2);
+    case 'h': { const h = hoursOf(d, k) % 12 || 12; return run === 1 ? String(h) : pad(h, 2); }
+    case 'm': return run === 1 ? String(minutesOf(d, k)) : pad(minutesOf(d, k), 2);
+    case 's': return run === 1 ? String(secondsOf(d, k)) : pad(secondsOf(d, k), 2);
     case 'f':
     case 'F': {
       // Fractions of a second in ticks (seven digits); 'F' drops the trailing zeros.
       if (run > 7) throw new Error('too many fraction digits');
-      const frac = String(d.getMilliseconds() * 10000).padStart(7, '0').slice(0, run);
+      const frac = String(msOf(d, k) * 10000).padStart(7, '0').slice(0, run);
       return c === 'f' ? frac : frac.replace(/0+$/, '');
     }
-    case 't': { const p = dayPeriod(d, locale); return run === 1 ? p.slice(0, 1) : p; }
-    case 'z': return tzOffset(d, run);
-    case 'K': return tzOffset(d, 3);
-    case 'g': return intlPart(d, locale, { era: 'short', year: 'numeric' }, 'era') || 'A.D.';
+    case 't': { const p = dayPeriod(d, locale, k); return run === 1 ? p.slice(0, 1) : p; }
+    case 'z': return tzOffset(d, run, k);
+    case 'K': return tzOffset(d, 3, k);
+    case 'g': return intlPart(d, locale, { era: 'short', year: 'numeric' }, 'era', k) || 'A.D.';
     default: return null;
   }
 }
 
-function custom(d: Date, format: string, locale: string): string {
+function custom(d: Date, format: string, locale: string, k: Clock = LOCAL): string {
   let out = '';
   let i = 0;
   while (i < format.length) {
     const c = format[i];
     if (c === '"' || c === "'") {
-      const end = format.indexOf(c, i + 1);
-      if (end < 0) throw new Error('unterminated quote');
-      out += format.slice(i + 1, end);
-      i = end + 1;
+      // Walk to the closing quote CHARACTER BY CHARACTER, because a backslash inside a quoted
+      // run escapes the next character — including the quote itself. indexOf stopped at the first
+      // matching quote and so ate "\'" as a terminator, printing a literal .NET never prints; and
+      // a run that never closes must throw, which is what leaves the token literal at replay.
+      let j = i + 1;
+      let lit = '';
+      let closed = false;
+      while (j < format.length) {
+        if (format[j] === '\\') {
+          if (j + 1 >= format.length) throw new Error('trailing backslash');
+          lit += format[j + 1];
+          j += 2;
+          continue;
+        }
+        if (format[j] === c) { closed = true; break; }
+        lit += format[j];
+        j++;
+      }
+      if (!closed) throw new Error('unterminated quote');
+      out += lit;
+      i = j + 1;
       continue;
     }
     if (c === '\\') {
@@ -172,12 +218,25 @@ function custom(d: Date, format: string, locale: string): string {
       i += 2;
       continue;
     }
-    if (c === '%') { i++; continue; }          // "%d": the next character is a custom specifier
+    if (c === '%') {
+      // "%d" formats the NEXT character as a one-character specifier and restarts the run count
+      // after it, so "%dd" is "31" + "31", not the two-character run "dd". A trailing '%' and
+      // "%%" both throw in .NET. Recursing over the single character rather than calling
+      // specifier() directly is what keeps "%:" and "%/" going through the separator branch and
+      // "%\" / "%'" throwing the way the engine does.
+      if (i + 1 >= format.length || format[i + 1] === '%') throw new Error('dangling %');
+      out += custom(d, format[i + 1], locale, k);
+      i += 2;
+      continue;
+    }
     if (c === '/' || c === ':') { out += c; i++; continue; }   // TokenCulture pins both separators
     let j = i;
     while (j < format.length && format[j] === c) j++;
-    const piece = specifier(d, c, j - i, locale);
-    out += piece === null ? format.slice(i, j) : piece;
+    const piece = specifier(d, c, j - i, locale, k);
+    // An 'F' run that came out empty takes the '.' before it with it — .NET's FormatCustomized
+    // does this so "ss.FFF" on a whole second prints "30", not "30.".
+    if (c === 'F' && piece === '' && out.endsWith('.')) out = out.slice(0, -1);
+    else out += piece === null ? format.slice(i, j) : piece;
     i = j;
   }
   return out;
@@ -189,23 +248,27 @@ const PATTERNS = {
   en: { shortDate: 'M/d/yyyy', longDate: 'dddd, MMMM d, yyyy', shortTime: 'h:mm tt', longTime: 'h:mm:ss tt', yearMonth: 'MMMM yyyy', monthDay: 'MMMM d' },
 };
 
-function standard(d: Date, f: string, locale: string): string {
+function standard(d: Date, f: string, locale: string, k: Clock = LOCAL): string {
   const p = locale.toLowerCase().startsWith('pt') ? PATTERNS.pt : PATTERNS.en;
   switch (f) {
-    case 'd': return custom(d, p.shortDate, locale);
-    case 'D': return custom(d, p.longDate, locale);
-    case 't': return custom(d, p.shortTime, locale);
-    case 'T': return custom(d, p.longTime, locale);
-    case 'f': return custom(d, `${p.longDate} ${p.shortTime}`, locale);
-    case 'F': return custom(d, `${p.longDate} ${p.longTime}`, locale);
-    case 'g': return custom(d, `${p.shortDate} ${p.shortTime}`, locale);
-    case 'G': return custom(d, `${p.shortDate} ${p.longTime}`, locale);
-    case 'y': case 'Y': return custom(d, p.yearMonth, locale);
-    case 'm': case 'M': return custom(d, p.monthDay, locale);
-    case 's': return custom(d, "yyyy'-'MM'-'dd'T'HH':'mm':'ss", locale);
-    case 'u': return custom(d, "yyyy'-'MM'-'dd HH':'mm':'ss'Z'", locale);
-    case 'o': case 'O': return custom(d, "yyyy'-'MM'-'dd'T'HH':'mm':'ss'.'fffffffK", locale);
-    case 'r': case 'R': return custom(d, "ddd', 'dd MMM yyyy HH':'mm':'ss 'GMT'", 'en-US');
+    case 'd': return custom(d, p.shortDate, locale, k);
+    case 'D': return custom(d, p.longDate, locale, k);
+    case 't': return custom(d, p.shortTime, locale, k);
+    case 'T': return custom(d, p.longTime, locale, k);
+    case 'f': return custom(d, `${p.longDate} ${p.shortTime}`, locale, k);
+    case 'F': return custom(d, `${p.longDate} ${p.longTime}`, locale, k);
+    case 'g': return custom(d, `${p.shortDate} ${p.shortTime}`, locale, k);
+    case 'G': return custom(d, `${p.shortDate} ${p.longTime}`, locale, k);
+    case 'y': case 'Y': return custom(d, p.yearMonth, locale, k);
+    case 'm': case 'M': return custom(d, p.monthDay, locale, k);
+    case 's': return custom(d, "yyyy'-'MM'-'dd'T'HH':'mm':'ss", locale, k);
+    case 'u': return custom(d, "yyyy'-'MM'-'dd HH':'mm':'ss'Z'", locale, k);
+    case 'o': case 'O': return custom(d, "yyyy'-'MM'-'dd'T'HH':'mm':'ss'.'fffffffK", locale, k);
+    case 'r': case 'R': return custom(d, "ddd', 'dd MMM yyyy HH':'mm':'ss 'GMT'", 'en-US', k);
+    // 'U': the full date/time pattern, but read on the UTC clock — .NET converts the value
+    // first. Without this the whole token fell through to 'unknown standard format', the gate
+    // called it text, and the editor typed {date:U} out while the engine resolved it.
+    case 'U': return custom(d, `${p.longDate} ${p.longTime}`, locale, UTC);
     default: throw new Error('unknown standard format');
   }
 }

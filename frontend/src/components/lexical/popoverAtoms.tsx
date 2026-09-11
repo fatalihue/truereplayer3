@@ -293,6 +293,7 @@ export function NumInput({
   onClear,
   disabled,
   min = 0,
+  max,
   width = 54,
   thousands,
   suffix,
@@ -307,6 +308,8 @@ export function NumInput({
   onClear?: () => void;
   disabled?: boolean;
   min?: number;
+  /** Upper clamp. The date offset passes the engine's six-digit ceiling. */
+  max?: number;
   width?: number;
   thousands?: boolean;
   suffix?: string;
@@ -321,6 +324,7 @@ export function NumInput({
         onChange={onChange}
         onClear={onClear}
         min={min}
+        max={max}
         disabled={disabled}
         inputWidth="w-full"
         inputHeight="h-7"
