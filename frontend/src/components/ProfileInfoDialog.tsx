@@ -399,7 +399,17 @@ export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogPro
                     role="combobox"
                     aria-expanded={showTagSuggestions && suggestions.length > 0}
                     aria-controls="tag-suggestions"
-                    className="flex-1 min-w-[100px] bg-transparent text-xs text-text-primary outline-none placeholder:text-text-disabled disabled:opacity-50"
+                    // Same VERTICAL box as a chip — text size, py and a transparent border — so the
+                    // row is one chip tall whether or not any chip is in it. Without this the box
+                    // jumped 7 px the moment the first tag landed, which re-centres the card in
+                    // its scrim ([[feedback-dialog-height-fixed]]).
+                    // The chip's ingredients rather than a min-h in pixels: a number here would be
+                    // a second source of truth for the chip's height, and would drift silently the
+                    // day the chip's padding or text size changes. Measured equal at 12, 14 and
+                    // 17 px of --ui-font-size.
+                    // Chips wrapping to a SECOND line still grows the box — that is what a wrapping
+                    // field does, and no reserve can honestly prevent it.
+                    className="flex-1 min-w-[100px] bg-transparent text-[11px] py-0.5 border border-transparent text-text-primary outline-none placeholder:text-text-disabled disabled:opacity-50"
                   />
                 </div>
 
