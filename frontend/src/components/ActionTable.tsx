@@ -2672,8 +2672,16 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                       <button
                         onClick={(e) => { e.stopPropagation(); openEditorForRow(idx); }}
                         tabIndex={-1}
+                        // NO data-tip, and this is a standing decision — do not "fix" it again.
+                        // It was pruned on purpose in the tooltip audit that cut 65 of 142 tips, which
+                        // names this one in its own message ("keyboard-shortcut tips … Edit Enter").
+                        // It was restored on 2026-09-12 on the argument that an icon-only control with
+                        // no label anywhere deserves one, and the owner reverted it the same day after
+                        // SEEING it: the pencil only exists while the row is hovered, so its tooltip
+                        // fires on the same pointer motion that scans the grid — a tip on a control
+                        // that appears under the cursor reads as noise, not as help.
+                        // aria-label stays: it names the button for a screen reader and paints nothing.
                         aria-label="Edit action"
-                        data-tip={tt('Edit action (Enter)', 'Editar ação (Enter)')}
                         className="hidden group-hover:flex absolute right-1.5 top-1/2 -translate-y-1/2 items-center justify-center w-6 h-6 rounded bg-bg-elevated border border-border-subtle text-text-tertiary hover:text-text-primary hover:border-border-default transition-colors"
                       >
                         <Pencil size={12} />
