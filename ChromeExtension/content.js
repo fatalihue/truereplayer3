@@ -1978,13 +1978,16 @@
                 || seg.name === 'home' || seg.name === 'end';
               for (let k = 0; k < seg.count; k++) {
                 const before = currentEl;
-                // …and only when the entry is going to WRITE here. Without that term the prelude
-                // ran for a payload of pure edit keys, so in the default (non-append) mode a lone
-                // "{backspace}" blanked the whole field and answered success: the user asked to
-                // drop one character and lost the line. "{home}" and "{end}", which touch nothing
-                // at all, destroyed the field the same way.
-                if (justTransitioned && editsInField && isTextEntry(currentEl) && writesInto(si)) {
-                  beginEntry(currentEl, typeAppend);
+                // The prelude has TWO jobs and they do not belong together. POSITIONING (put the
+                // caret at the end, so the entry continues after what is there) has to happen
+                // whenever a key starts the entry — without it `el.focus()` leaves the caret at
+                // offset 0 on a field the user has never clicked, and a lone "{backspace}" deletes
+                // nothing at all. CLEARING is the non-append rule, and it must run only when the
+                // entry is going to WRITE here: a payload of pure edit keys blanked the whole
+                // field and answered success, which is the opposite of what "{backspace}" means.
+                // So: always position; clear only when something follows that writes.
+                if (justTransitioned && editsInField && isTextEntry(currentEl)) {
+                  beginEntry(currentEl, typeAppend || !writesInto(si));
                   justTransitioned = false;
                   dropShadow(); // the field was just cleared or re-pinned; nothing is pending in it
                 }

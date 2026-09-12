@@ -80,7 +80,14 @@ namespace TrueReplayer.Services
         // pause in the typing loop is pumped through a MessageChannel instead of setTimeout, which
         // a background tab clamps to ~1 s — a ten-key payload measured 309 ms visible and 9994 ms
         // hidden, while the C# budget below is written in the real milliseconds.
-        public const string ExpectedExtensionVersion = "1.4.20";
+        // 1.4.21 = a outra metade do conserto de 1.4.20, encontrada no smoke test ao vivo. Tirar o
+        // preludio do caminho das teclas tirou junto o que ele fazia de CERTO: posicionar o caret.
+        // `el.focus()` num campo que o usuario nunca clicou deixa o caret no offset 0, entao um
+        // "{backspace}" sozinho passou de "apaga o campo" para "nao apaga nada" — o defeito trocou
+        // de lado em vez de sumir. O preludio voltou a POSICIONAR sempre e a LIMPAR so quando a
+        // entrada vai mesmo escrever. O harness nao pegava porque semeava o campo por `.value`, e
+        // atribuir `.value` leva o caret para o fim: a fixture escondia a condicao da pagina real.
+        public const string ExpectedExtensionVersion = "1.4.21";
         private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
         private NamedPipeServerStream? _pipeServer;
         private StreamReader? _reader;
