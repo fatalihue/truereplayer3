@@ -1393,20 +1393,45 @@ namespace TrueReplayer
             // them ALL here (synchronous UI-thread reads) before mutating any global state;
             // the profile swap below force-clears the dirty flag, which for an autonomous
             // fire would be exactly the silent data loss the caller's gate exists to prevent.
+            // The ORDER mirrors FireProfileFromTriggerAsync's gate exactly, and the reason is an
+            // invariant rather than a scenario: this block exists only to RE-ASK that gate's
+            // question after the yield above. Asked in a different order it answers a DIFFERENT
+            // question, and that is a defect by construction — no estimate of how often the state
+            // actually flips is needed to see it. It used to test the dirty flag before Clicker
+            // mode, so the same state could be classified two ways depending on which side of the
+            // await saw it, and the two classifications are not interchangeable: SkippedBusy is
+            // retriable, SkippedDirty is terminal for that queued request (TriggerService excludes
+            // it from the retry paths).
+            //
+            // Honest about reach and about cost, because both were overstated before:
+            //  • Reach is narrow. The caller already proved every flag false on this same UI thread,
+            //    so the block can only disagree if Clicker mode AND the dirty flag both flip inside
+            //    the one yield — the LoadProfileByNameAsync await. Real (that await hits the disk and
+            //    the dispatcher drains the mode-toggle hotkey there), but it is a double flip, not a
+            //    coin toss.
+            //  • It costs the early exit. A non-terminal verdict keeps the request at the HEAD of the
+            //    fire pump, retried every FireRetryCadenceMs until it expires, and the pump attempts
+            //    only the head. The old order let this one case leave early. That was luck, not
+            //    design: whenever Clicker mode was already on at the caller's gate — the ordinary
+            //    case — the request holds the head exactly like this anyway.
+            // And "terminal" is per-request, not per-automation: an interval or condition watcher
+            // asks again on its next tick. A SCHEDULE is the one that really loses the occurrence.
+            //
+            // The bridge null-check moving up is not part of the fix; it is mechanically required
+            // now that the busy line dereferences bridge.UseCursorClick. That branch is unreachable
+            // here (bridge is assigned once and never returns to null, and the caller proved it).
             if (startOnly)
             {
-                if (mainController.IsReplayInProgress() || mainController.IsRecording())
+                if (bridge == null)
+                    return TriggerFireResult.NotReady;
+                if (mainController.IsReplayInProgress() || mainController.IsRecording() || bridge.UseCursorClick)
                     return TriggerFireResult.SkippedBusy;
                 // Same composed reader as the gate in FireProfileFromTriggerAsync — see
                 // AutomationGuard.
                 if (Services.AutomationGuard.BlockedReason() != null)
                     return TriggerFireResult.SkippedModal;
-                if (bridge == null)
-                    return TriggerFireResult.NotReady;
                 if (bridge.HasUnsavedChanges)
                     return TriggerFireResult.SkippedDirty;
-                if (bridge.UseCursorClick)
-                    return TriggerFireResult.SkippedBusy;
             }
 
             var entry = profileController.ProfileEntries.FirstOrDefault(p => p.Name == profileName);
