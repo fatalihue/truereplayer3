@@ -1122,11 +1122,23 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
   }, [selectedIndices, buttonStates.recordingActive, buttonStates.replayActive, actions]);
 
   // Start editing a cell
+  // The inline cell editor was the last unguarded route to actions:edit. The ActionTable already
+  // refuses the context menu, the drag, the bulk bar and keyboard navigation during a run
+  // (contextMenuEnabled and friends), but a single click on Delay or Notes opened an editor whose
+  // blur wrote straight into the list the engine is stepping through.
+  // Refused at the door rather than at the commit: this editor holds one field, so not letting it
+  // open costs nothing, while letting someone type and then refusing would cost them the typing.
+  // commitEdit carries the same term anyway, for an editor already open when the run starts.
   const startEdit = useCallback((index: number, field: EditingCell['field'], currentValue: string) => {
+    if (buttonStates.recordingActive || buttonStates.replayActive) {
+      showToast(tt('The action list is locked while a run is active.',
+                   'A lista de ações está travada enquanto um run está ativo.'), 'error');
+      return;
+    }
     setEditingCell({ index, field });
     setEditValue(currentValue);
     setEditInvalid(false);
-  }, []);
+  }, [buttonStates.recordingActive, buttonStates.replayActive, showToast, tt]);
 
   // Invalid-input flag for the coords editor — drives the red border below.
   // Cleared on every keystroke and on every startEdit.
@@ -1154,12 +1166,22 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
       setEditInvalid(false);
       return;
     }
+    // The other half of the startEdit gate: a run can begin while an editor is already open (runs
+    // start from global hotkeys), and blur would then commit into a running list. Closing without
+    // writing is the honest outcome here — the value is one field, and the cell goes back to
+    // showing what is actually stored.
+    if (buttonStates.recordingActive || buttonStates.replayActive) {
+      showToast(tt('Not saved — the action list is locked while a run is active.',
+                   'Não salvo — a lista de ações está travada enquanto um run está ativo.'), 'error');
+      setEditingCell(null);
+      return;
+    }
     send({
       type: 'actions:edit',
       payload: { index: editingCell.index, field: editingCell.field, value: editValue },
     });
     setEditingCell(null);
-  }, [editingCell, editValue, send]);
+  }, [editingCell, editValue, send, buttonStates.recordingActive, buttonStates.replayActive, showToast, tt]);
 
   // Cancel the edit
   const cancelEdit = useCallback(() => {

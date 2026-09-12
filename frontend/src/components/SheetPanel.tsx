@@ -2062,6 +2062,11 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
 
   // #3 — Run the current action against the live page
   const handleTestAction = useCallback(() => {
+    // The only Test that ACTS: it performs the real click / type / navigate on the live tab. During
+    // a replay driving that same tab it is a second hand on the wheel, and it can move the pinned
+    // tab out from under the run. The other Tests (match, probe, condition) only read, and stay
+    // available on purpose — inspecting is exactly what someone does while watching a run.
+    if (refuseDuringRun()) return;
     if (actionIndex == null || !action) return;
     const requestId = Math.random().toString(36).slice(2, 10);
     setTestRequestId(requestId);
@@ -2131,7 +2136,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
         alternatives: alternatives.length > 0 ? alternatives : null,
       },
     });
-  }, [actionIndex, action, actionType, key, textMatch, textMode, timeout, browserText, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, alternatives, send, clearTestTimeout]);
+  }, [actionIndex, action, actionType, key, textMatch, textMode, timeout, browserText, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, alternatives, send, clearTestTimeout, refuseDuringRun]);
 
   // If-Browser-Element — "is this condition true right now?". Uses the same instant probe the
   // replay's If uses (timeout=0, single evaluation, no wait loop), against the ACTIVE tab.
