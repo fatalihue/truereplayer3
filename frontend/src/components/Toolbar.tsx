@@ -234,7 +234,17 @@ export function Toolbar(_props: ToolbarProps) {
   const clearMenuRef = useRef<HTMLDivElement>(null);
   const clearFlyout = useFlyoutFlip(showClearConfirm, 'below');
 
-  // Listen for command palette trigger
+  // The five cmd:* listeners below are decoupled extension points, NOT dead code — the same
+  // pattern and the same reasoning as cmd:togglesidebar in App.tsx, and worth saying here because
+  // the name says "command palette" while the palette dispatches none of them. Their entries were
+  // cut when the insert block left the palette (see the SCOPE note in CommandPalette.tsx: anything
+  // a visible labelled control already does stays out), and the listeners were kept so restoring an
+  // entry is a one-liner. Re-affirmed 2026-09-05 (board P10).
+  // The exception is cmd:sendtext, which HAS a live dispatcher: MacroEmptyState.tsx fires it from
+  // the empty-grid call to action, which is the one place with no toolbar button in reach.
+  // If an entry is ever restored: gate it on the ITEM in the palette (that is where isClicker and
+  // runActive are read), and re-check inside the listener the way cmd:clearactions does — the entry
+  // and the listener can race a run that starts between them.
   useEffect(() => {
     const handler = () => setShowSendTextDialog(true);
     window.addEventListener('cmd:sendtext', handler);
