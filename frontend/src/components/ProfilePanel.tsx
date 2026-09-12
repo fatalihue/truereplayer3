@@ -1923,7 +1923,15 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                         <Fragment key={p.name}>
                         {newGroup && <div className="w-6 my-0.5 border-t border-border-subtle shrink-0" aria-hidden />}
                         <button
-                          onClick={(e) => { send({ type: 'profile:click', payload: { name: p.name } }); (e.currentTarget as HTMLElement).blur(); }}
+                          // Same activation gate as the expanded row: collapsing the panel must not
+                          // hand back a capability the expanded list refuses. It was missing here,
+                          // so the rail activated profiles in Clicker mode — and ignored runActive
+                          // too, which is the gate with the technical reason behind it.
+                          onClick={(e) => {
+                            if (isClicker || runActive) return;
+                            send({ type: 'profile:click', payload: { name: p.name } });
+                            (e.currentTarget as HTMLElement).blur();
+                          }}
                           onContextMenu={(e) => handleContextMenu(e, p.name)}
                           className={`relative w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold transition-colors shrink-0 ${
                             p.isActive
@@ -1944,6 +1952,9 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                           // The description closes the line — collapsed, the avatar is ALL the row
                           // shows, so this tooltip is the only place a profile can say what it does.
                           data-tip={[
+                            // First, like the expanded row: it answers the more urgent question
+                            // ("why did clicking do nothing?") before describing the profile.
+                            isClicker ? tt('Macro mode only', 'Só no modo Macro') : null,
                             p.name,
                             p.hotkey ? railHotkey(p.hotkey) : null,
                             p.hotstring ? `${p.hotstringInstant ? '⚡' : '↵'}${p.hotstring}` : null,
@@ -3381,7 +3392,13 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                wrong profile. Zero here suppresses the migration hint entirely (the hint is the only
                producer of convertDirection), which is the same gate the two context-menu Convert
                items already apply via profile?.isActive. */
-            convertibleActionCount={existing?.isActive ? convertibleActionCount : 0}
+            /* !isClicker for the same reason the palette refuses "Convert Coordinates to
+               Relative/Absolute" in Clicker: Convert rewrites every X/Y in the action list, and in
+               Clicker that list is off screen but still loaded, so the count came back real and the
+               buttons came back armed. The profile context menu stays reachable in Clicker on
+               purpose — organisation does — but this dialog is the one item on it that writes to
+               the grid, and the collapsed rail opens it too. */
+            convertibleActionCount={!isClicker && existing?.isActive ? convertibleActionCount : 0}
           />
         );
       })()}

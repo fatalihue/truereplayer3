@@ -146,6 +146,12 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
         items: [
           {
             id: 'reset', label: 'Reset Profile',
+            // Deliberately NOT gated on isClicker, unlike the grid commands above. The backend
+            // command is a settings reset ("Reset Settings", "reset all settings to their default
+            // values and clear all actions") and it goes out of its way to keep working here:
+            // it preserves the current mode so a reset doesn't bounce a Clicker user back to Macro,
+            // restores real Clicker defaults, and keeps the user's presets. Clearing actions is one
+            // of its effects, not its purpose. This palette entry is the only door to it.
             keywords: ['clear', 'start over', 'blank'],
             icon: <RotateCcw size={14} className="text-text-secondary" />,
             onAction: () => { send({ type: 'profile:reset', payload: {} }); onClose(); },

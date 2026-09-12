@@ -60,6 +60,13 @@ interface SheetPanelProps {
  */
 export interface SheetPanelHandle {
   tryLeave: (kind: 'switch') => boolean;
+  /**
+   * Close now, but say so if there was anything to lose. For the one exit that cannot be a
+   * two-step guard: switching to Clicker takes the grid away, so the sheet has to go whether or
+   * not the editor is dirty. Arming a warning would leave it sitting over the Clicker dashboard —
+   * the very state the close exists to prevent. The toast is the honest minimum.
+   */
+  discardAndClose: () => void;
 }
 
 // Action types organised by FAMILY — the picker only offers conversions that stay within
@@ -1812,7 +1819,8 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       armGuard(kind);
       return false;
     },
-  }), [armGuard, noteDiscard]);
+    discardAndClose,
+  }), [armGuard, noteDiscard, discardAndClose]);
 
   // Declare those same pending edits to the backend, for automations only.
   //

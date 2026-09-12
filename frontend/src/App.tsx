@@ -277,6 +277,22 @@ function AppShell() {
   sheetIndexRef.current = sheetActionIndex;
   const sheetLeavingRef = useRef(false);
   sheetLeavingRef.current = sheetLeaving;
+
+  // Switching to Clicker takes the grid away, but the sheet used to survive the flip and stay
+  // fully interactive on top of the Clicker dashboard — editing a row of a list that is no longer
+  // on screen, in a mode whose whole point is that the macro side is inert.
+  // discardAndClose, not closeSheet: every other way out of a dirty editor either arms a warning
+  // (Esc, row switch) or at least toasts (the row-no-longer-exists auto-close). A bare close here
+  // would make the mode flip the ONLY door that throws typed work away in silence — and the flip
+  // is a global hotkey, so it can land while the user is mid-sentence. A two-step guard is not an
+  // option: refusing would leave the sheet sitting over the Clicker dashboard.
+  // sheetLeaving is in the condition, not just the deps: without it the effect re-fires on every
+  // render while the exit animation plays, and each pass would toast again.
+  useEffect(() => {
+    if (!isClicker || sheetActionIndex === null || sheetLeaving) return;
+    if (sheetRef.current) sheetRef.current.discardAndClose();
+    else closeSheet();
+  }, [isClicker, sheetActionIndex, sheetLeaving, closeSheet]);
   const handleOpenSheet = useCallback((index: number) => {
     const open = sheetIndexRef.current;
     if (open !== null && open !== index && !sheetLeavingRef.current
