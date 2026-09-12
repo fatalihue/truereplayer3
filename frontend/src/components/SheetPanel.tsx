@@ -5,6 +5,7 @@ import { ActionIcon } from './ActionTable';
 import { useBridge } from '../bridge/BridgeContext';
 import { useAppState } from '../state/AppStateContext';
 import { carriesConditionProbe, hasConditionFields } from '../utils/conditionalBlocks';
+import { typeBudgetMs as typeBudgetMsOf } from '../utils/typeBudget';
 import { useTt } from '../state/LanguageContext';
 import { useToast } from '../state/ToastContext';
 import type { SelectorAlternative, BrowserTestResult } from '../bridge/messageTypes';
@@ -584,6 +585,32 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
             setAlternatives([]);
             setShowAlternatives(false);
           }
+        }
+      } else if (msg.type === 'browser:testAccepted') {
+        // The backend resolved the payload and knows what it is really going to spend. Only IT
+        // can: a `{clipboard}` holding four thousand characters is one token here and four
+        // thousand keystrokes there, so this side's estimate was short by the whole difference
+        // and the safety net fired while the extension was still typing. Re-arm on the number
+        // from the side that does the work.
+        const a = msg.payload as { requestId: string; budgetMs: number; timeoutMs: number };
+        if (testRequestIdRef.current && a.requestId === testRequestIdRef.current) {
+          clearTestTimeout();
+          testTimeoutRef.current = setTimeout(() => {
+            testTimeoutRef.current = null;
+            setTestRequestId(prev => {
+              if (prev !== a.requestId) return prev;
+              setTestResult({
+                requestId: a.requestId,
+                success: false,
+                error: {
+                  code: 'NO_RESPONSE',
+                  message: 'No response from the browser extension.',
+                  tip: 'Check that Chrome and the TrueReplayer extension are still running.',
+                },
+              });
+              return null;
+            });
+          }, a.timeoutMs + 5000 + a.budgetMs);
         }
       } else if (msg.type === 'browser:testResult') {
         const r = msg.payload as BrowserTestResult;
@@ -1994,19 +2021,14 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     // once the key tokens are removed. Without it this net fires first and the late
     // browser:testResult is dropped, so a Test that legitimately types for 12 s reported
     // NO_RESPONSE at 10 s and swallowed the success.
-    const KEY_TOKEN_RE = /\{(enter|tab|esc|escape|backspace|delete|up|down|left|right|space|home|end|pageup|pagedown|delay)(?::([^}]*))?\}/gi;
-    const typeBudgetMs = (() => {
-      if (actionType !== 'BrowserType' || !browserText) return 0;
-      let total = 0;
-      for (const m of browserText.matchAll(KEY_TOKEN_RE)) {
-        const n = m[2] != null && /^\d+$/.test(m[2]) ? parseInt(m[2], 10) : 0;
-        if (m[1].toLowerCase() === 'delay') total += n > 0 ? Math.min(n, 60000) : 500;
-        else total += 30 * (n > 0 ? Math.min(n, 100) : 1);
-      }
-      const charDelay = !typePaste && tdParsed != null && !isNaN(tdParsed) && tdParsed > 0 ? tdParsed : 0;
-      if (charDelay > 0) total += charDelay * browserText.replace(KEY_TOKEN_RE, '').length;
-      return Math.min(total, 10 * 60 * 1000);
-    })();
+    // The count is read exactly the way the two sides that EXECUTE it read it — int.TryParse in
+    // the C#, the extension's own parser in the page. A local `/^\d+$/` rejected `{delay: 30000}`
+    // over one space and billed it as a bare 500 ms, so this net fired at 5,5 s for a payload the
+    // backend was giving 30 s, and the real answer arrived to a UI that had already given up.
+    // Still the RAW text here: the authoritative number is the resolved one, and it arrives from
+    // the backend as `browser:testAccepted` (below). This is the fallback.
+    const charDelay = !typePaste && tdParsed != null && !isNaN(tdParsed) && tdParsed > 0 ? tdParsed : 0;
+    const typeBudgetMs = actionType !== 'BrowserType' ? 0 : typeBudgetMsOf(browserText, charDelay);
     clearTestTimeout();
     testTimeoutRef.current = setTimeout(() => {
       testTimeoutRef.current = null;

@@ -1,3 +1,5 @@
+import { tryParseInt32 } from '../../utils/int32';
+
 // Canonical form for `{Variable[:mods]}` tokens. Used both as the chip display
 // string and as the stored __token value so the editor never shows `{enter}`
 // next to `{Enter}` next to `{ENTER}` — every chip looks the same regardless
@@ -410,18 +412,9 @@ export function engineAcceptsToken(token: string): boolean {
 const OPEN_BRACE_SENTINEL = '\u0001';
 const CLOSE_BRACE_SENTINEL = '\u0002';
 
-// int.TryParse(s, out n) under the default NumberStyles.Integer: AllowLeadingSign plus
-// AllowLeadingWhite/AllowTrailingWhite, no group separators, and FAILURE outside Int32.
-// The whitespace class is spelled out rather than written as \s: JS \s also matches U+00A0,
-// U+FEFF, U+1680, U+2000-200A, U+2028/9, U+202F, U+205F and U+3000, none of which C# accepts —
-// it allows only U+0009-U+000D and U+0020. With \s, `{enter:U+00A0 5}` would repeat 5 times here
-// and once in the engine.
-function tryParseInt32(s: string): number | null {
-  if (!/^[ \t\n\v\f\r]*[+-]?[0-9]+[ \t\n\v\f\r]*$/.test(s)) return null;
-  const n = Number(s.replace(/^[ \t\n\v\f\r]+|[ \t\n\v\f\r]+$/g, ''));
-  if (!Number.isSafeInteger(n) || n < -2147483648 || n > 2147483647) return null;
-  return n;
-}
+// tryParseInt32 moved to utils/int32.ts (imported at the top): the Test action's own budget
+// needs the SAME reading of a token's count, and the sheet cannot import out of this module —
+// it loads the Lexical editor lazily on purpose.
 
 export type SendTextSegment =
   | { kind: 'text'; text: string }

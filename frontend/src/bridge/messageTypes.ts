@@ -902,6 +902,11 @@ export type IncomingMessage =
   | { type: 'update:none'; payload: { currentVersion: string } }
   | { type: 'browser:status'; payload: { connected: boolean } }
   | { type: 'browser:pickResult'; payload: { requestId?: string; selector: string | null; alternatives?: SelectorAlternative[]; error?: string } }
+  // Sent the moment the backend has RESOLVED the Test payload and knows what it will cost, before
+  // the command goes to the extension. The panel's own safety net can only budget the raw text —
+  // "{clipboard}" is one token there and however many characters it holds here — so it re-arms on
+  // this. budgetMs is TypeKeyBudgetMs over the resolved text; timeoutMs is the element budget.
+  | { type: 'browser:testAccepted'; payload: { requestId: string; budgetMs: number; timeoutMs: number } }
   | { type: 'browser:testResult'; payload: BrowserTestResult }
   // satisfied = which branch the If would take (negate already applied, same as InstantProbeAsync).
   // raw = the element state before negate. connected = false means we could not ask at all, which

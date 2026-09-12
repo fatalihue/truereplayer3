@@ -7131,6 +7131,22 @@ namespace TrueReplayer
                     SelectorAlternatives = alternatives,
                 };
 
+                // Tell the panel what this test is really going to cost, before it costs it. Its
+                // own safety net can only budget the RAW text — a "{clipboard}" holding four
+                // thousand characters is one token there and four thousand keystrokes here — so
+                // the net fired while the extension was still typing, the late browser:testResult
+                // was dropped, and a Test that worked reported "No response from the extension".
+                // Only this side knows: resolvedText is the resolved payload.
+                if (actionType == "BrowserType")
+                {
+                    SendMessage("browser:testAccepted", new
+                    {
+                        requestId,
+                        budgetMs = BrowserBridgeService.TypeKeyBudgetMs(resolvedText, typePaste ? 0 : (typeDelay ?? 0)),
+                        timeoutMs = Math.Max(1000, timeoutMs),
+                    });
+                }
+
                 var sw = System.Diagnostics.Stopwatch.StartNew();
                 var testResult = await browserBridge.TestActionAsync(temp, CancellationToken.None, resolvedText);
                 sw.Stop();

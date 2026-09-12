@@ -721,6 +721,11 @@ namespace TrueReplayer.Services
         /// ELEMENT_NOT_FOUND about a field that was being filled at that very moment. Zero for a
         /// Paste action, which writes in one shot and never sleeps.
         /// </param>
+        // Mirrored in frontend/src/utils/typeBudget.ts, which arms the Test button's safety net.
+        // The mirror can only see the RAW payload, so the authoritative number — computed here,
+        // over the RESOLVED text — is pushed to the panel as `browser:testAccepted` before the
+        // command goes out (WebViewBridge, the Test action handler). Keep the two readings of a
+        // token's count identical: this one is int.TryParse, and so is the mirror's.
         internal static int TypeKeyBudgetMs(string? text, int charDelayMs = 0)
         {
             if (string.IsNullOrEmpty(text)) return 0;
@@ -730,7 +735,17 @@ namespace TrueReplayer.Services
                 foreach (System.Text.RegularExpressions.Match m in TypeKeyTokenRegex.Matches(text))
                 {
                     int n = 0;
-                    bool hasN = m.Groups[2].Success && int.TryParse(m.Groups[2].Value, out n) && n > 0;
+                    // InvariantCulture, not the machine's. The single-argument overload reads
+                    // CurrentCulture, and CurrentCulture carries a PositiveSign: on ar-SA, fa-IR,
+                    // ur-PK, ps-AF and sd-PK it is "‎+‎" or "؜+", so "{delay:+30000}"
+                    // FAILED to parse there and was billed as a bare 500 ms — while the extension,
+                    // whose own parser is a plain [+-], slept the full 30 s. The exact shape of the
+                    // bug this budget exists to prevent, coming back through the culture door.
+                    // The parity probe measures it across five RTL cultures.
+                    bool hasN = m.Groups[2].Success
+                        && int.TryParse(m.Groups[2].Value, System.Globalization.NumberStyles.Integer,
+                            System.Globalization.CultureInfo.InvariantCulture, out n)
+                        && n > 0;
                     if (string.Equals(m.Groups[1].Value, "delay", StringComparison.OrdinalIgnoreCase))
                         total += hasN ? Math.Min(n, 60000) : 500;
                     else
