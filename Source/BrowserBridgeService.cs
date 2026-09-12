@@ -80,13 +80,13 @@ namespace TrueReplayer.Services
         // pause in the typing loop is pumped through a MessageChannel instead of setTimeout, which
         // a background tab clamps to ~1 s — a ten-key payload measured 309 ms visible and 9994 ms
         // hidden, while the C# budget below is written in the real milliseconds.
-        // 1.4.21 = a outra metade do conserto de 1.4.20, encontrada no smoke test ao vivo. Tirar o
-        // preludio do caminho das teclas tirou junto o que ele fazia de CERTO: posicionar o caret.
-        // `el.focus()` num campo que o usuario nunca clicou deixa o caret no offset 0, entao um
-        // "{backspace}" sozinho passou de "apaga o campo" para "nao apaga nada" — o defeito trocou
-        // de lado em vez de sumir. O preludio voltou a POSICIONAR sempre e a LIMPAR so quando a
-        // entrada vai mesmo escrever. O harness nao pegava porque semeava o campo por `.value`, e
-        // atribuir `.value` leva o caret para o fim: a fixture escondia a condicao da pagina real.
+        // 1.4.21 = the other half of the 1.4.20 fix, found by the live smoke test. Taking the
+        // prelude out of the key path took away the part it got RIGHT: positioning the caret.
+        // `el.focus()` on a field the user never clicked leaves the caret at offset 0, so a lone
+        // "{backspace}" went from "clears the field" to "does nothing" — the defect changed sides
+        // instead of going away. The prelude now always POSITIONS and only CLEARS when the entry is
+        // going to write. The harness missed it because it seeded the field through `.value`, and
+        // assigning `.value` moves the caret to the end: the fixture hid the real page's condition.
         public const string ExpectedExtensionVersion = "1.4.21";
         private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
         private NamedPipeServerStream? _pipeServer;
