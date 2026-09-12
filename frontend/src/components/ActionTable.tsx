@@ -2650,6 +2650,8 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                       <button
                         onClick={(e) => { e.stopPropagation(); openEditorForRow(idx); }}
                         tabIndex={-1}
+                        aria-label="Edit action"
+                        data-tip={tt('Edit action (Enter)', 'Editar ação (Enter)')}
                         className="hidden group-hover:flex absolute right-1.5 top-1/2 -translate-y-1/2 items-center justify-center w-6 h-6 rounded bg-bg-elevated border border-border-subtle text-text-tertiary hover:text-text-primary hover:border-border-default transition-colors"
                       >
                         <Pencil size={12} />

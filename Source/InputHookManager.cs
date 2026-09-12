@@ -2261,6 +2261,23 @@ namespace TrueReplayer
         /// </summary>
         private static bool ProcessHotstringKeyDown(int vkCode)
         {
+            // Clicker mode is exclusive: the dispatcher drops PROFILE:: triggers while UseCursorClick
+            // is on. Without this gate the engine still MATCHED here, and the damage happened BEFORE
+            // the dispatcher ever saw the trigger: the terminator branch erased Sequence.Length chars
+            // and swallowed the terminator, and the Instant branch erased Sequence.Length - 1 and
+            // swallowed the key itself. The user's text was gone and nothing ran. This is its own
+            // block, not another clause in the guard below, because it has to CLEAR the buffer, not
+            // just decline: a bare early return freezes _hotstringBufferLen across the mode flip, and
+            // since matching is by SUFFIX, half a sequence typed in Macro could later complete and
+            // erase characters the user never typed as part of it — the same damage by another door.
+            // Clearing here rather than in the UseCursorClick setter is deliberate: the field is not
+            // volatile and the setter runs on the UI thread while this engine runs on the hook thread.
+            if (IsCursorClickMode)
+            {
+                HotstringBufferClear();
+                return false;
+            }
+
             if (IsReplayingAction || !UserProfile.Current.ProfileKeyEnabled
                 || ProfileHotstrings.Count == 0
                 || MainController.Instance == null || MainController.Instance.IsRecording())

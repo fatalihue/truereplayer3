@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTt } from '../state/LanguageContext';
 import { Clock, Trash2, X, Crosshair, MessageSquare, Eye, EyeOff, ArrowUpToLine, ArrowDownToLine } from 'lucide-react';
 import { iconButtonClass } from './common/IconButton';
 
@@ -47,6 +48,7 @@ export function BulkActionBar({
   onSetComment,
   onToggleSkip,
 }: BulkActionBarProps) {
+  const tt = useTt();
   const [activeInput, setActiveInput] = useState<'delay' | 'x' | 'y' | 'notes' | null>(null);
   const [inputValue, setInputValue] = useState('');
 
@@ -161,14 +163,18 @@ export function BulkActionBar({
             <button
               onClick={onMoveUp}
               disabled={!canMoveUp}
-              className="flex items-center gap-1.5 h-7 px-2 rounded text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-text-secondary"
+              aria-label="Move up"
+              data-tip={tt('Move up (Alt+Up)', 'Mover para cima (Alt+Up)')}
+              className="flex items-center gap-1.5 h-7 px-2 rounded text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-text-secondary"
             >
               <ArrowUpToLine size={14} />
             </button>
             <button
               onClick={onMoveDown}
               disabled={!canMoveDown}
-              className="flex items-center gap-1.5 h-7 px-2 rounded text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-text-secondary"
+              aria-label="Move down"
+              data-tip={tt('Move down (Alt+Down)', 'Mover para baixo (Alt+Down)')}
+              className="flex items-center gap-1.5 h-7 px-2 rounded text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-text-secondary"
             >
               <ArrowDownToLine size={14} />
             </button>
