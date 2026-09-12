@@ -767,7 +767,15 @@ export function DataPanel({ onClose }: DataPanelProps) {
     const parsed = parseTsv(pasteText, pasteFirstRowHeader);
     if (parsed.headers.length === 0) return;
     if (pasteMode === 'replace') {
-      updateGrid(() => parsed);
+      // Extend the headers over the widest pasted row, the same way the seed does when a stored
+      // table is wider than its headers. Without it the extra cells were kept but invisible — the
+      // grid draws headers.length columns — and only surfaced as a synthesised colN the NEXT time
+      // the panel opened, which is also what made the paste surface's "extra cells become new
+      // columns" read as a lie in the moment it mattered.
+      const headers = [...parsed.headers];
+      const width = parsed.rows.reduce((m, r) => Math.max(m, r.length), headers.length);
+      while (headers.length < width) headers.push(nextColName(headers));
+      updateGrid(() => ({ ...parsed, headers }));
     } else {
       // Append: map pasted columns onto existing headers by trimmed,
       // case-insensitive name (BuildRowDict semantics); unmatched pasted

@@ -43,7 +43,12 @@ export function DataPasteSurface({
 }: DataPasteSurfaceProps) {
   const tt = useTt();
   const invalidHeaders = parsed.headers.filter((h) => h && !VALID_HEADER.test(h.trim()));
-  const ragged = parsed.rows.some((r) => r.length !== parsed.headers.length);
+  // The two directions are different outcomes and each needs its own sentence: a short row is
+  // padded with blanks, a LONG one carries cells the grid has no column for. Saying only the
+  // first for both told the user their extra cells were missing, when in fact they were kept and
+  // came back as a synthesised column on the next open.
+  const short = parsed.rows.some((r) => r.length < parsed.headers.length);
+  const long = parsed.rows.some((r) => r.length > parsed.headers.length);
 
   return (
     <div className="absolute inset-0 z-20 bg-bg-elevated flex flex-col">
@@ -146,9 +151,15 @@ export function DataPasteSurface({
             </div>
           )}
 
-          {ragged && (
+          {short && (
             <div className="text-[10px] text-text-tertiary leading-relaxed">
               {'Rows shorter than the header: missing cells read as empty.'}
+            </div>
+          )}
+
+          {long && (
+            <div className="text-[10px] text-text-tertiary leading-relaxed">
+              {'Rows longer than the header: the extra cells become new columns.'}
             </div>
           )}
 

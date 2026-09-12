@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef, useImperativeHandle, lazy, Suspense, type Ref } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, useImperativeHandle, lazy, Suspense, type Ref } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, RefreshCw, Crosshair, Copy, ClipboardPaste, ShieldCheck, ShieldAlert, ShieldQuestion, PlayCircle, Pipette, Check, X, Frame, FolderOpen, Maximize } from 'lucide-react';
 import { ActionIcon } from './ActionTable';
@@ -144,9 +144,13 @@ const resultCardStyle = (ok: boolean) => calloutStyle(ok ? 'ok' : 'error');
 // max-h the class sets. Reset to auto first so shrinking works when lines are deleted.
 function growTextarea(el: HTMLTextAreaElement) {
   el.style.height = 'auto';
-  el.style.height = `${el.scrollHeight}px`;
+  // scrollHeight measures content + padding and EXCLUDES the border, while `height` on a
+  // border-box element (Tailwind's default) includes it. Assigning one to the other left the box
+  // two pixels short of its own content, so the field kept a scrollbar and clipped the last line
+  // no matter how well it had been measured.
+  const borders = el.offsetHeight - el.clientHeight;
+  el.style.height = `${el.scrollHeight + borders}px`;
 }
-const autoGrow = (el: HTMLTextAreaElement | null) => { if (el) growTextarea(el); };
 const RESULT_CARD = 'border-l-2 rounded px-2.5 py-2 text-[11px] leading-relaxed callout-enter';
 
 // One axis of the Activate Window placement grid: a single-letter caption and a stepper, half a
@@ -1834,6 +1838,15 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   useEffect(() => {
     if (actionIndex == null) return;
     const onDocKeyDown = (e: KeyboardEvent) => {
+      // A modal opened FROM the sheet owns the keyboard while it is up. The sheet's own root is
+      // not a dialog — only DialogShell's card carries role="dialog" — so this one test hands
+      // every such overlay its keys back. Without it, Ctrl+S inside the image cropper saved the
+      // row with the OLD image and closed the sheet, throwing the crop away: the cropper moved to
+      // DialogShell in this delta, and DialogShell only stops Escape and Tab, while the wrapper
+      // it replaced stopped every key. The Escape branch below wants the same protection and only
+      // escaped it by luck, because DialogShell does consume Escape.
+      const target = e.target as Element | null;
+      if (target?.closest?.('[role="dialog"]')) return;
       // Ctrl+S saves the ROW while the editor is open (same gate as the Save button). Stopped
       // here so the window-level Ctrl+S — which saves the PROFILE — does not also fire.
       if (e.ctrlKey && !e.altKey && (e.key === 's' || e.key === 'S') && !e.defaultPrevented) {
@@ -1936,6 +1949,20 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     try { new RegExp(textMatch); return null; }
     catch (e) { return (e as Error).message; }
   }, [textMode, textMatch]);
+
+  // Notes grows to fit its CONTENT, and the content arrives by state, not by typing. The
+  // textarea mounts while `comment` still holds the previous session's value (the sheet returns
+  // null when closed, and the seed that fills it is a passive effect that fires no `input`), so
+  // the mount-time measurement sized the box for the wrong text: a saved six-line note opened in
+  // two lines with a scrollbar, and the height of one action leaked into the next.
+  //
+  // A layout effect, so the field is already the right size on the first painted frame. `comment`
+  // is read inside the callback, which is also what keeps exhaustive-deps satisfied.
+  const notesRef = useRef<HTMLTextAreaElement | null>(null);
+  useLayoutEffect(() => {
+    const el = notesRef.current;
+    if (el && el.value === comment) growTextarea(el);
+  }, [comment]);
 
   // #2 — Tier shield for current selector (priority: textMatch > key). Memoised because
   // estimateTier runs a regex suite and buildTextSelector rebuilds the selector — recomputing
@@ -4755,7 +4782,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
               // Two lines at rest, growing with the text up to ~8 — the field was a fixed four
               // lines in every editor, filled in one action out of eighteen in the sample profile.
               rows={2}
-              ref={autoGrow}
+              ref={notesRef}
               onInput={(e) => growTextarea(e.currentTarget)}
               className="w-full min-h-[3.25rem] max-h-40 px-2 py-1.5 text-xs bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid resize-none placeholder:text-text-tertiary"
               placeholder="Add a note…"
