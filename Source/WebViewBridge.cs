@@ -1455,6 +1455,24 @@ namespace TrueReplayer
             pollIntervalMs = t.PollIntervalMs,
         };
 
+        /// <summary>
+        /// Armed is NOT an editor field — the list toggle is the only arming surface, and it
+        /// persists on its own. A save must therefore never be able to change it, and the incoming
+        /// payload's value is exactly the one that cannot be trusted: the panel reads `armed` from
+        /// its copy of the store, which is one round-trip behind. Arm an automation and press Save
+        /// on the very next click and the save carried armed=false — the toggle the user had just
+        /// flipped went back off, on disk, with no error.
+        ///
+        /// Fixed on THIS side rather than in the panel because it is the side that knows: the file
+        /// on disk is the truth, and every surface that can ever call automation:save gets the
+        /// guarantee for free, in both orders.
+        /// </summary>
+        private static void PreserveArmed(ProfileTriggerConfig? incoming, ProfileTriggerConfig? stored)
+        {
+            if (incoming == null) return;
+            incoming.Armed = stored?.Armed ?? false;
+        }
+
         private static ProfileTriggerConfig? ParseTriggerConfig(JsonElement el)
         {
             if (el.ValueKind != JsonValueKind.Object) return null;
@@ -1627,6 +1645,7 @@ namespace TrueReplayer
                 ProfileTriggerConfig? trigger = payload.TryGetProperty("trigger", out var tEl)
                     ? ParseTriggerConfig(tEl)
                     : null;
+                PreserveArmed(trigger, profileController.ProfileEntries.FirstOrDefault(p => p.Name == name)?.Triggers);
                 await PersistTriggerAsync(name, trigger);
             }
             catch (Exception ex)

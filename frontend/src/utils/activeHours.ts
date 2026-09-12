@@ -24,9 +24,21 @@ export function clockSeconds(hhmm: string): number | null {
   // shipped. Seconds are accepted and ignored because the backend's ParseActiveHours uses
   // TimeSpan.TryParse, which takes "09:00:30"; this mirror must not be stricter than the side
   // that actually decides, or the warning goes quiet again on a hand-edited profile.
-  const m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(hhmm);
+  // …and the MINUTE takes one or two digits for the same reason the hour does: TimeSpan.TryParse
+  // accepts "9:0", so a hand-edited profile with a single-digit minute was read by the backend and
+  // refused here — the warning went quiet again, by a narrower door than the one above. Optional
+  // fractional seconds too ("09:00:30.5"), which TryParse also takes.
+  // Deliberately NOT the day prefix TimeSpan also accepts: there, "1.09:00" means 33 hours and
+  // "9" alone means nine DAYS, neither of which InsideActiveHours can ever match — reading them
+  // as clocks would invent a window the backend does not have.
+  const m = /^(\d{1,2}):(\d{1,2})(?::(\d{1,2})(?:\.\d+)?)?$/.exec(hhmm);
   if (!m) return null;
   const h = Number(m[1]), min = Number(m[2]);
+  // The seconds are ignored for the window, but they still have to be VALID, or the mirror ends up
+  // LOOSER than the backend — the other way to be wrong. TimeSpan.TryParse refuses "09:00:60", so
+  // accepting it here would invent an active window, and a phase-lock warning about it, for a
+  // config the daemon cannot parse at all.
+  if (m[3] != null && Number(m[3]) >= 60) return null;
   return h < 24 && min < 60 ? h * 3600 + min * 60 : null;
 }
 

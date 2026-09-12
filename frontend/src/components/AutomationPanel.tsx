@@ -72,6 +72,16 @@ function defaultTrigger(): TriggerConfig {
 /** How long a sent save may go unconfirmed before the panel calls the work unsaved again. */
 const SAVE_ECHO_TIMEOUT_MS = 4000;
 
+/**
+ * The config as the SAVE sees it — the shape two triggers are compared by.
+ *
+ * imageBase64 is display-only and deliberately sent as null; armed is not an editor field (the
+ * list toggle owns it), so neither takes part. At module scope because two places ask the same
+ * question and they must not drift: the echo that confirms a save, and the seeding effect that
+ * decides whether a fresh push has anything new to show.
+ */
+const triggerShape = (t: TriggerConfig) => JSON.stringify({ ...t, imageBase64: null, armed: false });
+
 // Default poll cadence per condition type — mirrors TriggerService.PollCadenceMs so the
 // placeholder shown when the field is left at 0 is the number the daemon will actually use.
 const DEFAULT_POLL_MS: Record<string, number> = { PixelColorMatch: 250, ClipboardChanged: 500 };
@@ -247,16 +257,27 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
     [profiles, entryByProfile, newDraftProfile],
   );
 
-  // Seed the editor draft ONCE per selection — later automation:state pushes carry
-  // runtime status and must never stomp in-progress config edits.
+  // Seed the editor draft from the store. Later automation:state pushes carry runtime status and
+  // must never stomp in-progress config edits — but "seed once per selection" was too blunt a way
+  // to say that, and it lost work the OTHER way: leaving an automation and coming back while a
+  // save was still in flight re-seeded from the store, which still held the PRE-save config, and
+  // stamped the ref — so when the echo finally arrived there was nobody listening, and the editor
+  // sat on the old values for good, with Save greyed out because nothing looked dirty.
+  //
+  // The real rule is: re-seed only when the editor holds nothing of the user's. Dirty, a save in
+  // flight, or a store with nothing to offer all mean "leave it alone". The shape comparison keeps
+  // it quiet the rest of the time — a status-only push must not rebuild the draft object.
   useEffect(() => {
     if (selected == null) { setDraft(null); seededForRef.current = null; return; }
-    if (seededForRef.current === selected) return;
+    const stored = entryByProfile.get(selected);
+    if (seededForRef.current === selected) {
+      if (dirty || pendingSave != null || !stored || !draft) return;
+      if (triggerShape(stored.trigger) === triggerShape(draft)) return;
+    }
     seededForRef.current = selected;
-    const entry = entryByProfile.get(selected);
-    setDraft(entry ? { ...entry.trigger } : defaultTrigger());
+    setDraft(stored ? { ...stored.trigger } : defaultTrigger());
     setDirty(false);
-  }, [selected, entryByProfile]);
+  }, [selected, entryByProfile, dirty, pendingSave, draft]);
 
   // A saved entry vanishing (deleted elsewhere / profile removed) clears a matching selection.
   useEffect(() => {
@@ -490,8 +511,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
     //
     // imageBase64 is display-only and deliberately sent as null; armed is not an editor field (the
     // list toggle owns it), so neither takes part in the comparison.
-    const shape = (t: TriggerConfig) => JSON.stringify({ ...t, imageBase64: null, armed: false });
-    if (shape(stored) === shape(draft)) {
+    if (triggerShape(stored) === triggerShape(draft)) {
       setPendingSave(null);
       setDirty(false);
     }
