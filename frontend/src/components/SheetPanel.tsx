@@ -253,9 +253,32 @@ const TIER_META: Record<'S' | 'A' | 'B' | 'C', { color: string; label: string; l
 
 
 export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, seedCoords, onSeedConsumed, ref }: SheetPanelProps) {
-  const { actions, profiles, activeProfile } = useAppState();
+  const { actions, profiles, activeProfile, buttonStates } = useAppState();
   const { send, subscribe } = useBridge();
   const tt = useTt();
+  // Hoisted to sit beside tt(): handleSave is declared far above the guard machinery that used to
+  // own this, and a dependency array cannot forward-reference a const (TS2448) the way a closure
+  // body can — the same trap the comment inside handleSave already describes for the If flags.
+  const { showToast } = useToast();
+  // Every door the sheet has into a running profile refuses through here, so the reason and the
+  // throttle cannot drift apart between them. Throttled to one toast per two seconds because error
+  // toasts last eight and Ctrl+S is reflex — three presses would stack three.
+  // It deliberately does NOT promise the edits survive. A run pushes actions:updated (recording
+  // pushes one per captured key, and a hotkey-launched replay pushes before the button states even
+  // arrive), and the seed effect re-seeds every field from the store on each push. "Your edits are
+  // kept" would be a promise this panel cannot make.
+  const runActive = buttonStates.recordingActive || buttonStates.replayActive;
+  const lastRunRefusalRef = useRef(0);
+  const refuseDuringRun = useCallback(() => {
+    if (!runActive) return false;
+    const now = Date.now();
+    if (now - lastRunRefusalRef.current > 2000) {
+      lastRunRefusalRef.current = now;
+      showToast(tt('The action list is locked while a run is active.',
+                   'A lista de ações está travada enquanto um run está ativo.'), 'error');
+    }
+    return true;
+  }, [runActive, showToast, tt]);
 
   // Which space this profile's X/Y live in. Nothing on this panel used to say, and the
   // fields read "X" / "Y" either way — so a relative profile's 40,60 looks exactly like an
@@ -926,6 +949,15 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   const handleSave = useCallback(() => {
     if (actionIndex == null || !action) return;
 
+    // The sheet is the app's largest typing surface and it had no run gate at all: every field it
+    // persists goes out as actions:edit, and during a replay that rewrites the very list the engine
+    // is stepping through. Refused here rather than only on the button because Ctrl+S reaches this
+    // through handleSaveRef without consulting `disabled` — the same shape as the insert dialogs,
+    // where the keyboard route bypasses the button gate.
+    // Refuse, do not close: unlike the Clicker flip, a run does not take the grid away, so the row
+    // is still there. The panel stays open and the same Save works the moment the run ends.
+    if (refuseDuringRun()) return;
+
     // Conditional flags re-derived inside the callback because the outer
     // `const isIf = ...` declarations sit FURTHER DOWN the component body
     // (after this useCallback). TypeScript flags forward references as
@@ -1431,7 +1463,10 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     // from actionType + action.conditionType which are already in the array, so the
     // callback rebinds whenever those change. Listing the derived flags would also
     // be a forward-reference error (they're declared further down the component body).
-  }, [actionIndex, action, actionType, key, textMatch, textMode, x, y, delay, comment, repeatCount, repeatGapMs, jitterOn, jitterPct, posJitterOn, posJitterPx, atCursor, timeout, confidence, browserText, variableValue, variableMode, slotMode, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, waitImageOnTimeout, waitImageInvert, waitImageClickOnMatch, waitImageSearchRegion, pixelX, pixelY, pixelColor, pixelTolerance, pixelOnTimeout, pixelInvert, pixelClickOnMatch, conditionNegate, ifOnProbeError, conditionTimeout, loopMaxIterations, windowProcessName, windowTitle, windowTitleMatchMode, windowMatchForegroundOnly, clipboardPatternType, clipboardPattern, randomPercent, conditionOperator, conditionOperand, filePath, timeStart, timeEnd, daysOfWeek, launchPath, launchArgs, activateOnTimeout, restorePosition, restoreSize, windowX, windowY, windowWidth, windowHeight, windowVerb, matchIndex, assertOnFail, alternatives, pickedThisSession, send, onClose]);
+  }, [actionIndex, action, actionType, key, textMatch, textMode, x, y, delay, comment, repeatCount, repeatGapMs, jitterOn, jitterPct, posJitterOn, posJitterPx, atCursor, timeout, confidence, browserText, variableValue, variableMode, slotMode, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, waitImageOnTimeout, waitImageInvert, waitImageClickOnMatch, waitImageSearchRegion, pixelX, pixelY, pixelColor, pixelTolerance, pixelOnTimeout, pixelInvert, pixelClickOnMatch, conditionNegate, ifOnProbeError, conditionTimeout, loopMaxIterations, windowProcessName, windowTitle, windowTitleMatchMode, windowMatchForegroundOnly, clipboardPatternType, clipboardPattern, randomPercent, conditionOperator, conditionOperand, filePath, timeStart, timeEnd, daysOfWeek, launchPath, launchArgs, activateOnTimeout, restorePosition, restoreSize, windowX, windowY, windowWidth, windowHeight, windowVerb, matchIndex, assertOnFail, alternatives, pickedThisSession, send, onClose,
+    // The two booleans, never the buttonStates object: it is republished on unrelated events
+    // and this callback already rebuilds on every keystroke.
+    refuseDuringRun]);
 
   // Are there edits the Save-Changes button would persist? MIRRORS handleSave's diffs
   // exactly (same guards/normalisation), returning true on the first field that differs —
@@ -1800,7 +1835,6 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       setArmedBy(null);
     }, GUARD_WINDOW_MS);
   }, []);
-  const { showToast } = useToast();
   // Only when there WAS something to lose — a clean Cancel says nothing.
   const noteDiscard = useCallback(() => {
     if (hasUnsavedRef.current) showToast(tt('Changes discarded', 'Alterações descartadas'), 'info');
@@ -2205,6 +2239,10 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   // is already saved, pass it along so the overlay opens with the rect pre-drawn — the user
   // can ESC to keep it as-is or drag a new one to overwrite.
   const handleConfigureSearchRegion = useCallback(() => {
+    // Not a write, and worse than one: this claims InteractionScope exclusively, which sets
+    // SuppressAllHotkeys — and while that is true NO hotkey matches, including the one that stops
+    // the replay. A full-screen overlay over the screen the macro is driving, and no way to stop it.
+    if (refuseDuringRun()) return;
     const requestId = Math.random().toString(36).slice(2, 10);
     searchRegionRequestIdRef.current = requestId;
     const r = waitImageSearchRegion;
@@ -2214,16 +2252,19 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
         ? { requestId, x: r.x, y: r.y, w: r.w, h: r.h }
         : { requestId },
     });
-  }, [send, waitImageSearchRegion]);
+  }, [send, waitImageSearchRegion, refuseDuringRun]);
 
   // Crop save: send the rect (image-pixel coords) to the backend, which clones the existing
   // PNG and updates action.ImagePath. The new imageBase64 arrives via the next actions:updated
   // push so the thumbnail refreshes automatically.
   const handleCropSave = useCallback((rect: { x: number; y: number; w: number; h: number }) => {
     if (actionIndex == null) return;
+    // The second write door, and it was open: the backend pushes an undo state and re-points
+    // ImagePath on the live row — under a run where Ctrl+Z is already refused.
+    if (refuseDuringRun()) return;
     send({ type: 'waitimage:cropReference', payload: { index: actionIndex, ...rect } });
     setCropperOpen(false);
-  }, [actionIndex, send]);
+  }, [actionIndex, send, refuseDuringRun]);
 
   // Pick position: minimise the app, show the screen-overlay in pointPick mode, the next
   // click anywhere on screen fills X/Y. Much faster than typing or re-recording the action
@@ -3221,6 +3262,9 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                     // new imageBase64 / imagePath automatically, so the thumbnail
                     // updates in place. Matches Wait Pixel's "Pick from screen"
                     // behaviour where the editor stays open through the capture.
+                    // Same exclusive overlay as Configure search region: it minimises the window
+                    // and kills the stop hotkey for as long as it is up. Never during a run.
+                    if (refuseDuringRun()) return;
                     send({ type: 'waitimage:recapture', payload: { index: actionIndex } });
                   }}
                   className="flex-1 flex items-center justify-center gap-1.5 h-8 px-2.5 rounded text-xs font-medium border border-border-default bg-bg-elevated hover:bg-bg-card text-text-secondary hover:text-text-primary transition-colors"
@@ -4856,8 +4900,14 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
             <Button variant="secondary" size="md" className="min-w-[84px]" onClick={discardAndClose}>
               {hasUnsavedChanges ? 'Discard' : 'Cancel'}
             </Button>
-            <Button variant="primary" size="md" className="min-w-[84px]" onClick={handleSave} disabled={!!regexError}
-              data-tip={tt('Save · Ctrl+S', 'Salvar · Ctrl+S')}>
+            <Button variant="primary" size="md" className="min-w-[84px]" onClick={handleSave}
+              disabled={!!regexError || runActive}
+              // A disabled control still shows its tip (index.css restores pointer-events on
+              // [data-tip][disabled]) precisely so it can say WHY it is off. Announcing a shortcut
+              // that is currently refused, without the reason, is the one thing it must not do.
+              data-tip={runActive
+                ? tt('Locked while a run is active', 'Travado enquanto um run está ativo')
+                : tt('Save · Ctrl+S', 'Salvar · Ctrl+S')}>
               <Check size={14} />
               Save
             </Button>
