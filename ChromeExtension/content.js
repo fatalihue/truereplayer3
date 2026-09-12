@@ -548,6 +548,40 @@
   }
 
   /**
+   * Wait `ms` of real time, including in a hidden tab.
+   *
+   * Chrome clamps setTimeout in a background tab to roughly once per second, and the typing loop
+   * pauses three times per command: {delay:N}, the 30 ms settle after each key, and Delay per
+   * char. Measured on a hidden tab, "abcdefghij{backspace:10}" went from 309 ms to 9994 ms — 32×.
+   * The C# side budgets the pipe timeout in the REAL milliseconds (BrowserBridgeService
+   * .TypeKeyBudgetMs, 30 ms per key), so it gives up and reports the field as not found while the
+   * extension is still typing into it.
+   *
+   * A MessageChannel message is a task, not a timer, and the clamp does not apply to it — so a
+   * sub-second wait is pumped instead of slept. The trade is CPU on a tab nobody is looking at,
+   * which is the cheaper side: the alternative is the user's macro silently taking 30× longer and
+   * then being reported as failed. Waits of a second or more keep the timer, where the clamp costs
+   * nothing. visibilityState is read on EVERY call because the tab can be hidden — or revealed —
+   * in the middle of a command.
+   */
+  function sleepMs(ms) {
+    if (!(ms > 0)) return Promise.resolve();
+    if (ms >= 1000 || document.visibilityState !== 'hidden') {
+      return new Promise((r) => setTimeout(r, ms));
+    }
+    return new Promise((resolve) => {
+      const started = performance.now();
+      const channel = new MessageChannel();
+      const tick = () => {
+        if (performance.now() - started >= ms) { channel.port1.onmessage = null; resolve(); return; }
+        channel.port2.postMessage(0);
+      };
+      channel.port1.onmessage = tick;
+      tick();
+    });
+  }
+
+  /**
    * Is anything on top of the target? Retried for a short budget instead of sampled once.
    *
    * The single sample happened immediately after the scroll, which is precisely the moment a
@@ -1418,6 +1452,8 @@
    *            activated), which is what tells the loop a transition happened. An Enter that fell
    *            through every branch changed nothing, and treating it as a transition made the next
    *            text segment wipe the field in non-append mode.
+   *   value  — the text a Backspace/Delete leaves behind in a sanitizing field, so the caller can
+   *            keep its shadow buffer in step. undefined when the key did not edit text.
    *
    * KEYUP ORDER: the key's default action runs BEFORE keyup, the same order a real key produces
    * and the same order the per-character loop was fixed to use. A keyup handler that reads the
@@ -1425,7 +1461,7 @@
    * typed. The two exceptions are marked below: Space on a button (Chrome activates on keyUP) and
    * Tab (the keyup belongs to the element the focus MOVED to).
    */
-  function dispatchSpecialKey(el, name) {
+  function dispatchSpecialKey(el, name, shadow) {
     const meta = KEY_CHIP_MAP[name];
     if (!meta) return { pinned: false, acted: false };
     const opts = {
@@ -1443,14 +1479,18 @@
     let acted = downEvt.defaultPrevented;
     let upTarget = el;
     let upSent = false;
+    // The text this key leaves behind in a sanitizing field, handed back so the caller's shadow
+    // stays in step. undefined means "this key did not edit text" — the caller keeps what it had.
+    let editedValue;
 
     if (!downEvt.defaultPrevented) {
       switch (name) {
         case 'backspace':
-          applyEditDelete(el, -1);
-          break;
         case 'delete':
-          applyEditDelete(el, +1);
+          // These keys only edit where text can live. `'value' in el` is true for a checkbox, a
+          // range and a file input too, so the write went through and blanked the chosen file —
+          // the same hole isTextEntry closed for the typing path in 1.4.19, one branch over.
+          if (isTextEntry(el)) editedValue = applyEditDelete(el, name === 'delete' ? +1 : -1, shadow);
           break;
         case 'enter':
           // On a button/summary/link Enter CLICKS — it does not submit the surrounding form. The
@@ -1460,9 +1500,14 @@
             try { el.click(); acted = true; } catch { /* ignore */ }
             break;
           }
-          // Enter form-submit fallback (synthetic events skip the browser's default submit)
+          // Enter form-submit fallback (synthetic events skip the browser's default submit).
+          // `el.form` — and ONLY el.form — is the browser's own test for "this element is a form
+          // control associated with that form", which is the whole condition under which a real
+          // Enter submits. The closest('form') fallback reached elements the property deliberately
+          // excludes: a <div role="button"> and a contentEditable composer inside a <form> both
+          // submitted it, and a real Enter never would.
           if (el.tagName !== 'TEXTAREA') {
-            const form = el.form || (el.closest && el.closest('form'));
+            const form = el.form;
             if (form && typeof form.requestSubmit === 'function') {
               try { form.requestSubmit(); acted = true; } catch { /* ignore */ }
             }
@@ -1504,7 +1549,7 @@
     }
     // Always, even on a cancelled keydown: a real key still comes back up.
     if (!upSent) upTarget.dispatchEvent(new KeyboardEvent('keyup', opts));
-    return { pinned, acted };
+    return { pinned, acted, value: editedValue };
   }
 
   // A value-bearing input that takes typed text (not a checkbox, a button, a file picker…), a
@@ -1647,13 +1692,34 @@
    *   - If there's a selection, remove it (regardless of direction).
    *   - Otherwise, remove one char before/after the caret.
    * Fires a native 'input' event so frameworks (React/Vue/etc.) sync their state.
+   *
+   * readValue is the shadow buffer the caller keeps for a sanitizing field (number/date/time…).
+   * Those types reject every intermediate value and blank `el.value`, so reading the field back
+   * loses the text the user is in the middle of writing: "1.5" then Backspace left "1.", the
+   * field reported "", and the next character produced "5" instead of "1.5". A real keyboard
+   * keeps the partial text on screen — the shadow is that screen. Returns the new intended
+   * value so the caller can keep the shadow in step (undefined when there was nothing to edit).
    */
-  function applyEditDelete(el, dir) {
+  function applyEditDelete(el, dir, readValue) {
     if ('value' in el && typeof el.value === 'string') {
-      const value = el.value;
-      let start = typeof el.selectionStart === 'number' ? el.selectionStart : value.length;
-      let end = typeof el.selectionEnd === 'number' ? el.selectionEnd : start;
-      if (start > end) { const tmp = start; start = end; end = tmp; }
+      const value = readValue ?? el.value;
+      let start, end;
+      if (readValue != null) {
+        // The shadow is what the user MEANT; the field holding it is empty whenever the sanitizer
+        // rejected the last intermediate, so it has no caret to read. Editing happens at the end,
+        // which is where the shadow was written from.
+        start = end = value.length;
+      } else {
+        try {
+          start = typeof el.selectionStart === 'number' ? el.selectionStart : value.length;
+          end = typeof el.selectionEnd === 'number' ? el.selectionEnd : start;
+        } catch {
+          // number/date/time/month/week THROW on selectionStart rather than returning null, and
+          // the read was not guarded: the whole handler unwound before this function could work.
+          start = end = value.length;
+        }
+        if (start > end) { const tmp = start; start = end; end = tmp; }
+      }
 
       let newValue = value;
       let newCaret = start;
@@ -1667,13 +1733,13 @@
         newValue = value.slice(0, start) + value.slice(start + 1);
         newCaret = start;
       } else {
-        return; // nothing to delete (caret at start for backspace, or at end for delete)
+        return value; // nothing to delete (caret at start for backspace, or at end for delete)
       }
 
       setNativeValue(el, newValue);
       try { el.setSelectionRange(newCaret, newCaret); } catch { /* unsupported on some types */ }
       el.dispatchEvent(new Event('input', { bubbles: true }));
-      return;
+      return newValue;
     }
 
     if (el.isContentEditable) {
@@ -1854,6 +1920,30 @@
           // Set by a {home}/{end} that placed the caret inside the field: the next text segment
           // types THERE instead of at the end.
           let caretPinned = false;
+          // The text MEANT for the field currently focused, when that field sanitizes
+          // (number/date/time/month/week). Those types blank `value` on every intermediate the
+          // sanitizer refuses, so the field cannot be read back mid-entry — this is the screen a
+          // real browser would still be showing. null = no shadow in effect.
+          let sanitizedShadow = null;
+          // Dropping the shadow is not optional bookkeeping: a stale one would write the previous
+          // field's text into the next. It goes whenever the field, the caret or the writing mode
+          // stops being the one it was built for.
+          const dropShadow = () => { sanitizedShadow = null; };
+
+          // Does anything still WRITE into the field focused right now? A payload that only edits
+          // or navigates — "{backspace}", "{home}", "{end}" — must not run the non-append prelude,
+          // which blanks the field: the user asked to fix what the page put there, not to replace
+          // it. Scanning stops at the keys that hand the field over to another one.
+          const writesInto = (from) => {
+            for (let s = from; s < segments.length; s++) {
+              const g = segments[s];
+              if (g.kind === 'delay') continue;
+              if (g.kind === 'text') return g.value.length > 0;
+              if (g.name === 'space') return true;                       // Space types a character
+              if (g.name === 'tab' || g.name === 'enter') return false;  // the field changes hands
+            }
+            return false;
+          };
 
           // typeDelay arrives as JSON null whenever the user leaves "Delay per char" blank, and
           // `typeof null === 'object'` — so the ternary fell straight through to the automatic
@@ -1869,12 +1959,13 @@
           // being absent.
           const charDelay = (typeof typeDelay === 'number' && typeDelay >= 0) ? typeDelay : 0;
 
-          for (const seg of segments) {
+          for (let si = 0; si < segments.length; si++) {
+            const seg = segments[si];
             if (seg.kind === 'delay') {
               // {delay:N} — the pause Send Text makes at the same token. The C# side widens the
               // pipe timeout by the sum of these before sending (BrowserBridgeService), so a long
               // pause is not mistaken for a page that never answered.
-              await new Promise(r => setTimeout(r, seg.ms));
+              await sleepMs(seg.ms);
               continue;
             }
             if (seg.kind === 'key') {
@@ -1887,17 +1978,33 @@
                 || seg.name === 'home' || seg.name === 'end';
               for (let k = 0; k < seg.count; k++) {
                 const before = currentEl;
-                if (justTransitioned && editsInField && isTextEntry(currentEl)) {
+                // …and only when the entry is going to WRITE here. Without that term the prelude
+                // ran for a payload of pure edit keys, so in the default (non-append) mode a lone
+                // "{backspace}" blanked the whole field and answered success: the user asked to
+                // drop one character and lost the line. "{home}" and "{end}", which touch nothing
+                // at all, destroyed the field the same way.
+                if (justTransitioned && editsInField && isTextEntry(currentEl) && writesInto(si)) {
                   beginEntry(currentEl, typeAppend);
                   justTransitioned = false;
+                  dropShadow(); // the field was just cleared or re-pinned; nothing is pending in it
                 }
-                const res = dispatchSpecialKey(currentEl, seg.name);
+                // The shadow belongs to sanitizing fields ONLY. Handing it to an ordinary input
+                // replaced its live caret with "the end of the shadow", and {delete:3} after a
+                // {home} deleted once and then sat at the end doing nothing.
+                const sanitizingNow = isSanitizingInput(currentEl);
+                const res = dispatchSpecialKey(currentEl, seg.name, sanitizingNow ? sanitizedShadow : null);
                 // A key that does not POSITION the caret must not undo a pin: after {home}, the
                 // {delete} or {space} that follows kept editing at the caret but reported false,
                 // and the next text segment jumped back to the end of the field.
                 if (res.pinned) caretPinned = true;
+                // The shadow follows the edit keys and nothing else: a key that did not touch text
+                // leaves it exactly as it was.
+                if (res.value !== undefined) sanitizedShadow = sanitizingNow ? res.value : null;
+                // A caret placed by hand invalidates it — the shadow is written as if the entry
+                // continued at the end, which is no longer where the next character lands.
+                if (res.pinned) dropShadow();
                 // Let async handlers / focus moves settle, then track the new active element
-                await new Promise(r => setTimeout(r, 30));
+                await sleepMs(30);
                 const active = document.activeElement;
                 if (active && active !== document.body && active.isConnected) {
                   currentEl = active;
@@ -1916,6 +2023,7 @@
                 if (currentEl !== before) {
                   justTransitioned = true;
                   caretPinned = false;
+                  dropShadow(); // the pending text belonged to the field we just left
                 } else if (seg.name === 'enter' && res.acted) {
                   justTransitioned = true;
                 }
@@ -1946,13 +2054,27 @@
             if (typePaste) {
               await typeViaPaste(currentEl, value, !shouldClear, caretPinned);
               justTransitioned = false;
-              caretPinned = false;
+              // Paste leaves the caret after what it wrote, exactly like the typed path — which
+              // sets this to true. Clearing it here made the two modes disagree about where the
+              // NEXT segment lands, so the same payload wrote different strings depending on a
+              // checkbox that is only supposed to change the speed.
+              caretPinned = true;
+              dropShadow(); // paste replaced the field wholesale; there is no partial entry left
+              // A sanitizing field that ends EMPTY after a non-empty paste rejected the value, the
+              // same way the typed path does. Without this the Paste box turned a rejected value
+              // into a silent success — the one difference between the two modes that the user
+              // cannot see until the form is submitted.
+              if (isSanitizingInput(currentEl) && value && currentEl.value === '') {
+                throw mkError('VALUE_REJECTED', `The ${currentEl.type} field rejected "${value}".`,
+                  'Paste a complete value for the field type.');
+              }
               continue;
             }
 
             if (currentEl.isContentEditable) {
               typeIntoContentEditable(currentEl, value, !shouldClear, caretPinned);
               justTransitioned = false;
+              dropShadow(); // a rich host keeps its own text; no sanitizer to work around
               // The caret stays where insertText left it: the next segment continues from there,
               // which is what a keyboard does. Re-pinning to the end here sent the Y of
               // "{home}X{delete}Y" to the far end of the field.
@@ -1973,7 +2095,12 @@
             // re-written whole from a shadow buffer on each keystroke — the per-character event
             // stream is unchanged, and each write restores what the sanitizer just threw away.
             const sanitizing = isSanitizingInput(currentEl);
-            const prefix = sanitizing ? (typeof currentEl.value === 'string' ? currentEl.value : '') : '';
+            // The shadow wins over the field when it exists: after a {backspace} the field is
+            // blank and only the shadow still knows that "1." is what is on screen.
+            const prefix = sanitizing
+              ? (sanitizedShadow ?? (typeof currentEl.value === 'string' ? currentEl.value : ''))
+              : '';
+            if (!sanitizing) dropShadow(); // a field that accepts partials needs no shadow
             let buffer = '';
             for (const char of value) {
               // keydown → write → input → keyup, which is the order a real keystroke produces.
@@ -1997,11 +2124,14 @@
                 currentEl.dispatchEvent(new Event('input', { bubbles: true }));
               }
               currentEl.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
-              if (charDelay > 0) await new Promise(r => setTimeout(r, charDelay));
+              if (charDelay > 0) await sleepMs(charDelay);
             }
             currentEl.dispatchEvent(new Event('change', { bubbles: true }));
             justTransitioned = false;
             caretPinned = true;
+            // Hand the intended text to whatever edits next: a {backspace} after this segment has
+            // to work on what the user sees, not on the blank the sanitizer left behind.
+            if (sanitizing) sanitizedShadow = prefix + buffer;
             // A sanitizing field that ends EMPTY after a non-empty segment rejected the whole
             // value ("abc" into a number, a half-written date). Saying so beats the silent
             // success that left the user to discover the blank field on the submitted form.

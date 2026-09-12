@@ -67,7 +67,20 @@ namespace TrueReplayer.Services
         // rather than corrupting its value; keyup follows the key's default action; and Tab from
         // an element outside the tab order continues in tree order instead of jumping to the top
         // of the page.
-        public const string ExpectedExtensionVersion = "1.4.19";
+        // 1.4.20 = what 1.4.19 broke on its way there, plus the tab nobody is looking at. The
+        // non-append prelude only runs when the entry is actually going to write into the field,
+        // so a payload of pure edit keys ({backspace}, {home}, {end}) edits instead of blanking
+        // the field and calling it success; Backspace and Delete are gated on a text-bearing
+        // element, so they no longer write into a checkbox, a range or a file input; the shadow
+        // buffer that survives a sanitizer now also feeds those two keys, so "1.5" Backspace "5"
+        // ends at "1.5" and not at "5"; Enter submits only from a form control the browser itself
+        // associates with the form, never from a <div role="button"> or a contentEditable
+        // composer that happens to sit inside one; Paste reports VALUE_REJECTED on a value the
+        // field refuses and leaves the caret where typing would have left it; and every sub-second
+        // pause in the typing loop is pumped through a MessageChannel instead of setTimeout, which
+        // a background tab clamps to ~1 s — a ten-key payload measured 309 ms visible and 9994 ms
+        // hidden, while the C# budget below is written in the real milliseconds.
+        public const string ExpectedExtensionVersion = "1.4.20";
         private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
         private NamedPipeServerStream? _pipeServer;
         private StreamReader? _reader;
