@@ -92,6 +92,9 @@ export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogPro
   const [activeSuggestion, setActiveSuggestion] = useState(-1);
 
   const tagInputRef = useRef<HTMLInputElement>(null);
+  const descRef = useRef<HTMLTextAreaElement>(null);
+  /** Where the keyboard was when the discard prompt opened, so "Keep editing" can put it back. */
+  const returnFocusRef = useRef<HTMLElement | null>(null);
 
   // The sidebar's own row for this profile — every read-only fact below comes from here.
   const entry = useMemo(() => profiles.find(p => p.name === profileName), [profiles, profileName]);
@@ -118,7 +121,21 @@ export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogPro
         setIconEmoji(m.iconEmoji ?? null);
         setLoaded(true);
       } else if (msg.type === 'profile:tagList') {
-        setAllTags(msg.payload.tags);
+        // Normalised on arrival, and counts merged by the normalised form. Everything downstream
+        // compares against `tags`, which only ever holds normalised values — so a stored tag with
+        // an accent or a capital ("Produção") was DISPLAYED raw on a "Most used" chip, added as
+        // "producao", and then never matched the `!tags.includes(t.tag)` filter: the chip showed
+        // one tag, added another, and stayed in the row for ever. Normalising in the backend was
+        // the other option and the worse one — it would put a second copy of this grammar there.
+        const byTag = new Map<string, TagListEntry>();
+        for (const t of msg.payload.tags) {
+          const tag = normalizeTag(t.tag);
+          if (!tag) continue;
+          const prev = byTag.get(tag);
+          if (prev) prev.count += t.count;
+          else byTag.set(tag, { ...t, tag });
+        }
+        setAllTags([...byTag.values()].sort((a, b) => b.count - a.count));
       }
       // profile:versionBumped intentionally not consumed in 2.2.0 — the bump UI was removed.
       // Re-add the handler when the share-via-link / marketplace path resurfaces the bump button.
@@ -195,7 +212,7 @@ export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogPro
     } else if (e.key === 'Backspace' && tagDraft === '' && tags.length > 0) {
       // Backspace on empty input removes the last tag — matches GitHub / Twitter UX.
       removeTag(tags[tags.length - 1]);
-    } else if (e.key === 'Escape' && showTagSuggestions) {
+    } else if (e.key === 'Escape' && showTagSuggestions && suggestions.length > 0) {
       // Escape with the suggestion dropdown open closes just the dropdown —
       // stopPropagation keeps DialogShell's Esc handler from also closing the
       // dialog. With the dropdown closed we don't handle Esc here at all, so
@@ -206,9 +223,15 @@ export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogPro
     }
   };
 
-  // Is there work that leaving would destroy? A half-typed tag does not count — Save commits it.
+  // Over the cap only when the value came from a FILE — the textarea clamps what is typed.
+  const descTooLong = description.length > MAX_DESCRIPTION;
+
+  // Is there work that leaving would destroy? The half-typed tag COUNTS: Save commits it, so
+  // dropping it on the way out throws away something the user would have kept — the one asymmetry
+  // that made Esc and Cancel lose work the prompt was built to protect.
   const dirty = loaded && (
-    description !== (original?.description ?? '')
+    tagDraft.trim() !== ''
+    || description !== (original?.description ?? '')
     || JSON.stringify(tags) !== JSON.stringify(original?.tags ?? [])
     || (iconEmoji ?? null) !== (original?.iconEmoji ?? null)
   );
@@ -267,17 +290,38 @@ export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogPro
   // `color-scheme` on the root is the app's OWN answer (applyThemeConfig writes it from the base
   // surface), so reading it here cannot drift from the palette the dialog is painted in —
   // EmojiTheme.AUTO would follow the OS instead, which has nothing to do with the chosen preset.
-  const [pickerTheme, setPickerTheme] = useState<EmojiTheme>(EmojiTheme.DARK);
+  const readPickerTheme = () => (getComputedStyle(document.documentElement).colorScheme || '').includes('light')
+    ? EmojiTheme.LIGHT : EmojiTheme.DARK;
+  // Lazy INITIALIZER, not a constant the effect corrects afterwards: the effect runs after the
+  // paint, so the picker rendered one frame in DARK on the five light presets — the black flash
+  // came back through the door the fix had just closed. The effect stays for the theme changing
+  // while the dialog is open.
+  const [pickerTheme, setPickerTheme] = useState<EmojiTheme>(readPickerTheme);
   useEffect(() => {
     if (!showEmojiPicker) return;
     const scheme = getComputedStyle(document.documentElement).colorScheme || '';
     setPickerTheme(scheme.includes('light') ? EmojiTheme.LIGHT : EmojiTheme.DARK);
   }, [showEmojiPicker]);
 
+const keepEditing = () => {
+    setConfirmDiscard(false);
+    // Hand the keyboard back to where it was. The fallback is the description textarea: it is the
+    // field this dialog exists for, and any focus inside the card beats <body>, where Esc is dead
+    // and Tab escapes the modal.
+    const back = returnFocusRef.current;
+    requestAnimationFrame(() => {
+      if (back && back.isConnected) back.focus();
+      else descRef.current?.focus();
+    });
+  };
+
   const TAG_MESSAGE: Record<TagReject, string> = {
-    invalid: tt('Letters, numbers and - _ + . only.', 'Apenas letras, números e - _ + .'),
-    duplicate: tt('This profile already has that tag.', 'Este profile já tem essa tag.'),
-    full: tt('Ten tags is the maximum.', 'Dez tags é o máximo.'),
+    // Visible text stays ENGLISH: tt() belongs in tooltips and toasts, and these three go into
+    // a <FieldError>, which is on the card. Half the dialog was reading in Portuguese beside a row
+    // of English labels ([[decision-labels-english-everywhere-2026-09-04]]).
+    invalid: 'Letters, numbers and - _ + . only.',
+    duplicate: 'This profile already has that tag.',
+    full: 'Ten tags is the maximum.',
   };
 
   return (
@@ -291,6 +335,11 @@ export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogPro
       canClose={() => {
         if (confirmDiscard) return false;
         if (!dirty) return true;
+        // Remember where the keyboard was, so "Keep editing" can put it back. The prompt is a
+        // SECOND dialog: opening it moves the focus into it, and answering "Keep editing"
+        // unmounted that dialog and left the focus on <body> — Esc went dead and Tab walked out
+        // of the modal into the UI behind the scrim.
+        returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         setConfirmDiscard(true);
         return false;
       }}
@@ -314,8 +363,15 @@ export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogPro
       // ~340 px on open (dialog height must never change with state), and an absolute inside the
       // body would be clipped by that body's own overflow-y-auto.
       size="lg"
-      cardClassName="max-h-[90vh] relative"
-      footer={<DialogFooter secondary={{ label: 'Cancel', onClick: onClose }} primary={{ label: 'Save', onClick: handleSave, disabled: !loaded }} />}
+      // Divided by --ui-zoom for the reason DialogShell's own docblock gives: `zoom` on <html>
+      // scales what is PAINTED while `vh` keeps resolving against the unzoomed viewport, so a raw
+      // 90vh paints as ~104vh at 115 % and the footer — Save and Cancel — lands below the window
+      // edge with no way to reach it.
+      cardClassName="max-h-[calc(90vh/var(--ui-zoom))] relative"
+      // The footer as a FUNCTION so Cancel goes through `requestClose`, which is what runs
+      // canClose. Wired straight to onClose it BYPASSED the guard: Esc asked before throwing away
+      // a description, and the button one tab away from it did not.
+      footer={(requestClose) => <DialogFooter secondary={{ label: 'Cancel', onClick: requestClose }} primary={{ label: 'Save', onClick: handleSave, disabled: !loaded || descTooLong }} />}
     >
         {/* Body */}
         {/* min-h: the loading placeholder is as tall as the loaded form, so the card does not
@@ -355,15 +411,25 @@ export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogPro
               <div className="flex flex-col gap-1">
                 <label className="text-[11px] text-text-tertiary uppercase tracking-wide">Description</label>
                 <textarea
+                  ref={descRef}
                   value={description}
                   onChange={(e) => setDescription(e.target.value.slice(0, MAX_DESCRIPTION))}
                   placeholder="What does this profile do?"
                   rows={4}
                   className="w-full px-3 py-2 text-xs text-text-primary bg-bg-input border border-border-subtle rounded outline-none focus:border-accent-solid placeholder:text-text-disabled transition-colors resize-none"
                 />
-                <div className="text-[10px] text-text-tertiary text-right">
+                <div className={`text-[10px] text-right ${descTooLong ? 'text-recording' : 'text-text-tertiary'}`}>
                   {description.length} / {MAX_DESCRIPTION}
                 </div>
+                {/* A description longer than the cap can only come from a file written elsewhere —
+                    the textarea cuts what is typed. Saying so and holding Save is the honest move:
+                    the alternative was to truncate it on the way in, which threw away 2 700
+                    characters the moment the user touched the field, or to let Save do it, which
+                    threw them away one click later. Always mounted, one line
+                    ([[convention-reserved-validation-line]]). */}
+                <FieldError show={descTooLong} className="text-[10px] mt-0">
+                  {`Too long by ${description.length - MAX_DESCRIPTION} — trim it before saving.`}
+                </FieldError>
               </div>
 
               {/* Tags */}
@@ -424,8 +490,7 @@ export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogPro
                   >
                     {tagError
                       ? TAG_MESSAGE[tagError]
-                      : tt('Press Enter or comma to add. Spaces and accents are converted.',
-                          'Enter ou vírgula para adicionar. Espaço e acento são convertidos.')}
+                      : 'Press Enter or comma to add. Spaces and accents are converted.'}
                   </FieldError>
                   <span className="text-[10px] text-text-tertiary shrink-0 tabular-nums">{tags.length} / {MAX_TAGS}</span>
                 </div>
@@ -435,7 +500,7 @@ export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogPro
                     resize as the last suggestion is consumed. */}
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className={`text-[10px] text-text-tertiary shrink-0 ${topTags.length ? '' : 'invisible'}`}>
-                    {tt('Most used', 'Mais usadas')}
+                    {'Most used'}
                   </span>
                   {topTags.length > 0 ? topTags.map(t => (
                     <button
@@ -455,7 +520,17 @@ export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogPro
 
                 {/* Autocomplete dropdown */}
                 {showTagSuggestions && suggestions.length > 0 && (
-                  <div id="tag-suggestions" role="listbox" className="absolute top-full mt-1 left-0 right-0 z-10 menu-surface max-h-[180px] overflow-y-auto">
+                  <div
+                    id="tag-suggestions"
+                    role="listbox"
+                    // The pointer leaving the list gives the keyboard its choice back. Hovering a
+                    // row sets activeSuggestion, and the highlight stayed behind after the mouse
+                    // moved away — so Enter committed the tag the cursor happened to rest on
+                    // instead of the one being typed, which is the opposite of what a keyboard
+                    // user just asked for.
+                    onMouseLeave={() => setActiveSuggestion(-1)}
+                    className="absolute top-full mt-1 left-0 right-0 z-10 menu-surface max-h-[180px] overflow-y-auto"
+                  >
                     {suggestions.map((s, i) => (
                       <button
                         key={s.tag}
@@ -572,10 +647,10 @@ export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogPro
         title="Unsaved info"
         size="sm"
         zClass="z-[60]"
-        onClose={() => setConfirmDiscard(false)}
+        onClose={keepEditing}
         footer={
           <DialogFooter
-            secondary={{ label: 'Keep editing', onClick: () => setConfirmDiscard(false), autoFocus: true }}
+            secondary={{ label: 'Keep editing', onClick: keepEditing, autoFocus: true }}
             extra={<Button variant="destructiveText" size="md" onClick={() => { setConfirmDiscard(false); onClose(); }}>Discard</Button>}
             primary={{ label: 'Save', onClick: () => { setConfirmDiscard(false); handleSave(); } }}
           />

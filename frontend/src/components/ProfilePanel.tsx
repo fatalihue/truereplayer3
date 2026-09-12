@@ -2,7 +2,7 @@ import { Fragment, useState, useRef, useEffect, useLayoutEffect, useCallback, us
 import { AlertTriangle, Search, SearchX, X, Pencil, Copy, Trash2, FolderOpen, FolderMinus, Keyboard, AppWindow, ArrowDownUp, Type, Ban, Power, FolderInput, ChevronsLeft, ChevronsRight, ChevronsDownUp, ChevronsUpDown, Pin, PinOff, FolderPlus, FilePlus, Plus, ChevronRight, ChevronDown, Palette, Zap, Repeat, Repeat2, Hourglass, ArrowUpFromDot, ExternalLink, Info, MoreHorizontal, Hash, Upload, Download, Check } from 'lucide-react';
 import type { ProfileEntry, ImportPreviewPayload, ImportResultPayload, ImportConflictResolution, TriggerMode } from '../bridge/messageTypes';
 import { useAppState } from '../state/AppStateContext';
-import { railInitials, glyphCount } from '../utils/profileInitials';
+import { railInitials, glyphCount, cutGlyphs } from '../utils/profileInitials';
 import { carriesConditionProbe } from '../utils/conditionalBlocks';
 import { useBridge } from '../bridge/BridgeContext';
 import { KbdTag, splitCombo } from './common/KbdTag';
@@ -91,7 +91,9 @@ const railHotkey = (combo: string) => splitCombo(combo).map(compactKey).join('+'
 const DESC_TIP_MAX = 110;
 const descTip = (d?: string | null): string => {
   const s = (d ?? '').replace(/\s+/g, ' ').trim();
-  return s.length > DESC_TIP_MAX ? `${s.slice(0, DESC_TIP_MAX - 1)}…` : s;
+  // By GRAPHEME: slice counts UTF-16 units and cut an emoji in half, leaving a lone surrogate —
+  // sixteen lines above the code in this same file that documents exactly that rule.
+  return cutGlyphs(s, DESC_TIP_MAX);
 };
 
 export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePanelProps) {
@@ -1142,7 +1144,16 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
         // fully visible the tooltip is the description alone, because repeating what is on
         // screen is what the truncation test above exists to avoid.
         const desc = cell.dataset.desc ?? '';
-        const tip = [cut ? (cell.dataset.full ?? '') : null, desc].filter(Boolean).join(' — ');
+        // In Clicker mode the row is inert, and the reason lives on an ANCESTOR's data-tip.
+        // TooltipLayer resolves by `closest`, so the innermost wins — and this cell became
+        // innermost the day it started carrying the description: hovering the profile NAME, which
+        // is the natural place to ask "why does clicking this do nothing?", answered with the
+        // description instead. It goes first because it is the answer to the more urgent question.
+        const tip = [
+          isClicker ? tt('Macro mode only', 'Só no modo Macro') : null,
+          cut ? (cell.dataset.full ?? '') : null,
+          desc,
+        ].filter(Boolean).join(' — ');
         if (tip) {
           cell.setAttribute('data-tip', tip);
           cell.setAttribute('data-tip-pos', 'below-start');
@@ -1172,7 +1183,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
     // render — including every `mousemove` while dragging a profile or folder — which tore
     // down and rebuilt the ResizeObserver and rescanned every row in the list on each pixel
     // of movement.
-  }, [profiles, profileOrder, searchQuery]);
+    // isClicker/tt join them: both change what the tooltip SAYS, and neither resizes root.
+  }, [profiles, profileOrder, searchQuery, isClicker, tt]);
 
   const AUTOSCROLL_ZONE = 40;
   const AUTOSCROLL_MAX_SPEED = 14;
@@ -3003,7 +3015,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             // shell's 440 default while serving the app's longest list (~81 profiles with
             // folder indentation truncating PT-BR names early at 380).
             size="md"
-            cardClassName="max-h-[90vh]"
+            cardClassName="max-h-[calc(90vh/var(--ui-zoom))]"
             onClose={() => setShowExportDialog(false)}
             // Don't discard a multi-profile selection on a stray outside click, matching the
             // Import Preview dialog.

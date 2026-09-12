@@ -39,6 +39,13 @@ namespace TrueReplayer.Controllers
 
     public class ProfileController : IDisposable
     {
+        /// <summary>
+        /// The description cap, enforced wherever a description ENTERS the app. Mirrored by
+        /// MAX_DESCRIPTION in the Info dialog and by the cut in HandleProfileSetMetadata; a
+        /// .trprofile carried the only path that skipped it.
+        /// </summary>
+        internal const int MaxDescriptionLength = 500;
+
         private readonly MainWindow window;
         private FileSystemWatcher? profileWatcher;
         private CancellationTokenSource? debounceCts;
@@ -2191,7 +2198,15 @@ namespace TrueReplayer.Controllers
                     // Round-trip sharing metadata. Pre-metadata .trprofile files leave these null
                     // (System.Text.Json default-inits when the property is missing in the JSON),
                     // which is exactly what we want — the Info tab will render "Unknown" / empty.
-                    Description = entry.Description,
+                    // Clamped to the same 500 the metadata handler enforces, because a .trprofile
+                    // is a FILE — hand-edited, or written by an older build — and this was the one
+                    // door into the field that did not check. The editor only clamps what the user
+                    // types, so a 3 200-character description arrived intact, showed "3200 / 500",
+                    // and the first keystroke in the textarea destroyed 2 700 characters in
+                    // silence. Cut where it ENTERS, once.
+                    Description = entry.Description != null && entry.Description.Length > MaxDescriptionLength
+                        ? entry.Description.Substring(0, MaxDescriptionLength)
+                        : entry.Description,
                     Tags = entry.Tags,
                     CreatedAt = entry.CreatedAt,
                     UpdatedAt = entry.UpdatedAt,

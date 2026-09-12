@@ -122,7 +122,11 @@ export interface DialogShellProps {
   titleMeta?: ReactNode;
   /** Width on the five-step scale above. Default md (440). */
   size?: DialogSize;
-  /** Extra classes on the card — height caps (`max-h-[90vh]`, a vh-tracking height). */
+  /** Extra classes on the card — height caps. **Divide every viewport unit by `--ui-zoom`**:
+   *  `max-h-[calc(90vh/var(--ui-zoom))]`, never a raw `90vh`. `zoom` on <html> scales what is
+   *  PAINTED while `vh` keeps resolving against the unzoomed viewport, so a raw 90vh paints as
+   *  ~104vh at 115 % and the footer lands below the window edge. This example used to be the raw
+   *  form, which is where the copies of the bug kept coming from. */
   cardClassName?: string;
   /** Stacking layer. Default z-50; a dialog opened from INSIDE another layer (the sheet is
    *  z-70, the Insert Text shell z-50) passes a higher one so it paints above its opener. */
