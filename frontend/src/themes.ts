@@ -1715,7 +1715,18 @@ export function applyThemeConfig(colors: ThemeColors, uiSettings: ThemeUISetting
   // surface points the four levels at the -light set (index.css). Grouped by bg-surface HSL
   // lightness >= 55 — the same rule the 37-theme contrast measurement used (B6, 2026-09-05) —
   // so a custom theme lands in the right set too. Dark: nothing to write, the defaults hold.
-  if (hexToHSL(colors['bg-surface']).l >= 55) {
+  //
+  // Through toHex, because hexToRGB parses the string as hex digits and returns NaN for anything
+  // else: a custom theme whose bg-surface is `rgb(250,250,250)` or `#fff` made `NaN >= 55` false
+  // and took the DARK rails onto a white surface — the ~2:1 contrast B6 measured and fixed. What
+  // toHex cannot read (hsl(), a named colour, color-mix()) still lands in the dark set, which is
+  // the honest default without a real colour parser, but now by decision rather than by NaN.
+  //
+  // Deliberately NOT isLightColor: HSL lightness and relative luminance are different
+  // classifiers (#00ff00 is 50 by the first, 0.715 by the second), and the 37-theme measurement
+  // grouped by the first — swapping would re-open it.
+  const surface = colors['bg-surface'];
+  if (isParsableColor(surface) && hexToHSL(toHex(surface)).l >= 55) {
     for (let n = 1; n <= 4; n++) parts.push(`--color-block-${n}: var(--color-block-${n}-light);`);
   }
   // Layout
@@ -1872,9 +1883,11 @@ export function applyThemeConfig(colors: ThemeColors, uiSettings: ThemeUISetting
   // If-Time condition). Derive it from the background luminance so the glyphs track
   // whatever preset is active: dark bg → light glyphs, light bg → dark glyphs. Set after
   // the cssText batch (which replaces the whole inline style), same as zoom above.
-  let bgLum = 0;
-  try { bgLum = relativeLuminance(colors['bg-base']); } catch { bgLum = 0; }
-  root.style.colorScheme = bgLum < 0.5 ? 'dark' : 'light';
+  // isLightColor, not relativeLuminance on the raw string: that one also reads the value as hex
+  // digits, so an `rgba(18,18,18,1)` background produced NaN, `NaN < 0.5` is false, and a DARK
+  // theme was told to render light native glyphs — dark-on-dark. The `=== true` keeps the app's
+  // own default on the unreadable cases (dark), instead of today's accidental light.
+  root.style.colorScheme = isLightColor(colors['bg-base']) === true ? 'light' : 'dark';
 
   // Animations toggle — exposes a single data-attribute the CSS can hook into
   // (e.g. `html[data-animations="true"] .some-thing { transition: ... }`).
@@ -1976,10 +1989,30 @@ export function measurePaintedContrast(
 // ── Import/Export ──
 
 // Accepts only strings safe to interpolate into a CSS value: hex / rgb()/rgba() / hsl()/hsla()
-// / named colors. Rejects characters that could break out of the declaration (`;` `{` `}` `:`),
-// which is the CSS-injection vector when an imported theme's color flows into root.style.cssText.
+// / named colors / color-mix() / oklch(). Two gates, and both are needed.
+//
+// The character set rejects what could break OUT of the declaration (`;` `{` `}` `:`) — the
+// CSS-injection vector when an imported theme's color reaches root.style.cssText, and also what
+// protects the `color-mix(in srgb, ${hue} …)` interpolations elsewhere in this file.
+//
+// The grammar gate rejects what is a legal CSS VALUE but not a COLOR. `url(//tracker/x.png)`
+// passed the character set, and a theme carrying it made the app fetch a remote image on every
+// boot and paint it as the window background — an IP beacon for whoever shared the theme, from a
+// page that has no CSP. Asking the engine (`CSS.supports('color', v)`) instead of hand-writing a
+// grammar keeps rgb/hsl/named/color-mix/oklch working and needs no maintenance when CSS grows new
+// syntax.
+//
+// The fallback matters: this module is imported by NODE, in tools/gen-boot-mirror.mjs, where
+// there is no `CSS` object. Without the guard the build would throw.
 function isSafeCssColor(v: unknown): boolean {
-  return typeof v === 'string' && v.length > 0 && v.length <= 64 && /^[#0-9a-zA-Z.,%()/\s-]+$/.test(v);
+  if (typeof v !== 'string' || v.length === 0 || v.length > 64) return false;
+  if (!/^[#0-9a-zA-Z.,%()/\s-]+$/.test(v)) return false;
+  if (typeof CSS !== 'undefined' && typeof CSS.supports === 'function') return CSS.supports('color', v);
+  // Node (the boot-mirror generator): accept the shapes the generator can actually emit and
+  // reject every function call it cannot vet.
+  return /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(v)
+    || /^(?:rgb|hsl)a?\([^()]*\)$/.test(v)
+    || /^[a-zA-Z]+$/.test(v);
 }
 
 // Font-family token interpolated as `'${fontMono}', ...` — letters/digits/space/_/- only, so a

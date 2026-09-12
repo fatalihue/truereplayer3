@@ -29,7 +29,7 @@ const themesPath = path.join(here, '..', 'src', 'themes.ts');
 // Node imports the .ts directly (type stripping). themes.ts has no imports of its own, so there
 // is nothing to resolve — if this ever throws, the build SHOULD fail rather than ship a stale
 // mirror silently, which is the whole point of the file.
-const { themes, DEFAULT_THEME_ID, DEFAULT_UI_SETTINGS, REMOVED_THEME_FALLBACKS } =
+const { themes, DEFAULT_THEME_ID, DEFAULT_UI_SETTINGS, REMOVED_THEME_FALLBACKS, THEME_COLOR_KEYS } =
   await import(pathToFileURL(themesPath).href);
 
 const BEGIN = '    <!-- BEGIN GENERATED THEME BOOT MIRROR — edit tools/gen-boot-mirror.mjs, not this -->';
@@ -39,6 +39,7 @@ const q = (s) => `'${String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
 const obj = (o) => `{${Object.entries(o).map(([k, v]) => `${q(k)}:${q(v)}`).join(',')}}`;
 
 const presets = themes.map((t) => `          ${q(t.id)}:${obj(t.colors)}`).join(',\n');
+const colorKeys = `[${THEME_COLOR_KEYS.map(q).join(',')}]`;
 const ui = DEFAULT_UI_SETTINGS;
 
 const block = `${BEGIN}
@@ -61,7 +62,29 @@ ${presets}
         var moved = ${obj(REMOVED_THEME_FALLBACKS)};
         var saved = null;
         try { saved = localStorage.getItem('truereplay-theme'); } catch(e) {}
-        var resolve = function(id) { return presets[id] || presets[moved[id]] || null; };
+        // The colour keys the app knows. Everything below iterates THIS, never the keys of a
+        // record that came out of localStorage — the same rule loadCustomPresets follows.
+        var KEYS = ${colorKeys};
+        // The user's own presets, which live in a SECOND storage key. Reading only the 37
+        // built-ins meant a custom base resolved to null and every launch painted the default
+        // dark palette before React swapped to the user's light theme — the exact flash this
+        // block exists to prevent.
+        var customs = {};
+        try {
+          var rawCustom = localStorage.getItem('truereplay-custom-presets');
+          if (rawCustom) {
+            var list = JSON.parse(rawCustom);
+            if (list && list.length) {
+              for (var ci = 0; ci < list.length; ci++) {
+                var entry = list[ci];
+                if (entry && entry.id && entry.colors) customs[entry.id] = entry.colors;
+              }
+            }
+          }
+        } catch(e) {}
+        // Custom FIRST, then built-in, then the retired-id remap — the precedence
+        // resolveThemeColors documents as "user wins".
+        var resolve = function(id) { return customs[id] || presets[id] || presets[moved[id]] || null; };
         var colors = presets[${q(DEFAULT_THEME_ID)}];
         var ui = { fontSize: ${ui.fontSize}, borderRadius: ${ui.borderRadius}, rowHeight: ${ui.rowHeight}, zoom: ${ui.zoom} };
         if (saved) {
@@ -71,10 +94,13 @@ ${presets}
             // config had long moved past it, so the whole block was dead and every launch
             // painted the hardcoded default no matter which theme the user picked.
             var base = cfg && cfg.version >= 1 && cfg.baseThemeId ? resolve(cfg.baseThemeId) : null;
-            if (base) {
-              colors = {};
-              for (var k in base) colors[k] = base[k];
-              if (cfg.colorOverrides) { for (var k2 in cfg.colorOverrides) colors[k2] = cfg.colorOverrides[k2]; }
+            // The base may be null (an orphaned id); the overrides still apply on top of the
+            // default, which is what resolveThemeColors does.
+            var src = base || colors;
+            colors = {};
+            for (var ki = 0; ki < KEYS.length; ki++) { var kk = KEYS[ki]; if (src[kk]) colors[kk] = src[kk]; }
+            if (cfg && cfg.colorOverrides) {
+              for (var kj = 0; kj < KEYS.length; kj++) { var ko = KEYS[kj]; if (cfg.colorOverrides[ko]) colors[ko] = cfg.colorOverrides[ko]; }
             }
             if (cfg && cfg.uiSettings) {
               if (typeof cfg.uiSettings.fontSize === 'number') ui.fontSize = cfg.uiSettings.fontSize;

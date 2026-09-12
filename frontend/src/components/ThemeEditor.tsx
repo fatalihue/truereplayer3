@@ -26,6 +26,7 @@ import {
 import type { ThemeColors, ExportedTheme, ThemeTag, CustomThemePreset, ThemeUISettings, ThemeConfig } from '../themes';
 import { useTheme } from '../state/ThemeContext';
 import { useTt, useLanguage, DEFAULT_LANGUAGE } from '../state/LanguageContext';
+import { useToast } from '../state/ToastContext';
 
 interface ThemeEditorProps {
   onClose: () => void;
@@ -320,6 +321,7 @@ const DENSITY_PRESETS = [
 
 export function ThemeEditor({ onClose }: ThemeEditorProps) {
   const tt = useTt();
+  const { showToast } = useToast();
   const {
     config, resolvedColors, customPresets, selectPreset, replaceConfig,
     setColorOverride, clearColorOverride, clearAllOverrides,
@@ -381,8 +383,20 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   const dirtySinceOpen = snap.baseThemeId !== config.baseThemeId
     || !sameColors(snap.colorOverrides, config.colorOverrides)
     || (Object.keys(DEFAULT_UI_SETTINGS) as (keyof ThemeUISettings)[])
-         .some(k => snap.uiSettings[k] !== config.uiSettings[k]);
-  const revertToOpenState = useCallback(() => { replaceConfig(openSnapshot.current!); }, [replaceConfig]);
+         .some(k => k !== 'matchSystemTheme' && snap.uiSettings[k] !== config.uiSettings[k])
+    // matchSystemTheme is the one field a restore cannot bring back: replaceConfig forces it OFF
+    // on purpose. Comparing it like the others left Revert lit FOREVER for anyone who opened the
+    // editor with the Windows follower on — the second click produced the same state, which is
+    // exactly the stuck-button symptom the comment above says was eliminated. It still counts as
+    // dirty in the one direction a restore CAN undo: turned on since the snapshot.
+    || (config.uiSettings.matchSystemTheme && !snap.uiSettings.matchSystemTheme);
+  const revertToOpenState = useCallback(() => {
+    const wasFollowing = openSnapshot.current!.uiSettings.matchSystemTheme;
+    replaceConfig(openSnapshot.current!);
+    // Say what Revert could not restore, rather than leaving the user to find it in the Interface
+    // tab. tt() in a toast is what the convention allows.
+    if (wasFollowing) showToast(tt('Match Windows theme was turned off', 'Seguir o tema do Windows foi desligado'), 'info');
+  }, [replaceConfig, showToast, tt]);
 
   const hasOverrides = Object.keys(config.colorOverrides).length > 0;
   // Same lookup order as resolveThemeColors, and for the same reason: a custom preset is not in
