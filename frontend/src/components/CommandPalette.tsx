@@ -52,7 +52,7 @@ interface CommandGroup {
 const MANUAL_URL = 'https://fatalihue.github.io/TrueReplayer-releases/manual.html';
 
 export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
-  const { activeProfile, settings, actions } = useAppState();
+  const { activeProfile, settings, actions, buttonStates } = useAppState();
   const { send } = useBridge();
   const selectionRef = useSelectionRef();
   const [query, setQuery] = useState('');
@@ -76,10 +76,19 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
 
   // Build command groups
   const groups: CommandGroup[] = useMemo(() => {
-    // Clicker-mode gate — mirrors the Toolbar's insertsDisabled story: these
-    // entries mutate the macro list, which is invisible in Clicker mode.
+    // Gate for the entries that mutate the macro list. This claimed to mirror the Toolbar's
+    // insertsDisabled and did not: the Toolbar reads recordingActive || replayActive || isClicker,
+    // this read only the mode. The palette is the one surface with no run lockout of its own —
+    // Ctrl+K opens DURING a run (its branch runs before App's runActive lockout), while the grid's
+    // context menu and Ctrl+V are both already dead there.
+    // Gating the ITEMS, not the door, is deliberate twice over: the Enter route closes with them
+    // (the palette's Enter branch checks !item.disabled), and the door stays open for Run Report,
+    // Live Variables and Reload UI — which are exactly what someone wants DURING a run.
     const isClicker = settings.useCursorClick;
+    const runActive = buttonStates.recordingActive || buttonStates.replayActive;
     const clickerHint = 'Macro mode only';
+    const runHint = 'Not while a run is active';
+    const gate = (c: boolean, r: boolean) => ({ disabled: c || r, disabledHint: c ? clickerHint : runHint });
 
     return [
       {
@@ -91,6 +100,13 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
         items: [
           {
             id: 'copyactions', label: 'Copy as Table',
+            // Deliberately UNGATED, and the reasoning is worth keeping because it nearly went the
+            // other way. This writes the SYSTEM clipboard (Copy Diagnostics does too), and the
+            // engine reads that clipboard mid-run, so copying during a run can change what a
+            // running macro pastes. That argument proves too much: it applies identically to Copy
+            // Diagnostics, which is the one command a user reaches for WHILE something is going
+            // wrong. Blocking that to protect a clipboard the user owns is the worse trade, so
+            // neither is gated and the two stay consistent.
             keywords: ['tsv', 'export', 'clipboard', 'spreadsheet'],
             icon: <Table2 size={14} className="text-text-secondary" />,
             onAction: () => { send({ type: 'actions:copy', payload: {} }); onClose(); },
@@ -99,20 +115,20 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             // Ctrl+V works but has no visible control anywhere, so this is the only
             // discoverable route.
             id: 'pasteactions', label: 'Paste Actions',
-            disabled: isClicker, disabledHint: clickerHint,
+            ...gate(isClicker, runActive),
             icon: <ClipboardPaste size={14} className="text-text-secondary" />,
             onAction: () => { send({ type: 'actions:paste', payload: { insertIndex: computeInsertIndex() } }); onClose(); },
           },
           {
             id: 'convertrelative', label: 'Convert Coordinates to Relative',
-            disabled: isClicker, disabledHint: clickerHint,
+            ...gate(isClicker, runActive),
             keywords: ['window relative', 'rebase', 'coordinates'],
             icon: <Replace size={14} className="text-text-secondary" />,
             onAction: () => { send({ type: 'profile:convertCoordinates', payload: { direction: 'toRelative' } }); onClose(); },
           },
           {
             id: 'convertabsolute', label: 'Convert Coordinates to Absolute',
-            disabled: isClicker, disabledHint: clickerHint,
+            ...gate(isClicker, runActive),
             keywords: ['screen coordinates', 'rebase'],
             icon: <Replace size={14} className="text-text-secondary" />,
             onAction: () => { send({ type: 'profile:convertCoordinates', payload: { direction: 'toAbsolute' } }); onClose(); },
@@ -121,14 +137,14 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             // Convert the whole profile between paired (Down/Up) and combined (Keystroke/Click)
             // representations — the on-demand counterpart to the Combined Actions toggle.
             id: 'converttocombined', label: 'Convert Actions to Combined',
-            disabled: isClicker, disabledHint: clickerHint,
+            ...gate(isClicker, runActive),
             keywords: ['merge', 'keystroke', 'click'],
             icon: <Combine size={14} className="text-text-secondary" />,
             onAction: () => { send({ type: 'actions:convertMode', payload: { direction: 'toCombined' } }); onClose(); },
           },
           {
             id: 'converttopaired', label: 'Convert Actions to Paired',
-            disabled: isClicker, disabledHint: clickerHint,
+            ...gate(isClicker, runActive),
             keywords: ['split', 'down up', 'separate'],
             icon: <Split size={14} className="text-text-secondary" />,
             onAction: () => { send({ type: 'actions:convertMode', payload: { direction: 'toPaired' } }); onClose(); },
@@ -152,6 +168,11 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             // it preserves the current mode so a reset doesn't bounce a Clicker user back to Macro,
             // restores real Clicker defaults, and keeps the user's presets. Clearing actions is one
             // of its effects, not its purpose. This palette entry is the only door to it.
+            // runActive IS the right gate, though: it clears the action list and the undo history
+            // out from under a running engine, and Ctrl+Z is refused while the run lives — so there
+            // would be no way back. It also covers the Clicker user, whose click loop sets the same
+            // replay flag, without ever refusing the reset with the app sitting idle.
+            disabled: runActive, disabledHint: runHint,
             keywords: ['clear', 'start over', 'blank'],
             icon: <RotateCcw size={14} className="text-text-secondary" />,
             onAction: () => { send({ type: 'profile:reset', payload: {} }); onClose(); },
@@ -245,6 +266,9 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   }, [
     activeProfile, send, onClose, computeInsertIndex,
     settings.useCursorClick,
+    // The two BOOLEAN fields, never the buttonStates object: it is republished on several
+    // unrelated events, and depending on the object would rebuild every group each time.
+    buttonStates.recordingActive, buttonStates.replayActive,
   ]);
 
   // Filter

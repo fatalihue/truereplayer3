@@ -117,6 +117,28 @@ export function Toolbar(_props: ToolbarProps) {
   // tells the same story for Save/Load.)
   const isClicker = settings.useCursorClick;
   const insertsDisabled = buttonStates.recordingActive || buttonStates.replayActive || isClicker;
+  // One refusal for the five insert dialogs, which stay PARKED instead of closing (they hold typed
+  // work, and the mode flip is a global hotkey that can land mid-sentence). Called from the top of
+  // each onConfirm rather than driven by `disabled` on the button: the dialogs document that
+  // Ctrl+Enter routes through onCardKeyDown and never consults `disabled`, so a button gate is
+  // necessary but not sufficient — the refusal has to live where the send does.
+  // The reason is split because the gate has three terms and one sentence cannot serve them all:
+  // telling someone mid-RECORDING to "switch to Macro" is worse advice than saying nothing.
+  // Throttled because error toasts last eight seconds and three Ctrl+Enters would stack three.
+  const lastRefusalRef = useRef(0);
+  const refuseInsert = () => {
+    if (!insertsDisabled) return false;
+    const now = Date.now();
+    if (now - lastRefusalRef.current > 2000) {
+      lastRefusalRef.current = now;
+      showToast(isClicker
+        ? tt('The action list is unavailable in Clicker mode — switch to Macro to add actions.',
+             'A lista de ações está indisponível no modo Clicker — mude para Macro para adicionar ações.')
+        : tt('The action list is locked while a run is active.',
+             'A lista de ações está travada enquanto um run está ativo.'), 'error');
+    }
+    return true;
+  };
   // Wraps each button's own bilingual hint: in Clicker mode the reason the
   // button is off matters more than what it would insert.
   const clickerTip = (en: string, ptBr: string) =>
@@ -316,16 +338,39 @@ export function Toolbar(_props: ToolbarProps) {
   useDismissOnOutside(showAssertMenu, assertMenuRef, setShowAssertMenu);
   useDismissOnOutside(showLoopMenu, loopMenuRef, setShowLoopMenu);
 
-  // Close the Clear-All confirm if a run starts (or the list empties) while it's
-  // open — runs are usually started by global hotkeys, which produce no mousedown,
-  // so the outside-click dismiss never fires and the trigger's disabled gate only
-  // guards OPENING the popover, not one that's already up.
+  // Belt to the braces of `&& !insertsDisabled` on each menu's render: that guard is what actually
+  // CLOSES the race, because a render-phase condition lands in the DOM during the mutation phase,
+  // before paint. An effect cannot do that job — the run/mode state arrives on the WebView2 message
+  // handler, which is not a React event, so its commit skips the synchronous passive-effect flush
+  // and the effect runs in a later task. There is a painted frame in between, and a click in that
+  // frame would have reached a live menu item (none of them carry `disabled`). The effect stays for
+  // the state: without it the flag would still say "open" when the mode flips back.
+  //
+  // Closes every overlay that holds NOTHING the user typed, whenever the grid stops accepting
+  // writes — a run starting, or the mode flipping to Clicker. All three reasons are already
+  // insertsDisabled, so they share one condition instead of drifting apart.
+  // Why an effect at all: these arrive by GLOBAL HOTKEY (the replay key, ScrollLock) or from the
+  // tray, none of which produce a mousedown, so useDismissOnOutside never fires — and the
+  // trigger's disabled gate only guards OPENING a popover, not one that is already up.
+  // The five INSERT DIALOGS are deliberately NOT in this list: they hold typed work (SendText
+  // holds a whole editor), and the flip is a global hotkey that can land mid-sentence. They stay
+  // parked and their onConfirm refuses instead — see the funnel at each mount below.
   useEffect(() => {
-    if (!showClearConfirm) return;
-    if (buttonStates.recordingActive || buttonStates.replayActive || actions.length === 0) {
-      setShowClearConfirm(false);
-    }
-  }, [showClearConfirm, buttonStates.recordingActive, buttonStates.replayActive, actions.length]);
+    if (!insertsDisabled) return;
+    setShowBrowserMenu(false);
+    setShowConditionalMenu(false);
+    setShowWaitMenu(false);
+    setShowAssertMenu(false);
+    setShowLoopMenu(false);
+    setShowClearConfirm(false);
+  }, [insertsDisabled]);
+
+  // Clear All also closes when the list empties — there is nothing left to clear. Separate from
+  // the effect above on purpose: that one is about the grid refusing writes, this one is about
+  // this particular popover losing its subject. Folding them would hide both reasons.
+  useEffect(() => {
+    if (showClearConfirm && actions.length === 0) setShowClearConfirm(false);
+  }, [showClearConfirm, actions.length]);
 
   // Same outside-press + Escape dismiss for the Clear All confirm popover. (The
   // effect above covers the case the pointer can't: a run started by a global
@@ -642,7 +687,7 @@ export function Toolbar(_props: ToolbarProps) {
               <ScanEye size={16} />
               <ChevronDown size={10} className="opacity-80" />
             </button>
-            {showWaitMenu && (
+            {showWaitMenu && !insertsDisabled && (
               <div ref={waitFlyout.ref} className={`absolute w-56 menu-surface z-50 py-1 ${waitFlyout.flipX ? 'right-0' : 'left-0'} ${waitFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                 <div className="px-3 py-1 label-micro text-text-tertiary">
                   Insert Wait
@@ -727,7 +772,7 @@ export function Toolbar(_props: ToolbarProps) {
               <GitBranch size={16} />
               <ChevronDown size={10} className="opacity-80" />
             </button>
-            {showConditionalMenu && (
+            {showConditionalMenu && !insertsDisabled && (
               <div ref={conditionalFlyout.ref} className={`absolute w-56 menu-surface z-50 py-1 ${conditionalFlyout.flipX ? 'right-0' : 'left-0'} ${conditionalFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                 <div className="px-3 py-1 label-micro text-text-tertiary">
                   Insert Conditional
@@ -840,7 +885,7 @@ export function Toolbar(_props: ToolbarProps) {
               <IterationCw size={16} />
               <ChevronDown size={10} className="opacity-80" />
             </button>
-            {showLoopMenu && (() => {
+            {showLoopMenu && !insertsDisabled && (() => {
               // Selection is stable while the menu is open (clicking a row dismisses it),
               // so the insert point — and the Break/Next gate — is computed once per open.
               const loopSel = selectionRef.current;
@@ -934,7 +979,7 @@ export function Toolbar(_props: ToolbarProps) {
               <ShieldCheck size={16} />
               <ChevronDown size={10} className="opacity-80" />
             </button>
-            {showAssertMenu && (
+            {showAssertMenu && !insertsDisabled && (
               <div ref={assertFlyout.ref} className={`absolute w-56 menu-surface z-50 py-1 ${assertFlyout.flipX ? 'right-0' : 'left-0'} ${assertFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                 <div className="px-3 py-1 label-micro text-text-tertiary">
                   Insert Assert — must be true
@@ -1000,7 +1045,7 @@ export function Toolbar(_props: ToolbarProps) {
               <Globe size={16} />
               <ChevronDown size={10} className="opacity-80" />
             </button>
-            {showBrowserMenu && (
+            {showBrowserMenu && !insertsDisabled && (
               <div ref={browserFlyout.ref} className={`absolute w-56 menu-surface z-50 py-1 ${browserFlyout.flipX ? 'right-0' : 'left-0'} ${browserFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                 {/* Header pill matches the sibling Wait / Conditional dropdowns so the
                     three menus read as one family. Width also bumped 44 → 56 for the
@@ -1077,13 +1122,16 @@ export function Toolbar(_props: ToolbarProps) {
               Clicker mode. That was wrong: the table only feeds {row:column} tokens,
               which only macro rows read, and Clicker mode has no profile at all (see the
               Ctrl+S toast above). Opening it there edits data nothing can consume, so it
-              takes the same gate as every other macro-facing control. The toolbar is its
+              takes the same gate as every other macro-facing control — insertsDisabled,
+              which is the RUN as well as the mode. That claim was only half true while
+              this read isClicker alone: the panel's Save sends data:save, and that is the
+              very table a ForEachRow already in flight is iterating. The toolbar is its
               ONLY entry point — it is deliberately absent from the command palette — so
               this gate is the whole story. */}
           <button
             tabIndex={-1}
             onClick={() => window.dispatchEvent(new CustomEvent('cmd:dataeditor'))}
-            disabled={isClicker}
+            disabled={insertsDisabled}
             className={iconButtonClass('md')}
             data-tip={clickerTip('Data Loop', 'Data Loop')}
           >
@@ -1159,6 +1207,7 @@ export function Toolbar(_props: ToolbarProps) {
             // No initialMethod: the add path takes the dialog's 'paste' default, so a brand-new
             // row is byte-identical on disk to one authored before this feature.
             onConfirm={(r) => {
+              if (refuseInsert()) return;
               const sel = selectionRef.current;
               const insertIndex = sel.size > 0 ? Math.min(...sel) : undefined;
               send({
@@ -1185,6 +1234,7 @@ export function Toolbar(_props: ToolbarProps) {
           mode="add"
           excludeProfileName={activeProfile ?? undefined}
           onConfirm={(profileName, repeatCount, runOverData) => {
+            if (refuseInsert()) return;
             const sel = selectionRef.current;
             const insertIndex = sel.size > 0 ? Math.min(...sel) : undefined;
             // runOverData must ride along: dropping it here silently discarded the
@@ -1200,6 +1250,7 @@ export function Toolbar(_props: ToolbarProps) {
       {showNavigateDialog && (
         <NavigateDialog
           onConfirm={(url, newTab) => {
+            if (refuseInsert()) return;
             const sel = selectionRef.current;
             const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
             send({ type: 'actions:addBrowserAction', payload: { actionType: 'BrowserNavigate', selector: url, newTab, insertIndex } });
@@ -1212,6 +1263,7 @@ export function Toolbar(_props: ToolbarProps) {
       {showPauseDialog && (
         <PauseDialog
           onConfirm={(key, timeoutMs) => {
+            if (refuseInsert()) return;
             send({
               type: 'actions:insertPause',
               payload: { key, timeoutMs: Math.max(0, Math.round(timeoutMs)), insertIndex: pauseDialogInsertIndex.current },
@@ -1230,6 +1282,7 @@ export function Toolbar(_props: ToolbarProps) {
       {showKeystrokeCapture && (
         <KeystrokeCaptureDialog
           onConfirm={(result) => {
+            if (refuseInsert()) return;
             const insertIndex = keystrokeCaptureInsertIndex.current;
             if (result.actionType === 'HoldKey') {
               send({
