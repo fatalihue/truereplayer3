@@ -1974,6 +1974,26 @@ namespace TrueReplayer
             pendingFile = RemapService.PendingFileName,
         };
 
+        /// <summary>
+        /// Drops undo and redo, for the moments when the action list changes IDENTITY rather than
+        /// content — another profile applied, or the selection dropped to "No Profile".
+        ///
+        /// Nothing used to clear them, and they are per-bridge, so the history outlived the list it
+        /// described: edit profile A, switch to B, press Ctrl+Z out of habit, and B's grid was
+        /// replaced by A's actions with HasUnsavedChanges set — a Save then wrote A into B's file.
+        /// The stacks are not restored on the way back, so the toolbar's Undo was offering to
+        /// "undo" something that had never happened in the profile on screen.
+        ///
+        /// RestoreActionsFromSnapshot, ReplaceActions and Clear All are deliberately NOT callers:
+        /// there the SAME profile's list changes content, which is exactly what undo is for.
+        /// No button push here either — every caller pushes button states straight after.
+        /// </summary>
+        private void ClearEditHistory()
+        {
+            _undoStack.Clear();
+            _redoStack.Clear();
+        }
+
         private void PushUndoState()
         {
             // No .ToList(): the serializer takes any IEnumerable and emits the same JSON array, so
@@ -2679,6 +2699,7 @@ namespace TrueReplayer
             // epoch is only ever compared for equality, so over-invalidating fails CLOSED (an
             // announced abort) while under-invalidating is what corrupts data.
             Services.ProfileEpoch.Bump("action list replaced (profile applied)");
+            ClearEditHistory();
             actions.CollectionChanged -= OnActionsChanged;
             try
             {
@@ -7157,6 +7178,7 @@ namespace TrueReplayer
                 CurrentProfileName = "No Profile";
                 CurrentProfilePath = null;
                 HasUnsavedChanges = false;
+                ClearEditHistory(); // the list is losing its identity, not its contents
                 actions.Clear();
                 profileController.UpdateProfileColors(null);
                 // Deselect lands on "No Profile", which switches the Loops row back to editing
@@ -8068,7 +8090,12 @@ namespace TrueReplayer
                     UserProfile.Current.BringToFocus = bringToFocus;
                     UserProfile.Current.RestorePosition = restorePosition;
                     UserProfile.Current.RestoreSize = restoreSize;
-                    HasUnsavedChanges = false;
+                    // No HasUnsavedChanges = false here. This handler saves a copy loaded from
+                    // DISK with only the window fields changed, and none of those assignments go
+                    // through OnActionsChanged — so it never creates dirt of its own. The flag is
+                    // global and covers the GRID, which this path does not write: clearing it
+                    // discarded somebody else's unsaved actions, taking the close-time guard
+                    // (MainWindow.xaml.cs) and the automation daemon's SkippedDirty gate with it.
                 }
                 await profileController.RefreshProfileListAsync(true);
                 InputHookManager.RegisterProfileWindowTargets(profileController.GetProfileWindowTargets(), profileController.GetBringToFocusProfiles());

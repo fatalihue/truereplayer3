@@ -363,6 +363,24 @@ namespace TrueReplayer
             return 0;
         }
 
+        /// <summary>
+        /// Is the user's own finger holding this target's button, as far as anything downstream is
+        /// concerned? _physicalMouseDowns is written at the very top of the mouse hook, above every
+        /// gate, so it also records an X-button DOWN that the hook goes on to SWALLOW — a side
+        /// button that is remapped, or suppressed by a capture. Neither the OS nor any app ever saw
+        /// that press, so treating it as "already held" made the caller skip an injection that
+        /// nothing else was going to perform: the target stayed up while a pairing believed it was
+        /// down. Only a press that actually reached the system counts.
+        /// </summary>
+        private static bool AppHoldsMouseButton(RemapTarget t)
+        {
+            int vk = MouseTargetVk(t);
+            return vk != 0
+                && _physicalMouseDowns.Contains(vk)
+                && !_swallowedXDowns.Contains(vk)
+                && !_captureSwallowedXDowns.Contains(vk);
+        }
+
         // One entry point per kind. A wheel target has no "up": the notch IS the whole event.
         private static void InjectRemapped(RemapTarget t, bool down)
         {
@@ -497,7 +515,26 @@ namespace TrueReplayer
             bool weInjectedTheDown = _remapInjectedDowns.Remove(fromVk);
             // Nothing outstanding: a swallowed key, or a wheel notch that was complete on its own.
             if (target.Kind == RemapTargetKind.Disable || target.Kind == RemapTargetKind.Wheel) return;
-            if (AnotherPairingHolds(target)) return;   // another FROM still holds this TO
+            if (AnotherPairingHolds(target))
+            {
+                // The refcount says someone else still holds the TO, so this close does not
+                // release it — but the OBLIGATION to release has to travel with the refcount. A
+                // pairing can exist WITHOUT the mark: a mouse target whose injection was skipped
+                // because the user's own finger was on the button, or a key whose down a hotstring
+                // consumed. When the marked pairing was the one closing, the down stayed on the
+                // wire with nobody left holding a receipt for it, and the last close returned
+                // without releasing: the button — Left, most of the time — stayed pressed for the
+                // whole system until the user clicked it physically. Hand the mark to a pairing
+                // that remains, and the last one out still owes the UP.
+                if (weInjectedTheDown)
+                {
+                    foreach (var kv in _activeRemapDowns)   // the one closing is already gone
+                    {
+                        if (kv.Value == target) { _remapInjectedDowns.Add(kv.Key); break; }
+                    }
+                }
+                return;
+            }
             if (target.Kind == RemapTargetKind.Mouse)
             {
                 // Mouse buttons are not part of the chord state, so there is no mirror to settle.
@@ -1751,7 +1788,7 @@ namespace TrueReplayer
                                             // click). The injected event is LLMHF_INJECTED and the
                                             // injected-gate above passes it to the app untouched.
                                             // Same physical-hold guard as the keyboard branch.
-                                            if (!_physicalMouseDowns.Contains(MouseTargetVk(xTarget)))
+                                            if (!AppHoldsMouseButton(xTarget))
                                             {
                                                 InjectRemapped(xTarget, down: true);
                                                 _remapInjectedDowns.Add(xVk);
@@ -2786,7 +2823,7 @@ namespace TrueReplayer
                                     // and ReleaseActiveRemapDowns skip that UP — the same
                                     // fail-safe asymmetry mirrorWasOurs gives the key path,
                                     // decided when the pairing opens.
-                                    if (!_physicalMouseDowns.Contains(MouseTargetVk(target)))
+                                    if (!AppHoldsMouseButton(target))
                                     {
                                         InjectRemapped(target, down: true);
                                         _remapInjectedDowns.Add(vkCode);

@@ -2806,11 +2806,19 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
 
       {/* Delete Confirm Dialog */}
       {showDeleteConfirm && (
-        <DialogShell icon={<Trash2 size={14} style={{ color: 'var(--color-recording-fg)' }} />} title="Delete Profile" size="sm" onClose={() => setShowDeleteConfirm(null)} onCardKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); confirmDelete(); } }}
+        <DialogShell icon={<Trash2 size={14} style={{ color: 'var(--color-recording-fg)' }} />} title="Delete Profile" size="sm" onClose={() => setShowDeleteConfirm(null)} onCardKeyDown={(e) => { if (e.key === 'Enter') e.stopPropagation(); }}
           /* Cancel takes the initial focus: deleting a profile is irreversible (the file and the
              image directory go, with no undo toast), so the destructive action must never be what
              a reflexive Enter runs. The shell already refuses to read Enter-on-a-button as a
-             dialog shortcut; this makes the safe button the one that Enter lands on. */
+             dialog shortcut; this makes the safe button the one that Enter lands on.
+
+             Enter is CONTAINED here, never acted on. A dialog-level Enter rule survived the shell
+             guard through the one path it cannot see: the card itself is tabIndex={-1}, so a click
+             anywhere that is not a button — the sentence naming the profile, the padding around it
+             — moves the focus to the card, and from there e.target is a div and the guard does not
+             match. Reading the name before confirming is the most natural thing to do in this
+             dialog, and it deleted the profile. Confirmation is the focused button's own native
+             activation, which is what the guard already assumes. */
           footer={<DialogFooter danger secondary={{ label: 'Cancel', onClick: () => setShowDeleteConfirm(null), autoFocus: true }} primary={{ label: 'Delete', onClick: confirmDelete }} />}>
           <div className="p-4 flex flex-col">
             <p className="text-sm text-text-secondary">
@@ -2822,12 +2830,13 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
 
       {/* Remove-confirmation Dialog — gate for the inline ✕ removals (hotkey /
           hotstring / profile target / folder target). Same shape as the delete
-          dialog; Enter confirms, Esc cancels. */}
+          dialog; the focused button confirms, Esc cancels. */}
       {confirmRemoval && (
-        <DialogShell icon={<AlertTriangle size={14} style={{ color: 'var(--color-warning-ink)' }} />} title="Are you sure?" size="sm" onClose={() => setConfirmRemoval(null)} onCardKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); runConfirmedRemoval(); } }}
-          /* Same rule as Delete Profile — "No" holds the focus. This one is recoverable (each
-             removal posts a 10 s Undo toast), but a destructive primary should not be the implicit
-             default either way. */
+        <DialogShell icon={<AlertTriangle size={14} style={{ color: 'var(--color-warning-ink)' }} />} title="Are you sure?" size="sm" onClose={() => setConfirmRemoval(null)} onCardKeyDown={(e) => { if (e.key === 'Enter') e.stopPropagation(); }}
+          /* Same rule as Delete Profile — "No" holds the focus, and Enter is contained rather than
+             acted on (see the note there: a click on the sentence focuses the card and slips past
+             the shell's guard). This one is recoverable (each removal posts a 10 s Undo toast),
+             but a destructive primary should not be the implicit default either way. */
           footer={<DialogFooter danger secondary={{ label: 'No', onClick: () => setConfirmRemoval(null), autoFocus: true }} primary={{ label: 'Yes, remove', onClick: runConfirmedRemoval }} />}>
           <div className="p-4 flex flex-col">
             <p className="text-sm text-text-secondary">
