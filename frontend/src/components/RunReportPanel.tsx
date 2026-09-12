@@ -197,8 +197,11 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
                     <span className="w-7 shrink-0 text-right font-mono text-[10px] text-text-disabled">{s.row}</span>
                     <StatusIcon status={s.status} />
                     <span className="text-text-primary shrink-0">{s.actionType}</span>
+                    {/* data-tip, never a native title= (the house rule), and REVEAL so the tooltip
+                        only appears when the column actually cut the text off — otherwise it just
+                        repeats text the reader can already see. */}
                     {s.detail && (
-                      <span className="font-mono text-[11px] text-text-tertiary truncate min-w-0" title={s.detail}>
+                      <span className="font-mono text-[11px] text-text-tertiary truncate min-w-0" data-tip={s.detail} data-tip-reveal>
                         {s.detail}
                       </span>
                     )}
@@ -216,7 +219,7 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
                       "no element matched" reads completely differently once you can see the run
                       was on a login page. So a failure always names its page. */}
                   {s.tabUrl && (s.status === 'failed' || stats.pages.length > 1) && (
-                    <div className="ml-[52px] mt-0.5 text-[10px] font-mono text-text-tertiary truncate" title={s.tabUrl}>
+                    <div className="ml-[52px] mt-0.5 text-[10px] font-mono text-text-tertiary truncate" data-tip={s.tabUrl} data-tip-reveal>
                       {s.tabUrl}
                     </div>
                   )}

@@ -382,7 +382,13 @@ namespace TrueReplayer.Services
 
                         case "browser:extensionVersion":
                             var extVersion = root.GetProperty("version").GetString() ?? "";
-                            if (!string.IsNullOrEmpty(extVersion) && extVersion != ExpectedExtensionVersion)
+                            // Report the handshake's RESULT, not only the bad branch. Firing solely
+                            // on a mismatch meant the banner had no event that could ever clear it:
+                            // the user reloaded the extension, the new worker handshook at the
+                            // expected version, and silence left the banner on screen still asking
+                            // for a reload it had already been given. The UI compares the two
+                            // versions and decides.
+                            if (!string.IsNullOrEmpty(extVersion))
                             {
                                 ExtensionVersionMismatch?.Invoke(extVersion, ExpectedExtensionVersion);
                             }

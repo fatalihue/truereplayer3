@@ -14,6 +14,7 @@ import { Field } from './sheet/Field';
 import { FieldError } from './common/FieldError';
 import { WindowTargetFields } from './WindowTargetFields';
 import { ImageCropper } from './ImageCropper';
+import { rangeParts, phaseLockRisk } from '../utils/activeHours';
 import type { AutomationEntry, TriggerConfig } from '../bridge/messageTypes';
 
 // Day-pill order matches the backend bitmask convention (Sun = 1<<0, the If-Time one).
@@ -164,57 +165,12 @@ function fmtWhen(iso: string | null): string {
   return `${d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} ${time}`;
 }
 
-/** The range form "HH:mm-HH:mm", or null. One helper because three places now ask the same
- *  question — the summary, the schedule guard and the phase-lock warning — and they must agree
- *  with TriggerService.ParseActiveHours, which is the only opinion that decides behaviour. */
-function rangeParts(timeOfDay: string | null | undefined): { from: string; to: string } | null {
-  const s = (timeOfDay ?? '').trim();
-  const dash = s.indexOf('-');
-  if (dash <= 0 || dash === s.length - 1) return null;
-  const from = s.slice(0, dash).trim();
-  const to = s.slice(dash + 1).trim();
-  return from && to && from !== to ? { from, to } : null;
-}
-
-/** Seconds since midnight, or null when the half is not HH:mm. */
-function clockSeconds(hhmm: string): number | null {
-  const m = /^(d{1,2}):(d{2})$/.exec(hhmm);
-  if (!m) return null;
-  const h = Number(m[1]), min = Number(m[2]);
-  return h < 24 && min < 60 ? h * 3600 + min * 60 : null;
-}
-
-const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
-
 /** The active-hours window, ONLY when it is a range — mirrors TriggerService.ParseActiveHours, whose
  *  remarks explain why a bare time must not count. */
 function activeHours(t: TriggerConfig): string | null {
   if (t.kind === 'schedule') return null;          // there, timeOfDay is the fire time
   const r = rangeParts(t.timeOfDay);
   return r ? `${r.from}–${r.to}` : null;
-}
-
-/**
- * True when NO tick of this interval can ever land inside the window, for some starting phase.
- *
- * The ticks of a period P visit the clock at multiples of gcd(P, 24h): a 24 h interval hits one
- * instant a day, a 12 h interval two. If that spacing is WIDER than the window, a phase exists
- * where every tick misses — and the loop preserves phase when it skips, so the automation stays
- * armed, keeps reporting a next-due time, and never runs. Below the spacing, the pigeonhole
- * guarantees a hit and the pairing is always safe.
- *
- * A warning rather than a Save block: whether it actually locks depends on the arming moment, so
- * refusing the configuration outright would reject pairings that work.
- */
-function phaseLockRisk(t: TriggerConfig): boolean {
-  if (t.kind !== 'interval') return false;
-  const r = rangeParts(t.timeOfDay);
-  if (!r) return false;
-  const start = clockSeconds(r.from);
-  const end = clockSeconds(r.to);
-  if (start == null || end == null) return false;
-  const width = end > start ? end - start : 86400 - start + end;   // wraps midnight
-  return gcd(Math.max(5, t.intervalSeconds), 86400) > width;
 }
 
 function kindSummary(t: TriggerConfig): string {
@@ -663,10 +619,19 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
               // red 10 px text, on every such row (84 px per row, four lines in three colours).
               const armed = !!entry?.trigger.armed;
               const dotColor = entry?.running ? 'var(--color-replay)' : armed ? 'var(--color-warning)' : 'var(--color-text-disabled)';
+              // Only a watcher that HAS a level condition can report one. Interval and schedule
+              // never write ConditionTrue, and neither does ClipboardChanged — which is kind
+              // 'condition' but edge-triggered — so the tooltip used to assert "condition false
+              // now" about a condition that does not exist, reading as "this will not fire" on a
+              // perfectly healthy watcher.
+              const showsCondition = entry?.trigger.kind === 'condition'
+                && entry.trigger.conditionType !== 'ClipboardChanged';
               const dotTip = entry?.running
-                ? (entry.conditionTrue
-                  ? tt('Watching · condition true now', 'Vigiando · condição verdadeira agora')
-                  : tt('Watching · condition false now', 'Vigiando · condição falsa agora'))
+                ? (showsCondition
+                  ? (entry.conditionTrue
+                    ? tt('Watching · condition true now', 'Vigiando · condição verdadeira agora')
+                    : tt('Watching · condition false now', 'Vigiando · condição falsa agora'))
+                  : tt('Watching', 'Vigiando'))
                 : armed
                   ? (!automation.enabled
                     ? tt('Armed · automations paused', 'Armada · automações pausadas')
@@ -720,7 +685,18 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                     )}
                   </div>
                   {/* One meta line: schedule · fires · last · next · result. */}
-                  <div className="mt-0.5 pl-4 text-[11px] text-text-tertiary truncate">
+                  {/* The whole line on hover: it is `truncate` in a 248 px column, so the tail —
+                      which is where the last result lands — is exactly what gets cut. */}
+                  <div
+                    className="mt-0.5 pl-4 text-[11px] text-text-tertiary truncate"
+                    data-tip={[
+                      trig ? kindSummary(trig) : 'not saved yet',
+                      entry && entry.fireCount > 0 ? `${entry.fireCount}× · ${fmtWhen(entry.lastFiredAt)}` : null,
+                      entry?.trigger.armed && entry.running && entry.nextDueAt ? `next ${fmtWhen(entry.nextDueAt)}` : null,
+                      entry?.lastResult && entry.lastResult !== 'fired' ? entry.lastResult : null,
+                    ].filter(Boolean).join(' · ')}
+                    data-tip-reveal
+                  >
                     {trig ? kindSummary(trig) : 'not saved yet'}
                     {entry && entry.fireCount > 0 && ` · ${entry.fireCount}× · ${fmtWhen(entry.lastFiredAt)}`}
                     {entry?.trigger.armed && entry.running && entry.nextDueAt && ` · next ${fmtWhen(entry.nextDueAt)}`}
@@ -791,6 +767,30 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                 <div className={`flex items-center gap-1.5 text-[11px] ${testFireResult.ok ? 'text-accent-light' : 'text-text-tertiary'}`}>
                   {testFireResult.ok ? <Check size={12} /> : <X size={12} />}
                   {testFireResult.text}
+                </div>
+              )}
+
+              {/* Why a watcher that is ARMED is not watching. The daemon writes that reason
+                  into lastResult and nowhere else, and the dot's tooltip points here — but the
+                  editor rendered none of it, so the only place the text ever appeared was the
+                  tail of a truncated 248 px meta line. The tray balloon that also carries it is
+                  once per (profile, reason) and then gone.
+
+                  Gated narrowly on purpose. "Paused" and "profile disabled" have their own
+                  callouts below, and cannotFire already says the same thing when the TS mirror
+                  caught it — repeating either would be noise. Purely informational results
+                  ("outside active hours", "skipped — 12 min late") land in the neutral line
+                  further down instead of being promoted to a warning. */}
+              {automation.enabled && !selectedEntry?.isDisabled && selectedEntry?.trigger.armed
+                && !selectedEntry.running && selectedEntry.lastResult && !cannotFire && (
+                <div className="rounded border px-3 py-2 text-[11px] leading-relaxed"
+                  style={{
+                    color: 'var(--color-warning-ink)',
+                    borderColor: 'color-mix(in srgb, var(--color-warning) 40%, transparent)',
+                    backgroundColor: 'color-mix(in srgb, var(--color-warning) 10%, transparent)',
+                  }}>
+                  {'Armed, but not watching. '}
+                  {selectedEntry.lastResult}
                 </div>
               )}
 

@@ -14,8 +14,18 @@ export function ExtensionUpdateBanner() {
         // Validate before trusting the bridge payload — a malformed message would otherwise
         // render a banner with blank version numbers.
         if (typeof payload?.currentVersion === 'string' && typeof payload?.expectedVersion === 'string') {
-          setOutdated({ current: payload.currentVersion, expected: payload.expectedVersion });
-          setDismissed(false);
+          // The message now carries the RESULT of every handshake, not only the bad ones, so the
+          // banner mirrors the last check instead of latching on the first mismatch and staying
+          // up after the user did exactly what it asked.
+          if (payload.currentVersion === payload.expectedVersion) { setOutdated(null); return; }
+          // Un-dismiss only when the pair actually changed: a reconnect that reports the SAME
+          // mismatch must not bring back a banner the user has closed.
+          setOutdated((prev) => {
+            if (!prev || prev.current !== payload.currentVersion || prev.expected !== payload.expectedVersion) {
+              setDismissed(false);
+            }
+            return { current: payload.currentVersion!, expected: payload.expectedVersion! };
+          });
         }
       }
     });
