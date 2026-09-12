@@ -37,10 +37,24 @@ const ROW_TOKEN_SOURCE = /\{(row|rownext):([^:}]+)(?::[^}]+)?\}/.source;
  * the blob let a token run past the end of its own field: `{id:2,note:"{row:abc",other:"def}"}`
  * invented the column `abc","other"`.
  */
+/**
+ * Serialisations of a document this scan has already read in its authoritative form. `keyHtml` and
+ * `keyMarkdown` are built from the SAME Lexical nodes as `key`, so every token appears twice — and
+ * appears ESCAPED: a column named `Cliente & Cia` is `{row:Cliente &amp; Cia}` in the HTML, which
+ * this scan reads as a column nobody has. The Data panel then drew an orphan warning for a token
+ * that works, and counted every real occurrence twice.
+ */
+const DERIVED_FIELDS = new Set(['keyHtml', 'keyMarkdown']);
+
 function collectStrings(v: unknown, out: string[]): void {
   if (typeof v === 'string') out.push(v);
   else if (Array.isArray(v)) for (const x of v) collectStrings(x, out);
-  else if (v && typeof v === 'object') for (const k of Object.keys(v)) collectStrings((v as Record<string, unknown>)[k], out);
+  else if (v && typeof v === 'object') {
+    for (const k of Object.keys(v)) {
+      if (DERIVED_FIELDS.has(k)) continue;
+      collectStrings((v as Record<string, unknown>)[k], out);
+    }
+  }
 }
 
 /** Lower-cased column name → usage, scanning every string field of every action. */

@@ -1855,6 +1855,18 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   // Unmount is not a value change, so the effect above never fires for it.
   useEffect(() => () => { send({ type: 'editor:pendingEdits', payload: { pending: false } }); }, [send]);
 
+  // The row this editor edits stopped existing — an Undo that shortened the list, a delete from
+  // the grid, a profile switch. The panel went on painting a row that is gone: every field still
+  // showed its values, and Save Changes was a silent no-op against an index past the end. Closing
+  // is the honest answer; the toast is conditional because a panel the user had not touched
+  // vanishing with an explanation reads as an error where nothing was lost.
+  useEffect(() => {
+    if (actionIndex == null || leaving) return;
+    if (actionIndex < actions.length) return;
+    if (editorTouched) showToast(tt('That action no longer exists', 'Essa ação não existe mais'), 'info');
+    onClose();
+  }, [actionIndex, actions.length, leaving, editorTouched, onClose, showToast, tt]);
+
   // Esc-to-close — global listener that closes the panel when the user presses Escape
   // outside of any capture mode. Key capture handlers (KeyDown/KeyUp Key field, Pause
   // Resume Hotkey, the grid Key column edit, Settings global hotkeys) all call
@@ -1989,7 +2001,11 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   useLayoutEffect(() => {
     const el = notesRef.current;
     if (el && el.value === comment) growTextarea(el);
-  }, [comment]);
+    // actionIndex too: the sheet unmounts its own subtree while this component stays mounted
+    // (App renders it without a `key`), so REOPENING the same action wrote an identical `comment`
+    // and the effect never ran — the field came back at two rows with a scrollbar over text that
+    // had been sized correctly a moment earlier.
+  }, [comment, actionIndex]);
 
   // #2 — Tier shield for current selector (priority: textMatch > key). Memoised because
   // estimateTier runs a regex suite and buildTextSelector rebuilds the selector — recomputing

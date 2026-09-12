@@ -247,7 +247,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
   // so a chain carrying an unrepresentable modifier must not be edited here.
   if (state.unmodeled) {
     return (
-      <div className="absolute inset-0 z-20 bg-bg-elevated flex flex-col">
+      <div data-clip-surface className="absolute inset-0 z-20 bg-bg-elevated flex flex-col">
         <div className="h-9 px-2 flex items-center gap-2 border-b border-border-subtle shrink-0">
           <button type="button" onClick={onBack}
             className="flex items-center gap-1 h-6 px-1.5 text-[11px] rounded text-text-tertiary hover:text-text-primary hover:bg-bg-card transition-colors">
@@ -280,7 +280,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
   }
 
   return (
-    <div className="absolute inset-0 z-20 bg-bg-elevated flex flex-col">
+    <div data-clip-surface className="absolute inset-0 z-20 bg-bg-elevated flex flex-col">
       {/* Sub-header — local back affordance, ThemeEditor sub-surface style. */}
       <div className="h-9 px-2 flex items-center gap-2 border-b border-border-subtle shrink-0">
         <button

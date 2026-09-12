@@ -546,11 +546,53 @@ export const argRefIsUnfinished = (s: TransformState): boolean =>
  * always the same number of UTF-16 units, the indices still line up with the ORIGINAL string, so
  * the slices below stay correct.
  */
-const foldForMatch = (t: string): string => {
-  // Fast path: ASCII cannot expand, and this is the overwhelmingly common case.
-  if (!/[^\x00-\x7F]/.test(t)) return t.toUpperCase();
-  return Array.from(t).map((c) => { const u = c.toUpperCase(); return u.length === c.length ? u : c; }).join('');
+/**
+ * The two Turkish I's, which .NET carves OUT of invariant and ordinal case mapping: "ı" (U+0131)
+ * does not rise to "I", and "İ" (U+0130) does not fall to "i". JS maps both — and, unlike ß and ﬁ,
+ * WITHOUT changing the length, so the expansion test below cannot see them. Without this scan the
+ * fast path silently disagreed with the engine on two modifiers at once: `after:I` cut "boıa azul"
+ * where the run cuts nothing, and `dropnum:Ix` swallowed text the run pastes.
+ */
+const TURKISH_I = /[İı]/;
+
+export const foldForMatch = (t: string): string => {
+  // Fast path INVERTED: fold the whole string first and accept it when nothing EXPANDED, which is
+  // the only case where the two semantics differ. The previous test — "is this pure ASCII?" — sent
+  // every accented text down the per-code-point walk, so in a pt-BR app the slow path was the
+  // normal path: measured 0,134 ms at 3 KB against 0,0032 ms, 40 to 60 times slower per keystroke,
+  // and 18 ms at 328 KB, past the whole frame budget on its own. An expansion is rare (ß, ﬁ, ŉ);
+  // a "ç" is not one, and it has no business paying for them.
+  const u = t.toUpperCase();
+  if (u.length === t.length && !TURKISH_I.test(t)) return u;
+  return Array.from(t).map((c) => {
+    if (TURKISH_I.test(c)) return c;
+    const up = c.toUpperCase();
+    return up.length === c.length ? up : c;
+  }).join('');
 };
+/**
+ * `ToUpperInvariant` / `ToLowerInvariant`: SIMPLE case-mapping, one code point in and one out.
+ * JS `toUpperCase()` performs FULL case — "ß" becomes "SS", "ﬁ" becomes "FI" — so a preview using
+ * it showed letters the engine never types, and by more characters than the string started with.
+ * Same inverted fast path as foldForMatch, and for the same measured reason.
+ */
+const upperInvariant = (t: string): string => {
+  const u = t.toUpperCase();
+  if (u.length === t.length && !TURKISH_I.test(t)) return u;
+  return Array.from(t).map((c) => {
+    if (TURKISH_I.test(c)) return c;
+    const up = c.toUpperCase();
+    return up.length === c.length ? up : c;
+  }).join('');
+};
+// lowerInvariant needs no Turkish guard: "İ".toLowerCase() is "i̇" — i plus a combining dot, TWO
+// code units — so the expansion rule already preserves it, and "ı" lowercases to itself.
+const lowerInvariant = (t: string): string => {
+  const l = t.toLowerCase();
+  if (l.length === t.length) return l;
+  return Array.from(t).map((c) => { const lo = c.toLowerCase(); return lo.length === c.length ? lo : c; }).join('');
+};
+
 function replaceAllFolded(text: string, from: string, to: string): string {
   const hay = foldForMatch(text);
   const needle = foldForMatch(from);
@@ -587,8 +629,11 @@ export function applyTransformPreview(raw: string, s: TransformState): string {
   if (s.split !== 'none' && s.splitDelim.length > 0) {
     // OrdinalIgnoreCase on the backend — fold both sides to find the index, then cut the
     // ORIGINAL so the surviving text keeps its own casing.
-    const hay = r.toLowerCase();
-    const needle = s.splitDelim.toLowerCase();
+    // foldForMatch on both sides, not toLowerCase(): the backend compares OrdinalIgnoreCase, which
+    // is SIMPLE case. Folding down with full case made the two sides disagree about exactly the
+    // characters this app types every day.
+    const hay = foldForMatch(r);
+    const needle = foldForMatch(s.splitDelim);
     const at = s.splitLast ? hay.lastIndexOf(needle) : hay.indexOf(needle);
     // Delimiter absent → empty, never the whole content (the backend's fail-closed rule).
     if (at < 0) r = '';
@@ -601,7 +646,7 @@ export function applyTransformPreview(raw: string, s: TransformState): string {
     const m = /^[0-9]+/.exec(r);
     if (m) {
       const d = m[0].length;
-      if (r.slice(d, d + s.dropNumSuffix.length).toLowerCase() === s.dropNumSuffix.toLowerCase())
+      if (foldForMatch(r.slice(d, d + s.dropNumSuffix.length)) === foldForMatch(s.dropNumSuffix))
         r = r.slice(d + s.dropNumSuffix.length);
     }
   }
@@ -632,14 +677,16 @@ export function applyTransformPreview(raw: string, s: TransformState): string {
     // the six ASCII chars between 'Z' and 'a' ([ \ ] ^ _ `) order differently than
     // runtime ("_x" vs "ax"). Code-unit compare, NOT localeCompare (culture-aware).
     r = splitLines(r)
-      .sort((x, y) => { const ux = x.toUpperCase(), uy = y.toUpperCase(); return ux < uy ? -1 : ux > uy ? 1 : 0; })
+      .sort((x, y) => { const ux = foldForMatch(x), uy = foldForMatch(y); return ux < uy ? -1 : ux > uy ? 1 : 0; })
       .join('\n');
   }
   if (s.dedupe) {
     const seen = new Set<string>();
     const kept: string[] = [];
     for (const line of splitLines(r)) {
-      const key = line.toUpperCase(); // same upper-fold as the backend comparer
+      // The SAME fold the backend comparer uses. toUpperCase() is full case, so two lines that
+      // differ only by a ß vs SS folded together and the preview dropped a line the run pastes.
+      const key = foldForMatch(line);
       if (!seen.has(key)) { seen.add(key); kept.push(line); }
     }
     r = kept.join('\n');
@@ -681,8 +728,11 @@ export function applyTransformPreview(raw: string, s: TransformState): string {
   // and actually building the string was its own bug: padStart of a few hundred million threw
   // RangeError out of the preview, and a merely large one pasted tens of megabytes into the DOM.
   if (s.pad && !isArgRef(s.padRef)) r = s.padN > MAX_PAD_WIDTH ? '' : r.padStart(Math.max(0, s.padN), '0');
-  if (s.case === 'upper') r = r.toUpperCase();
-  else if (s.case === 'lower') r = r.toLowerCase();
+  // Simple case-mapping, like the engine's ToUpperInvariant/ToLowerInvariant: one code point in,
+  // one out. JS toUpperCase() is FULL case — it turns 'ß' into 'SS' and 'ﬁ' into 'FI' — so the
+  // preview printed letters the run never types.
+  if (s.case === 'upper') r = upperInvariant(r);
+  else if (s.case === 'lower') r = lowerInvariant(r);
   else if (s.case === 'sentence') r = r.length > 0 ? r[0].toUpperCase() + r.slice(1) : r;
   else if (s.case === 'title') r = r.replace(/(^|\s)(\S)/g, (_, ws, ch) => ws + ch.toUpperCase());
   // The fallback sees the FINAL value — an empty one, and only an empty one.

@@ -815,6 +815,16 @@ export function DataPanel({ onClose }: DataPanelProps) {
           headers.push(name);
           return headers.length - 1;
         });
+        // A row LONGER than its own header line grows the table, exactly as the paste dialog
+        // promises and as this file's own doctrine demands twice over ("Never truncate data…
+        // extend the headers with synthesized colN names", "no data is ever dropped silently").
+        // The `i < idxMap.length` guard dropped those cells without a word — in Append only, so
+        // the same paste kept its data in Replace and lost it here.
+        const widest = parsed.rows.reduce((m, r) => Math.max(m, r.length), 0);
+        for (let i = idxMap.length; i < widest; i++) {
+          headers.push(nextColName(headers));
+          idxMap.push(headers.length - 1);
+        }
         const newRows = parsed.rows.map((r) => {
           const out = Array(headers.length).fill('');
           r.forEach((cell, i) => { if (i < idxMap.length) out[idxMap[i]] = cell; });

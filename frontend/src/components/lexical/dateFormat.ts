@@ -225,7 +225,13 @@ function custom(d: Date, format: string, locale: string, k: Clock = LOCAL): stri
       // specifier() directly is what keeps "%:" and "%/" going through the separator branch and
       // "%\" / "%'" throwing the way the engine does.
       if (i + 1 >= format.length || format[i + 1] === '%') throw new Error('dangling %');
-      out += custom(d, format[i + 1], locale, k);
+      const one = custom(d, format[i + 1], locale, k);
+      // The "empty F eats the preceding dot" rule has to be applied HERE, by the caller, because
+      // the recursion starts a brand-new `out` and the dot lives in ours. In .NET the two coexist
+      // because FormatCustomized keeps writing into the SAME StringBuilder — so "ss.%F" on a whole
+      // second printed "30." here and "30" in the engine.
+      if (format[i + 1] === 'F' && one === '' && out.endsWith('.')) out = out.slice(0, -1);
+      else out += one;
       i += 2;
       continue;
     }

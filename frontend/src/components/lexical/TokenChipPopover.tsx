@@ -226,10 +226,11 @@ export function TokenChipPopover({
         onClose();
       }
     };
-    document.addEventListener('mousedown', onMouseDown);
+    // CAPTURE — see the note in LexicalTokenEditor: a chip stops the click on the way up.
+    document.addEventListener('mousedown', onMouseDown, true);
     document.addEventListener('keydown', onKey, true);
     return () => {
-      document.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('mousedown', onMouseDown, true);
       document.removeEventListener('keydown', onKey, true);
     };
   }, [anchor, onClose]);

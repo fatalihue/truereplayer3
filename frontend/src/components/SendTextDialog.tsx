@@ -347,8 +347,12 @@ function NamePromptPopover({
       if (anchor.contains(t)) return;
       onClose();
     };
-    document.addEventListener('mousedown', onMouseDown);
-    return () => document.removeEventListener('mousedown', onMouseDown);
+    // CAPTURE, like the autocomplete's own listener (LexicalTokenEditor): a chip stops the event
+    // on its way UP, so a bubble-phase listener never heard the click that opened another popover.
+    // The name prompt stayed floating over the chain builder, and the click that should have
+    // dismissed it could swap an editing session for an insertion one instead.
+    document.addEventListener('mousedown', onMouseDown, true);
+    return () => document.removeEventListener('mousedown', onMouseDown, true);
   }, [anchor, onClose]);
 
   const commit = () => {
@@ -607,6 +611,15 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
     setClipHead(parsed.head);
     setClipDirty(false);
     setSurface({ mode: 'edit', token: req.token, commit: req.commit, remove: req.remove });
+    // Hand the keyboard to the surface that just opened, the way closeSurface hands it back. A chip
+    // with no identity of its own ({Clipboard}, {Counter}, {UUID}, {WinClip}, {Timestamp}) opens
+    // the builder over the editor and the focus stayed BEHIND it: the next keystroke went into an
+    // editor the user could not see, under the overlay.
+    requestAnimationFrame(() => {
+      const root = document.querySelector<HTMLElement>('[data-clip-surface]');
+      const first = root?.querySelector<HTMLElement>('button, input, select, textarea, [tabindex]:not([tabindex="-1"])');
+      (first ?? root)?.focus();
+    });
   }, []);
 
   const closeSurface = useCallback(() => {
