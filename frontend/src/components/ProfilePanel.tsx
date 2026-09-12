@@ -86,6 +86,14 @@ const sortByName = (a: ProfileEntry, b: ProfileEntry) =>
 // Rail tooltip spelling for a hotkey: the keycap names (PgDn, Esc), joined tight.
 const railHotkey = (combo: string) => splitCombo(combo).map(compactKey).join('+');
 
+/** The profile description, trimmed to one readable tooltip line. The field accepts 500 chars;
+ *  a tooltip is a line, not a paragraph, so the tail is elided rather than wrapped. */
+const DESC_TIP_MAX = 110;
+const descTip = (d?: string | null): string => {
+  const s = (d ?? '').replace(/\s+/g, ' ').trim();
+  return s.length > DESC_TIP_MAX ? `${s.slice(0, DESC_TIP_MAX - 1)}…` : s;
+};
+
 export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePanelProps) {
   const tt = useTt();
   const { profiles, profileOrder, actions, settings, buttonStates } = useAppState();
@@ -458,6 +466,19 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
     setContextMenu(null);
     setShowInfoDialog(name);
   };
+
+  // Second door for the Info dialog, from the command palette. The first one is right-click →
+  // hover "More" → "Edit info…", a submenu buried deeply enough that a synthetic click cannot
+  // even open it — for the dialog that owns the description and the tags the #tag search runs on.
+  // Scoped to the ACTIVE profile, like every other profile command in the palette.
+  useEffect(() => {
+    const open = () => {
+      const active = profiles.find(p => p.isActive);
+      if (active) setShowInfoDialog(active.name);
+    };
+    window.addEventListener('cmd:profileinfo', open);
+    return () => window.removeEventListener('cmd:profileinfo', open);
+  }, [profiles]);
 
   // Profiles currently visible in the export dialog (after the search filter). Select-All,
   // the count, and confirmExport all scope to these so a filter never touches hidden profiles.
@@ -1108,10 +1129,22 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
     if (!root) return;
     const measure = () => {
       for (const cell of root.querySelectorAll<HTMLElement>('[data-name-cell]')) {
+        // Two shapes share this cell: the split head/tail for a long name, and the plain
+        // single-span for a short one. Measure the head when there is one, the cell itself
+        // otherwise — the question is the same either way.
         const head = cell.firstElementChild as HTMLElement | null;
-        const cut = !!head && head.scrollWidth > head.clientWidth;
-        if (cut) {
-          cell.setAttribute('data-tip', cell.dataset.full ?? '');
+        const measured = head ?? cell;
+        const cut = measured.scrollWidth > measured.clientWidth;
+        // The description rides the same tooltip. It is the one thing the Info dialog asks for
+        // ("What does this profile do?") that the app never showed back: the only surface that
+        // rendered it was the Import Preview, so the author of the text could not read it and
+        // whoever imported the profile could. Cut name and description compose; with the name
+        // fully visible the tooltip is the description alone, because repeating what is on
+        // screen is what the truncation test above exists to avoid.
+        const desc = cell.dataset.desc ?? '';
+        const tip = [cut ? (cell.dataset.full ?? '') : null, desc].filter(Boolean).join(' — ');
+        if (tip) {
+          cell.setAttribute('data-tip', tip);
           cell.setAttribute('data-tip-pos', 'below-start');
         } else {
           cell.removeAttribute('data-tip');
@@ -1678,7 +1711,11 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
         {(() => {
           const cls = `text-ui min-w-0 ${p.isActive ? 'text-accent font-semibold' : 'text-text-primary'}`;
           if (p.name.length <= 14) {
-            return <span className={`${cls} flex-1 truncate`}>{p.name}</span>;
+            // Tagged too, even though a short name needs no middle truncation: the effect below
+            // is what hangs the description on the row, and most profiles are short — leaving
+            // this branch out meant the description reached almost nobody. It also gets the
+            // overflow tooltip the long branch has always had, for the narrow-column case.
+            return <span className={`${cls} flex-1 truncate`} data-name-cell data-full={p.name} data-desc={descTip(p.description)}>{p.name}</span>;
           }
           // Split by CODE POINT, not UTF-16 unit: slice(-6) on a name ending in an emoji
           // would cut a surrogate pair in half and render two replacement glyphs.
@@ -1697,7 +1734,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             // length: after the gutter was tightened none of the 81 real names truncate, so
             // keying the tooltip off `length > 14` popped it on 23 rows that were showing
             // their name in full.
-            <span className={`${cls} flex-1 flex`} data-name-cell data-full={p.name}>
+            <span className={`${cls} flex-1 flex`} data-name-cell data-full={p.name} data-desc={descTip(p.description)}>
               <span className="min-w-0 overflow-hidden text-ellipsis whitespace-pre">{head}</span>
               <span className="shrink-0 whitespace-pre">{tail}</span>
             </span>
@@ -1892,6 +1929,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                           // in keycap spelling, hotstring with the ⚡/↵ mark the row's chip wears) ·
                           // folder · target · disabled. A hotstring-only profile used to show no
                           // trigger at all, and a disabled one was merely dimmer.
+                          // The description closes the line — collapsed, the avatar is ALL the row
+                          // shows, so this tooltip is the only place a profile can say what it does.
                           data-tip={[
                             p.name,
                             p.hotkey ? railHotkey(p.hotkey) : null,
@@ -1899,6 +1938,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                             getProfileFolderName(p.name),
                             p.hasEffectiveTarget ? targetLabel(p.effectiveTargetProcessName, p.effectiveTargetWindowTitle) : null,
                             p.isDisabled ? tt('disabled', 'desativado') : null,
+                            descTip(p.description) || null,
                           ].filter(Boolean).join(' · ')}
                           data-tip-pos="right"
                         >

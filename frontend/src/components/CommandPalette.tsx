@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import {
   Search, RotateCcw, RefreshCw,
   ClipboardPaste, ClipboardCopy, Files, Replace, Table2,
-  Combine, Split, ScrollText, Activity, ListChecks, BookOpen,
+  Combine, Split, ScrollText, Activity, ListChecks, BookOpen, Info,
 } from 'lucide-react';
 import { useAppState } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
@@ -158,6 +158,17 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             disabled: !activeProfile,
             disabledHint: 'Select a profile first',
             onAction: () => { if (activeProfile) { send({ type: 'profile:duplicate', payload: { name: activeProfile } }); onClose(); } },
+          },
+          {
+            // Icon, description and tags. Its only other door is right-click → hover "More" →
+            // "Edit info…" — a submenu so hard to reach that a synthetic click cannot open it,
+            // for the dialog that owns the description and the #tag search the sidebar runs on.
+            id: 'profileinfo', label: 'Edit Profile Info',
+            keywords: ['description', 'tags', 'icon', 'emoji', 'metadata', 'descricao'],
+            icon: <Info size={14} className="text-text-secondary" />,
+            disabled: !activeProfile,
+            disabledHint: 'Select a profile first',
+            onAction: () => { if (activeProfile) { onClose(); window.dispatchEvent(new CustomEvent('cmd:profileinfo')); } },
           },
         ],
       },
