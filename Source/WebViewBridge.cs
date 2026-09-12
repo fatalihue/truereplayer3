@@ -948,6 +948,13 @@ namespace TrueReplayer
         // push of the same report. An authored Stop action and a quiet Assert stop are
         // "completed": those are an authored ending, not an interruption.
         private string? _lastRunOutcome;
+        // The engine's report generation when this replaying→ready pair opened. A Clicker session
+        // walks the very same status edge without ever opening a report, so the verdict was being
+        // recomputed and pinned onto the LAST MACRO's report: a run that had finished cleanly came
+        // back labelled "stopped by you" because the user had since stopped the clicker, and one
+        // the user really did abort turned into a green check. Comparing the generation is what
+        // separates "a new run ended" from "the same report came around again".
+        private int _runSeqAtReplayStart;
 
         public void PushStatusChange(string status)
         {
@@ -987,8 +994,15 @@ namespace TrueReplayer
             // relabelling a stopped run as a clean one. Reading the step statuses instead cannot
             // work: a user Stop marks the in-flight step "skipped", which is indistinguishable
             // from a skipped row.
-            if (status == "replaying") _lastRunOutcome = null;
-            if (status == "ready" && _lastRunStatus == "replaying")
+            if (status == "replaying")
+            {
+                _lastRunOutcome = null;
+                _runSeqAtReplayStart = replayService.RunSequence;
+            }
+            if (status == "ready" && _lastRunStatus == "replaying"
+                // …and a macro run really did open a report in between. Without this, a Clicker
+                // session (same edge, no report of its own) re-labelled the previous macro's run.
+                && replayService.RunSequence != _runSeqAtReplayStart)
             {
                 _lastRunOutcome = wasError ? "failed" : userStopped ? "stopped" : "completed";
                 PushRunReport();
@@ -2617,6 +2631,27 @@ namespace TrueReplayer
                 type = "info",
                 // Longer than the default: this lands as the user is switching away to the
                 // target window, and it is the one chance to catch the run before it misbehaves.
+                duration = 9000,
+            });
+        }
+
+        /// <summary>
+        /// End-of-run tally from the engine ("N row(s) skipped after errors"). Its own push for
+        /// the same reason it has its own channel: the text used to travel as "error:…", which
+        /// PushStatusChange reads on the replaying→ready edge — so a batch that ran to the end
+        /// with the skip policy doing its job came back stamped outcome="failed" and the status
+        /// bar painted it red. It is a summary; it says so, in the same 'info' shape the
+        /// extension notice uses.
+        /// </summary>
+        public void PushRunSummary(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return;
+            SendMessage("alert:show", new
+            {
+                message = text,
+                type = "info",
+                // Same reasoning as the notice above: it lands while the user is looking at the
+                // target window, and it is the one chance to say which rows did not run.
                 duration = 9000,
             });
         }

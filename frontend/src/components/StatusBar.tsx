@@ -7,6 +7,9 @@ import { useBrowserConnection } from '../hooks/useBrowserConnection';
 import { useTt, useLanguage } from '../state/LanguageContext';
 import type { RunReport } from '../bridge/messageTypes';
 import { skippedRowMask } from '../utils/conditionalBlocks';
+import { lastRunKind, lastRunLabel, type LastRunKind } from '../utils/lastRunChip';
+import { runDurationMs } from '../utils/runReportStats';
+import { replayPasses, estimateAllPassesMs } from '../utils/replayPasses';
 import { describeClickerConfig, formatClickerStats, formatRate } from '../utils/clickerFormat';
 import { formatKeyCombo } from '../utils/displayUtils';
 import { APP_VERSION } from '../appVersion';
@@ -22,6 +25,8 @@ interface LastRunSummary {
   /** Set only when the run actually HALTED on that step. A failure the Data-loop's skip policy
    *  absorbed leaves this null — the run carried on to the end — and is reported by failedCount. */
   failedRow: number | null;
+  /** Profile the halting step belongs to — rows restart at 1 inside every RunProfile sub-call. */
+  failedProfile: string | null;
   /** Steps that failed, however the run ended. Non-zero with a null failedRow means "finished,
    *  but some rows did not". */
   failedCount: number;
@@ -43,38 +48,39 @@ function fmtDuration(ms: number, language: 'en' | 'pt-BR'): string {
 }
 
 /**
- * The three endings the chip can report, and they are not the same thing:
+ * The endings the chip can report, and they are not the same thing:
  *   halted     — the run stopped on a failing step (red, names the step)
+ *   failed     — the engine reported an error ending (red)
  *   stopped    — the USER pressed Stop (neutral square, says so)
- *   completed  — reached the end; amber when rows failed on the way and the skip policy
- *                absorbed them, green only when nothing failed at all
- * The green check used to cover all four, so a run the user aborted and a batch with failed
- * rows both read as a clean finish.
+ *   partial    — reached the end, but rows failed and the skip policy absorbed them (amber)
+ *   ok         — reached the end with nothing failed (green)
+ *
+ * The ranking lives in utils/lastRunChip.ts, once. It used to be written out three times here —
+ * for the tone, the icon and the label — and the three had drifted: every one of them ranked
+ * "some steps failed" ABOVE "the user pressed Stop", so aborting a batch that already had
+ * absorbed failures reported "2 steps failed" and the Stop disappeared from the bar.
  */
-const lastRunTone = (r: LastRunSummary): string =>
-  r.failedRow != null || r.outcome === 'failed' ? 'var(--color-recording-fg)'
-    : r.failedCount > 0 ? 'var(--color-warning-ink)'
-      : r.outcome === 'stopped' ? 'var(--color-text-secondary)'
-        : 'var(--color-replay-fg)';
+const TONE: Record<LastRunKind, string> = {
+  halted: 'var(--color-recording-fg)',
+  failed: 'var(--color-recording-fg)',
+  stopped: 'var(--color-text-secondary)',
+  partial: 'var(--color-warning-ink)',
+  ok: 'var(--color-replay-fg)',
+};
 
-const lastRunIcon = (r: LastRunSummary) =>
-  r.failedRow != null || r.outcome === 'failed' ? <XCircle size={11} />
-    : r.failedCount > 0 ? <AlertTriangle size={11} />
-      : r.outcome === 'stopped' ? <Square size={11} />
-        : <CheckCircle2 size={11} />;
-
-const lastRunLabel = (r: LastRunSummary): string =>
-  r.failedRow != null ? `stopped at step ${r.failedRow}`
-    : r.outcome === 'failed' ? 'run failed'
-      : r.failedCount > 0 ? `${r.failedCount} step${r.failedCount === 1 ? '' : 's'} failed`
-        : r.outcome === 'stopped' ? 'stopped by you'
-          : 'last run';
+const ICON: Record<LastRunKind, React.ReactNode> = {
+  halted: <XCircle size={11} />,
+  failed: <XCircle size={11} />,
+  stopped: <Square size={11} />,
+  partial: <AlertTriangle size={11} />,
+  ok: <CheckCircle2 size={11} />,
+};
 
 // Thin vertical divider between status segments.
 const Sep = () => <div className="w-px h-3 bg-border-subtle mx-3 shrink-0" />;
 
 export function StatusBar() {
-  const { statusBar, status, replayChain, pauseState, settings, actions } = useAppState();
+  const { statusBar, status, replayChain, pauseState, settings, actions, profiles, profileLoop, dataTable } = useAppState();
   // Separate contexts on purpose: the live slices update ~4×/s during a run and the highlight
   // advances once per executed action; keeping them out of AppState is what stops every other
   // panel re-rendering at those cadences.
@@ -101,15 +107,22 @@ export function StatusBar() {
     // "stopped at step N" for a run that went all the way through.
     const lastIdx = r.steps.length - 1;
     const halted = failures.length > 0 && r.steps[lastIdx].status === 'failed';
+    const dur = runDurationMs(r, r.steps);
     setLastRun({
       profile: r.steps[0].profile || r.profile,
       total: counted.length,
       ok: counted.filter(s => s.status === 'ok').length,
       failedRow: halted ? failures[failures.length - 1].row : null,
+      // A chain halts in the DEEPEST frame, so the last failure's row counts lines in a
+      // sub-profile — a number that often does not exist in the grid on screen. Carry the profile
+      // so the label can say which one it means.
+      failedProfile: halted ? (failures[failures.length - 1].profile ?? null) : null,
       failedCount: failures.length,
       // The engine's own clock when the build provides it; the step sum is the legacy fallback.
-      durationMs: r.elapsedMs ?? r.steps.reduce((a, s) => a + s.durationMs, 0),
-      durationIsWallClock: r.elapsedMs != null,
+      // One reader, shared with the Run report — the two used to print different numbers for the
+      // same execution, one click apart.
+      durationMs: dur.totalMs,
+      durationIsWallClock: dur.wallClock,
       outcome: r.outcome ?? null,
     });
   }), [subscribe]);
@@ -119,13 +132,30 @@ export function StatusBar() {
   // delay is waited, and a skipped block opener jumps past its whole body, so charging for those
   // delays made the estimate promise time nobody pays (three 5 s rows with the middle one
   // disabled estimated 15 s for a 10 s run).
-  const estimateMs = useMemo(() => {
+  // …and for EVERY pass the run will make. The estimate costed exactly one, so a profile set to
+  // repeat 12× promised a twelfth of its time and a 40-row data profile a fortieth — the chip was
+  // most wrong precisely where the number mattered most. Unbounded runs (a whilePressed trigger,
+  // Loops = 0) have no number to give: the chip falls back to the single pass and says so.
+  const onePassMs = useMemo(() => {
     const skipped = skippedRowMask(actions);
     return actions.reduce(
       (sum, a, i) => (skipped[i] ? sum : sum + (a.delay > 0 ? a.delay : 0) + PER_ACTION_OVERHEAD_MS),
       0,
     );
   }, [actions]);
+  const passes = useMemo(() => {
+    const entry = statusBar.profileName ? profiles.find(p => p.name === statusBar.profileName) : undefined;
+    return replayPasses({
+      perRow: dataTable.loopOverData && dataTable.rows.length > 0,
+      forcedInfinite: entry?.triggerMode === 'whilePressed' || entry?.triggerMode === 'toggle',
+      loopEnabled: profileLoop.enabled,
+      loopCount: profileLoop.count,
+      rowCount: dataTable.rows.length,
+    });
+  }, [statusBar.profileName, profiles, dataTable.loopOverData, dataTable.rows.length, profileLoop.enabled, profileLoop.count]);
+  const intervalMs = profileLoop.intervalEnabled ? Number.parseInt(profileLoop.interval, 10) || 0 : 0;
+  const allPassesMs = estimateAllPassesMs(onePassMs, passes, intervalMs);
+  const estimateMs = allPassesMs ?? onePassMs;
   const isReplaying = status === 'replaying';
   const isClicker = settings.useCursorClick;
   // The engine's stack already includes the root profile at index 0, so we only
@@ -359,10 +389,18 @@ export function StatusBar() {
                   <Sep />
                   <span
                     className="flex items-center gap-1.5 text-text-tertiary"
-                    data-tip={tt('Delays + ~30 ms per action. Moves and waits not counted.', 'Atrasos + ~30 ms por ação. Movimentos e esperas não entram.')}
+                    data-tip={
+                      allPassesMs == null
+                        ? tt('One pass: delays + ~30 ms per action. This run repeats without a set end, so there is no total. Moves and waits not counted.',
+                             'Uma passada: atrasos + ~30 ms por ação. Esta execução repete sem fim definido, então não há total. Movimentos e esperas não entram.')
+                        : passes != null && passes > 1
+                          ? tt(`${passes} passes: delays + ~30 ms per action, plus the interval between them. Moves and waits not counted.`,
+                               `${passes} passadas: atrasos + ~30 ms por ação, mais o intervalo entre elas. Movimentos e esperas não entram.`)
+                          : tt('Delays + ~30 ms per action. Moves and waits not counted.', 'Atrasos + ~30 ms por ação. Movimentos e esperas não entram.')
+                    }
                   >
                     <Timer size={11} />
-                    <span className="text-text-secondary font-mono">~{fmtDuration(estimateMs, language)}</span>
+                    <span className="text-text-secondary font-mono">~{fmtDuration(estimateMs, language)}{allPassesMs == null ? ' ×' : ''}</span>
                   </span>
                 </>
               )}
@@ -373,11 +411,11 @@ export function StatusBar() {
                     type="button"
                     onClick={() => window.dispatchEvent(new CustomEvent('cmd:runreport'))}
                     className="flex items-center gap-1.5 px-1 -mx-1 rounded hover:bg-bg-elevated transition-colors"
-                    style={{ color: lastRunTone(lastRun) }}
+                    style={{ color: TONE[lastRunKind(lastRun)] }}
                     data-tip={tt('Open the run report', 'Abrir o relatório da execução')}
                   >
-                    {lastRunIcon(lastRun)}
-                    <span className="font-medium">{lastRunLabel(lastRun)}</span>
+                    {ICON[lastRunKind(lastRun)]}
+                    <span className="font-medium">{lastRunLabel({ ...lastRun, loadedProfile: statusBar.profileName })}</span>
                     <span className="font-mono text-text-secondary">{lastRun.ok}/{lastRun.total} · {fmtDuration(lastRun.durationMs, language)}</span>
                   </button>
                 </>

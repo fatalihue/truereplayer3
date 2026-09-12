@@ -203,6 +203,9 @@ namespace TrueReplayer.Services
             // information rather than an error.
             replayer.OnDataLapCompleted = rows => dispatcherQueue.TryEnqueue(
                 () => OnDataLapCompleted?.Invoke(rows));
+            // Same marshalling, same reason for having its own channel as the lap notice.
+            replayer.OnRunSummary = text => dispatcherQueue.TryEnqueue(
+                () => OnRunSummary?.Invoke(text));
             replayer.OnRowCursorChanged = row => dispatcherQueue.TryEnqueue(
                 () => OnRowCursorChanged?.Invoke(row));
             // Same marshalling and the same reasoning as the lap notice above: raised from the
@@ -491,6 +494,11 @@ namespace TrueReplayer.Services
         // cursor mode (data table present, "loop over data" OFF) when a run consumes the
         // last row. Arg = the table's row count.
         public Action<int>? OnDataLapCompleted;
+
+        // End-of-run tally ("N row(s) skipped after errors") — re-exposed from the inner
+        // ActionReplayer. Information, not an error: it must NOT reach onStatusChanged with the
+        // "error:" prefix, which is what stamped a finished batch as outcome="failed".
+        public Action<string>? OnRunSummary;
 
         // Row-cursor movement — re-exposed from the inner ActionReplayer, marshalled to the UI
         // thread by the forwarder in the constructor. Fires once per cursor-mode run, at the top,
@@ -1890,6 +1898,14 @@ namespace TrueReplayer.Services
 
         // Route an action-level failure while skip mode is active: mark the row faulted and
         // let the loops unwind. Keeps the FIRST reason (later failures are knock-on noise).
+        //
+        // The STEP is marked separately, by the caller, right before this — see the five skip
+        // branches. This only sets row-level state, and the per-step finally promotes a step that
+        // is still "running" to "ok", so a row the policy absorbed left a green step behind: the
+        // run report showed every step fine, the chip counted zero failures, and a batch where
+        // half the rows failed read as a clean run. Marking the step is what makes the amber
+        // "N steps failed" reachable at all. The policy means "the row failed, the run went on" —
+        // not "nothing failed".
         private void FaultRow(string reason)
         {
             _rowFaulted = true;
@@ -2122,6 +2138,15 @@ namespace TrueReplayer.Services
         // Benign/informational — deliberately NOT routed through OnReplayError, which the host
         // renders as a red error toast.
         public Action<int>? OnDataLapCompleted;
+
+        // End-of-run tally: "N row(s) skipped after errors". The SAME reason OnDataLapCompleted
+        // has its own channel, learned the hard way: these notices went out through OnReplayError,
+        // which ReplayService prefixes with "error:" and PushStatusChange reads on the
+        // replaying→ready edge — so a run that reached the end with the skip policy doing exactly
+        // what it was configured to do came back stamped outcome="failed", and the status bar
+        // painted a red "run failed" over a finished batch. The text is unchanged: it always was
+        // a summary, not a failure.
+        public Action<string>? OnRunSummary;
 
         // Cursor mode: the row cursor moved (arg = 0-based row the NEXT run will consume). Fires
         // once per run, at the top, right where the advance happens. Its own channel rather than
@@ -2647,7 +2672,7 @@ namespace TrueReplayer.Services
                 // _authoredStop re-opens the gate: a Stop/quiet-stop finish reads as a normal
                 // success, and a success cue that hides "2 rows failed" would be a lie.
                 if (skippedRows > 0 && (!token.IsCancellationRequested || _authoredStop))
-                    OnReplayError?.Invoke($"Data loop finished — {skippedRows} of {_loopCount} row(s) skipped after errors (first: {firstSkipNote})");
+                    OnRunSummary?.Invoke($"Data loop finished — {skippedRows} of {_loopCount} row(s) skipped after errors (first: {firstSkipNote})");
 
                 // Cursor-mode lap notice. Armed at the top of the run (the cursor advances
                 // there, so it is already known), announced here so it lands with the run's
@@ -3104,7 +3129,7 @@ namespace TrueReplayer.Services
                 _active.Clear();
                 _state.Clear();
                 if (skipped > 0 && (!_token.IsCancellationRequested || _owner._authoredStop))
-                    _owner.OnReplayError?.Invoke($"For Each Data Row: {skipped} row(s) skipped after errors"
+                    _owner.OnRunSummary?.Invoke($"For Each Data Row: {skipped} row(s) skipped after errors"
                         + (firstReason != null ? $" — first: {firstReason}" : ""));
             }
         }
@@ -3136,7 +3161,7 @@ namespace TrueReplayer.Services
                 feState.Remove(openerIdx);
                 feActive.Remove(openerIdx);
                 if (fe.Skipped > 0 && (!token.IsCancellationRequested || _authoredStop))
-                    OnReplayError?.Invoke($"For Each Data Row: {fe.Skipped} row(s) skipped after errors"
+                    OnRunSummary?.Invoke($"For Each Data Row: {fe.Skipped} row(s) skipped after errors"
                         + (fe.FirstReason != null ? $" — first: {fe.FirstReason}" : ""));
             }
 
@@ -4661,7 +4686,7 @@ namespace TrueReplayer.Services
                 {
                     string msg = $"Sub-profile '{subName}': {skipped} of {rowCount} row(s) skipped" +
                         (firstReason != null ? $" — first: {firstReason}" : "");
-                    OnReplayError?.Invoke(msg);
+                    OnRunSummary?.Invoke(msg);
                 }
             }
             finally
@@ -4999,6 +5024,7 @@ namespace TrueReplayer.Services
             var name = _windowTarget?.ProcessName ?? "target";
             if (SkipRowOnErrorActive)
             {
+                FailCurrentStep($"target window '{name}' not found");
                 FaultRow($"target window '{name}' not found");
                 return;
             }
@@ -5348,6 +5374,7 @@ namespace TrueReplayer.Services
             }
             if (SkipRowOnErrorActive)
             {
+                FailCurrentStep($"Assert failed: '{label}' — {reason}");
                 FaultRow($"Assert failed: '{label}' — {reason}");
                 return false;
             }
@@ -5378,6 +5405,7 @@ namespace TrueReplayer.Services
             }
             if (SkipRowOnErrorActive)
             {
+                FailCurrentStep($"Activate Window: '{label}' — {reason}");
                 FaultRow($"Activate Window: '{label}' — {reason}");
                 return;
             }
@@ -8403,6 +8431,7 @@ namespace TrueReplayer.Services
 
             if (SkipRowOnErrorActive)
             {
+                FailCurrentStep($"Wait Image timed out{label}");
                 FaultRow($"Wait Image timed out{label}");
                 return;
             }
@@ -8540,6 +8569,7 @@ namespace TrueReplayer.Services
             if (action.PixelOnTimeout == "Continue") return;
             if (SkipRowOnErrorActive)
             {
+                FailCurrentStep($"Wait Pixel timed out ({action.PixelColor ?? "?"})");
                 FaultRow($"Wait Pixel timed out ({action.PixelColor ?? "?"})");
                 return;
             }

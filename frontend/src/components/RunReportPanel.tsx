@@ -4,6 +4,7 @@ import { useBridge } from '../bridge/BridgeContext';
 import { DialogShell, DialogFooter  } from './common/DialogShell';
 import { Callout } from './common/Callout';
 import type { RunReport, RunStep } from '../bridge/messageTypes';
+import { runDurationMs } from '../utils/runReportStats';
 
 // Structured codes the extension emits (content.js mkError) plus the two the native bridge
 // synthesises on timeout. Translated here rather than in the backend because the CODES are the
@@ -101,7 +102,12 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
     // the panel is a SNAPSHOT: without it, a report pulled mid-run is indistinguishable from a
     // finished one that happened to stop early.
     const running = steps.filter((s) => s.status === 'running').length;
-    const total = steps.reduce((a, s) => a + s.durationMs, 0);
+    // The engine's own clock when the report carries it. Summing the step costs — which is all
+    // this did — measures the time INSIDE the steps and nothing between them, so the panel and
+    // the status-bar chip that opens it printed two different durations for the same execution,
+    // one click apart. The sum is still shown, as what it actually is.
+    const dur = runDurationMs(report, steps);
+    const total = dur.totalMs;
     // A fallback match is not a failure, but it IS the early warning that the primary selector
     // is dead — surface it at the same level as a failure count.
     const drifting = steps.filter((s) => s.matchedTier).length;
@@ -116,8 +122,8 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
     const skipped = steps.filter((s) => s.status === 'skipped').length;
     // Index (not row: rows restart inside every sub-call) of the first failure, for the jump link.
     const firstFailedIdx = steps.findIndex((s) => s.status === 'failed');
-    return { failed, running, total, drifting, pages, profiles, ok, skipped, firstFailedIdx };
-  }, [steps]);
+    return { failed, running, total, wallClock: dur.wallClock, actionsMs: dur.actionsMs, drifting, pages, profiles, ok, skipped, firstFailedIdx };
+  }, [report, steps]);
 
   return (
     <DialogShell
@@ -147,7 +153,12 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
                 first; it used to sit in the footer in 11 px. The jump goes to the first failure. */}
             <div className="mb-2 flex items-center gap-x-3 gap-y-1 flex-wrap rounded border border-border-subtle bg-bg-card px-3 py-2 text-[12px] text-text-secondary">
               {stats.profiles[0] && <span className="font-semibold text-text-primary truncate">{stats.profiles[0]}</span>}
-              <span className="tabular-nums">{fmtStart(report?.startedAt)}{steps.length} steps · {fmtMs(stats.total)}</span>
+              <span
+                className="tabular-nums"
+                data-tip={stats.wallClock
+                  ? `Wall clock, minus time paused. Inside the steps: ${fmtMs(stats.actionsMs)}.`
+                  : 'Sum of the step costs — this report predates the engine clock.'}
+              >{fmtStart(report?.startedAt)}{steps.length} steps · {fmtMs(stats.total)}</span>
               <span className="flex items-center gap-3 tabular-nums">
                 <Tally color="var(--color-replay)" n={stats.ok} label="ok" />
                 {stats.skipped > 0 && <Tally color="var(--color-text-tertiary)" n={stats.skipped} label="skipped" />}

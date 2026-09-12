@@ -377,6 +377,14 @@ namespace TrueReplayer
                 bridge?.PushBrowserExtensionMissing(rows);
             };
 
+            // End-of-run tally ("N row(s) skipped after errors"). Straight to the toast, like the
+            // pre-flight notice above: it is information about the run that just ended, and it
+            // must not travel through the error channel, which decides the run's outcome.
+            replayService.OnRunSummary = text =>
+            {
+                bridge?.PushRunSummary(text);
+            };
+
             this.Closed += (_, _) =>
             {
                 Services.DiagnosticLog.Info("Window closing — disposing bridge and controllers");
