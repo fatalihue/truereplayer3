@@ -1907,7 +1907,13 @@ namespace TrueReplayer
                             return NativeMethods.CallNextHookEx(_mouseHookId, nCode, wParam, lParam);
                     }
 
-                    if (!IsReplayingAction && UserProfile.Current.ProfileKeyEnabled && ProfileHotkeys.Count > 0)
+                    // !IsCursorClickMode: the dispatcher drops PROFILE:: triggers in Clicker mode, so a
+                    // match here would return 1 and swallow the wheel event for nothing — and by the
+                    // note above, swallowing a wheel event kills that scroll SYSTEM-WIDE. Bare scroll
+                    // stays valid for profile hotkeys because the foreground-window match narrows when
+                    // it can fire at all; in Clicker it can never fire, so the scroll passes through.
+                    if (!IsCursorClickMode
+                        && !IsReplayingAction && UserProfile.Current.ProfileKeyEnabled && ProfileHotkeys.Count > 0)
                     {
                         string? matchedProfile = null;
                         foreach (var p in ProfileHotkeys)
@@ -2184,7 +2190,17 @@ namespace TrueReplayer
         // when the remap hop became the third caller, because "pass true" is not a contract.
         private static bool DispatchProfileHotkey(string combo, int vk)
         {
-            if (!UserProfile.Current.ProfileKeyEnabled || ProfileHotkeys.Count == 0)
+            // Clicker mode is exclusive and the dispatcher already drops PROFILE::, PROFILE_HOLD::
+            // and PROFILE_TOGGLE:: there (PROFILE_STOP:: is deliberately NOT dropped, but it is sent
+            // from the release paths, never from here), so matching here could only ever SWALLOW the
+            // input and give nothing back. Declining leaves the side button to the system, which
+            // synthesises the usual WM_APPCOMMAND from the delivered up. This is the shared half of
+            // the same gate applied to the keyboard ladder and the wheel path — the principle is
+            // that the app must not eat input it has already decided not to act on. The up stays
+            // balanced on its own: HandleXButtonTrigger only consumes it when the down went into
+            // _swallowedXDowns, which a declined down never does.
+            if (IsCursorClickMode
+                || !UserProfile.Current.ProfileKeyEnabled || ProfileHotkeys.Count == 0)
                 return false;
 
             string? matchedProfile = null;
@@ -3033,7 +3049,16 @@ namespace TrueReplayer
                         }
                     }
 
-                    if (UserProfile.Current.ProfileKeyEnabled && isProfileKey && MainController.Instance != null && !MainController.Instance.IsRecording())
+                    // !IsCursorClickMode: same gate as the wheel and X-button paths. In Clicker mode
+                    // the dispatcher discards PROFILE::/HOLD/TOGGLE, so matching here would only eat
+                    // the key and leave the user with a keystroke that vanished for no reason. The
+                    // Clicker's own Start/Pause hotkeys are handled by the branch above and are
+                    // unaffected.
+                    // This term MUST stay paired with the one on the OnRelease key-up block below:
+                    // gating the down alone delivers the down and still swallows the up, which is a
+                    // key stuck system-wide — strictly worse than the vanished keystroke it fixes.
+                    if (!IsCursorClickMode
+                        && UserProfile.Current.ProfileKeyEnabled && isProfileKey && MainController.Instance != null && !MainController.Instance.IsRecording())
                     {
                         // Find the first profile with this hotkey that matches the foreground window
                         string? matchedProfile = null;
@@ -3201,7 +3226,19 @@ namespace TrueReplayer
                 }
 
                 // KEY UP handling for OnRelease trigger mode (still keyed by composed key)
-                if (!isDown && isProfileKey && UserProfile.Current.ProfileKeyEnabled
+                // !IsCursorClickMode is the OTHER HALF of the gate on the key-down ladder above, and
+                // it is not the same reason: there the gate stops the app eating a key it won't act
+                // on, here it stops the app eating a key-up whose key-down it just let through. This
+                // is the fourth and last place that scans ProfileHotkeys, and the only one on the UP
+                // side; it matches by COMPOSED KEY with no state armed at the down, so without this
+                // term Clicker mode would deliver the down to the app and swallow the up — a key
+                // stuck system-wide that does not heal itself, since the next press repeats the pair.
+                // The three earlier up-side returns are keyed on state armed at the down instead
+                // (_pendingHoldFire, _pendingReleaseVkCode, _activeHold), so they cannot fire without
+                // a swallowed down and need no gate — including the legitimate mid-press mode flip,
+                // where _pendingReleaseVkCode still closes a pair opened in Macro.
+                if (!IsCursorClickMode
+                    && !isDown && isProfileKey && UserProfile.Current.ProfileKeyEnabled
                     && MainController.Instance != null && !MainController.Instance.IsRecording())
                 {
 
