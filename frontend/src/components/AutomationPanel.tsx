@@ -69,6 +69,9 @@ function defaultTrigger(): TriggerConfig {
   };
 }
 
+/** How long a sent save may go unconfirmed before the panel calls the work unsaved again. */
+const SAVE_ECHO_TIMEOUT_MS = 4000;
+
 // Default poll cadence per condition type — mirrors TriggerService.PollCadenceMs so the
 // placeholder shown when the field is left at 0 is the number the daemon will actually use.
 const DEFAULT_POLL_MS: Record<string, number> = { PixelColorMatch: 250, ClipboardChanged: 500 };
@@ -209,8 +212,11 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
   // `string | 'close'` union collapses to `string`, so the sentinel would silently hijack it.
   // `asNewDraft` carries the Add-automation intent through the prompt.
   const [pendingNav, setPendingNav] = useState<NavDest | null>(null);
-  // Set by handleSave, cleared when the state echo carries the entry (or on selection change).
-  const [savedPendingEcho, setSavedPendingEcho] = useState(false);
+  // A save that has been sent and not yet confirmed by the state echo. Keyed by PROFILE and
+  // stamped: keyed, because a bare boolean could be consumed by whichever row happened to be
+  // selected when an echo landed; stamped, because an echo that never comes must not leave the
+  // panel waiting forever (see SAVE_ECHO_TIMEOUT_MS).
+  const [pendingSave, setPendingSave] = useState<{ profile: string; at: number } | null>(null);
   // Result of a manual "Run now", shown next to the button. Cleared on selection change.
   const [testFireResult, setTestFireResult] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -263,6 +269,11 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
   const patch = (p: Partial<TriggerConfig>) => {
     setDraft((d) => (d ? { ...d, ...p } : d));
     setDirty(true);
+    // The flight describes the draft AS SENT. The moment the draft moves past it there is
+    // unsaved work again, and the echo — which will confirm the older shape — must not be
+    // allowed to speak for it. Without this, editing while a save was in the air hid the new
+    // edits behind "saving" and let them be navigated away from without a word.
+    setPendingSave(null);
   };
 
   // An automation that has never been saved has unsaved work by definition — the seeded
@@ -272,11 +283,18 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
   // "the user edited something"; the Save gate is what widens.
   const isNewDraft = selected != null && !entryByProfile.has(selected);
   const cannotFire = draft ? whyCannotFire(draft) : null;
-  // savedPendingEcho closes a gap the new-draft rule opens: handleSave clears `dirty`, but the
-  // row only stops being a "new draft" when the backend echo lands, so for those few frames the
-  // panel would still call the work unsaved — offering to save an already-saved automation and
-  // popping the discard prompt on the very next click.
-  const hasUnsavedWork = (dirty || (isNewDraft && !savedPendingEcho)) && draft != null;
+  // "Sent, waiting for the backend to confirm" — a THIRD state, not a flavour of unsaved.
+  //
+  // `dirty` deliberately survives handleSave (see the note there: a save can fail on the backend
+  // and roll back), but treating the flight as unsaved work is what made a successful Save look
+  // like it did nothing: the row kept its ● dot, and Close or a click on another automation
+  // raised "Unsaved automation" over work that was already being written. "Save and continue"
+  // then appeared to be the thing that saved it — it only re-sent and cleared `dirty` by
+  // navigating. The window is the whole backend round trip (read the profile JSON, write it,
+  // re-arm the daemon, push state + profile list), which on a large profile easily outlasts the
+  // user's next click.
+  const saving = pendingSave != null && pendingSave.profile === selected;
+  const hasUnsavedWork = !saving && (dirty || isNewDraft) && draft != null;
   const canSave = hasUnsavedWork && !cannotFire;
 
   // Every exit from a dirty editor routes through here. Without it, Close, Escape (DialogShell
@@ -288,6 +306,11 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
   // setState, which would otherwise leave the "discarded" draft on screen).
   const go = (dest: NavDest) => {
     setPendingNav(null);
+    // The flight belongs to the row being left. Carrying it over would arm the echo comparison
+    // against a different automation's config — and a new draft, which has no stored entry to
+    // compare against, would inherit a "saving" state it never asked for and sit there with a
+    // dead Save button.
+    setPendingSave(null);
     if (dest.kind === 'close') { onClose(); return; }
     seededForRef.current = null;
     if (dest.asNewDraft) setNewDraftProfile(dest.name);
@@ -329,7 +352,11 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
     // field), "Run now" re-enabled and running the OLD config, and the canClose guard disarmed, so
     // closing discarded the edits without asking. The echo effect below clears it on the state push
     // that only arrives when the write actually landed.
-    setSavedPendingEcho(true);
+    //
+    // What the flight marker changes is only what the panel SAYS meanwhile: "saving", not
+    // "unsaved". If the echo never confirms, the timeout below puts the panel back exactly where
+    // this comment left it — Save live again, ready to retry.
+    setPendingSave({ profile: selected, at: Date.now() });
     // newDraftProfile stays set until the automation:state echo lands — clearing it now
     // would drop the row from the list (entries doesn't have it yet) and blank the editor.
   };
@@ -434,7 +461,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
     setTestMatchResult(null);
     setTestFireResult(null);
     setConfirmDelete(false);
-    setSavedPendingEcho(false);
+    setPendingSave(null);
     // Drop the in-flight correlation ids too, not just the rendered badges. The subscribe
     // handlers match on requestId alone, so a reply that lands after the user has moved on
     // would attach an authoritative-sounding result ("Fired — the profile is running now") to
@@ -448,7 +475,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
 
   // The echo landed (or the entry existed all along) — the save is no longer in flight.
   useEffect(() => {
-    if (!savedPendingEcho || !selected || !draft) return;
+    if (!pendingSave || !selected || pendingSave.profile !== selected || !draft) return;
     const stored = entryByProfile.get(selected)?.trigger;
     if (!stored) return;
     // Cleared when the STORE actually reflects what we sent — not merely when an entry for this
@@ -465,10 +492,23 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
     // list toggle owns it), so neither takes part in the comparison.
     const shape = (t: TriggerConfig) => JSON.stringify({ ...t, imageBase64: null, armed: false });
     if (shape(stored) === shape(draft)) {
-      setSavedPendingEcho(false);
+      setPendingSave(null);
       setDirty(false);
     }
-  }, [savedPendingEcho, selected, entryByProfile, draft]);
+  }, [pendingSave, selected, entryByProfile, draft]);
+
+  // Backstop for an echo that never confirms — a save that threw and rolled back, or one whose
+  // stored shape genuinely differs from the draft. The panel must not sit in "saving" over work
+  // it can no longer vouch for: falling back to "unsaved" is the honest reading, and it puts the
+  // Save button back so the user can retry. Generous on purpose — the flight is a profile read,
+  // a profile write and a daemon re-arm, and calling a slow disk a failure would be the same
+  // lie in the other direction.
+  useEffect(() => {
+    if (!pendingSave) return;
+    const left = SAVE_ECHO_TIMEOUT_MS - (Date.now() - pendingSave.at);
+    const id = window.setTimeout(() => setPendingSave(null), Math.max(0, left));
+    return () => window.clearTimeout(id);
+  }, [pendingSave]);
 
   const pickPixel = () => {
     const id = `autopix-${Date.now()}`;
@@ -550,8 +590,12 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
           <Button variant="secondary" size="md" onClick={() => navigateTo({ kind: 'close' })}>Close</Button>
           {/* The tooltip explains a blocked Save (cannotFire); when there's simply nothing
               unsaved, the button just sits disabled with no tooltip. */}
+          {/* "Saving…" is the whole point of the flight state being visible: a Save that greys
+              out with no other change reads as a click that did nothing. */}
           <span data-tip={hasUnsavedWork ? cannotFire ?? undefined : undefined}>
-            <Button variant="primary" size="md" onClick={handleSave} disabled={!canSave}>Save</Button>
+            <Button variant="primary" size="md" onClick={handleSave} disabled={!canSave}>
+              {saving ? 'Saving…' : 'Save'}
+            </Button>
           </span>
         </>
       )}
@@ -738,10 +782,13 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                       screen tying it to the pending edit. Same wrapper the Save button uses, for
                       the same reason — a tip on a disabled <button> does still show here, since
                       Button sets no pointer-events:none. */}
-                  <span data-tip={isNewDraft || hasUnsavedWork
-                    ? tt('Save first', 'Salve primeiro')
+                  {/* `saving` counts here too: for an EXISTING automation mid-flight the edits are
+                      no longer "unsaved", but the daemon is still holding the old config — firing
+                      now would run it and report an authoritative result about the wrong thing. */}
+                  <span data-tip={isNewDraft || hasUnsavedWork || saving
+                    ? (saving ? tt('Saving…', 'Salvando…') : tt('Save first', 'Salve primeiro'))
                     : undefined}>
-                    <Button variant="secondary" size="sm" onClick={runNow} disabled={isNewDraft || hasUnsavedWork}>
+                    <Button variant="secondary" size="sm" onClick={runNow} disabled={isNewDraft || hasUnsavedWork || saving}>
                       <Play size={12} /> {'Run now'}
                     </Button>
                   </span>
