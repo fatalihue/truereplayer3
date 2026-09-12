@@ -1313,7 +1313,15 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
           <DialogFooter
             secondary={{ label: 'Keep editing', onClick: () => setPendingNav(null), autoFocus: true }}
             extra={<Button variant="destructiveText" size="md" onClick={() => discardAndGo(pendingNav)}>Discard</Button>}
-            primary={canSave ? { label: 'Save and continue', onClick: () => { const dest = pendingNav; handleSave(); go(dest); } } : undefined}
+            /* "Save", not "Save and continue": at 360 px the three buttons wanted 341 px of a
+               326 px track and the primary hung 7 px outside the card. The twin prompt (Send
+               Text's "Unsaved text") already says plain Save for the same three-way choice, and
+               "it also continues" is what the prompt is about — the tip says it outright. */
+            primary={canSave ? {
+              label: 'Save',
+              tip: tt('Save and go to where you clicked', 'Salvar e ir para onde você clicou'),
+              onClick: () => { const dest = pendingNav; handleSave(); go(dest); },
+            } : undefined}
           />
         }
       >

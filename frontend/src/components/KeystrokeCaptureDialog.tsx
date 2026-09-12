@@ -5,7 +5,7 @@ import { DialogShell, DialogFooter  } from './common/DialogShell';
 import { SegmentedControl } from './common/SegmentedControl';
 import { KeyCaps } from './common/KeyCaps';
 import { compactKey } from '../utils/keyNames';
-import { chipDotOn, chipDotOff } from './common/chipStyles';
+import { CheckboxBox } from './Checkbox';
 import { DurationChips } from './common/DurationChips';
 import { useBridge } from '../bridge/BridgeContext';
 import { useTt } from '../state/LanguageContext';
@@ -466,12 +466,12 @@ export function KeystrokeCaptureDialog({
                 />
               </div>
 
-              {/* Gap jitter — OFF by default (hollow dot). Adds a random ±% to each gap so a
-                  repeat burst doesn't fire on a perfectly fixed interval — a constant gap is the
-                  clearest "it's a bot" tell. Like Gap, the whole row is inert until Times > 1.
-                  The enable dot (the app's own affordance, see SettingsPanel's EnableChip) sits to
-                  the RIGHT of the label, so the label text starts at the row's left edge and lines
-                  up with the two rows above with no margin trickery. */}
+              {/* Gap jitter — OFF by default. Adds a random ±% to each gap so a repeat burst
+                  doesn't fire on a perfectly fixed interval — a constant gap is the clearest
+                  "it's a bot" tell. Like Gap, the whole row is inert until Times > 1.
+                  Box BEFORE the label, matching the identical row in the click editor: this is
+                  the same setting on the other side of the app, and it was the one place still
+                  using the enable-dot form. */}
               <div className="flex items-center justify-between gap-3">
                 <button
                   type="button"
@@ -481,13 +481,10 @@ export function KeystrokeCaptureDialog({
                   className="flex items-center gap-1.5 disabled:cursor-not-allowed"
                   data-tip={tt('Random ±% on each gap — less robotic.', 'Variação ±% aleatória em cada intervalo — menos robótico.')}
                 >
+                  <CheckboxBox checked={jitterOn && repeat > 1} />
                   <span className={`text-[12px] font-medium transition-colors ${jitterOn && repeat > 1 ? 'text-text-secondary' : 'text-text-tertiary'}`}>
                     Gap jitter
                   </span>
-                  <span
-                    className="w-2 h-2 rounded-full block shrink-0 transition-colors"
-                    style={jitterOn && repeat > 1 ? chipDotOn : chipDotOff}
-                  />
                 </button>
                 <NumberInput
                   value={jitterPct}

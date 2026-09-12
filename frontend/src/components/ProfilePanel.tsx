@@ -1,5 +1,5 @@
 import { Fragment, useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, lazy, Suspense } from 'react';
-import { AlertTriangle, Search, SearchX, X, Pencil, Copy, Trash2, FolderOpen, FolderMinus, Keyboard, AppWindow, ArrowLeftRight, ArrowDownUp, Type, Ban, Power, FolderInput, ChevronsLeft, ChevronsRight, ChevronsDownUp, ChevronsUpDown, Pin, PinOff, FolderPlus, FilePlus, Plus, ChevronRight, ChevronDown, Palette, Zap, Repeat, Repeat2, Hourglass, ArrowUpFromDot, ExternalLink, Info, MoreHorizontal, Hash, Upload, Download, Check } from 'lucide-react';
+import { AlertTriangle, Search, SearchX, X, Pencil, Copy, Trash2, FolderOpen, FolderMinus, Keyboard, AppWindow, ArrowDownUp, Type, Ban, Power, FolderInput, ChevronsLeft, ChevronsRight, ChevronsDownUp, ChevronsUpDown, Pin, PinOff, FolderPlus, FilePlus, Plus, ChevronRight, ChevronDown, Palette, Zap, Repeat, Repeat2, Hourglass, ArrowUpFromDot, ExternalLink, Info, MoreHorizontal, Hash, Upload, Download, Check } from 'lucide-react';
 import type { ProfileEntry, ImportPreviewPayload, ImportResultPayload, ImportConflictResolution, TriggerMode } from '../bridge/messageTypes';
 import { useAppState } from '../state/AppStateContext';
 import { railInitials, glyphCount } from '../utils/profileInitials';
@@ -2546,38 +2546,11 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                     <ExternalLink size={13} className="text-text-tertiary" />
                     Open in Explorer
                   </button>
-                  {/* Convert action coordinates — relocated from the Window Target dialog (rarely
-                      used). The backend convert is ACTIVE-profile scoped (HandleConvertCoordinates
-                      → ExecuteConvertCoordinates rewrites the loaded profile), and HandleProfileClick
-                      sets CurrentProfileName only AFTER its awaits — so a click+convert burst would
-                      race and convert the previously-active profile. Gate to the active profile
-                      instead: enabled only when THIS row is the loaded one, so convert always hits
-                      it. (Right-click a profile you haven't opened → disabled with a hint.) */}
-                  <div className="my-1 border-t border-border-subtle" />
-                  <button
-                    disabled={!profile?.isActive}
-                    onClick={() => {
-                      send({ type: 'profile:convertCoordinates', payload: { direction: 'toRelative' } });
-                      setContextMenu(null);
-                    }}
-                    className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                    data-tip={profile?.isActive ? tt('X/Y relative to the target window', 'X/Y relativos à janela-alvo') : tt('Open this profile first', 'Abra este perfil primeiro')}
-                  >
-                    <ArrowLeftRight size={13} className="text-text-tertiary" />
-                    Convert coords → Relative
-                  </button>
-                  <button
-                    disabled={!profile?.isActive}
-                    onClick={() => {
-                      send({ type: 'profile:convertCoordinates', payload: { direction: 'toAbsolute' } });
-                      setContextMenu(null);
-                    }}
-                    className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                    data-tip={profile?.isActive ? tt('X/Y as absolute screen coordinates', 'X/Y em coordenadas absolutas de tela') : tt('Open this profile first', 'Abra este perfil primeiro')}
-                  >
-                    <ArrowLeftRight size={13} className="text-text-tertiary" />
-                    Convert coords → Absolute
-                  </button>
+                  {/* Convert coords → Relative/Absolute lived here too and no longer does: it is a
+                      whole-profile rewrite that a user reaches for once, and the command palette
+                      already carries both directions with the same active-profile gate. Two
+                      surfaces for a rare, sweeping action is one surface too many — and this one
+                      sat one hover away from Delete. The palette is the single home now. */}
                 </div>
               </div>
             )}

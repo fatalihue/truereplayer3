@@ -26,6 +26,13 @@ interface ImageCropperProps {
 const MIN_SIZE = 10;
 const MAX_DISPLAY_W = 900;
 const MAX_DISPLAY_H = 600;
+/** Never squeeze the working area below this, however short the window gets. */
+const MIN_DISPLAY_H = 220;
+/** Share of the window height the card may occupy — mirrors the card's own max-h. */
+const CARD_VH = 0.9;
+/** Fallback chrome (header + footer + the body's padding, readout and gap) until it is measured
+ *  for real. Measured at 169 layout px on 2026-09-11; the runtime read replaces it on mount. */
+const CHROME_H_FALLBACK = 169;
 const HANDLE_PX = 12;
 // Crop rect stroke — slightly transparent so the underlying image stays readable while the
 // rectangle keeps enough contrast against any background. The handles are solid accent with
@@ -58,19 +65,55 @@ export function ImageCropper({ imageBase64, onSave, onCancel }: ImageCropperProp
     setCrop({ x: 0, y: 0, w: nw, h: nh });
   }, []);
 
-  // Always fit the image into the MAX_W × MAX_H box while preserving aspect ratio. Small
+  // How tall the image may be drawn, in LAYOUT px. A fixed 600 was the whole bug: at the app's
+  // minimum window (780 dip) a tall reference rendered 600 px of image into a card the 90vh cap
+  // had already clipped, so its bottom sat BELOW the footer with nothing to scroll — and the
+  // crop handles down there were unreachable. The height has to come from the window.
+  //
+  // `vh` ignores the ancestor `zoom`, so the card's own max-h resolves to layout px that the
+  // zoom then shrinks: dividing here is what makes 90vh mean 90 % of the window rather than
+  // 90 % × zoom ([[gotcha-zoom-coordinate-spaces]] — measure VISUAL, write LAYOUT).
+  const [chromeH, setChromeH] = useState(CHROME_H_FALLBACK);
+  const [maxDisplayH, setMaxDisplayH] = useState(MAX_DISPLAY_H);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const read = () => {
+      const cardH = (window.innerHeight * CARD_VH) / uiZoom();
+      setMaxDisplayH(Math.max(MIN_DISPLAY_H, Math.round(Math.min(MAX_DISPLAY_H, cardH - chromeH))));
+    };
+    read();
+    window.addEventListener('resize', read);
+    return () => window.removeEventListener('resize', read);
+  }, [chromeH]);
+
+  // The chrome is everything in the card that is not the image: header, footer, the body's
+  // padding, the size readout and the gap. Measured rather than assumed, because the footer hint
+  // wraps on a narrow card and a stale constant would put the difference back under the footer.
+  // offsetHeight, not a rect: it is already layout space, so no zoom conversion is needed.
+  useEffect(() => {
+    const body = bodyRef.current;
+    const img = imgRef.current;
+    if (!body || !img || !natural) return;
+    const card = body.parentElement;
+    if (!card) return;
+    const measured = card.offsetHeight - img.offsetHeight;
+    // Only when it actually moved — this runs after a render that the height it feeds decides.
+    if (measured > 0 && Math.abs(measured - chromeH) > 1) setChromeH(measured);
+  }, [natural, maxDisplayH, chromeH]);
+
+  // Always fit the image into the MAX_W × available-H box while preserving aspect ratio. Small
   // reference images get scaled UP so the handles are easy to grab; big ones get scaled
   // DOWN to fit. The crop rect stays in image-pixel coords; only its display position
   // scales by `display.scale`.
   const display = useMemo(() => {
     if (!natural) return null;
-    const scale = Math.min(MAX_DISPLAY_W / natural.w, MAX_DISPLAY_H / natural.h);
+    const scale = Math.min(MAX_DISPLAY_W / natural.w, maxDisplayH / natural.h);
     return {
       width: natural.w * scale,
       height: natural.h * scale,
       scale,
     };
-  }, [natural]);
+  }, [natural, maxDisplayH]);
   const displayScale = display?.scale ?? 1;
 
   // Global mousemove/mouseup so the drag survives even if the cursor briefly leaves the
@@ -209,7 +252,10 @@ export function ImageCropper({ imageBase64, onSave, onCancel }: ImageCropperProp
       title="Crop reference image"
       size="auto"
       zClass="z-[80]"
-      cardClassName="max-h-[90vh]"
+      // Divided by the zoom for the reason in the maxDisplayH note: a bare 90vh is 90 % of the
+      // window in LAYOUT px, which the zoom then shrinks — at the 0.9 default the card could only
+      // ever use 81 % of the height it was allowed.
+      cardClassName="max-h-[calc(90vh/var(--ui-zoom))]"
       onClose={onCancel}
       // A crop in progress must not be thrown away by a stray click outside the card.
       closeOnBackdrop={false}
@@ -226,7 +272,7 @@ export function ImageCropper({ imageBase64, onSave, onCancel }: ImageCropperProp
         />
       }
     >
-      <div className="p-4 flex flex-col gap-3 min-h-0">
+      <div ref={bodyRef} className="p-4 flex flex-col gap-3 min-h-0">
         {/* Size readout — crop size, then the source size, as one mono line. */}
         <div className="flex justify-end items-baseline gap-1.5 text-[11px] font-mono tabular-nums text-text-tertiary">
           {natural ? (

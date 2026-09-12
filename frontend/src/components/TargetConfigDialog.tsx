@@ -341,6 +341,8 @@ export function TargetConfigDialog({
             Reverts to idle ~3.5 s after the result arrives (see the testResult useEffect).
             Keeps the row to a single 28 px line — no separate slot growing the dialog. */}
         <button
+          data-tip={tt('Checks the window in FRONT right now against these fields.',
+            'Confere a janela que está em PRIMEIRO PLANO agora contra estes campos.')}
           onClick={() => {
             // Stamp the start time BEFORE setting state so the response handler can compute
             // an accurate elapsed and decide whether to defer the apply (see the
@@ -389,7 +391,12 @@ export function TargetConfigDialog({
                 </>
               )
             ) : (
-              'Test front window'
+              // Just "Test", like every other probe button in the app (the two window probes in
+              // the sheet editors, "Test match" for image/pixel, "Test action" for a browser
+              // step). "Test front window" was the one label that spelled out its mechanism —
+              // and the result it prints right here says what it looked at anyway. The tip
+              // carries the nuance this dialog does need: it reads what is in FRONT right now.
+              'Test'
             )}
           </div>
         </button>
