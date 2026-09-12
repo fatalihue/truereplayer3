@@ -53,7 +53,15 @@ export function ClickerDashboard() {
   // settings edit mid-run shows the new limit rather than the running one.
   const settingsLoops = settings.cursorClickUseLoops ? parseInt(settings.cursorClickLoops, 10) : 0;
   const clickLimit = Number.isFinite(settingsLoops) && settingsLoops > 0 ? settingsLoops : 0;
-  const capMs = clickerStats.capMs;
+  // The TIME limit comes from the same place, and for the same reason the click limit does: it
+  // used to arrive on a stats frame, and during the 3 s countdown no frame has been sent yet — so
+  // a run armed with only a time limit spent its whole countdown claiming to be unbounded ("∞")
+  // and then snapped to a clock. The trade is the one the comment above already accepted for the
+  // click limit: a settings edit mid-run shows the new limit rather than the running one. Three
+  // consumers read this — the ETA, the time half of the progress bar, and the Limit cell — so
+  // they now agree with each other and with the config line.
+  const settingsCapMs = settings.cursorClickUseMaxDuration ? parseInt(settings.cursorClickMaxDuration, 10) : 0;
+  const capMs = Number.isFinite(settingsCapMs) && settingsCapMs > 0 ? settingsCapMs : 0;
   // A finished run has no time-to-finish — gate on isReplaying so a completed limit renders
   // "—" instead of "~0s"; the countdown has no samples yet, so it reads "—" too.
   const etaText = formatEta(isReplaying && !counting, clickLimit, clickerStats.count, rate, capMs, clickerStats.elapsedMs);

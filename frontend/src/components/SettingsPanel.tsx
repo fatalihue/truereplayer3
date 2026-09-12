@@ -256,8 +256,12 @@ function PathStepZeroNote({ step }: { step: string }) {
 // ms→clicks/second conversion is NOT here: that one is a readout of the field beside it, so it
 // rides in the row's own label (SettingRow.labelSuffix). As a strip it read as an orphan row —
 // ~250px of empty space with six characters on the far edge.
+//   • ceiling — the opposite end of the same clamp: the request was SLOWER than the 60 s cap, so
+//             the stored delay is 60 s. It used to share the 'floor' branch and printed
+//             "(5 ms floor)" beside a rate of ~0,017/s — naming the bound the value did not hit,
+//             for a user who had just asked for something slower.
 function ClickerRateClampNote({ reason, ceiling, holdMs }: {
-  reason: 'hold' | 'floor' | null;
+  reason: 'hold' | 'floor' | 'ceiling' | null;
   ceiling: number;
   holdMs: number;
 }) {
@@ -266,7 +270,14 @@ function ClickerRateClampNote({ reason, ceiling, holdMs }: {
     <div className="px-2.5 pb-1 text-[11px] text-text-tertiary text-right">
       {reason === 'hold'
         ? `max ~${formatRate(ceiling)}/s (hold ${holdMs} ms)`
-        : `max ~${formatRate(ceiling)}/s (${CLICK_PERIOD_FLOOR_MS} ms floor)`}
+        : reason === 'ceiling'
+          // NOT formatRate(ceiling): `ceiling` is the MAXIMUM rate the hold and gap allow, which
+          // has nothing to do with the slow end — printing it here read "min ~91/s (60 s cap)",
+          // a number that followed the Hold instead of the bound the value actually hit. And a
+          // rate is the wrong unit at this end anyway: one click per minute is 0,0167/s, which
+          // formatRate rounds to "0.0". The period says it plainly.
+          ? `min 1 click / ${MAX_DELAY_MS / 1000} s (${MAX_DELAY_MS / 1000} s cap)`
+          : `max ~${formatRate(ceiling)}/s (${CLICK_PERIOD_FLOOR_MS} ms floor)`}
     </div>
   );
 }
@@ -446,11 +457,13 @@ function ComboInput({ value, onCommit, options, width = FIELD_W, editable = true
 // Takes the whole settings slice rather than 22 mirrored props: every new Clicker setting used
 // to touch four places in this file (prop, type, destructure, call site) before it did anything.
 // The local names below are the ones the body always used, so it reads as before.
-function ClickerSection({ unit, onUnitChange, settings, onChange }: {
+function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo }: {
   unit: 'ms' | 'cps';
   onUnitChange: (u: 'ms' | 'cps') => void;
   settings: SettingsState;
   onChange: (key: string, value: string | boolean | number | object | null) => void;
+  /** Owned by SettingsPanel — this component is remounted by a tab switch and by the collapse. */
+  seedUndo: React.MutableRefObject<Record<string, string | null>>;
 }) {
   const {
     cursorClickButton: button,
@@ -500,7 +513,6 @@ function ClickerSection({ unit, onUnitChange, settings, onChange }: {
   // the stray value on disk. We remember what was there before the seed, and restore it only if
   // the field still holds exactly what we wrote — any edit of the user's clears the memory, so
   // their value is never touched.
-  const seedUndo = useRef<Record<string, string | null>>({});
   const seedOnEnable = (key: string, current: string, seed: string) => {
     seedUndo.current[key] = current;
     onChange(key, seed);
@@ -649,7 +661,14 @@ function ClickerSection({ unit, onUnitChange, settings, onChange }: {
               thing the field itself cannot — why the rate is lower than delay + gap would give
               (the hold), or that the last request landed on the engine's floor. */}
           <ClickerRateClampNote
-            reason={holdCapped ? 'hold' : floorClampedAt !== null && floorClampedAt === localDelayMs ? 'floor' : null}
+            reason={holdCapped
+              ? 'hold'
+              : floorClampedAt !== null && floorClampedAt === localDelayMs
+                // Which END of the clamp the value landed on. Both are the same commit path, and
+                // calling the ceiling a floor was the note telling the user about a bound they
+                // did not reach.
+                ? (floorClampedAt >= MAX_DELAY_MS ? 'ceiling' : 'floor')
+                : null}
             ceiling={rateCeiling}
             holdMs={holdMs}
           />
@@ -1115,6 +1134,12 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
   // remounts. settingsResetEpoch still bounces it back to the default, which was its only
   // documented job; it just does it through an effect now instead of a remount key.
   const [clickerUnit, setClickerUnit] = useState<'ms' | 'cps'>('ms');
+  // The seed memory lives here for the SAME reason the unit does, and the file already says why:
+  // ClickerSection is remounted by a tab switch, by the collapse, and by the auto-collapse below
+  // 1074 px. A ref inside it started empty again every time, so turning a chip OFF after any of
+  // those no longer restored the value the seed had overwritten — the stray 10/100 stayed, the
+  // preset chip read "Custom", and SaveGlobalSettings wrote it to disk.
+  const seedUndoRef = useRef<Record<string, string | null>>({});
   const firstEpochRef = useRef(true);
   useEffect(() => {
     if (firstEpochRef.current) { firstEpochRef.current = false; return; }
@@ -1223,9 +1248,14 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
         ].filter(Boolean).join(' · '),
       }
     : {};
-  // Key Remaps live = master on AND ≥1 enabled entry — the same rule the armed-automation
-  // dot follows: a layer that is actually doing something gets the dot, a switch alone does not.
-  const activeRemaps = settings.remaps.enabled ? settings.remaps.entries.filter(e => e.enabled).length : 0;
+  // Key Remaps live = master on AND ≥1 enabled entry AND Profile Keys on — the same rule the
+  // armed-automation dot follows: a layer that is actually doing something gets the dot, a switch
+  // alone does not. Profile Keys off PAUSES the whole remap layer in the hook
+  // (InputHookManager: !ProfileKeyEnabled is part of remapDownBypassed), so the collapsed rail was
+  // reporting "N active" for a layer that was not translating a single key.
+  const activeRemaps = settings.remaps.enabled && !profileKeysOff
+    ? settings.remaps.entries.filter(e => e.enabled).length
+    : 0;
   const railProfile: RailEntry[] =
     settings.useCursorClick
       /* Three entries, matching the three Sections — and matching macro mode's three, so a
@@ -1401,6 +1431,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                 onUnitChange={setClickerUnit}
                 settings={settings}
                 onChange={changeSetting}
+                seedUndo={seedUndoRef}
               />
             ) : (
               <>

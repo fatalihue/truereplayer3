@@ -286,6 +286,18 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   // Reset focus when filter changes
   useEffect(() => setFocusedIndex(0), [query]);
 
+  // Keep the focused row inside the viewport. The card grew a height cap so the list scrolls, and
+  // the arrows moved a highlight that could be anywhere below the fold: holding ArrowDown walked
+  // the selection off the bottom of a list that never moved, and Enter then ran a command the user
+  // could not see. `block: 'nearest'` scrolls only when it has to, so short lists never jump.
+  // Dep is the index alone — adding isOpen/length would be an `unnecessary dependency` under the
+  // lint gate, and neither changes where the focused row sits.
+  const listRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = listRef.current?.querySelector<HTMLElement>('[data-cmd-focused="true"]');
+    el?.scrollIntoView({ block: 'nearest' });
+  }, [focusedIndex]);
+
   if (!isOpen) return null;
 
   let flatIndex = -1;
@@ -325,7 +337,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             viewport, so a raw 85vh paints 93.5vh at 110% zoom — which is how the footer went back
             under the window edge above ~105%. With the cap on the card, top (15vh) + card (83vh)
             never exceeds the window at any zoom, and the list scrolls when it has to. */}
-        <div className="flex-1 min-h-0 overflow-y-auto py-1.5">
+        <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto py-1.5">
           {filteredGroups.length === 0 && (
             <div className="px-4 py-6 text-center text-xs text-text-tertiary">
               No results found
@@ -346,6 +358,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
                     key={item.id}
                     onClick={isDisabled ? undefined : item.onAction}
                     onMouseEnter={() => setFocusedIndex(idx)}
+                    data-cmd-focused={isFocused ? 'true' : undefined}
                     disabled={isDisabled}
                     data-tip={isDisabled ? item.disabledHint : undefined}
                     // menu-item (the menus' own recipe: 32 px, 12 px, elevated hover); the keyboard

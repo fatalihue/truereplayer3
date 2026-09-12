@@ -93,13 +93,27 @@ ${presets}
             // Any schema version, not just v1 — this gate read \`=== 1\` while the stored
             // config had long moved past it, so the whole block was dead and every launch
             // painted the hardcoded default no matter which theme the user picked.
-            var base = cfg && cfg.version >= 1 && cfg.baseThemeId ? resolve(cfg.baseThemeId) : null;
+            // "Match Windows theme" is resolved HERE too, or the mirror paints the preset from
+            // the LAST session whenever the OS theme changed while the app was closed — the exact
+            // flash this whole block exists to prevent, arriving through the one door it did not
+            // watch. Same resolution loadThemeConfig makes (themes.ts), so the pre-React paint and
+            // React's first paint agree. colorOverrides are skipped in that case, as they are
+            // there: they belong to the preset being left.
+            var wantId = null;
+            if (cfg && cfg.uiSettings && cfg.uiSettings.matchSystemTheme && window.matchMedia) {
+              wantId = window.matchMedia('(prefers-color-scheme: light)').matches
+                ? cfg.uiSettings.lightPresetId : cfg.uiSettings.darkPresetId;
+              if (wantId && !resolve(wantId)) wantId = null;
+            }
+            var followed = wantId && cfg.baseThemeId !== wantId;
+            var base = cfg && cfg.version >= 1 && (wantId || cfg.baseThemeId)
+              ? resolve(wantId || cfg.baseThemeId) : null;
             // The base may be null (an orphaned id); the overrides still apply on top of the
             // default, which is what resolveThemeColors does.
             var src = base || colors;
             colors = {};
             for (var ki = 0; ki < KEYS.length; ki++) { var kk = KEYS[ki]; if (src[kk]) colors[kk] = src[kk]; }
-            if (cfg && cfg.colorOverrides) {
+            if (cfg && cfg.colorOverrides && !followed) {
               for (var kj = 0; kj < KEYS.length; kj++) { var ko = KEYS[kj]; if (cfg.colorOverrides[ko]) colors[ko] = cfg.colorOverrides[ko]; }
             }
             if (cfg && cfg.uiSettings) {

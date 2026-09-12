@@ -1634,6 +1634,27 @@ export function loadThemeConfig(): ThemeConfig {
         if (ui.fontMono === 'Consolas') ui.fontMono = DEFAULT_UI_SETTINGS.fontMono;
       }
 
+      // The OS follower is resolved HERE, before the first paint, not by the effect that runs
+      // after it. With "Match Windows theme" on and the OS theme changed while the app was
+      // closed, the window came up on the preset from the previous session and the effect
+      // repainted it one frame later — the flash the boot mirror exists to prevent, arriving
+      // through the one path the mirror could not see. Mirrored in tools/gen-boot-mirror.mjs, so
+      // the pre-React paint agrees.
+      // colorOverrides is cleared for the same reason the effect clears it (ThemeContext, sync):
+      // they belong to the preset being left. Resolving without clearing would make the effect a
+      // no-op by the baseThemeId equality check, and the overrides would start SURVIVING the
+      // boot — a behaviour change nobody asked for.
+      if (merged.uiSettings.matchSystemTheme && typeof window !== 'undefined'
+          && typeof window.matchMedia === 'function') {
+        const wantId = window.matchMedia('(prefers-color-scheme: light)').matches
+          ? merged.uiSettings.lightPresetId
+          : merged.uiSettings.darkPresetId;
+        if (wantId && getThemeById(wantId) && merged.baseThemeId !== wantId) {
+          merged.baseThemeId = wantId;
+          merged.colorOverrides = {};
+        }
+      }
+
       // Runs AFTER the migrations so a value a migration just wrote is checked too.
       const dropped = sanitizeStoredConfig(merged);
       if (dropped) console.warn(`[themes] Dropped ${dropped} unsafe colour value(s) from stored config`);
@@ -2007,6 +2028,13 @@ export function measurePaintedContrast(
 function isSafeCssColor(v: unknown): boolean {
   if (typeof v !== 'string' || v.length === 0 || v.length > 64) return false;
   if (!/^[#0-9a-zA-Z.,%()/\s-]+$/.test(v)) return false;
+  // `var()` is refused before anything else, on BOTH branches. CSS.supports('color',
+  // 'var(--z,url(//host/x.png))') answers TRUE by contract — a var() reference is valid wherever a
+  // value is expected, and the engine cannot know what it will resolve to — so the very payload
+  // this function exists to stop walked straight through the browser branch while the Node branch
+  // below already rejected it. The two halves of the same guard disagreed. No stock preset uses
+  // var() in a colour, so nothing legitimate is lost.
+  if (/var\s*\(/i.test(v)) return false;
   if (typeof CSS !== 'undefined' && typeof CSS.supports === 'function') return CSS.supports('color', v);
   // Node (the boot-mirror generator): accept the shapes the generator can actually emit and
   // reject every function call it cannot vet.
