@@ -10379,6 +10379,17 @@ namespace TrueReplayer
                 ("modeToggleHotkey", saved.ModeToggleHotkey),
                 ("captureSlotHotkey", saved.CaptureSlotHotkey),
             };
+            // The fifth combination the edit path refuses: the two Clicker hotkeys being the SAME
+            // key. Checked before the loop below, not inside it, or the pair would be reported
+            // twice. A file written by 2.36.0 (or edited by hand) can hold it, and the load-time
+            // detector covered only Clicker-versus-utility — so Start == Pause arrived in silence,
+            // and pressing it did whichever of the two registered last.
+            if (!string.IsNullOrEmpty(CursorClickStartHotkey)
+                && string.Equals(CursorClickStartHotkey, CursorClickPauseHotkey, StringComparison.OrdinalIgnoreCase))
+            {
+                DiagnosticLog.Info($"Hotkey conflict in settings: \"{CursorClickStartHotkey}\" is set as both the Clicker start and the Clicker pause hotkey.");
+                return $"\"{CursorClickStartHotkey}\" is set as both Clicker Start and Clicker Pause.";
+            }
             foreach (var clicker in new[] { CursorClickStartHotkey, CursorClickPauseHotkey })
             {
                 if (string.IsNullOrEmpty(clicker)) continue;

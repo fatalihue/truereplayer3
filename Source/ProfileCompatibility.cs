@@ -1100,7 +1100,14 @@ namespace TrueReplayer.Services
             foreach (Match m in ActionReplayer.DateTokenMatcher.Matches(text))
             {
                 if (!m.Groups[2].Success) continue;   // bare token — resolved since 1.0
-                if (ActionReplayer.TryFormatDateToken(m.Groups[1].Value, m.Groups[2].Value, DateProbe, out _)) return true;
+                // Invariant calendar on purpose: the floor has to describe the PROFILE, not the
+                // machine that exported it. TokenCulture clones the current culture, and a culture
+                // brings its calendar — under ar-SA (UmAlQura) "{date:+60y}" falls off the end and
+                // reads as literal, so the very same file pinned 2.37.0 on one desk and nothing on
+                // the next. Resolving at run time keeps using TokenCulture, which is what the
+                // manual documents.
+                if (ActionReplayer.TryFormatDateToken(m.Groups[1].Value, m.Groups[2].Value, DateProbe, out _,
+                        System.Globalization.CultureInfo.InvariantCulture)) return true;
             }
             return false;
         }

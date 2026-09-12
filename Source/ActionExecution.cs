@@ -112,6 +112,15 @@ namespace TrueReplayer.Services
         /// <summary>Last run's per-step diagnostics — see ActionReplayer.RunStepRecord.</summary>
         public (List<ActionReplayer.RunStepRecord> Steps, int Overflow, DateTime StartedAt, long ElapsedMs) GetRunReport()
             => replayer.GetRunReport();
+
+        /// <summary>
+        /// Which run the current report belongs to. Bumped once per replay, when the report opens.
+        /// The bridge reads it to tell "a new run finished" from "the same report came around
+        /// again" — a Clicker session or a manual Refresh re-pushes the last macro's report, and
+        /// without this the verdict attached to it was recomputed from whatever had just happened.
+        /// Not used by ActionExecution itself.
+        /// </summary>
+        public int RunSequence => replayer.RunSequence;
         private readonly DispatcherQueue dispatcherQueue;
         private readonly Action updateButtonStates;
         private readonly Action<string>? onStatusChanged;
@@ -1969,17 +1978,34 @@ namespace TrueReplayer.Services
             lock (_runSteps) return (new List<RunStepRecord>(_runSteps), _runStepsOverflow, _runStartedAt, _runElapsedMs);
         }
 
-        /// <summary>Stamp the run's wall-clock duration. Called once, as the run finishes.</summary>
-        private void FinishRunReport()
+        // Which report is current. Handed out by ResetRunReport and checked by FinishRunReport, so
+        // a run can only stamp the report it opened. An INT, not a bool: StartAsync cancels the
+        // previous replay at its top, so the old run's finally can arrive after the new run has
+        // already reset — a flag would let A carve its ending into B's report.
+        private int _runReportGen;
+
+        /// <summary>The current report's generation. Read by the bridge to tell runs apart.</summary>
+        public int RunSequence { get { lock (_runSteps) return _runReportGen; } }
+
+        /// <summary>
+        /// Stamp the run's wall-clock duration. Called once, as the run finishes, with the
+        /// generation that run was given. A stale generation stamps NOTHING: a replay cancelled
+        /// before it reached ResetRunReport (gen 0) used to run this anyway and measure from the
+        /// PREVIOUS run's start — so the earlier report was re-stamped with every idle minute
+        /// since, and the status bar reported a two-second macro as having taken twenty.
+        /// </summary>
+        private void FinishRunReport(int gen)
         {
             lock (_runSteps)
             {
+                if (gen == 0 || gen != _runReportGen) return;
                 var total = (long)(DateTime.Now - _runStartedAt).TotalMilliseconds;
                 _runElapsedMs = Math.Max(0, total - _runPausedAccumMs);
             }
         }
 
-        private void ResetRunReport()
+        /// <summary>Opens a fresh report and returns its generation.</summary>
+        private int ResetRunReport()
         {
             lock (_runSteps)
             {
@@ -1989,6 +2015,7 @@ namespace TrueReplayer.Services
                 _runStartedAt = DateTime.Now;
                 _runElapsedMs = 0;
                 _runPausedAccumMs = 0;
+                return ++_runReportGen;
             }
         }
 
@@ -2366,6 +2393,9 @@ namespace TrueReplayer.Services
             }
 
             bool raisedTimerRes = false;
+            // Which report this run is allowed to stamp. Stays 0 until ResetRunReport claims one —
+            // a run cancelled before it gets that far owns no report and must stamp nothing.
+            int reportGen = 0;
 
             try
             {
@@ -2486,7 +2516,7 @@ namespace TrueReplayer.Services
                 _softFaultOverride = false;
                 _relGeometryDriftWarned = false;   // one geometry-drift notice per run
                 _unknownConditionTypesWarned.Clear();   // one notice per bad family per run — see InstantProbe
-                ResetRunReport();          // the report describes THIS run only
+                reportGen = ResetRunReport();   // the report describes THIS run only
                 // Each run picks its browser tab afresh. Inheriting the previous run's tab would
                 // aim a macro at a page the user has since navigated away from.
                 _browserBridge?.ResetTabPin();
@@ -2664,7 +2694,7 @@ namespace TrueReplayer.Services
                 NotifyChainChanged();
                 // Stamp the duration here, at the one place every ending passes through — normal
                 // finish, Stop, error — so a report pulled minutes later still reports the run.
-                FinishRunReport();
+                FinishRunReport(reportGen);
                 PushVariablesSnapshot(force: true); // live pane: land on the final state
             }
         }
@@ -3270,6 +3300,12 @@ namespace TrueReplayer.Services
                     while (true)
                     {
                         var armRow = actions[branchArm];
+                        // Tokens resolved by THIS arm belong to THIS row. The stamp was taken once
+                        // at the opener and never moved, so every ElseIf in a chain resolved
+                        // {row}/@row as the IF's line number — while the run report numbered the
+                        // same step by the arm (Row = branchArm + 1, just below). The two already
+                        // disagreed; this settles it on the number the user can see in the grid.
+                        _currentActionRow = branchArm + 1;
                         // A greyed-out ELSEIF elides only ITS OWN arm — the chain moves on as if
                         // the probe had read false. (A greyed-out IF elides the entire block and
                         // never reaches here; that is the IsSkipped branch above.)
@@ -7931,8 +7967,17 @@ namespace TrueReplayer.Services
         /// than by a regex that only knows the token has an argument: "{date:x}" is literal on
         /// every build, so pinning it to 2.37.0 would refuse a profile a 2.36.0 machine runs
         /// identically. Same doctrine as ChainUsesShapeModifier and ChainUsesLoopRef.
+        ///
+        /// `culture` exists for that second caller. Resolving uses TokenCulture, which clones the
+        /// MACHINE's culture — and a culture carries a CALENDAR, so on a Windows set to ar-SA
+        /// (UmAlQura) an offset like "{date:+60y}" walks off the end, throws, and the token is
+        /// reported as literal. Harmless while running (the token really is literal there), but it
+        /// made the EXPORT FLOOR depend on the exporting machine's calendar: the same profile
+        /// pinned 2.37.0 on one PC and nothing on another. The compatibility scan asks with the
+        /// invariant calendar, so the answer is about the profile and not about the desk it left.
         /// </summary>
-        internal static bool TryFormatDateToken(string head, string? arg, DateTime now, out string value)
+        internal static bool TryFormatDateToken(string head, string? arg, DateTime now, out string value,
+            System.Globalization.CultureInfo? culture = null)
         {
             value = string.Empty;
             try
@@ -7955,7 +8000,7 @@ namespace TrueReplayer.Services
                     if (joined.Trim().Length > 0) format = joined;
                 }
                 format ??= h switch { "date" => "dd/MM/yyyy", "time" => "HH:mm:ss", _ => "dd/MM/yyyy - HH:mm:ss" };
-                value = when.ToString(format, TokenCulture);
+                value = when.ToString(format, culture ?? TokenCulture);
                 return true;
             }
             catch (FormatException) { return false; }
