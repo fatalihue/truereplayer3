@@ -42,20 +42,50 @@ export function ClickerPresetRow({ settings, width }: { settings: SettingsState;
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Outside-press + Escape dismissal — the pair ComboInput carries: mousedown, so the menu is
-  // gone before the click underneath lands; Escape closes only the menu.
+  // gone before the click underneath lands.
+  //
+  // Escape is armed while NAMING too, not just while the menu is open, and that matters: the
+  // naming branch replaces the chip button entirely, so with the field blurred there was no
+  // control left to click and the input's own onKeyDown could not hear Escape either. The mode
+  // was a dead end reachable by one stray click. Outside-mousedown still only closes the MENU —
+  // a name the user typed must survive a stray click, which is what onBlur below decides.
   useEffect(() => {
-    if (!open) return;
+    if (!open && !naming) return;
     const onDown = (e: MouseEvent) => { if (!wrapRef.current?.contains(e.target as Node)) setOpen(false); };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setOpen(false);
+      setNaming(false);
+      setName('');
+    };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown', onKey);
     };
-  }, [open]);
+  }, [open, naming]);
 
-  useEffect(() => { if (naming) inputRef.current?.focus(); }, [naming]);
+  // The chip's name is DERIVED (sameSetup, field by field), so it vanishes on the first knob the
+  // user turns — which is exactly the moment they head for "Save current as…" to overwrite that
+  // preset. Remember the last name that matched, so the field can open with it instead of empty.
+  // Without this, overwriting means retyping the name from memory with the list hidden behind the
+  // input, and one wrong letter does not warn: the backend Adds when no name matches, so the user
+  // silently ends up with a duplicate preset instead of an edited one.
+  const activeName = active?.name ?? null;
+  const lastMatchedRef = useRef<string | null>(null);
+  useEffect(() => { if (activeName) lastMatchedRef.current = activeName; }, [activeName]);
+
+  // Only offer a remembered name that is still in the list — it may have been deleted (the ✕ right
+  // here) or dropped by a settings push since it last matched.
+  const remembered = lastMatchedRef.current;
+  const prefill = remembered && presets.some((p) => p.name === remembered) ? remembered : '';
+  // What the field opened with, so onBlur can tell "untouched prefill" from "the user typed this".
+  const openedWithRef = useRef('');
+
+  // Select, not just focus: the prefilled name is a suggestion to overwrite, so typing replaces it
+  // and the user never has to clear the field to save under a different name.
+  useEffect(() => { if (naming) { inputRef.current?.focus(); inputRef.current?.select(); } }, [naming]);
 
   const commitName = () => {
     const trimmed = name.trim();
@@ -79,9 +109,17 @@ export function ClickerPresetRow({ settings, width }: { settings: SettingsState;
               if (e.key === 'Enter') commitName();
               if (e.key === 'Escape') { setNaming(false); setName(''); }
             }}
-            // Leaving an empty field cancels; leaving a typed one keeps it, so a stray click
-            // does not throw the name away.
-            onBlur={() => { if (!name.trim()) setNaming(false); }}
+            // Leaving a field the user did not WRITE cancels; leaving a typed one keeps it, so a
+            // stray click does not throw the name away. "Did not write" has to mean empty OR still
+            // exactly the prefill — testing only for empty was right while the field always opened
+            // blank, but a prefilled field is never empty, so every stray click used to stick.
+            // Compared against the value captured when the field OPENED, never against `prefill`:
+            // that one is recomputed every render and a settings push can turn it into '' under an
+            // open field, which would let a name the user really typed cancel itself.
+            onBlur={() => {
+              const typed = name.trim();
+              if (!typed || typed === openedWithRef.current) { setNaming(false); setName(''); }
+            }}
             placeholder="Name, then Enter"
             maxLength={40}
             aria-label="Preset name"
@@ -128,7 +166,7 @@ export function ClickerPresetRow({ settings, width }: { settings: SettingsState;
           <button
             type="button"
             onMouseDown={(e) => e.preventDefault()}
-            onClick={() => { setOpen(false); setName(''); setNaming(true); }}
+            onClick={() => { setOpen(false); openedWithRef.current = prefill; setName(prefill); setNaming(true); }}
             className="w-full px-2 py-1 text-left text-[11px] text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors"
           >
             Save current as…

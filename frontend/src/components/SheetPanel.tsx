@@ -28,6 +28,12 @@ import { ImageCropper } from './ImageCropper';
 const LexicalTokenEditor = lazy(() => import('./lexical/LexicalTokenEditor').then(m => ({ default: m.LexicalTokenEditor })));
 import type { LexicalEditorHandle } from './lexical/LexicalTokenEditor';
 import { getDisplayKey } from '../utils/displayUtils';
+
+// How often the open row editor re-stamps its unsaved-work claim with AutomationGuard. Must stay
+// WELL under `AutomationGuard.EditorClaimTtl` (10 min) — that deadline is measured from the last
+// stamp, so the gap between renewals is the only thing that can let it lapse under a live editor.
+// One small message a minute, and only while the editor actually holds unsaved fields.
+const EDITOR_CLAIM_RENEW_MS = 60_000;
 import { Field, Section } from './sheet/Field';
 import { WindowTargetFields } from './WindowTargetFields';
 import { Slider } from './sheet/Slider';
@@ -1896,6 +1902,36 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   }, [pendingEdits, send]);
   // Unmount is not a value change, so the effect above never fires for it.
   useEffect(() => () => { send({ type: 'editor:pendingEdits', payload: { pending: false } }); }, [send]);
+  // RENEW the claim while it is held. AutomationGuard expires it a fixed TTL after the moment it
+  // was STAMPED, and the effect above only fires on the TRANSITION of pendingEdits — so the clock
+  // started on the user's first keystroke in this row and nothing ever restarted it. Ten minutes
+  // later the claim died with the user still typing, and the next autonomous fire swapped the
+  // profile and overwrote the open editor field by field, silently.
+  //
+  // A heartbeat is the right shape because it renews on exactly the condition the TTL exists to
+  // detect. That backstop is there for "a WebView that went away without releasing" — and a
+  // WebView that went away also stops this interval, so the claim still expires on schedule for
+  // the case it was written for. Keyed on pendingEdits, so it never claims for a closed editor.
+  //
+  // It renews off the LATCH, not off recent keystrokes, and that is deliberate — do not "fix" it
+  // into an idle budget. This is the house's settled answer for a surface that invites walking
+  // away: InteractionScope.EnterRenewing was written for the capture overlays and its remarks
+  // reject the alternative by name — "a longer flat ttl ... is strictly worse: it weakens leak
+  // detection AND still eventually fires under a live one, so it trades a certain harm for a
+  // rarer one". An idle budget here would be that flat ttl with a shorter fuse, and it would
+  // lapse under the long editor interactions that emit no input event at all (the cropper, Test
+  // match, the selector probe). What the claim costs while held is visible and recoverable: the
+  // fire reports "skipped (editing a row)", counts as SkippedModal, and is retried inside its
+  // grace window. What it costs when it lapses is not: the fields are overwritten in silence.
+  // Four live paths still release it — ui:ready, unmount, moving to another row, and the TTL
+  // itself the moment this interval stops.
+  useEffect(() => {
+    if (!pendingEdits) return;
+    const id = setInterval(() => {
+      send({ type: 'editor:pendingEdits', payload: { pending: true } });
+    }, EDITOR_CLAIM_RENEW_MS);
+    return () => clearInterval(id);
+  }, [pendingEdits, send]);
 
   // The row this editor edits stopped existing — an Undo that shortened the list, a delete from
   // the grid, a profile switch. The panel went on painting a row that is gone: every field still

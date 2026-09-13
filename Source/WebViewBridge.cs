@@ -3409,13 +3409,35 @@ namespace TrueReplayer
         /// Feeds AutomationGuard ONLY — see the field remarks there for why this does not go
         /// through hotkey suppression or through HasUnsavedChanges.
         /// </summary>
+        // Last value written to the log, and when — so a renewal stream collapses to one line per
+        // window instead of one per stamp. Null until the panel has said anything at all.
+        private bool? _editorPendingLogged;
+        private DateTime _editorPendingLoggedAt;
+        private static readonly TimeSpan EditorPendingLogEvery = TimeSpan.FromMinutes(5);
+
         private void HandleEditorPendingEdits(JsonElement payload)
         {
             bool pending = payload.TryGetProperty("pending", out var el) && el.ValueKind == JsonValueKind.True;
             // Logged because this channel is otherwise INVISIBLE: it has no UI of its own, and its
-            // only effect is a refusal that names a different gate when it is not working. A state
-            // change, not a stream — the panel sends it on transitions, so this cannot flood.
-            Services.DiagnosticLog.Info($"Row editor pending edits: {(pending ? "YES — autonomous fires held" : "no")}");
+            // only effect is a refusal that names a different gate when it is not working.
+            //
+            // This is a STREAM now, not just transitions: the panel re-stamps the claim about once
+            // a minute while the editor holds unsaved fields, so that the guard's TTL cannot lapse
+            // under a live editor. One line per stamp would bury a session — DiagnosticLog rotates
+            // by LINE COUNT, so an editor left open overnight would push every other diagnostic out
+            // of the file. So: always log the CHANGE, which is the fact support reads, and let the
+            // renewals through at the same cadence InteractionScope allows itself for the identical
+            // job ("at most one per scope per ttl, so it cannot flood") — the answer to "my
+            // automation never fired" survives without the flood.
+            bool changed = _editorPendingLogged != pending;
+            if (changed || (pending && DateTime.UtcNow - _editorPendingLoggedAt >= EditorPendingLogEvery))
+            {
+                _editorPendingLogged = pending;
+                _editorPendingLoggedAt = DateTime.UtcNow;
+                Services.DiagnosticLog.Info(pending
+                    ? $"Row editor pending edits: YES — autonomous fires held{(changed ? "" : " (still held)")}"
+                    : "Row editor pending edits: no");
+            }
             Services.AutomationGuard.SetEditorBusy(pending);
         }
 
