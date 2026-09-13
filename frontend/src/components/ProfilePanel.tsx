@@ -2243,11 +2243,40 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                       // unconditionally and adding bg-accent-solid/20 for the drag state put
                       // both in the same layer at the same specificity, so the one printed
                       // later in the bundle won and the drop fill never appeared — dead class.
+                      // The resting look moved to `style` for the same reason, guarded by the
+                      // same condition: an inline style would BEAT the drag classes outright,
+                      // which is the identical bug one layer up.
                       className={`group/folder border rounded-md my-1 transition-colors ${
                         isDragOver
                           ? 'bg-accent-solid/20 border-accent-solid/50 ring-2 ring-accent-solid/50'
-                          : `bg-bg-card ${folder.collapsed ? 'border-border-subtle' : 'border-border-default'}`
+                          : ''
                       } ${isFolderDragging ? 'opacity-50' : ''}`}
+                      // Quieter card (owner's call, seen on screen). It should read as a
+                      // CONTAINER, not as a highlight: enough separation to find the group's
+                      // edges, not enough to compete with the profile names inside it.
+                      //
+                      // Both halves move, because the fill was never what made these loud. At
+                      // the default preset the card/panel gap is 3 points of luminance while the
+                      // border is a light hairline at 10 % alpha over a near-black panel — the
+                      // edge was doing the shouting, so dropping it to the subtle token is what
+                      // the eye actually registers. The fill mix matters for the OTHER presets.
+                      //
+                      // Proportional, never absolute: across the 37 presets the card-vs-surface
+                      // delta runs from -17 to +20 (several make the card DARKER than the panel),
+                      // so a fixed nudge would erase the card in one theme and do nothing in
+                      // another. A mix keeps the same FRACTION of whatever separation the theme
+                      // author chose, in whichever direction they chose it.
+                      //
+                      // Collapsed stays a step below expanded, as it was. That step is nearly
+                      // imperceptible and the chevron already carries the state — but it was a
+                      // deliberate choice, so it survives the change instead of being dropped by
+                      // accident on the way past.
+                      style={isDragOver ? undefined : {
+                        background: 'color-mix(in srgb, var(--color-bg-card) 60%, var(--color-bg-surface))',
+                        borderColor: folder.collapsed
+                          ? 'color-mix(in srgb, var(--color-border-subtle) 55%, transparent)'
+                          : 'var(--color-border-subtle)',
+                      }}
                     >
                       <div
                         // px-1.5 / gap-1 matches the profile rows. The colour the user already
