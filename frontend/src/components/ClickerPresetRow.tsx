@@ -31,7 +31,15 @@ function sameSetup(p: ClickerPreset, s: SettingsState): boolean {
   return PRESET_KEYS.every((k) => JSON.stringify(p[k] ?? null) === JSON.stringify(s[k] ?? null));
 }
 
-export function ClickerPresetRow({ settings, width }: { settings: SettingsState; width: string }) {
+export function ClickerPresetRow({ settings, width, lastMatched }: {
+  settings: SettingsState;
+  width: string;
+  /** Owned by SettingsPanel, like seedUndo, and for the same reason: this row is remounted by a tab
+   *  switch, by narrowing the window below the two-column breakpoint, and by a run pulling focus
+   *  back to the profile tab. A ref declared HERE started empty again after each of those, and the
+   *  prefill this exists for was silently back to blank. */
+  lastMatched: React.MutableRefObject<string | null>;
+}) {
   const { send } = useBridge();
   const presets = settings.cursorClickPresets ?? [];
   const active = presets.find((p) => sameSetup(p, settings)) ?? null;
@@ -73,12 +81,13 @@ export function ClickerPresetRow({ settings, width }: { settings: SettingsState;
   // input, and one wrong letter does not warn: the backend Adds when no name matches, so the user
   // silently ends up with a duplicate preset instead of an edited one.
   const activeName = active?.name ?? null;
-  const lastMatchedRef = useRef<string | null>(null);
-  useEffect(() => { if (activeName) lastMatchedRef.current = activeName; }, [activeName]);
+  useEffect(() => { if (activeName) lastMatched.current = activeName; }, [activeName, lastMatched]);
 
   // Only offer a remembered name that is still in the list — it may have been deleted (the ✕ right
-  // here) or dropped by a settings push since it last matched.
-  const remembered = lastMatchedRef.current;
+  // here) or dropped by a settings push since it last matched. That filter matters more now that
+  // the memory outlives this component: it can hold a name from before a remount, and the list it
+  // is checked against is always the current one.
+  const remembered = lastMatched.current;
   const prefill = remembered && presets.some((p) => p.name === remembered) ? remembered : '';
   // What the field opened with, so onBlur can tell "untouched prefill" from "the user typed this".
   const openedWithRef = useRef('');

@@ -457,13 +457,16 @@ function ComboInput({ value, onCommit, options, width = FIELD_W, editable = true
 // Takes the whole settings slice rather than 22 mirrored props: every new Clicker setting used
 // to touch four places in this file (prop, type, destructure, call site) before it did anything.
 // The local names below are the ones the body always used, so it reads as before.
-function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo }: {
+function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, lastPresetName }: {
   unit: 'ms' | 'cps';
   onUnitChange: (u: 'ms' | 'cps') => void;
   settings: SettingsState;
   onChange: (key: string, value: string | boolean | number | object | null) => void;
   /** Owned by SettingsPanel — this component is remounted by a tab switch and by the collapse. */
   seedUndo: React.MutableRefObject<Record<string, string | null>>;
+  /** Owned by SettingsPanel for the same reason: the last preset name that matched, so the
+   *  "Save current as…" field can open on it after a remount instead of empty. */
+  lastPresetName: React.MutableRefObject<string | null>;
 }) {
   const {
     cursorClickButton: button,
@@ -600,7 +603,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo }: {
           {/* Presets — named snapshots of every row below. Everything Clicker is global and
               Save/Load are disabled in this mode, so this is the only way to keep two setups. */}
           <SettingRow label="Preset" tooltip={tt('Save or apply a named setup. Custom = none matches.', 'Salve ou aplique um setup nomeado. Custom = nenhum bate.')}>
-            <ClickerPresetRow settings={settings} width={FIELD_W} />
+            <ClickerPresetRow settings={settings} width={FIELD_W} lastMatched={lastPresetName} />
           </SettingRow>
           {/* Mouse button picker — moved here from the ActionBar so the panel is the single
               source of truth for "every Clicker setting". Left/Right/Middle, always applied. */}
@@ -1141,6 +1144,12 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
   // those no longer restored the value the seed had overwritten — the stray 10/100 stayed, the
   // preset chip read "Custom", and SaveGlobalSettings wrote it to disk.
   const seedUndoRef = useRef<Record<string, string | null>>({});
+  // Same reason, same owner: the preset chip's name is DERIVED from a field-by-field compare, so it
+  // vanishes the moment the user turns a knob — and that is precisely when they head for "Save
+  // current as…" to overwrite it. The memory of the last name that matched has to outlive the
+  // remount, or a tab switch (or narrowing the window, or a run stealing focus back to the profile
+  // tab) empties the field again and overwriting means retyping the name from memory.
+  const lastPresetNameRef = useRef<string | null>(null);
   const firstEpochRef = useRef(true);
   useEffect(() => {
     if (firstEpochRef.current) { firstEpochRef.current = false; return; }
@@ -1451,6 +1460,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                 settings={settings}
                 onChange={changeSetting}
                 seedUndo={seedUndoRef}
+                lastPresetName={lastPresetNameRef}
               />
             ) : (
               <>
