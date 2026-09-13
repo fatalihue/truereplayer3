@@ -819,7 +819,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
           <div className="shrink-0 flex flex-col">
             <div className="label-micro text-text-tertiary mb-1 shrink-0">Result</div>
             <div
-              className="min-h-[64px] max-h-[40vh] font-mono text-[11px] px-2 py-1 rounded border-l-2 whitespace-pre-wrap break-all overflow-auto"
+              className="min-h-[64px] max-h-[calc(40vh/var(--ui-zoom))] font-mono text-[11px] px-2 py-1 rounded border-l-2 whitespace-pre-wrap break-all overflow-auto"
               style={{
                 background: 'color-mix(in srgb, var(--color-replay) 8%, transparent)',
                 borderColor: 'color-mix(in srgb, var(--color-replay) 40%, transparent)',

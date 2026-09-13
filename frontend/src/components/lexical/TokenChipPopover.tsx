@@ -255,7 +255,12 @@ export function TokenChipPopover({
         zIndex: 100,
         width: kind === 'clipboard' || kind === 'rowcol' || kind === 'rownextcol' || kind === 'pick' || kind === 'date' || kind === 'runstate' || kind === 'timestamp' ? 300 : 260,
         borderColor: 'color-mix(in srgb, var(--color-accent-solid) 35%, transparent)',
-        maxHeight: 'calc(100vh - 24px)',
+        // Divided by --ui-zoom like every other viewport unit in the app: place() above already
+        // measures in LAYOUT space (viewportInLayout(zoom)), and a raw 100vh here measures in
+        // PAINTED space — the two halves of the same surface disagreeing. At 200 % the raw form
+        // resolves to twice the real layout viewport, so it caps nothing and the popover runs off
+        // the bottom of the window.
+        maxHeight: 'calc(100vh / var(--ui-zoom) - 24px)',
       }}
       className="menu-surface pop-in overflow-hidden flex flex-col"
     >

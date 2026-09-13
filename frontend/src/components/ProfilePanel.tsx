@@ -589,7 +589,14 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
     setShowCreateDialog(true);
   }, []);
 
-  // Listen for command palette triggers
+  // NOT a command palette trigger — the palette dispatches neither of these. Same finding as
+  // 45b7420, which corrected the identical sentence over the five cmd:* listeners in Toolbar.tsx
+  // and counted SEVEN in this state overall; these are the two it did not touch, and they were the
+  // ones a reader hunting dead code in this file would meet first.
+  //
+  // They STAY, for the reason recorded there: cmd:* is the deliberate extension point for opening a
+  // surface from outside the component that owns it. Wiring a palette entry to either of these is
+  // one line in CommandPalette.tsx and needs no change here — the listener IS the interface.
   useEffect(() => {
     const onCmd = () => handleCreate(null);
     window.addEventListener('cmd:newprofile', onCmd);

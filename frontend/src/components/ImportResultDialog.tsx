@@ -27,7 +27,7 @@ export function ImportResultDialog({ result, onClose }: ImportResultDialogProps)
       icon={<Download size={14} style={{ color: 'var(--color-accent)' }} />}
       title="Import complete"
       size="lg"
-      cardClassName="max-h-[85vh]"
+      cardClassName="max-h-[calc(85vh/var(--ui-zoom))]"
       onClose={onClose}
       // Pure reading, nothing to lose — backdrop click may dismiss (unlike the
       // preview, where a stray click would discard a curated selection).

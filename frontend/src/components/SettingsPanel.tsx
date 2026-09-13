@@ -1129,7 +1129,8 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
   // profileLoop: the Execution section's Loops/Interval rows edit the LOADED PROFILE, not the
   // app. `scoped` is what tells the tooltip whether it's describing a profile value or the
   // no-profile fallback.
-  const { settings, settingsResetEpoch, status, profileLoop, profiles } = useAppState();
+  const { settings, settingsResetEpoch, status, profileLoop, profiles, buttonStates } = useAppState();
+  const { showToast } = useToast();
   // Clicker Rate unit — lifted out of ClickerSection so it survives that component's
   // remounts. settingsResetEpoch still bounces it back to the default, which was its only
   // documented job; it just does it through an effect now instead of a remount key.
@@ -1149,6 +1150,24 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
   const tt = useTt();
   const { send, subscribe } = useBridge();
   const selectionRef = useSelectionRef();
+  // Enter on the Delay chip writes the grid — it bulk-updates the SELECTED rows. Every other route
+  // that writes the grid during a run was closed this release; this one sits in Settings, so it
+  // was not on that list. The selection BAR hides while a run is on (ActionTable), but the
+  // selection itself is not cleared and the bridge does not filter, so the key still rewrote the
+  // Delay of the rows the engine was walking. There is no button to disable on this path — only a
+  // key — so the refusal lives at the send, which is the only place that works.
+  const runWritesBlocked = buttonStates.recordingActive || buttonStates.replayActive;
+  const lastDelayRefusalRef = useRef(0);
+  const refuseGridWrite = useCallback(() => {
+    if (!runWritesBlocked) return false;
+    const now = Date.now();
+    if (now - lastDelayRefusalRef.current > 2000) {
+      lastDelayRefusalRef.current = now;
+      showToast(tt('The action list is locked while a run is active.',
+                   'A lista de ações está travada enquanto um run está ativo.'), 'error');
+    }
+    return true;
+  }, [runWritesBlocked, showToast, tt]);
   // Three scopes (2026-07 "Option B" reorg): Profile = what changes per macro/mode;
   // Keys = everything that intercepts a key (global hotkeys, clicker hotkeys, remaps);
   // App = window/startup/notifications/automation/interface + the Updates footer.
@@ -1449,7 +1468,9 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                     if (isNaN(delay)) return;
                     if (!settings.useCustomDelay) changeSetting('useCustomDelay', true);
                     const indices = selectionRef.current;
-                    if (indices.size > 0) {
+                    // Refused at the send, not on a control: this path has no button to disable —
+                    // it is reached by Enter inside the chip. See refuseGridWrite above.
+                    if (indices.size > 0 && !refuseGridWrite()) {
                       send({ type: 'actions:bulkUpdateDelay', payload: { indices: [...indices], delay } });
                     }
                   }}

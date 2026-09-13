@@ -162,7 +162,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
       // max-h keeps the review list scrollable inside the card on short windows
       // (the profile list below is the flex-1 overflow-y-auto region).
       size="xl"
-      cardClassName="max-h-[90vh]"
+      cardClassName="max-h-[calc(90vh/var(--ui-zoom))]"
       onClose={onCancel}
       // closeOnBackdrop FALSE: accidentally clicking outside while reviewing a
       // dozen profiles would discard the selection + conflict choices. The user

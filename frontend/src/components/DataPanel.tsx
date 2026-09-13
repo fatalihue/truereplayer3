@@ -11,6 +11,7 @@ import { CheckboxBox } from './Checkbox';
 import { useBridge } from '../bridge/BridgeContext';
 import { useAppState } from '../state/AppStateContext';
 import { useTt } from '../state/LanguageContext';
+import { useToast } from '../state/ToastContext';
 import { DataPasteSurface, type PasteMode } from './DataPasteSurface';
 import { parseTsv, encodeTsv, deepEqualGrid, tokenizeTsvGrid, sniffDelimiter, type Grid } from '../lib/tsv';
 import { scanRowTokenUsage, orphanHead } from '../lib/rowTokenUsage';
@@ -385,7 +386,10 @@ type Editing = { kind: 'cell'; r: number; c: number } | { kind: 'header'; c: num
 
 export function DataPanel({ onClose }: DataPanelProps) {
   const { send } = useBridge();
-  const { dataTable, actions, activeProfile } = useAppState();
+  const { dataTable, actions, activeProfile, settings, buttonStates } = useAppState();
+  const { showToast } = useToast();
+  const isClicker = settings.useCursorClick;
+  const runActive = buttonStates.recordingActive || buttonStates.replayActive;
   const tt = useTt();
 
   // ── Canonical state: arrays, not a TSV string. Quoting exists only in
@@ -513,12 +517,11 @@ export function DataPanel({ onClose }: DataPanelProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Profile switch while open → close immediately: stale local state must never
-  // save into another profile's table (latent bug in the pre-redesign panel).
+  // Profile switch while open → close immediately: stale local state must never save into another
+  // profile's table (latent bug in the pre-redesign panel). The EFFECT lives further down, beside
+  // the Clicker one, because both go through closeWithNotice and a dep array cannot reference a
+  // const declared after it.
   const initialProfileRef = useRef(activeProfile);
-  useEffect(() => {
-    if (activeProfile !== initialProfileRef.current) onClose();
-  }, [activeProfile, onClose]);
 
   // ── Derived ──
   const dirty = useMemo(() => {
@@ -528,12 +531,14 @@ export function DataPanel({ onClose }: DataPanelProps) {
       || onRowError !== seed.onRowError || notifyLap !== seed.notifyLap;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [grid, loopOverData, onRowError, notifyLap]);
-  const dirtyNow = () => {
+  // Memoised because the Clicker close-out effect depends on it; every input is a ref, so the
+  // empty dep list is exhaustive and the identity is stable for the life of the panel.
+  const dirtyNow = useCallback(() => {
     const seed = seedRef.current;
     if (!seed) return false;
     return !deepEqualGrid(gridRef.current, seed.grid) || loopRef.current !== seed.loopOverData
       || onRowErrorRef.current !== seed.onRowError || notifyLapRef.current !== seed.notifyLap;
-  };
+  }, []);
 
   const emptyGrid = grid.headers.length === 0 && grid.rows.length === 0;
   const willClear = emptyGrid && !!seedRef.current?.wasNonEmpty;
@@ -838,8 +843,35 @@ export function DataPanel({ onClose }: DataPanelProps) {
 
   // ── Save — instant close (DialogShell confirm doctrine: the backend persists
   // synchronously and re-pushes data:table, so the closing dialog IS the feedback).
+  // The refusal lives HERE, at the one place `data:save` leaves, and not on the buttons: Save,
+  // Clear table and Ctrl+Enter all funnel through handleSave, and Ctrl+Enter reaches it from the
+  // card's key handler without ever consulting a button's `disabled`.
+  //
+  // bb06849 gated the toolbar button that OPENS this panel and said "the toolbar is its ONLY entry
+  // point, so this gate is the whole story". That is the whole story for opening it — not for a
+  // panel that was already open when the run started or when the mode flipped. Runs begin on a
+  // global hotkey and ScrLk flips the mode from inside any app, so "already open" is the ordinary
+  // case, not the exotic one.
+  const lastRefusalRef = useRef(0);
+  const refuseWrite = useCallback(() => {
+    if (!isClicker && !runActive) return false;
+    const now = Date.now();
+    if (now - lastRefusalRef.current > 2000) {
+      lastRefusalRef.current = now;
+      showToast(isClicker
+        ? tt('The data table is unavailable in Clicker mode — only macro rows read it.',
+             'A tabela de dados não vale no modo Clicker — só as linhas de macro a leem.')
+        : tt('The data table is locked while a run is active.',
+             'A tabela de dados está travada enquanto um run está ativo.'), 'error');
+    }
+    return true;
+  }, [isClicker, runActive, showToast, tt]);
+
   const handleSave = () => {
     if (!dirtyNow()) return;
+    // After the dirty check on purpose: with nothing to write there is nothing to refuse, and a
+    // toast for a no-op save would be noise.
+    if (refuseWrite()) return;
     const g = gridRef.current;
     const rows = [...g.rows];
     // Parity with the old parseTsv: trailing all-empty rows are dropped; kept
@@ -853,6 +885,56 @@ export function DataPanel({ onClose }: DataPanelProps) {
     send({ type: 'data:save', payload: { headers: g.headers, rows: padded, loopOverData: loopRef.current, onRowError: onRowErrorRef.current, notifyOnLapComplete: notifyLapRef.current } });
     onClose();
   };
+
+  // Is there work the user would miss? The GRID is only half the answer. The paste surface holds
+  // its text in local state until Apply writes it to the grid, so a paste or a CSV import that has
+  // not been applied yet is invisible to dirtyNow() — and above MAX_EDITABLE rows the grid is
+  // read-only and that surface is the ONLY editor, so in exactly the biggest tables 100% of the
+  // work lives there. Measured against prefillRef, never against "non-empty": the box opens
+  // pre-filled with the current table, and handlePasteModeChange empties it when switching to
+  // Append, so both of those are a clean box, not pending work.
+  const workPending = useCallback(
+    () => dirtyNow() || (pasteOpen && pasteText.trim() !== '' && pasteText !== prefillRef.current),
+    [dirtyNow, pasteOpen, pasteText]);
+
+  // ONE door for every close this panel does not choose, so the next one cannot be born mute.
+  // Both callers are events that arrive from OUTSIDE the window — ScrLk and a global profile
+  // hotkey — which is why neither can be left silent: the user is not looking at this panel when
+  // it happens. Only claims discarded work when there was some; a toast that invents a loss is its
+  // own bug. The ref makes it fire once — onClose runs through the parent's state, so this can
+  // render again before the unmount lands and each pass would toast anew.
+  const forcedCloseRef = useRef(false);
+  const closeWithNotice = useCallback((en: string, ptBr: string) => {
+    if (forcedCloseRef.current) return;
+    forcedCloseRef.current = true;
+    const lost = workPending();
+    showToast(tt(
+      lost ? `${en} — unsaved changes were discarded.` : en,
+      lost ? `${ptBr} — as alterações não salvas foram descartadas.` : ptBr), 'error');
+    onClose();
+  }, [workPending, showToast, tt, onClose]);
+
+  // CLOSE on the mode flip, REFUSE during a run — the split the rest of this release follows.
+  // Clicker takes the surface away rather than locking it: the table exists to feed {row:column}
+  // tokens, and only macro rows read those, so in Clicker there is nothing left that could consume
+  // it. A run is the other case — the table is still the right table, it is just being iterated.
+  useEffect(() => {
+    if (!isClicker) return;
+    closeWithNotice('Clicker mode closed the data table',
+                    'O modo Clicker fechou a tabela de dados');
+  }, [isClicker, closeWithNotice]);
+
+  // The older sibling of the effect above, and it used to close MUTE. Same shape of event: the
+  // profile changes from a global hotkey, the tray menu or an armed automation — never from this
+  // dialog, which is modal with a backdrop — so the user is not looking here when the table and
+  // everything typed into it disappears. It does NOT save on the way out: the comment on
+  // initialProfileRef is right that stale local state must never write another profile's table.
+  // Saying so is the part that was missing.
+  useEffect(() => {
+    if (activeProfile === initialProfileRef.current) return;
+    closeWithNotice('Another profile was loaded — the data table was closed',
+                    'Outro perfil foi carregado — a tabela de dados foi fechada');
+  }, [activeProfile, closeWithNotice]);
 
   // ── Esc router — ONE capture-phase ladder. Chip/header popovers own their Esc
   // ([data-popover] stand-down); the open cell editor owns its Esc (target-level
@@ -891,7 +973,9 @@ export function DataPanel({ onClose }: DataPanelProps) {
     };
     document.addEventListener('keydown', onEsc, true);
     return () => document.removeEventListener('keydown', onEsc, true);
-  }, [pasteOpen, armedClear]);
+    // dirtyNow is a useCallback with an empty dep list (every input is a ref), so naming it here
+    // costs no extra re-subscription — the listener is still attached once per pasteOpen/armedClear.
+  }, [pasteOpen, armedClear, dirtyNow]);
 
   // ── Status strip ──
   const stripLeft = (
