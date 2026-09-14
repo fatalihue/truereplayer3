@@ -87,7 +87,12 @@ namespace TrueReplayer.Services
         // instead of going away. The prelude now always POSITIONS and only CLEARS when the entry is
         // going to write. The harness missed it because it seeded the field through `.value`, and
         // assigning `.value` moves the caret to the end: the fixture hid the real page's condition.
-        public const string ExpectedExtensionVersion = "1.4.21";
+        // 1.4.22 = a bridge that dropped while LIVE retries at once instead of waiting out the
+        // reconnect alarm. The ladder is sized for "the app is not running" and chrome.alarms
+        // clamps to 30 s, so restarting TrueReplayer cost a measured 25 s of dead bridge and the
+        // run inside that window failed outright. The budget is refilled only by a port that
+        // reached bridge:connected, which is what keeps a closed app from looping on process spawns.
+        public const string ExpectedExtensionVersion = "1.4.22";
         private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
         private NamedPipeServerStream? _pipeServer;
         private StreamReader? _reader;
@@ -138,6 +143,13 @@ namespace TrueReplayer.Services
         {
             while (!token.IsCancellationRequested)
             {
+                // Only a session that actually CONNECTED gets a disconnect line. The finally below
+                // runs on every turn of this loop, including the ones where creating the pipe or
+                // waiting for a client threw — logging there would write a disconnect per second
+                // for a connection that never happened, the same flood LogPipeFailure already
+                // exists to prevent.
+                bool wasConnected = false;
+                var connectedAt = DateTime.UtcNow;
                 try
                 {
                     _pipeServer?.Dispose();
@@ -175,6 +187,13 @@ namespace TrueReplayer.Services
 
                     IsConnected = true;
                     ConnectionChanged?.Invoke(true);
+                    wasConnected = true;
+                    connectedAt = DateTime.UtcNow;
+                    // The bridge's up/down edges were the one thing the session log never recorded,
+                    // and they are the first question any "the browser steps are slow / failing"
+                    // report raises: a bridge that dropped and came back explains both, and until
+                    // now it left no trace anywhere. Cheap — twice per connection, not per command.
+                    DiagnosticLog.Info("[BrowserBridge] connected.");
                     // A connection ends any run of identical failures, so the same error recurring
                     // after a good session is reported again instead of being folded into the old
                     // run and never mentioned.
@@ -217,6 +236,17 @@ namespace TrueReplayer.Services
                 {
                     IsConnected = false;
                     ConnectionChanged?.Invoke(false);
+
+                    if (wasConnected)
+                    {
+                        // Counted BEFORE the sweep below empties the dictionary. A disconnect with
+                        // commands in flight is a run that just died mid-step, which reads very
+                        // differently from an idle bridge dropping between macros.
+                        int inFlight = _pendingCommands.Count;
+                        DiagnosticLog.Info(
+                            $"[BrowserBridge] disconnected after {(DateTime.UtcNow - connectedAt).TotalSeconds:F0}s"
+                            + (inFlight > 0 ? $" with {inFlight} command(s) in flight." : "."));
+                    }
 
                     // NAME the disconnect instead of cancelling anonymously. TrySetCanceled() with no
                     // token produced a BARE OperationCanceledException — indistinguishable from a user
@@ -410,6 +440,13 @@ namespace TrueReplayer.Services
                             // versions and decides.
                             if (!string.IsNullOrEmpty(extVersion))
                             {
+                                // Logged on every handshake, matching or not: "which extension was
+                                // actually loaded" is unanswerable after the fact otherwise, and an
+                                // unpacked extension serving a stale worker is a failure mode this
+                                // project has already been bitten by.
+                                DiagnosticLog.Info(extVersion == ExpectedExtensionVersion
+                                    ? $"[BrowserBridge] extension {extVersion} (expected {ExpectedExtensionVersion})."
+                                    : $"[BrowserBridge] extension {extVersion} does NOT match the expected {ExpectedExtensionVersion} — reload it in chrome://extensions.");
                                 ExtensionVersionMismatch?.Invoke(extVersion, ExpectedExtensionVersion);
                             }
                             break;
@@ -903,6 +940,14 @@ namespace TrueReplayer.Services
 
             using var timeoutCts = new CancellationTokenSource(pipeTimeout);
 
+            // Per-step timing, written on EVERY outcome by the finally below. Without it a report of
+            // "the browser steps got slow" has nothing to check against: the session log records a
+            // replay's start and end and nothing in between, so a three-step macro that took four
+            // times longer than usual is one number, with no way to say which step spent it — or
+            // whether the bridge was even up. Both halves of that question now have a line.
+            var stepWatch = System.Diagnostics.Stopwatch.StartNew();
+            string stepOutcome = "no reply";
+
             try
             {
                 // If user stops replay, propagate cancellation normally
@@ -915,6 +960,7 @@ namespace TrueReplayer.Services
                         tip: GetFriendlyTimeoutTip(command)))))
                 {
                     var result = await tcs.Task;
+                    stepOutcome = "ok";
                     // Bind the run to whatever tab the extension actually used. Every later
                     // command carries it, so a focus change mid-run can no longer redirect the
                     // macro. A navigate re-pins by nature: it reports the tab it navigated, which
@@ -947,13 +993,51 @@ namespace TrueReplayer.Services
                 // pin exists to prevent, on the one path where the user is already distracted by
                 // an error. Adopt, then rethrow untouched: the failure policy above this frame is
                 // what decides whether the run halts, not this.
+                stepOutcome = bex.Code ?? "failed";
                 AdoptTabPin(bex.TabId);
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // A sibling of the filtered catch above, not a replacement for it: `throw;` there
+                // does not fall through to here, so each path has to name its own outcome. Nothing
+                // is swallowed — every branch rethrows, and the only work done is naming.
+                stepOutcome = ex switch
+                {
+                    BrowserActionException b => b.Code ?? "failed",
+                    OperationCanceledException => "stopped",
+                    _ => ex.GetType().Name,
+                };
                 throw;
             }
             finally
             {
                 _pendingCommands.TryRemove(commandId, out _);
+                DiagnosticLog.Info(
+                    $"[BrowserBridge] {command} {ClipForLog(action.Key, command == "navigate")} "
+                    + $"-> {stepOutcome} in {stepWatch.ElapsedMilliseconds}ms (timeout {timeoutMs}ms)");
             }
+        }
+
+        /// <summary>
+        /// The selector — or, for navigate, the URL — as one short log field.
+        ///
+        /// Two rules. A length cap, because a hand-typed selector has no natural limit and this line
+        /// is meant to be scanned by eye down a column. And for a URL, everything from '?' onward is
+        /// dropped: a query string is exactly where a session token or an order id rides, and
+        /// "which step was slow" never needed it. The same restraint the NativeHost relay log
+        /// already applies to the messages it pumps.
+        /// </summary>
+        private static string ClipForLog(string? value, bool isUrl)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return "(no target)";
+            var s = value;
+            if (isUrl)
+            {
+                int q = s.IndexOf('?');
+                if (q >= 0) s = s[..q] + "?...";
+            }
+            return s.Length <= 60 ? $"'{s}'" : $"'{s[..60]}...'";
         }
 
         /// <summary>

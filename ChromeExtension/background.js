@@ -15,6 +15,25 @@ const RECONNECT_ALARM = 'truereplayer-reconnect';
 // the app.
 const RECONNECT_MIN_MINUTES = 0.5;
 const RECONNECT_MAX_MINUTES = 2;
+// A bridge that was LIVE and then dropped is a different event from a connect attempt that never
+// landed, and the alarm ladder above is the wrong answer to it. The ladder is sized for "the app
+// is not running"; a live bridge going away is almost always the app RESTARTING, which is over in
+// a few seconds — and chrome.alarms clamps to 30 s, so the first retry could not possibly arrive
+// before it. Measured on 2026-09-13: app relaunched at 21:35:11, the host reconnected at 21:35:36,
+// and the run in between failed with "Browser extension is not connected". Twenty-five seconds of
+// dead bridge, every time the user restarts TrueReplayer.
+//
+// So a dropped-while-ready bridge gets a small budget of immediate retries before it falls back to
+// the ladder. It needs no timer: connectNative's host retries the pipe for ~3 s and then exits,
+// which arrives here as the next onDisconnect, so the chain paces itself at the speed of the thing
+// it is waiting for — and setTimeout is the one thing that cannot be relied on here anyway, since
+// the service worker can be evicted between attempts.
+//
+// The budget is refilled ONLY by a port that reached bridge:connected. That is the whole safety
+// property: with TrueReplayer closed, every attempt fails without ever becoming ready, so it can
+// only ever SPEND a budget a real drop put there. Without that gate this is an unbounded spawn
+// loop — connect, fail, connect — which is precisely what the ladder was introduced to stop.
+const FAST_RETRY_ATTEMPTS = 3;
 // Kept in storage.session, not a module variable: the service worker is torn down between alarms,
 // so a plain counter would reset to zero on every wake and there would be no ramp at all. Session
 // storage also clears itself when the browser restarts, which is the right moment to be eager again.
@@ -24,9 +43,16 @@ let port = null;
 let isRecording = false;
 let isBridgeReady = false;
 let isOutdated = false;
+// Immediate retries still owed to a bridge that dropped while live. See FAST_RETRY_ATTEMPTS.
+let fastRetriesLeft = 0;
 
 function connect() {
   if (port) return;
+
+  // Did THIS port ever carry a live bridge? Read on disconnect to tell a bridge that dropped
+  // (retry now) from a connect attempt that never landed (back off). Per-port rather than the
+  // module-wide isBridgeReady, which onDisconnect clears before it could be read.
+  let readyOnThisPort = false;
 
   try {
     port = chrome.runtime.connectNative(NATIVE_HOST);
@@ -37,6 +63,7 @@ function connect() {
       switch (msg.type) {
         case 'bridge:connected':
           isBridgeReady = true;
+          readyOnThisPort = true;
           isOutdated = false;
           stopReconnect(); // Connected — no need for reconnect alarm
           updateBadge();
@@ -650,6 +677,22 @@ function connect() {
           }).catch(() => {});
         });
       });
+      // A LIVE bridge just went away — refill the fast-retry budget. A port that never reached
+      // bridge:connected refills nothing, which is what keeps a closed app from looping.
+      if (readyOnThisPort) fastRetriesLeft = FAST_RETRY_ATTEMPTS;
+
+      if (fastRetriesLeft > 0) {
+        fastRetriesLeft--;
+        // Alarm armed FIRST and ALWAYS: the retry below is opportunistic (the service worker can
+        // be evicted mid-chain) and the alarm is the only part of this that survives that. At the
+        // floor, and WITHOUT touching the attempt counter — these few seconds are not an attempt
+        // the ramp should remember, or three fast retries would hand a bridge that comes back at
+        // 40 s the two-minute delay meant for an app that is not running at all.
+        chrome.alarms.create(RECONNECT_ALARM, { delayInMinutes: RECONNECT_MIN_MINUTES });
+        connect();
+        return;
+      }
+
       // NativeHost process died — schedule reconnect via alarm (survives service worker dormancy)
       scheduleReconnect();
     });
@@ -687,6 +730,10 @@ function resetReconnectBackoff() {
 function stopReconnect() {
   chrome.alarms.clear(RECONNECT_ALARM);
   resetReconnectBackoff();
+  // A chain that connected on its second attempt leaves a retry still owed, and the next port to
+  // drop would spend it whether or not it was ever ready — which is the one case the readyOnThisPort
+  // gate exists to refuse. The budget belongs to the outage that opened it, so it ends with it.
+  fastRetriesLeft = 0;
 }
 
 // Alarm handler — wakes service worker to retry connection
