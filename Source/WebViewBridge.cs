@@ -3807,6 +3807,12 @@ namespace TrueReplayer
                     // or the row keeps an inert flag that still blanks its coordinates in the grid
                     // and the Sheet. One enforcement point here covers every caller.
                     if (!ActionItem.IsCombinedClickType(value)) action.AtCursor = false;
+                    // Same argument, same place, for the dwell: only HoldKey and the *ClickHold
+                    // family read it, and the field is ALWAYS serialized (see ActionItem), so a
+                    // row switched away from a hold would carry a dead number into every save —
+                    // a duration on a click that never waits, for whoever reads the JSON next.
+                    if (value != "HoldKey" && !value.EndsWith("ClickHold", StringComparison.Ordinal))
+                        action.HoldDurationMs = 0;
                     break;
                 case "key":
                     action.Key = value;

@@ -273,6 +273,14 @@ export function Toolbar(_props: ToolbarProps) {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const clearMenuRef = useRef<HTMLDivElement>(null);
   const clearFlyout = useFlyoutFlip(showClearConfirm, 'below');
+  // A control that collapses takes its popover with it, but NOT the flag that opened it. Without
+  // these two resets the flag outlives the unmount and the popover comes back already open the
+  // next time the width brings its trigger back — which for Clear All means a destructive confirm
+  // appearing unprompted, pointing at a list the user has since changed. The dismiss-on-outside
+  // handler cannot save it either: its ref is null while the trigger is gone, so the guard that
+  // closes on an outside click can never be true.
+  useEffect(() => { if (overflowCount >= 1) setShowClearConfirm(false); }, [overflowCount]);
+  useEffect(() => { if (overflowCount === 0) setShowMoreMenu(false); }, [overflowCount]);
 
   // The five cmd:* listeners below are decoupled extension points, NOT dead code — the same
   // pattern and the same reasoning as cmd:togglesidebar in App.tsx, and worth saying here because
