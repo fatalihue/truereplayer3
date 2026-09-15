@@ -1024,6 +1024,23 @@ namespace TrueReplayer
                 });
             };
 
+            // Profile Keys are off and the user pressed Record / Replay / Capture-slot, so the key
+            // went to whatever app is in front instead. The tray icon (red) and the Hotkeys rail
+            // already say the switch is off, but neither is where the user is looking at the
+            // moment nothing happens — and "my Replay hotkey broke" is the support ticket that
+            // writes itself. The hook throttles it, so mashing the key gives one toast.
+            InputHookManager.OnGlobalHotkeyPassedThrough += (combo) =>
+            {
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    bridge?.SendMessage("alert:show", new
+                    {
+                        message = $"Profile Keys are off — {combo} went to the app in front. "
+                                + $"Press {UserProfile.Current.ProfileKeyToggleHotkey} to switch them back on."
+                    });
+                });
+            };
+
             InputHookManager.OnHotkeyPressed += (key) =>
             {
                 DispatcherQueue.TryEnqueue(async () =>

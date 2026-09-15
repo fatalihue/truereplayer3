@@ -30,6 +30,78 @@ namespace TrueReplayer
         /// </summary>
         public static event Action<string>? OnProfileTargetMissing;
 
+        /// <summary>
+        /// A global hotkey was passed through to the foreground app because Profile Keys are off.
+        /// Carries the combo so the toast can name the key the user actually pressed.
+        /// </summary>
+        public static event Action<string>? OnGlobalHotkeyPassedThrough;
+
+        // ── Profile Keys off: the gate for the global hotkeys that ACT on the world ──────────
+        //
+        // "Profile Keys off is the app's 'let me type normally' mode" (SettingsPanel). Until
+        // 2.42.0 that was only true of profile hotkeys, hotstrings and remaps: Record, Replay and
+        // Capture-slot still fired AND still swallowed their key, so the very Ctrl+PageDown the
+        // user switched off to use in a browser died in this hook. They now pass through.
+        //
+        // The split is what the row DOES, not which list it lives in. Record / Replay /
+        // Capture-slot reach out and change something — a macro runs, a recording starts, Ctrl+C
+        // is injected into whatever is in front. Profile-keys toggle, Foreground, Mode toggle and
+        // the Clicker's own keys only steer TrueReplayer, so they stay live; without the first of
+        // them there would be no way back from the keyboard at all (the tray menu has no Profile
+        // Keys item).
+        //
+        // ONE exception, and it is not optional: a run already in flight must keep its stop key.
+        // Record and Replay are toggles, so cutting them outright would strand a running macro
+        // with no keyboard way to end it. While something is running they still work — as STOP,
+        // never as START. The key changes hands the instant the run ends, which is the point.
+        // Toast throttle. A COOLDOWN, not a once-per-off-stretch flag — the first draft tracked the
+        // switch's edge here and a test caught it lying: this method only runs when one of these
+        // keys is pressed, so an off → on → off round trip with no press in between is invisible to
+        // it and the next real press went unannounced. Reading the edge at the four places that
+        // write ProfileKeyEnabled would fix that and hand four files a rule to keep in sync
+        // instead. The cooldown needs neither: mashing the key gives one toast, and coming back
+        // later gives a fresh one, which is what the toast is for. Same shape as
+        // _targetMissingCooldown above, for the same reason.
+        private static DateTime _lastPassThroughNoticeUtc = DateTime.MinValue;
+        private static readonly TimeSpan _passThroughNoticeCooldown = TimeSpan.FromSeconds(10);
+
+        /// <summary>
+        /// True when this global hotkey must be passed through to the foreground app instead of
+        /// acted on. Callers MUST return NotMatched / CallNextHookEx on true — swallowing the key
+        /// without acting on it is the exact hijack this gate exists to end.
+        /// </summary>
+        /// <param name="isStopForRunningWork">
+        /// The press would STOP something already running, which is allowed while off.
+        /// </param>
+        private static bool PassThroughWhileProfileKeysOff(string combo, bool isStopForRunningWork = false)
+        {
+            if (UserProfile.Current.ProfileKeyEnabled || isStopForRunningWork) return false;
+
+            // The log line is written on EVERY pass-through, the toast only past the cooldown: the
+            // log is what support reads after the fact, and it must not have holes.
+            TrueReplayer.Services.DiagnosticLog.Info(
+                $"Hotkey '{combo}' passed through to the foreground app — Profile Keys are off");
+            var now = DateTime.UtcNow;
+            if (now - _lastPassThroughNoticeUtc >= _passThroughNoticeCooldown)
+            {
+                _lastPassThroughNoticeUtc = now;
+                OnGlobalHotkeyPassedThrough?.Invoke(combo);
+            }
+            return true;
+        }
+
+        /// <summary>Something is running that its own hotkey should still be able to stop.</summary>
+        private static bool IsRunInProgress()
+        {
+            var mc = MainController.Instance;
+            if (mc == null) return false;
+            // IsReplayInProgress, NOT IsReplayingAction: the latter is set around each action's
+            // own execution and is FALSE during the delay between them, so a stop key gated on it
+            // would work or not depending on where in the gap the press landed — a race the user
+            // would read as "sometimes it stops".
+            return mc.IsRecording() || mc.IsReplayInProgress();
+        }
+
         private static readonly Dictionary<string, DateTime> _lastTargetMissingFireUtc = new();
         private static readonly TimeSpan _targetMissingCooldown = TimeSpan.FromSeconds(3);
 
@@ -2155,11 +2227,17 @@ namespace TrueReplayer
             {
                 if (combo == UserProfile.Current.RecordingHotkey)
                 {
+                    // NotMatched, never a silent Handled: the caller has to hand the event to
+                    // CallNextHookEx, or the key is eaten by an app that decided not to act.
+                    if (PassThroughWhileProfileKeysOff(combo, MainController.Instance?.IsRecording() == true))
+                        return GlobalHotkeyResult.NotMatched;
                     OnHotkeyPressed?.Invoke(combo);
                     return GlobalHotkeyResult.Handled;
                 }
                 if (combo == UserProfile.Current.ReplayHotkey)
                 {
+                    if (PassThroughWhileProfileKeysOff(combo, MainController.Instance?.IsReplayInProgress() == true))
+                        return GlobalHotkeyResult.NotMatched;
                     // Same foreground gate as the keyboard path: pass through when the
                     // active profile's target isn't in front.
                     var activeName = ActiveProfileName;
@@ -2172,10 +2250,18 @@ namespace TrueReplayer
             }
             if (combo == UserProfile.Current.ProfileKeyToggleHotkey
                 || combo == UserProfile.Current.ForegroundHotkey
-                || combo == UserProfile.Current.ModeToggleHotkey
-                || (!string.IsNullOrEmpty(UserProfile.Current.CaptureSlotHotkey)
-                    && combo == UserProfile.Current.CaptureSlotHotkey))
+                || combo == UserProfile.Current.ModeToggleHotkey)
             {
+                OnHotkeyPressed?.Invoke(combo);
+                return GlobalHotkeyResult.Handled;
+            }
+            // Capture-slot is listed apart from the three above because it belongs to the other
+            // half of the split: it injects Ctrl+C into whatever app is in front. There is no
+            // stop-exception for it — a one-shot copy has nothing to stop.
+            if (!string.IsNullOrEmpty(UserProfile.Current.CaptureSlotHotkey)
+                && combo == UserProfile.Current.CaptureSlotHotkey)
+            {
+                if (PassThroughWhileProfileKeysOff(combo)) return GlobalHotkeyResult.NotMatched;
                 OnHotkeyPressed?.Invoke(combo);
                 return GlobalHotkeyResult.Handled;
             }
@@ -2958,12 +3044,18 @@ namespace TrueReplayer
                         {
                             if (key == UserProfile.Current.RecordingHotkey)
                             {
+                                // Profile Keys off: hand the key to the foreground app instead of
+                                // swallowing it. Still allowed to STOP a recording already running.
+                                if (PassThroughWhileProfileKeysOff(key, MainController.Instance?.IsRecording() == true))
+                                    return NativeMethods.CallNextHookEx(_keyboardHookId, nCode, wParam, lParam);
                                 OnHotkeyPressed?.Invoke(key);
                                 return (IntPtr)1;
                             }
 
                             if (key == UserProfile.Current.ReplayHotkey)
                             {
+                                if (PassThroughWhileProfileKeysOff(key, MainController.Instance?.IsReplayInProgress() == true))
+                                    return NativeMethods.CallNextHookEx(_keyboardHookId, nCode, wParam, lParam);
                                 // Gate by the active profile's window target — same foreground rule
                                 // profile keys already enforce. Pass through (CallNextHookEx) instead
                                 // of swallowing when the gate rejects, so the user can still type the
@@ -3009,6 +3101,9 @@ namespace TrueReplayer
                         if (!string.IsNullOrEmpty(UserProfile.Current.CaptureSlotHotkey)
                             && key == UserProfile.Current.CaptureSlotHotkey)
                         {
+                            // No stop-exception: a one-shot copy has nothing to stop.
+                            if (PassThroughWhileProfileKeysOff(key))
+                                return NativeMethods.CallNextHookEx(_keyboardHookId, nCode, wParam, lParam);
                             if (ShouldCancelMenuFor(key)) InjectMenuCancelKey();
                             OnHotkeyPressed?.Invoke(key);
                             return (IntPtr)1;
@@ -3024,12 +3119,25 @@ namespace TrueReplayer
                         }
                         else
                         {
+                            // The repeat branch takes the SAME Profile-Keys gate as the first
+                            // press, and it is not optional: gating only the first press would
+                            // deliver the initial key to the app and then eat every repeat, so
+                            // holding Ctrl+PageDown would turn one page in the browser instead of
+                            // several. The user reads that as the key half-working.
+                            // No toast/log here — the first press already spoke, and a held key
+                            // would write a line per repeat.
                             if (key == UserProfile.Current.RecordingHotkey)
+                            {
+                                if (!UserProfile.Current.ProfileKeyEnabled && MainController.Instance?.IsRecording() != true)
+                                    return NativeMethods.CallNextHookEx(_keyboardHookId, nCode, wParam, lParam);
                                 return (IntPtr)1;
+                            }
                             // ReplayHotkey repeat mirrors the first-press gate: pass through when
                             // the target isn't foreground, otherwise swallow.
                             if (key == UserProfile.Current.ReplayHotkey)
                             {
+                                if (!UserProfile.Current.ProfileKeyEnabled && MainController.Instance?.IsReplayInProgress() != true)
+                                    return NativeMethods.CallNextHookEx(_keyboardHookId, nCode, wParam, lParam);
                                 var activeName = ActiveProfileName;
                                 if (!string.IsNullOrEmpty(activeName)
                                     && !IsForegroundWindowMatch(activeName))
@@ -3041,10 +3149,15 @@ namespace TrueReplayer
                         }
                         if (key == UserProfile.Current.ProfileKeyToggleHotkey
                             || key == UserProfile.Current.ForegroundHotkey
-                            || key == UserProfile.Current.ModeToggleHotkey
-                            || (!string.IsNullOrEmpty(UserProfile.Current.CaptureSlotHotkey)
-                                && key == UserProfile.Current.CaptureSlotHotkey))
+                            || key == UserProfile.Current.ModeToggleHotkey)
                         {
+                            return (IntPtr)1;
+                        }
+                        if (!string.IsNullOrEmpty(UserProfile.Current.CaptureSlotHotkey)
+                            && key == UserProfile.Current.CaptureSlotHotkey)
+                        {
+                            if (!UserProfile.Current.ProfileKeyEnabled)
+                                return NativeMethods.CallNextHookEx(_keyboardHookId, nCode, wParam, lParam);
                             return (IntPtr)1;
                         }
                     }
