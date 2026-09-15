@@ -1438,6 +1438,7 @@ namespace TrueReplayer
             windowTitle = t.WindowTitle,
             windowTitleMatchMode = t.WindowTitleMatchMode,
             windowMatchForegroundOnly = t.WindowMatchForegroundOnly,
+            useRelativeCoordinates = t.UseRelativeCoordinates,
             filePath = t.FilePath,
             pixelX = t.PixelX,
             pixelY = t.PixelY,
@@ -1517,6 +1518,8 @@ namespace TrueReplayer
             if (el.TryGetProperty("clipboardPattern", out v) && v.ValueKind == JsonValueKind.String) t.ClipboardPattern = v.GetString();
             if (el.TryGetProperty("cooldownSeconds", out v) && v.TryGetInt32(out var cd)) t.CooldownSeconds = cd;
             if (el.TryGetProperty("retrigger", out v) && v.ValueKind == JsonValueKind.String) t.Retrigger = v.GetString();
+            if (el.TryGetProperty("useRelativeCoordinates", out v) && (v.ValueKind == JsonValueKind.True || v.ValueKind == JsonValueKind.False))
+                t.UseRelativeCoordinates = v.GetBoolean();
             if (el.TryGetProperty("pollIntervalMs", out v) && v.TryGetInt32(out var pi)) t.PollIntervalMs = pi;
             return t;
         }

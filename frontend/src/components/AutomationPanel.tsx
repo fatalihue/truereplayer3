@@ -49,6 +49,9 @@ function defaultTrigger(): TriggerConfig {
     windowTitle: '',
     windowTitleMatchMode: 'contains',
     windowMatchForegroundOnly: false,
+    // Mesma posicao que o literal de push no WebViewBridge: o painel compara a config por
+    // JSON.stringify, entao uma chave fora de ordem faz trabalho salvo ser lido como nao salvo.
+    useRelativeCoordinates: false,
     filePath: '',
     pixelX: 0,
     pixelY: 0,
@@ -1097,6 +1100,40 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                         placeholder="C:\\path\\to\\flag.txt"
                       />
                     </Field>
+                  )}
+
+                  {/* Ancora de janela — so para as duas condicoes que TEM coordenada. O opt-in e
+                      o proprio interruptor: com ele desligado a coordenada segue absoluta, que e
+                      o que toda automacao existente faz. Os campos de janela sao os MESMOS que o
+                      WindowOpen usa; aqui eles respondem 'onde fica', nao 'esta aberta'. */}
+                  {(draft.conditionType === 'PixelColorMatch' || draft.conditionType === 'ImageFound') && (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <Toggle size="sm" isOn={draft.useRelativeCoordinates}
+                          onChange={(v) => patch({ useRelativeCoordinates: v })} />
+                        <span className="text-[12px] text-text-secondary"
+                          data-tip={tt('Coordinates follow the window instead of the screen',
+                                       'As coordenadas seguem a janela em vez da tela')}>
+                          Relative to a window
+                        </span>
+                      </div>
+                      {draft.useRelativeCoordinates && (
+                        <WindowTargetFields
+                          value={{
+                            processName: draft.windowProcessName ?? '',
+                            windowTitle: draft.windowTitle ?? '',
+                            titleMatchMode: draft.windowTitleMatchMode === 'regex' ? 'regex' : 'contains',
+                          }}
+                          onChange={(p) =>
+                            patch({
+                              ...(p.processName !== undefined ? { windowProcessName: p.processName } : {}),
+                              ...(p.windowTitle !== undefined ? { windowTitle: p.windowTitle } : {}),
+                              ...(p.titleMatchMode !== undefined ? { windowTitleMatchMode: p.titleMatchMode } : {}),
+                            })
+                          }
+                        />
+                      )}
+                    </>
                   )}
 
                   {draft.conditionType === 'PixelColorMatch' && (

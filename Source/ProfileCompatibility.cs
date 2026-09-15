@@ -652,6 +652,18 @@ namespace TrueReplayer.Services
             (p => p.Triggers is { PollIntervalMs: > 0 },
                 new Version(2, 9, 9), "Automation poll interval"),
 
+            // Automation watcher anchored to a window. EXACTAMENTE o mesmo mecanismo de
+            // destruicao-no-round-trip dos dois pins acima: sem [JsonExtensionData] em
+            // ProfileTriggerConfig, um build antigo nao ignora a propriedade — ele a DERRUBA, e
+            // qualquer save daquele build reescreve a config sem ela.
+            //
+            // E aqui a perda e pior que nos vizinhos: la o usuario recupera CPU ou precisao; aqui
+            // o vigia volta a tratar a coordenada como absoluta e passa a amostrar um ponto que
+            // nao tem relacao com o alvo — dispara no lugar errado, ou nunca dispara, sem nada na
+            // tela dizendo por que. Property-level para um gatilho comum manter o piso 2.9.0.
+            (p => p.Triggers is { UseRelativeCoordinates: true },
+                new Version(2, 43, 0), "Automation watcher window anchor"),
+
             // Automation active hours. NOT the destroy-on-round-trip mechanism of the two pins
             // above: TimeOfDay has existed since the 2.9.0 Triggers pin, so an older build reads
             // the string, keeps it, and writes it back intact. This is the ROI pin's class instead

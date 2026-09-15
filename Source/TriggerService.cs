@@ -808,6 +808,9 @@ namespace TrueReplayer.Services
             // ImageFound: optional ROI — constrain the scan to a sub-rect (cheaper + fewer false
             // positives for a background poll). Absolute coords; no offset translation.
             System.Drawing.Rectangle? searchRegion = null;
+            // Alvo de ancoragem — distinto de windowTarget, que pertence à condição WindowOpen.
+            Models.WindowTarget? anchorTarget = null;
+            System.Text.RegularExpressions.Regex? anchorRegex = null;
             try
             {
                 if (kind == "windowopen")
@@ -818,6 +821,16 @@ namespace TrueReplayer.Services
                 else if (kind == "pixelcolormatch")
                 {
                     pixelColor = PixelColorService.ParseHex(cfg.PixelColor);
+                }
+
+                // Coordenadas ancoradas na janela (opt-in) para as duas condições que TÊM
+                // coordenada. Construído UMA vez, como o windowopen acima: o que muda a cada tick
+                // é a posição da janela, não o alvo. Nada aqui para os outros quatro tipos —
+                // WindowOpen/ProcessRunning/FileExists/ClipboardChanged não têm ponto para ancorar.
+                if (cfg.UseRelativeCoordinates && (kind == "pixelcolormatch" || kind == "imagefound"))
+                {
+                    (anchorTarget, anchorRegex) = ActionReplayer.BuildWindowTarget(
+                        cfg.WindowProcessName, cfg.WindowTitle, cfg.WindowTitleMatchMode);
                 }
                 else if (kind == "imagefound")
                 {
@@ -857,7 +870,7 @@ namespace TrueReplayer.Services
                 // stop we announced for it: if the same problem comes back later it is news again.
                 lock (_lock) _announcedStop.Remove(name);
 
-                bool wasTrue = ProbeCondition(cfg, kind, windowTarget, titleRegex, pixelColor, templateMat, searchRegion, reportRegion);
+                bool wasTrue = ProbeCondition(cfg, kind, windowTarget, titleRegex, pixelColor, templateMat, searchRegion, reportRegion, anchorTarget, anchorRegex);
                 reportRegion = false;
                 rt.ConditionTrue = wasTrue;
                 if (wasTrue) NotifyStateChanged();
@@ -892,7 +905,7 @@ namespace TrueReplayer.Services
                 {
                     await Task.Delay(pollMs, ct);
 
-                    bool raw = ProbeCondition(cfg, kind, windowTarget, titleRegex, pixelColor, templateMat, searchRegion, reportRegion);
+                    bool raw = ProbeCondition(cfg, kind, windowTarget, titleRegex, pixelColor, templateMat, searchRegion, reportRegion, anchorTarget, anchorRegex);
                     // True is believed at once — a condition appearing is the event we exist for,
                     // and delaying it would cost reaction time on every fire. Only the DROP waits
                     // for a second opinion; see falseStreak.
@@ -1300,6 +1313,41 @@ namespace TrueReplayer.Services
             return DefaultPollCadenceMs(cfg.ConditionType);
         }
 
+        /// <summary>
+        /// Deslocamento da janela ancora para ESTE tick. Sem ancora (o caso de sempre) devolve
+        /// true com 0,0 — a coordenada segue absoluta e nada muda para quem nao optou.
+        /// Com ancora e janela ausente devolve FALSE, e o chamador trata como condicao nao
+        /// satisfeita: um vigia nao tem a quem reportar erro, e falhar em silencio e o unico
+        /// desfecho que nao vira enxurrada de log a 4 Hz.
+        ///
+        /// Resolvido POR TICK de proposito. E o que o lado das acoes ja faz dentro do laco de
+        /// espera (ExecuteWaitPixelColor), pela razao escrita la: resolver uma vez antes do laco
+        /// faz uma janela que anda 10 px invalidar todo tick seguinte. Um vigia vive ordens de
+        /// grandeza mais tempo que uma espera, entao o argumento so fica mais forte aqui.
+        /// </summary>
+        // Mesmo limiar que ActionReplayer usa para o mesmo teste (-31000): o rect de
+        // estacionamento e (-32000,-32000), e a folga cobre variacao entre versoes do Windows.
+        private const int MinimizedParkedLeft = -31000;
+
+        private static bool TryAnchorOffset(Models.WindowTarget? target,
+                                            System.Text.RegularExpressions.Regex? titleRegex,
+                                            out int dx, out int dy)
+        {
+            dx = 0;
+            dy = 0;
+            if (target == null) return true;
+            var hwnd = Helpers.WindowMatcher.FindWindow(target, titleRegex);
+            if (hwnd == IntPtr.Zero) return false;
+            if (!NativeMethods.GetWindowRect(hwnd, out var rect)) return false;
+            // Rect de estacionamento de janela MINIMIZADA (-32000,-32000): passa por
+            // IsWindowVisible e levaria a amostrar fora da tela. Mesmo teste que
+            // TryResolveRelativeOffset faz do lado das acoes.
+            if (rect.Left <= MinimizedParkedLeft || rect.Top <= MinimizedParkedLeft) return false;
+            dx = rect.Left;
+            dy = rect.Top;
+            return true;
+        }
+
         internal static int DefaultPollCadenceMs(string? conditionType) => conditionType?.ToLowerInvariant() switch
         {
             "pixelcolormatch" => 250,
@@ -1395,7 +1443,11 @@ namespace TrueReplayer.Services
             System.Drawing.Color? pixelColor,
             OpenCvSharp.Mat? templateMat,
             System.Drawing.Rectangle? searchRegion,
-            bool reportRegion)
+            bool reportRegion,
+            // Ancora de janela (opt-in): construida UMA vez pelo laco chamador, como windowTarget.
+            // Reconstruir aqui recompilaria o Regex do titulo a cada tick.
+            Models.WindowTarget? anchorTarget,
+            System.Text.RegularExpressions.Regex? anchorRegex)
         {
             try
             {
@@ -1426,18 +1478,29 @@ namespace TrueReplayer.Services
                     case "pixelcolormatch":
                     {
                         if (pixelColor == null) return false;
-                        var sampled = PixelColorService.GetPixelAt(cfg.PixelX, cfg.PixelY);
+                        // Janela ancora ausente => condicao FALSA, nunca erro. E o que
+                        // ProbePixelColorMatch ja faz do lado das acoes, e e o que impede um vigia
+                        // de virar fonte de aviso a cada 250 ms enquanto o app alvo esta fechado.
+                        if (!TryAnchorOffset(anchorTarget, anchorRegex, out int adx, out int ady)) return false;
+                        var sampled = PixelColorService.GetPixelAt(cfg.PixelX + adx, cfg.PixelY + ady);
                         return sampled != null
                             && PixelColorService.MatchesWithinTolerance(sampled.Value, pixelColor.Value, cfg.PixelTolerance);
                     }
                     case "imagefound":
                     {
                         if (templateMat == null) return false;
+                        if (!TryAnchorOffset(anchorTarget, anchorRegex, out int idx, out int idy)) return false;
+                        // A ROI e o unico dado com coordenada aqui; sem ROI a varredura e de tela
+                        // cheia e nao ha o que ancorar. Deslocada por tick, nao na construcao:
+                        // a janela pode andar entre um poll e o proximo.
+                        var roi = searchRegion is System.Drawing.Rectangle r0
+                            ? new System.Drawing.Rectangle(r0.X + idx, r0.Y + idy, r0.Width, r0.Height)
+                            : searchRegion;
                         double confidence = Math.Min(0.99, cfg.ImageConfidence <= 0 ? 0.8 : cfg.ImageConfidence);
                         // Pre-converted template + pre-built ROI (see the loop): the Bitmap overload
                         // would redo the LockBits + BGRA→BGR conversion into a fresh native Mat on
                         // every poll.
-                        return ImageMatchingService.MatchOnce(templateMat, searchRegion, reportUnusableRegion: reportRegion)
+                        return ImageMatchingService.MatchOnce(templateMat, roi, reportUnusableRegion: reportRegion)
                             .Score >= confidence;
                     }
                     default:

@@ -261,6 +261,18 @@ namespace TrueReplayer.Models
         public string? WindowTitle { get; set; }
         public string? WindowTitleMatchMode { get; set; }   // "contains" | "regex"
         public bool WindowMatchForegroundOnly { get; set; }
+
+        // PixelColorMatch / ImageFound: ancorar as coordenadas na janela nomeada acima, em vez
+        // de tratá-las como absolutas. OPT-IN explícito, e não "tem nome de processo preenchido":
+        // trocar o tipo de condição no editor NÃO limpa WindowProcessName/WindowTitle (só os
+        // campos de imagem são limpos), então um perfil que passou por WindowOpen carrega o nome
+        // como resíduo. Inferir a partir dele mudaria, em silêncio, o ponto amostrado por
+        // automações que já funcionam — a regressão que esta flag existe para impedir.
+        //
+        // Mesmo nome do campo do perfil (UserProfile.UseRelativeCoordinates) porque é a mesma
+        // ideia: a coordenada é relativa ao canto da janela alvo.
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+        public bool UseRelativeCoordinates { get; set; }
         public string? FilePath { get; set; }
         public int PixelX { get; set; }
         public int PixelY { get; set; }                     // absolute virtual-screen coords (no rel-coords for watchers)

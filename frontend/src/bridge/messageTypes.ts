@@ -579,6 +579,11 @@ export interface TriggerConfig {
   windowTitle: string | null;
   windowTitleMatchMode: string | null;
   windowMatchForegroundOnly: boolean;
+  // PixelColorMatch / ImageFound: ancora as coordenadas na janela nomeada acima em vez de
+  // trata-las como absolutas. Opt-in explicito — trocar o tipo de condicao nao limpa
+  // windowProcessName, entao inferir a partir dele mudaria automacoes que ja funcionam.
+  // Ignorado pelos outros quatro tipos, que nao tem coordenada.
+  useRelativeCoordinates: boolean;
   filePath: string | null;
   pixelX: number;
   pixelY: number;
