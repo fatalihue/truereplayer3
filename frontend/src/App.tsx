@@ -160,11 +160,12 @@ function AppShell() {
   // narrow-window auto-collapse below is a layout reaction and must not become a preference.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('ui:sidebarCollapsed') === '1');
   const [settingsCollapsed, setSettingsCollapsed] = useState(() => localStorage.getItem('ui:settingsCollapsed') === '1');
-  // setter prefixed with _ so the strict noUnusedLocals lint allows it through —
-  // the Toggle Columns toolbar button is currently disabled so nothing mutates
-  // columnVisibility right now. Keep the state pair intact so re-enabling the
-  // button later is a one-line rename rather than re-introducing the state.
-  const [columnVisibility, _setColumnVisibility] = useState<ColumnVisibility>(defaultColumnVisibility);
+  // Not state: nothing in the app mutates it. It was a useState pair whose setter had to be
+  // underscore-prefixed to get past noUnusedLocals — a name arguing with the compiler about
+  // code that does not exist. ActionTable still reads it, so the value stays; a real Toggle
+  // Columns control would turn this line back into useState, which is the same one-line edit
+  // the old comment promised, minus the dead setter.
+  const columnVisibility: ColumnVisibility = defaultColumnVisibility;
   // Four overlays, one wiring: each is mounted at the App level (not inside the
   // surface that opens it) because its trigger comes from several places at once, so
   // each listens for a shared `cmd:*` window event and every caller stays decoupled.
@@ -413,10 +414,9 @@ function AppShell() {
         {/* Center: Toolbar + Table + Action Bar */}
         <div className="flex-1 flex flex-col gap-0 min-w-0 bg-bg-surface border-y border-border-subtle">
           <ExtensionUpdateBanner />
-          {/* Toolbar takes no props right now — Toggle Columns is disabled there
-              (see Toolbar.tsx) so columnVisibility / setColumnVisibility don't
-              need to thread through. ActionTable still receives columnVisibility
-              directly from this same state below. */}
+          {/* Toolbar takes no props: there is no Toggle Columns control to thread them for
+              (see the note on the constant above). ActionTable reads columnVisibility
+              straight from this scope. */}
           <Toolbar />
           {/* Indeterminate green sweep between toolbar and grid while a run is
               live — see ReplayProgressLine. Self-hides when idle. */}

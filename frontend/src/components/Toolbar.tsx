@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, lazy, Suspense } from 'react';
-import { Trash2, Undo2, Redo2, Type, Mouse, ScanSearch, Pipette, Keyboard, Globe, Repeat2, Hourglass, X, GitBranch, ScanEye, Braces, AppWindow, Clipboard, ClipboardCopy, ChevronDown, Dice5, Cpu, FileCheck, Clock, Table2, ShieldCheck, CircleStop, CornerDownLeft, IterationCw, ArrowRightFromLine, SkipForward } from 'lucide-react';
+import { Trash2, Undo2, Redo2, Type, Mouse, MoreHorizontal, ScanSearch, Pipette, Keyboard, Globe, Repeat2, Hourglass, X, GitBranch, ScanEye, Braces, AppWindow, Clipboard, ClipboardCopy, ChevronDown, Dice5, Cpu, FileCheck, Clock, Table2, ShieldCheck, CircleStop, CornerDownLeft, IterationCw, ArrowRightFromLine, SkipForward } from 'lucide-react';
 import { useAppState } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
 import { useSelectionRef } from '../state/SelectionContext';
@@ -41,13 +41,13 @@ export const defaultColumnVisibility: ColumnVisibility = {
 // the insert payload so the C# side leaves RepeatDelayMs null (clean profile JSON).
 const DEFAULT_REPEAT_DELAY_MS = 30;
 
-// Toggle Columns button is currently DISABLED — the code below is preserved in
-// comments for when the user decides on a final home for it. The grid header's
-// trailing 24 px column was already removed (no row-spacer waste either way), so
-// the only thing missing right now is the actual toggle UI. ActionTable still
-// receives columnVisibility from App so columns render correctly; users just
-// can't change which columns are visible until the button is re-enabled here
-// (or moved somewhere else entirely).
+// There is no Toggle Columns control. Two commented-out blocks (the dropdown state and its
+// button) sat here waiting for one, and what settled the question was that the commented
+// `columnDefinitions` still listed `key`, `x` and `y` — three fields ColumnVisibility lost when
+// they merged into `details`. Uncommenting it would not have compiled, so it was not dormant
+// code, it was stale code claiming to be dormant. ColumnVisibility itself stays: ActionTable
+// renders from it and App supplies the all-visible default, which is the only value it has
+// ever held. A real toggle would start from that type, not from the deleted markup.
 type ToolbarProps = Record<string, never>;
 
 /**
@@ -144,44 +144,77 @@ export function Toolbar(_props: ToolbarProps) {
   // button is off matters more than what it would insert.
   const clickerTip = (en: string, ptBr: string) =>
     isClicker ? tt('Macro mode only', 'Só no modo Macro') : tt(en, ptBr);
-  /* DISABLED — Toggle Columns dropdown.
-   * Re-enable by:
-   *   1. Changing ToolbarProps back to { columnVisibility, onColumnVisibilityChange }
-   *      and threading those props from App.tsx
-   *   2. Uncommenting the block below + the button render further down
-   *   3. Restoring the LayoutGrid / Check icon imports
-   *
-   * const [showColDropdown, setShowColDropdown] = useState(false);
-   * const colDropdownRef = useRef<HTMLDivElement>(null);
-   * const columnDefinitions: { key: keyof ColumnVisibility; label: string }[] = [
-   *   { key: 'action', label: 'Action' },
-   *   { key: 'key', label: 'Key' },
-   *   { key: 'x', label: 'X' },
-   *   { key: 'y', label: 'Y' },
-   *   { key: 'delay', label: 'Delay' },
-   *   { key: 'notes', label: 'Notes' },
-   * ];
-   * useEffect(() => {
-   *   if (!showColDropdown) return;
-   *   const onDown = (e: MouseEvent) => {
-   *     if (colDropdownRef.current && !colDropdownRef.current.contains(e.target as Node)) {
-   *       setShowColDropdown(false);
-   *     }
-   *   };
-   *   const onKey = (e: KeyboardEvent) => {
-   *     if (e.key !== 'Escape') return;
-   *     e.preventDefault();
-   *     e.stopPropagation();
-   *     setShowColDropdown(false);
-   *   };
-   *   window.addEventListener('mousedown', onDown);
-   *   window.addEventListener('keydown', onKey, true);
-   *   return () => {
-   *     window.removeEventListener('mousedown', onDown);
-   *     window.removeEventListener('keydown', onKey, true);
-   *   };
-   * }, [showColDropdown]);
-   */
+  // ── Overflow: the tail of the row collapses into a More ▾ menu when it runs out of room ──
+  // Four candidates, collapsed tail-first: Clear All, Data Loop, Activate Window, Run Profile.
+  // Four is not a taste call — at the narrowest layout the app still allows (minimum window with
+  // BOTH rails re-expanded by hand, centre column 473 px) three was measured short by 34 px, and
+  // a menu that leaves one button clipped has not done its job.
+  const OVERFLOW_CANDIDATES = 4;
+  const toolsRowRef = useRef<HTMLDivElement>(null);
+  // Latest fit(), so the listeners below can be wired ONCE and still call the current closure.
+  const fitRef = useRef<(() => void) | null>(null);
+  const [overflowCount, setOverflowCount] = useState(0);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  // Second step of Clear All while it lives in the menu. Reset whenever the menu closes, so
+  // reopening never lands on a primed destructive button the user does not remember arming.
+  const [clearArmed, setClearArmed] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const row = toolsRowRef.current;
+    const bar = row?.parentElement;
+    if (!row || !bar) return;
+    const fit = () => {
+      // Compare WIDTHS, not right edges. The profile name beside this row is flex-1, so it
+      // swallows every spare pixel and leaves the row's right edge flush against the bar in
+      // every state — an edge comparison can never read as "there is room again", and the menu
+      // would appear once and never leave. What is actually available is the bar's content box
+      // minus the gap, because the name's own minimum is zero (min-w-0) and it is the side the
+      // layout is willing to squeeze first.
+      const cs = getComputedStyle(bar);
+      const pad = parseFloat(cs.paddingLeft || '0') + parseFloat(cs.paddingRight || '0');
+      const available = bar.clientWidth - pad - parseFloat(cs.columnGap || '0');
+      const needed = row.scrollWidth;
+      // One icon button is the unit. MEASURED, never hardcoded: row height and font size are
+      // theme settings, so a pixel constant would be right at one preset and wrong at the rest.
+      const unit = row.querySelector<HTMLElement>('[data-tb-unit]')?.offsetWidth ?? 0;
+      if (unit <= 0 || available <= 0) return;
+      if (needed > available) {
+        // Collapse as many as the deficit calls for in one step: a half-measure would leave a
+        // clipped button painted for a frame before the next pass caught it.
+        setOverflowCount(c => Math.min(OVERFLOW_CANDIDATES, c + Math.ceil((needed - available) / unit)));
+      } else if (available - needed >= unit * 2) {
+        // Restore ONE per pass, and only with a whole spare button of slack beyond the one being
+        // put back. Restoring greedily — or on exactly its own width — puts a button into a space
+        // that then spills, which collapses it again on the next pass: a flicker that never
+        // settles. The effect re-runs on overflowCount, so climbing back one at a time still
+        // reaches the top in a few frames.
+        setOverflowCount(c => Math.max(0, c - 1));
+      }
+    };
+    fitRef.current = fit;
+    // Deliberately NO dependency array. Every re-render re-measures, which is what covers the
+    // resize this component cannot see: collapsing a side rail changes the bar's width without
+    // touching the window, and the Toolbar has no prop or state that says so — but the tree does
+    // re-render, and that is enough. It is also the loop that lets one collapse cascade into the
+    // next: a state change that does not settle the fit re-enters here until it does, and
+    // setState bails out when the count stops moving, so it terminates on its own.
+    fit();
+  });
+  useEffect(() => {
+    const onResize = () => fitRef.current?.();
+    window.addEventListener('resize', onResize);
+    const bar = toolsRowRef.current?.parentElement;
+    // The observer is the precise signal (it catches a rail folding, which fires no window
+    // resize); the listener is the one that survives an environment where ResizeObserver is
+    // stubbed. Neither alone covers both, and running fit twice costs a handful of reads.
+    const ro = bar ? new ResizeObserver(() => fitRef.current?.()) : null;
+    if (bar && ro) ro.observe(bar);
+    return () => { window.removeEventListener('resize', onResize); ro?.disconnect(); };
+  }, []);
+  const moreFlyout = useFlyoutFlip(showMoreMenu, 'below');
+  useDismissOnOutside(showMoreMenu, moreMenuRef, setShowMoreMenu);
+  useEffect(() => { if (!showMoreMenu) setClearArmed(false); }, [showMoreMenu]);
+
   const selectionRef = useSelectionRef();
   const [showSendTextDialog, setShowSendTextDialog] = useState(false);
   const [showBrowserMenu, setShowBrowserMenu] = useState(false);
@@ -515,7 +548,7 @@ export function Toolbar(_props: ToolbarProps) {
             scannability. The clarity wins (icon swaps, deselect X, paste
             badge, destructive Trash, tooltip pass) all stay; only the
             grouping containers were rolled back. */}
-        <div className="flex items-center gap-0.5 shrink-0" onMouseDown={(e) => e.preventDefault()}>
+        <div ref={toolsRowRef} className="flex items-center gap-0.5 shrink-0" onMouseDown={(e) => e.preventDefault()}>
           {/* Undo / Redo */}
           <button
             tabIndex={-1}
@@ -539,55 +572,6 @@ export function Toolbar(_props: ToolbarProps) {
           {/* History | inserts divider — renders the grouping the insert-order
               comment below describes instead of leaving it implicit. */}
           <div className="w-px h-4 bg-border-subtle mx-1" />
-
-          {/* DISABLED — Toggle Columns button.
-              See the commented state block at the top of this component for the
-              re-enable steps. The trailing grid column was already cleaned up so
-              re-enabling here is purely additive.
-          <div className="relative" ref={colDropdownRef}>
-            <button
-              tabIndex={-1}
-              type="button"
-              onClick={() => setShowColDropdown(prev => !prev)}
-              className={`p-1.5 rounded transition-colors ${
-                showColDropdown
-                  ? 'bg-bg-elevated text-accent-light'
-                  : 'text-text-tertiary hover:bg-bg-elevated hover:text-text-primary'
-              }`}
-              data-tip="Toggle columns"
-            >
-              <LayoutGrid size={16} />
-            </button>
-            {showColDropdown && (
-              <div
-                className="absolute right-0 top-[calc(100%+4px)] min-w-[150px] p-1 bg-bg-card border border-border-default rounded-lg z-50"
-                style={{ animation: 'fade-in 0.12s ease-out', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}
-              >
-                <div className="px-2.5 py-1.5 text-[11px] font-semibold text-text-tertiary">
-                  Toggle columns
-                </div>
-                {columnDefinitions.map(col => (
-                  <button
-                    key={col.key}
-                    onClick={() => onColumnVisibilityChange({ ...columnVisibility, [col.key]: !columnVisibility[col.key] })}
-                    className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded text-xs text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors"
-                  >
-                    <div className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center shrink-0 ${
-                      columnVisibility[col.key]
-                        ? 'bg-accent-solid border-accent-solid'
-                        : 'border-border-default'
-                    }`}>
-                      {columnVisibility[col.key] && <Check size={10} className="text-[color:var(--color-accent-ink)]" />}
-                    </div>
-                    {col.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="w-px h-4 bg-border-subtle mx-1" />
-          */}
 
           {/* ── Insert actions ─────────────────────────────────────────────
               Direct buttons replace the previous "Add Actions" dropdown. Order
@@ -613,6 +597,7 @@ export function Toolbar(_props: ToolbarProps) {
             disabled={insertsDisabled}
             className={iconButtonClass('md')}
             data-tip={clickerTip('Send Keystroke', 'Enviar tecla')}
+            data-tb-unit
           >
             <Keyboard size={16} />
           </button>
@@ -1123,8 +1108,19 @@ export function Toolbar(_props: ToolbarProps) {
             )}
           </div>
 
+          {/* Everything above inserts a row that DECIDES or WAITS; everything below reaches
+              for another surface — a second profile, another app's window, the data table.
+              Eleven buttons ran together without this, which is a long stretch to scan for
+              one icon. It also happens to mark where the row starts giving way: the three
+              that follow, plus Clear All, are exactly the ones the More menu absorbs.
+              Once all three have gone into the menu it divides nothing — the More button is
+              itself the boundary by then — so it steps aside and gives the row back its 9 px,
+              which at the narrowest layout is the difference between fitting and not. */}
+          {overflowCount < 3 && <div className="w-px h-4 bg-border-subtle mx-1" />}
+
           {/* Run Profile — sub-macro call (picker dialog). Sits next to Browser
               because both delegate work elsewhere (a profile / a browser tab). */}
+          {overflowCount < 4 && (
           <button
             tabIndex={-1}
             onClick={() => setShowRunProfileDialog(true)}
@@ -1134,10 +1130,12 @@ export function Toolbar(_props: ToolbarProps) {
           >
             <Repeat2 size={16} />
           </button>
+          )}
 
           {/* Activate Window — focus (and optionally launch) another app mid-macro.
               Sits with Run Profile: both are orchestration rows. Pattern A: inserts
               an empty row and auto-opens the Sheet (backend sends sheet:openIndex). */}
+          {overflowCount < 3 && (
           <button
             tabIndex={-1}
             onClick={() => {
@@ -1151,6 +1149,7 @@ export function Toolbar(_props: ToolbarProps) {
           >
             <AppWindow size={16} />
           </button>
+          )}
 
           {/* Data Loop — open the data-table panel ({row:column} tokens + loop-over-data).
               A profile-level surface (App-level, opened via the shared cmd:dataeditor
@@ -1164,6 +1163,7 @@ export function Toolbar(_props: ToolbarProps) {
               very table a ForEachRow already in flight is iterating. The toolbar is its
               ONLY entry point — it is deliberately absent from the command palette — so
               this gate is the whole story. */}
+          {overflowCount < 2 && (
           <button
             tabIndex={-1}
             onClick={() => window.dispatchEvent(new CustomEvent('cmd:dataeditor'))}
@@ -1173,8 +1173,11 @@ export function Toolbar(_props: ToolbarProps) {
           >
             <Table2 size={16} />
           </button>
+          )}
 
-          <div className="w-px h-4 bg-border-subtle mx-1" />
+          {/* When the tail has collapsed, the More button IS the divider — a separator beside
+              it would read as two gaps in a row. */}
+          {overflowCount === 0 && <div className="w-px h-4 bg-border-subtle mx-1" />}
 
           {/* Clear All — destructive hover (red text + faint red bg) mirrors
               BulkActionBar's Delete. Two-step confirm popover + the same
@@ -1183,6 +1186,7 @@ export function Toolbar(_props: ToolbarProps) {
               the engine, with only Undo as the safety net). Copy/Paste removed
               from the toolbar (redundant with the Ctrl+C / Ctrl+V hotkeys and
               the BulkActionBar's buttons when a selection exists). */}
+          {overflowCount < 1 && (
           <div className="relative" ref={clearMenuRef}>
             <button
               tabIndex={-1}
@@ -1233,6 +1237,117 @@ export function Toolbar(_props: ToolbarProps) {
               </div>
             )}
           </div>
+          )}
+
+          {/* More ▾ — the tail the row could not fit. It is NOT a permanent home:
+              overflowCount is measured, so at any width where the buttons fit they stay
+              buttons, and this menu does not exist at all. What it buys beyond room is
+              NAMES: every control in this row is icon-only, and the insert commands were
+              deliberately cut from the command palette, so until now "Run Profile" was a
+              word you could only reach by hovering the right icon. Items are listed
+              row-order (Run Profile → Clear All), never collapse-order, or the menu would
+              reshuffle itself as the window resized.
+              Clear All opens its own confirm popover, which cannot be nested inside a menu
+              that closes on click — so here it sends the user back to the button by
+              widening the window, and stays disabled-looking rather than lying about a
+              one-click destroy. */}
+          {overflowCount > 0 && (
+            <div className="relative" ref={moreMenuRef}>
+              <button
+                tabIndex={-1}
+                onClick={() => setShowMoreMenu(!showMoreMenu)}
+                disabled={insertsDisabled}
+                className={iconButtonClass('md', { active: showMoreMenu })}
+                data-tip={clickerTip('More', 'Mais')}
+              >
+                <MoreHorizontal size={16} />
+                <ChevronDown size={10} className="opacity-80" />
+              </button>
+              {showMoreMenu && !insertsDisabled && (
+                <div ref={moreFlyout.ref} className={`absolute w-56 menu-surface z-50 py-1 ${moreFlyout.flipX ? 'right-0' : 'left-0'} ${moreFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
+                  <div className="px-3 py-1 label-micro text-text-tertiary">
+                    More actions
+                  </div>
+                  {overflowCount >= 3 && (
+                    <button
+                      className="menu-item text-text-primary"
+                      onClick={() => { setShowRunProfileDialog(true); setShowMoreMenu(false); }}
+                    >
+                      <Repeat2 size={13} className="text-text-tertiary" />
+                      Run Profile
+                    </button>
+                  )}
+                  {overflowCount >= 2 && (
+                    <button
+                      className="menu-item text-text-primary"
+                      onClick={() => {
+                        const sel = selectionRef.current;
+                        const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
+                        send({ type: 'actions:insertAction', payload: { actionType: 'ActivateWindow', insertIndex } });
+                        setShowMoreMenu(false);
+                      }}
+                    >
+                      <AppWindow size={13} className="text-text-tertiary" />
+                      Activate Window
+                    </button>
+                  )}
+                  {overflowCount >= 2 && (
+                    <button
+                      className="menu-item text-text-primary"
+                      onClick={() => { window.dispatchEvent(new CustomEvent('cmd:dataeditor')); setShowMoreMenu(false); }}
+                    >
+                      <Table2 size={13} className="text-text-tertiary" />
+                      Data Loop
+                    </button>
+                  )}
+                  <div className="my-1 border-t border-border-subtle" />
+                  {/* Clear All keeps its two steps in here rather than borrowing the button's
+                      confirm popover: that popover is anchored to a trigger that does not exist
+                      at this width. So the confirmation happens INSIDE the menu, which stays open
+                      because clicks within it are not outside clicks. Same two decisions as the
+                      popover — it names the count, and it says Ctrl+Z undoes it. */}
+                  {clearArmed ? (
+                    <div className="px-3 py-2">
+                      <div className="text-xs font-semibold text-text-primary">
+                        Clear all {actions.length} action{actions.length === 1 ? '' : 's'}?
+                      </div>
+                      <div className="mt-1 text-[11px] text-text-tertiary leading-relaxed">
+                        {'Ctrl+Z undoes it.'}
+                      </div>
+                      <div className="mt-2.5 flex justify-end gap-1.5">
+                        <button
+                          onClick={() => setClearArmed(false)}
+                          className="px-2.5 py-1 rounded text-[11px] text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => {
+                            send({ type: 'actions:clear', payload: {} });
+                            setClearArmed(false);
+                            setShowMoreMenu(false);
+                          }}
+                          disabled={insertsDisabled}
+                          className="px-2.5 py-1 rounded text-[11px] font-semibold bg-recording text-[color:var(--color-recording-ink)] hover:opacity-85 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          Clear all
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      disabled={actions.length === 0}
+                      className="menu-item text-text-primary disabled:opacity-40 disabled:cursor-not-allowed"
+                      onClick={() => setClearArmed(true)}
+                    >
+                      <Trash2 size={13} className="text-recording" />
+                      Clear All…
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
