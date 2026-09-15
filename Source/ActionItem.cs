@@ -463,13 +463,31 @@ namespace TrueReplayer.Models
         [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
         public bool AtCursor { get; set; }
 
-        // The five COMBINED click types — one row = press + release. The single source for
+        // The COMBINED click types — one row = press + release. The single source for
         // "is this a click row that owns a whole click", shared by the replay engine, the
-        // WebViewBridge edit/bulk handlers and the ProfileCompatibility pin, so a sixth click
+        // WebViewBridge edit/bulk handlers and the ProfileCompatibility pin, so a new click
         // type can never teach one gate and miss another. Paired halves (*ClickDown/*ClickUp)
         // are deliberately NOT here — they are fragments, not clicks.
+        //
+        // The *ClickHold family belongs here despite the wait in the middle: the row still owns
+        // the whole press→release, which is exactly what this predicate asks. That membership is
+        // what makes at-cursor and × N work for a hold — and what obliges the replay cases to
+        // honour BOTH, since every editor surface derives its offer from this same set.
         internal static bool IsCombinedClickType(string? t) =>
-            t is "LeftClick" or "RightClick" or "MiddleClick" or "DoubleClick" or "TripleClick";
+            t is "LeftClick" or "RightClick" or "MiddleClick" or "DoubleClick" or "TripleClick"
+              or "LeftClickHold" or "RightClickHold" or "MiddleClickHold";
+
+        // Every click row that OWNS a coordinate — the combined set above plus the paired
+        // halves. The question the coordinate machinery asks: "does translating X/Y on this row
+        // move where it clicks?" Two copies of this list already existed as inline literals (the
+        // absolute↔relative conversion and the bulk X/Y set), and both silently skip a row they
+        // don't know: the conversion leaves it stamped in the old space, clicking somewhere else
+        // with no error. One predicate so a new click type cannot teach the executor and miss them.
+        internal static bool IsCoordinateClickType(string? t) =>
+            IsCombinedClickType(t)
+            || t is "LeftClickDown" or "LeftClickUp"
+                 or "RightClickDown" or "RightClickUp"
+                 or "MiddleClickDown" or "MiddleClickUp";
 
         // RunProfile action: how many times to invoke the called profile back-to-back.
         // Keystroke action: how many press-cycles (down→up) to emit consecutively, so a
@@ -547,6 +565,11 @@ namespace TrueReplayer.Models
         // with a single atomic row whose Value column reads "W · 1.5s hold". 0 = use the
         // global default. Clamped 10..60000 on edit. Stuck-key cleanup (ResetKeyState)
         // safely releases the key if the replay is cancelled mid-hold.
+        //
+        // Shared — NOT renamed — with the *ClickHold family, which is the same idea on the mouse
+        // (press, hold, release; the two-row *ClickDown + *ClickUp pattern collapsed into one).
+        // One field means one clamp and one "0 = default", so the key hold and the mouse hold
+        // cannot drift apart; ResetMouseState plays the ResetKeyState role there.
         //
         // Always serialized (no JsonIgnore) — earlier draft used WhenWritingDefault, but
         // that hid the field whenever the value happened to be 0 (e.g. a freshly typed-and-

@@ -360,6 +360,17 @@ namespace TrueReplayer.Services
                                       string.Equals(a.ActionType, "Keystroke", StringComparison.OrdinalIgnoreCase)),
                 new Version(2, 0, 0), "HoldKey/Keystroke"),
 
+            // *ClickHold (press, hold for HoldDurationMs, release — the mouse twin of HoldKey).
+            // A DEDICATED row, not a variation on the at-cursor / focus-click property pins
+            // below: those describe a property an older build DROPS, while this is an unknown
+            // TYPE. The replay switch has no default, so a pre-2.41.0 build skips the row
+            // entirely — the press, the dwell and the release all vanish and the macro simply
+            // continues without ever having clicked. Same reasoning, and same shape, as the
+            // BrowserAssert row above. Pinned to the introducing build.
+            (p => p.Actions.Any(a => !string.IsNullOrEmpty(a.ActionType) &&
+                a.ActionType.EndsWith("ClickHold", StringComparison.OrdinalIgnoreCase)),
+                new Version(2, 41, 0), "Click and hold"),
+
             // Keystroke × N gap jitter (RepeatDelayJitterPct > 0) — an older build drops the
             // unknown property and fires the burst on a FIXED interval instead of the intended
             // ±% human-like variance (a constant gap is the classic bot tell). Silent behavioural

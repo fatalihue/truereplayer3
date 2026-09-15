@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, lazy, Suspense } from 'react';
-import { Trash2, Undo2, Redo2, Type, ScanSearch, Pipette, Keyboard, Globe, Repeat2, Hourglass, X, GitBranch, ScanEye, Braces, AppWindow, Clipboard, ClipboardCopy, ChevronDown, Dice5, Cpu, FileCheck, Clock, Table2, ShieldCheck, CircleStop, CornerDownLeft, IterationCw, ArrowRightFromLine, SkipForward } from 'lucide-react';
+import { Trash2, Undo2, Redo2, Type, Mouse, ScanSearch, Pipette, Keyboard, Globe, Repeat2, Hourglass, X, GitBranch, ScanEye, Braces, AppWindow, Clipboard, ClipboardCopy, ChevronDown, Dice5, Cpu, FileCheck, Clock, Table2, ShieldCheck, CircleStop, CornerDownLeft, IterationCw, ArrowRightFromLine, SkipForward } from 'lucide-react';
 import { useAppState } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
 import { useSelectionRef } from '../state/SelectionContext';
@@ -12,6 +12,7 @@ import { RunProfileDialog } from './RunProfileDialog';
 import { NavigateDialog } from './NavigateDialog';
 import { KeystrokeCaptureDialog } from './KeystrokeCaptureDialog';
 import { PauseDialog } from './PauseDialog';
+import { HoldClickDialog } from './HoldClickDialog';
 import { useFlyoutFlip } from '../hooks/useFlyoutFlip';
 import { iconButtonClass } from './common/IconButton';
 import { useDismissOnOutside } from '../hooks/useDismissOnOutside';
@@ -220,6 +221,11 @@ export function Toolbar(_props: ToolbarProps) {
   // collapsed into this one slot.
   const [showKeystrokeCapture, setShowKeystrokeCapture] = useState(false);
   const keystrokeCaptureInsertIndex = useRef<number>(0);
+  // Click & Hold — the mouse twin of Send Keystroke's hold mode, and the only insert in this
+  // toolbar that produces a CLICK row (every other click in a profile comes from the recorder).
+  // Pattern B like Pause: the dialog owns the whole configuration, including the screen pick.
+  const [showHoldClick, setShowHoldClick] = useState(false);
+  const holdClickInsertIndex = useRef<number>(0);
   const browserMenuRef = useRef<HTMLDivElement>(null);
   // Each toolbar dropdown opens downward (`top-full left-0`); flip it up/right near the
   // viewport bottom/right edge so it isn't clipped. Measured on open by useFlyoutFlip.
@@ -608,6 +614,26 @@ export function Toolbar(_props: ToolbarProps) {
             data-tip={clickerTip('Send Keystroke', 'Enviar tecla')}
           >
             <Keyboard size={16} />
+          </button>
+
+          {/* Click & Hold — press a button at a point, hold, release. Sits next to Send
+              Keystroke because the two are the same idea on the two input devices, and the
+              toolbar's first group is "input intent". The glyph is the plain Mouse rather than
+              the grid's stopwatch: this is the only mouse insert there is, so nothing here can
+              be misread as it, while a lone Timer beside the Keyboard would say "timed" without
+              saying WHAT. The tooltip carries the rest, as it does for every icon in this row. */}
+          <button
+            tabIndex={-1}
+            onClick={() => {
+              const sel = selectionRef.current;
+              holdClickInsertIndex.current = sel.size > 0 ? Math.min(...sel) : actions.length;
+              setShowHoldClick(true);
+            }}
+            disabled={insertsDisabled}
+            className={iconButtonClass('md')}
+            data-tip={clickerTip('Click & Hold', 'Clicar e segurar')}
+          >
+            <Mouse size={16} />
           </button>
 
           {/* Send Text */}
@@ -1281,6 +1307,29 @@ export function Toolbar(_props: ToolbarProps) {
             setShowPauseDialog(false);
           }}
           onClose={() => setShowPauseDialog(false)}
+        />
+      )}
+
+      {/* Click & Hold — Pattern B, same shape as Pause above: the dialog resolves button,
+          point and duration, and this mount only forwards. x/y are omitted entirely under
+          at-cursor (the dialog leaves them undefined), which is what the bridge handler reads
+          as "this row has no stored point" — sending 0,0 would be a click in the corner. */}
+      {showHoldClick && (
+        <HoldClickDialog
+          onConfirm={(r) => {
+            if (refuseInsert()) return;
+            send({
+              type: 'actions:insertHoldClick',
+              payload: {
+                button: r.button,
+                insertIndex: holdClickInsertIndex.current,
+                holdDurationMs: r.holdDurationMs,
+                ...(r.atCursor ? { atCursor: true } : { x: r.x, y: r.y }),
+              },
+            });
+            setShowHoldClick(false);
+          }}
+          onClose={() => setShowHoldClick(false)}
         />
       )}
 

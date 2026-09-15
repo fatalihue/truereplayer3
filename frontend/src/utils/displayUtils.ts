@@ -67,9 +67,27 @@ function showsPixelCoords(item: ActionItem): boolean {
     || (carriesConditionProbe(item.actionType) && item.conditionType === 'PixelColorMatch');
 }
 
-// The five combined click types — mirrors ActionItem.IsCombinedClickType on the C# side.
+// The combined click types — mirrors ActionItem.IsCombinedClickType on the C# side.
 // Only these read the at-cursor flag, so only these may blank their coordinates because of it.
-const COMBINED_CLICK_TYPES = new Set(['LeftClick', 'RightClick', 'MiddleClick', 'DoubleClick', 'TripleClick']);
+// The *ClickHold family is here for the same reason it is there: the row owns a whole
+// press→release, and its replay case resolves the at-cursor point once per cycle.
+const COMBINED_CLICK_TYPES = new Set([
+  'LeftClick', 'RightClick', 'MiddleClick', 'DoubleClick', 'TripleClick',
+  'LeftClickHold', 'RightClickHold', 'MiddleClickHold',
+]);
+
+/** Mirrors C# ActionItem.IsCombinedClickType — "this row owns a whole press→release".
+ *  Exported so the grid's at-cursor icon and × N badge ask the SAME question this file
+ *  asks when blanking coordinates, instead of each carrying its own regex of click names
+ *  (which is how one of them learned a new type and the others didn't). */
+export const isCombinedClick = (actionType: string): boolean =>
+  COMBINED_CLICK_TYPES.has(actionType);
+
+/** The press-hold-release family — a combined click whose two halves are separated by
+ *  HoldDurationMs. Kept apart from isCombinedClick because a few surfaces need exactly
+ *  these three: the "<n> ms" Details payload, and the button-family pickers. */
+export const isClickHold = (actionType: string): boolean =>
+  actionType === 'LeftClickHold' || actionType === 'RightClickHold' || actionType === 'MiddleClickHold';
 
 // An at-cursor click HAS an x/y on disk, but the replay resolves its point from the live mouse
 // and never reads them — showing the stored numbers would be a phantom coordinate, the exact

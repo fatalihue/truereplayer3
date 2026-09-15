@@ -7,8 +7,8 @@ namespace TrueReplayer.Services
 {
     /// <summary>
     /// Converts a profile's action list between the two input representations:
-    ///   • Paired   — KeyDown+KeyUp / *ClickDown+*ClickUp (two rows per press)
-    ///   • Combined — Keystroke / HoldKey / *Click       (one row per press)
+    ///   • Paired   — KeyDown+KeyUp / *ClickDown+*ClickUp          (two rows per press)
+    ///   • Combined — Keystroke / HoldKey / *Click / *ClickHold    (one row per press)
     ///
     /// This is the on-demand counterpart to the record-time "Combined Actions" toggle: a
     /// profile recorded (or hand-built) in one form can be switched to the other without
@@ -21,8 +21,11 @@ namespace TrueReplayer.Services
     ///     *Click has a single point and can't represent a moved release).
     ///   • A held KEY (adjacent KeyDown+KeyUp whose Up delay ≥ <see cref="HoldThresholdMs"/>)
     ///     becomes a HoldKey carrying that exact duration — no timing is lost.
-    ///   • A held mouse button collapses to an instant *Click (there is no mouse-hold action),
-    ///     matching how the record-time combined mode treats clicks.
+    ///   • A held mouse BUTTON (same test, same threshold) becomes a *ClickHold carrying that
+    ///     duration. Until *ClickHold existed this branch had nowhere to put the time and
+    ///     collapsed every hold into an instant click — a silent loss on a round-trip, and the
+    ///     one asymmetry between the key and mouse families. Below the threshold a press is
+    ///     still a tap → instant *Click, matching how record-time combined mode treats clicks.
     ///   • Overlapping / interleaved presses (KeyDown … other event … KeyUp) can't be folded,
     ///     so they are left paired exactly as-is.
     /// </summary>
@@ -62,7 +65,10 @@ namespace TrueReplayer.Services
             {
                 var a = input[i];
 
-                // Click pair: *ClickDown + *ClickUp (same button, same point) → *Click.
+                // Click pair: *ClickDown + *ClickUp (same button, same point) → *Click, or
+                // → *ClickHold when the Up carries a real dwell. The hold branch is the mouse
+                // mirror of the held-KEY branch below and uses the identical threshold, so the
+                // two families answer "was this a tap or a hold?" the same way.
                 if (TryClickButton(a.ActionType, down: true, out string btn)
                     && i + 1 < input.Count
                     && TryClickButton(input[i + 1].ActionType, down: false, out string upBtn)
@@ -71,7 +77,16 @@ namespace TrueReplayer.Services
                     && Math.Abs(input[i + 1].Y - a.Y) <= ClickCoordTolerance)
                 {
                     var click = a.Clone();
-                    click.ActionType = btn + "Click";
+                    bool held = input[i + 1].Delay >= HoldThresholdMs;
+                    click.ActionType = held ? btn + "ClickHold" : btn + "Click";
+                    // Carry the dwell, exactly as the held-key branch carries its own. Before
+                    // *ClickHold existed this branch had nowhere to put the time and collapsed
+                    // every hold into an instant click — a silent loss on a round-trip, and the
+                    // reason the class summary above used to say a mouse hold cannot survive.
+                    // The else is not redundant: the clone inherits the DOWN row's field, and a
+                    // tap must not walk away carrying a dwell that nothing will ever read.
+                    if (held) click.HoldDurationMs = Math.Clamp(input[i + 1].Delay, 10, 60000);
+                    else click.HoldDurationMs = 0;
                     result.Add(click);
                     i += 2;
                     continue;
@@ -141,6 +156,30 @@ namespace TrueReplayer.Services
                         var up = a.Clone(); up.ActionType = btn + "ClickUp"; up.Delay = 0; up.Comment = "";
                         result.Add(down);
                         result.Add(up);
+                        break;
+                    }
+                    case "LeftClickHold":
+                    case "RightClickHold":
+                    case "MiddleClickHold":
+                    {
+                        // The same two refusals as the plain clicks above, for the same two
+                        // reasons: the paired halves don't loop (× N would be silently dropped)
+                        // and their replay cases read X/Y directly (at-cursor would silently
+                        // revert to the stale stored point).
+                        if (a.RepeatCount > 1 || a.AtCursor) { result.Add(a.Clone()); break; }
+                        string hbtn = a.ActionType[..^"ClickHold".Length]; // "LeftClickHold" → "Left"
+                        int clickHold = a.HoldDurationMs > 0
+                            ? Math.Clamp(a.HoldDurationMs, 10, 60000)
+                            : ActionItem.DefaultHoldDurationMs;
+                        // The dwell rides on the UP's delay — the inverse of the ToCombined
+                        // mapping, so a round-trip preserves the duration exactly. Identical
+                        // contract to HoldKey below; the Comment is cleared on the Up for the
+                        // same reason a split plain click clears it (it describes the press).
+                        var hdown = a.Clone(); hdown.ActionType = hbtn + "ClickDown"; hdown.HoldDurationMs = 0;
+                        var hup = a.Clone(); hup.ActionType = hbtn + "ClickUp";
+                        hup.Delay = clickHold; hup.Comment = ""; hup.HoldDurationMs = 0;
+                        result.Add(hdown);
+                        result.Add(hup);
                         break;
                     }
                     case "DoubleClick":

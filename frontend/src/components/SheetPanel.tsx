@@ -27,7 +27,7 @@ import { ImageCropper } from './ImageCropper';
 // handle travels through the `apiRef` prop.
 const LexicalTokenEditor = lazy(() => import('./lexical/LexicalTokenEditor').then(m => ({ default: m.LexicalTokenEditor })));
 import type { LexicalEditorHandle } from './lexical/LexicalTokenEditor';
-import { getDisplayKey } from '../utils/displayUtils';
+import { getDisplayKey, isClickHold } from '../utils/displayUtils';
 
 // How often the open row editor re-stamps its unsaved-work claim with AutomationGuard. Must stay
 // WELL under `AutomationGuard.EditorClaimTtl` (10 min) — that deadline is measured from the last
@@ -91,10 +91,19 @@ const familyTypes: Record<ActionFamily, { value: string; label: string }[]> = {
   // vs how many clicks) and only the ordering keeps them legible: Double/Triple are both
   // left-button actions, so listing them between Left and Right made them read as siblings of
   // Right Click, which they are not. Do not interleave them again.
+  // Three rows of three-ish: the BUTTONS, then the same three buttons HELD, then the
+  // left-button multi-click variants. The hold row sits in the middle rather than at the end
+  // because it is the same three buttons one line down — the eye reads the column, and the
+  // switch a user actually wants ("this click, but held") is directly below its click.
+  // Double/Triple moved from row 2 to row 3 for that reason and stay together, which is the
+  // grouping rule above: they are left-button actions, never siblings of Right Click.
   click: [
     { value: 'LeftClick', label: 'Left Click' },
     { value: 'RightClick', label: 'Right Click' },
     { value: 'MiddleClick', label: 'Middle Click' },
+    { value: 'LeftClickHold', label: 'Hold Left' },
+    { value: 'RightClickHold', label: 'Hold Right' },
+    { value: 'MiddleClickHold', label: 'Hold Middle' },
     { value: 'DoubleClick', label: 'Double Click' },
     { value: 'TripleClick', label: 'Triple Click' },
   ],
@@ -129,7 +138,21 @@ const persistAssertPolicy = (p: string | null | undefined): string =>
 // read x/y directly so they can't honour at-cursor.
 // Clamps mirror the C# ranges (RepeatCount 1..999, gap 0..5000 ms, jitter 1..100 %).
 // Off by default: RepeatCount stays 1 so existing rows persist nothing and replay unchanged.
-const COMBINED_CLICKS = new Set(['LeftClick', 'RightClick', 'MiddleClick', 'DoubleClick', 'TripleClick']);
+// The *ClickHold family is here for the same reason it is in the C# set: the row owns a whole
+// press→release. Membership is what gives a hold its × N cluster and its Position control — the
+// engine honours both, so withholding them here would be the UI lying about what the row can do.
+const COMBINED_CLICKS = new Set([
+  'LeftClick', 'RightClick', 'MiddleClick', 'DoubleClick', 'TripleClick',
+  'LeftClickHold', 'RightClickHold', 'MiddleClickHold',
+]);
+
+// Hold duration editing, shared with the Send Keystroke dialog's hold mode so the key hold and
+// the mouse hold offer the same presets and the same range (C# clamps 10..60000 identically).
+const HOLD_PRESETS = [100, 500, 1000, 5000, 30000];
+const MIN_HOLD_MS = 10;
+const MAX_HOLD_MS = 60000;
+const DEFAULT_HOLD_MS = 1000;
+const clampHoldMs = (v: number) => Math.max(MIN_HOLD_MS, Math.min(MAX_HOLD_MS, Math.floor(v)));
 const DEFAULT_CLICK_GAP_MS = 30;         // matches ActionItem.DefaultRepeatDelayMs on the C# side
 const DEFAULT_MULTICLICK_GAP_MS = 600;   // matches ActionItem.DefaultDoubleClickRepeatDelayMs — a
                                          // Double/TripleClick needs a gap above the OS double-click
@@ -329,6 +352,10 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   // from its stored X/Y. Held locally during edit and persisted via actions:edit on Save, like
   // every other field here. Mutually exclusive with Position jitter (see the Position control).
   const [atCursor, setAtCursor] = useState(false);
+  // *ClickHold dwell (ms). Seeded from the row, clamped on save to the same 10..60000 the C#
+  // side enforces. A row that has never been given one seeds at the shared 1000 ms default
+  // rather than 0, so the field shows the number replay will actually use.
+  const [holdMs, setHoldMs] = useState(DEFAULT_HOLD_MS);
   const [timeout, setTimeout_] = useState('');
   const [confidence, setConfidence] = useState('');
   const [browserText, setBrowserText] = useState('');
@@ -806,6 +833,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       setPosJitterOn((action.repeatPositionJitterPx ?? 0) > 0);
       setPosJitterPx(action.repeatPositionJitterPx && action.repeatPositionJitterPx > 0 ? action.repeatPositionJitterPx : DEFAULT_CLICK_POS_JITTER_PX);
       setAtCursor(action.atCursor || false);
+      setHoldMs(action.holdDurationMs && action.holdDurationMs > 0 ? action.holdDurationMs : DEFAULT_HOLD_MS);
       // Timeout edited in milliseconds (matches the grid + dialogs). Pause defaults
       // to 0 (infinite); other actions default to 5000ms.
       setTimeout_(action.actionType === 'Pause'
@@ -1049,6 +1077,20 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       }
       if (atCursor !== (action.atCursor ?? false)) {
         send({ type: 'actions:edit', payload: { index: actionIndex, field: 'atCursor', value: String(atCursor) } });
+      }
+      // Only the hold family writes the dwell. Gating it here (rather than letting every
+      // combined click persist a value) is what keeps a plain click byte-identical to a
+      // pre-feature profile — the field is always serialized, so an unasked-for number would
+      // show up on every click row in the JSON.
+      // The module-level predicate, not the component's `isHoldClick`: that one is declared
+      // further down, and a forward reference from this callback's dependency array would be
+      // read in its temporal dead zone. Same reason this block tests COMBINED_CLICKS directly
+      // instead of isRepeatableClick.
+      if (isClickHold(actionType)) {
+        const effHold = clampHoldMs(holdMs);
+        if (effHold !== (action.holdDurationMs ?? 0)) {
+          send({ type: 'actions:edit', payload: { index: actionIndex, field: 'holdDurationMs', value: String(effHold) } });
+        }
       }
     }
 
@@ -1469,7 +1511,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     // from actionType + action.conditionType which are already in the array, so the
     // callback rebinds whenever those change. Listing the derived flags would also
     // be a forward-reference error (they're declared further down the component body).
-  }, [actionIndex, action, actionType, key, textMatch, textMode, x, y, delay, comment, repeatCount, repeatGapMs, jitterOn, jitterPct, posJitterOn, posJitterPx, atCursor, timeout, confidence, browserText, variableValue, variableMode, slotMode, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, waitImageOnTimeout, waitImageInvert, waitImageClickOnMatch, waitImageSearchRegion, pixelX, pixelY, pixelColor, pixelTolerance, pixelOnTimeout, pixelInvert, pixelClickOnMatch, conditionNegate, ifOnProbeError, conditionTimeout, loopMaxIterations, windowProcessName, windowTitle, windowTitleMatchMode, windowMatchForegroundOnly, clipboardPatternType, clipboardPattern, randomPercent, conditionOperator, conditionOperand, filePath, timeStart, timeEnd, daysOfWeek, launchPath, launchArgs, activateOnTimeout, restorePosition, restoreSize, windowX, windowY, windowWidth, windowHeight, windowVerb, matchIndex, assertOnFail, alternatives, pickedThisSession, send, onClose,
+  }, [actionIndex, action, actionType, key, textMatch, textMode, x, y, delay, comment, repeatCount, repeatGapMs, jitterOn, jitterPct, posJitterOn, posJitterPx, atCursor, holdMs, timeout, confidence, browserText, variableValue, variableMode, slotMode, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, waitImageOnTimeout, waitImageInvert, waitImageClickOnMatch, waitImageSearchRegion, pixelX, pixelY, pixelColor, pixelTolerance, pixelOnTimeout, pixelInvert, pixelClickOnMatch, conditionNegate, ifOnProbeError, conditionTimeout, loopMaxIterations, windowProcessName, windowTitle, windowTitleMatchMode, windowMatchForegroundOnly, clipboardPatternType, clipboardPattern, randomPercent, conditionOperator, conditionOperand, filePath, timeStart, timeEnd, daysOfWeek, launchPath, launchArgs, activateOnTimeout, restorePosition, restoreSize, windowX, windowY, windowWidth, windowHeight, windowVerb, matchIndex, assertOnFail, alternatives, pickedThisSession, send, onClose,
     // The two booleans, never the buttonStates object: it is republished on unrelated events
     // and this callback already rebuilds on every keystroke.
     refuseDuringRun]);
@@ -1521,6 +1563,8 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       const effPosJitter = posJitterOn && effRepeat > 1 && !atCursor ? clampRepeatPosJitter(posJitterPx) : 0;
       if (effPosJitter !== (action.repeatPositionJitterPx ?? 0)) return true;
       if (atCursor !== (action.atCursor ?? false)) return true;
+      // Module-level predicate here too — see the note on the save path above.
+      if (isClickHold(actionType) && clampHoldMs(holdMs) !== (action.holdDurationMs ?? 0)) return true;
     }
 
     if (actionType === 'WaitImage' || _isIfImage) {
@@ -1727,7 +1771,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     }
 
     return false;
-  }, [actionIndex, action, actionType, key, textMatch, textMode, x, y, delay, comment, repeatCount, repeatGapMs, jitterOn, jitterPct, posJitterOn, posJitterPx, atCursor, timeout, confidence, browserText, variableValue, variableMode, slotMode, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, waitImageOnTimeout, waitImageInvert, waitImageClickOnMatch, waitImageSearchRegion, pixelX, pixelY, pixelColor, pixelTolerance, pixelOnTimeout, pixelInvert, pixelClickOnMatch, conditionNegate, ifOnProbeError, conditionTimeout, loopMaxIterations, windowProcessName, windowTitle, windowTitleMatchMode, windowMatchForegroundOnly, clipboardPatternType, clipboardPattern, randomPercent, conditionOperator, conditionOperand, filePath, timeStart, timeEnd, daysOfWeek, launchPath, launchArgs, activateOnTimeout, restorePosition, restoreSize, windowX, windowY, windowWidth, windowHeight, windowVerb, matchIndex, assertOnFail, alternatives, pickedThisSession]);
+  }, [actionIndex, action, actionType, key, textMatch, textMode, x, y, delay, comment, repeatCount, repeatGapMs, jitterOn, jitterPct, posJitterOn, posJitterPx, atCursor, holdMs, timeout, confidence, browserText, variableValue, variableMode, slotMode, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, waitImageOnTimeout, waitImageInvert, waitImageClickOnMatch, waitImageSearchRegion, pixelX, pixelY, pixelColor, pixelTolerance, pixelOnTimeout, pixelInvert, pixelClickOnMatch, conditionNegate, ifOnProbeError, conditionTimeout, loopMaxIterations, windowProcessName, windowTitle, windowTitleMatchMode, windowMatchForegroundOnly, clipboardPatternType, clipboardPattern, randomPercent, conditionOperator, conditionOperand, filePath, timeStart, timeEnd, daysOfWeek, launchPath, launchArgs, activateOnTimeout, restorePosition, restoreSize, windowX, windowY, windowWidth, windowHeight, windowVerb, matchIndex, assertOnFail, alternatives, pickedThisSession]);
 
   // Key capture handler — focusing the field switches it to capture mode (empty + "New
   // key..." + pulse), the next non-modifier key is stored, and the input auto-blurs so
@@ -2467,16 +2511,23 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   // Double and Triple are in the button alternation so they join the click family
   // (picker chips + coords/Pick/Copy/Paste). A "DoubleClickDown" never exists,
   // so the optional suffix simply never matches for them.
-  const clickHalfMatch = actionType.match(/^((?:Left|Right|Middle|Double|Triple)Click)(Down|Up)?$/);
+  // Hold is a THIRD suffix in this regex and deliberately NOT a third clickHalfSuffix: Down and
+  // Up are fragments of one press, while Hold is a whole press that happens to last. Folding it
+  // into the pair would strip the × N cluster and the Position control from a row the engine
+  // honours both on.
+  const clickHalfMatch = actionType.match(/^((?:Left|Right|Middle|Double|Triple)Click)(Down|Up|Hold)?$/);
   const isClickHalf = clickHalfMatch !== null;
   const clickHalfBase = clickHalfMatch ? clickHalfMatch[1] : null;
-  const clickHalfSuffix = clickHalfMatch?.[2] ? (clickHalfMatch[2] as 'Down' | 'Up') : null;
+  const rawClickSuffix = clickHalfMatch?.[2] ?? null;
+  const clickHalfSuffix = rawClickSuffix === 'Down' || rawClickSuffix === 'Up' ? rawClickSuffix : null;
+  const isHoldClick = isClickHold(actionType);
   const baseActionType = clickHalfBase ?? actionType;
 
-  // A single click (LeftClick/RightClick/MiddleClick) or a Double/TripleClick supports the inline
-  // "× N" repeat cluster. Paired halves (a Down/Up would double-fire one edge) are excluded —
-  // so gate on "combined base AND no Down/Up suffix" (a multi-click has no suffix, so it passes).
-  const isRepeatableClick = !clickHalfSuffix && COMBINED_CLICKS.has(baseActionType);
+  // A single click (LeftClick/RightClick/MiddleClick), a Double/TripleClick or a *ClickHold
+  // supports the inline "× N" repeat cluster. Paired halves (a Down/Up would double-fire one
+  // edge) are excluded — and since COMBINED_CLICKS holds the FULL type names, asking it about
+  // actionType excludes them on its own; no suffix guard needed.
+  const isRepeatableClick = COMBINED_CLICKS.has(actionType);
   // Same set gates the Position control: only a whole click can resolve its own point at replay
   // time. Identical predicate on purpose — see COMBINED_CLICKS.
   const isAtCursorEligible = isRepeatableClick;
@@ -2497,15 +2548,16 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
         : null;
   // Skip rendering the picker when there's nothing useful to switch to (single-option family).
   const familyOptions = currentFamily ? familyTypes[currentFamily] : [];
-  // Editing a paired half (Down/Up)? Drop Double/Triple Click — they are combined-only units;
-  // converting just one half would orphan its twin. Filtered HERE rather than inline in the JSX
-  // because the grid's column count is decided from the visible count.
+  // Editing a paired half (Down/Up)? Drop Double/Triple Click AND the holds — all of them are
+  // combined-only units; converting just one half would orphan its twin (a lone LeftClickUp left
+  // behind by a Down that became a hold releases a button nobody pressed). Filtered HERE rather
+  // than inline in the JSX because the grid's column count is decided from the visible count.
   const visibleFamilyOptions = familyOptions.filter(
-    t => !(clickHalfSuffix && (t.value === 'DoubleClick' || t.value === 'TripleClick'))
+    t => !(clickHalfSuffix && (t.value === 'DoubleClick' || t.value === 'TripleClick' || isClickHold(t.value)))
   );
   const showTypePicker = visibleFamilyOptions.length > 1;
-  // 3 columns for the click family (5 chips → buttons row + multi-click row; 3 when a paired half
-  // hides the multi-clicks, so still exactly one full row), 2 for the key/scroll pairs so they
+  // 3 columns for the click family (8 chips → buttons row + holds row + multi-click row; 3 when a
+  // paired half hides both of those, so still exactly one full row), 2 for the key/scroll pairs so they
   // split the width evenly instead of leaving a hole. Fixed columns are the point: with
   // flex-wrap the break landed wherever the label widths happened to put it, so the grouping was
   // an accident of text measurement and would reflow on any label edit.
@@ -2559,6 +2611,10 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     : actionType === 'BreakLoop' ? 'Break Loop'
     : actionType === 'ContinueLoop' ? 'Next Iteration'
     : actionType === 'ForEachRow' ? 'For Each Data Row'
+    // "Hold Left Click" — same wording as the grid's Action pill, and the "Hold" has to come
+    // from the full type: clickHalfBase deliberately strips it, so the generic line below would
+    // title a hold exactly like the plain click it is not.
+    : isHoldClick ? `Hold ${(clickHalfBase ?? '').replace('Click', '')} Click`
     : isClickHalf ? `${(clickHalfBase ?? '').replace('Click', '')} Click`
     : actionType;
 
@@ -2668,7 +2724,9 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                   : t.value;
                 // Highlight on the base type so users editing a Down/Up half see the right
                 // chip lit up (the raw actionType `LeftClickDown` would never match `LeftClick`).
-                const isActive = baseActionType === t.value;
+                // A HOLD is its own chip, so it matches on the full type — going through the base
+                // would light "Left Click" while the row is a "Hold Left".
+                const isActive = isHoldClick ? actionType === t.value : baseActionType === t.value;
                 return (
                   <button
                     key={t.value}
@@ -4631,6 +4689,33 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
               </div>
             )}
           </>
+          )}
+
+          {/* HOLD — how long the button stays down between this row's press and its release.
+              Above Position on purpose: it is what makes the row a hold rather than a click,
+              so it reads first. Same presets and same 10..60000 range as the Send Keystroke
+              dialog's hold mode, because the two are the same idea on different hardware. */}
+          {isHoldClick && (
+            <Field
+              label="Hold"
+              hint={'Button stays down for this long, then releases.'}
+            >
+              <NumberInput
+                value={holdMs}
+                onChange={(n) => setHoldMs(clampHoldMs(n))}
+                min={MIN_HOLD_MS}
+                max={MAX_HOLD_MS}
+                step={holdMs >= 1000 ? 1000 : 100}
+                thousands
+                suffix="ms" suffixInside
+                inputWidth="w-full"
+                inputHeight="h-8"
+                ariaLabel="Hold duration in milliseconds"
+              />
+              <div className="mt-1.5">
+                <DurationChips presets={HOLD_PRESETS} value={holdMs} onSelect={(ms) => setHoldMs(clampHoldMs(ms))} />
+              </div>
+            </Field>
           )}
 
           {/* POSITION — where this click resolves its point. A SegmentedControl rather than a

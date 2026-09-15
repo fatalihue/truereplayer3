@@ -273,6 +273,9 @@ namespace TrueReplayer
             new(StringComparer.Ordinal)
             {
                 "LeftClick", "RightClick", "MiddleClick", "DoubleClick", "TripleClick",
+                // Press-hold-release in one row (the mouse twin of HoldKey); the dwell rides
+                // on the shared HoldDurationMs field.
+                "LeftClickHold", "RightClickHold", "MiddleClickHold",
                 "LeftClickDown", "LeftClickUp",
                 "RightClickDown", "RightClickUp",
                 "MiddleClickDown", "MiddleClickUp",
@@ -795,6 +798,7 @@ namespace TrueReplayer
                     case "actions:deleteElseIfArm": HandleActionsDeleteElseIfArm(payload); break;
                     case "actions:insertKeystroke": HandleInsertKeystroke(payload); break;
                     case "actions:insertHoldKey": HandleInsertHoldKey(payload); break;
+                    case "actions:insertHoldClick": HandleInsertHoldClick(payload); break;
                     case "actions:insertPause": HandleInsertPause(payload); break;
                     case "actions:duplicate": HandleDuplicateActions(payload); break;
                     case "actions:addRunProfile": HandleAddRunProfile(payload); break;
@@ -3869,9 +3873,10 @@ namespace TrueReplayer
                         action.RepeatCount = Math.Max(1, Math.Min(999, rep));
                     break;
                 case "holdDurationMs":
-                    // HoldKey: clamp 10..60000 ms. The inline editor / dialog enforce
-                    // the same range — duplicating here defends against malformed payloads
-                    // from an attacker / older frontend build.
+                    // HoldKey and the *ClickHold family (one field, one range): clamp
+                    // 10..60000 ms. The inline editor / dialog enforce the same range —
+                    // duplicating here defends against malformed payloads from an
+                    // attacker / older frontend build.
                     if (int.TryParse(value, out int hd))
                         action.HoldDurationMs = Math.Max(10, Math.Min(60000, hd));
                     break;
@@ -4272,8 +4277,10 @@ namespace TrueReplayer
             var targets = indices
                 .Where(idx => idx >= 0 && idx < actions.Count)
                 .Select(idx => actions[idx])
-                .Where(a => a.ActionType is "LeftClickDown" or "LeftClickUp" or "RightClickDown" or "RightClickUp" or "MiddleClickDown" or "MiddleClickUp"
-                    or "LeftClick" or "RightClick" or "MiddleClick" or "DoubleClick" or "TripleClick")
+                // Shared predicate — see the note in the absolute↔relative conversion. This was
+                // the second inline copy of the same list, and the two could not both be right
+                // about a click type only one of them had learned.
+                .Where(a => ActionItem.IsCoordinateClickType(a.ActionType))
                 // An at-cursor click's X/Y is inert — the replay never reads it. Counting those
                 // rows would report "X set on 12 actions" for rows where the number changes
                 // nothing, and would quietly rewrite a point the user can still restore by
@@ -5805,6 +5812,70 @@ namespace TrueReplayer
             {
                 ActionType = "HoldKey",
                 Key = key,
+                Delay = delay,
+                HoldDurationMs = holdDuration,
+            });
+            for (int i = 0; i < actions.Count; i++)
+                actions[i].RowNumber = i + 1;
+            HasUnsavedChanges = true;
+            PushActionsUpdate();
+            mainController.UpdateButtonStates();
+        }
+
+        // Click-hold insert — the mouse twin of HandleInsertHoldKey above, and the FIRST click
+        // row the app can create without recording one (until now a click could only arrive from
+        // the recorder or from "Pick from screen" on a row that already existed). Pattern B: the
+        // dialog gathers button + point + duration up front, so a Cancel leaves no orphan row.
+        private void HandleInsertHoldClick(JsonElement payload)
+        {
+            var button = payload.TryGetProperty("button", out var btnEl) ? btnEl.GetString() : null;
+            // Canonical spellings only — the ActionType is built from this, and an arbitrary
+            // string would compose a type no execution branch handles (a silent no-op at replay,
+            // the same failure KnownActionTypes exists to prevent on the edit path).
+            if (button is not ("Left" or "Right" or "Middle"))
+            {
+                DiagnosticLog.Warn($"actions:insertHoldClick rejected unknown button '{button}'");
+                return;
+            }
+            if (!payload.TryGetProperty("insertIndex", out var idxEl)
+                || idxEl.ValueKind != JsonValueKind.Number) return;
+            int insertIndex = idxEl.GetInt32();
+            if (insertIndex < 0 || insertIndex > actions.Count) insertIndex = actions.Count;
+
+            // Optional hold duration — same clamp as HoldKey (one field, one range).
+            // 0 / omitted falls back to ActionItem.DefaultHoldDurationMs at replay time.
+            int holdDuration = ActionItem.DefaultHoldDurationMs;
+            if (payload.TryGetProperty("holdDurationMs", out var hd) && hd.ValueKind == JsonValueKind.Number)
+                holdDuration = Math.Max(10, Math.Min(60000, hd.GetInt32()));
+
+            // At-cursor rows resolve their point at REPLAY time, so they carry no picked
+            // coordinate; every other row needs one, and a hold aimed at 0,0 by default would be
+            // a click in the screen corner rather than an obvious mistake — refuse instead.
+            bool atCursor = payload.TryGetProperty("atCursor", out var acEl)
+                            && acEl.ValueKind == JsonValueKind.True;
+            int x = 0, y = 0;
+            if (!atCursor)
+            {
+                if (!payload.TryGetProperty("x", out var xEl) || xEl.ValueKind != JsonValueKind.Number
+                 || !payload.TryGetProperty("y", out var yEl) || yEl.ValueKind != JsonValueKind.Number)
+                {
+                    DiagnosticLog.Warn("actions:insertHoldClick rejected: no point and not at-cursor");
+                    return;
+                }
+                x = xEl.GetInt32();
+                y = yEl.GetInt32();
+            }
+
+            int delay = int.TryParse(CustomDelay, out var pd) ? pd : 100;
+            // Snapshot after the guards, right before the mutation — same reasoning as
+            // HandleInsertHoldKey: a refused insert must not leave a stale undo state behind.
+            PushUndoState();
+            actions.Insert(insertIndex, new ActionItem
+            {
+                ActionType = button + "ClickHold",
+                X = x,
+                Y = y,
+                AtCursor = atCursor,
                 Delay = delay,
                 HoldDurationMs = holdDuration,
             });
@@ -8381,7 +8452,6 @@ namespace TrueReplayer
 
             PushUndoState();
 
-            var clickTypes = new HashSet<string> { "LeftClickDown", "LeftClickUp", "RightClickDown", "RightClickUp", "MiddleClickDown", "MiddleClickUp", "LeftClick", "RightClick", "MiddleClick", "DoubleClick", "TripleClick" };
             int converted = 0;
 
             // Sign of the translation: subtract window origin to go absolute→relative,
@@ -8402,7 +8472,10 @@ namespace TrueReplayer
                 // is the definition of the right time to do it.
                 // NOT the same call as the bulk coordinate edit (HandleActionsBulkUpdateCoord),
                 // which writes a value the user CHOSE and must keep taking the row at its word.
-                if (clickTypes.Contains(action.ActionType))
+                // The shared predicate, not a local list: this used to be an inline HashSet, and a
+                // click type it had never heard of was skipped in SILENCE — left stamped in the
+                // old coordinate space, clicking somewhere else at the next replay.
+                if (ActionItem.IsCoordinateClickType(action.ActionType))
                 {
                     action.X += sign * rect.Left;
                     action.Y += sign * rect.Top;

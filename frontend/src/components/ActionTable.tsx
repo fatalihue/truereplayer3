@@ -17,7 +17,7 @@ import { useTt, useLanguage } from '../state/LanguageContext';
 import type { Language } from '../state/LanguageContext';
 import { useSelectionRef } from '../state/SelectionContext';
 import { useToast } from '../state/ToastContext';
-import { getDisplayKey, getDisplayX, getDisplayY, getActionTypeColors, formatKeyCombo, formatMs } from '../utils/displayUtils';
+import { getDisplayKey, getDisplayX, getDisplayY, getActionTypeColors, formatKeyCombo, formatMs, isCombinedClick, isClickHold } from '../utils/displayUtils';
 import { snapIndicesToBlocks, carriesConditionProbe, hasConditionFields, skippedRowMask } from '../utils/conditionalBlocks';
 import { uiZoom } from '../utils/zoomSpace';
 // Deferred: already rendered conditionally, but a static import pulls the whole Lexical editor
@@ -91,6 +91,11 @@ export function ActionIcon({ actionType, size = 12 }: { actionType: string; size
   // Desktop Assert: the same shield, filled — it states a requirement rather than checking a page.
   if (actionType === 'Assert') return <ShieldCheck size={size} />;
   if (actionType.startsWith('Browser')) return <Globe size={size} />;
+  // Before the generic Click→Mouse, for the reason spelled out for HoldKey below: the
+  // stopwatch says "timed", and the row keeps its mouse identity through the pill COLOUR
+  // (computeActionTypeColors matches any *Click*). Key hold and mouse hold therefore read
+  // the same way — family hue, stopwatch glyph.
+  if (isClickHold(actionType)) return <Timer size={size} />;
   if (actionType.includes('Click')) return <Mouse size={size} />;
   if (actionType === 'ScrollUp') return <ArrowUp size={size} />;
   if (actionType === 'ScrollDown') return <ArrowDown size={size} />;
@@ -215,6 +220,13 @@ function actionPillLabel(action: ActionItem): string {
     case 'ActivateWindow': return 'Activate Window';
     case 'DoubleClick': return 'Double Click';
     case 'TripleClick': return 'Triple Click';
+    // Prose, and the distinguishing word FIRST — "Hold" is what separates these rows from
+    // the plain clicks they sit beside, and it echoes "Hold Key" above. The single clicks
+    // still fall through to `default` (raw "LeftClick") by the deliberate choice noted
+    // above; that is a wider change, and nothing here depends on matching them.
+    case 'LeftClickHold': return 'Hold Left Click';
+    case 'RightClickHold': return 'Hold Right Click';
+    case 'MiddleClickHold': return 'Hold Middle Click';
     // Conditional labels are intentionally lowercase to read as "code keywords".
     // The IF pill is uniform ("if") regardless of probe family — the image-vs-pixel
     // distinction (and its payload) lives in the Details cell via ProbeDetails, so
@@ -1981,6 +1993,11 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                         // cell (no separate duration chip) so the two duration-bearing actions
                         // share one format. Click-to-edit is handled by the <td> onClick below.
                         ? `${getDisplayKey(action.key)} / ${action.holdDurationMs && action.holdDurationMs > 0 ? action.holdDurationMs : 1000} ms`
+                      : isClickHold(action.actionType)
+                        // Same "<n> ms" payload as Hold Key, WITHOUT a key prefix — a click
+                        // hold's subject is its point, and the point already has two columns
+                        // of its own. renderMsDetail styles the number below.
+                        ? `${action.holdDurationMs && action.holdDurationMs > 0 ? action.holdDurationMs : 1000} ms`
                       : action.actionType === 'SetVariable'
                         // "name = value" reads like the assignment it is; a fresh row
                         // (no name yet) stays blank like an unconfigured WaitImage.
@@ -2468,9 +2485,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                           halves (LeftClickDown/Up) don't repeat, so they're excluded. Only renders
                           when count > 1 (default 1 = no badge). */}
                       {(action.actionType === 'Keystroke' || action.actionType === 'RunProfile'
-                        || action.actionType === 'LeftClick' || action.actionType === 'RightClick'
-                        || action.actionType === 'MiddleClick' || action.actionType === 'DoubleClick'
-                        || action.actionType === 'TripleClick')
+                        || isCombinedClick(action.actionType))
                         && (action.repeatCount ?? 1) > 1 && !action.runOverData && (
                           <span className="ml-0.5 opacity-75">×{action.repeatCount}</span>
                         )}
@@ -2489,11 +2504,13 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                         )}
                       {/* At-cursor indicator — same treatment as the focus-click icon (inside the
                           pill, never a new column). It carries real weight here: the Details cell
-                          renders NOTHING for these rows, so without the icon a coordinate-less
+                          has no COORDINATES for these rows, so without the icon a coordinate-less
                           click is indistinguishable from one whose coords just aren't set. Two
-                          channels: the icon AND the conspicuous absence of the numbers. */}
+                          channels: the icon AND the conspicuous absence of the numbers. (A hold
+                          still prints its "<n> ms" there — that is the duration, not a point,
+                          so the absence it has to be read against is still total.) */}
                       {action.atCursor
-                        && /^(Left|Right|Middle|Double|Triple)Click$/.test(action.actionType) && (
+                        && isCombinedClick(action.actionType) && (
                           <MousePointer2
                             size={11}
                             className="ml-0.5 opacity-80"
@@ -2630,10 +2647,12 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                                 ),
                               }}
                             />
-                          // Pause / HoldKey embed a "<n> ms" duration in displayKey;
-                          // render it in the Delay column's format (thousands-separated
-                          // number + quiet "ms" suffix). All other types stay plain.
-                          : (action.actionType === 'Pause' || action.actionType === 'HoldKey')
+                          // Pause / HoldKey / *ClickHold embed a "<n> ms" duration in
+                          // displayKey; render it in the Delay column's format
+                          // (thousands-separated number + quiet "ms" suffix). All other
+                          // types stay plain.
+                          : (action.actionType === 'Pause' || action.actionType === 'HoldKey'
+                             || isClickHold(action.actionType))
                             ? renderMsDetail(displayKey, language)
                             : displayKey}
                         {/* The Keystroke × N badge that used to live here moved to
@@ -3179,7 +3198,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
               Sits right under Edit per user request. */}
           {(() => {
             const row = actions[contextMenu.rowIndex];
-            if (!row || !/^((?:Left|Right|Middle|Double|Triple)Click)(Down|Up)?$/.test(row.actionType ?? '')) return null;
+            if (!row || !/^((?:Left|Right|Middle|Double|Triple)Click)(Down|Up|Hold)?$/.test(row.actionType ?? '')) return null;
             // An at-cursor row has nowhere to put a picked point — the replay resolves its own.
             // Offering the pick would run the whole overlay round-trip and write nothing.
             if (row.atCursor) return null;
@@ -3400,7 +3419,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                       see the type-specific slot's note on why that gate misfired). */}
                   {(() => {
                     const row = actions[contextMenu.rowIndex];
-                    if (!row || !/^(Left|Right|Middle)Click(Down|Up)?$/.test(row.actionType ?? '')) return null;
+                    if (!row || !/^(Left|Right|Middle)Click(Down|Up|Hold)?$/.test(row.actionType ?? '')) return null;
                     // Nothing worth copying off an at-cursor row: its stored x/y is dormant, so
                     // the clipboard would carry a point the run never uses.
                     if (row.atCursor) return null;

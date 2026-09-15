@@ -2102,6 +2102,9 @@ namespace TrueReplayer.Services
                 case "MiddleClick":
                 case "DoubleClick":
                 case "TripleClick":
+                case "LeftClickHold":
+                case "RightClickHold":
+                case "MiddleClickHold":
                     // At-cursor rows have no meaningful stored point — printing X/Y here would
                     // report a coordinate the run never used. The replay body overwrites this
                     // with the point it actually resolved, so a completed step reads
@@ -2899,7 +2902,22 @@ namespace TrueReplayer.Services
         // because EVERY event inside one cycle must share the SAME offset — a down and up at
         // different points is a drag, and a double-click whose two pairs straddle the
         // SM_CX/CYDOUBLECLK rectangle stops being a double-click. Keystroke ignores it.
-        private async Task ExecuteRepeated(ActionItem action, CancellationToken token, Action<int, int> body)
+        // Synchronous bodies — every cycle that completes inside one call. Forwards to the Core
+        // below so the repeat/gap/jitter loop exists ONCE: an "await" copy of that loop is
+        // exactly the kind of duplicate that drifts a release later.
+        private Task ExecuteRepeated(ActionItem action, CancellationToken token, Action<int, int> body)
+            => ExecuteRepeatedCore(action, token, (jx, jy) => { body(jx, jy); return Task.CompletedTask; });
+
+        // Awaitable bodies — a cycle that spans a real wait (the *ClickHold family holds the
+        // button for an authored duration between its press and its release).
+        //
+        // DELIBERATELY a different NAME, not an overload. An `async (jx, jy) => { … }` lambda is
+        // convertible to BOTH Action<int,int> and Func<int,int,Task>, and the Action binding is a
+        // silent `async void`: the loop would fire each cycle and move on without awaiting the
+        // hold, the gap would start during the press, and any exception inside would be
+        // unobservable. Overload resolution does pick the Task form today, but nothing in the
+        // call site would SHOW that — so the ambiguity is removed instead of relied upon.
+        private async Task ExecuteRepeatedCore(ActionItem action, CancellationToken token, Func<int, int, Task> body)
         {
             int repeats = Math.Max(1, Math.Min(999, action.RepeatCount));
             // A MULTI-click (Double/Triple) × N falls back to a larger default gap (see
@@ -2931,7 +2949,7 @@ namespace TrueReplayer.Services
                     offsetX = Random.Shared.Next(-posJitter, posJitter + 1);
                     offsetY = Random.Shared.Next(-posJitter, posJitter + 1);
                 }
-                body(offsetX, offsetY);
+                await body(offsetX, offsetY);
                 if (r < repeats - 1 && gap > 0)
                 {
                     int thisGap = gap;
@@ -2982,6 +3000,10 @@ namespace TrueReplayer.Services
         {
             "WaitImage", "WaitPixelColor", "Pause", "RunProfile", "HoldKey",
             "SendText", "ActivateWindow", "CopyToSlot",
+            // The *ClickHold family for the same reason HoldKey is here: the dwell between the
+            // press and the release is AUTHORED, so it was never part of any recorded gap.
+            // Absorbing it would delete the settle time the next action was recorded with.
+            "LeftClickHold", "RightClickHold", "MiddleClickHold",
         };
 
         // Browser actions all round-trip the extension pipe with a multi-second timeout, so
@@ -3973,6 +3995,52 @@ namespace TrueReplayer.Services
                                     FocusTap(cx, cy, NativeMethods.MOUSEEVENTF_MIDDLEDOWN, NativeMethods.MOUSEEVENTF_MIDDLEUP, token, ps, restoreAnchor: action.AtCursor);
                             });
                             break;
+                        // Press, hold for the authored duration, release — the mouse twin of
+                        // HoldKey above, and the only click row whose press and release are
+                        // separated by a wait the user typed rather than one the recording
+                        // captured (which is why the family sits in LongWaitActionTypes above).
+                        //
+                        // The point is resolved ONCE per cycle and reused for BOTH halves. An
+                        // at-cursor hold that re-read GetCursorPos at the release would turn a
+                        // hand-nudge mid-hold into a DRAG — the exact failure AtCursor's note on
+                        // ActionItem warns about, and far likelier here than on an instant click
+                        // because the hold gives the hand seconds to move.
+                        //
+                        // The button stays in the shared _simLeftDown/_simRightDown/_simMiddleDown
+                        // state for the whole hold, so a Stop mid-hold has ResetMouseState()
+                        // release it instead of leaving it latched system-wide — the same contract
+                        // HoldKey has with ResetKeyState, and the reason the release below may be
+                        // skipped on cancellation without stranding the button.
+                        //
+                        // IsFocusClick is deliberately NOT honoured: the tap would press and
+                        // release the same button immediately before the hold takes it, and the
+                        // hold's own press already gives the target focus for the entire dwell.
+                        case "LeftClickHold":
+                        case "RightClickHold":
+                        case "MiddleClickHold":
+                        {
+                            (uint downEvent, uint upEvent) = action.ActionType switch
+                            {
+                                "RightClickHold"  => (NativeMethods.MOUSEEVENTF_RIGHTDOWN,  NativeMethods.MOUSEEVENTF_RIGHTUP),
+                                "MiddleClickHold" => (NativeMethods.MOUSEEVENTF_MIDDLEDOWN, NativeMethods.MOUSEEVENTF_MIDDLEUP),
+                                _                 => (NativeMethods.MOUSEEVENTF_LEFTDOWN,   NativeMethods.MOUSEEVENTF_LEFTUP),
+                            };
+                            // Same clamp and same "0 means the shared default" as HoldKey, read
+                            // from the same field, so the two holds cannot drift apart.
+                            int holdMs = action.HoldDurationMs > 0
+                                ? Math.Max(10, Math.Min(60000, action.HoldDurationMs))
+                                : ActionItem.DefaultHoldDurationMs;
+                            await ExecuteRepeatedCore(action, token, async (jx, jy) => {
+                                var (cx, cy, ps) = ResolveClickPoint(action, jx, jy);
+                                StampCursorPoint(stepRec, action, cx, cy);
+                                SimulateMouse(cx, cy, downEvent, coordsAreProfileSpace: ps);
+                                try { await Task.Delay(holdMs, token); }
+                                catch (OperationCanceledException) { /* ResetMouseState releases */ }
+                                if (!token.IsCancellationRequested)
+                                    SimulateMouse(cx, cy, upEvent, coordsAreProfileSpace: ps);
+                            });
+                            break;
+                        }
                         // Two full left press/release pairs at the SAME point with a gap well
                         // below GetDoubleClickTime, so the target app pairs them into a real
                         // double-click. The cursor only travels once — the second pair's move

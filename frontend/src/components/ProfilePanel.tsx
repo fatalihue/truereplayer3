@@ -66,6 +66,8 @@ const CONVERTIBLE_CLICK_TYPES = new Set([
   // here while the backend's clickTypes set has always converted DoubleClick, so this count
   // under-reported on any profile using one; adding both closes that.
   'LeftClick', 'RightClick', 'MiddleClick', 'DoubleClick', 'TripleClick',
+  // Holds carry a point like any other click — the button is held AT it.
+  'LeftClickHold', 'RightClickHold', 'MiddleClickHold',
 ]);
 
 // Alphabetical section ordering. Module scope because it closes over nothing — as a function
