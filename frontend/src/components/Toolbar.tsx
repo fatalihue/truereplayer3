@@ -12,7 +12,7 @@ import { RunProfileDialog } from './RunProfileDialog';
 import { NavigateDialog } from './NavigateDialog';
 import { KeystrokeCaptureDialog } from './KeystrokeCaptureDialog';
 import { PauseDialog } from './PauseDialog';
-import { HoldClickDialog } from './HoldClickDialog';
+import { ClickDialog } from './ClickDialog';
 import { useFlyoutFlip } from '../hooks/useFlyoutFlip';
 import { iconButtonClass } from './common/IconButton';
 import { useDismissOnOutside } from '../hooks/useDismissOnOutside';
@@ -221,11 +221,12 @@ export function Toolbar(_props: ToolbarProps) {
   // collapsed into this one slot.
   const [showKeystrokeCapture, setShowKeystrokeCapture] = useState(false);
   const keystrokeCaptureInsertIndex = useRef<number>(0);
-  // Click & Hold — the mouse twin of Send Keystroke's hold mode, and the only insert in this
-  // toolbar that produces a CLICK row (every other click in a profile comes from the recorder).
+  // Insert Click — the mouse twin of Send Keystroke, and the ONLY insert in this toolbar that
+  // produces a CLICK row (every other click in a profile comes from the recorder). Its own Mode
+  // toggle covers tap and hold, so one button here stands in for what would be two.
   // Pattern B like Pause: the dialog owns the whole configuration, including the screen pick.
-  const [showHoldClick, setShowHoldClick] = useState(false);
-  const holdClickInsertIndex = useRef<number>(0);
+  const [showClickDialog, setShowClickDialog] = useState(false);
+  const clickDialogInsertIndex = useRef<number>(0);
   const browserMenuRef = useRef<HTMLDivElement>(null);
   // Each toolbar dropdown opens downward (`top-full left-0`); flip it up/right near the
   // viewport bottom/right edge so it isn't clipped. Measured on open by useFlyoutFlip.
@@ -616,22 +617,21 @@ export function Toolbar(_props: ToolbarProps) {
             <Keyboard size={16} />
           </button>
 
-          {/* Click & Hold — press a button at a point, hold, release. Sits next to Send
-              Keystroke because the two are the same idea on the two input devices, and the
-              toolbar's first group is "input intent". The glyph is the plain Mouse rather than
-              the grid's stopwatch: this is the only mouse insert there is, so nothing here can
-              be misread as it, while a lone Timer beside the Keyboard would say "timed" without
-              saying WHAT. The tooltip carries the rest, as it does for every icon in this row. */}
+          {/* Insert Click — single/double/triple, or a held press. Sits next to Send Keystroke
+              because the two are the same idea on the two input devices, and the toolbar's first
+              group is "input intent". Until this button existed a hand-built profile could type,
+              wait, branch and loop but not CLICK: the only sources of a click row were the
+              recorder and "Pick from screen" on a row that already was one. */}
           <button
             tabIndex={-1}
             onClick={() => {
               const sel = selectionRef.current;
-              holdClickInsertIndex.current = sel.size > 0 ? Math.min(...sel) : actions.length;
-              setShowHoldClick(true);
+              clickDialogInsertIndex.current = sel.size > 0 ? Math.min(...sel) : actions.length;
+              setShowClickDialog(true);
             }}
             disabled={insertsDisabled}
             className={iconButtonClass('md')}
-            data-tip={clickerTip('Click & Hold', 'Clicar e segurar')}
+            data-tip={clickerTip('Insert Click', 'Inserir clique')}
           >
             <Mouse size={16} />
           </button>
@@ -1310,26 +1310,23 @@ export function Toolbar(_props: ToolbarProps) {
         />
       )}
 
-      {/* Click & Hold — Pattern B, same shape as Pause above: the dialog resolves button,
-          point and duration, and this mount only forwards. x/y are omitted entirely under
-          at-cursor (the dialog leaves them undefined), which is what the bridge handler reads
-          as "this row has no stored point" — sending 0,0 would be a click in the corner. */}
-      {showHoldClick && (
-        <HoldClickDialog
+      {/* Insert Click — Pattern B, same shape as Pause above: the dialog resolves the action
+          type, the point and the timing, and this mount only forwards what it produced. The
+          spread is deliberate: the dialog OMITS the fields that don't apply (x/y under
+          at-cursor, holdDurationMs outside hold mode, the repeat pair for a single shot), and
+          forwarding them as undefined is what lets the bridge handler tell "not asked for" from
+          a real value — sending 0,0 for an unset point would be a click in the screen corner. */}
+      {showClickDialog && (
+        <ClickDialog
           onConfirm={(r) => {
             if (refuseInsert()) return;
             send({
-              type: 'actions:insertHoldClick',
-              payload: {
-                button: r.button,
-                insertIndex: holdClickInsertIndex.current,
-                holdDurationMs: r.holdDurationMs,
-                ...(r.atCursor ? { atCursor: true } : { x: r.x, y: r.y }),
-              },
+              type: 'actions:insertClick',
+              payload: { ...r, insertIndex: clickDialogInsertIndex.current },
             });
-            setShowHoldClick(false);
+            setShowClickDialog(false);
           }}
-          onClose={() => setShowHoldClick(false)}
+          onClose={() => setShowClickDialog(false)}
         />
       )}
 

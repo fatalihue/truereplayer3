@@ -798,7 +798,7 @@ namespace TrueReplayer
                     case "actions:deleteElseIfArm": HandleActionsDeleteElseIfArm(payload); break;
                     case "actions:insertKeystroke": HandleInsertKeystroke(payload); break;
                     case "actions:insertHoldKey": HandleInsertHoldKey(payload); break;
-                    case "actions:insertHoldClick": HandleInsertHoldClick(payload); break;
+                    case "actions:insertClick": HandleInsertClick(payload); break;
                     case "actions:insertPause": HandleInsertPause(payload); break;
                     case "actions:duplicate": HandleDuplicateActions(payload); break;
                     case "actions:addRunProfile": HandleAddRunProfile(payload); break;
@@ -5822,19 +5822,26 @@ namespace TrueReplayer
             mainController.UpdateButtonStates();
         }
 
-        // Click-hold insert — the mouse twin of HandleInsertHoldKey above, and the FIRST click
-        // row the app can create without recording one (until now a click could only arrive from
-        // the recorder or from "Pick from screen" on a row that already existed). Pattern B: the
-        // dialog gathers button + point + duration up front, so a Cancel leaves no orphan row.
-        private void HandleInsertHoldClick(JsonElement payload)
+        // Click insert — the mouse twin of HandleInsertKeystroke/HandleInsertHoldKey above, and
+        // the ONLY way the app creates a click row without recording one: until this existed a
+        // click could arrive from the recorder, or from "Pick from screen" on a row that already
+        // was one, and from nowhere else. Pattern B: the dialog gathers type + point + timing up
+        // front, so a Cancel leaves no orphan row.
+        //
+        // One handler for the whole combined-click family, hold included, rather than a hold-only
+        // twin plus a click-only twin: the two would differ by which optional fields they read,
+        // which is not a difference worth a second copy of the guards, the undo snapshot and the
+        // renumber.
+        private void HandleInsertClick(JsonElement payload)
         {
-            var button = payload.TryGetProperty("button", out var btnEl) ? btnEl.GetString() : null;
-            // Canonical spellings only — the ActionType is built from this, and an arbitrary
-            // string would compose a type no execution branch handles (a silent no-op at replay,
+            var actionType = payload.TryGetProperty("actionType", out var typeEl) ? typeEl.GetString() : null;
+            // The shared predicate is the whole validation: it admits exactly the rows that own a
+            // press→release, so a paired half, a keystroke or an arbitrary string is refused here
+            // rather than becoming a row no execution branch handles (a silent no-op at replay —
             // the same failure KnownActionTypes exists to prevent on the edit path).
-            if (button is not ("Left" or "Right" or "Middle"))
+            if (!ActionItem.IsCombinedClickType(actionType))
             {
-                DiagnosticLog.Warn($"actions:insertHoldClick rejected unknown button '{button}'");
+                DiagnosticLog.Warn($"actions:insertClick rejected unknown actionType '{actionType}'");
                 return;
             }
             if (!payload.TryGetProperty("insertIndex", out var idxEl)
@@ -5842,15 +5849,9 @@ namespace TrueReplayer
             int insertIndex = idxEl.GetInt32();
             if (insertIndex < 0 || insertIndex > actions.Count) insertIndex = actions.Count;
 
-            // Optional hold duration — same clamp as HoldKey (one field, one range).
-            // 0 / omitted falls back to ActionItem.DefaultHoldDurationMs at replay time.
-            int holdDuration = ActionItem.DefaultHoldDurationMs;
-            if (payload.TryGetProperty("holdDurationMs", out var hd) && hd.ValueKind == JsonValueKind.Number)
-                holdDuration = Math.Max(10, Math.Min(60000, hd.GetInt32()));
-
             // At-cursor rows resolve their point at REPLAY time, so they carry no picked
-            // coordinate; every other row needs one, and a hold aimed at 0,0 by default would be
-            // a click in the screen corner rather than an obvious mistake — refuse instead.
+            // coordinate; every other row needs one, and a click aimed at 0,0 by default would be
+            // a press in the screen corner rather than an obvious mistake — refuse instead.
             bool atCursor = payload.TryGetProperty("atCursor", out var acEl)
                             && acEl.ValueKind == JsonValueKind.True;
             int x = 0, y = 0;
@@ -5859,12 +5860,34 @@ namespace TrueReplayer
                 if (!payload.TryGetProperty("x", out var xEl) || xEl.ValueKind != JsonValueKind.Number
                  || !payload.TryGetProperty("y", out var yEl) || yEl.ValueKind != JsonValueKind.Number)
                 {
-                    DiagnosticLog.Warn("actions:insertHoldClick rejected: no point and not at-cursor");
+                    DiagnosticLog.Warn($"actions:insertClick rejected: no point and not at-cursor ({actionType})");
                     return;
                 }
                 x = xEl.GetInt32();
                 y = yEl.GetInt32();
             }
+
+            // Hold duration — same clamp as HoldKey (one field, one range). Read ONLY for the
+            // hold family: storing it on a plain click would leave a number no replay case reads,
+            // on a field that is always serialized, in every profile that used this dialog.
+            bool isHold = actionType!.EndsWith("ClickHold", StringComparison.Ordinal);
+            int holdDuration = 0;
+            if (isHold)
+            {
+                holdDuration = ActionItem.DefaultHoldDurationMs;
+                if (payload.TryGetProperty("holdDurationMs", out var hd) && hd.ValueKind == JsonValueKind.Number)
+                    holdDuration = Math.Max(10, Math.Min(60000, hd.GetInt32()));
+            }
+
+            // Optional × N, clamped to the ranges every editor surface advertises. The gap stays
+            // NULL when omitted so the row persists nothing and the engine falls back to the
+            // per-type default (30 ms single, 600 ms multi-click) — a pre-feature-identical row.
+            int repeat = 1;
+            if (payload.TryGetProperty("repeat", out var rEl) && rEl.ValueKind == JsonValueKind.Number)
+                repeat = Math.Max(1, Math.Min(999, rEl.GetInt32()));
+            int? repeatDelay = null;
+            if (payload.TryGetProperty("repeatDelayMs", out var gEl) && gEl.ValueKind == JsonValueKind.Number)
+                repeatDelay = Math.Max(0, Math.Min(5000, gEl.GetInt32()));
 
             int delay = int.TryParse(CustomDelay, out var pd) ? pd : 100;
             // Snapshot after the guards, right before the mutation — same reasoning as
@@ -5872,12 +5895,14 @@ namespace TrueReplayer
             PushUndoState();
             actions.Insert(insertIndex, new ActionItem
             {
-                ActionType = button + "ClickHold",
+                ActionType = actionType,
                 X = x,
                 Y = y,
                 AtCursor = atCursor,
                 Delay = delay,
                 HoldDurationMs = holdDuration,
+                RepeatCount = repeat,
+                RepeatDelayMs = repeatDelay,
             });
             for (int i = 0; i < actions.Count; i++)
                 actions[i].RowNumber = i + 1;

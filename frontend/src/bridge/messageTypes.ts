@@ -1148,11 +1148,14 @@ export type OutgoingMessage =
   // engine emits KEYDOWN, waits holdDurationMs, then KEYUP. Default duration
   // applied server-side when holdDurationMs is absent.
   | { type: 'actions:insertHoldKey'; payload: { key: string; insertIndex: number; holdDurationMs?: number } }
-  // Click-hold insert — the mouse twin of insertHoldKey. Replay emits the button DOWN at the
-  // point, waits holdDurationMs, then the UP. `atCursor: true` resolves the point from the live
-  // cursor instead, and is the only way to omit x/y (the backend refuses a row with neither —
-  // a hold aimed at 0,0 by default would be a press in the screen corner, not an obvious slip).
-  | { type: 'actions:insertHoldClick'; payload: { button: 'Left' | 'Right' | 'Middle'; insertIndex: number; holdDurationMs?: number; x?: number; y?: number; atCursor?: boolean } }
+  // Click insert — the mouse twin of insertKeystroke/insertHoldKey, and the only path that
+  // creates a click row without recording one. `actionType` is any COMBINED click (the backend
+  // validates against ActionItem.IsCombinedClickType, so a paired half is refused). `atCursor:
+  // true` resolves the point from the live cursor and is the only way to omit x/y — the backend
+  // refuses a row with neither, because a click aimed at 0,0 by default would be a press in the
+  // screen corner rather than an obvious slip. holdDurationMs is read only for *ClickHold;
+  // repeat/repeatDelayMs are omitted for a single shot so the row persists nothing.
+  | { type: 'actions:insertClick'; payload: { actionType: string; insertIndex: number; x?: number; y?: number; atCursor?: boolean; holdDurationMs?: number; repeat?: number; repeatDelayMs?: number } }
   // WaitPixelColor — minimises the app, opens the screen overlay in pointPick mode,
   // and only inserts the row after the user clicks a pixel (or nothing on Esc).
   // Mirrors how WaitImage's insertion flow works, so the two actions behave the
