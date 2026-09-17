@@ -934,6 +934,23 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
     };
   }, [contextMenu]);
 
+  // A run starting CLOSES the menu. contextMenuEnabled only ever decided whether the menu OPENS
+  // (handleRowContextMenu reads it and returns), and the dismissal above listens for mousedown and
+  // Escape — neither of which a run start produces: replays begin on a GLOBAL hotkey, from the
+  // tray, or from an armed automation. So a menu opened a moment earlier stayed painted, with
+  // every item live and none of them disabled, over a grid the engine was already walking. Delete,
+  // Skip, Paste here, Change click type and Split/Merge all rewrite the list the run is reading,
+  // and the backend has no net of its own for them.
+  //
+  // Same shape as the effect Toolbar mounts for its popovers and as DataPanel's refuseWrite: a
+  // gate on opening is not a gate on something already open, and "already open when the run
+  // started" is the ordinary case, not the exotic one.
+  useEffect(() => {
+    if (contextMenuEnabled) return;
+    setContextMenu(null);
+    setActiveSubmenu(null);
+  }, [contextMenuEnabled]);
+
   // Close the "+ Add Else If" family picker on click outside or Escape — same contract as
   // the row context menu above. Kept as its own effect (not merged) so the two menus can be
   // open-and-closed independently without one clobbering the other's state.
@@ -1235,7 +1252,15 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
         // the whole If…EndIf goes — the bulk bar saying "1 selected" while seven rows vanish.
         send({ type: 'actions:deleteElseIfArm', payload: { elseIfRowIndex: sel[0] } });
       } else {
-        send({ type: 'actions:delete', payload: { indices: snapSelectionToBlocks(sel) } });
+        const snapped = snapSelectionToBlocks(sel);
+        // Say so when the snap widened. This path has no menu label to read and no toast of its
+        // own, so the only number on screen was the bulk bar's raw "N selected" — the same
+        // understatement the ElseIf comment above already names, just reached by the keyboard.
+        if (snapped.length > sel.length) {
+          showToast(tt(`Deleted ${snapped.length} rows — the selection touched a block marker, so whole blocks went with it.`,
+                       `${snapped.length} linhas apagadas — a seleção tocou um marcador de bloco, então blocos inteiros foram junto.`));
+        }
+        send({ type: 'actions:delete', payload: { indices: snapped } });
       }
       setSelectedIndices(new Set());
     }
@@ -1249,7 +1274,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
       e.preventDefault();
       setSelectedIndices(new Set());
     }
-  }, [editingCell, sendTextEdit, selectedIndices, send, actions, snapSelectionToBlocks]);
+  }, [editingCell, sendTextEdit, selectedIndices, send, actions, snapSelectionToBlocks, showToast, tt]);
 
   // Handle edit input key events
   const handleEditKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -1743,6 +1768,13 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
   // nor that a right-click on one row can take seven. Mirrors handleContextDelete's effective-
   // selection rule exactly (whole selection when the clicked row is in it, otherwise that row
   // alone); if the two ever disagree the label starts lying, which is worse than no label.
+  //
+  // The four dedicated routes are only the OPENERS. Every other structural row — Else, EndIf,
+  // EndLoop, and an ElseIf caught inside a multi-select — reaches the backend through the plain
+  // delete, and snapSelectionToBlocks widens it to the enclosing block first. Those used to read
+  // a bare "Delete" with no tooltip while taking the whole block, so they are named here by
+  // asking the snap itself whether it widens, rather than by growing a second list of types that
+  // would drift from conditionalBlocks the way this one already had.
   const deleteScope = useMemo<'block' | 'loop' | 'arm' | 'rows'>(() => {
     if (!contextMenu) return 'rows';
     const indices = selectedIndices.size > 0 && selectedIndices.has(contextMenu.rowIndex)
@@ -1753,8 +1785,12 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
     if (t === 'If') return 'block';
     if (t === 'While' || t === 'ForEachRow') return 'loop';
     if (t === 'ElseIf') return 'arm';
+    // A lone closer / Else: named by what the snap is about to do to it.
+    if (snapSelectionToBlocks(indices).length > 1) {
+      return t === 'EndLoop' ? 'loop' : 'block';
+    }
     return 'rows';
-  }, [contextMenu, selectedIndices, actions]);
+  }, [contextMenu, selectedIndices, actions, snapSelectionToBlocks]);
 
   // Resolve the "effective selection" for context-menu operations the same way
   // Duplicate/Delete do: if the right-clicked row is part of the multi-select,
@@ -1770,7 +1806,33 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
   // How many rows the menu's selection-scoped entries will touch. One derivation for every label
   // that shows "(N)", so the number a user reads on Duplicate is the number Skip and Copy act on
   // — three inline `.length`s would be three chances for one of them to drift.
+  //
+  // RAW indices, and that is right for Skip and Copy: those two act on exactly what is selected.
+  // Delete and Duplicate do NOT — see contextEffectiveCount below.
   const contextCount = useMemo(() => contextSelectionIndices().length, [contextSelectionIndices]);
+
+  // What Delete and Duplicate will actually touch. They both run the effective selection through
+  // snapSelectionToBlocks, which widens EVERY selected index to the innermost enclosing pair as
+  // soon as ONE of them is structural — body rows included, even ones that alone would never
+  // widen. So selecting rows 3,4,5 where 5 is an EndIf sent "(3)" to the label and five rows to
+  // the backend, with the If and the untouched row between them going too. Derived from the same
+  // call the handlers make, so the number cannot drift from the act again; the lone-opener cases
+  // take dedicated routes and are counted through their own block span, exactly as handleDuplicate
+  // resolves them.
+  const contextEffectiveCount = useMemo(() => {
+    const sel = contextSelectionIndices();
+    if (sel.length === 0) return 0;
+    if (sel.length === 1) {
+      const t = actions[sel[0]]?.actionType;
+      if (t === 'If' || t === 'While' || t === 'ForEachRow') {
+        const end = blockInfo.closerOf.get(sel[0]);
+        return end != null ? end - sel[0] + 1 : 1;
+      }
+      // A lone ElseIf deletes only its arm, and Duplicate leaves it as one row.
+      if (t === 'ElseIf') return 1;
+    }
+    return snapSelectionToBlocks(sel).length;
+  }, [contextSelectionIndices, actions, blockInfo, snapSelectionToBlocks]);
 
   // Collapse: gather the contiguous-validated selection of Down/Up pairs and
   // splice them into a single Keystroke × N row. Selection collapses to the
@@ -3140,7 +3202,10 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
         </div>,
         document.body,
       )}
-      {contextMenu && menuPos && createPortal(
+      {/* contextMenuEnabled is in the RENDER condition, not only in the effect above that clears
+          the state. Render beats effect: the effect runs after the commit that already painted a
+          live menu over a running grid, and that frame is long enough for a click. */}
+      {contextMenu && menuPos && contextMenuEnabled && createPortal(
         <div
           ref={contextMenuRef}
           className="fixed z-50 min-w-[180px] py-1 menu-surface"
@@ -3330,10 +3395,22 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                             // A lone half means "merge THIS pair" — reach for the twin rather than
                             // refusing with "select both", which is a menu asking the user to
                             // restate what the click already said.
+                            //
+                            // And EVERY half means that, not just a lone one. `targets` is filtered
+                            // to the clicked row's own form, so a multi-select is all Downs or all
+                            // Ups; sending it raw handed the backend a list with no twin in it, it
+                            // grouped those into contiguous runs of ONE row each, ToCombined had no
+                            // i+1 to fold, and the refusal that came back — "Select a click's Down
+                            // half and the Up half that follows it" — asked for exactly what the
+                            // user had done. One row worked, any multi-selection failed every time.
+                            // Reaching for each twin is the same rule the lone case already states,
+                            // applied per index; the Set collapses the overlap when both halves of
+                            // one pair are selected.
                             const idx = contextMenu.rowIndex;
-                            const pair = targets.length > 1
-                              ? targets
-                              : form === 'Down' ? [idx, idx + 1] : [idx - 1, idx];
+                            const seeds = targets.length > 1 ? targets : [idx];
+                            const pair = Array.from(new Set(
+                              seeds.flatMap(i => (form === 'Down' ? [i, i + 1] : [i - 1, i])),
+                            )).sort((a, b) => a - b);
                             send({ type: 'actions:convertMode', payload: { direction: 'toCombined', indices: pair.filter(i => i >= 0 && i < actions.length) } });
                             closeContextMenu();
                           }}
@@ -3514,15 +3591,23 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
           {/* Duplicate and Skip both act on the EFFECTIVE selection (contextSelectionIndices:
               the clicked row, or the whole multi-select when the clicked row is inside it), so
               both carry the count. Right-clicking inside a 12-row selection and reading a bare
-              "Duplicate" was the menu understating what the click was about to do. */}
+              "Duplicate" was the menu understating what the click was about to do.
+              Duplicate reads contextEffectiveCount, not contextCount: it snaps to whole blocks
+              before sending, so the raw selection size understates it again whenever a marker is
+              caught in the selection. Skip below keeps contextCount — it really does act on the
+              raw indices. */}
           <button
             onMouseEnter={() => setActiveSubmenu(null)}
             onClick={handleDuplicate}
             className="menu-item text-text-primary"
+            data-tip={contextEffectiveCount > contextCount
+              ? tt('The selection touches a block marker, so whole blocks are duplicated',
+                   'A seleção toca um marcador de bloco, então blocos inteiros são duplicados')
+              : undefined}
           >
             <Files size={13} className="text-text-tertiary" />
             Duplicate
-            {contextCount > 1 && <span className="text-text-disabled">({contextCount})</span>}
+            {contextEffectiveCount > 1 && <span className="text-text-disabled">({contextEffectiveCount})</span>}
           </button>
 
           {/* Skip / Enable — promoted from the bulk bar on 2026-09-16. The bar only exists while
@@ -3593,9 +3678,15 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                       on Delete, where it means "this is what the bare Del key does" rather than
                       cataloguing shortcuts. The shortcut rides in the tooltip instead — the same
                       channel Delete already uses to explain its scope.
-                      Neither needs a run gate of its own: the menu does not open during
-                      record/replay (contextMenuEnabled) and the whole grid is unmounted in
-                      Clicker mode, which is the Toolbar's insertsDisabled by construction. */}
+                      Neither needs a run gate of its own — but the reason is no longer the one
+                      this comment used to give. "The menu does not OPEN during record/replay"
+                      was true and beside the point: contextMenuEnabled was read only by
+                      handleRowContextMenu, so a menu already up when a run started stayed up,
+                      fully live, and Paste here rewrote the list under the engine. The menu now
+                      carries contextMenuEnabled in its own render condition and an effect clears
+                      it on the falling edge, so every item in here — not just this pair — is
+                      covered by the menu ceasing to exist. Clicker mode is still covered by
+                      construction: the whole grid is unmounted (the Toolbar's insertsDisabled). */}
                   <button
                     onClick={() => {
                       const indices = contextSelectionIndices();
@@ -3815,7 +3906,10 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                   : deleteScope === 'arm'
                     ? tt('Deletes only this Else If arm',
                          'Apaga só este braço Else If')
-                    : undefined
+                    : contextEffectiveCount > contextCount
+                      ? tt('The selection touches a block marker, so whole blocks go',
+                           'A seleção toca um marcador de bloco, então blocos inteiros vão junto')
+                      : undefined
             }
             className="menu-item justify-between text-recording"
           >
@@ -3827,9 +3921,12 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                     : 'Delete'}
               {/* Only on the plain 'rows' scope: the other three labels already NAME what goes
                   (a block, a loop, an arm), and a count beside them would be read as a row count
-                  for something that deletes more rows than the selection holds. */}
-              {deleteScope === 'rows' && contextCount > 1 && (
-                <span className="text-text-disabled">({contextCount})</span>
+                  for something that deletes more rows than the selection holds.
+                  The number is the POST-SNAP one — what the backend is about to receive — for the
+                  same reason the label names a scope at all: a count that undershoots is worse
+                  than no count, because it reads as a promise. */}
+              {deleteScope === 'rows' && contextEffectiveCount > 1 && (
+                <span className="text-text-disabled">({contextEffectiveCount})</span>
               )}
             </span>
             <span className="kbd">Del</span>

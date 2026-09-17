@@ -12,6 +12,7 @@ import { runDurationMs } from '../utils/runReportStats';
 import { replayPasses, estimateAllPassesMs } from '../utils/replayPasses';
 import { describeClickerConfig, formatClickerStats, formatRate } from '../utils/clickerFormat';
 import { formatKeyCombo } from '../utils/displayUtils';
+import { actionCostMs } from '../utils/actionCost';
 import { APP_VERSION } from '../appVersion';
 
 // What the bar keeps of the last finished run: enough to say "18/18 in 12.4 s" or "stopped at
@@ -37,10 +38,11 @@ interface LastRunSummary {
   outcome: 'completed' | 'stopped' | 'failed' | null;
 }
 
-// Per-action cost the estimate adds on top of the delays: the engine's dispatch, a click's hold,
-// a keystroke's press/release. Deliberately a floor — smooth mouse moves (distance-bound) and
-// waits (timeout-bound) cannot be read off the grid and are left out; the tooltip says so.
-const PER_ACTION_OVERHEAD_MS = 30;
+// Per-action cost, the hold dwell and the × N gaps all live in utils/actionCost, next to the
+// defaults the engine falls back to. The floor stays a floor — smooth mouse moves
+// (distance-bound) and waits (timeout-bound) cannot be read off the grid and are left out; the
+// tooltip says so — but a hold and a repeat count CAN be read off the grid, and leaving those out
+// was not a floor, it was a miss.
 
 function fmtDuration(ms: number, language: 'en' | 'pt-BR'): string {
   if (ms < 1000) return `${Math.round(ms)} ms`;
@@ -136,12 +138,14 @@ export function StatusBar() {
   // repeat 12× promised a twelfth of its time and a 40-row data profile a fortieth — the chip was
   // most wrong precisely where the number mattered most. Unbounded runs (a whilePressed trigger,
   // Loops = 0) have no number to give: the chip falls back to the single pass and says so.
+  // …and for what the ROW itself spends, not just the delay in front of it. A *ClickHold or
+  // HoldKey keeps the button down for its dwell, and × N replays the row with (N-1) gaps between
+  // cycles; the engine treats both as additive (the hold family is in LongWaitActionTypes, so a
+  // resync stops the next delay from absorbing any of it). Reading only `delay` promised 130 ms
+  // for a 60,1 s row, and left a DoubleClick × 999 — eleven minutes of gaps — costing nothing.
   const onePassMs = useMemo(() => {
     const skipped = skippedRowMask(actions);
-    return actions.reduce(
-      (sum, a, i) => (skipped[i] ? sum : sum + (a.delay > 0 ? a.delay : 0) + PER_ACTION_OVERHEAD_MS),
-      0,
-    );
+    return actions.reduce((sum, a, i) => (skipped[i] ? sum : sum + actionCostMs(a)), 0);
   }, [actions]);
   const passes = useMemo(() => {
     const entry = statusBar.profileName ? profiles.find(p => p.name === statusBar.profileName) : undefined;
@@ -391,12 +395,13 @@ export function StatusBar() {
                     className="flex items-center gap-1.5 text-text-tertiary"
                     data-tip={
                       allPassesMs == null
-                        ? tt('One pass: delays + ~30 ms per action. This run repeats without a set end, so there is no total. Moves and waits not counted.',
-                             'Uma passada: atrasos + ~30 ms por ação. Esta execução repete sem fim definido, então não há total. Movimentos e esperas não entram.')
+                        ? tt('One pass: delays + ~30 ms per action, plus holds and × N gaps. This run repeats without a set end, so there is no total. Moves and waits not counted.',
+                             'Uma passada: atrasos + ~30 ms por ação, mais holds e os intervalos do × N. Esta execução repete sem fim definido, então não há total. Movimentos e esperas não entram.')
                         : passes != null && passes > 1
-                          ? tt(`${passes} passes: delays + ~30 ms per action, plus the interval between them. Moves and waits not counted.`,
-                               `${passes} passadas: atrasos + ~30 ms por ação, mais o intervalo entre elas. Movimentos e esperas não entram.`)
-                          : tt('Delays + ~30 ms per action. Moves and waits not counted.', 'Atrasos + ~30 ms por ação. Movimentos e esperas não entram.')
+                          ? tt(`${passes} passes: delays + ~30 ms per action, plus holds, × N gaps and the interval between passes. Moves and waits not counted.`,
+                               `${passes} passadas: atrasos + ~30 ms por ação, mais holds, os intervalos do × N e o intervalo entre passadas. Movimentos e esperas não entram.`)
+                          : tt('Delays + ~30 ms per action, plus holds and × N gaps. Moves and waits not counted.',
+                               'Atrasos + ~30 ms por ação, mais holds e os intervalos do × N. Movimentos e esperas não entram.')
                     }
                   >
                     <Timer size={11} />

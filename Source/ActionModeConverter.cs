@@ -25,7 +25,10 @@ namespace TrueReplayer.Services
     ///     duration. Until *ClickHold existed this branch had nowhere to put the time and
     ///     collapsed every hold into an instant click — a silent loss on a round-trip, and the
     ///     one asymmetry between the key and mouse families. Below the threshold a press is
-    ///     still a tap → instant *Click, matching how record-time combined mode treats clicks.
+    ///     still a tap → instant *Click, matching how record-time combined mode treats clicks —
+    ///     so the round-trip is exact only from the threshold UP. An authored hold below it (the
+    ///     editors let the user type 10 ms, and the first preset chip is 100) comes back as a
+    ///     plain click, and the merge reports the dropped dwell rather than swallowing it.
     ///   • Overlapping / interleaved presses (KeyDown … other event … KeyUp) can't be folded,
     ///     so they are left paired exactly as-is.
     /// </summary>
@@ -57,8 +60,25 @@ namespace TrueReplayer.Services
         private static bool IsModifier(string? key) => key != null && Modifiers.Contains(key);
 
         // ── Paired → Combined ─────────────────────────────────────────────
-        public static List<ActionItem> ToCombined(IReadOnlyList<ActionItem> input)
+        public static List<ActionItem> ToCombined(IReadOnlyList<ActionItem> input) => ToCombined(input, out _);
+
+        /// <summary>
+        /// As <see cref="ToCombined(IReadOnlyList{ActionItem})"/>, also reporting the dwell this
+        /// merge DISCARDS (ms, summed over every pair that loses one; 0 when nothing is lost).
+        ///
+        /// A click pair whose Up delay sits under <see cref="HoldThresholdMs"/> folds into an
+        /// instant *Click, and that delay — the time the button was actually down — has nowhere
+        /// to go, because a plain click has no dwell field. The loss is REPORTED rather than
+        /// prevented because the same 10..199 ms band arrives by two routes the rows cannot tell
+        /// apart: a fast RECORDED click, where collapsing to a tap is correct and is exactly what
+        /// record-time combined mode does, and a hold the user TYPED and then split, where it is
+        /// data loss. Refusing the merge would break the first (recorded Up delays land in this
+        /// band routinely, and under a fixed custom delay they land there ALWAYS); staying silent
+        /// hid the second, including the 100 ms preset the hold editor offers first.
+        /// </summary>
+        public static List<ActionItem> ToCombined(IReadOnlyList<ActionItem> input, out int dwellDroppedMs)
         {
+            dwellDroppedMs = 0;
             var result = new List<ActionItem>(input.Count);
             int i = 0;
             while (i < input.Count)
@@ -85,8 +105,18 @@ namespace TrueReplayer.Services
                     // reason the class summary above used to say a mouse hold cannot survive.
                     // The else is not redundant: the clone inherits the DOWN row's field, and a
                     // tap must not walk away carrying a dwell that nothing will ever read.
-                    if (held) click.HoldDurationMs = Math.Clamp(input[i + 1].Delay, 10, 60000);
-                    else click.HoldDurationMs = 0;
+                    if (held)
+                    {
+                        click.HoldDurationMs = Math.Clamp(input[i + 1].Delay, 10, 60000);
+                    }
+                    else
+                    {
+                        click.HoldDurationMs = 0;
+                        // Under the threshold the Up's delay is simply gone — count it so the
+                        // caller can say so. A hand-built split writes Delay 0 on the Up, so the
+                        // ordinary "split a plain click, merge it back" round-trip reports 0.
+                        if (input[i + 1].Delay > 0) dwellDroppedMs += input[i + 1].Delay;
+                    }
                     result.Add(click);
                     i += 2;
                     continue;
@@ -211,9 +241,14 @@ namespace TrueReplayer.Services
                             ? Math.Clamp(a.HoldDurationMs, 10, 60000)
                             : ActionItem.DefaultHoldDurationMs;
                         // The dwell rides on the UP's delay — the inverse of the ToCombined
-                        // mapping, so a round-trip preserves the duration exactly. Identical
-                        // contract to HoldKey below; the Comment is cleared on the Up for the
-                        // same reason a split plain click clears it (it describes the press).
+                        // mapping. The round-trip is exact from HoldThresholdMs UP; below it
+                        // ToCombined reads the pair as a tap and folds it into an instant click,
+                        // so a hold of 10..199 ms comes back with the dwell gone. That half of
+                        // the mapping is reported, not repaired: see the dwellDroppedMs overload
+                        // of ToCombined for why the rows cannot tell a typed 100 ms dwell from a
+                        // fast recorded click. Identical contract to HoldKey below; the Comment
+                        // is cleared on the Up for the same reason a split plain click clears it
+                        // (it describes the press).
                         var hdown = a.Clone(); hdown.ActionType = hbtn + "ClickDown"; hdown.HoldDurationMs = 0;
                         var hup = a.Clone(); hup.ActionType = hbtn + "ClickUp";
                         hup.Delay = clickHold; hup.Comment = ""; hup.HoldDurationMs = 0;

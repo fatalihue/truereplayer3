@@ -28,6 +28,7 @@ import { ImageCropper } from './ImageCropper';
 const LexicalTokenEditor = lazy(() => import('./lexical/LexicalTokenEditor').then(m => ({ default: m.LexicalTokenEditor })));
 import type { LexicalEditorHandle } from './lexical/LexicalTokenEditor';
 import { getDisplayKey, isClickHold, CLICK_FAMILY_TYPES, clickFormOf } from '../utils/displayUtils';
+import { MIN_HOLD_MS, MAX_HOLD_MS, DEFAULT_HOLD_MS, DEFAULT_CLICK_GAP_MS, clickDefaultGap, rowDwellMs } from '../utils/actionCost';
 
 // How often the open row editor re-stamps its unsaved-work claim with AutomationGuard. Must stay
 // WELL under `AutomationGuard.EditorClaimTtl` (10 min) — that deadline is measured from the last
@@ -142,24 +143,14 @@ const COMBINED_CLICKS = new Set([
 // Hold duration editing, shared with the Send Keystroke dialog's hold mode so the key hold and
 // the mouse hold offer the same range (C# clamps 10..60000 identically). The PRESETS are the
 // app-wide ladder — see DURATION_PRESETS.
-const MIN_HOLD_MS = 10;
-const MAX_HOLD_MS = 60000;
-const DEFAULT_HOLD_MS = 1000;
+// The ranges, the defaults and the per-type gap come from utils/actionCost, which mirrors the C#
+// constants by name. They used to be literals here, in ClickDialog and in KeystrokeCaptureDialog,
+// and the StatusBar estimate — the one surface that PROMISES a duration — had no copy at all.
 const clampHoldMs = (v: number) => Math.max(MIN_HOLD_MS, Math.min(MAX_HOLD_MS, Math.floor(v)));
-const DEFAULT_CLICK_GAP_MS = 30;         // matches ActionItem.DefaultRepeatDelayMs on the C# side
-const DEFAULT_MULTICLICK_GAP_MS = 600;   // matches ActionItem.DefaultDoubleClickRepeatDelayMs — a
-                                         // Double/TripleClick needs a gap above the OS double-click
-                                         // window so repeats register as DISTINCT multi-clicks, not
-                                         // a blur. One value for both: it is keyed on
-                                         // GetDoubleClickTime, not on the number of pairs.
 const DEFAULT_CLICK_JITTER_PCT = 20;     // seeded into the input when the user turns jitter ON
 const DEFAULT_CLICK_POS_JITTER_PX = 3;   // seeded when the user turns POSITION jitter ON — a few px
                                          // keeps the burst inside any real target; the cap is 500
                                          // (MAX_POSITION_PX, the Clicker's own position ceiling)
-// Per-type default gap so the C# null-fallback and this input agree (else a "leave at default"
-// round-trips to the wrong value). Keep in lockstep with ExecuteRepeated's defaultGap on the C# side.
-const clickDefaultGap = (type: string) =>
-  (type === 'DoubleClick' || type === 'TripleClick') ? DEFAULT_MULTICLICK_GAP_MS : DEFAULT_CLICK_GAP_MS;
 const clampRepeatCount = (v: number) => Math.max(1, Math.min(999, Math.floor(v)));
 const clampRepeatGap = (v: number) => Math.max(0, Math.min(5000, Math.floor(v)));
 const clampRepeatJitter = (v: number) => Math.max(1, Math.min(100, Math.floor(v)));
@@ -1088,9 +1079,12 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       // further down, and a forward reference from this callback's dependency array would be
       // read in its temporal dead zone. Same reason this block tests COMBINED_CLICKS directly
       // instead of isRepeatableClick.
+      // Against the EFFECTIVE dwell, matching the dirty mirror below: a stored 0 already MEANS
+      // DEFAULT_HOLD_MS everywhere that reads it, so writing 1000 over it is a no-op edit that
+      // costs an undo entry and puts an unasked-for number in the JSON.
       if (isClickHold(actionType)) {
         const effHold = clampHoldMs(holdMs);
-        if (effHold !== (action.holdDurationMs ?? 0)) {
+        if (effHold !== rowDwellMs(action)) {
           send({ type: 'actions:edit', payload: { index: actionIndex, field: 'holdDurationMs', value: String(effHold) } });
         }
       }
@@ -1588,7 +1582,15 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       if (effPosJitter !== (action.repeatPositionJitterPx ?? 0)) return true;
       if (atCursor !== (action.atCursor ?? false)) return true;
       // Module-level predicate here too — see the note on the save path above.
-      if (isClickHold(actionType) && clampHoldMs(holdMs) !== (action.holdDurationMs ?? 0)) return true;
+      //
+      // Compared against the EFFECTIVE dwell, not the raw field. A stored 0 means "use the
+      // default" — the engine reads it that way, the Details column prints it that way, and the
+      // seed above fills the editor with DEFAULT_HOLD_MS because of it. Comparing the seeded 1000
+      // against a raw 0 made the panel permanently dirty on every *ClickHold row that had never
+      // had a dwell typed into it — which is exactly the row "Change click type → Hold" creates,
+      // since bulkUpdateType only clears the field when the target is NOT a hold. Esc then refused
+      // to close and Cancel read "Discard" with nothing to discard.
+      if (isClickHold(actionType) && clampHoldMs(holdMs) !== rowDwellMs(action)) return true;
     }
 
     if (actionType === 'WaitImage' || _isIfImage) {
@@ -1959,9 +1961,15 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   // Armed by a real edit, not by hasUnsavedChanges. That flag is a diff against the STORE, and any
   // actions:updated push replaces the store — so an editor nobody had touched latched itself and
   // then held autonomous fires for up to the guard's whole TTL. markTouched is called from the DOM
-  // input handler on the form below (React events bubble, so one handler covers every field) and
-  // from the pick-from-screen seed, which writes coordinates without any input event at all and
-  // otherwise left a dirty editor completely unprotected.
+  // input/change/CLICK handlers on the form below and from the pick-from-screen seed, which writes
+  // coordinates without any input event at all and otherwise left a dirty editor completely
+  // unprotected.
+  //
+  // The click handler is load-bearing, not belt-and-braces. This used to say that bubbling made
+  // one handler enough for every field; bubbling was never the question. A <button> emits neither
+  // `input` nor `change`, so onInput/onChange cannot see one however deep it sits — and the panel
+  // is built out of buttons: SegmentedControl, DurationChips, the themed Checkbox and the
+  // NumberInput steppers all render one.
   const markTouched = useCallback(() => setEditorTouched(true), []);
 
   const pendingEdits = actionIndex != null && editorTouched;
@@ -2547,6 +2555,31 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   const isHoldClick = isClickHold(actionType);
   const baseActionType = clickHalfBase ?? actionType;
 
+  // The one combination Save cannot honour in a single pass: a MERGE plus a change to a field the
+  // merge is judged on.
+  //
+  // Save sends every actions:edit by index first and the form change LAST, because a split changes
+  // the row COUNT and would invalidate those indices. That ordering is right, and the panel leans
+  // on the backend to speak the merge's own refusals rather than restating them here — but the
+  // merge is the one rule that reads the TWIN, and the twin is a row this Save never touches. So
+  // the edit commits, ActionModeConverter then compares a half that changed against a half that
+  // did not, refuses, and onClose runs anyway: the button rename (or the moved point) stays, and
+  // the pair is left crossed — a RightClickDown whose LeftClickUp releases a button nobody
+  // pressed, or a plain pair silently turned into a drag.
+  //
+  // Not fixed by "rewrite the twin too": halves are not necessarily adjacent. Down/Down/Up/Up is a
+  // legitimate NESTED press — the interleaved case ActionModeConverter names and deliberately
+  // leaves paired — and reaching for a neighbour by adjacency would corrupt it.
+  //
+  // So the panel states the SEQUENCING rule, which is its own rule and not a second copy of the
+  // converter's: this Save is two Saves. The reserved line under Form says it and Save is blocked
+  // until one of the two is backed out.
+  const mergeConflict = action != null
+    && formDraft === 'combined' && initialForm === 'paired'
+    && (actionType !== action.actionType
+      || (!isNaN(parseInt(x, 10)) && parseInt(x, 10) !== action.x)
+      || (!isNaN(parseInt(y, 10)) && parseInt(y, 10) !== action.y));
+
   // A single click (LeftClick/RightClick/MiddleClick), a Double/TripleClick or a *ClickHold
   // supports the inline "× N" repeat cluster. Paired halves (a Down/Up would double-fire one
   // edge) are excluded — and since COMBINED_CLICKS holds the FULL type names, asking it about
@@ -2691,7 +2724,10 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
 
   // Latest save path + gate for the document-level Ctrl+S (see the listener above).
   handleSaveRef.current = handleSave;
-  saveBlockedRef.current = !!regexError;
+  // The comment on the Ctrl+S branch says "same gate as the Save button", so it has to BE the same
+  // gate — it was only the regex half, which let the keyboard through two refusals the button
+  // states out loud.
+  saveBlockedRef.current = !!regexError || runActive || mergeConflict;
 
   return createPortal(
     <>
@@ -2756,13 +2792,24 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
           </div>
         </div>
 
-        {/* Body. onInput/onChange here rather than on seventy setters: React events bubble, so one
-            handler on the form marks the editor touched for any field the user actually types in,
-            picks or toggles — which is what the automation guard needs to know, and what a diff
-            against the store cannot tell it once a push has replaced that store. */}
+        {/* Body. onInput/onChange/onClick here rather than on seventy setters: React events bubble,
+            so one handler on the form marks the editor touched for any field the user actually
+            types in, picks or toggles — which is what the automation guard needs to know, and what
+            a diff against the store cannot tell it once a push has replaced that store.
+
+            onClick is NOT redundant with the other two, and its absence was the hole. Bubbling was
+            never the issue: a <button> emits neither `input` nor `change`, so those two handlers
+            cannot see one at any depth — and this panel is built almost entirely out of buttons.
+            Every SegmentedControl (Button, Kind, Form, Position), every DurationChips preset,
+            every themed Checkbox and both NumberInput steppers render <button>. A user could flip
+            a click to Hold, pick the 5 s chip and walk away with editorTouched still false, no
+            claim sent to the backend, and the next autonomous fire overwriting the row field by
+            field — the one loss this flag exists to prevent, and the one the comment beside
+            markTouched calls "not recoverable". */}
         <div className="p-4 space-y-3 flex-1 min-h-0 overflow-y-auto"
           onInput={markTouched}
-          onChange={markTouched}>
+          onChange={markTouched}
+          onClick={markTouched}>
           {/* Action Type — only shown when the family has >1 meaningful option. Hidden for
               SendText (single option), WaitImage / Browser / Pause (each has its own editor
               shape). Cross-family conversions aren't offered: users who want to swap families
@@ -2842,18 +2889,21 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                   under every click row read as a gap in the panel rather than as a reserve. At
                   rest it states what the current form means; pending a Save it turns to warning
                   ink and states what Save will do. Visible text, so English on both tracks —
-                  these two strings were carrying tt(), which belongs to tooltips and toasts. */}
+                  these two strings were carrying tt(), which belongs to tooltips and toasts.
+                  The third state is the merge conflict — see mergeConflict. */}
               <FieldError
                 show
-                className={`text-[11px] mt-1 truncate ${formDraft !== initialForm ? 'text-warning-ink' : 'text-text-tertiary'}`}
+                className={`text-[11px] mt-1 truncate ${mergeConflict ? 'text-recording' : formDraft !== initialForm ? 'text-warning-ink' : 'text-text-tertiary'}`}
               >
-                {formDraft !== initialForm
-                  ? (formDraft === 'paired'
-                    ? 'Saving splits this row in two.'
-                    : 'Saving merges this row with the half after it.')
-                  : (formDraft === 'paired'
-                    ? 'Two rows: Down and Up as separate rows.'
-                    : 'One row: press and release together.')}
+                {mergeConflict
+                  ? 'Save the button and point change first — the merge is checked against the other half.'
+                  : formDraft !== initialForm
+                    ? (formDraft === 'paired'
+                      ? 'Saving splits this row in two.'
+                      : 'Saving merges this row with the half after it.')
+                    : (formDraft === 'paired'
+                      ? 'Two rows: Down and Up as separate rows.'
+                      : 'One row: press and release together.')}
               </FieldError>
             </Field>
           </>
@@ -5158,13 +5208,16 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
               {hasUnsavedChanges ? 'Discard' : 'Cancel'}
             </Button>
             <Button variant="primary" size="md" className="min-w-[84px]" onClick={handleSave}
-              disabled={!!regexError || runActive}
+              disabled={!!regexError || runActive || mergeConflict}
               // A disabled control still shows its tip (index.css restores pointer-events on
               // [data-tip][disabled]) precisely so it can say WHY it is off. Announcing a shortcut
               // that is currently refused, without the reason, is the one thing it must not do.
               data-tip={runActive
                 ? tt('Locked while a run is active', 'Travado enquanto um run está ativo')
-                : tt('Save · Ctrl+S', 'Salvar · Ctrl+S')}>
+                : mergeConflict
+                  ? tt('The merge is checked against the other half, which this Save does not touch — save the button or point change on its own first',
+                       'A fusão é conferida contra a outra metade, que este Save não toca — salve a troca de botão ou de ponto sozinha primeiro')
+                  : tt('Save · Ctrl+S', 'Salvar · Ctrl+S')}>
               <Check size={14} />
               Save
             </Button>

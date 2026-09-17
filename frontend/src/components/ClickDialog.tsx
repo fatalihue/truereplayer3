@@ -9,6 +9,7 @@ import { Section } from './sheet/Field';
 import { useBridge } from '../bridge/BridgeContext';
 import { useLanguage, useTt } from '../state/LanguageContext';
 import { formatMs } from '../utils/displayUtils';
+import { MIN_HOLD_MS, MAX_HOLD_MS, DEFAULT_HOLD_MS, DEFAULT_CLICK_GAP_MS, DEFAULT_MULTICLICK_GAP_MS } from '../utils/actionCost';
 
 export type ClickButton = 'Left' | 'Right' | 'Middle';
 export type ClickActionType =
@@ -62,11 +63,9 @@ interface ClickDialogProps {
  */
 
 /** Range shared with the Sheet's Hold field and the Send Keystroke dialog's hold mode, so the key
- *  hold and the mouse hold clamp alike (C# clamps 10..60000 identically). The PRESETS are the
+ *  hold and the mouse hold clamp alike (C# clamps 10..60000 identically). The numbers live in
+ *  utils/actionCost, next to the run estimate that reads the same dwell. The PRESETS are the
  *  app-wide ladder — see DURATION_PRESETS. */
-const MIN_HOLD_MS = 10;
-const MAX_HOLD_MS = 60000;
-const DEFAULT_HOLD_MS = 1000;
 const clampHold = (v: number) => Math.max(MIN_HOLD_MS, Math.min(MAX_HOLD_MS, Math.floor(v)));
 
 const MAX_REPEAT = 999;
@@ -77,8 +76,6 @@ const clampGap = (v: number) => Math.max(0, Math.min(MAX_REPEAT_DELAY, Math.floo
 /** Per-type inter-repeat gap, mirroring ActionItem.DefaultRepeatDelayMs /
  *  DefaultDoubleClickRepeatDelayMs and the Sheet's clickDefaultGap: a multi-click burst has to
  *  clear the system double-click window or the repeats blur into one long chain. */
-const DEFAULT_CLICK_GAP_MS = 30;
-const DEFAULT_MULTICLICK_GAP_MS = 600;
 const defaultGapFor = (clicks: Clicks) => (clicks === 'single' ? DEFAULT_CLICK_GAP_MS : DEFAULT_MULTICLICK_GAP_MS);
 
 /** Spinner step: 1 s once we're past 1 s, 100 ms below. Same rule every duration spinner in the

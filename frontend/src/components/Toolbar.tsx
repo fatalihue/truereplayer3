@@ -173,7 +173,24 @@ export function Toolbar(_props: ToolbarProps) {
       const cs = getComputedStyle(bar);
       const pad = parseFloat(cs.paddingLeft || '0') + parseFloat(cs.paddingRight || '0');
       const available = bar.clientWidth - pad - parseFloat(cs.columnGap || '0');
-      const needed = row.scrollWidth;
+      // offsetWidth, NOT scrollWidth: on an element with visible overflow scrollWidth adds the
+      // right-hand spill of ABSOLUTE descendants, and every popover in this row (Browser,
+      // Conditional, Wait, Assert, Loop, the Clear All confirm, the More panel itself) is
+      // absolutely positioned inside a relative wrapper that IS a child of this row. So the
+      // instant one opened, `needed` grew by the menu's own overhang and this effect — which runs
+      // on every render, including the one that opened it — collapsed buttons to make room for a
+      // menu. Worst case measured: opening Clear All in a tight window added 30 px, pushed the
+      // count to 1, and the Clear All is gated on count < 1 — so it unmounted carrying the popover
+      // it had just opened, the click produced no confirm at all, and the 2-unit restore
+      // hysteresis meant it never came back until the window grew ~46 px. Browser ▾ added ~142 px
+      // and took four buttons down with it.
+      //
+      // offsetWidth is the width the row NEEDS, not a width already squeezed: the row is shrink-0
+      // next to a flex-1 min-w-0 sibling, so it is never compressed — it overflows the bar first.
+      // Measured constant at 611 px while `available` swept 620..1131 and while a popover was open.
+      // NOT getBoundingClientRect().width: under --ui-zoom that returns VISUAL px (550 vs 611 for
+      // the same row) and `available` comes from clientWidth, which is layout px.
+      const needed = row.offsetWidth;
       // One icon button is the unit. MEASURED, never hardcoded: row height and font size are
       // theme settings, so a pixel constant would be right at one preset and wrong at the rest.
       const unit = row.querySelector<HTMLElement>('[data-tb-unit]')?.offsetWidth ?? 0;

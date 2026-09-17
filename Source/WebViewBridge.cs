@@ -301,6 +301,32 @@ namespace TrueReplayer
                 "BrowserWaitElement", "BrowserNavigate", "BrowserSelectOption", "BrowserAssert",
             };
 
+        /// <summary>
+        /// A click row the RECORDER can have produced on its own — the vocabulary the browser-side
+        /// dedup sweeps have to mirror, since every one of them is a duplicate of the extension
+        /// event that arrived for the same physical click. One predicate, three call sites (the
+        /// select-interaction sweep, the elementClicked sweep and the SelectChanged sweep), because
+        /// three copied literals is how DoubleClick came to be missing from all three.
+        ///
+        /// DoubleClick belongs here: combined mode (ON by default) MERGES the second physical
+        /// LeftClick into the previous row and rewrites it to DoubleClick, reusing the same object
+        /// so RecordedAt still holds the first click's stamp. Without it a double-click on a page
+        /// during an extension recording left DoubleClick + two BrowserClick rows, and replay fired
+        /// four clicks where the user made two.
+        ///
+        /// MiddleClick, TripleClick and the *ClickHold family are left OUT on purpose, and adding
+        /// them would be a regression, not a completion:
+        ///   • middle click raises auxclick, not click, so the extension never reports it and there
+        ///     is no duplicate to remove;
+        ///   • TripleClick and *ClickHold exist only as AUTHORED rows — the recorder never escalates
+        ///     into them — and RecordedAt is stamped at construction, so a row typed during a
+        ///     recording carries a fresh timestamp and these sweeps would eat the user's own work.
+        /// </summary>
+        private static bool IsRecorderClickRow(string? actionType) =>
+            actionType is "LeftClickDown" or "LeftClickUp"
+                or "RightClickDown" or "RightClickUp"
+                or "LeftClick" or "RightClick" or "DoubleClick";
+
         // A row whose CONDITION owns image/pixel probe data — If since 2.3.0, While since the
         // loop family shipped, ElseIf since the branch chain. Every image-lifecycle site
         // (thumbnail, paste, recapture, crop, duplicate, profile-copy, coordinate conversion)
@@ -332,8 +358,7 @@ namespace TrueReplayer
             {
                 var a = actions[i];
                 if (a.RecordedAt < interactionStart.Value) continue;
-                bool isNativeClick = a.ActionType is "LeftClickDown" or "LeftClickUp"
-                    or "RightClickDown" or "RightClickUp" or "LeftClick" or "RightClick";
+                bool isNativeClick = IsRecorderClickRow(a.ActionType);
                 bool isEscTap = a.ActionType is "KeyDown" or "KeyUp" or "Keystroke"
                     && (a.Key is "Escape" or "Esc");
                 if (isNativeClick || isEscTap)
@@ -401,13 +426,16 @@ namespace TrueReplayer
                     {
                         if (!recordingService.IsRecording) return;
 
-                        // Remove native click events recorded in the last 500ms (duplicates of this browser click)
+                        // Remove native click events recorded in the last 500ms (duplicates of this
+                        // browser click). Eight rows, not four, to match the two sibling sweeps
+                        // below: a double-click leaves a merged DoubleClick plus the BrowserClick
+                        // rows the extension appends, and the row to remove is no longer within
+                        // four of the tail by the time the second event lands.
                         var cutoff = DateTime.UtcNow.AddMilliseconds(-500);
-                        for (int i = actions.Count - 1; i >= 0 && i >= actions.Count - 4; i--)
+                        for (int i = actions.Count - 1; i >= 0 && i >= actions.Count - 8; i--)
                         {
                             var a = actions[i];
-                            if (a.ActionType is "LeftClickDown" or "LeftClickUp" or "RightClickDown" or "RightClickUp" or "LeftClick" or "RightClick"
-                                && a.RecordedAt >= cutoff)
+                            if (IsRecorderClickRow(a.ActionType) && a.RecordedAt >= cutoff)
                                 actions.RemoveAt(i);
                         }
 
@@ -573,7 +601,7 @@ namespace TrueReplayer
                         {
                             var a = actions[i];
                             if (a.RecordedAt < cutoff) continue;
-                            if (a.ActionType is "LeftClickDown" or "LeftClickUp" or "RightClickDown" or "RightClickUp" or "LeftClick" or "RightClick")
+                            if (IsRecorderClickRow(a.ActionType))
                                 actions.RemoveAt(i);
                             else if (a.ActionType == "BrowserClick" && a.Key == selector)
                                 actions.RemoveAt(i);
@@ -2019,6 +2047,13 @@ namespace TrueReplayer
         /// Drops undo and redo, for the moments when the action list changes IDENTITY rather than
         /// content — another profile applied, or the selection dropped to "No Profile".
         ///
+        /// "Dropped to No Profile" is FOUR paths, not one, and for a long time only the deselect
+        /// spelled this out by hand: deleting the ACTIVE profile and emptying a folder with
+        /// "Delete All" land there too, and neither cleared anything. Those two now share the
+        /// deselect's code through DropToNoProfile, which is the point — a list of callers that
+        /// has to be kept in step by hand is a list that drifts, and this one did, in the
+        /// direction where Ctrl+Z resurrects a profile whose file and images are already gone.
+        ///
         /// Nothing used to clear them, and they are per-bridge, so the history outlived the list it
         /// described: edit profile A, switch to B, press Ctrl+Z out of habit, and B's grid was
         /// replaced by A's actions with HasUnsavedChanges set — a Save then wrote A into B's file.
@@ -2197,11 +2232,16 @@ namespace TrueReplayer
             List<ActionItem> output;
             string? refusal = null;
 
+            // Dwell that the merge DISCARDS (ms). A click pair whose halves sit less than the
+            // converter's hold threshold apart folds into an instant click, and that time has no
+            // field to land in — see ActionModeConverter.ToCombined's reporting overload. It is
+            // summed here so the toast can say so instead of calling it a plain success.
+            int dwellDropped = 0;
+
             if (picked == null)
             {
-                output = toCombined
-                    ? ActionModeConverter.ToCombined(input)
-                    : ActionModeConverter.ToPaired(input);
+                if (toCombined) output = ActionModeConverter.ToCombined(input, out dwellDropped);
+                else output = ActionModeConverter.ToPaired(input);
                 if (!ShapeChanged(input, output))
                 {
                     SendMessage("alert:show", new { message = "Nothing to convert" });
@@ -2232,8 +2272,9 @@ namespace TrueReplayer
                 {
                     var (start, count) = runs[r];
                     var slice = output.GetRange(start, count);
+                    int runDropped = 0;
                     var converted = toCombined
-                        ? ActionModeConverter.ToCombined(slice)
+                        ? ActionModeConverter.ToCombined(slice, out runDropped)
                         : ActionModeConverter.ToPaired(slice);
                     if (!ShapeChanged(slice, converted))
                     {
@@ -2242,6 +2283,9 @@ namespace TrueReplayer
                     }
                     output.RemoveRange(start, count);
                     output.InsertRange(start, converted);
+                    // Counted only for a run that was actually APPLIED — a refused run keeps its
+                    // rows, so nothing of its was dropped.
+                    dwellDropped += runDropped;
                     any = true;
                 }
                 if (!any)
@@ -2263,6 +2307,19 @@ namespace TrueReplayer
                 ? (toCombined ? $"Converted to combined — {output.Count} actions"
                               : $"Converted to paired — {output.Count} actions")
                 : (toCombined ? "Merged into one row" : "Split into Down + Up");
+
+            // A merge that dropped a dwell is NOT a plain success, and the row it produces looks
+            // identical to one that lost nothing — so the toast has to carry the number. It says
+            // what went and where the line is, because the user's next question is "why 100 and
+            // not 300?". Downgraded from success to info for the same reason: the outcome is the
+            // one asked for MINUS something.
+            if (dwellDropped > 0)
+            {
+                message += $" — the {dwellDropped} ms the button stayed down was dropped. "
+                         + "A merged click only carries a hold from 200 ms up; Ctrl+Z restores the two rows.";
+                SendMessage("alert:show", new { message, type = "info" });
+                return;
+            }
             SendMessage("alert:show", new { message, type = "success" });
         }
 
@@ -6627,9 +6684,51 @@ namespace TrueReplayer
         // Lets the user click anywhere on screen to set the X/Y of a mouse click action.
         // Reuses the existing overlay in "pointPick" mode — single click returns immediately,
         // no rect dragging needed.
+        /// <summary>
+        /// True when a capture that puts a FULL-SCREEN overlay in front of everything must not
+        /// start, because the engine is currently driving the machine. Speaks the refusal.
+        ///
+        /// These handlers minimise the app, take the exclusive interaction scope and cover the
+        /// desktop. Over a live run that is three separate harms at once: the overlay swallows the
+        /// keyboard, so the global Stop key lands on IT instead of the engine; the run keeps
+        /// injecting clicks into whatever the overlay is now covering; and the pick itself can
+        /// COMMIT a coordinate the user never chose, because an injected click on the overlay
+        /// reads exactly like a deliberate one.
+        ///
+        /// The doors that open these are already gated on the run — the Toolbar's insertsDisabled,
+        /// the row menu's contextMenuEnabled — and that is precisely why the gate has to be HERE
+        /// too: a dialog that was already open when the run started keeps its Pick button live,
+        /// and runs begin on a global hotkey, from the tray or from an armed automation, none of
+        /// which close anything. "Already open" is the ordinary case, not the exotic one.
+        ///
+        /// IsReplayInProgress, never IsReplayingAction: the latter is FALSE between actions, which
+        /// is most of a run.
+        /// </summary>
+        private bool RefuseCaptureDuringRun(string what)
+        {
+            bool replaying = mainController.IsReplayInProgress();
+            if (!replaying && !recordingService.IsRecording) return false;
+            string subject = replaying ? "A replay is running" : "A recording is running";
+            DiagnosticLog.Warn($"{what} refused: run in progress (replay={replaying})");
+            SendMessage("alert:show", new
+            {
+                message = $"{subject} — stop it first. A full-screen picker would cover the run and swallow the Stop key.",
+                type = "error",
+            });
+            return true;
+        }
+
         private async Task HandleMousePickPositionAsync(JsonElement payload)
         {
             string requestId = payload.TryGetProperty("requestId", out var ridEl) ? (ridEl.GetString() ?? "") : "";
+
+            // Before the window dance and before the scope: a refusal must cost nothing. The reply
+            // still goes out, or the caller's Pick button stays disabled forever.
+            if (RefuseCaptureDuringRun("Position pick"))
+            {
+                SendMessage("mouse:positionPicked", new { requestId, cancelled = true });
+                return;
+            }
 
             // A relative profile has to have something to be relative TO, and this is the one
             // capture path where degrading to absolute produces the exact bug this fix exists to
@@ -7056,6 +7155,7 @@ namespace TrueReplayer
         // subscribed to it — dead protocol surface plus a vestigial correlation id.
         private async Task HandleConfigureClickAreaAsync(JsonElement payload)
         {
+            if (RefuseCaptureDuringRun("Clicker area pick")) return;
 
             // Pre-draw the saved rect (when there is one + the toggle is on, signalling intent).
             System.Drawing.Rectangle? initialRect = (CursorClickUseArea && CursorClickArea is { } cur)
@@ -7086,6 +7186,7 @@ namespace TrueReplayer
         // No reply message, for the same reason as the area picker above.
         private async Task HandleConfigureClickPointAsync(JsonElement payload)
         {
+            if (RefuseCaptureDuringRun("Clicker point pick")) return;
             var selection = await RunRegionPickerAsync(
                 null,
                 hintWhenSet: "Click to set the fixed click point  •  ESC to cancel",
@@ -8092,6 +8193,39 @@ namespace TrueReplayer
             return total;
         }
 
+        /// <summary>
+        /// Hands the app back to "No Profile" after the profile on screen stopped EXISTING.
+        /// The third member of the class <see cref="ClearEditHistory"/> names — the action list
+        /// losing its IDENTITY rather than its contents — beside the deselect branch of
+        /// HandleProfileClick and ApplyProfileActions, and the only one that used to be spelled
+        /// out by hand and drift.
+        ///
+        /// Dropping the undo stack IS the point. Left standing, PushButtonStates keeps sending
+        /// canUndo = true (CanUndo reads the stack, not the profile), the toolbar's Undo stays
+        /// lit, and a habitual Ctrl+Z repopulates the grid with the deleted profile's actions —
+        /// runnable under "No Profile", marked unsaved, with every WaitImage row pointing at a
+        /// PNG that DeleteProfileDirectory already removed.
+        ///
+        /// Clearing CurrentProfilePath carries the same weight on the folder path: left set, it
+        /// sends the next Save down the "Overwrite" branch and writes the deleted profile back to
+        /// a file the user watched disappear. Callers push their own profile/button state after.
+        /// </summary>
+        private void DropToNoProfile()
+        {
+            CurrentProfileName = "No Profile";
+            CurrentProfilePath = null;
+            HasUnsavedChanges = false;
+            ClearEditHistory(); // the list is losing its identity, not its contents
+            actions.Clear();
+            ClearLoopEdit();
+            PushProfileLoop();
+            // UserProfile.Current changed, so the Data panel is now showing a deleted profile's
+            // table. This path has no explicit PushActionsUpdate — it used to get the refresh as
+            // a side effect of the actions.Clear() above reaching OnActionsChanged, which no
+            // longer carries it.
+            PushDataTable();
+        }
+
         private async void HandleProfileDelete(JsonElement payload)
         {
             string name = payload.GetProperty("name").GetString() ?? "";
@@ -8115,22 +8249,11 @@ namespace TrueReplayer
 
                 ImageStorageService.DeleteProfileDirectory(name);
 
+                // Deleting the active profile drops to "No Profile" — same handoff back to the
+                // global fallback as the deselect branch in HandleProfileClick, and now literally
+                // the same code, so the undo stack cannot go on surviving here alone.
                 if (CurrentProfileName == name)
-                {
-                    CurrentProfileName = "No Profile";
-                    CurrentProfilePath = null;
-                    HasUnsavedChanges = false;
-                    actions.Clear();
-                    // Deleting the active profile drops to "No Profile" — same handoff back to
-                    // the global fallback as the deselect branch in HandleProfileClick.
-                    ClearLoopEdit();
-                    PushProfileLoop();
-                    // UserProfile.Current changed, so the Data panel is now showing a deleted
-                    // profile's table. Unlike every other switch path this branch has no explicit
-                    // PushActionsUpdate — it used to get the refresh as a side effect of the
-                    // actions.Clear() above reaching OnActionsChanged, which no longer carries it.
-                    PushDataTable();
-                }
+                    DropToNoProfile();
 
                 await profileController.RemoveProfileFromOrderAsync(name);
                 await profileController.RefreshProfileListAsync(true);
@@ -9558,6 +9681,10 @@ namespace TrueReplayer
             var folder = order.Folders.FirstOrDefault(f => f.Name == name);
             int profileCount = folder?.Items.Count ?? 0;
 
+            // Snapshot the membership NOW: DeleteFolderAsync removes the folder from the order, so
+            // after the await there is nothing left to ask whether the profile on screen was in it.
+            var folderItems = folder?.Items.ToList() ?? new List<string>();
+
             if (profileCount > 0)
             {
                 var msgBlock = new Microsoft.UI.Xaml.Controls.TextBlock
@@ -9600,7 +9727,28 @@ namespace TrueReplayer
                 if (result == Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary)
                     await profileController.DeleteFolderAsync(name, deleteProfiles: false);
                 else if (result == Microsoft.UI.Xaml.Controls.ContentDialogResult.Secondary)
+                {
+                    // "Delete All" deletes the FILES too, so it can delete the profile that is on
+                    // screen — and this path never asked. Left alone it is worse than the
+                    // single-profile delete was: CurrentProfilePath stays pointing at the file
+                    // just removed, so the next Save takes the "Overwrite" branch and writes the
+                    // deleted profile back, and the undo stack survives the same way. Each name is
+                    // handed to DeleteProfileDirectory as well, which only the single-profile path
+                    // did — otherwise the images sit orphaned until the next startup sweep.
+                    bool hadActive = folderItems.Contains(CurrentProfileName);
                     await profileController.DeleteFolderAsync(name, deleteProfiles: true);
+                    foreach (var deleted in folderItems)
+                        ImageStorageService.DeleteProfileDirectory(deleted);
+                    if (hadActive)
+                    {
+                        DropToNoProfile();
+                        PushActionsUpdate();
+                        PushButtonStates();
+                        PushToolbarUpdate();
+                        PushStatusBarUpdate();
+                        TrayIconService.UpdateTrayIcon();
+                    }
+                }
                 else
                     return; // Cancel
             }

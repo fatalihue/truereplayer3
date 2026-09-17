@@ -1480,18 +1480,31 @@ namespace TrueReplayer.Services
                         && Math.Abs(x - _lastClickScreenX) <= maxW
                         && Math.Abs(y - _lastClickScreenY) <= maxH)
                     {
-                        var merged = _lastCombinedLeftClick;
-                        merged.ActionType = "DoubleClick";
+                        // Resolve the index BEFORE mutating. ReferenceEquals(_lastCombinedLeftClick,
+                        // _lastAdded) above proves this recorder added the row last, NOT that the
+                        // row is still in the collection: the bridge's browser-click dedup removes
+                        // rows straight off `actions` without going through AddAction, so during an
+                        // extension recording _lastAdded can be a dangling pointer. Mutating it
+                        // there used to rewrite a detached object to DoubleClick and then swallow
+                        // the write on `if (mi >= 0)` — and the second physical click produced no
+                        // row at all, in silence. A removed row is not a pair to merge with, so
+                        // fall through and let this click record as an ordinary LeftClick.
+                        int mi = _actions.IndexOf(_lastCombinedLeftClick);
+                        if (mi >= 0)
+                        {
+                            var merged = _lastCombinedLeftClick;
+                            merged.ActionType = "DoubleClick";
+                            _lastCombinedLeftClick = null;
+                            // An in-place property mutation only raises PropertyChanged — the
+                            // bridge pushes the grid on COLLECTION changes. Re-assigning the
+                            // same instance at its index raises a Replace event, so the
+                            // upgraded row shows immediately (not only after the next action
+                            // happens to be recorded or the profile reloads).
+                            _actions[mi] = merged;
+                            _onActionAdded?.Invoke();
+                            return;
+                        }
                         _lastCombinedLeftClick = null;
-                        // An in-place property mutation only raises PropertyChanged — the
-                        // bridge pushes the grid on COLLECTION changes. Re-assigning the
-                        // same instance at its index raises a Replace event, so the
-                        // upgraded row shows immediately (not only after the next action
-                        // happens to be recorded or the profile reloads).
-                        int mi = _actions.IndexOf(merged);
-                        if (mi >= 0) _actions[mi] = merged;
-                        _onActionAdded?.Invoke();
-                        return;
                     }
                 }
 

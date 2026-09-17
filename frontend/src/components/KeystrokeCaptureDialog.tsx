@@ -8,6 +8,7 @@ import { compactKey } from '../utils/keyNames';
 import { CheckboxBox } from './Checkbox';
 import { DurationChips, DURATION_PRESETS } from './common/DurationChips';
 import { calloutStyle } from './common/Callout';
+import { MIN_HOLD_MS, MAX_HOLD_MS, DEFAULT_HOLD_MS } from '../utils/actionCost';
 import { useBridge } from '../bridge/BridgeContext';
 import { useLanguage, useTt } from '../state/LanguageContext';
 import { formatMs } from '../utils/displayUtils';
@@ -56,9 +57,8 @@ const MAX_REPEAT_DELAY = 5000;
 const DEFAULT_JITTER_PCT = 20;
 const MAX_JITTER_PCT = 100;
 
-const DEFAULT_HOLD_MS = 1000;
-const MIN_HOLD_MS = 10;
-const MAX_HOLD_MS = 60000;
+// Range and default live in utils/actionCost, shared with the Sheet, the Insert Click dialog and
+// the run estimate — the four surfaces that have to agree on what an unset dwell means.
 
 // Hold durations come from the app-wide ladder (DURATION_PRESETS). No ∞ here: a key can't be
 // held indefinitely — the backend caps a hold at MAX_HOLD_MS and an unbounded hold would freeze
