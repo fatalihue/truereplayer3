@@ -6,9 +6,11 @@ import { SegmentedControl } from './common/SegmentedControl';
 import { KeyCaps } from './common/KeyCaps';
 import { compactKey } from '../utils/keyNames';
 import { CheckboxBox } from './Checkbox';
-import { DurationChips } from './common/DurationChips';
+import { DurationChips, DURATION_PRESETS } from './common/DurationChips';
+import { calloutStyle } from './common/Callout';
 import { useBridge } from '../bridge/BridgeContext';
-import { useTt } from '../state/LanguageContext';
+import { useLanguage, useTt } from '../state/LanguageContext';
+import { formatMs } from '../utils/displayUtils';
 import { useWindowFocused } from '../hooks/useWindowFocused';
 
 /**
@@ -58,11 +60,9 @@ const DEFAULT_HOLD_MS = 1000;
 const MIN_HOLD_MS = 10;
 const MAX_HOLD_MS = 60000;
 
-// Common hold durations, surfaced as one-click chips. Mirrors the Insert Pause timeout
-// chips (100 ms → 30 s) for a consistent duration-picker feel; there's no ∞ here because a
-// key can't be held indefinitely (the backend caps a hold at MAX_HOLD_MS and an unbounded
-// hold would freeze the replay with the key stuck down).
-const HOLD_PRESETS = [100, 500, 1000, 5000, 30000];
+// Hold durations come from the app-wide ladder (DURATION_PRESETS). No ∞ here: a key can't be
+// held indefinitely — the backend caps a hold at MAX_HOLD_MS and an unbounded hold would freeze
+// the replay with the key stuck down — so this dialog passes the ladder without the mode chip.
 
 /** Spinner step: 1 s once we're past 1 s, 100 ms below — match HoldKeyDialog's feel. */
 const stepFor = (v: number) => v >= 1000 ? 1000 : 100;
@@ -103,6 +103,8 @@ export function KeystrokeCaptureDialog({
   onClose,
 }: KeystrokeCaptureDialogProps) {
   const tt = useTt();
+  // For the semantics strip's durations — same locale grouping the chips and the grid use.
+  const { language } = useLanguage();
 
   // `isEditing` flips Esc behaviour and the button label. Decoupled from mode so
   // we can edit a Keystroke row, switch to Hold, and save — converting the row's
@@ -325,6 +327,13 @@ export function KeystrokeCaptureDialog({
       }}
     >
         <div className="px-5 py-5 flex flex-col gap-4">
+          {/* KEY — the capture pad and its manual escape hatch, under one label. The pad was the
+              only unlabelled control in this dialog; the identical pad in Insert Pause has
+              carried a RESUME HOTKEY label since it was written, and the Insert Click dialog now
+              labels its Mode track for the same reason. A label costs 20 px once and tells a
+              first-time reader what the big dashed box is FOR before they press anything. */}
+          <div className="flex flex-col gap-1.5">
+          <span className="label-micro text-text-tertiary">Key</span>
           {/* Capture pad — universal for both modes. Single press detects whatever
               modifiers the user is holding; Hold mode silently uses only the last
               key, with a warning chip when modifiers got dropped. The border style
@@ -386,10 +395,11 @@ export function KeystrokeCaptureDialog({
           <button
             type="button"
             onClick={() => setManualEntry(v => !v)}
-            className="self-center -mt-2 text-[11px] text-text-secondary hover:text-text-primary underline decoration-dotted transition-colors"
+            className="self-center mt-0.5 text-[11px] text-text-secondary hover:text-text-primary underline decoration-dotted transition-colors"
           >
             {manualEntry ? 'Back to key capture' : 'Type manually · {var} tokens'}
           </button>
+          </div>
 
           {/* Mode toggle — switches the body below between Press and Hold settings. */}
           <div className="flex flex-col gap-1.5">
@@ -528,7 +538,7 @@ export function KeystrokeCaptureDialog({
               {/* Preset chips. onSelect goes through setHoldMs (the two-track
                   state+ref setter) so a preset click followed by an immediate Add
                   still commits the fresh value — presets are shortcuts, not locks. */}
-              <DurationChips presets={HOLD_PRESETS} value={holdMs} onSelect={setHoldMs} />
+              <DurationChips presets={DURATION_PRESETS} value={holdMs} onSelect={setHoldMs} />
 
               {/* Modifier-strip warning. Captured combo like "Ctrl+S" can't be held
                   by the backend (SimulateKey takes a single virtual-key code), so
@@ -559,6 +569,51 @@ export function KeystrokeCaptureDialog({
               </div>
             </div>
           </div>
+
+          {/* Live-semantics strip — the same always-render-all, show-one construction as Insert
+              Click and Insert Pause, for the same height reason. This was the only one of the
+              three insert dialogs without one, so it was the only one where "what will this row
+              actually do?" had to be assembled by reading four controls and knowing that Hold
+              drops the modifiers.
+              Neutral while nothing is captured: that state is the question still being asked, not
+              a mistake — Add is disabled, but the user has done nothing wrong yet. The key colour
+              once there is an answer.
+              `truncate` on each line, which the click dialog's strip does not need: manual entry
+              accepts free text of any length, and without it a long typed value would wrap and
+              take the card's height with it. */}
+          {(() => {
+            const answered = !!captured?.trim();
+            const shown = keystrokeDisplay(captured?.trim() ?? '');
+            const n = clampRepeat(repeat);
+            // Middot before the burst for the same reason the click dialog uses one: the value in
+            // front of it can contain punctuation of its own.
+            const times = n > 1 ? ` · ${n}×, ${formatMs(clampDelay(repeatDelay), language)} ms apart` : '';
+            const messages = [
+              'Press a key or combo, or type one manually.',
+              `Presses ${shown}${times}.`,
+              // Says the STRIPPED key, because that is what a hold sends — the warning band above
+              // explains why, and these two must never disagree about which key is held.
+              `Holds ${keystrokeDisplay(heldKey)} for ${formatMs(clampHold(holdMs), language)} ms.`,
+            ];
+            const active = !answered ? 0 : mode === 'hold' ? 2 : 1;
+            return (
+              <div
+                className="border-l-2 rounded px-2.5 py-2 text-[11px] leading-relaxed grid"
+                style={calloutStyle('neutral', answered ? 'var(--color-action-key-fg)' : undefined)}
+              >
+                {messages.map((m, i) => (
+                  <span
+                    key={i}
+                    style={{ gridArea: '1 / 1' }}
+                    className={`truncate ${i === active ? '' : 'invisible'}`}
+                    aria-hidden={i !== active}
+                  >
+                    {m}
+                  </span>
+                ))}
+              </div>
+            );
+          })()}
         </div>
     </DialogShell>
   );

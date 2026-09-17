@@ -3,7 +3,7 @@ import { Hourglass } from 'lucide-react';
 import { NumberInput } from './common/NumberInput';
 import { DialogShell, DialogFooter  } from './common/DialogShell';
 import { KeyCaps } from './common/KeyCaps';
-import { DurationChips } from './common/DurationChips';
+import { DurationChips, TIMEOUT_PRESETS } from './common/DurationChips';
 import { useBridge } from '../bridge/BridgeContext';
 import { useLanguage } from '../state/LanguageContext';
 import { useWindowFocused } from '../hooks/useWindowFocused';
@@ -48,11 +48,9 @@ interface PauseDialogProps {
  * KeystrokeCaptureDialog uses.
  */
 
-/** Timeout is shown/edited in ms (matches the grid + Send Keystroke's ms knobs).
- *  Chips carry ms values; the label is rendered from the value (locale-grouped "1.000 ms")
- *  at draw time. ∞ (ms=0) pairs with a captured hotkey to form a "wait forever until X is
- *  pressed" Pause. */
-const TIMEOUT_PRESETS = [100, 500, 1000, 5000, 30000, 0] as const;
+/** Timeout is shown/edited in ms (matches the grid + Send Keystroke's ms knobs). The chips are
+ *  the app-wide ladder plus the ∞ MODE chip — see TIMEOUT_PRESETS in common/DurationChips.
+ *  ∞ (ms=0) pairs with a captured hotkey to form a "wait forever until X is pressed" Pause. */
 
 /** Coarser steps once we're in whole-second territory; 100 ms below 1 s. */
 const stepFor = (ms: number) => (ms >= 1000 ? 1000 : 100);

@@ -12,7 +12,7 @@ import type { SelectorAlternative, BrowserTestResult } from '../bridge/messageTy
 import { Checkbox } from './Checkbox';
 import { NumberInput } from './common/NumberInput';
 import { SegmentedControl } from './common/SegmentedControl';
-import { DurationChips } from './common/DurationChips';
+import { DurationChips, DURATION_PRESETS, TIMEOUT_PRESETS } from './common/DurationChips';
 import { ProcessNameInput } from './common/ProcessNameInput';
 import { FieldError } from './common/FieldError';
 import { CheckboxBox } from './Checkbox';
@@ -140,8 +140,8 @@ const COMBINED_CLICKS = new Set([
 ]);
 
 // Hold duration editing, shared with the Send Keystroke dialog's hold mode so the key hold and
-// the mouse hold offer the same presets and the same range (C# clamps 10..60000 identically).
-const HOLD_PRESETS = [100, 500, 1000, 5000, 30000];
+// the mouse hold offer the same range (C# clamps 10..60000 identically). The PRESETS are the
+// app-wide ladder — see DURATION_PRESETS.
 const MIN_HOLD_MS = 10;
 const MAX_HOLD_MS = 60000;
 const DEFAULT_HOLD_MS = 1000;
@@ -2580,12 +2580,45 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     t => !(clickHalfSuffix && (t.value === 'DoubleClick' || t.value === 'TripleClick' || isClickHold(t.value)))
   );
   const showTypePicker = visibleFamilyOptions.length > 1;
-  // 3 columns for the click family (8 chips → buttons row + holds row + multi-click row; 3 when a
-  // paired half hides both of those, so still exactly one full row), 2 for the key/scroll pairs so they
-  // split the width evenly instead of leaving a hole. Fixed columns are the point: with
-  // flex-wrap the break landed wherever the label widths happened to put it, so the grouping was
-  // an accident of text measurement and would reflow on any label edit.
+  // Fixed columns for the key/scroll pairs so they split the width evenly instead of leaving a
+  // hole. Fixed rather than flex-wrap is the point: with wrapping the break landed wherever the
+  // label widths happened to put it, so the grouping was an accident of text measurement and
+  // would reflow on any label edit. (The click family no longer renders as a grid here — see the
+  // two axes below — but it still feeds this list, and the row menu's submenu still draws it.)
   const chipGridCols = visibleFamilyOptions.length >= 3 ? 'grid-cols-3' : 'grid-cols-2';
+
+  // ── The click picker's two axes ──────────────────────────────────────────────────────────
+  // Which BUTTON, and what KIND of press. Both are derived from the stored ActionType rather
+  // than kept in state: the type is the single source of truth (the seed effect, an undo, a
+  // convert from the row menu can all change it underneath this panel), and a mirrored pair of
+  // useStates is how a picker starts disagreeing with the row it is editing.
+  type ClickKind = 'click' | 'hold' | 'double' | 'triple';
+  const clickKind: ClickKind = isHoldClick ? 'hold'
+    : baseActionType === 'DoubleClick' ? 'double'
+    : baseActionType === 'TripleClick' ? 'triple'
+    : 'click';
+  // Double/Triple carry no button in their name — they ARE left-button actions — so they report
+  // Left, which is also what the pinned control shows.
+  const clickButton = (isMultiClick ? 'Left' : (clickHalfBase?.replace('Click', '') || 'Left')) as 'Left' | 'Right' | 'Middle';
+  const composeClickType = (button: 'Left' | 'Right' | 'Middle', kind: ClickKind) =>
+    kind === 'double' ? 'DoubleClick'
+    : kind === 'triple' ? 'TripleClick'
+    : kind === 'hold' ? `${button}ClickHold`
+    // A half stays a half. The suffix is what the replay switch dispatches on, so dropping it
+    // turns the row into a combined click that the engine silently skips mid-gesture — the same
+    // trap the old chip grid avoided by re-appending it.
+    : `${button}Click${clickHalfSuffix ?? ''}`;
+  const switchClickType = (next: string) => {
+    if (next === actionType) return;
+    // Repeat-gap default is per-type (multi-click 600 ms vs single click 30 ms). When switching
+    // between types whose defaults differ, a Gap still sitting on the OLD type's default follows
+    // the NEW one — untouched means "I want the default", and 30 ms between double-clicks blurs
+    // them into one chain. A gap the user actually changed is preserved. See clickDefaultGap.
+    const fromGap = clickDefaultGap(baseActionType);
+    const toGap = clickDefaultGap(next);
+    if (fromGap !== toGap) setRepeatGapMs(g => (g === fromGap ? toGap : g));
+    setActionType(next);
+  };
 
   // Human-readable action name — defined once, used as the header headline (and reusable
   // for tooltips). Replaces the inline 17-branch ternary that used to live in the header.
@@ -2734,81 +2767,118 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
               SendText (single option), WaitImage / Browser / Pause (each has its own editor
               shape). Cross-family conversions aren't offered: users who want to swap families
               record a new action — it's faster and avoids leaving half-filled fields behind. */}
-          {!isWaitImage && !isBrowser && !isPause && showTypePicker && (
-          <Field label="Action Type">
-            <div className={`grid gap-1.5 ${chipGridCols}`}>
-              {visibleFamilyOptions
-                .map(t => {
-                // When editing a click half (LeftClickDown / LeftClickUp / etc.), picking
-                // another click type must preserve the suffix so the engine still dispatches
-                // the action — `RightClick` alone is silently skipped by the replay switch.
-                const isClickPick = /^(?:Left|Right|Middle)Click$/.test(t.value);
-                const nextValue = isClickPick && clickHalfSuffix
-                  ? `${t.value}${clickHalfSuffix}`
-                  : t.value;
-                // Highlight on the base type so users editing a Down/Up half see the right
-                // chip lit up (the raw actionType `LeftClickDown` would never match `LeftClick`).
-                // A HOLD is its own chip, so it matches on the full type — going through the base
-                // would light "Left Click" while the row is a "Hold Left".
-                const isActive = isHoldClick ? actionType === t.value : baseActionType === t.value;
-                return (
-                  <button
-                    key={t.value}
-                    onClick={() => {
-                      // Repeat-gap default is per-type (multi-click 600 ms vs single click 30 ms).
-                      // When switching between click types whose defaults differ, if the Gap is
-                      // still at the OLD type's default (untouched) follow the NEW type's default —
-                      // otherwise the switch strands, and Save silently persists, the wrong gap (a
-                      // multi-click × N blurred at 30 ms, or a single click stuck at 600 ms). A gap
-                      // the user actually changed is preserved. See clickDefaultGap.
-                      const fromGap = clickDefaultGap(baseActionType);
-                      const toGap = clickDefaultGap(t.value);
-                      if (fromGap !== toGap) setRepeatGapMs(g => g === fromGap ? toGap : g);
-                      setActionType(nextValue);
-                    }}
-                    // Grid cells stretch, so every chip is the same width — nowrap + centre keeps
-                    // a long label (Middle Click) on one line so the two rows stay level.
-                    className={`px-2.5 py-1 rounded text-[11px] font-medium border transition-colors text-center whitespace-nowrap ${
-                      isActive
-                        ? 'text-accent border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)] bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)]'
-                        : 'text-text-secondary border-border-default bg-bg-elevated hover:bg-bg-card'
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                );
-              })}
-            </div>
+          {/* CLICK rows: the type picker is TWO AXES — which button, and what kind of press.
+              The eight click types were always those two questions folded into one list, and the
+              folding is what made the flat grid awkward: eight chips in a three-column grid leave
+              a hole in the last row, the grouping lives in the array ORDER rather than in
+              anything visible, and the Insert Click dialog asks the very same two questions as
+              two separate controls. Unfolding them here costs no height and makes the two
+              surfaces describe a click the same way. CLICK_FAMILY_TYPES stays the one list: the
+              row menu's "Change click type" submenu still renders it, and composeClickType can
+              only produce names that are in it. */}
+          {!isWaitImage && !isBrowser && !isPause && isClickHalf && (
+          <>
+            <Field label="Button">
+              <SegmentedControl<'Left' | 'Right' | 'Middle'>
+                value={clickButton}
+                onChange={(b) => switchClickType(composeClickType(b, clickKind))}
+                ariaLabel="Mouse button"
+                grow
+                // Pinned to Left under Double/Triple: MultiClickPairs emits LEFTDOWN/LEFTUP and
+                // there is no right-button double-click to emit instead, so a lit "Right" would
+                // be the UI stating something the row will not do. Same pin, same reason, as the
+                // Insert Click dialog.
+                className={isMultiClick ? 'opacity-50 pointer-events-none' : undefined}
+                options={[
+                  { value: 'Left', label: 'Left' },
+                  { value: 'Right', label: 'Right' },
+                  { value: 'Middle', label: 'Middle' },
+                ]}
+              />
+            </Field>
+            <Field label="Kind">
+              <SegmentedControl<ClickKind>
+                value={clickKind}
+                onChange={(k) => switchClickType(composeClickType(clickButton, k))}
+                ariaLabel="Click kind"
+                grow
+                // A paired half is a FRAGMENT of one press: it cannot be a hold or a multi-click,
+                // and converting just one half would orphan its twin (a lone LeftClickUp left
+                // behind by a Down that became a hold releases a button nobody pressed). The old
+                // grid expressed this by dropping five chips; pinning says the same thing without
+                // the row of controls changing shape under the user.
+                className={clickHalfSuffix ? 'opacity-50 pointer-events-none' : undefined}
+                options={[
+                  { value: 'click', label: 'Click' },
+                  { value: 'hold', label: 'Hold', tip: tt('Press, wait, release — still one row', 'Aperta, espera, solta — ainda uma linha') },
+                  { value: 'double', label: 'Double', tip: tt('Left button only', 'Só o botão esquerdo') },
+                  { value: 'triple', label: 'Triple', tip: tt('Left button only — selects a paragraph', 'Só o botão esquerdo — seleciona um parágrafo') },
+                ]}
+              />
+            </Field>
 
-            {/* FORM — one row, or two. The chips above change WHICH BUTTON a row uses and
-                carefully preserve its Down/Up suffix; this is the axis they deliberately leave
-                alone, and until 2026-09-16 nothing but a whole-profile convert could move it.
+            {/* FORM — one row, or two. The two axes above change WHICH BUTTON a row uses and WHAT
+                KIND of press it is, and carefully preserve its Down/Up suffix; this is the axis
+                they deliberately leave alone, and until 2026-09-16 nothing but a whole-profile
+                convert could move it.
                 It applies on SAVE, last of everything, and the ordering is load-bearing: a split
                 changes the ROW COUNT, so every actions:edit above it is addressed by an index
                 this would invalidate. Save closes the sheet anyway, which is what makes "apply on
                 Save" honest here rather than a draft that lies about a row that became two. */}
-            {isClickHalf && (
-              <div className="mt-2 flex flex-col gap-1.5">
-                <span className="label-micro text-text-tertiary">Form</span>
-                <SegmentedControl<'combined' | 'paired'>
-                  value={formDraft}
-                  onChange={setFormDraft}
-                  ariaLabel="Click form"
-                  grow
-                  options={[
-                    { value: 'combined', label: 'One row', tip: tt('Press and release together', 'Aperta e solta numa linha') },
-                    { value: 'paired', label: 'Two rows', tip: tt('Down and Up as separate rows — needed for a drag', 'Down e Up em linhas separadas — preciso para arrastar') },
-                  ]}
-                />
-                {/* ALWAYS mounted, per FieldError's whole reason for existing — a line that
-                    appears and disappears would move the controls under the user's cursor. */}
-                <FieldError show={formDraft !== initialForm} className="text-[11px] text-warning-ink mt-1 truncate">
-                  {formDraft === 'paired'
-                    ? tt('Saving splits this row in two.', 'Salvar divide esta linha em duas.')
-                    : tt('Saving merges this row with the half after it.', 'Salvar junta esta linha com a metade seguinte.')}
-                </FieldError>
-              </div>
-            )}
+            <Field label="Form">
+              <SegmentedControl<'combined' | 'paired'>
+                value={formDraft}
+                onChange={setFormDraft}
+                ariaLabel="Click form"
+                grow
+                options={[
+                  { value: 'combined', label: 'One row', tip: tt('Press and release together', 'Aperta e solta numa linha') },
+                  { value: 'paired', label: 'Two rows', tip: tt('Down and Up as separate rows — needed for a drag', 'Down e Up em linhas separadas — preciso para arrastar') },
+                ]}
+              />
+              {/* ALWAYS mounted, per FieldError's whole reason for existing — a line that appears
+                  and disappears would move the controls under the user's cursor. Now it is also
+                  never BLANK: the reserve is paid for either way, and a permanently empty strip
+                  under every click row read as a gap in the panel rather than as a reserve. At
+                  rest it states what the current form means; pending a Save it turns to warning
+                  ink and states what Save will do. Visible text, so English on both tracks —
+                  these two strings were carrying tt(), which belongs to tooltips and toasts. */}
+              <FieldError
+                show
+                className={`text-[11px] mt-1 truncate ${formDraft !== initialForm ? 'text-warning-ink' : 'text-text-tertiary'}`}
+              >
+                {formDraft !== initialForm
+                  ? (formDraft === 'paired'
+                    ? 'Saving splits this row in two.'
+                    : 'Saving merges this row with the half after it.')
+                  : (formDraft === 'paired'
+                    ? 'Two rows: Down and Up as separate rows.'
+                    : 'One row: press and release together.')}
+              </FieldError>
+            </Field>
+          </>
+          )}
+
+          {/* KEY / SCROLL rows keep the chip grid: two options, one row, nothing to unfold. */}
+          {!isWaitImage && !isBrowser && !isPause && !isClickHalf && showTypePicker && (
+          <Field label="Action Type">
+            <div className={`grid gap-1.5 ${chipGridCols}`}>
+              {visibleFamilyOptions.map(t => (
+                <button
+                  key={t.value}
+                  onClick={() => setActionType(t.value)}
+                  // Grid cells stretch, so every chip is the same width — nowrap + centre keeps
+                  // a long label on one line so the row stays level.
+                  className={`px-2.5 py-1 rounded text-[11px] font-medium border transition-colors text-center whitespace-nowrap ${
+                    actionType === t.value
+                      ? 'text-accent border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)] bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)]'
+                      : 'text-text-secondary border-border-default bg-bg-elevated hover:bg-bg-card'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
           </Field>
           )}
 
@@ -3864,34 +3934,26 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                   String-backed state preserved: onSelect writes String(ms). */}
               <div className="mt-1.5">
                 <DurationChips
-                  presets={[100, 500, 1000, 5000, 30000, 0]}
+                  presets={TIMEOUT_PRESETS}
                   value={(() => { const p = parseFloat(timeout); return isNaN(p) ? 0 : p; })()}
                   onSelect={(ms) => setTimeout_(String(ms))}
                   infinityTip={tt('Wait forever for the resume hotkey', 'Espera para sempre pela tecla de retomada')}
                 />
               </div>
+              {/* Foot-gun line — with neither a resume hotkey nor a timeout the Pause is silently
+                  skipped at replay (ExecutePause early-returns). It used to be a left-rail callout
+                  that MOUNTED on that state, so clearing the hotkey pushed Delay and Notes 46 px
+                  down the panel, under the cursor that had just cleared it. A reserved line says
+                  the same sentence in the same warning ink and never moves anything — the rule
+                  the Form line two fields up already follows.
+                  `parseFloat(…) > 0` is false for NaN, which is what an empty field parses to. */}
+              <FieldError
+                show={!key.trim() && !(parseFloat(timeout) > 0)}
+                className="text-[11px] text-warning-ink mt-1.5 truncate"
+              >
+                {'No hotkey and no timeout — this Pause is skipped.'}
+              </FieldError>
             </Field>
-
-            {/* Foot-gun warning — if neither a resume hotkey nor a timeout is set, the
-                Pause is silently skipped at replay time (ExecutePause early-returns).
-                Left-rail card, delay (amber) tone. */}
-            {(() => {
-              const parsedSecs = parseFloat(timeout);
-              const effectiveSecs = isNaN(parsedSecs) ? 0 : parsedSecs;
-              const hasNoTrigger = !key.trim() && effectiveSecs <= 0;
-              if (!hasNoTrigger) return null;
-              return (
-                <div
-                  className="flex items-start gap-2 border-l-2 rounded px-2.5 py-2 text-[11px] leading-relaxed"
-                  style={calloutStyle('warn')}
-                >
-                  <ShieldAlert size={13} className="shrink-0 mt-px" />
-                  <span>
-                    {'No hotkey and no timeout — this Pause is skipped.'}
-                  </span>
-                </div>
-              );
-            })()}
           </>
           )}
 
@@ -4750,26 +4812,31 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
               so it reads first. Same presets and same 10..60000 range as the Send Keystroke
               dialog's hold mode, because the two are the same idea on different hardware. */}
           {isHoldClick && (
-            <Field
-              label="Hold"
-              hint={'Button stays down for this long, then releases.'}
-            >
-              <NumberInput
-                value={holdMs}
-                onChange={(n) => setHoldMs(clampHoldMs(n))}
-                min={MIN_HOLD_MS}
-                max={MAX_HOLD_MS}
-                step={holdMs >= 1000 ? 1000 : 100}
-                thousands
-                suffix="ms" suffixInside
-                inputWidth="w-full"
-                inputHeight="h-8"
-                ariaLabel="Hold duration in milliseconds"
-              />
-              <div className="mt-1.5">
-                <DurationChips presets={HOLD_PRESETS} value={holdMs} onSelect={(ms) => setHoldMs(clampHoldMs(ms))} />
+            // Label and value on ONE row, the shape the Send Keystroke dialog's hold uses and the
+            // shape every other duration in this panel uses. It was a full-width field under a
+            // stacked label with a hint below — 124 px for one number, in the one editor that
+            // does not fit its own window (a hold with a point needed 894 px of the 780 the panel
+            // has at 1280×800). The hint went with it: "Button stays down for this long, then
+            // releases" is the label, the unit and the presets saying the same thing a fourth
+            // time, which is exactly what the hint rule says not to keep.
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-[12px] font-medium text-text-secondary">Hold</label>
+                <NumberInput
+                  value={holdMs}
+                  onChange={(n) => setHoldMs(clampHoldMs(n))}
+                  min={MIN_HOLD_MS}
+                  max={MAX_HOLD_MS}
+                  step={holdMs >= 1000 ? 1000 : 100}
+                  thousands
+                  suffix="ms" suffixInside
+                  inputWidth="w-24"
+                  inputHeight="h-8"
+                  ariaLabel="Hold duration in milliseconds"
+                />
               </div>
-            </Field>
+              <DurationChips presets={DURATION_PRESETS} value={holdMs} onSelect={(ms) => setHoldMs(clampHoldMs(ms))} />
+            </div>
           )}
 
           {/* POSITION — where this click resolves its point. A SegmentedControl rather than a
@@ -4906,20 +4973,30 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
               jitters dim until Times > 1. */}
           {isRepeatableClick && (
             <div className="flex flex-col gap-2.5">
-              <Section title="Repeat" />
-              <div className="flex items-center justify-between gap-3">
-                <label className="text-[12px] font-medium text-text-secondary">Times</label>
-                <NumberInput
-                  value={repeatCount}
-                  onChange={(n) => setRepeatCount(clampRepeatCount(n))}
-                  min={1}
-                  max={999}
-                  inputWidth="w-24"
-                  inputHeight="h-8"
-                  ghostSuffix="ms"
-                  ariaLabel="Times to repeat"
-                />
-              </div>
+              {/* Times rides the section header. It is the field the other three depend on — Gap,
+                  Gap jitter and Position jitter are all inert until it is above 1 — so putting it
+                  ON the header reads as "Repeat: how many", and the three knobs below are the
+                  refinements. It also buys back a whole row in the one editor that overflows its
+                  own window. `Section` already reserves this slot; nothing new was invented for
+                  it. */}
+              <Section
+                title="Repeat"
+                adornment={
+                  <span className="flex items-center gap-2">
+                    <label className="text-[12px] font-medium text-text-secondary">Times</label>
+                    <NumberInput
+                      value={repeatCount}
+                      onChange={(n) => setRepeatCount(clampRepeatCount(n))}
+                      min={1}
+                      max={999}
+                      inputWidth="w-24"
+                      inputHeight="h-8"
+                      ghostSuffix="ms"
+                      ariaLabel="Times to repeat"
+                    />
+                  </span>
+                }
+              />
               <div className="flex items-center justify-between gap-3">
                 <label
                   className={`text-[12px] font-medium transition-colors ${repeatCount > 1 ? 'text-text-secondary' : 'text-text-tertiary'}`}

@@ -22,6 +22,28 @@ import { formatMs } from '../../utils/displayUtils';
  * between ~60 px durations it read as a runt and relied entirely on its tooltip to explain
  * itself. Only Pause passes it; Keystroke has no ∞ (a key cannot be held indefinitely).
  */
+/**
+ * THE duration ladder — four rungs, one list, every surface.
+ *
+ * It was five (…, 30_000) in four separate literals: the Send Keystroke hold, the Insert Pause
+ * timeout, the Sheet's Pause timeout and the Sheet's click Hold. The 30 s rung is what broke the
+ * row: the grid above needs 68 px per cell, so a 308 px Sheet column fits FOUR, and the fifth
+ * wrapped to a second line carrying one chip — in the Pause editor a third line, because the ∞
+ * row follows. The DIALOGS are 400 px wide and fit five, which is exactly why the five-rung
+ * ladder survived unnoticed there: the same list rendered two different shapes depending on
+ * which surface drew it.
+ *
+ * Dropping the rung rather than widening the cells keeps one ladder for the whole app (the point
+ * of this constant) and costs nothing a user can reach: every consumer's NumberInput still types
+ * any value in its own range — 30 s, 45 s, the 60 s ceiling. Presets are shortcuts, not the range.
+ */
+export const DURATION_PRESETS = [100, 500, 1000, 5000] as const;
+
+/** The same ladder plus the ∞ MODE chip (0 = no timeout). Only the two Pause surfaces pass it —
+ *  a key or a mouse button cannot be held indefinitely, so the hold consumers use the ladder
+ *  above unchanged. */
+export const TIMEOUT_PRESETS = [...DURATION_PRESETS, 0] as const;
+
 interface DurationChipsProps {
   presets: readonly number[];
   value: number;

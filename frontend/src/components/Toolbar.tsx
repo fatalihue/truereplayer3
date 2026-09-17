@@ -624,7 +624,10 @@ export function Toolbar(_props: ToolbarProps) {
             }}
             disabled={insertsDisabled}
             className={iconButtonClass('md')}
-            data-tip={clickerTip('Insert Click', 'Inserir clique')}
+            // Names what the dialog holds, like the Wait button's tip does for its two probes.
+            // An icon-only button's tooltip is its ONLY label, and "Insert Click" undersold a
+            // dialog that also writes a hold, a multi-click and — since the Form control — a drag.
+            data-tip={clickerTip('Insert Click (single, double, hold, drag)', 'Inserir clique (simples, duplo, segurar, arrasto)')}
           >
             <Mouse size={16} />
           </button>
