@@ -6,7 +6,7 @@ import type { CollisionDetection, DragStartEvent, DragEndEvent } from '@dnd-kit/
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { CSS } from '@dnd-kit/utilities';
-import { Mouse, MousePointerClick, MousePointer2, Keyboard, ArrowUp, ArrowDown, Zap, Type, Trash2, ChevronRight, ChevronDown, ChevronsDownUp, ChevronsUpDown, Plus, Pencil, ScanSearch, Pipette, Globe, CheckCheck, Check, Code2, Files, Hourglass, Repeat2, ExternalLink, Crosshair, Link, GripVertical, Timer, GitBranch, ArrowRightLeft, Split, MoreHorizontal, Focus, Braces, AppWindow, Clipboard, ClipboardCopy, ClipboardPaste, Eye, EyeOff, RotateCcw, Dice5, Cpu, FileCheck, Clock, ShieldCheck, CircleStop, CornerDownLeft, IterationCw, ChevronUp, ArrowRightFromLine, SkipForward, Table2 } from 'lucide-react';
+import { Mouse, MousePointerClick, MousePointer2, Keyboard, ArrowUp, ArrowDown, Zap, Type, Trash2, ChevronRight, ChevronDown, ChevronsDownUp, ChevronsUpDown, Plus, Pencil, ScanSearch, Pipette, Globe, CheckCheck, Check, Code2, Files, Hourglass, Repeat2, ExternalLink, Crosshair, Link, GripVertical, Timer, GitBranch, ArrowRightLeft, Split, Brackets, MoreHorizontal, Focus, Braces, AppWindow, Clipboard, ClipboardCopy, ClipboardPaste, Eye, EyeOff, RotateCcw, Dice5, Cpu, FileCheck, Clock, ShieldCheck, CircleStop, CornerDownLeft, IterationCw, ChevronUp, ArrowRightFromLine, SkipForward, Table2 } from 'lucide-react';
 import { canCollapse, canExpand, expandKeystroke } from '../utils/keyRepeat';
 import type { ActionItem } from '../bridge/messageTypes';
 import { useAppState } from '../state/AppStateContext';
@@ -18,7 +18,7 @@ import type { Language } from '../state/LanguageContext';
 import { useSelectionRef } from '../state/SelectionContext';
 import { useToast } from '../state/ToastContext';
 import { getDisplayKey, getDisplayX, getDisplayY, getActionTypeColors, formatKeyCombo, formatMs, isCombinedClick, isClickHold, isCoordinateClick, isFocusClickEligible } from '../utils/displayUtils';
-import { snapIndicesToBlocks, carriesConditionProbe, hasConditionFields, skippedRowMask } from '../utils/conditionalBlocks';
+import { snapIndicesToBlocks, carriesConditionProbe, hasConditionFields, skippedRowMask, isStructuralRow } from '../utils/conditionalBlocks';
 import { uiZoom } from '../utils/zoomSpace';
 // Deferred: already rendered conditionally, but a static import pulls the whole Lexical editor
 // stack and emoji-picker-react (~300 KB minified) into the startup chunk for a dialog most sessions
@@ -81,8 +81,9 @@ const blockColor = (level: number): string =>
   BLOCK_LEVEL_COLORS[((level % BLOCK_LEVEL_COLORS.length) + BLOCK_LEVEL_COLORS.length) % BLOCK_LEVEL_COLORS.length];
 
 // BLOCK_OPENERS / STRUCTURAL_TYPES lived here for the row menu's "Go to <pair>" and went with it
-// on 2026-09-16 — nothing else asked either question (the rails derive their own shape from
-// blockInfo). They come back the moment Select block lands, which needs exactly this pair.
+// on 2026-09-16. Select block, which replaced it, needs neither: it asks conditionalBlocks'
+// isStructuralRow and then hands the row to snapSelectionToBlocks, which already knows how to
+// walk from ANY marker to its block's two ends. One copy of that knowledge, in the pure module.
 
 export function ActionIcon({ actionType, size = 12 }: { actionType: string; size?: number }) {
   // ShieldCheck (verify-or-fail) before the generic Browser→Globe so Assert reads distinctly.
@@ -3158,10 +3159,50 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
             Edit
           </button>
 
-          {/* "Go to <pair>" lived here until 2026-09-16 and was REMOVED, not moved: the block
-              rail already draws the pair on screen (and lights it via data-lit-sel), so the entry
-              spent a permanent slot restating what the grid shows. What structural rows actually
-              need is to ACT on the whole block — that is Select block's job, not a jump's. */}
+          {/* Select block — the structural row's type slot, and what replaced "Go to <pair>" on
+              2026-09-16. The jump restated what the rail already draws; this hands the block to
+              the BULK BAR, which is where skip / move / duplicate live. Until now Delete was the
+              only operation that understood a block at all (via the same snap), so "disable this
+              whole If" meant dragging a range by hand.
+
+              It selects exactly what snapSelectionToBlocks would take, because it IS that call —
+              not a reimplementation of it. That makes "what Select block gives you" and "what the
+              block operations act on" the same sentence rather than two that happen to agree.
+              From any marker the snap walks to the INNERMOST enclosing pair, so an ElseIf or an
+              Else selects its whole If…EndIf, and a nested If selects itself, not its parent.
+
+              Hidden when the snap does not actually widen: a hand-edited orphan EndIf has no
+              entry in closerOf, so the call returns the row alone — offering "Select block" there
+              would select one row and call it a block. */}
+          {(() => {
+            const row = actions[contextMenu.rowIndex];
+            if (!row || !isStructuralRow(row.actionType)) return null;
+            const block = snapSelectionToBlocks([contextMenu.rowIndex]);
+            if (block.length < 2) return null;
+            return (
+              <button
+                onMouseEnter={() => setActiveSubmenu(null)}
+                onClick={() => {
+                  setSelectedIndices(new Set(block));
+                  // The keyboard cursor follows the opener: handleGridKeyDown reads kbCursorRef
+                  // first, so leaving it behind would make the next Arrow key jump the selection
+                  // back to wherever the user last clicked. Same rule the old jump entry followed.
+                  lastClickedIndex.current = block[0];
+                  kbCursorRef.current = block[0];
+                  showToast(tt(`Selected ${block.length} row(s)`, `${block.length} linha(s) selecionada(s)`), 'success');
+                  closeContextMenu();
+                }}
+                data-tip={tt('Selects the whole block, both markers included',
+                             'Seleciona o bloco inteiro, com os dois marcadores')}
+                className="menu-item text-text-primary"
+              >
+                {/* Brackets: the caps the rail already draws at a block's two ends (2.28.0), so
+                    the glyph names the thing the user is looking at. */}
+                <Brackets size={13} className="text-text-tertiary" />
+                Select block
+              </button>
+            );
+          })()}
 
           {/* Pick from screen — click rows only, same gate as the sheet's own Pick button
               (isClickHalf, DoubleClick included). Starts the SAME native pick the sheet

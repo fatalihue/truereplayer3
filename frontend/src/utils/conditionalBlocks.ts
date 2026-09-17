@@ -6,6 +6,13 @@ import type { ActionItem } from '../bridge/messageTypes';
 // whole loop along, and deleting one is a granular edit.
 const STRUCTURAL = new Set(['If', 'ElseIf', 'Else', 'EndIf', 'While', 'ForEachRow', 'EndLoop']);
 
+/** Is this row a block marker of either family? Exported so callers ask THIS set rather than
+ *  keeping a second copy — the grid had one verbatim until 2026-09-16, which is one edit away
+ *  from the two disagreeing about a keyword the snap below already honours. */
+export function isStructuralRow(actionType: string | null | undefined): boolean {
+  return !!actionType && STRUCTURAL.has(actionType);
+}
+
 // Stack-built map of each opener row → its matching closer row, across BOTH families with a
 // TYPED stack: EndIf only closes an If, EndLoop only closes a While/ForEachRow — the kind
 // check is what keeps a crossed hand-edited pair ("If, While, EndIf, EndLoop") from pairing
