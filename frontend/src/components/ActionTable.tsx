@@ -6,7 +6,7 @@ import type { CollisionDetection, DragStartEvent, DragEndEvent } from '@dnd-kit/
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { CSS } from '@dnd-kit/utilities';
-import { Mouse, MousePointerClick, MousePointer2, Keyboard, ArrowUp, ArrowDown, Zap, Type, Trash2, ChevronRight, ChevronDown, ChevronsDownUp, ChevronsUpDown, Plus, Pencil, ScanSearch, Pipette, Globe, CheckCheck, Check, Code2, Files, Hourglass, Repeat2, ExternalLink, Crosshair, Link, GripVertical, Timer, GitBranch, ArrowRightLeft, Combine, Split, MoreHorizontal, Focus, Braces, AppWindow, Clipboard, ClipboardCopy, EyeOff, RotateCcw, Dice5, Cpu, FileCheck, Clock, ShieldCheck, CircleStop, CornerDownLeft, IterationCw, ChevronUp, ArrowRightFromLine, SkipForward, Table2, ArrowUpFromDot } from 'lucide-react';
+import { Mouse, MousePointerClick, MousePointer2, Keyboard, ArrowUp, ArrowDown, Zap, Type, Trash2, ChevronRight, ChevronDown, ChevronsDownUp, ChevronsUpDown, Plus, Pencil, ScanSearch, Pipette, Globe, CheckCheck, Check, Code2, Files, Hourglass, Repeat2, ExternalLink, Crosshair, Link, GripVertical, Timer, GitBranch, ArrowRightLeft, Split, MoreHorizontal, Focus, Braces, AppWindow, Clipboard, ClipboardCopy, EyeOff, RotateCcw, Dice5, Cpu, FileCheck, Clock, ShieldCheck, CircleStop, CornerDownLeft, IterationCw, ChevronUp, ArrowRightFromLine, SkipForward, Table2 } from 'lucide-react';
 import { canCollapse, canExpand, expandKeystroke } from '../utils/keyRepeat';
 import type { ActionItem } from '../bridge/messageTypes';
 import { useAppState } from '../state/AppStateContext';
@@ -17,7 +17,7 @@ import { useTt, useLanguage } from '../state/LanguageContext';
 import type { Language } from '../state/LanguageContext';
 import { useSelectionRef } from '../state/SelectionContext';
 import { useToast } from '../state/ToastContext';
-import { getDisplayKey, getDisplayX, getDisplayY, getActionTypeColors, formatKeyCombo, formatMs, isCombinedClick, isClickHold } from '../utils/displayUtils';
+import { getDisplayKey, getDisplayX, getDisplayY, getActionTypeColors, formatKeyCombo, formatMs, isCombinedClick, isClickHold, isCoordinateClick, isFocusClickEligible } from '../utils/displayUtils';
 import { snapIndicesToBlocks, carriesConditionProbe, hasConditionFields, skippedRowMask } from '../utils/conditionalBlocks';
 import { uiZoom } from '../utils/zoomSpace';
 // Deferred: already rendered conditionally, but a static import pulls the whole Lexical editor
@@ -80,10 +80,9 @@ const BLOCK_LEVEL_COLORS = [
 const blockColor = (level: number): string =>
   BLOCK_LEVEL_COLORS[((level % BLOCK_LEVEL_COLORS.length) + BLOCK_LEVEL_COLORS.length) % BLOCK_LEVEL_COLORS.length];
 
-// The rows that open, branch or close a block — both families. The two ENDS are split out
-// because only they cap a rail (an ElseIf / Else sits mid-block and its rail runs through).
-const BLOCK_OPENERS = new Set(['If', 'While', 'ForEachRow']);
-const STRUCTURAL_TYPES = new Set(['If', 'ElseIf', 'Else', 'EndIf', 'While', 'ForEachRow', 'EndLoop']);
+// BLOCK_OPENERS / STRUCTURAL_TYPES lived here for the row menu's "Go to <pair>" and went with it
+// on 2026-09-16 — nothing else asked either question (the rails derive their own shape from
+// blockInfo). They come back the moment Select block lands, which needs exactly this pair.
 
 export function ActionIcon({ actionType, size = 12 }: { actionType: string; size?: number }) {
   // ShieldCheck (verify-or-fail) before the generic Browser→Globe so Assert reads distinctly.
@@ -2499,7 +2498,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                           target. Only renders when the per-action flag is on, so off-rows stay
                           clean. Toggled from the row context menu ("Focus click"). */}
                       {action.isFocusClick
-                        && /^(Left|Right|Middle)Click$/.test(action.actionType) && (
+                        && isFocusClickEligible(action.actionType) && (
                           <Focus size={11} className="ml-0.5 opacity-80" />
                         )}
                       {/* At-cursor indicator — same treatment as the focus-click icon (inside the
@@ -3154,40 +3153,10 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
             Edit
           </button>
 
-          {/* Go to the matching marker — structural rows with a pair. An opener jumps to its
-              closer; an else / else if / closer jumps to its opener. Scrolls there and selects
-              it, which also lights the block's rail (data-lit-sel). The pair is already in
-              blockInfo; this just gives it a door for long blocks. */}
-          {(() => {
-            const row = actions[contextMenu.rowIndex];
-            if (!row || !STRUCTURAL_TYPES.has(row.actionType)) return null;
-            const owner = blockInfo.blockOpenerOf[contextMenu.rowIndex];
-            if (owner === null) return null;
-            const target = BLOCK_OPENERS.has(row.actionType) ? blockInfo.closerOf.get(owner) : owner;
-            if (target === undefined) return null;
-            const label = BLOCK_OPENERS.has(row.actionType)
-              ? `Go to ${actionPillLabel(actions[target])} (row ${target + 1})`
-              : `Go to ${actionPillLabel(actions[owner])} (row ${owner + 1})`;
-            return (
-              <button
-                onMouseEnter={() => setActiveSubmenu(null)}
-                onClick={() => {
-                  scrollRowIntoView(target);
-                  setSelectedIndices(new Set([target]));
-                  lastClickedIndex.current = target;
-                  // The keyboard cursor has to follow too. handleGridKeyDown reads kbCursorRef
-                  // first, so leaving it on the marker meant the next Arrow key jumped the
-                  // selection back next to the row the user had just navigated AWAY from.
-                  kbCursorRef.current = target;
-                  closeContextMenu();
-                }}
-                className="menu-item text-text-primary"
-              >
-                <ArrowUpFromDot size={13} className="text-text-tertiary" />
-                {label}
-              </button>
-            );
-          })()}
+          {/* "Go to <pair>" lived here until 2026-09-16 and was REMOVED, not moved: the block
+              rail already draws the pair on screen (and lights it via data-lit-sel), so the entry
+              spent a permanent slot restating what the grid shows. What structural rows actually
+              need is to ACT on the whole block — that is Select block's job, not a jump's. */}
 
           {/* Pick from screen — click rows only, same gate as the sheet's own Pick button
               (isClickHalf, DoubleClick included). Starts the SAME native pick the sheet
@@ -3198,7 +3167,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
               Sits right under Edit per user request. */}
           {(() => {
             const row = actions[contextMenu.rowIndex];
-            if (!row || !/^((?:Left|Right|Middle|Double|Triple)Click)(Down|Up|Hold)?$/.test(row.actionType ?? '')) return null;
+            if (!row || !isCoordinateClick(row.actionType ?? '')) return null;
             // An at-cursor row has nowhere to put a picked point — the replay resolves its own.
             // Offering the pick would run the whole overlay round-trip and write nothing.
             if (row.atCursor) return null;
@@ -3239,24 +3208,13 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
             );
           })()}
 
-          {/* Reset row position — data-loop CURSOR (Model B). Profile-level, not
-              row-specific: shown on any row's menu, but only while the cursor is
-              actually in play (a data table with rows AND "loop over data" OFF, so
-              each run advances one row). Mirrors Reset cycle position — clears the
-              session cursor so the next run starts at the first row again. */}
-          {dataTable.rows.length > 0 && !dataTable.loopOverData && (
-            <button
-              onMouseEnter={() => setActiveSubmenu(null)}
-              onClick={() => {
-                send({ type: 'actions:resetRow', payload: {} });
-                closeContextMenu();
-              }}
-              className="menu-item text-text-primary"
-            >
-              <RotateCcw size={13} className="text-text-tertiary" />
-              Reset row position
-            </button>
-          )}
+          {/* "Reset row position" (the data-loop cursor) lived here until 2026-09-16 and was
+              REMOVED as redundant. It read as a sibling of Reset cycle position above, but the two
+              are not siblings at all: that one takes an `index` and belongs to the row you clicked,
+              this one was PROFILE-level and therefore rendered on EVERY row's menu. And the Data
+              panel is already its door, with strictly more reach — clicking a row number there
+              parks the cursor on ANY row (actions:resetRow with a `row`), while this sent `{}`,
+              which the backend reads as "back to row 1". A worse copy of a visible control. */}
 
           {/* Type-specific quick action — only ONE of these renders, based on the
               right-clicked row's actionType. Keeps the menu height predictable
@@ -3265,7 +3223,12 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
             const row = actions[contextMenu.rowIndex];
             if (!row) return null;
             const onMouse = () => setActiveSubmenu(null);
-            const cls = "w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors";
+            // `menu-item text-text-primary`, like every other entry in this menu. These four
+            // used to carry a hand-rolled copy of the utility's tokens, and it was not a copy:
+            // `py-1.5` with no min-height renders 28 px, while `menu-item` pins 32 px. So the
+            // one slot whose occupant changes with the row was also the one slot 4 px shorter
+            // than its neighbours — the menu twitched depending on what you right-clicked.
+            const cls = "menu-item text-text-primary";
 
             // Entries are gated on actionType ONLY (no truthy check on row.key /
             // row.x / row.y). Earlier the gate also required the payload to be
@@ -3400,7 +3363,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
             onMouseEnter={() => setActiveSubmenu('more')}
             onMouseLeave={() => setActiveSubmenu(null)}
           >
-            <button className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors">
+            <button className="menu-item justify-between text-text-primary">
               <span className="flex items-center gap-2.5">
                 <MoreHorizontal size={13} className="text-text-tertiary" />
                 More
@@ -3419,7 +3382,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                       see the type-specific slot's note on why that gate misfired). */}
                   {(() => {
                     const row = actions[contextMenu.rowIndex];
-                    if (!row || !/^(Left|Right|Middle)Click(Down|Up|Hold)?$/.test(row.actionType ?? '')) return null;
+                    if (!row || !isCoordinateClick(row.actionType ?? '')) return null;
                     // Nothing worth copying off an at-cursor row: its stored x/y is dormant, so
                     // the clipboard would carry a point the run never uses.
                     if (row.atCursor) return null;
@@ -3472,11 +3435,11 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                       inside the flyout that handler would close the very submenu they live in. */}
                   {(() => {
                     const row = actions[contextMenu.rowIndex];
-                    if (!row || !/^(Left|Right|Middle)Click$/.test(row.actionType ?? '')) return null;
+                    if (!row || !isFocusClickEligible(row.actionType ?? '')) return null;
                     const eff = selectedIndices.size > 0 && selectedIndices.has(contextMenu.rowIndex)
                       ? Array.from(selectedIndices).sort((a, b) => a - b)
                       : [contextMenu.rowIndex];
-                    const clickIdx = eff.filter(i => /^(Left|Right|Middle)Click$/.test(actions[i]?.actionType ?? ''));
+                    const clickIdx = eff.filter(i => isFocusClickEligible(actions[i]?.actionType ?? ''));
                     const allOn = clickIdx.length > 0 && clickIdx.every(i => actions[i]?.isFocusClick);
                     return (
                       <button
@@ -3484,7 +3447,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                           send({ type: 'actions:toggleFocusClick', payload: { indices: clickIdx } });
                           closeContextMenu();
                         }}
-                        className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+                        className="menu-item justify-between text-text-primary"
                       >
                         <span className="flex items-center gap-2.5">
                           <Focus size={13} className="text-text-tertiary" />
@@ -3528,25 +3491,15 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                     );
                   })()}
 
-                  <div className="my-1 border-t border-border-subtle" />
-
-                  {/* Convert all actions between paired (Down/Up) and combined (Keystroke /
-                      HoldKey / Click) forms. Whole-profile + undoable — the on-demand
-                      counterpart to the record-time "Combined Actions" toggle. */}
-                  <button
-                    onClick={() => { send({ type: 'actions:convertMode', payload: { direction: 'toCombined' } }); setSelectedIndices(new Set<number>()); closeContextMenu(); }}
-                    className="menu-item text-text-primary"
-                  >
-                    <Combine size={13} className="text-text-tertiary" />
-                    Convert all to Combined
-                  </button>
-                  <button
-                    onClick={() => { send({ type: 'actions:convertMode', payload: { direction: 'toPaired' } }); setSelectedIndices(new Set<number>()); closeContextMenu(); }}
-                    className="menu-item text-text-primary"
-                  >
-                    <Split size={13} className="text-text-tertiary" />
-                    Convert all to Paired
-                  </button>
+                  {/* "Convert all to Combined / Paired" lived here until 2026-09-16 and now exist
+                      ONLY in the command palette, which is where they always also lived — same
+                      message, same payload. Two reasons, and the second is the real one:
+                      they were a duplicate door (the palette's own SCOPE rule earns an entry by
+                      being "buried in a nested right-click menu" — this WAS that menu), and they
+                      are WHOLE-PROFILE operations sitting in a menu that is otherwise entirely
+                      about the row under the cursor. Right-clicking row 7 rewrote all 400 rows and
+                      cleared the selection. The per-row conversion that belongs here is a separate
+                      piece of work (Change click type ▸), not this one wearing a row's clothes. */}
 
                   <div className="my-1 border-t border-border-subtle" />
 
@@ -3569,11 +3522,10 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                         <button
                           onClick={collapseOk ? handleCollapseToRepeat : undefined}
                           disabled={!collapseOk}
-                          className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-xs transition-colors ${
-                            collapseOk
-                              ? 'text-text-primary hover:bg-bg-elevated cursor-pointer'
-                              : 'text-text-disabled cursor-default'
-                          }`}
+                          // menu-item already owns the disabled look (text-disabled + default
+                          // cursor, hover only :not(:disabled)), so the enabled half is all that
+                          // is left to say here.
+                          className={`menu-item ${collapseOk ? 'text-text-primary cursor-pointer' : ''}`}
                         >
                           <ChevronsDownUp size={13} className={collapseOk ? 'text-text-tertiary' : 'text-text-disabled'} />
                           Collapse to × N
@@ -3581,11 +3533,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                         <button
                           onClick={expandOk ? handleExpandRepeat : undefined}
                           disabled={!expandOk}
-                          className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-xs transition-colors ${
-                            expandOk
-                              ? 'text-text-primary hover:bg-bg-elevated cursor-pointer'
-                              : 'text-text-disabled cursor-default'
-                          }`}
+                          className={`menu-item ${expandOk ? 'text-text-primary cursor-pointer' : ''}`}
                         >
                           <ChevronsUpDown size={13} className={expandOk ? 'text-text-tertiary' : 'text-text-disabled'} />
                           Expand × N
@@ -3616,7 +3564,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                          'Apaga só este braço Else If')
                     : undefined
             }
-            className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-recording hover:bg-bg-elevated transition-colors"
+            className="menu-item justify-between text-recording"
           >
             <span className="flex items-center gap-2.5">
               <Trash2 size={13} />

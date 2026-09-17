@@ -89,6 +89,35 @@ export const isCombinedClick = (actionType: string): boolean =>
 export const isClickHold = (actionType: string): boolean =>
   actionType === 'LeftClickHold' || actionType === 'RightClickHold' || actionType === 'MiddleClickHold';
 
+// The combined set PLUS the six paired halves — every click row that OWNS a coordinate.
+// Mirrors C# ActionItem.IsCoordinateClickType, and asks that predicate's question: "does
+// moving this row's X/Y move where it clicks?"
+const COORDINATE_CLICK_TYPES = new Set([
+  ...COMBINED_CLICK_TYPES,
+  'LeftClickDown', 'LeftClickUp',
+  'RightClickDown', 'RightClickUp',
+  'MiddleClickDown', 'MiddleClickUp',
+]);
+
+/** Mirrors C# ActionItem.IsCoordinateClickType. Exists because the two row-menu entries that
+ *  act on a click's POINT — Pick from screen and Copy Coordinates — each carried their own
+ *  regex, and the regexes disagreed: Copy's `^(Left|Right|Middle)Click(Down|Up|Hold)?$` left
+ *  Double/Triple out, so a DoubleClick row offered Pick and refused Copy. Exactly the drift
+ *  the note on isCombinedClick warns about, one predicate later. A Set rather than a regex
+ *  for the same reason the sets above are: it cannot match a type that does not exist
+ *  (the old pattern happily accepted "DoubleClickDown"). */
+export const isCoordinateClick = (actionType: string): boolean =>
+  COORDINATE_CLICK_TYPES.has(actionType);
+
+/** The three plain combined clicks, and the ONLY rows the engine honours IsFocusClick on
+ *  (ActionExecution's Double/Triple and *ClickHold cases ignore the flag on purpose — a focus
+ *  tap after a multi-click or a hold would corrupt the gesture). Named here because the grid
+ *  carried this same regex in THREE places: the pill indicator, the menu entry's gate, and the
+ *  selection filter behind it. Deliberately NOT folded into isCoordinateClick — it answers a
+ *  different question and has to stay free to diverge. */
+export const isFocusClickEligible = (actionType: string): boolean =>
+  actionType === 'LeftClick' || actionType === 'RightClick' || actionType === 'MiddleClick';
+
 // An at-cursor click HAS an x/y on disk, but the replay resolves its point from the live mouse
 // and never reads them — showing the stored numbers would be a phantom coordinate, the exact
 // thing NO_COORD_TYPES exists to prevent. This half is per-ROW, which is why it can't live in
