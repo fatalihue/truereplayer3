@@ -1338,6 +1338,14 @@ namespace TrueReplayer.Services
         // estacionamento e (-32000,-32000), e a folga cobre variacao entre versoes do Windows.
         private const int MinimizedParkedLeft = -31000;
 
+        // Alvos cuja ancora ja foi denunciada como ambigua. Chave por DESCRICAO, nao por handle:
+        // o que interessa e a configuracao, e as janelas vao e vem. Nunca limpo — sao poucas
+        // strings e o aviso deve sair uma vez por sessao, nao uma vez por janela reaberta.
+        private static readonly HashSet<string> _ambiguousAnchorWarned = new(StringComparer.OrdinalIgnoreCase);
+
+        private static string DescribeTarget(Models.WindowTarget t) =>
+            !string.IsNullOrWhiteSpace(t.ProcessName) ? t.ProcessName! : (t.WindowTitle ?? "?");
+
         private static bool TryAnchorOffset(Models.WindowTarget? target,
                                             System.Text.RegularExpressions.Regex? titleRegex,
                                             out int dx, out int dy)
@@ -1345,12 +1353,27 @@ namespace TrueReplayer.Services
             dx = 0;
             dy = 0;
             if (target == null) return true;
-            var hwnd = Helpers.WindowMatcher.FindWindow(target, titleRegex);
+            // FindWindowStable, nao FindWindow: aquele para no PRIMEIRO casamento e EnumWindows anda
+            // do topo da ordem Z para baixo, entao com duas janelas do mesmo processo a origem
+            // trocava a cada clique do usuario entre elas — o ponto amostrado andava a distancia
+            // entre as duas, a condicao ficava falsa em silencio, e voltava sozinha quando o foco
+            // voltava. Uma ancora so por PROCESSO e legal e facil de criar (o dropdown de processos
+            // preenche so esse campo), entao o caso nao e exotico. Aqui a pergunta nao e "existe
+            // alguma?" e sim "ONDE ela esta", e essas duas perguntas nao aceitam o mesmo criterio.
+            var hwnd = Helpers.WindowMatcher.FindWindowStable(target, titleRegex, out int matches);
             if (hwnd == IntPtr.Zero) return false;
+            // Uma vez por vigia, nunca por tick: a 4 Hz isto viraria enxurrada de log, que e a
+            // mesma razao pela qual a ausencia de janela falha calada.
+            if (matches > 1 && _ambiguousAnchorWarned.Add(DescribeTarget(target)))
+            {
+                DiagnosticLog.Warn($"[Automation] A ancora casa com {matches} janelas de {DescribeTarget(target)}. "
+                    + "A origem foi fixada numa delas; preencha o titulo da janela para escolher.");
+            }
             if (!NativeMethods.GetWindowRect(hwnd, out var rect)) return false;
             // Rect de estacionamento de janela MINIMIZADA (-32000,-32000): passa por
             // IsWindowVisible e levaria a amostrar fora da tela. Mesmo teste que
-            // TryResolveRelativeOffset faz do lado das acoes.
+            // TryResolveRelativeOffset faz do lado das acoes — que ate 17-09 NAO fazia: la o teste
+            // existia mas so gateava um aviso, e o retorno usava o rect estacionado assim mesmo.
             if (rect.Left <= MinimizedParkedLeft || rect.Top <= MinimizedParkedLeft) return false;
             dx = rect.Left;
             dy = rect.Top;

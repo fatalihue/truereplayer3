@@ -649,7 +649,13 @@ namespace TrueReplayer.Models
 
         private static readonly HashSet<string> NoCoordinateActionTypes = new(StringComparer.OrdinalIgnoreCase)
         {
-            "KeyDown", "KeyUp", "Keystroke", "HoldKey", "ScrollUp", "ScrollDown", "SendText", "WaitImage",
+            "KeyDown", "KeyUp", "Keystroke", "HoldKey", "ScrollUp", "ScrollDown", "SendText",
+            // WaitImage and WaitPixelColor both store their probe point in their OWN fields
+            // (SearchRegion / PixelX,PixelY) and leave X/Y at the default. WaitPixelColor was in
+            // both frontend lists and missing from this one, so a standalone WaitPixelColor row
+            // exported a phantom 0,0 in Copy-as-Table while the grid beside it showed nothing —
+            // the exact drift the warning below predicts.
+            "WaitImage", "WaitPixelColor",
             "BrowserClick", "BrowserRightClick", "BrowserType", "BrowserWaitElement", "BrowserNavigate",
             "BrowserSelectOption", "BrowserAssert",
             "RunProfile", "Pause", "SetVariable", "CopyToSlot", "ActivateWindow",
@@ -658,8 +664,10 @@ namespace TrueReplayer.Models
             // DisplayX/Y); Else/EndIf are pure markers with no coordinate semantics at all.
             // Assert is a leaf condition row in the same boat: it checks state, it never
             // clicks anywhere.
-            // (This is the THIRD no-coord list — SheetPanel.tsx and displayUtils.ts each keep
-            // their own; a type missing here shows phantom 0,0 in the Copy-as-Table export.)
+            // (This is the SECOND no-coord list, and the last one that can drift: the two
+            // frontend copies were folded into displayUtils.NO_COORD_TYPES, which SheetPanel now
+            // imports. A type missing HERE shows phantom 0,0 in the Copy-as-Table export while
+            // the grid beside it shows nothing — add to both sides in the same commit.)
             "If", "ElseIf", "Else", "EndIf", "Assert",
             // Flow leaves — Stop ends the run, Return ends the current pass. They decide,
             // they never touch the screen. Same third-list warning as above applies.

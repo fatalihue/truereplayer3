@@ -22,7 +22,15 @@ const DISPLAY_KEY_MAP: Record<string, string> = {
   'Next': 'PageDown', 'Prior': 'PageUp',
 };
 
-const NO_COORD_TYPES = new Set(['Assert', 'KeyDown', 'KeyUp', 'Keystroke', 'HoldKey', 'ScrollUp', 'ScrollDown', 'SendText', 'SetVariable', 'CopyToSlot', 'ActivateWindow', 'WaitImage', 'WaitPixelColor', 'BrowserClick', 'BrowserRightClick', 'BrowserType', 'BrowserWaitElement', 'BrowserNavigate', 'BrowserSelectOption', 'BrowserAssert', 'RunProfile', 'Pause', 'If', 'ElseIf', 'Else', 'EndIf', 'Stop', 'Return', 'While', 'EndLoop', 'BreakLoop', 'ContinueLoop', 'ForEachRow']);
+/**
+ * Types that carry no coordinate of their OWN — a row of one of these shows a blank X/Y instead
+ * of the 0,0 its record happens to hold. EXPORTED because the Sheet needs the same answer to
+ * decide whether to draw the Position controls, and it used to keep a byte-identical copy of this
+ * list: two sets, 33 members each, that agreed only by hand. `ActionItem.NoCoordinateActionTypes`
+ * on the C# side is the remaining mirror and cannot be shared across the language boundary — a
+ * type added here belongs there in the same commit, and WaitPixelColor is the one that proved it.
+ */
+export const NO_COORD_TYPES = new Set(['Assert', 'KeyDown', 'KeyUp', 'Keystroke', 'HoldKey', 'ScrollUp', 'ScrollDown', 'SendText', 'SetVariable', 'CopyToSlot', 'ActivateWindow', 'WaitImage', 'WaitPixelColor', 'BrowserClick', 'BrowserRightClick', 'BrowserType', 'BrowserWaitElement', 'BrowserNavigate', 'BrowserSelectOption', 'BrowserAssert', 'RunProfile', 'Pause', 'If', 'ElseIf', 'Else', 'EndIf', 'Stop', 'Return', 'While', 'EndLoop', 'BreakLoop', 'ContinueLoop', 'ForEachRow']);
 
 export function getDisplayKey(key: string): string {
   if (!key) return '';

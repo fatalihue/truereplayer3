@@ -27,7 +27,7 @@ import { ImageCropper } from './ImageCropper';
 // handle travels through the `apiRef` prop.
 const LexicalTokenEditor = lazy(() => import('./lexical/LexicalTokenEditor').then(m => ({ default: m.LexicalTokenEditor })));
 import type { LexicalEditorHandle } from './lexical/LexicalTokenEditor';
-import { getDisplayKey, isClickHold, CLICK_FAMILY_TYPES, clickFormOf } from '../utils/displayUtils';
+import { getDisplayKey, isClickHold, CLICK_FAMILY_TYPES, clickFormOf, NO_COORD_TYPES } from '../utils/displayUtils';
 import { MIN_HOLD_MS, MAX_HOLD_MS, DEFAULT_HOLD_MS, DEFAULT_CLICK_GAP_MS, clickDefaultGap, rowDwellMs } from '../utils/actionCost';
 
 // How often the open row editor re-stamps its unsaved-work claim with AutomationGuard. Must stay
@@ -114,9 +114,10 @@ const familyTypes: Record<ActionFamily, { value: string; label: string }[]> = {
   ],
 };
 
-// NOTE this is the SHEET's copy; displayUtils has its own for the grid's Details column. Both
-// must list a coordinate-less action or it grows phantom X/Y fields in one surface only.
-const noCoordTypes = new Set(['Assert', 'KeyDown', 'KeyUp', 'Keystroke', 'HoldKey', 'RunProfile', 'ScrollUp', 'ScrollDown', 'SendText', 'SetVariable', 'CopyToSlot', 'ActivateWindow', 'WaitImage', 'WaitPixelColor', 'BrowserClick', 'BrowserRightClick', 'BrowserType', 'BrowserWaitElement', 'BrowserNavigate', 'BrowserSelectOption', 'BrowserAssert', 'Pause', 'If', 'ElseIf', 'Else', 'EndIf', 'Stop', 'Return', 'While', 'EndLoop', 'BreakLoop', 'ContinueLoop', 'ForEachRow']);
+// The grid's set, not a copy of it. This used to be the SHEET's own — 33 members, byte-identical
+// to displayUtils' apart from where RunProfile sat in the literal, kept in step by hand and
+// warned about in a comment instead of being shared. One import removes the chance to drift.
+const noCoordTypes = NO_COORD_TYPES;
 
 // One normalizer for the Assert on-fail persistence pair: the default Halt stays ''
 // (null on disk), Continue/StopReplay persist verbatim — mirrors the bridge's
@@ -985,6 +986,17 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     // is still there. The panel stays open and the same Save works the moment the run ends.
     if (refuseDuringRun()) return;
 
+    // Every field edit below is COLLECTED and sent as one actions:editMany, so a Save is one undo
+    // entry. It used to be up to 78 separate actions:edit, one per changed field, and the bridge
+    // snapshots per call — so changing X and Y and pressing Save cost two undo entries, and a
+    // single Ctrl+Z left the row at the NEW x with the OLD y: a point that existed at no moment of
+    // the edit, which the next replay then clicked. An ActivateWindow Save fired about fifteen,
+    // burning fifteen of the fifty history slots on one click and needing fifteen Ctrl+Z to walk
+    // back. Order inside the batch is preserved and still matters — actionType goes first so the
+    // later fields land on the right shape, exactly as the separate sends relied on.
+    const pendingEdits: { field: string; value: string }[] = [];
+    const edit = (field: string, value: string) => { pendingEdits.push({ field, value }); };
+
     // Conditional flags re-derived inside the callback because the outer
     // `const isIf = ...` declarations sit FURTHER DOWN the component body
     // (after this useCallback). TypeScript flags forward references as
@@ -998,12 +1010,12 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     const _isIfPixel = _hasCondition && action.conditionType === 'PixelColorMatch';
 
     if (actionType !== action.actionType) {
-      send({ type: 'actions:edit', payload: { index: actionIndex, field: 'actionType', value: actionType } });
+      edit('actionType', actionType);
     }
     // #1 — Build effective key from textMatch + mode if textMatch is set, else use raw selector
     const effectiveKey = textMatch.trim() ? buildTextSelector(textMode, textMatch.trim()) : key;
     if (effectiveKey !== action.key) {
-      send({ type: 'actions:edit', payload: { index: actionIndex, field: 'key', value: effectiveKey } });
+      edit('key', effectiveKey);
     }
 
     // Selector-fallback persistence (browser element actions). A pick during THIS edit
@@ -1018,26 +1030,26 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       if (pickedThisSession && alternatives.length > 1) {
         const nextJson = JSON.stringify(alternatives);
         if (nextJson !== JSON.stringify(action.selectorAlternatives ?? null)) {
-          send({ type: 'actions:edit', payload: { index: actionIndex, field: 'selectorAlternatives', value: nextJson } });
+          edit('selectorAlternatives', nextJson);
         }
       } else if (effectiveKey !== action.key && (action.selectorAlternatives?.length ?? 0) > 0) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'selectorAlternatives', value: '' } });
+        edit('selectorAlternatives', '');
       }
     }
     const newX = parseInt(x, 10);
     if (!isNaN(newX) && newX !== action.x) {
-      send({ type: 'actions:edit', payload: { index: actionIndex, field: 'x', value: String(newX) } });
+      edit('x', String(newX));
     }
     const newY = parseInt(y, 10);
     if (!isNaN(newY) && newY !== action.y) {
-      send({ type: 'actions:edit', payload: { index: actionIndex, field: 'y', value: String(newY) } });
+      edit('y', String(newY));
     }
     const newDelay = parseInt(delay, 10);
     if (!isNaN(newDelay) && newDelay !== action.delay) {
-      send({ type: 'actions:edit', payload: { index: actionIndex, field: 'delay', value: String(newDelay) } });
+      edit('delay', String(newDelay));
     }
     if (comment !== (action.comment || '')) {
-      send({ type: 'actions:edit', payload: { index: actionIndex, field: 'comment', value: comment } });
+      edit('comment', comment);
     }
 
     // Click × N — persist Times/Gap/Gap-jitter (plus the at-cursor flag) for the combined clicks
@@ -1050,15 +1062,15 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     if (COMBINED_CLICKS.has(actionType)) {
       const effRepeat = clampRepeatCount(repeatCount);
       if (effRepeat !== (action.repeatCount ?? 1)) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'repeat', value: String(effRepeat) } });
+        edit('repeat', String(effRepeat));
       }
       const effGap = clampRepeatGap(repeatGapMs);
       if (effGap !== (action.repeatDelayMs ?? clickDefaultGap(actionType))) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'repeatDelayMs', value: String(effGap) } });
+        edit('repeatDelayMs', String(effGap));
       }
       const effJitter = jitterOn && effRepeat > 1 ? clampRepeatJitter(jitterPct) : 0;
       if (effJitter !== (action.repeatDelayJitterPct ?? 0)) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'repeatDelayJitterPct', value: String(effJitter) } });
+        edit('repeatDelayJitterPct', String(effJitter));
       }
       // Position jitter collapses to 0 under at-cursor as well: the engine ignores it there (a
       // jittered cursor point would feed its own offset back on the next cycle — a random walk),
@@ -1066,10 +1078,10 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       // setting that does nothing.
       const effPosJitter = posJitterOn && effRepeat > 1 && !atCursor ? clampRepeatPosJitter(posJitterPx) : 0;
       if (effPosJitter !== (action.repeatPositionJitterPx ?? 0)) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'repeatPositionJitterPx', value: String(effPosJitter) } });
+        edit('repeatPositionJitterPx', String(effPosJitter));
       }
       if (atCursor !== (action.atCursor ?? false)) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'atCursor', value: String(atCursor) } });
+        edit('atCursor', String(atCursor));
       }
       // Only the hold family writes the dwell. Gating it here (rather than letting every
       // combined click persist a value) is what keeps a plain click byte-identical to a
@@ -1085,7 +1097,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       if (isClickHold(actionType)) {
         const effHold = clampHoldMs(holdMs);
         if (effHold !== rowDwellMs(action)) {
-          send({ type: 'actions:edit', payload: { index: actionIndex, field: 'holdDurationMs', value: String(effHold) } });
+          edit('holdDurationMs', String(effHold));
         }
       }
     }
@@ -1097,7 +1109,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       if (actionType === 'WaitImage') {
         const newTimeoutMs = Math.max(1000, parseFloat(timeout) || 5000);
         if (newTimeoutMs !== (action.timeout || 5000)) {
-          send({ type: 'actions:edit', payload: { index: actionIndex, field: 'timeout', value: String(Math.round(newTimeoutMs)) } });
+          edit('timeout', String(Math.round(newTimeoutMs)));
         }
       }
       const newConfidence = Math.min(100, Math.max(10, parseInt(confidence, 10) || 80)) / 100;
@@ -1107,7 +1119,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       // Strict !== here re-saved an unchanged value whenever the stored fraction wasn't exactly
       // representable at 2 decimals (e.g. 0.8500001), bumping the undo stack for a no-op.
       if (Math.abs(newConfidence - (action.confidence || 0.8)) > 0.005) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'confidence', value: String(newConfidence) } });
+        edit('confidence', String(newConfidence));
       }
       if (actionType === 'WaitImage') {
         // Only "Continue" is persisted explicitly; "StopReplay" is the default and stays null
@@ -1115,13 +1127,13 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
         const persistedTimeoutMode = waitImageOnTimeout === 'Continue' ? 'Continue' : '';
         const currentTimeoutMode = action.waitImageOnTimeout === 'Continue' ? 'Continue' : '';
         if (persistedTimeoutMode !== currentTimeoutMode) {
-          send({ type: 'actions:edit', payload: { index: actionIndex, field: 'waitImageOnTimeout', value: persistedTimeoutMode } });
+          edit('waitImageOnTimeout', persistedTimeoutMode);
         }
         if (!!waitImageInvert !== !!(action.waitImageInvert)) {
-          send({ type: 'actions:edit', payload: { index: actionIndex, field: 'waitImageInvert', value: String(waitImageInvert) } });
+          edit('waitImageInvert', String(waitImageInvert));
         }
         if (!!waitImageClickOnMatch !== !!(action.waitImageClickOnMatch)) {
-          send({ type: 'actions:edit', payload: { index: actionIndex, field: 'waitImageClickOnMatch', value: String(waitImageClickOnMatch) } });
+          edit('waitImageClickOnMatch', String(waitImageClickOnMatch));
         }
       }
       // Search region — serialised as "x,y,w,h" or empty string. Compare against the action's
@@ -1134,7 +1146,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
         ? `${waitImageSearchRegion.x},${waitImageSearchRegion.y},${waitImageSearchRegion.w},${waitImageSearchRegion.h}`
         : '';
       if (newRect !== currentRect) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'waitImageSearchRegion', value: newRect } });
+        edit('waitImageSearchRegion', newRect);
       }
     }
 
@@ -1145,7 +1157,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       if (actionType === 'WaitPixelColor') {
         const newTimeoutMs = Math.max(1000, parseFloat(timeout) || 5000);
         if (newTimeoutMs !== (action.timeout || 5000)) {
-          send({ type: 'actions:edit', payload: { index: actionIndex, field: 'timeout', value: String(Math.round(newTimeoutMs)) } });
+          edit('timeout', String(Math.round(newTimeoutMs)));
         }
       }
       const trimmedX = pixelX.trim();
@@ -1153,10 +1165,10 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       const parsedX = trimmedX === '' ? null : parseInt(trimmedX, 10);
       const parsedY = trimmedY === '' ? null : parseInt(trimmedY, 10);
       if ((parsedX ?? null) !== (action.pixelX ?? null)) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'pixelX', value: parsedX == null ? '' : String(parsedX) } });
+        edit('pixelX', parsedX == null ? '' : String(parsedX));
       }
       if ((parsedY ?? null) !== (action.pixelY ?? null)) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'pixelY', value: parsedY == null ? '' : String(parsedY) } });
+        edit('pixelY', parsedY == null ? '' : String(parsedY));
       }
       // Normalise the colour string on commit: trim, uppercase, ensure leading '#'.
       // Backend stores exactly what we send; keeping it canonical here avoids "#fc5" vs
@@ -1167,23 +1179,23 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
         ? ''
         : (rawColor.startsWith('#') ? rawColor.toUpperCase() : '#' + rawColor.toUpperCase());
       if (normalisedColor !== (action.pixelColor ?? '')) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'pixelColor', value: normalisedColor } });
+        edit('pixelColor', normalisedColor);
       }
       const newTol = Math.max(0, Math.min(255, parseInt(pixelTolerance, 10) || 0));
       if (newTol !== (action.pixelTolerance ?? 0)) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'pixelTolerance', value: String(newTol) } });
+        edit('pixelTolerance', String(newTol));
       }
       if (actionType === 'WaitPixelColor') {
         const persistedPxTimeout = pixelOnTimeout === 'Continue' ? 'Continue' : '';
         const currentPxTimeout = action.pixelOnTimeout === 'Continue' ? 'Continue' : '';
         if (persistedPxTimeout !== currentPxTimeout) {
-          send({ type: 'actions:edit', payload: { index: actionIndex, field: 'pixelOnTimeout', value: persistedPxTimeout } });
+          edit('pixelOnTimeout', persistedPxTimeout);
         }
         if (!!pixelInvert !== !!(action.pixelInvert)) {
-          send({ type: 'actions:edit', payload: { index: actionIndex, field: 'pixelInvert', value: String(pixelInvert) } });
+          edit('pixelInvert', String(pixelInvert));
         }
         if (!!pixelClickOnMatch !== !!(action.pixelClickOnMatch)) {
-          send({ type: 'actions:edit', payload: { index: actionIndex, field: 'pixelClickOnMatch', value: String(pixelClickOnMatch) } });
+          edit('pixelClickOnMatch', String(pixelClickOnMatch));
         }
       }
     }
@@ -1194,11 +1206,11 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     // as a plain boolean.
     if (_hasCondition) {
       if (!!conditionNegate !== !!(action.conditionNegate)) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'conditionNegate', value: String(conditionNegate) } });
+        edit('conditionNegate', String(conditionNegate));
       }
       const ctVal = Math.max(0, parseInt(conditionTimeout, 10) || 0);
       if (ctVal !== (action.conditionTimeout ?? 0)) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'conditionTimeout', value: String(ctVal) } });
+        edit('conditionTimeout', String(ctVal));
       }
       // If/While-only: the Assert editor deliberately doesn't render On Probe Error (its
       // "Halt" makes the probe rethrow, bypassing the assert's own failure policy), so it
@@ -1209,7 +1221,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
         const persistedErr = ifOnProbeError === 'Halt' ? 'Halt' : '';
         const currentErr = action.ifOnProbeError === 'Halt' ? 'Halt' : '';
         if (persistedErr !== currentErr) {
-          send({ type: 'actions:edit', payload: { index: actionIndex, field: 'ifOnProbeError', value: persistedErr } });
+          edit('ifOnProbeError', persistedErr);
         }
       }
       // While iteration ceiling — the trinca's save leg (state + hydrate live above; the
@@ -1217,7 +1229,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       if (actionType === 'While') {
         const lmVal = Math.max(0, parseInt(loopMaxIterations, 10) || 0);
         if (lmVal !== (action.loopMaxIterations ?? 0)) {
-          send({ type: 'actions:edit', payload: { index: actionIndex, field: 'loopMaxIterations', value: String(lmVal) } });
+          edit('loopMaxIterations', String(lmVal));
         }
       }
 
@@ -1225,17 +1237,17 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       // stored conditionType keeps a stale state write from landing on other IF families.
       if (action.conditionType === 'WindowOpen') {
         if (windowProcessName !== (action.windowProcessName ?? '')) {
-          send({ type: 'actions:edit', payload: { index: actionIndex, field: 'windowProcessName', value: windowProcessName } });
+          edit('windowProcessName', windowProcessName);
         }
         if (windowTitle !== (action.windowTitle ?? '')) {
-          send({ type: 'actions:edit', payload: { index: actionIndex, field: 'windowTitle', value: windowTitle } });
+          edit('windowTitle', windowTitle);
         }
         const currentTitleMode = action.windowTitleMatchMode === 'regex' ? 'regex' : 'contains';
         if (windowTitleMatchMode !== currentTitleMode) {
-          send({ type: 'actions:edit', payload: { index: actionIndex, field: 'windowTitleMatchMode', value: windowTitleMatchMode } });
+          edit('windowTitleMatchMode', windowTitleMatchMode);
         }
         if (!!windowMatchForegroundOnly !== !!(action.windowMatchForegroundOnly)) {
-          send({ type: 'actions:edit', payload: { index: actionIndex, field: 'windowMatchForegroundOnly', value: String(windowMatchForegroundOnly) } });
+          edit('windowMatchForegroundOnly', String(windowMatchForegroundOnly));
         }
       }
 
@@ -1244,10 +1256,10 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       if (action.conditionType === 'BrowserElementState') {
         const persistedIfMode = (waitMode === 'appears') ? '' : waitMode; // empty = default
         if ((persistedIfMode || '') !== (action.waitMode || '')) {
-          send({ type: 'actions:edit', payload: { index: actionIndex, field: 'waitMode', value: persistedIfMode } });
+          edit('waitMode', persistedIfMode);
         }
         if (browserText !== (action.browserText || '')) {
-          send({ type: 'actions:edit', payload: { index: actionIndex, field: 'browserText', value: browserText } });
+          edit('browserText', browserText);
         }
       }
 
@@ -1257,10 +1269,10 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
           : action.clipboardPatternType === 'regex' ? 'regex'
           : 'contains';
         if (clipboardPatternType !== currentPatternType) {
-          send({ type: 'actions:edit', payload: { index: actionIndex, field: 'clipboardPatternType', value: clipboardPatternType } });
+          edit('clipboardPatternType', clipboardPatternType);
         }
         if (clipboardPattern !== (action.clipboardPattern ?? '')) {
-          send({ type: 'actions:edit', payload: { index: actionIndex, field: 'clipboardPattern', value: clipboardPattern } });
+          edit('clipboardPattern', clipboardPattern);
         }
       }
 
@@ -1268,7 +1280,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       if (action.conditionType === 'Random') {
         const pct = Math.max(0, Math.min(100, parseInt(randomPercent, 10) || 0));
         if (pct !== (action.randomPercent ?? 0)) {
-          send({ type: 'actions:edit', payload: { index: actionIndex, field: 'randomPercent', value: String(pct) } });
+          edit('randomPercent', String(pct));
         }
       }
 
@@ -1277,10 +1289,10 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       if (action.conditionType === 'Variable') {
         const currentOp = action.conditionOperator ?? 'eq';
         if (conditionOperator !== currentOp) {
-          send({ type: 'actions:edit', payload: { index: actionIndex, field: 'conditionOperator', value: conditionOperator } });
+          edit('conditionOperator', conditionOperator);
         }
         if (conditionOperand !== (action.conditionOperand ?? '')) {
-          send({ type: 'actions:edit', payload: { index: actionIndex, field: 'conditionOperand', value: conditionOperand } });
+          edit('conditionOperand', conditionOperand);
         }
       }
 
@@ -1288,27 +1300,27 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       // above, which is gated on WindowOpen). Save it here for the ProcessRunning family too.
       if (action.conditionType === 'ProcessRunning') {
         if (windowProcessName !== (action.windowProcessName ?? '')) {
-          send({ type: 'actions:edit', payload: { index: actionIndex, field: 'windowProcessName', value: windowProcessName } });
+          edit('windowProcessName', windowProcessName);
         }
       }
 
       // If File — the path.
       if (action.conditionType === 'FileExists') {
         if (filePath !== (action.filePath ?? '')) {
-          send({ type: 'actions:edit', payload: { index: actionIndex, field: 'filePath', value: filePath } });
+          edit('filePath', filePath);
         }
       }
 
       // If Time — window + day bitmask.
       if (action.conditionType === 'TimeWindow') {
         if (timeStart !== (action.timeStart ?? '')) {
-          send({ type: 'actions:edit', payload: { index: actionIndex, field: 'timeStart', value: timeStart } });
+          edit('timeStart', timeStart);
         }
         if (timeEnd !== (action.timeEnd ?? '')) {
-          send({ type: 'actions:edit', payload: { index: actionIndex, field: 'timeEnd', value: timeEnd } });
+          edit('timeEnd', timeEnd);
         }
         if (daysOfWeek !== (action.daysOfWeek ?? 0)) {
-          send({ type: 'actions:edit', payload: { index: actionIndex, field: 'daysOfWeek', value: String(daysOfWeek) } });
+          edit('daysOfWeek', String(daysOfWeek));
         }
       }
     }
@@ -1319,13 +1331,13 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       const parsedMs = parseFloat(timeout);
       const newTimeoutMs = isNaN(parsedMs) || parsedMs < 0 ? 0 : Math.round(parsedMs);
       if (newTimeoutMs !== (action.timeout || 0)) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'timeout', value: String(newTimeoutMs) } });
+        edit('timeout', String(newTimeoutMs));
       }
     }
 
     // Browser-specific fields
     if (actionType === 'BrowserType' && browserText !== (action.browserText || '')) {
-      send({ type: 'actions:edit', payload: { index: actionIndex, field: 'browserText', value: browserText } });
+      edit('browserText', browserText);
     }
     // Timeout persists for EVERY browser command — the engine honours action.Timeout for all
     // six types (ActionExecution.cs Browser switch arm). Previously only Wait/Click/RightClick
@@ -1334,18 +1346,18 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     if (actionType.startsWith('Browser')) {
       const newTimeoutMs = Math.max(1000, parseFloat(timeout) || 5000);
       if (newTimeoutMs !== (action.timeout || 5000)) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'timeout', value: String(Math.round(newTimeoutMs)) } });
+        edit('timeout', String(Math.round(newTimeoutMs)));
       }
     }
     if (actionType === 'BrowserNavigate' && newTab !== (action.newTab || false)) {
-      send({ type: 'actions:edit', payload: { index: actionIndex, field: 'newTab', value: String(newTab) } });
+      edit('newTab', String(newTab));
     }
 
     // #6 — WaitElement mode
     if (actionType === 'BrowserWaitElement') {
       const persistedMode = (waitMode === 'appears') ? '' : waitMode; // empty = default
       if ((persistedMode || '') !== (action.waitMode || '')) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'waitMode', value: persistedMode } });
+        edit('waitMode', persistedMode);
       }
     }
 
@@ -1355,12 +1367,12 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     if (actionType === 'BrowserAssert') {
       const persistedMode = (waitMode === 'appears') ? '' : waitMode;
       if ((persistedMode || '') !== (action.waitMode || '')) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'waitMode', value: persistedMode } });
+        edit('waitMode', persistedMode);
       }
       const persistedPolicy = persistAssertPolicy(assertOnFail);
       const currentPolicy = persistAssertPolicy(action.assertOnFail);
       if (persistedPolicy !== currentPolicy) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'assertOnFail', value: persistedPolicy } });
+        edit('assertOnFail', persistedPolicy);
       }
     }
 
@@ -1370,33 +1382,33 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       const persistedPolicy = persistAssertPolicy(assertOnFail);
       const currentPolicy = persistAssertPolicy(action.assertOnFail);
       if (persistedPolicy !== currentPolicy) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'assertOnFail', value: persistedPolicy } });
+        edit('assertOnFail', persistedPolicy);
       }
     }
 
     // #7 — Navigate post-checks
     if (actionType === 'BrowserNavigate') {
       if ((urlWaitPattern || '') !== (action.urlWaitPattern || '')) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'urlWaitPattern', value: urlWaitPattern } });
+        edit('urlWaitPattern', urlWaitPattern);
       }
       if ((postNavigateSelector || '') !== (action.postNavigateSelector || '')) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'postNavigateSelector', value: postNavigateSelector } });
+        edit('postNavigateSelector', postNavigateSelector);
       }
     }
 
     // #5 — Type options
     if (actionType === 'BrowserType') {
       if (!!typeAppend !== !!(action.typeAppend)) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'typeAppend', value: String(typeAppend) } });
+        edit('typeAppend', String(typeAppend));
       }
       if (!!typePaste !== !!(action.typePaste)) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'typePaste', value: String(typePaste) } });
+        edit('typePaste', String(typePaste));
       }
       const tdParsed = typeDelay.trim() === '' ? null : parseInt(typeDelay, 10);
       const currentTd = action.typeDelay ?? null;
       const normalized = (tdParsed != null && !isNaN(tdParsed)) ? tdParsed : null;
       if (normalized !== currentTd) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'typeDelay', value: normalized != null ? String(normalized) : '' } });
+        edit('typeDelay', normalized != null ? String(normalized) : '');
       }
     }
 
@@ -1404,12 +1416,12 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     // saved by the generic effectiveKey block above.
     if (actionType === 'SetVariable') {
       if (variableValue !== (action.variableValue ?? '')) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'variableValue', value: variableValue } });
+        edit('variableValue', variableValue);
       }
       const currentVarMode = action.variableMode === 'cycle' || action.variableMode === 'add' ? action.variableMode : 'set';
       if (variableMode !== currentVarMode) {
         // Backend persists only the non-default modes ('cycle', 'add'); 'set' round-trips to null on disk.
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'variableMode', value: variableMode === 'set' ? '' : variableMode } });
+        edit('variableMode', variableMode === 'set' ? '' : variableMode);
       }
     }
 
@@ -1418,7 +1430,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     if (actionType === 'CopyToSlot') {
       const currentSlotMode = action.slotMode === 'clear' ? 'clear' : 'capture';
       if (slotMode !== currentSlotMode) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'slotMode', value: slotMode === 'clear' ? 'clear' : '' } });
+        edit('slotMode', slotMode === 'clear' ? 'clear' : '');
       }
     }
 
@@ -1426,32 +1438,32 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     // itself is the discriminator), launch fields, wait budget and failure policy.
     if (actionType === 'ActivateWindow') {
       if (windowProcessName !== (action.windowProcessName ?? '')) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'windowProcessName', value: windowProcessName } });
+        edit('windowProcessName', windowProcessName);
       }
       if (windowTitle !== (action.windowTitle ?? '')) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'windowTitle', value: windowTitle } });
+        edit('windowTitle', windowTitle);
       }
       const currentAwTitleMode = action.windowTitleMatchMode === 'regex' ? 'regex' : 'contains';
       if (windowTitleMatchMode !== currentAwTitleMode) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'windowTitleMatchMode', value: windowTitleMatchMode } });
+        edit('windowTitleMatchMode', windowTitleMatchMode);
       }
       if (launchPath !== (action.launchPath ?? '')) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'launchPath', value: launchPath } });
+        edit('launchPath', launchPath);
       }
       if (launchArgs !== (action.launchArgs ?? '')) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'launchArgs', value: launchArgs } });
+        edit('launchArgs', launchArgs);
       }
       const persistedPolicy = activateOnTimeout === 'Continue' ? 'Continue' : '';
       const currentPolicy = action.activateOnTimeout === 'Continue' ? 'Continue' : '';
       if (persistedPolicy !== currentPolicy) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'activateOnTimeout', value: persistedPolicy } });
+        edit('activateOnTimeout', persistedPolicy);
       }
       // Placement. Any normalization here MUST be mirrored in hasUnsavedChanges (parity).
       if (restorePosition !== !!action.restorePosition) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'restorePosition', value: String(restorePosition) } });
+        edit('restorePosition', String(restorePosition));
       }
       if (restoreSize !== !!action.restoreSize) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'restoreSize', value: String(restoreSize) } });
+        edit('restoreSize', String(restoreSize));
       }
       const geoEdits: Array<[string, number, number]> = [
         ['windowX', parseInt(windowX, 10) || 0, action.windowX ?? 0],
@@ -1461,12 +1473,12 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       ];
       for (const [geoField, next, current] of geoEdits) {
         if (next !== current) {
-          send({ type: 'actions:edit', payload: { index: actionIndex, field: geoField, value: String(next) } });
+          edit(geoField, String(next));
         }
       }
       const newAwTimeout = Math.max(1000, Math.round(parseFloat(timeout) || 10000));
       if (newAwTimeout !== (action.timeout || 5000)) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'timeout', value: String(newAwTimeout) } });
+        edit('timeout', String(newAwTimeout));
       }
       // Phase 3 verb + nth-match (parity-mirrored in hasUnsavedChanges). Default 'Activate' persists
       // as '' (like Halt); match #1 persists as '1' (the bridge collapses it to null). A stored literal
@@ -1475,12 +1487,12 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       const persistedVerb = windowVerb === 'Activate' ? '' : windowVerb.toLowerCase();
       const currentVerb = (action.windowVerb ?? '').toLowerCase() === 'activate' ? '' : (action.windowVerb ?? '').toLowerCase();
       if (persistedVerb !== currentVerb) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'windowVerb', value: persistedVerb } });
+        edit('windowVerb', persistedVerb);
       }
       const nextMatch = Math.max(1, parseInt(matchIndex, 10) || 1);
       const currentMatch = action.windowMatchIndex && action.windowMatchIndex > 1 ? action.windowMatchIndex : 1;
       if (nextMatch !== currentMatch) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'windowMatchIndex', value: String(nextMatch) } });
+        edit('windowMatchIndex', String(nextMatch));
       }
     }
 
@@ -1491,18 +1503,24 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     if (actionType === 'BrowserSelectOption') {
       // Persist BrowserText for the select target too (BrowserType-branch only covers BrowserType).
       if (browserText !== (action.browserText || '')) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'browserText', value: browserText } });
+        edit('browserText', browserText);
       }
       // Persist the match mode if it differs from what's on disk.
       const currentMode = action.selectMatchMode === 'value' ? 'value'
         : action.selectMatchMode === 'index' ? 'index'
         : 'text';
       if (selectMatchMode !== currentMode) {
-        send({ type: 'actions:edit', payload: { index: actionIndex, field: 'selectMatchMode', value: selectMatchMode } });
+        edit('selectMatchMode', selectMatchMode);
       }
     }
 
-    // FORM — LAST, after every actions:edit above, and the order is the point: a split changes
+    // Flush the collected field edits as ONE message, before the form change below — which is the
+    // same ordering the separate sends had, for the same reason spelled out next.
+    if (pendingEdits.length > 0) {
+      send({ type: 'actions:editMany', payload: { index: actionIndex, edits: pendingEdits } });
+    }
+
+    // FORM — LAST, after every field edit above, and the order is the point: a split changes
     // the row COUNT, so anything addressed by actionIndex after this would land on the wrong row.
     // The backend refuses out loud (× N, at-cursor, Double/Triple, a drag that must stay paired),
     // so there is no second copy of those rules here to fall out of step with it.
@@ -2835,7 +2853,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 // there is no right-button double-click to emit instead, so a lit "Right" would
                 // be the UI stating something the row will not do. Same pin, same reason, as the
                 // Insert Click dialog.
-                className={isMultiClick ? 'opacity-50 pointer-events-none' : undefined}
+                disabled={isMultiClick}
                 options={[
                   { value: 'Left', label: 'Left' },
                   { value: 'Right', label: 'Right' },
@@ -2854,7 +2872,13 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 // behind by a Down that became a hold releases a button nobody pressed). The old
                 // grid expressed this by dropping five chips; pinning says the same thing without
                 // the row of controls changing shape under the user.
-                className={clickHalfSuffix ? 'opacity-50 pointer-events-none' : undefined}
+                // A REAL disabled, not `opacity-50 pointer-events-none`. That pair only removes
+                // pointer hit-testing: the segments stayed in the tab order, and Tab-then-Enter
+                // is turned by the browser into a click on the focused one — so the pin held for
+                // the mouse and the keyboard walked straight through it, turning the Down half of
+                // a recorded drag into a hold and orphaning the Up. Exactly the outcome the
+                // paragraph above says the pin prevents.
+                disabled={!!clickHalfSuffix}
                 options={[
                   { value: 'click', label: 'Click' },
                   { value: 'hold', label: 'Hold', tip: tt('Press, wait, release — still one row', 'Aperta, espera, solta — ainda uma linha') },
@@ -2900,7 +2924,15 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                   : formDraft !== initialForm
                     ? (formDraft === 'paired'
                       ? 'Saving splits this row in two.'
-                      : 'Saving merges this row with the half after it.')
+                      // WHICH neighbour, read off this row's own half. handleSave picks
+                      // [i, i+1] from a Down and [i-1, i] from an Up, and this line used to say
+                      // "the half after it" for both — so opening the Up of a pair and choosing
+                      // One row named the row BELOW while the save consumed the row ABOVE. The
+                      // operation then succeeded, so nothing corrected the sentence afterwards
+                      // and a user with another click below it believed they had lost it.
+                      : clickHalfSuffix === 'Up'
+                        ? 'Saving merges this row with the half before it.'
+                        : 'Saving merges this row with the half after it.')
                     : (formDraft === 'paired'
                       ? 'Two rows: Down and Up as separate rows.'
                       : 'One row: press and release together.')}

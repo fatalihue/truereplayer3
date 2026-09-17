@@ -73,6 +73,18 @@ const MAX_REPEAT_DELAY = 5000;
 const clampRepeat = (v: number) => Math.max(1, Math.min(MAX_REPEAT, Math.floor(v)));
 const clampGap = (v: number) => Math.max(0, Math.min(MAX_REPEAT_DELAY, Math.floor(v)));
 
+/** X and Y are the only numbers this dialog sends that had no clamp, and they are the only two
+ *  the backend reads with GetInt32 — which THROWS on a JSON number that is not an Int32. The
+ *  coordinate inputs are not in textMode, so NumberInput applies no digit strip: "300.5" and
+ *  "99999999999" both reach the wire as Number, pass the ValueKind guard, and blow up inside
+ *  HandleInsertClick before it has written anything. The exception lands in HandleMessage's catch,
+ *  whose whole body is a [Conditional("DEBUG")] Debug.WriteLine — removed from Release — so in a
+ *  shipped build the dialog closes and NO row appears, with nothing in the log either.
+ *  Floored and bounded here for the same reason hold, repeat and gap are: the wire carries what
+ *  the backend can read. Negative coordinates are legal (a monitor left of the primary). */
+const MAX_COORD = 2_000_000;
+const clampCoord = (v: number) => Math.max(-MAX_COORD, Math.min(MAX_COORD, Math.trunc(v) || 0));
+
 /** Per-type inter-repeat gap, mirroring ActionItem.DefaultRepeatDelayMs /
  *  DefaultDoubleClickRepeatDelayMs and the Sheet's clickDefaultGap: a multi-click burst has to
  *  clear the system double-click window or the repeats blur into one long chain. */
@@ -145,6 +157,16 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
   // something other than what the user can see.
   const point = pressX != null && pressY != null ? { x: pressX, y: pressY } : null;
   const upPoint = releaseX != null && releaseY != null ? { x: releaseX, y: releaseY } : null;
+  // Whether the app will CALL it a drag, not merely whether the two points differ. The converter
+  // treats halves within CLICK_COORD_TOLERANCE of each other as one click — the slack exists to
+  // absorb the 1 px wobble a recorded click can have — so a release typed 1 px away is a pair that
+  // Merge folds straight back into a plain click, dropping the release point without a word. The
+  // dialog used to say "this is a drag" about exactly that pair, which made the app contradict
+  // itself across two surfaces. Same number, so the two can only agree.
+  const CLICK_COORD_TOLERANCE = 2;   // mirrors ActionModeConverter.ClickCoordTolerance
+  const upIsDrag = upPoint != null && point != null
+    && (Math.abs(upPoint.x - point.x) > CLICK_COORD_TOLERANCE
+      || Math.abs(upPoint.y - point.y) > CLICK_COORD_TOLERANCE);
   const releaseHalfFilled = paired && (releaseX == null) !== (releaseY == null);
 
   // Single in-flight pick, correlated by id — the Sheet's pattern. A reply whose id doesn't
@@ -213,11 +235,11 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
     if (!canConfirm) return;
     const where = effectivePosition === 'cursor'
       ? { atCursor: true as const }
-      : { atCursor: false as const, x: point!.x, y: point!.y };
+      : { atCursor: false as const, x: clampCoord(point!.x), y: clampCoord(point!.y) };
     if (paired) {
       onConfirm({
         actionType, ...where, paired: true,
-        ...(upPoint ? { upX: upPoint.x, upY: upPoint.y } : {}),
+        ...(upPoint ? { upX: clampCoord(upPoint.x), upY: clampCoord(upPoint.y) } : {}),
       });
       return;
     }
@@ -275,7 +297,15 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
           className="flex-1 h-8 flex items-center justify-center gap-1.5 px-2.5 text-xs font-medium border border-border-default bg-bg-elevated hover:bg-bg-card text-text-secondary hover:text-text-primary rounded whitespace-nowrap transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Crosshair size={13} />
-          {pickRequestId != null ? 'Picking…' : complete ? 'Pick again' : isPress ? 'Pick from screen' : 'Same point'}
+          {/* The label names the ACTION, in all three states. The empty release slot used to read
+              "Same point" — the STATE of the field, not what the button does — and pressing it did
+              what it does everywhere else: minimise the app and open the full-screen picker, so
+              the next click anywhere turned into a release point and produced exactly the drag the
+              label said there wasn't. The only label in the dialog that described a state, and the
+              only one that could be pressed to contradict itself. "Same point" is already said by
+              the em-dash placeholder in X and Y and by the live strip below; getting BACK to it is
+              the "Clear it?" link's job, not this button's. */}
+          {pickRequestId != null ? 'Picking…' : complete ? 'Pick again' : 'Pick from screen'}
         </button>
         <span className="flex items-center gap-1.5 shrink-0">
           <span className="label-micro text-text-tertiary">X</span>
@@ -337,7 +367,10 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
             onChange={setMode}
             ariaLabel="Click mode"
             grow
-            className={paired ? 'opacity-50 pointer-events-none' : undefined}
+            // A REAL disabled, not `opacity-50 pointer-events-none`: that pair removes POINTER
+            // hit-testing only, so a pinned segment stayed in the tab order and Tab-then-Enter
+            // still chose it. Four pins here, same class of hole the Sheet had.
+            disabled={paired}
             options={[
               { value: 'click', label: 'Click' },
               { value: 'hold', label: 'Hold' },
@@ -355,7 +388,7 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
             onChange={setButton}
             ariaLabel="Mouse button"
             grow
-            className={multi ? 'opacity-50 pointer-events-none' : undefined}
+            disabled={multi}
             options={[
               { value: 'Left', label: 'Left' },
               { value: 'Right', label: 'Right' },
@@ -377,7 +410,7 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
             onChange={changeClicks}
             ariaLabel="Clicks per step"
             grow
-            className={clicksInert ? 'opacity-50 pointer-events-none' : undefined}
+            disabled={clicksInert}
             options={[
               { value: 'single', label: 'Single' },
               {
@@ -405,7 +438,7 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
             onChange={setPosition}
             ariaLabel="Click position source"
             grow
-            className={paired ? 'opacity-50 pointer-events-none' : undefined}
+            disabled={paired}
             options={[
               { value: 'point', label: 'This point' },
               { value: 'cursor', label: 'At cursor' },
@@ -559,7 +592,9 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
               {releaseHalfFilled
                 ? 'A release needs both X and Y. Clear it?'
                 : upPoint
-                  ? 'Release somewhere else — this is a drag. Clear it?'
+                  ? (upIsDrag
+                    ? 'Release somewhere else — this is a drag. Clear it?'
+                    : 'Release within 2 px of the press — the app reads that as one click, not a drag. Clear it?')
                   : 'Leave it empty and the release lands on the press point.'}
             </button>
           </div>
@@ -609,7 +644,9 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
             // The two paired readings. The drag one is the whole reason the form exists, so it
             // says the word: a reader who did not know the app could build one now does.
             `Two rows: presses the ${btnLabel} button ${whereLabel}, then releases there.`,
-            `Two rows: presses the ${btnLabel} button ${whereLabel}, then releases at ${upPoint?.x}, ${upPoint?.y} — a drag.`,
+            upIsDrag
+              ? `Two rows: presses the ${btnLabel} button ${whereLabel}, then releases at ${upPoint?.x}, ${upPoint?.y} — a drag.`
+              : `Two rows: presses the ${btnLabel} button ${whereLabel}, then releases at ${upPoint?.x}, ${upPoint?.y} — within 2 px, so the app reads it as one click.`,
             // Two rows pins At cursor away, so the unanswered line must not offer it: the old
             // single message sent the user to a segment that is disabled in this very state.
             'Pick a point, or type X and Y.',

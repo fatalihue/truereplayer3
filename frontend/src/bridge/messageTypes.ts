@@ -1012,6 +1012,12 @@ export type OutgoingMessage =
   | { type: 'actions:copyInternal'; payload: { indices: number[] } }
   | { type: 'actions:paste'; payload: { insertIndex: number } }
   | { type: 'actions:edit'; payload: { index: number; field: string; value: string } }
+  // Several field edits on ONE row, applied in order under ONE undo entry. An editor's Save is one
+  // edit the user made that happens to touch N fields; sending it as N messages made each one its
+  // own undo state, so a single Ctrl+Z landed on a snapshot taken BETWEEN two of them — X moved
+  // with Y still old, a hold on the previous key, a point that existed at no moment of the edit.
+  // The backend validates the whole batch before snapshotting, so it applies whole or not at all.
+  | { type: 'actions:editMany'; payload: { index: number; edits: { field: string; value: string }[] } }
   | { type: 'actions:delete'; payload: { indices: number[] } }
   | { type: 'profile:click'; payload: { name: string } }
   | { type: 'profile:create'; payload: { name: string; folder?: string } }

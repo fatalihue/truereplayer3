@@ -33,7 +33,13 @@ export function useBrowserConnection(): BrowserConnection {
   useEffect(() => {
     const unsubscribe = subscribe((msg) => {
       if (msg.type !== 'browser:status') return;
-      // Any transition retires the pending grace period: a reconnect that lands inside the
+      // A REPEATED "still down" does not restart the clock. The window measures how long the
+      // bridge has been down, not how long since the last message about it — and a producer that
+      // repeats itself used to reset the timer before it could ever expire, so the warning never
+      // appeared at all. That is exactly what a permanently failing pipe did at 1 Hz; the service
+      // now speaks only on the edge, and this keeps the window honest whatever it hears.
+      if (!msg.payload.connected && graceTimer.current !== null) return;
+      // Any real transition retires the pending grace period: a reconnect that lands inside the
       // window must cancel the "disconnected" that was scheduled, or the light flashes red
       // seconds after the bridge is already back.
       if (graceTimer.current !== null) {

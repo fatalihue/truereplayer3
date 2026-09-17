@@ -3051,19 +3051,37 @@ namespace TrueReplayer.Services
             // NEXT row's delay. With Delay = 120 ms after it, the next action fires with no gap at
             // all; with 300, it fires 140 ms after the click instead of 300.
             //
-            // DoubleClick is deliberately NOT here, and the difference is not size — it is where
-            // the row came from. The recorder MERGES two physical clicks into a DoubleClick row
-            // (ActionRecorder, "merged.ActionType = DoubleClick"), so on a recorded row the real
-            // double-click's duration WAS inside the gap that was recorded after it; resyncing
-            // would pay that time twice and slow down every profile that recorded one. A
-            // TripleClick row can never come from a recording — the merge deliberately produces
-            // DoubleClick + LeftClick, and the type is only ever AUTHORED in the Sheet, which is
-            // family 3's definition word for word ("durations authored AFTER recording").
+            // DoubleClick belongs here too, and the argument that kept it out was wrong TWICE.
             //
-            // Measured before adding it: the owner's 108 profiles hold 1247 actions and ZERO
+            // It used to read: the recorder MERGES two physical clicks into a DoubleClick row, so
+            // the real double-click's duration was already inside the gap recorded after it, and
+            // resyncing would pay that time twice. The recorder does not work that way. The delay
+            // of the NEXT row is computed by GetDelayForNewAction from _lastActionTime, which is
+            // stamped on the SECOND physical click — the merge reuses the first click's row and
+            // its already-computed delay, and never rewrites it. So the interval between the two
+            // clicks was never in that gap: resyncing after a recorded DoubleClick is MORE
+            // faithful to the recording, not less.
+            //
+            // And the bet itself stopped being safe. Provenance is not readable at replay time —
+            // there is no flag, and the two rows are byte-identical in the JSON — while this
+            // release opened three doors that author a DoubleClick with no recording behind it at
+            // all: Insert Click (the dialog maps "double" straight to the type), the row menu's
+            // Change click type (bulkUpdateType promotes N recorded single clicks in one go), and
+            // the Sheet's own type picker.
+            //
+            // The arithmetic, with the real constants: a plain click is 2 x MoveClickDelayMs =
+            // 20 ms; a DoubleClick is 2x10 + DoubleClickGapMs(50) + 2x10 = 90 ms. Exactly 70 ms
+            // came out of the next row's delay, and with Delay <= 90 ms after it — ordinary in a
+            // game macro — the next action fired with no interval at all. That is the same
+            // failure described for TripleClick two paragraphs up, one step smaller.
+            //
+            // A TripleClick row still can never come from a recording: the merge deliberately
+            // produces DoubleClick + LeftClick, so the type is only ever AUTHORED.
+            //
+            // Measured before adding either: the owner's 108 profiles hold 1247 actions and ZERO
             // DoubleClick and ZERO TripleClick rows, so this changes no existing profile's timing.
-            // It exists so the FIRST macro to use a triple-click does not silently lose the settle
-            // authored after it — the same failure the focus-click entry above was added for.
+            // For anyone who does have one, the change GIVES BACK the 70 ms it was taking.
+            || string.Equals(action.ActionType, "DoubleClick", StringComparison.OrdinalIgnoreCase)
             || string.Equals(action.ActionType, "TripleClick", StringComparison.OrdinalIgnoreCase)
             || (action.ConditionTimeout > 0
                 && string.Equals(action.ActionType, "Assert", StringComparison.OrdinalIgnoreCase));
@@ -4988,6 +5006,26 @@ namespace TrueReplayer.Services
             if (hwnd == IntPtr.Zero) return false;
             if (!NativeMethods.GetWindowRect(hwnd, out var rect)) return false;
 
+            // A MINIMISED target has no origin, and pretending it does is worse than not finding
+            // it at all. Windows parks a minimised window at (-32000,-32000) and it still passes
+            // IsWindowVisible, so the matcher returns it happily; dx became -32000, every click
+            // in the profile got clamped to the top-left pixel of the virtual screen, and it
+            // landed there for real — cursor, button and all — on whatever happened to be under
+            // it, with the run reporting success. WaitImage and WaitPixelColor read their region
+            // in that corner instead and died on timeout with no reason given.
+            //
+            // Returning false is the treatment an ABSENT window already gets: every caller routes
+            // it to ReportMissingTargetWindow. A minimised target is not a more valid origin than
+            // a closed one, and seven other surfaces in the app already refuse exactly this state
+            // — including the automation watcher's own anchor, whose comment claims this is "the
+            // same test TryResolveRelativeOffset does on the actions side". It wasn't: here the
+            // test existed but only gated a WARNING, which meant the one diagnostic that would
+            // have named the minimised window was the thing being suppressed.
+            //
+            // Costs nothing on the hot path: it reads the rect GetWindowRect already returned,
+            // no IsIconic P/Invoke per mouse event.
+            if (rect.Left <= MinimizedParkedLeft || rect.Top <= MinimizedParkedLeft) return false;
+
             // The translation below is exact only while the target is the SIZE it was recorded
             // at — see WarnRelativeGeometryDrift for why, and for why this warns instead of
             // rescaling. This is the one place that holds both numbers, so it is the only place
@@ -4995,14 +5033,10 @@ namespace TrueReplayer.Services
             // one already-false bool, three compares and two subtractions. No allocation, no
             // log, no extra P/Invoke — the rect is the one GetWindowRect already returned.
             //
-            // The Left test rejects the (-32000,-32000) parking rect of a MINIMISED window,
-            // which passes IsWindowVisible and would otherwise be measured as a ~160x28 window
-            // and reported as a massive shrink. Done inline rather than with IsIconic on
-            // purpose: an IsIconic call here would be a P/Invoke per mouse event. Because this
-            // path never latches, a genuinely drifted window still gets its one warning as
-            // soon as it is restored.
+            // The minimised rect can no longer reach here — the guard above returns before it —
+            // so this no longer needs its own Left test. Because this path never latches, a
+            // genuinely drifted window still gets its one warning as soon as it is restored.
             if (!_relGeometryDriftWarned && _lockWidth > 0 && _lockHeight > 0
-                && rect.Left > MinimizedParkedLeft
                 && (rect.Right - rect.Left != _lockWidth || rect.Bottom - rect.Top != _lockHeight))
             {
                 WarnRelativeGeometryDrift(hwnd, rect);

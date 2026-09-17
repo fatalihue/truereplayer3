@@ -2994,30 +2994,24 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
             initialHoldDurationMs={isHold ? curDuration : undefined}
             onConfirm={(result) => {
               const idx = keystrokeEdit.index;
-              // ActionType conversion fires first so the backend applies field
-              // updates against the right action shape (a holdDurationMs edit on a
-              // row that's still typed as Keystroke would be silently ignored).
-              if (result.actionType !== editing?.actionType) {
-                send({ type: 'actions:edit', payload: { index: idx, field: 'actionType', value: result.actionType } });
-              }
-              if (result.key !== editing?.key) {
-                send({ type: 'actions:edit', payload: { index: idx, field: 'key', value: result.key } });
-              }
+              // ONE message, so ONE undo entry. These used to be up to five separate actions:edit,
+              // and the bridge snapshots per call — so undoing a single Save took five Ctrl+Z and
+              // walked BACKWARDS through states nobody authored: the first undo left HoldKey with
+              // holdDurationMs 0, which the engine reads as "use the shared default", handing the
+              // row a duration the user never asked for; the second left the hold on the OLD key.
+              // The order inside the batch still matters and is preserved: actionType first, so
+              // the later fields land on the right shape.
+              const edits: { field: string; value: string }[] = [];
+              if (result.actionType !== editing?.actionType) edits.push({ field: 'actionType', value: result.actionType });
+              if (result.key !== editing?.key) edits.push({ field: 'key', value: result.key });
               if (result.actionType === 'Keystroke') {
-                if (result.repeat !== curRepeat) {
-                  send({ type: 'actions:edit', payload: { index: idx, field: 'repeat', value: String(result.repeat) } });
-                }
-                if (result.repeatDelayMs !== curDelay) {
-                  send({ type: 'actions:edit', payload: { index: idx, field: 'repeatDelayMs', value: String(result.repeatDelayMs) } });
-                }
-                if (result.repeatDelayJitterPct !== curJitter) {
-                  send({ type: 'actions:edit', payload: { index: idx, field: 'repeatDelayJitterPct', value: String(result.repeatDelayJitterPct) } });
-                }
-              } else {
-                if (result.holdDurationMs !== curDuration) {
-                  send({ type: 'actions:edit', payload: { index: idx, field: 'holdDurationMs', value: String(result.holdDurationMs) } });
-                }
+                if (result.repeat !== curRepeat) edits.push({ field: 'repeat', value: String(result.repeat) });
+                if (result.repeatDelayMs !== curDelay) edits.push({ field: 'repeatDelayMs', value: String(result.repeatDelayMs) });
+                if (result.repeatDelayJitterPct !== curJitter) edits.push({ field: 'repeatDelayJitterPct', value: String(result.repeatDelayJitterPct) });
+              } else if (result.holdDurationMs !== curDuration) {
+                edits.push({ field: 'holdDurationMs', value: String(result.holdDurationMs) });
               }
+              if (edits.length > 0) send({ type: 'actions:editMany', payload: { index: idx, edits } });
               setKeystrokeEdit(null);
             }}
             onClose={() => setKeystrokeEdit(null)}
@@ -3036,12 +3030,11 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
             initialTimeoutMs={editing?.timeout ?? 0}
             onConfirm={(key, timeoutMs) => {
               const idx = pauseEdit.index;
-              if (key !== (editing?.key ?? '')) {
-                send({ type: 'actions:edit', payload: { index: idx, field: 'key', value: key } });
-              }
-              if (timeoutMs !== (editing?.timeout ?? 0)) {
-                send({ type: 'actions:edit', payload: { index: idx, field: 'timeout', value: String(Math.round(timeoutMs)) } });
-              }
+              // One Save, one undo entry — same reason as the keystroke dialog above.
+              const edits: { field: string; value: string }[] = [];
+              if (key !== (editing?.key ?? '')) edits.push({ field: 'key', value: key });
+              if (timeoutMs !== (editing?.timeout ?? 0)) edits.push({ field: 'timeout', value: String(Math.round(timeoutMs)) });
+              if (edits.length > 0) send({ type: 'actions:editMany', payload: { index: idx, edits } });
               setPauseEdit(null);
             }}
             onClose={() => setPauseEdit(null)}
@@ -3352,7 +3345,17 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                     <div className="py-1 menu-surface z-[60]">
                       {options.map(opt => {
                         const target = opt.value + form;
-                        const current = target === row.actionType;
+                        // Over the whole SELECTION, not the clicked row. The check says "this is
+                        // what these rows already are", and the entry acts on `targets` — so
+                        // reading one row made both lie at once whenever the selection was mixed:
+                        // with a LeftClick and a RightClick selected and the right-click on the
+                        // Left one, "Left Click" drew a tick (claiming both were already Left) and
+                        // then swallowed the send, leaving the RightClick untouched with no toast,
+                        // no undo and no hint — while the submenu header promised "(2)".
+                        // The backend is already safe for the redundant case: HandleBulkUpdateType
+                        // filters to rows whose type actually differs and pushes no undo for a
+                        // no-op, so suppressing the send here is an affordance, not a guard.
+                        const current = targets.length > 0 && targets.every(i => actions[i]?.actionType === target);
                         return (
                           <button
                             key={opt.value}
@@ -3745,20 +3748,25 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                     Select Similar
                   </button>
 
-                  {/* ── Click tools ── Copy Coordinates · Focus click · Convert to Double/Left.
+                  {/* ── Click tools ── Copy Coordinates · Focus click.
                       The divider is conditional because the whole GROUP is: on an If, a Pause or
-                      a Browser row all three entries return null, and an unconditional rule would
-                      sit directly on top of the next one. (Two adjacent dividers is exactly what
-                      this grouping produced the first time it was measured.) The predicate is the
-                      union of the three gates below — a coordinate click that is not at-cursor
-                      (Copy Coordinates), a focus-eligible click, or a DoubleClick (Convert) —
-                      so a MiddleClickHold pinned to the cursor, which satisfies none of them,
-                      correctly draws no rule at all. */}
+                      a Browser row both entries return null, and an unconditional rule would sit
+                      directly on top of the next one. (Two adjacent dividers is exactly what this
+                      grouping produced the first time it was measured.) The predicate is the union
+                      of the TWO gates below — a coordinate click that is not at-cursor (Copy
+                      Coordinates) or a focus-eligible click — so a MiddleClickHold pinned to the
+                      cursor, which satisfies neither, correctly draws no rule at all.
+                      It used to carry a third term, `t === 'DoubleClick'`, for a "Convert to
+                      Double/Left Click" entry that was ABSORBED into Change click type ▸ and no
+                      longer exists here. Left behind, it made a DoubleClick pinned to the cursor
+                      the one row that drew the rule with an empty group under it: Copy Coordinates
+                      returns null on at-cursor, Focus click returns null on a non-focus-eligible
+                      type, and the unconditional divider below landed straight on top of this one.
+                      A term in a union has to name an entry that is still in the union. */}
                   {(() => {
                     const t = actions[contextMenu.rowIndex]?.actionType ?? '';
                     const atCur = !!actions[contextMenu.rowIndex]?.atCursor;
-                    const hasClickTools = (isCoordinateClick(t) && !atCur)
-                      || isFocusClickEligible(t) || t === 'DoubleClick';
+                    const hasClickTools = (isCoordinateClick(t) && !atCur) || isFocusClickEligible(t);
                     return hasClickTools ? <div className="my-1 border-t border-border-subtle" /> : null;
                   })()}
 

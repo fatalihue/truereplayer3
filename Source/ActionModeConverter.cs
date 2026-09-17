@@ -181,6 +181,56 @@ namespace TrueReplayer.Services
             return null;
         }
 
+        /// <summary>
+        /// Click rows inside <paramref name="input"/> that the given direction will pass through
+        /// UNCHANGED because a rule refuses them, with the first reason. For the PARTIAL case: the
+        /// caller already knows how to speak a refusal when a whole run stands still, but a run
+        /// that converts four rows and silently skips the fifth used to come back as a plain
+        /// success, and the skipped row is indistinguishable in the grid from one that was never
+        /// selected.
+        ///
+        /// Scoped to CLICKS on purpose. A Keystroke that stays whole, or an interleaved KeyDown …
+        /// KeyUp that cannot be folded, is the class summary's documented "left paired exactly
+        /// as-is" — a shape the transform has no opinion about, not a rule turning something down.
+        /// So is any non-click row caught in the range. Counting those would turn every mixed
+        /// selection into a warning and teach the user to ignore the line.
+        /// </summary>
+        public static (int Count, string? FirstReason) RefusedWithin(IReadOnlyList<ActionItem> input, bool toCombined)
+        {
+            int count = 0;
+            string? first = null;
+            if (toCombined)
+            {
+                for (int i = 0; i < input.Count; i++)
+                {
+                    // Only a Down half is a merge CANDIDATE; anything else in the range is simply
+                    // not this transform's business. A lone Down at the end counts — "the Up half
+                    // that follows it" is exactly what is missing, and saying so is the point.
+                    if (!TryClickButton(input[i].ActionType, down: true, out _)) continue;
+                    string? why = i + 1 < input.Count
+                        ? WhyCannotMerge(input[i], input[i + 1])
+                        : "Select a click's Down half and the Up half that follows it.";
+                    if (why == null) { i++; continue; }   // merged — skip its Up too
+                    count++;
+                    first ??= why;
+                }
+            }
+            else
+            {
+                foreach (var a in input)
+                {
+                    // A row that is not a combined click has nothing to split; only a row that IS
+                    // one and still comes back whole was turned down.
+                    if (!ActionItem.IsCombinedClickType(a.ActionType)) continue;
+                    string? why = WhyCannotSplit(a);
+                    if (why == null) continue;
+                    count++;
+                    first ??= why;
+                }
+            }
+            return (count, first);
+        }
+
         /// <summary>Null when <paramref name="down"/>+<paramref name="up"/> merge into one click;
         /// otherwise the reason they will not. Mirrors the click branch of ToCombined.</summary>
         public static string? WhyCannotMerge(ActionItem down, ActionItem up)

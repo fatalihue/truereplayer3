@@ -35,6 +35,13 @@ export interface SegmentedControlProps<T extends string> {
   /** Trim the segment padding so the track lands on 28px instead of 32px — the
    *  ActionBar rail's tier. Everywhere else the roomier default is right. */
   dense?: boolean;
+  /** Pin the whole control: the segments still SHOW which value is current, but none of them can
+   *  be chosen. A real `disabled` on every button, not a class — callers used to express this with
+   *  `opacity-50 pointer-events-none`, which only removes POINTER hit-testing. The buttons stayed
+   *  in the tab order, and Tab-then-Enter turned the keydown into a click on the focused segment,
+   *  so the pin held for the mouse and let the keyboard straight through. It is styled here too,
+   *  so a pinned control looks the same everywhere and no caller has to remember the classes. */
+  disabled?: boolean;
   className?: string;
 }
 
@@ -48,11 +55,12 @@ export function SegmentedControl<T extends string>({
   grow = false,
   plain = false,
   dense = false,
+  disabled = false,
   className = '',
 }: SegmentedControlProps<T>) {
   return (
     <div
-      className={`flex items-center gap-0.5 ${plain ? '' : 'bg-bg-input border border-border-default rounded p-0.5'} ${className}`}
+      className={`flex items-center gap-0.5 ${plain ? '' : 'bg-bg-input border border-border-default rounded p-0.5'} ${disabled ? 'opacity-50' : ''} ${className}`}
       role="tablist"
       aria-label={ariaLabel}
     >
@@ -63,9 +71,10 @@ export function SegmentedControl<T extends string>({
             key={opt.value}
             role="tab"
             aria-selected={active}
+            disabled={disabled}
             onClick={() => onChange(opt.value)}
             data-tip={opt.tip}
-            className={`flex items-center justify-center gap-1.5 px-2.5 ${dense ? 'py-0.5' : 'py-1'} rounded text-[12px] font-semibold transition-colors ${grow ? 'flex-1' : ''} ${
+            className={`flex items-center justify-center gap-1.5 px-2.5 ${dense ? 'py-0.5' : 'py-1'} rounded text-[12px] font-semibold transition-colors ${grow ? 'flex-1' : ''} ${disabled ? 'cursor-not-allowed' : ''} ${
               active
                 ? (opt.activeClass ?? DEFAULT_ACTIVE)
                 : 'text-text-tertiary hover:text-text-secondary'

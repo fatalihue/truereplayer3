@@ -235,10 +235,23 @@ namespace TrueReplayer.Services
                 finally
                 {
                     IsConnected = false;
-                    ConnectionChanged?.Invoke(false);
-
+                    // On the EDGE, not every lap. The name of the event is the contract: it says
+                    // Changed. This loop retries every second forever, so a PERMANENT failure —
+                    // the pipe name already held by a second instance in another Windows session,
+                    // an ACL the OS refuses — fired one browser:status per second for the life of
+                    // the app. Three layers up, useBrowserConnection clears its pending grace
+                    // timer and arms a fresh 3 s one on EVERY message, so a message per second
+                    // reset the timer before it could expire and the "Extension disconnected"
+                    // warning never appeared: the bar sat on 'unknown', which it hides on purpose,
+                    // over a bridge that was permanently dead. Worse if the bridge had been alive
+                    // when the name was taken — it froze on 'connected', a green light on a corpse.
+                    // The log half of this same finally already guards on wasConnected; the event
+                    // was simply left behind when that guard was added. Lengthening the grace
+                    // window would only move the threshold and couple a UI constant to this
+                    // loop's retry cadence.
                     if (wasConnected)
                     {
+                        ConnectionChanged?.Invoke(false);
                         // Counted BEFORE the sweep below empties the dictionary. A disconnect with
                         // commands in flight is a run that just died mid-step, which reads very
                         // differently from an idle bridge dropping between macros.

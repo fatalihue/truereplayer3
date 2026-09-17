@@ -208,5 +208,50 @@ namespace TrueReplayer.Helpers
             }, IntPtr.Zero);
             return result;
         }
+
+        /// <summary>
+        /// Like <see cref="FindWindow"/>, but STABLE when more than one window matches, and it says
+        /// how many did.
+        ///
+        /// FindWindow stops at the first match, and EnumWindows walks top-of-Z-order down, so with
+        /// two windows of the same process the answer changes every time the user clicks between
+        /// them. For "is it open?" that is harmless — any match answers it, and the answer does not
+        /// move. For "WHERE is it?" it is not: an anchored automation watcher re-resolves its origin
+        /// on every tick, for hours, so alt-tabbing between two Chrome windows moved the sampled
+        /// point by the distance between them, the condition quietly went false, and it came back on
+        /// its own when focus returned. Nothing was logged and the panel stayed green.
+        ///
+        /// The tie-break is the LOWEST handle, not the foreground one. Foreground would be stable in
+        /// name only — it is the very thing that was moving. A handle is fixed for the window's
+        /// lifetime, so this pins the anchor to one window and keeps it there; which of the two it
+        /// picks is arbitrary, but arbitrary-and-still beats correct-then-wrong-then-correct.
+        ///
+        /// Costs a FULL enumeration instead of an early exit, which is why it is a separate method:
+        /// the hot callers (replay's per-event resolve, the WindowOpen condition) keep the cheap one.
+        /// </summary>
+        public static IntPtr FindWindowStable(WindowTarget? target, Regex? compiledTitleRegex, out int matchCount)
+        {
+            matchCount = 0;
+            if (target == null) return IntPtr.Zero;
+            if (string.IsNullOrEmpty(target.ProcessName) && string.IsNullOrEmpty(target.WindowTitle))
+                return IntPtr.Zero;
+
+            var titleBuffer = new StringBuilder(512);
+            var procBuffer = new StringBuilder(512);
+            Regex? regex = compiledTitleRegex ?? CompileTitleRegex(target);
+
+            IntPtr best = IntPtr.Zero;
+            int count = 0;
+            NativeMethods.EnumWindows((hwnd, lParam) =>
+            {
+                if (!NativeMethods.IsWindowVisible(hwnd)) return true;
+                if (!Matches(hwnd, target, regex, titleBuffer, procBuffer)) return true;
+                count++;
+                if (best == IntPtr.Zero || (long)hwnd < (long)best) best = hwnd;
+                return true;
+            }, IntPtr.Zero);
+            matchCount = count;
+            return best;
+        }
     }
 }

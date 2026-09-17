@@ -790,6 +790,7 @@ namespace TrueReplayer
                     case "actions:copyInternal": HandleActionsCopyInternal(payload); break;
                     case "actions:paste": HandleActionsPaste(payload); break;
                     case "actions:edit": HandleActionsEdit(payload); break;
+                    case "actions:editMany": HandleActionsEditMany(payload); break;
                     case "actions:delete": HandleActionsDelete(payload); break;
                     case "actions:replaceRange": HandleActionsReplaceRange(payload); break;
                     case "actions:addSendText": HandleAddSendText(payload); break;
@@ -2238,6 +2239,15 @@ namespace TrueReplayer
             // summed here so the toast can say so instead of calling it a plain success.
             int dwellDropped = 0;
 
+            // Rows a rule turned down INSIDE a run that otherwise converted. `refusal` below only
+            // ever speaks when a whole run stands still, so splitting five clicks with an
+            // at-cursor one among them applied four, left the fifth whole, and reported a plain
+            // success — with nothing in the grid to tell the skipped row from one that was never
+            // selected. The text already exists in WhyCannotSplit/WhyCannotMerge; only the count
+            // and the saying were missing.
+            int partialSkipped = 0;
+            string? partialReason = null;
+
             if (picked == null)
             {
                 if (toCombined) output = ActionModeConverter.ToCombined(input, out dwellDropped);
@@ -2284,8 +2294,11 @@ namespace TrueReplayer
                     output.RemoveRange(start, count);
                     output.InsertRange(start, converted);
                     // Counted only for a run that was actually APPLIED — a refused run keeps its
-                    // rows, so nothing of its was dropped.
+                    // rows, so nothing of its was dropped and its reason is already `refusal`.
                     dwellDropped += runDropped;
+                    var (skipped, reason) = ActionModeConverter.RefusedWithin(slice, toCombined);
+                    partialSkipped += skipped;
+                    partialReason ??= reason;
                     any = true;
                 }
                 if (!any)
@@ -2313,14 +2326,23 @@ namespace TrueReplayer
             // what went and where the line is, because the user's next question is "why 100 and
             // not 300?". Downgraded from success to info for the same reason: the outcome is the
             // one asked for MINUS something.
+            if (partialSkipped > 0)
+            {
+                string rows = partialSkipped == 1 ? "1 row" : $"{partialSkipped} rows";
+                message += $" — {rows} left as-is. {partialReason}";
+            }
             if (dwellDropped > 0)
             {
                 message += $" — the {dwellDropped} ms the button stayed down was dropped. "
                          + "A merged click only carries a hold from 200 ms up; Ctrl+Z restores the two rows.";
-                SendMessage("alert:show", new { message, type = "info" });
-                return;
             }
-            SendMessage("alert:show", new { message, type = "success" });
+            // Anything less than the whole ask is NOT a success, and the row it leaves behind looks
+            // identical to one nobody selected. Downgraded so the tone matches the sentence.
+            SendMessage("alert:show", new
+            {
+                message,
+                type = partialSkipped > 0 || dwellDropped > 0 ? "info" : "success",
+            });
         }
 
         // Bulk actionType edit — ONE undo entry for N rows. The row menu's click-type switch used
@@ -3997,7 +4019,64 @@ namespace TrueReplayer
             // Snapshot only once the edit is guaranteed to land — pushing before the bounds
             // guard would leave a duplicate undo state (and clear the redo stack) on a no-op.
             PushUndoState();
+            ApplyActionEdit(index, field, value);
+            HasUnsavedChanges = true;
+            PushActionsUpdate();
+        }
 
+        /// <summary>
+        /// Several field edits on ONE row, under ONE undo entry. The Sheet's Save is not N edits
+        /// the user made, it is ONE edit the user made that happens to touch N fields — and sending
+        /// it as N messages, each with its own PushUndoState, meant a single Ctrl+Z restored the
+        /// snapshot taken between two of them. Changing X and Y and pressing Save left the row at
+        /// the NEW x with the OLD y after one undo: a point that never existed at any moment of the
+        /// edit, and the next replay clicked there. An ActivateWindow Save spent about fifteen of
+        /// the fifty history slots on one click and needed fifteen Ctrl+Z to walk back.
+        ///
+        /// Rejection is ALL-OR-NOTHING and happens before the snapshot, for the same reason the
+        /// single-field door checks bounds first: a batch that half-applies is a state the user
+        /// never authored, which is the defect this exists to remove.
+        /// </summary>
+        private void HandleActionsEditMany(JsonElement payload)
+        {
+            if (!payload.TryGetProperty("index", out var indexEl) || indexEl.ValueKind != JsonValueKind.Number) return;
+            if (!payload.TryGetProperty("edits", out var editsEl) || editsEl.ValueKind != JsonValueKind.Array) return;
+
+            int index = indexEl.GetInt32();
+            if (index < 0 || index >= actions.Count) return;
+
+            var pending = new List<(string Field, string Value)>();
+            foreach (var e in editsEl.EnumerateArray())
+            {
+                if (e.ValueKind != JsonValueKind.Object) continue;
+                if (!e.TryGetProperty("field", out var fEl) || !e.TryGetProperty("value", out var vEl)) continue;
+                string field = fEl.GetString() ?? "";
+                string value = vEl.GetString() ?? "";
+                if (string.IsNullOrEmpty(field)) continue;
+                // Same allowlist as the single-field door, and refused for the same reason: an
+                // arbitrary string would set a row no execution branch handles.
+                if (field == "actionType" && !KnownActionTypes.Contains(value))
+                {
+                    DiagnosticLog.Warn($"actions:editMany rejected unknown actionType '{value}' at index {index}");
+                    return;
+                }
+                pending.Add((field, value));
+            }
+            if (pending.Count == 0) return;
+
+            PushUndoState();
+            foreach (var (field, value) in pending) ApplyActionEdit(index, field, value);
+            HasUnsavedChanges = true;
+            PushActionsUpdate();
+        }
+
+        /// <summary>
+        /// Applies ONE field edit to actions[index]. Deliberately does NOT snapshot, mark unsaved
+        /// or push the grid — the callers own those, which is exactly what lets a whole Sheet Save
+        /// be one undo entry instead of one per field.
+        /// </summary>
+        private void ApplyActionEdit(int index, string field, string value)
+        {
             var action = actions[index];
             switch (field)
             {
@@ -4332,9 +4411,6 @@ namespace TrueReplayer
                     }
                     break;
             }
-
-            HasUnsavedChanges = true;
-            PushActionsUpdate();
         }
 
         private void HandleActionsDelete(JsonElement payload)
@@ -6070,8 +6146,23 @@ namespace TrueReplayer
                     DiagnosticLog.Warn($"actions:insertClick rejected: no point and not at-cursor ({actionType})");
                     return;
                 }
-                x = xEl.GetInt32();
-                y = yEl.GetInt32();
+                // TryGetInt32, never GetInt32: ValueKind.Number does NOT imply Int32. A typed
+                // "300.5" or an 11-digit number is a perfectly good JSON number and GetInt32
+                // THROWS on it — before PushUndoState, so nothing was written — and the exception
+                // lands in HandleMessage's catch, whose body is a [Conditional("DEBUG")]
+                // Debug.WriteLine that the Release build removes. The dialog had already closed,
+                // so the user got no row and no word anywhere. The dialog now floors and bounds
+                // both numbers; this is the door refusing OUT LOUD rather than trusting it.
+                if (!xEl.TryGetInt32(out x) || !yEl.TryGetInt32(out y))
+                {
+                    DiagnosticLog.Warn($"actions:insertClick rejected: x/y are not whole numbers in range ({actionType})");
+                    SendMessage("alert:show", new
+                    {
+                        message = "That point is not a whole number the screen can use — enter X and Y as integers.",
+                        type = "error",
+                    });
+                    return;
+                }
             }
 
             // Hold duration — same clamp as HoldKey (one field, one range). Read ONLY for the

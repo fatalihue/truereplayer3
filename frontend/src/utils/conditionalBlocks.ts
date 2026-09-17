@@ -57,10 +57,44 @@ export function skippedRowMask(actions: ActionItem[]): boolean[] {
     mask[i] = skippedHere;
     if (until < 0 && a?.isSkipped) {
       const closer = closerOf.get(i);
-      if (closer !== undefined) until = closer;   // the block's rows, closer included
+      if (closer !== undefined) {
+        until = closer;   // the block's rows, closer included
+      } else if (a.actionType === 'ElseIf' || a.actionType === 'Else') {
+        // A branch ARM owns its body, and a skipped arm takes the body with it. The engine says so
+        // in as many words — "a greyed-out ELSEIF elides only ITS OWN arm" — and never probes it,
+        // so the chain walks on to the next marker and those rows never run. `closerOf` could not
+        // see this: it only maps opener→closer pairs, and an arm is neither. So the mask marked
+        // the marker alone, the body stayed painted as live, and the status bar charged its delays
+        // to a run that would never pay them. The app already states the rule elsewhere — the row
+        // menu's Delete arm exists precisely because THE BODY GOES WITH THE ARM.
+        until = armBodyEnd(actions, i);
+      }
     }
   }
   return mask;
+}
+
+/**
+ * Last row of the arm that OPENS at `arm` (an ElseIf or Else), or `arm` itself when the arm has no
+ * body. The arm ends at the next marker of the SAME chain — ElseIf, Else or EndIf — which means
+ * depth 0 relative to here: blocks opened inside the body carry their own closers and must not end
+ * it. An unbalanced list (a hand-edited profile with no EndIf) ends the arm at the last row, which
+ * is what the engine does too when it runs off the end.
+ */
+function armBodyEnd(actions: ActionItem[], arm: number): number {
+  let depth = 0;
+  for (let i = arm + 1; i < actions.length; i++) {
+    const t = actions[i]?.actionType ?? '';
+    if (t === 'If' || t === 'While' || t === 'ForEachRow') { depth++; continue; }
+    if (t === 'EndLoop') { if (depth > 0) depth--; continue; }
+    if (t === 'EndIf') {
+      if (depth === 0) return i - 1;
+      depth--;
+      continue;
+    }
+    if (depth === 0 && (t === 'ElseIf' || t === 'Else')) return i - 1;
+  }
+  return actions.length - 1;
 }
 
 // Block-snap a selection: if it TOUCHES a structural marker, expand every selected index

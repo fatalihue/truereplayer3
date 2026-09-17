@@ -90,6 +90,35 @@ namespace TrueReplayer
             return true;
         }
 
+        /// <summary>
+        /// Feeds the DOWN of a key that this hook is about to hand to the foreground app into the
+        /// recorder, so a pass-through is recorded WHOLE or not at all.
+        ///
+        /// The pass-through branches return CallNextHookEx above the only OnKeyEvent in this file,
+        /// so the down never reached the recorder — while the UP skips the whole hotkey ladder
+        /// (it is gated on isDown) and lands in the tail, which invokes OnKeyEvent for it. The
+        /// tail's two guards do not catch this one: IsHotkeyKeyUpSuppressed is only true after a
+        /// DISPATCH stamped the key, and no dispatch happened; and the other guard only covers
+        /// PROFILE hotkeys, which a global hotkey is not.
+        ///
+        /// So a recording picked up half a press. In paired mode that is a lone KeyUp row
+        /// releasing a key nobody held. In combined mode — the default — it is worse and quieter:
+        /// the modifier half of "Ctrl+PageDown" was recorded and then never consumed, so the
+        /// session closed by emitting a phantom lone-modifier Keystroke, and the actual key the
+        /// user pressed is nowhere in the macro.
+        ///
+        /// Recording the down, rather than suppressing the up, is the half that matches the gate's
+        /// own premise: with Profile Keys off the key BELONGS to the foreground app, and the
+        /// recorder's job is to write down what the user did to the foreground app. It also fixes
+        /// the combined case in one move — the down arrives with the modifier held, the session is
+        /// marked used, and the correct "Ctrl+PageDown" row is written instead of the phantom.
+        /// Suppressing the up would leave the phantom standing and still lose the key.
+        ///
+        /// The subscriber gates itself on IsRecording, so this is inert outside a recording, and
+        /// the recorder de-duplicates by its own pressed-key set, so auto-repeat needs nothing.
+        /// </summary>
+        private static void PassThroughRecordsDown(string keyName) => OnKeyEvent?.Invoke(keyName, true);
+
         /// <summary>Something is running that its own hotkey should still be able to stop.</summary>
         private static bool IsRunInProgress()
         {
@@ -3055,7 +3084,12 @@ namespace TrueReplayer
                             if (key == UserProfile.Current.ReplayHotkey)
                             {
                                 if (PassThroughWhileProfileKeysOff(key, MainController.Instance?.IsReplayInProgress() == true))
+                                {
+                                    // The key REALLY reaches the foreground app on this path, so it
+                                    // has to reach the RECORDING too — see PassThroughRecordsDown.
+                                    PassThroughRecordsDown(keyName);
                                     return NativeMethods.CallNextHookEx(_keyboardHookId, nCode, wParam, lParam);
+                                }
                                 // Gate by the active profile's window target — same foreground rule
                                 // profile keys already enforce. Pass through (CallNextHookEx) instead
                                 // of swallowing when the gate rejects, so the user can still type the
@@ -3065,6 +3099,8 @@ namespace TrueReplayer
                                 if (!string.IsNullOrEmpty(activeName)
                                     && !IsForegroundWindowMatch(activeName))
                                 {
+                                    // Same half-a-press hazard as the gate above, and older than it.
+                                    PassThroughRecordsDown(keyName);
                                     return NativeMethods.CallNextHookEx(_keyboardHookId, nCode, wParam, lParam);
                                 }
                                 LastTriggerHotkey = key;
@@ -3103,7 +3139,10 @@ namespace TrueReplayer
                         {
                             // No stop-exception: a one-shot copy has nothing to stop.
                             if (PassThroughWhileProfileKeysOff(key))
+                            {
+                                PassThroughRecordsDown(keyName);
                                 return NativeMethods.CallNextHookEx(_keyboardHookId, nCode, wParam, lParam);
+                            }
                             if (ShouldCancelMenuFor(key)) InjectMenuCancelKey();
                             OnHotkeyPressed?.Invoke(key);
                             return (IntPtr)1;

@@ -107,6 +107,29 @@ function ResponsiveProfileName({ name }: { name: string }) {
   );
 }
 
+// ── Overflow: the tail of the row collapses into a More ▾ menu when it runs out of room ──
+// Four candidates, collapsed tail-first: Clear All, Data Loop, Activate Window, Run Profile.
+// Four is not a taste call — at the narrowest layout the app still allows (minimum window with
+// BOTH rails re-expanded by hand, centre column 473 px) three was measured short by 34 px, and
+// a menu that leaves one button clipped has not done its job.
+//
+// The order below is the SOURCE, and both sides derive from it. They used to be eight
+// hand-written literals — `overflowCount < 4` in the row against `overflowCount >= 3` in the
+// menu — and two of the four pairs did not complement: Activate Window opened in the menu at
+// count 2 while still painted in the row, and Run Profile did the same at count 3. Two
+// affordances for the same control, firing a byte-identical payload, in two resting states a
+// normal window reaches. `OVERFLOW_CANDIDATES` was no help: it was read by the clamp below and
+// by nothing else, so the number and the gates could disagree forever without a compile error.
+// Adding a fifth candidate, or reordering the tail, now rewrites both sides at once.
+const OVERFLOW_ORDER = ['clearAll', 'dataLoop', 'activateWindow', 'runProfile'] as const;
+type OverflowKey = (typeof OVERFLOW_ORDER)[number];
+const OVERFLOW_CANDIDATES = OVERFLOW_ORDER.length;
+// PURE, and at module scope on purpose: the two reset effects inside the component read it, and
+// a predicate rebuilt every render would either be a missing dependency or re-run those effects
+// on every render. The component wraps it in a `collapsed` closure for the JSX, where that is free.
+const isCollapsed = (count: number, k: OverflowKey) => count > OVERFLOW_ORDER.indexOf(k);
+
+
 export function Toolbar(_props: ToolbarProps) {
   const { toolbar, buttonStates, actions, activeProfile, settings, dataTable } = useAppState();
   const { send } = useBridge();
@@ -144,16 +167,14 @@ export function Toolbar(_props: ToolbarProps) {
   // button is off matters more than what it would insert.
   const clickerTip = (en: string, ptBr: string) =>
     isClicker ? tt('Macro mode only', 'Só no modo Macro') : tt(en, ptBr);
-  // ── Overflow: the tail of the row collapses into a More ▾ menu when it runs out of room ──
-  // Four candidates, collapsed tail-first: Clear All, Data Loop, Activate Window, Run Profile.
-  // Four is not a taste call — at the narrowest layout the app still allows (minimum window with
-  // BOTH rails re-expanded by hand, centre column 473 px) three was measured short by 34 px, and
-  // a menu that leaves one button clipped has not done its job.
-  const OVERFLOW_CANDIDATES = 4;
   const toolsRowRef = useRef<HTMLDivElement>(null);
   // Latest fit(), so the listeners below can be wired ONCE and still call the current closure.
   const fitRef = useRef<(() => void) | null>(null);
   const [overflowCount, setOverflowCount] = useState(0);
+  // A control is in the MENU exactly when it has left the row. One predicate, both uses — the
+  // menu is the complement of the row by construction, not by two numbers that have to agree.
+  const collapsed = (k: OverflowKey) => isCollapsed(overflowCount, k);
+  const inRow = (k: OverflowKey) => !collapsed(k);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   // Second step of Clear All while it lives in the menu. Reset whenever the menu closes, so
   // reopening never lands on a primed destructive button the user does not remember arming.
@@ -296,8 +317,8 @@ export function Toolbar(_props: ToolbarProps) {
   // appearing unprompted, pointing at a list the user has since changed. The dismiss-on-outside
   // handler cannot save it either: its ref is null while the trigger is gone, so the guard that
   // closes on an outside click can never be true.
-  useEffect(() => { if (overflowCount >= 1) setShowClearConfirm(false); }, [overflowCount]);
-  useEffect(() => { if (overflowCount === 0) setShowMoreMenu(false); }, [overflowCount]);
+  useEffect(() => { if (isCollapsed(overflowCount, 'clearAll')) setShowClearConfirm(false); }, [overflowCount]);
+  useEffect(() => { if (!isCollapsed(overflowCount, 'clearAll')) setShowMoreMenu(false); }, [overflowCount]);
 
   // The five cmd:* listeners below are decoupled extension points, NOT dead code — the same
   // pattern and the same reasoning as cmd:togglesidebar in App.tsx, and worth saying here because
@@ -438,6 +459,14 @@ export function Toolbar(_props: ToolbarProps) {
     setShowAssertMenu(false);
     setShowLoopMenu(false);
     setShowClearConfirm(false);
+    // The More menu belongs in this list for the same reason as its five siblings: it holds
+    // nothing the user typed. It was the one overlay left out, and the only one that can hold an
+    // ARMED destructive step. Its panel is render-gated on !insertsDisabled, which HIDES it
+    // without closing it — so a Clear All armed in the menu survived a ScrLk to Clicker or a run
+    // started by global hotkey, and the menu came back already open, already on "Clear all N
+    // actions?", with the red button one click away and no memory of arming it. Closing here
+    // cascades into the effect that clears clearArmed on close, so one line fixes both halves.
+    setShowMoreMenu(false);
   }, [insertsDisabled]);
 
   // Clear All also closes when the list empties — there is nothing left to clear. Separate from
@@ -1144,11 +1173,11 @@ export function Toolbar(_props: ToolbarProps) {
               Once all three have gone into the menu it divides nothing — the More button is
               itself the boundary by then — so it steps aside and gives the row back its 9 px,
               which at the narrowest layout is the difference between fitting and not. */}
-          {overflowCount < 3 && <div className="w-px h-4 bg-border-subtle mx-1" />}
+          {inRow('activateWindow') && <div className="w-px h-4 bg-border-subtle mx-1" />}
 
           {/* Run Profile — sub-macro call (picker dialog). Sits next to Browser
               because both delegate work elsewhere (a profile / a browser tab). */}
-          {overflowCount < 4 && (
+          {inRow('runProfile') && (
           <button
             tabIndex={-1}
             onClick={() => setShowRunProfileDialog(true)}
@@ -1163,7 +1192,7 @@ export function Toolbar(_props: ToolbarProps) {
           {/* Activate Window — focus (and optionally launch) another app mid-macro.
               Sits with Run Profile: both are orchestration rows. Pattern A: inserts
               an empty row and auto-opens the Sheet (backend sends sheet:openIndex). */}
-          {overflowCount < 3 && (
+          {inRow('activateWindow') && (
           <button
             tabIndex={-1}
             onClick={() => {
@@ -1191,7 +1220,7 @@ export function Toolbar(_props: ToolbarProps) {
               very table a ForEachRow already in flight is iterating. The toolbar is its
               ONLY entry point — it is deliberately absent from the command palette — so
               this gate is the whole story. */}
-          {overflowCount < 2 && (
+          {inRow('dataLoop') && (
           <button
             tabIndex={-1}
             onClick={() => window.dispatchEvent(new CustomEvent('cmd:dataeditor'))}
@@ -1205,7 +1234,7 @@ export function Toolbar(_props: ToolbarProps) {
 
           {/* When the tail has collapsed, the More button IS the divider — a separator beside
               it would read as two gaps in a row. */}
-          {overflowCount === 0 && <div className="w-px h-4 bg-border-subtle mx-1" />}
+          {inRow('clearAll') && <div className="w-px h-4 bg-border-subtle mx-1" />}
 
           {/* Clear All — destructive hover (red text + faint red bg) mirrors
               BulkActionBar's Delete. Two-step confirm popover + the same
@@ -1214,7 +1243,7 @@ export function Toolbar(_props: ToolbarProps) {
               the engine, with only Undo as the safety net). Copy/Paste removed
               from the toolbar (redundant with the Ctrl+C / Ctrl+V hotkeys and
               the BulkActionBar's buttons when a selection exists). */}
-          {overflowCount < 1 && (
+          {inRow('clearAll') && (
           <div className="relative" ref={clearMenuRef}>
             <button
               tabIndex={-1}
@@ -1279,7 +1308,7 @@ export function Toolbar(_props: ToolbarProps) {
               that closes on click — so here it sends the user back to the button by
               widening the window, and stays disabled-looking rather than lying about a
               one-click destroy. */}
-          {overflowCount > 0 && (
+          {collapsed('clearAll') && (
             <div className="relative" ref={moreMenuRef}>
               <button
                 tabIndex={-1}
@@ -1296,7 +1325,7 @@ export function Toolbar(_props: ToolbarProps) {
                   <div className="px-3 py-1 label-micro text-text-tertiary">
                     More actions
                   </div>
-                  {overflowCount >= 3 && (
+                  {collapsed('runProfile') && (
                     <button
                       className="menu-item text-text-primary"
                       onClick={() => { setShowRunProfileDialog(true); setShowMoreMenu(false); }}
@@ -1305,7 +1334,7 @@ export function Toolbar(_props: ToolbarProps) {
                       Run Profile
                     </button>
                   )}
-                  {overflowCount >= 2 && (
+                  {collapsed('activateWindow') && (
                     <button
                       className="menu-item text-text-primary"
                       onClick={() => {
@@ -1319,7 +1348,7 @@ export function Toolbar(_props: ToolbarProps) {
                       Activate Window
                     </button>
                   )}
-                  {overflowCount >= 2 && (
+                  {collapsed('dataLoop') && (
                     <button
                       className="menu-item text-text-primary"
                       onClick={() => { window.dispatchEvent(new CustomEvent('cmd:dataeditor')); setShowMoreMenu(false); }}
@@ -1355,7 +1384,11 @@ export function Toolbar(_props: ToolbarProps) {
                             setClearArmed(false);
                             setShowMoreMenu(false);
                           }}
-                          disabled={insertsDisabled}
+                          // Same two conditions as the TRIGGER that armed it. It carried only the
+                          // run gate, so a menu armed before the list emptied offered to "Clear
+                          // all 0 actions?" with the red button live — the popover sibling is held
+                          // to both by an effect, and this one was held to one by hand.
+                          disabled={insertsDisabled || actions.length === 0}
                           className="px-2.5 py-1 rounded text-[11px] font-semibold bg-recording text-[color:var(--color-recording-ink)] hover:opacity-85 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           Clear all
