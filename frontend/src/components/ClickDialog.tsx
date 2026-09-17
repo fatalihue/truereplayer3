@@ -25,6 +25,11 @@ export interface ClickResult {
   /** Click mode only; omitted for a single shot so the row persists nothing. */
   repeat?: number;
   repeatDelayMs?: number;
+  /** Write it as TWO rows, Down then Up. Mutually exclusive with hold / multi-click / atCursor. */
+  paired?: boolean;
+  /** Paired only, optional: the Up half's own point — omitted, it reuses the press point. */
+  upX?: number;
+  upY?: number;
 }
 
 interface ClickDialogProps {
@@ -80,6 +85,8 @@ const stepFor = (ms: number) => (ms >= 1000 ? 1000 : 100);
 
 type Mode = 'click' | 'hold';
 type Clicks = 'single' | 'double' | 'triple';
+/** Combined = one row that owns press→release. Paired = two rows, Down then Up. */
+type Form = 'combined' | 'paired';
 
 export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
   const { language } = useLanguage();
@@ -94,12 +101,28 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
   const [gapMs, setGapMs] = useState<number>(DEFAULT_CLICK_GAP_MS);
   const [position, setPosition] = useState<'point' | 'cursor'>('point');
   const [point, setPoint] = useState<{ x: number; y: number } | null>(null);
+  const [form, setForm] = useState<Form>('combined');
+  // The Up half's own point. null = the release lands where the press did (the plain split);
+  // set = a DRAG, which is the only thing in the app that needs two points in one gesture and
+  // the reason this dialog grew a second picker at all.
+  const [upPoint, setUpPoint] = useState<{ x: number; y: number } | null>(null);
 
   // Double/Triple are LEFT-button actions — MultiClickPairs emits LEFTDOWN/LEFTUP and there is
   // no right-button double-click type to emit instead. So the button control is not merely
   // ignored for them, it is DISABLED and pinned to Left: leaving "Right" lit while the row
   // replays a left double-click is the UI stating something false.
-  const multi = clicks !== 'single';
+  // PAIRED pins three controls, and the app's own converter is why each one. A Down/Up pair is
+  // two fragments: its replay cases read X/Y directly and never consult AtCursor, the halves do
+  // not loop, and a hold or a multi-click is a whole gesture that cannot be cut in two — all
+  // three are refusals ActionModeConverter.ToPaired already enforces. Pinning them here is the
+  // same treatment the Button control gets under Double/Triple, for the same reason: a lit
+  // segment the row will not honour is the UI stating something false.
+  const paired = form === 'paired';
+  const effectiveMode: Mode = paired ? 'click' : mode;
+  const effectiveClicks: Clicks = paired ? 'single' : clicks;
+  const effectivePosition: 'point' | 'cursor' = paired ? 'point' : position;
+
+  const multi = effectiveClicks !== 'single';
   const effectiveButton: ClickButton = multi ? 'Left' : button;
 
   // Single in-flight pick, correlated by id — the Sheet's pattern. A reply whose id doesn't
@@ -108,6 +131,10 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
   const [pickRequestId, setPickRequestId] = useState<string | null>(null);
   const pickRequestIdRef = useRef<string | null>(null);
   useEffect(() => { pickRequestIdRef.current = pickRequestId; }, [pickRequestId]);
+  // WHICH point the in-flight pick is for. A ref, not state: it is read inside the subscription,
+  // which is registered once — state would be captured stale there. Still one pick at a time, so
+  // one target is all there is to remember.
+  const pickTargetRef = useRef<'press' | 'release'>('press');
 
   useEffect(() => {
     const unsub = subscribe((msg) => {
@@ -117,14 +144,18 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
       // cancelled covers the refused case too (refused rides ALONG with cancelled, never
       // instead of it — see the message's note), so one branch handles both: nothing was
       // picked, the previous point stands, and the button comes back out of "Picking…".
-      if (!r.cancelled && r.x != null && r.y != null) setPoint({ x: r.x, y: r.y });
+      if (!r.cancelled && r.x != null && r.y != null) {
+        if (pickTargetRef.current === 'release') setUpPoint({ x: r.x, y: r.y });
+        else setPoint({ x: r.x, y: r.y });
+      }
       setPickRequestId(null);
     });
     return unsub;
   }, [subscribe]);
 
-  const handlePick = useCallback(() => {
+  const handlePick = useCallback((target: 'press' | 'release' = 'press') => {
     const requestId = Math.random().toString(36).slice(2, 10);
+    pickTargetRef.current = target;
     setPickRequestId(requestId);
     send({ type: 'mouse:pickPosition', payload: { requestId } });
   }, [send]);
@@ -138,21 +169,33 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
     setClicks(next);
   };
 
-  const actionType: ClickActionType = mode === 'hold'
+  // Always a COMBINED name, even in the paired form: the `paired` flag on the payload says what
+  // SHAPE to write it in, so there is one vocabulary on the wire and the backend's strict
+  // IsCombinedClickType guard stays exactly as strict as it was.
+  const actionType: ClickActionType = effectiveMode === 'hold'
     ? (`${button}ClickHold` as ClickActionType)
-    : clicks === 'double' ? 'DoubleClick'
-    : clicks === 'triple' ? 'TripleClick'
+    : effectiveClicks === 'double' ? 'DoubleClick'
+    : effectiveClicks === 'triple' ? 'TripleClick'
     : (`${button}Click` as ClickActionType);
 
   // At cursor needs no point; This point needs one. A pick still in flight is not an answer yet.
-  const canConfirm = pickRequestId == null && (position === 'cursor' || point != null);
+  // The RELEASE point is never required — omitted, both halves share the press point, which is
+  // the plain split. Only a drag needs the second one, and a drag is the rarer ask.
+  const canConfirm = pickRequestId == null && (effectivePosition === 'cursor' || point != null);
 
   const handleConfirm = () => {
     if (!canConfirm) return;
-    const where = position === 'cursor'
+    const where = effectivePosition === 'cursor'
       ? { atCursor: true as const }
       : { atCursor: false as const, x: point!.x, y: point!.y };
-    if (mode === 'hold') {
+    if (paired) {
+      onConfirm({
+        actionType, ...where, paired: true,
+        ...(upPoint ? { upX: upPoint.x, upY: upPoint.y } : {}),
+      });
+      return;
+    }
+    if (effectiveMode === 'hold') {
       onConfirm({ actionType, ...where, holdDurationMs: clampHold(holdMs) });
       return;
     }
@@ -196,15 +239,34 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
         {/* MODE — a tap or a held press. The same two-way split, in the same place, as the Send
             Keystroke dialog's Press/Hold: one dialog per input device, not one per action type. */}
         <SegmentedControl<Mode>
-          value={mode}
+          value={effectiveMode}
           onChange={setMode}
           ariaLabel="Click mode"
           grow
+          className={paired ? 'opacity-50 pointer-events-none' : undefined}
           options={[
             { value: 'click', label: 'Click' },
             { value: 'hold', label: 'Hold' },
           ]}
         />
+
+        {/* FORM — one row, or two. Until this control existed the dialog could only write the
+            combined shape, the Sheet's picker could only change which BUTTON a row used, and the
+            only way to get a paired click was to convert the WHOLE profile. So a hand-built DRAG
+            (press at A, release at B) had no route at all — the recorder was its only source. */}
+        <div className="flex flex-col gap-1.5">
+          <span className="label-micro text-text-tertiary">Form</span>
+          <SegmentedControl<Form>
+            value={form}
+            onChange={setForm}
+            ariaLabel="Click form"
+            grow
+            options={[
+              { value: 'combined', label: 'One row', tip: tt('Press and release together', 'Aperta e solta numa linha') },
+              { value: 'paired', label: 'Two rows', tip: tt('Down and Up as separate rows — needed for a drag', 'Down e Up em linhas separadas — preciso para arrastar') },
+            ]}
+          />
+        </div>
 
         {/* BUTTON — three named things, so a segmented control rather than a dropdown: all the
             options fit, and the choice reads without opening anything. Pinned to Left (and
@@ -229,11 +291,16 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
             control, so a row inserted here and a row edited there describe themselves alike. */}
         <div className="flex flex-col gap-1.5">
           <span className="label-micro text-text-tertiary">Position</span>
+          {/* Pinned to This point under Paired — the halves' replay cases read X/Y directly and
+              never consult the at-cursor flag, which is exactly why ToPaired refuses to split an
+              at-cursor click. A lit "At cursor" here would promise a point resolved at run time
+              on a row that will read the stored one. */}
           <SegmentedControl<'point' | 'cursor'>
-            value={position}
+            value={effectivePosition}
             onChange={setPosition}
             ariaLabel="Click position source"
             grow
+            className={paired ? 'opacity-50 pointer-events-none' : undefined}
             options={[
               { value: 'point', label: 'This point' },
               { value: 'cursor', label: 'At cursor' },
@@ -250,14 +317,16 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
           <div className="grid mt-1">
             <div
               style={{ gridArea: '1 / 1' }}
-              className={position === 'point' ? undefined : 'invisible'}
-              aria-hidden={position !== 'point'}
+              className={effectivePosition === 'point' ? undefined : 'invisible'}
+              aria-hidden={effectivePosition !== 'point'}
             >
               <div className="flex items-stretch gap-1.5">
                 <button
                   type="button"
-                  onClick={handlePick}
-                  disabled={position !== 'point' || pickRequestId != null}
+                  // Wrapped, not passed by reference: handlePick now takes the target, and a bare
+                  // onClick={handlePick} would hand it the MouseEvent as that argument.
+                  onClick={() => handlePick('press')}
+                  disabled={effectivePosition !== 'point' || pickRequestId != null}
                   className="flex-1 h-8 flex items-center justify-center gap-1.5 px-2.5 text-xs font-medium border border-border-default bg-bg-elevated hover:bg-bg-card text-text-secondary hover:text-text-primary rounded whitespace-nowrap transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Crosshair size={13} />
@@ -270,8 +339,8 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
             </div>
             <div
               style={{ gridArea: '1 / 1' }}
-              className={position === 'cursor' ? 'flex items-center' : 'invisible'}
-              aria-hidden={position !== 'cursor'}
+              className={effectivePosition === 'cursor' ? 'flex items-center' : 'invisible'}
+              aria-hidden={effectivePosition !== 'cursor'}
             >
               <span className="text-[11px] leading-relaxed text-text-tertiary">
                 {'The point is read from the mouse when the step runs.'}
@@ -289,9 +358,9 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
         <div className="grid">
           {/* ── CLICK mode ── */}
           <div
-            className={`flex flex-col gap-2.5 ${mode === 'click' ? '' : 'invisible pointer-events-none'}`}
+            className={`flex flex-col gap-2.5 ${effectiveMode === 'click' && !paired ? '' : 'invisible pointer-events-none'}`}
             style={{ gridArea: '1 / 1' }}
-            aria-hidden={mode !== 'click'}
+            aria-hidden={effectiveMode !== 'click' || paired}
           >
             <div className="flex flex-col gap-1.5">
               <span className="label-micro text-text-tertiary">Clicks</span>
@@ -374,6 +443,47 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
                 run, and the engine's 60 s ceiling exists to make that unreachable. */}
             <DurationChips presets={HOLD_PRESETS} value={holdMs} onSelect={(ms) => setHoldMs(clampHold(ms))} />
           </div>
+
+          {/* ── PAIRED body ── A THIRD body in the same cell, not a row bolted onto the section
+              above: the paired form has a different set of controls, not the same ones greyed —
+              × N and the multi-click count do not exist for halves, and the release point does
+              not exist for anything else. Same stacked construction as the two above, so the
+              card is the same height in all three. */}
+          <div
+            className={`flex flex-col gap-2.5 ${paired ? '' : 'invisible pointer-events-none'}`}
+            style={{ gridArea: '1 / 1' }}
+            aria-hidden={!paired}
+          >
+            <div className="flex flex-col gap-1.5">
+              <span className="label-micro text-text-tertiary">Release at</span>
+              <div className="flex items-stretch gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => handlePick('release')}
+                  disabled={!paired || pickRequestId != null}
+                  className="flex-1 h-8 flex items-center justify-center gap-1.5 px-2.5 text-xs font-medium border border-border-default bg-bg-elevated hover:bg-bg-card text-text-secondary hover:text-text-primary rounded whitespace-nowrap transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Crosshair size={13} />
+                  {pickRequestId != null ? 'Picking…' : upPoint ? 'Pick again' : 'Same point'}
+                </button>
+                <div className="h-8 shrink-0 flex items-center px-2.5 rounded border border-border-subtle bg-bg-input text-xs font-mono tabular-nums text-text-secondary">
+                  {upPoint ? `${upPoint.x}, ${upPoint.y}` : '—'}
+                </div>
+              </div>
+            </div>
+            {/* Always rendered so the body's height does not move when a release point appears;
+                the Clear affordance only lights up once there is something to clear. */}
+            <button
+              type="button"
+              onClick={() => setUpPoint(null)}
+              disabled={!upPoint}
+              className="self-start text-[11px] leading-relaxed text-text-tertiary hover:text-text-secondary disabled:opacity-40 disabled:cursor-default transition-colors"
+            >
+              {upPoint
+                ? tt('Release somewhere else — this is a drag. Clear it?', 'Solta em outro lugar — isto é um arrasto. Limpar?')
+                : tt('Leave it empty and the release lands on the press point.', 'Deixe vazio e a soltura cai no ponto da pressão.')}
+            </button>
+          </div>
         </div>
 
         {/* Live-semantics strip — every input reads back as one sentence. Same always-render-all,
@@ -390,11 +500,16 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
             `Double-clicks ${whereLabel}${times}.`,
             `Triple-clicks ${whereLabel}${times}.`,
             'Pick a point on screen, or switch to At cursor.',
+            // The two paired readings. The drag one is the whole reason the form exists, so it
+            // says the word: a reader who did not know the app could build one now does.
+            `Two rows: presses the ${btnLabel} button ${whereLabel}, then releases there.`,
+            `Two rows: presses the ${btnLabel} button ${whereLabel}, then releases at ${upPoint?.x}, ${upPoint?.y} — a drag.`,
           ];
           const active = !canConfirm ? 4
-            : mode === 'hold' ? 0
-            : clicks === 'double' ? 2
-            : clicks === 'triple' ? 3
+            : paired ? (upPoint ? 6 : 5)
+            : effectiveMode === 'hold' ? 0
+            : effectiveClicks === 'double' ? 2
+            : effectiveClicks === 'triple' ? 3
             : 1;
           return (
             <div

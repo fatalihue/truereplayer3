@@ -6,7 +6,7 @@ import type { CollisionDetection, DragStartEvent, DragEndEvent } from '@dnd-kit/
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { CSS } from '@dnd-kit/utilities';
-import { Mouse, MousePointerClick, MousePointer2, Keyboard, ArrowUp, ArrowDown, Zap, Type, Trash2, ChevronRight, ChevronDown, ChevronsDownUp, ChevronsUpDown, Plus, Pencil, ScanSearch, Pipette, Globe, CheckCheck, Check, Code2, Files, Hourglass, Repeat2, ExternalLink, Crosshair, Link, GripVertical, Timer, GitBranch, ArrowRightLeft, Split, Brackets, MoreHorizontal, Focus, Braces, AppWindow, Clipboard, ClipboardCopy, ClipboardPaste, Eye, EyeOff, RotateCcw, Dice5, Cpu, FileCheck, Clock, ShieldCheck, CircleStop, CornerDownLeft, IterationCw, ChevronUp, ArrowRightFromLine, SkipForward, Table2 } from 'lucide-react';
+import { Mouse, MousePointerClick, MousePointer2, Keyboard, ArrowUp, ArrowDown, Zap, Type, Trash2, ChevronRight, ChevronDown, ChevronsDownUp, ChevronsUpDown, Plus, Pencil, ScanSearch, Pipette, Globe, CheckCheck, Check, Code2, Files, Hourglass, Repeat2, ExternalLink, Crosshair, Link, GripVertical, Timer, GitBranch, ArrowRightLeft, Combine, Split, Brackets, MoreHorizontal, Focus, Braces, AppWindow, Clipboard, ClipboardCopy, ClipboardPaste, Eye, EyeOff, RotateCcw, Dice5, Cpu, FileCheck, Clock, ShieldCheck, CircleStop, CornerDownLeft, IterationCw, ChevronUp, ArrowRightFromLine, SkipForward, Table2 } from 'lucide-react';
 import { canCollapse, canExpand, expandKeystroke } from '../utils/keyRepeat';
 import type { ActionItem } from '../bridge/messageTypes';
 import { useAppState } from '../state/AppStateContext';
@@ -17,7 +17,7 @@ import { useTt, useLanguage } from '../state/LanguageContext';
 import type { Language } from '../state/LanguageContext';
 import { useSelectionRef } from '../state/SelectionContext';
 import { useToast } from '../state/ToastContext';
-import { getDisplayKey, getDisplayX, getDisplayY, getActionTypeColors, formatKeyCombo, formatMs, isCombinedClick, isClickHold, isCoordinateClick, isFocusClickEligible } from '../utils/displayUtils';
+import { getDisplayKey, getDisplayX, getDisplayY, getActionTypeColors, formatKeyCombo, formatMs, isCombinedClick, isClickHold, isCoordinateClick, isFocusClickEligible, CLICK_FAMILY_TYPES, clickFormOf } from '../utils/displayUtils';
 import { snapIndicesToBlocks, carriesConditionProbe, hasConditionFields, skippedRowMask, isStructuralRow } from '../utils/conditionalBlocks';
 import { uiZoom } from '../utils/zoomSpace';
 // Deferred: already rendered conditionally, but a static import pulls the whole Lexical editor
@@ -769,11 +769,15 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
   // useContextMenuPosition converts to LAYOUT once, on the way out; never pre-convert here.
   const [elseIfPicker, setElseIfPicker] = useState<{ x: number; y: number; ifRowIndex: number } | null>(null);
   const elseIfPickerRef = useRef<HTMLDivElement>(null);
-  const [activeSubmenu, setActiveSubmenu] = useState<'more' | null>(null);
+  // 'more' is the drawer of rarities; 'clicktype' is the click-form picker, which sits at TOP
+  // level in the type slot rather than inside More — it changes what the row DOES, which is the
+  // line the whole menu is organised on. One state, so opening either closes the other.
+  const [activeSubmenu, setActiveSubmenu] = useState<'more' | 'clicktype' | null>(null);
   // The "More ▸" submenu opens to the side; flip it left/up when the context menu sits
   // near the right/bottom edge so it isn't clipped. Measured on open by useFlyoutFlip,
   // which replaced an earlier right-edge-only heuristic computed in the menu-position pass.
   const moreFlyout = useFlyoutFlip(activeSubmenu === 'more', 'side');
+  const clickTypeFlyout = useFlyoutFlip(activeSubmenu === 'clicktype', 'side');
   const contextMenuRef = useRef<HTMLDivElement>(null);
   // Two-pass off-screen-measure-then-reposition, shared with ProfilePanel's two menus
   // (declared after the ref it measures, which the hook reads). The hook owns the
@@ -3232,6 +3236,121 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
             );
           })()}
 
+          {/* Change click type ▸ — the click row's SECOND type slot, and the answer to the thing
+              that had no route at all: a click's FORM. The Sheet's picker changes which BUTTON a
+              row uses and carefully PRESERVES the Down/Up suffix; the palette's convert rewrites
+              the WHOLE profile. Between them there was no way to make one click paired, which is
+              why a hand-built drag was impossible (a drag IS a Down and an Up on different points).
+
+              The eight chips come from CLICK_FAMILY_TYPES — the Sheet's own list, shared since
+              2026-09-16 — in the Sheet's order, which IS the grouping (buttons · the same three
+              held · the left-button multi-clicks).
+
+              SUFFIX IS PRESERVED, exactly as the Sheet does it: on a Down row the chips read
+              "Left Click" and write LeftClickDown. The five combined-only entries (Double, Triple,
+              the three Holds) are filtered out there, because converting one half into a whole
+              press would orphan its twin — a lone LeftClickUp releasing a button nobody pressed.
+
+              Split / Merge are NOT gated here beyond the row's form. Their real rules live in
+              ActionModeConverter (× N, at-cursor, Double/Triple, and a drag that must stay
+              paired), and the backend now SPEAKS them — restating them in TS would be a second
+              copy of four conditions that must agree forever. Let it refuse out loud. */}
+          {(() => {
+            const row = actions[contextMenu.rowIndex];
+            if (!row || !isCoordinateClick(row.actionType ?? '')) return null;
+            const form = clickFormOf(row.actionType ?? '');
+            const options = form
+              ? CLICK_FAMILY_TYPES.filter(o => isFocusClickEligible(o.value))
+              : CLICK_FAMILY_TYPES;
+            // Rows of the SAME form as the clicked one. A mixed selection has no single answer to
+            // "what should Double Click mean for a Down half?", and one message per distinct
+            // target would put the per-row undo back that this whole entry exists to remove.
+            const targets = contextSelectionIndices()
+              .filter(i => isCoordinateClick(actions[i]?.actionType ?? '')
+                        && clickFormOf(actions[i]?.actionType ?? '') === form);
+            return (
+              <div
+                className="relative"
+                onMouseEnter={() => setActiveSubmenu('clicktype')}
+                onMouseLeave={() => setActiveSubmenu(null)}
+              >
+                <button className="menu-item justify-between text-text-primary">
+                  <span className="flex items-center gap-2.5">
+                    <MousePointerClick size={13} className="text-text-tertiary" />
+                    Change click type
+                    {targets.length > 1 && <span className="text-text-disabled">({targets.length})</span>}
+                  </span>
+                  <ChevronRight size={12} className="text-text-disabled" />
+                </button>
+                {activeSubmenu === 'clicktype' && (
+                  <div ref={clickTypeFlyout.ref} className={`absolute min-w-[210px] bg-transparent ${clickTypeFlyout.flipX ? 'right-full' : 'left-full'} ${clickTypeFlyout.flipY ? 'bottom-0' : 'top-0'}`} style={clickTypeFlyout.flipX ? { paddingRight: '4px' } : { paddingLeft: '4px' }}>
+                    <div className="py-1 menu-surface z-[60]">
+                      {options.map(opt => {
+                        const target = opt.value + form;
+                        const current = target === row.actionType;
+                        return (
+                          <button
+                            key={opt.value}
+                            onClick={() => {
+                              // ONE message for N rows = one undo entry. The old Convert to
+                              // Double Click looped actions:edit, and the bridge pushes an undo
+                              // state per call, so ten rows cost ten Ctrl+Z.
+                              if (!current) send({ type: 'actions:bulkUpdateType', payload: { indices: targets, actionType: target } });
+                              closeContextMenu();
+                            }}
+                            className="menu-item justify-between text-text-primary"
+                          >
+                            <span className="flex items-center gap-2.5">
+                              <MousePointerClick size={13} className="text-text-tertiary" />
+                              {opt.label}
+                            </span>
+                            {current && <Check size={12} className="text-accent-light" />}
+                          </button>
+                        );
+                      })}
+
+                      <div className="my-1 border-t border-border-subtle" />
+
+                      {form === '' ? (
+                        <button
+                          onClick={() => {
+                            send({ type: 'actions:convertMode', payload: { direction: 'toPaired', indices: targets } });
+                            closeContextMenu();
+                          }}
+                          data-tip={tt('Two rows: press, then release — a drag needs this',
+                                       'Duas linhas: aperta e solta — um arrasto precisa disto')}
+                          className="menu-item text-text-primary"
+                        >
+                          <Split size={13} className="text-text-tertiary" />
+                          Split into Down + Up
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            // A lone half means "merge THIS pair" — reach for the twin rather than
+                            // refusing with "select both", which is a menu asking the user to
+                            // restate what the click already said.
+                            const idx = contextMenu.rowIndex;
+                            const pair = targets.length > 1
+                              ? targets
+                              : form === 'Down' ? [idx, idx + 1] : [idx - 1, idx];
+                            send({ type: 'actions:convertMode', payload: { direction: 'toCombined', indices: pair.filter(i => i >= 0 && i < actions.length) } });
+                            closeContextMenu();
+                          }}
+                          data-tip={tt('One row that owns the whole press', 'Uma linha que carrega a pressão inteira')}
+                          className="menu-item text-text-primary"
+                        >
+                          <Combine size={13} className="text-text-tertiary" />
+                          Merge Down + Up
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {/* Reset cycle position — SetVariable cycle rows only. Clears the in-memory
               cursor so the next run starts at the first list item again (editing the
               list keeps the position on purpose; this is the explicit "start over" the
@@ -3614,45 +3733,17 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                     );
                   })()}
 
-                  {/* Convert Left Click ↔ Double Click — quick toggle for combined left clicks,
-                      so a recorded LeftClick can become a DoubleClick (and back) without opening
-                      the Sheet. Acts on the effective selection filtered to the convertible type.
-                      Backend-wise it's just an actionType field edit. Only ONE direction ever
-                      renders (whichever the right-clicked row is not), so the two entries are
-                      mutually exclusive rather than stacked. */}
-                  {(() => {
-                    const row = actions[contextMenu.rowIndex];
-                    if (!row || (row.actionType !== 'LeftClick' && row.actionType !== 'DoubleClick')) return null;
-                    const fromType = row.actionType;
-                    const toType = fromType === 'LeftClick' ? 'DoubleClick' : 'LeftClick';
-                    const convertIdx = contextSelectionIndices().filter(i => actions[i]?.actionType === fromType);
-                    if (convertIdx.length === 0) return null;
-                    return (
-                      <button
-                        onClick={() => {
-                          for (const i of convertIdx) {
-                            send({ type: 'actions:edit', payload: { index: i, field: 'actionType', value: toType } });
-                          }
-                          closeContextMenu();
-                        }}
-                        className="menu-item text-text-primary"
-                      >
-                        <MousePointerClick size={13} className="text-text-tertiary" />
-                        Convert to {toType === 'DoubleClick' ? 'Double Click' : 'Left Click'}
-                        {convertIdx.length > 1 && <span className="text-text-disabled">({convertIdx.length})</span>}
-                      </button>
-                    );
-                  })()}
-
-                  {/* "Convert all to Combined / Paired" lived here until 2026-09-16 and now exist
-                      ONLY in the command palette, which is where they always also lived — same
-                      message, same payload. Two reasons, and the second is the real one:
-                      they were a duplicate door (the palette's own SCOPE rule earns an entry by
-                      being "buried in a nested right-click menu" — this WAS that menu), and they
-                      are WHOLE-PROFILE operations sitting in a menu that is otherwise entirely
-                      about the row under the cursor. Right-clicking row 7 rewrote all 400 rows and
-                      cleared the selection. The per-row conversion that belongs here is a separate
-                      piece of work (Change click type ▸), not this one wearing a row's clothes. */}
+                  {/* Two entries left this submenu on 2026-09-16, for opposite reasons.
+                      "Convert all to Combined / Paired" went to the command palette ALONE, where
+                      they always also lived — same message, same payload. They were a duplicate
+                      door (the palette earns an entry by being "buried in a nested right-click
+                      menu" — this WAS that menu), and they are WHOLE-PROFILE operations in a menu
+                      otherwise entirely about the row under the cursor: right-clicking row 7
+                      rewrote all 400 rows and cleared the selection.
+                      "Convert to Double/Left Click" was ABSORBED by Change click type ▸ at top
+                      level. It offered two of the eight click types through a label that had to
+                      name its own direction, and it looped actions:edit per row — ten selected
+                      clicks cost ten Ctrl+Z, which the bulk message it moved to now fixes. */}
 
                   <div className="my-1 border-t border-border-subtle" />
 

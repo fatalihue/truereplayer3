@@ -125,6 +125,45 @@ namespace TrueReplayer.Services
             return result;
         }
 
+        // ── Why a row would not convert ───────────────────────────────────
+        // ToCombined/ToPaired answer refusals by PASSING THE ROW THROUGH UNCHANGED, which is the
+        // right answer for a whole-profile convert (the rows that can't fold simply don't) and the
+        // worst possible one for a per-row convert: the user asked for THIS row and nothing moved,
+        // with no message. These two say why, in the user's words, so the caller can.
+        //
+        // They are the same conditions the transforms enforce, written once more rather than
+        // inferred by the caller — a caller re-deriving "is this splittable?" is exactly how the
+        // explanation and the behaviour drift apart. Keep each string next to the branch it
+        // mirrors: the RepeatCount/AtCursor pair below is the ToPaired guard, the Double/Triple
+        // case is its intentional passthrough.
+
+        /// <summary>Null when <paramref name="a"/> splits into Down+Up; otherwise the reason it will not.</summary>
+        public static string? WhyCannotSplit(ActionItem a)
+        {
+            if (!ActionItem.IsCombinedClickType(a.ActionType))
+                return "Only a whole click can be split into Down + Up.";
+            if (a.ActionType is "DoubleClick" or "TripleClick")
+                return "A double or triple click is one unit — switch it to a single click first.";
+            if (a.RepeatCount > 1)
+                return "A repeating click can't be split — set Times to 1 first.";
+            if (a.AtCursor)
+                return "An at-cursor click can't be split — the halves read a stored point.";
+            return null;
+        }
+
+        /// <summary>Null when <paramref name="down"/>+<paramref name="up"/> merge into one click;
+        /// otherwise the reason they will not. Mirrors the click branch of ToCombined.</summary>
+        public static string? WhyCannotMerge(ActionItem down, ActionItem up)
+        {
+            if (!TryClickButton(down.ActionType, down: true, out string btn))
+                return "Select a click's Down half and the Up half that follows it.";
+            if (!TryClickButton(up.ActionType, down: false, out string upBtn) || upBtn != btn)
+                return "These two halves are not the same button's press and release.";
+            if (Math.Abs(up.X - down.X) > ClickCoordTolerance || Math.Abs(up.Y - down.Y) > ClickCoordTolerance)
+                return "These halves press and release at different points — that is a drag, and only the paired form can express it.";
+            return null;
+        }
+
         // ── Combined → Paired ─────────────────────────────────────────────
         public static List<ActionItem> ToPaired(IReadOnlyList<ActionItem> input)
         {

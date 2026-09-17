@@ -787,6 +787,7 @@ namespace TrueReplayer
                     case "remap:overwriteUnreadable": HandleRemapOverwriteUnreadable(); break;
                     case "actions:reorder": HandleActionsReorder(payload); break;
                     case "actions:convertMode": HandleConvertActionMode(payload); break;
+                    case "actions:bulkUpdateType": HandleBulkUpdateType(payload); break;
                     case "actions:insertAction": HandleInsertAction(payload); break;
                     case "actions:addElseBranch": HandleActionsAddElseBranch(payload); break;
                     case "actions:addElseIfBranch": HandleActionsAddElseIfBranch(payload); break;
@@ -2133,6 +2134,40 @@ namespace TrueReplayer
         /// <see cref="ActionModeConverter"/>. No-ops (already fully in the target form) push
         /// nothing to the undo stack and just report "nothing to convert".
         /// </summary>
+        // Same type sequence and same length = nothing folded or expanded. The one no-op test,
+        // shared by the whole-profile path and each run of the indexed one.
+        private static bool ShapeChanged(IReadOnlyList<ActionItem> before, IReadOnlyList<ActionItem> after)
+        {
+            if (after.Count != before.Count) return true;
+            for (int i = 0; i < after.Count; i++)
+                if (after[i].ActionType != before[i].ActionType) return true;
+            return false;
+        }
+
+        // Why a run of rows refused to convert, in the user's words. Only ever called once the run
+        // is known NOT to have moved — see the note on ActionModeConverter.WhyCannotSplit for why
+        // a silent passthrough is the wrong answer to a per-row request.
+        private static string? ExplainRefusal(IReadOnlyList<ActionItem> run, bool toCombined)
+        {
+            if (run.Count == 0) return null;
+            if (!toCombined)
+            {
+                foreach (var a in run)
+                {
+                    var why = ActionModeConverter.WhyCannotSplit(a);
+                    if (why != null) return why;
+                }
+                return null;
+            }
+            if (run.Count < 2) return "Select a click's Down half and the Up half that follows it.";
+            for (int i = 0; i + 1 < run.Count; i += 2)
+            {
+                var why = ActionModeConverter.WhyCannotMerge(run[i], run[i + 1]);
+                if (why != null) return why;
+            }
+            return null;
+        }
+
         private void HandleConvertActionMode(JsonElement payload)
         {
             string direction = payload.TryGetProperty("direction", out var d) ? d.GetString() ?? "" : "";
@@ -2140,21 +2175,80 @@ namespace TrueReplayer
             if (!toCombined && direction != "toPaired") return;
             if (actions.Count == 0) return;
 
-            var input = actions.ToList();
-            var output = toCombined
-                ? ActionModeConverter.ToCombined(input)
-                : ActionModeConverter.ToPaired(input);
-
-            // No-op guard: identical length AND identical type sequence means nothing folded /
-            // expanded (e.g. the profile was already in the target form). Skip the undo entry
-            // and the misleading "converted N" toast.
-            bool changed = output.Count != input.Count;
-            for (int i = 0; !changed && i < output.Count; i++)
-                if (output[i].ActionType != input[i].ActionType) changed = true;
-            if (!changed)
+            // `indices` is what separates the two callers. Absent = the command palette's
+            // whole-profile convert, unchanged since it shipped. Present = the row menu asking for
+            // THESE rows only, which is the whole point of the per-row form switch: until it
+            // existed, putting one paired click in the middle of a recording meant converting the
+            // entire profile, and a hand-built drag (Down at A, Up at B) had no route at all.
+            List<int>? picked = null;
+            if (payload.TryGetProperty("indices", out var idxEl) && idxEl.ValueKind == JsonValueKind.Array)
             {
-                SendMessage("alert:show", new { message = "Nothing to convert" });
-                return;
+                picked = idxEl.EnumerateArray()
+                    .Where(e => e.ValueKind == JsonValueKind.Number)
+                    .Select(e => e.GetInt32())
+                    .Where(i => i >= 0 && i < actions.Count)
+                    .Distinct()
+                    .OrderBy(i => i)
+                    .ToList();
+                if (picked.Count == 0) return;
+            }
+
+            var input = actions.ToList();
+            List<ActionItem> output;
+            string? refusal = null;
+
+            if (picked == null)
+            {
+                output = toCombined
+                    ? ActionModeConverter.ToCombined(input)
+                    : ActionModeConverter.ToPaired(input);
+                if (!ShapeChanged(input, output))
+                {
+                    SendMessage("alert:show", new { message = "Nothing to convert" });
+                    return;
+                }
+            }
+            else
+            {
+                // CONTIGUOUS RUNS, not one slice of the whole selection. Both transforms work on
+                // ADJACENCY — ToCombined folds a Down and the Up that follows it — so handing them
+                // a gappy selection as one list would merge rows that are nowhere near each other
+                // in the real profile. Splitting into maximal runs is what keeps "adjacent in the
+                // slice" and "adjacent in the list" the same statement.
+                var runs = new List<(int Start, int Count)>();
+                for (int i = 0; i < picked.Count;)
+                {
+                    int j = i;
+                    while (j + 1 < picked.Count && picked[j + 1] == picked[j] + 1) j++;
+                    runs.Add((picked[i], j - i + 1));
+                    i = j + 1;
+                }
+
+                // Rewritten back-to-front so an earlier run's indices are still valid after a later
+                // run has changed the row count under it.
+                output = new List<ActionItem>(input);
+                bool any = false;
+                for (int r = runs.Count - 1; r >= 0; r--)
+                {
+                    var (start, count) = runs[r];
+                    var slice = output.GetRange(start, count);
+                    var converted = toCombined
+                        ? ActionModeConverter.ToCombined(slice)
+                        : ActionModeConverter.ToPaired(slice);
+                    if (!ShapeChanged(slice, converted))
+                    {
+                        refusal ??= ExplainRefusal(slice, toCombined);
+                        continue;
+                    }
+                    output.RemoveRange(start, count);
+                    output.InsertRange(start, converted);
+                    any = true;
+                }
+                if (!any)
+                {
+                    SendMessage("alert:show", new { message = refusal ?? "Nothing to convert" });
+                    return;
+                }
             }
 
             PushUndoState();
@@ -2162,12 +2256,59 @@ namespace TrueReplayer
             HasUnsavedChanges = true;
             mainController.UpdateButtonStates();
 
-            SendMessage("alert:show", new
+            // The indexed form reports the DELTA, not the profile size: "Converted to paired — 412
+            // actions" after splitting one click names a number the user did not ask about and
+            // cannot check. The whole-profile form keeps its original wording.
+            string message = picked == null
+                ? (toCombined ? $"Converted to combined — {output.Count} actions"
+                              : $"Converted to paired — {output.Count} actions")
+                : (toCombined ? "Merged into one row" : "Split into Down + Up");
+            SendMessage("alert:show", new { message, type = "success" });
+        }
+
+        // Bulk actionType edit — ONE undo entry for N rows. The row menu's click-type switch used
+        // to loop actions:edit per index, and HandleActionEdit pushes an undo state per call, so
+        // converting ten selected clicks cost ten Ctrl+Z to undo one menu click. Mirrors that
+        // handler's actionType branch field for field; if a rule is added there it belongs here in
+        // the same commit (the two are one behaviour reached through two doors).
+        private void HandleBulkUpdateType(JsonElement payload)
+        {
+            if (!payload.TryGetProperty("actionType", out var typeEl)) return;
+            string value = typeEl.GetString() ?? "";
+            if (!KnownActionTypes.Contains(value))
             {
-                message = toCombined
-                    ? $"Converted to combined — {output.Count} actions"
-                    : $"Converted to paired — {output.Count} actions"
-            });
+                DiagnosticLog.Warn($"actions:bulkUpdateType rejected unknown actionType '{value}'");
+                return;
+            }
+            if (!payload.TryGetProperty("indices", out var idxEl) || idxEl.ValueKind != JsonValueKind.Array) return;
+
+            // Rows that would actually change, resolved BEFORE the snapshot: PushUndoState clears
+            // the redo stack, so a no-op that reaches it destroys history while changing nothing —
+            // the failure HandleBulkUpdateCoord's comment documents at length.
+            var targets = idxEl.EnumerateArray()
+                .Where(e => e.ValueKind == JsonValueKind.Number)
+                .Select(e => e.GetInt32())
+                .Where(i => i >= 0 && i < actions.Count)
+                .Distinct()
+                .Select(i => actions[i])
+                .Where(a => a.ActionType != value)
+                .ToList();
+            if (targets.Count == 0) return;
+
+            PushUndoState();
+            foreach (var action in targets)
+            {
+                action.ActionType = value;
+                // Both resets exist for the reason spelled out in HandleActionEdit: AtCursor is
+                // honoured only by the combined click cases, and the dwell only by HoldKey and the
+                // *ClickHold family — a row switched away from either would carry an inert field
+                // that still blanks coordinates in the grid, or a duration nothing ever reads.
+                if (!ActionItem.IsCombinedClickType(value)) action.AtCursor = false;
+                if (value != "HoldKey" && !value.EndsWith("ClickHold", StringComparison.Ordinal))
+                    action.HoldDurationMs = 0;
+            }
+            HasUnsavedChanges = true;
+            PushActionsUpdate();
         }
 
         public bool CanUndo => _undoStack.Count > 0;
@@ -5899,6 +6040,53 @@ namespace TrueReplayer
                 repeatDelay = Math.Max(0, Math.Min(5000, gEl.GetInt32()));
 
             int delay = int.TryParse(CustomDelay, out var pd) ? pd : 100;
+
+            // PAIRED form — two rows, Down then Up. The dialog still sends a COMBINED type plus
+            // this flag rather than sending "LeftClickDown" directly, which is why the guard above
+            // can stay as strict as it was: there is still exactly one legal vocabulary on the
+            // wire, and the flag says what shape to write it in.
+            //
+            // The Up's own point is what makes this more than a convenience. A click whose halves
+            // land on DIFFERENT points is a DRAG (ActionModeConverter says so, and refuses to fold
+            // one back into a single click for that reason), and until now the app could not build
+            // one by hand at all: the recorder was the only source, because Insert Click emitted
+            // combined rows and the Sheet's type picker changes which BUTTON a row uses, never its
+            // form. Omit upX/upY and both halves share the Down's point — the plain split.
+            bool paired = payload.TryGetProperty("paired", out var pEl) && pEl.ValueKind == JsonValueKind.True;
+            if (paired)
+            {
+                // Three refusals, all of them the ones ToPaired already enforces — see
+                // ActionModeConverter.WhyCannotSplit. A half's replay case reads X/Y directly and
+                // never consults AtCursor, and the halves do not loop, so allowing either here
+                // would write a row whose UI promises something the engine does not do.
+                if (!ActionItem.IsCombinedClickType(actionType) || isHold
+                    || actionType is "DoubleClick" or "TripleClick")
+                {
+                    DiagnosticLog.Warn($"actions:insertClick rejected paired form for '{actionType}'");
+                    return;
+                }
+                if (atCursor)
+                {
+                    SendMessage("alert:show", new { message = "An at-cursor click can't be split — the halves read a stored point." });
+                    return;
+                }
+                string btn = actionType![..^"Click".Length];   // "LeftClick" → "Left"
+                int upX = payload.TryGetProperty("upX", out var uxEl) && uxEl.ValueKind == JsonValueKind.Number ? uxEl.GetInt32() : x;
+                int upY = payload.TryGetProperty("upY", out var uyEl) && uyEl.ValueKind == JsonValueKind.Number ? uyEl.GetInt32() : y;
+
+                PushUndoState();
+                // Delay 0 on the Up, exactly as ToPaired writes it, so a row inserted here and a
+                // row produced by the converter are the same row.
+                actions.Insert(insertIndex, new ActionItem { ActionType = btn + "ClickDown", X = x, Y = y, Delay = delay });
+                actions.Insert(insertIndex + 1, new ActionItem { ActionType = btn + "ClickUp", X = upX, Y = upY, Delay = 0 });
+                for (int i = 0; i < actions.Count; i++)
+                    actions[i].RowNumber = i + 1;
+                HasUnsavedChanges = true;
+                PushActionsUpdate();
+                mainController.UpdateButtonStates();
+                return;
+            }
+
             // Snapshot after the guards, right before the mutation — same reasoning as
             // HandleInsertHoldKey: a refused insert must not leave a stale undo state behind.
             PushUndoState();

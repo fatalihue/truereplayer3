@@ -118,6 +118,38 @@ export const isCoordinateClick = (actionType: string): boolean =>
 export const isFocusClickEligible = (actionType: string): boolean =>
   actionType === 'LeftClick' || actionType === 'RightClick' || actionType === 'MiddleClick';
 
+/**
+ * The eight combined click types, IN THE ORDER THAT IS THE GROUPING: the three real BUTTONS,
+ * then the same three HELD one line down, then the left-button MULTI-CLICK variants. Two axes
+ * (which button vs how many clicks) are folded into one list and only the ordering keeps them
+ * legible — Double/Triple are left-button actions, so listing them between Left and Right made
+ * them read as siblings of Right Click, which they are not. Do not interleave them again.
+ *
+ * Shared by the Sheet's ACTION TYPE picker and the row menu's "Change click type" submenu. It
+ * lived only in SheetPanel until 2026-09-16; a second copy in the menu would be two lists that
+ * must agree about every future click type, and the first label edit would end that.
+ */
+export const CLICK_FAMILY_TYPES: { value: string; label: string }[] = [
+  { value: 'LeftClick', label: 'Left Click' },
+  { value: 'RightClick', label: 'Right Click' },
+  { value: 'MiddleClick', label: 'Middle Click' },
+  { value: 'LeftClickHold', label: 'Hold Left' },
+  { value: 'RightClickHold', label: 'Hold Right' },
+  { value: 'MiddleClickHold', label: 'Hold Middle' },
+  { value: 'DoubleClick', label: 'Double Click' },
+  { value: 'TripleClick', label: 'Triple Click' },
+];
+
+/**
+ * Which SHAPE a click row is written in: a paired half, or one row that owns the whole press.
+ * '' means combined (a hold is combined — it owns press→release, the wait is in the middle).
+ * The type pickers use it to keep a half a half when the user switches which button it is.
+ */
+export const clickFormOf = (actionType: string): '' | 'Down' | 'Up' =>
+  actionType.endsWith('ClickDown') ? 'Down'
+  : actionType.endsWith('ClickUp') ? 'Up'
+  : '';
+
 // An at-cursor click HAS an x/y on disk, but the replay resolves its point from the live mouse
 // and never reads them — showing the stored numbers would be a phantom coordinate, the exact
 // thing NO_COORD_TYPES exists to prevent. This half is per-ROW, which is why it can't live in

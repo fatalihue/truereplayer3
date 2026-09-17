@@ -1065,7 +1065,13 @@ export type OutgoingMessage =
   | { type: 'profile:load'; payload: Record<string, never> }
   | { type: 'profile:reset'; payload: Record<string, never> }
   | { type: 'settings:change'; payload: { key: string; value: string | boolean | number | object | null } }
-  | { type: 'actions:convertMode'; payload: { direction: 'toCombined' | 'toPaired' } }
+  // `indices` absent = the whole profile (the command palette's convert). Present = those rows
+  // only, which is the row menu's Split / Merge. The backend groups them into contiguous runs
+  // before converting, because both transforms work on adjacency.
+  | { type: 'actions:convertMode'; payload: { direction: 'toCombined' | 'toPaired'; indices?: number[] } }
+  // One actionType across N rows in ONE undo entry. Looping actions:edit per index costs one
+  // undo state per row — see HandleBulkUpdateType.
+  | { type: 'actions:bulkUpdateType'; payload: { indices: number[]; actionType: string } }
   | { type: 'actions:addSendText'; payload: { text: string; html?: string; markdown?: string; mode?: string; method?: string; charDelayMs?: number | null; insertIndex?: number } }
   | { type: 'actions:editSendText'; payload: { index: number; text: string; html?: string; markdown?: string; mode?: string; method?: string; charDelayMs?: number | null } }
   | { type: 'actions:bulkUpdateDelay'; payload: { indices: number[]; delay: number } }
@@ -1160,7 +1166,10 @@ export type OutgoingMessage =
   // refuses a row with neither, because a click aimed at 0,0 by default would be a press in the
   // screen corner rather than an obvious slip. holdDurationMs is read only for *ClickHold;
   // repeat/repeatDelayMs are omitted for a single shot so the row persists nothing.
-  | { type: 'actions:insertClick'; payload: { actionType: string; insertIndex: number; x?: number; y?: number; atCursor?: boolean; holdDurationMs?: number; repeat?: number; repeatDelayMs?: number } }
+  // `paired` writes the click as TWO rows (Down then Up) instead of one; upX/upY give the Up its
+  // own point, which is how a DRAG gets built by hand. actionType stays a COMBINED name either
+  // way — the flag says what shape to write, so the wire keeps one vocabulary.
+  | { type: 'actions:insertClick'; payload: { actionType: string; insertIndex: number; x?: number; y?: number; atCursor?: boolean; holdDurationMs?: number; repeat?: number; repeatDelayMs?: number; paired?: boolean; upX?: number; upY?: number } }
   // WaitPixelColor — minimises the app, opens the screen overlay in pointPick mode,
   // and only inserts the row after the user clicks a pixel (or nothing on Esc).
   // Mirrors how WaitImage's insertion flow works, so the two actions behave the

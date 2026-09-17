@@ -27,7 +27,7 @@ import { ImageCropper } from './ImageCropper';
 // handle travels through the `apiRef` prop.
 const LexicalTokenEditor = lazy(() => import('./lexical/LexicalTokenEditor').then(m => ({ default: m.LexicalTokenEditor })));
 import type { LexicalEditorHandle } from './lexical/LexicalTokenEditor';
-import { getDisplayKey, isClickHold } from '../utils/displayUtils';
+import { getDisplayKey, isClickHold, CLICK_FAMILY_TYPES, clickFormOf } from '../utils/displayUtils';
 
 // How often the open row editor re-stamps its unsaved-work claim with AutomationGuard. Must stay
 // WELL under `AutomationGuard.EditorClaimTtl` (10 min) — that deadline is measured from the last
@@ -97,16 +97,9 @@ const familyTypes: Record<ActionFamily, { value: string; label: string }[]> = {
   // switch a user actually wants ("this click, but held") is directly below its click.
   // Double/Triple moved from row 2 to row 3 for that reason and stay together, which is the
   // grouping rule above: they are left-button actions, never siblings of Right Click.
-  click: [
-    { value: 'LeftClick', label: 'Left Click' },
-    { value: 'RightClick', label: 'Right Click' },
-    { value: 'MiddleClick', label: 'Middle Click' },
-    { value: 'LeftClickHold', label: 'Hold Left' },
-    { value: 'RightClickHold', label: 'Hold Right' },
-    { value: 'MiddleClickHold', label: 'Hold Middle' },
-    { value: 'DoubleClick', label: 'Double Click' },
-    { value: 'TripleClick', label: 'Triple Click' },
-  ],
+  // The list itself moved to displayUtils on 2026-09-16 so the row menu's "Change click type"
+  // submenu offers the SAME eight in the SAME order. The ordering rules above travelled with it.
+  click: CLICK_FAMILY_TYPES,
   // Labels are Title Case with a space, matching the click family — they exist ONLY in this
   // picker (the grid pill and the drawer header derive their own text), so the spelling here is
   // free to read as prose rather than echo the stored actionType.
@@ -329,6 +322,10 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   const action = actionIndex != null ? actions[actionIndex] : null;
 
   const [actionType, setActionType] = useState('');
+  // The click FORM as a draft. `initialForm` is what the row arrived as, kept so the dirty check
+  // and the warning line both ask one question. Seeded from the row, like every other draft here.
+  const [formDraft, setFormDraft] = useState<'combined' | 'paired'>('combined');
+  const [initialForm, setInitialForm] = useState<'combined' | 'paired'>('combined');
   const [key, setKey] = useState('');
   const [x, setX] = useState('');
   const [y, setY] = useState('');
@@ -802,6 +799,11 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       // this effect is about to overwrite — see seedNonce's declaration.
       setSeedNonce((n) => n + 1);
       setActionType(action.actionType);
+      {
+        const f = clickFormOf(action.actionType) ? 'paired' as const : 'combined' as const;
+        setFormDraft(f);
+        setInitialForm(f);
+      }
       // #1 — Detect any text= prefix variant and split into mode + raw value.
       // Gated on selector-carrying types: a SendText payload starting with "text=" is
       // literal text, not a selector (parsing it would corrupt Key on the next save).
@@ -1506,12 +1508,31 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       }
     }
 
+    // FORM — LAST, after every actions:edit above, and the order is the point: a split changes
+    // the row COUNT, so anything addressed by actionIndex after this would land on the wrong row.
+    // The backend refuses out loud (× N, at-cursor, Double/Triple, a drag that must stay paired),
+    // so there is no second copy of those rules here to fall out of step with it.
+    if (formDraft !== initialForm) {
+      // Merging needs BOTH halves. The sheet edits one row, so reach for the twin the same way
+      // the row menu's Merge does — a half on its own would come back "select the Up that follows
+      // it", which is the app asking the user to restate what the row already says.
+      const indices = formDraft === 'paired'
+        ? [actionIndex]
+        : clickFormOf(action.actionType) === 'Down'
+          ? [actionIndex, actionIndex + 1]
+          : [actionIndex - 1, actionIndex];
+      send({
+        type: 'actions:convertMode',
+        payload: { direction: formDraft === 'paired' ? 'toPaired' : 'toCombined', indices: indices.filter(i => i >= 0) },
+      });
+    }
+
     onClose();
     // isIf / isIfImage / isIfPixel intentionally NOT in deps: they're pure-derived
     // from actionType + action.conditionType which are already in the array, so the
     // callback rebinds whenever those change. Listing the derived flags would also
     // be a forward-reference error (they're declared further down the component body).
-  }, [actionIndex, action, actionType, key, textMatch, textMode, x, y, delay, comment, repeatCount, repeatGapMs, jitterOn, jitterPct, posJitterOn, posJitterPx, atCursor, holdMs, timeout, confidence, browserText, variableValue, variableMode, slotMode, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, waitImageOnTimeout, waitImageInvert, waitImageClickOnMatch, waitImageSearchRegion, pixelX, pixelY, pixelColor, pixelTolerance, pixelOnTimeout, pixelInvert, pixelClickOnMatch, conditionNegate, ifOnProbeError, conditionTimeout, loopMaxIterations, windowProcessName, windowTitle, windowTitleMatchMode, windowMatchForegroundOnly, clipboardPatternType, clipboardPattern, randomPercent, conditionOperator, conditionOperand, filePath, timeStart, timeEnd, daysOfWeek, launchPath, launchArgs, activateOnTimeout, restorePosition, restoreSize, windowX, windowY, windowWidth, windowHeight, windowVerb, matchIndex, assertOnFail, alternatives, pickedThisSession, send, onClose,
+  }, [actionIndex, action, actionType, formDraft, initialForm, key, textMatch, textMode, x, y, delay, comment, repeatCount, repeatGapMs, jitterOn, jitterPct, posJitterOn, posJitterPx, atCursor, holdMs, timeout, confidence, browserText, variableValue, variableMode, slotMode, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, waitImageOnTimeout, waitImageInvert, waitImageClickOnMatch, waitImageSearchRegion, pixelX, pixelY, pixelColor, pixelTolerance, pixelOnTimeout, pixelInvert, pixelClickOnMatch, conditionNegate, ifOnProbeError, conditionTimeout, loopMaxIterations, windowProcessName, windowTitle, windowTitleMatchMode, windowMatchForegroundOnly, clipboardPatternType, clipboardPattern, randomPercent, conditionOperator, conditionOperand, filePath, timeStart, timeEnd, daysOfWeek, launchPath, launchArgs, activateOnTimeout, restorePosition, restoreSize, windowX, windowY, windowWidth, windowHeight, windowVerb, matchIndex, assertOnFail, alternatives, pickedThisSession, send, onClose,
     // The two booleans, never the buttonStates object: it is republished on unrelated events
     // and this callback already rebuilds on every keystroke.
     refuseDuringRun]);
@@ -1532,6 +1553,9 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     const _isIfPixel = _hasCondition && action.conditionType === 'PixelColorMatch';
 
     if (actionType !== action.actionType) return true;
+    // The form is a draft like any other field, so it has to reach the dirty check — otherwise
+    // Save stays disabled on a form-only change, and Esc discards it without the guard.
+    if (formDraft !== initialForm) return true;
     const effectiveKey = textMatch.trim() ? buildTextSelector(textMode, textMatch.trim()) : key;
     if (effectiveKey !== action.key) return true;
 
@@ -1771,7 +1795,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     }
 
     return false;
-  }, [actionIndex, action, actionType, key, textMatch, textMode, x, y, delay, comment, repeatCount, repeatGapMs, jitterOn, jitterPct, posJitterOn, posJitterPx, atCursor, holdMs, timeout, confidence, browserText, variableValue, variableMode, slotMode, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, waitImageOnTimeout, waitImageInvert, waitImageClickOnMatch, waitImageSearchRegion, pixelX, pixelY, pixelColor, pixelTolerance, pixelOnTimeout, pixelInvert, pixelClickOnMatch, conditionNegate, ifOnProbeError, conditionTimeout, loopMaxIterations, windowProcessName, windowTitle, windowTitleMatchMode, windowMatchForegroundOnly, clipboardPatternType, clipboardPattern, randomPercent, conditionOperator, conditionOperand, filePath, timeStart, timeEnd, daysOfWeek, launchPath, launchArgs, activateOnTimeout, restorePosition, restoreSize, windowX, windowY, windowWidth, windowHeight, windowVerb, matchIndex, assertOnFail, alternatives, pickedThisSession]);
+  }, [actionIndex, action, actionType, formDraft, initialForm, key, textMatch, textMode, x, y, delay, comment, repeatCount, repeatGapMs, jitterOn, jitterPct, posJitterOn, posJitterPx, atCursor, holdMs, timeout, confidence, browserText, variableValue, variableMode, slotMode, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, waitImageOnTimeout, waitImageInvert, waitImageClickOnMatch, waitImageSearchRegion, pixelX, pixelY, pixelColor, pixelTolerance, pixelOnTimeout, pixelInvert, pixelClickOnMatch, conditionNegate, ifOnProbeError, conditionTimeout, loopMaxIterations, windowProcessName, windowTitle, windowTitleMatchMode, windowMatchForegroundOnly, clipboardPatternType, clipboardPattern, randomPercent, conditionOperator, conditionOperand, filePath, timeStart, timeEnd, daysOfWeek, launchPath, launchArgs, activateOnTimeout, restorePosition, restoreSize, windowX, windowY, windowWidth, windowHeight, windowVerb, matchIndex, assertOnFail, alternatives, pickedThisSession]);
 
   // Key capture handler — focusing the field switches it to capture mode (empty + "New
   // key..." + pulse), the next non-modifier key is stored, and the input auto-blurs so
@@ -2755,6 +2779,36 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 );
               })}
             </div>
+
+            {/* FORM — one row, or two. The chips above change WHICH BUTTON a row uses and
+                carefully preserve its Down/Up suffix; this is the axis they deliberately leave
+                alone, and until 2026-09-16 nothing but a whole-profile convert could move it.
+                It applies on SAVE, last of everything, and the ordering is load-bearing: a split
+                changes the ROW COUNT, so every actions:edit above it is addressed by an index
+                this would invalidate. Save closes the sheet anyway, which is what makes "apply on
+                Save" honest here rather than a draft that lies about a row that became two. */}
+            {isClickHalf && (
+              <div className="mt-2 flex flex-col gap-1.5">
+                <span className="label-micro text-text-tertiary">Form</span>
+                <SegmentedControl<'combined' | 'paired'>
+                  value={formDraft}
+                  onChange={setFormDraft}
+                  ariaLabel="Click form"
+                  grow
+                  options={[
+                    { value: 'combined', label: 'One row', tip: tt('Press and release together', 'Aperta e solta numa linha') },
+                    { value: 'paired', label: 'Two rows', tip: tt('Down and Up as separate rows — needed for a drag', 'Down e Up em linhas separadas — preciso para arrastar') },
+                  ]}
+                />
+                {/* ALWAYS mounted, per FieldError's whole reason for existing — a line that
+                    appears and disappears would move the controls under the user's cursor. */}
+                <FieldError show={formDraft !== initialForm} className="text-[11px] text-warning-ink mt-1 truncate">
+                  {formDraft === 'paired'
+                    ? tt('Saving splits this row in two.', 'Salvar divide esta linha em duas.')
+                    : tt('Saving merges this row with the half after it.', 'Salvar junta esta linha com a metade seguinte.')}
+                </FieldError>
+              </div>
+            )}
           </Field>
           )}
 
