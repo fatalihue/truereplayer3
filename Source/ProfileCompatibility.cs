@@ -661,7 +661,15 @@ namespace TrueReplayer.Services
             // o vigia volta a tratar a coordenada como absoluta e passa a amostrar um ponto que
             // nao tem relacao com o alvo — dispara no lugar errado, ou nunca dispara, sem nada na
             // tela dizendo por que. Property-level para um gatilho comum manter o piso 2.9.0.
-            (p => p.Triggers is { UseRelativeCoordinates: true },
+            // Gateado tambem no TIPO DE CONDICAO, e nao so na flag: so PixelColorMatch e ImageFound
+            // tem ponto para ancorar, e o motor ignora a flag em qualquer outro tipo. Uma flag
+            // residual — ligada e depois deixada para tras por uma troca de tipo — prendia o perfil
+            // inteiro na 2.43.0 por uma propriedade que provadamente nao muda nada, e recusava o
+            // import num build antigo sem nenhum ganho. O editor agora limpa a flag nessa troca; o
+            // gate aqui cobre o que ja esta em disco e o que chega importado.
+            (p => p.Triggers is { UseRelativeCoordinates: true } t
+                  && (string.Equals(t.ConditionType, "PixelColorMatch", StringComparison.OrdinalIgnoreCase)
+                      || string.Equals(t.ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase)),
                 new Version(2, 43, 0), "Automation watcher window anchor"),
 
             // Automation active hours. NOT the destroy-on-round-trip mechanism of the two pins

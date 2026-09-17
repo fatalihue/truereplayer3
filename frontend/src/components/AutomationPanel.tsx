@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { TriangleAlert, Zap, Plus, Trash2, Pipette, Camera, Frame, X, ScanSearch, Check, Play, Power } from 'lucide-react';
+import { TriangleAlert, Zap, Plus, Trash2, Pipette, Camera, Frame, X, ScanSearch, Check, Play, Power, Crosshair } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
 import { useAppState } from '../state/AppStateContext';
 import { useTt } from '../state/LanguageContext';
@@ -119,6 +119,15 @@ function whyCannotFire(t: TriggerConfig): string | null {
     }
   }
   if (t.kind !== 'condition') return null;
+  // A âncora de janela reusa os campos do WindowOpen, que num gatilho de pixel ou de imagem
+  // chegam vazios — nada nunca pediu que fossem preenchidos. Com os dois em branco o daemon
+  // procura uma janela sem critério, não acha, e a condição fica falsa em todo tick para sempre.
+  // Espelha o mesmo teste no TriggerService.DescribeUnfireable, e fica ANTES do switch porque
+  // vale para os dois tipos que têm coordenada.
+  if (t.useRelativeCoordinates && (t.conditionType === 'PixelColorMatch' || t.conditionType === 'ImageFound')
+    && !(t.windowProcessName ?? '').trim() && !(t.windowTitle ?? '').trim()) {
+    return 'The coordinates are anchored to a window — fill in a process name or a window title.';
+  }
   switch (t.conditionType) {
     case 'WindowOpen':
       return (t.windowProcessName ?? '').trim() || (t.windowTitle ?? '').trim()
@@ -533,12 +542,36 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
     return () => window.clearTimeout(id);
   }, [pendingSave]);
 
+  /**
+   * The window this watcher anchors its coordinates to, or null when it does not.
+   *
+   * Every capture request below carries it, and that is what puts the stored coordinate in the
+   * SAME space the daemon reads it in. The feature shipped with only the daemon half — it added
+   * the window origin at every tick while these three kept storing virtual-screen coordinates, so
+   * an anchored watcher sampled the picked point PLUS the origin.
+   *
+   * `absolute: true` stays on all three and means what it always meant: not the ACTIVE PROFILE's
+   * target. The anchor is this trigger's own, and the two must not be confused.
+   */
+  const anchorPayload = () =>
+    draft?.useRelativeCoordinates
+      && (draft.conditionType === 'PixelColorMatch' || draft.conditionType === 'ImageFound')
+      && ((draft.windowProcessName ?? '').trim() || (draft.windowTitle ?? '').trim())
+      ? {
+        anchor: {
+          processName: draft.windowProcessName ?? '',
+          windowTitle: draft.windowTitle ?? '',
+          titleMatchMode: draft.windowTitleMatchMode === 'regex' ? 'regex' : 'contains',
+        },
+      }
+      : {};
+
   const pickPixel = () => {
     const id = `autopix-${Date.now()}`;
     pickReqRef.current = id;
     // absolute: watcher coords are virtual-screen — the profile-relative translation
     // the If/WaitPixel editors want would store coords the daemon samples wrongly.
-    send({ type: 'pixel:pickColor', payload: { requestId: id, absolute: true } });
+    send({ type: 'pixel:pickColor', payload: { requestId: id, absolute: true, ...anchorPayload() } });
   };
   const captureImage = () => {
     if (!selected) return;
@@ -552,7 +585,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
     regionReqRef.current = id;
     // absolute: watcher ROI is virtual-screen coords (the backend skips the rel-coords round-trip).
     const r = draft?.searchRegion;
-    send({ type: 'waitimage:configureSearchRegion', payload: { requestId: id, absolute: true, ...(r ? { x: r.x, y: r.y, w: r.w, h: r.h } : {}) } });
+    send({ type: 'waitimage:configureSearchRegion', payload: { requestId: id, absolute: true, ...anchorPayload(), ...(r ? { x: r.x, y: r.y, w: r.w, h: r.h } : {}) } });
   };
   // Crop the current reference tighter — the backend replies over automation:imageCaptured (new
   // path + thumbnail), so reuse captureReqRef to match it. rect is image-pixel coords from the cropper.
@@ -571,7 +604,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
     // absolute + profile: the test image lives under the trigger's profile and its coords are
     // virtual-screen (the backend skips the rel-coords round-trip and reports absolute).
     const r = draft.searchRegion;
-    send({ type: 'image:testMatch', payload: { requestId: id, absolute: true, profile: selected, imagePath: draft.imagePath, confidence: draft.imageConfidence || 0.8, ...(r ? { searchRegion: r } : {}) } });
+    send({ type: 'image:testMatch', payload: { requestId: id, absolute: true, ...anchorPayload(), profile: selected, imagePath: draft.imagePath, confidence: draft.imageConfidence || 0.8, ...(r ? { searchRegion: r } : {}) } });
   };
 
   const selectedEntry = selected ? entryByProfile.get(selected) : undefined;
@@ -1042,9 +1075,20 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                         // PNG survive every condition type would make it immortal, against the
                         // collection design documented at each of those four sites.
                         const leavingImage = draft.conditionType === 'ImageFound' && next !== 'ImageFound';
-                        patch(leavingImage
-                          ? { conditionType: next, imagePath: null, imageBase64: null, searchRegion: null }
-                          : { conditionType: next });
+                        // Sair para um tipo SEM coordenada leva a âncora junto. Só PixelColorMatch
+                        // e ImageFound têm ponto para ancorar, então o interruptor some da tela nos
+                        // outros quatro — e a flag ficava ligada, invisível, sem controle nenhum
+                        // para desligá-la. Duas consequências: o pin de compatibilidade passa a
+                        // exigir 2.43.0 por uma propriedade que o motor prova ignorar, e voltar ao
+                        // tipo de origem reacendia uma âncora que o usuário não sabia ter deixado
+                        // ligada. Os CAMPOS de janela ficam (eles são do WindowOpen também); só o
+                        // opt-in cai, que é o que a UI deixa de oferecer.
+                        const leavingAnchor = next !== 'PixelColorMatch' && next !== 'ImageFound';
+                        patch({
+                          conditionType: next,
+                          ...(leavingImage ? { imagePath: null, imageBase64: null, searchRegion: null } : {}),
+                          ...(leavingAnchor ? { useRelativeCoordinates: false } : {}),
+                        });
                       }}
                     >
                       {CONDITION_TYPES.map((c) => (
@@ -1135,6 +1179,22 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                       )}
                     </>
                   )}
+
+                  {/* Em que ESPAÇO os números abaixo estão. Só aparece quando não é o óbvio: uma
+                      coordenada de tela não precisa de legenda, uma ancorada precisa muito, porque
+                      40,60 é idêntico nos dois casos. Mesma regra e quase a mesma frase da Sheet. */}
+                  {draft.useRelativeCoordinates
+                    && (draft.conditionType === 'PixelColorMatch' || draft.conditionType === 'ImageFound')
+                    && (
+                      <div className="text-[11px] text-text-tertiary flex items-center gap-1.5 flex-wrap">
+                        <Crosshair size={11} className="shrink-0 opacity-70" />
+                        <span>
+                          {(draft.windowProcessName ?? '').trim() || (draft.windowTitle ?? '').trim()
+                            ? `Relative to ${((draft.windowProcessName ?? '').trim() || (draft.windowTitle ?? '').trim())}'s top-left corner`
+                            : 'Relative to the anchored window’s top-left corner'}
+                        </span>
+                      </div>
+                    )}
 
                   {draft.conditionType === 'PixelColorMatch' && (
                     <>

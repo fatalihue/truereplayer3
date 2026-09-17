@@ -822,16 +822,6 @@ namespace TrueReplayer.Services
                 {
                     pixelColor = PixelColorService.ParseHex(cfg.PixelColor);
                 }
-
-                // Coordenadas ancoradas na janela (opt-in) para as duas condições que TÊM
-                // coordenada. Construído UMA vez, como o windowopen acima: o que muda a cada tick
-                // é a posição da janela, não o alvo. Nada aqui para os outros quatro tipos —
-                // WindowOpen/ProcessRunning/FileExists/ClipboardChanged não têm ponto para ancorar.
-                if (cfg.UseRelativeCoordinates && (kind == "pixelcolormatch" || kind == "imagefound"))
-                {
-                    (anchorTarget, anchorRegex) = ActionReplayer.BuildWindowTarget(
-                        cfg.WindowProcessName, cfg.WindowTitle, cfg.WindowTitleMatchMode);
-                }
                 else if (kind == "imagefound")
                 {
                     refImage = string.IsNullOrEmpty(cfg.ImagePath)
@@ -848,6 +838,25 @@ namespace TrueReplayer.Services
                     templateMat = ScreenCaptureService.BitmapToMat(refImage);
                     if (cfg.SearchRegionW is int sw && cfg.SearchRegionH is int sh && sw > 0 && sh > 0)
                         searchRegion = new System.Drawing.Rectangle(cfg.SearchRegionX ?? 0, cfg.SearchRegionY ?? 0, sw, sh);
+                }
+
+                // Coordenadas ancoradas na janela (opt-in) para as duas condições que TÊM
+                // coordenada. Construído UMA vez, como o windowopen acima: o que muda a cada tick
+                // é a posição da janela, não o alvo. Nada aqui para os outros quatro tipos —
+                // WindowOpen/ProcessRunning/FileExists/ClipboardChanged não têm ponto para ancorar.
+                //
+                // FORA da cadeia if/else acima, e é a correção de um defeito que lançou: escrito
+                // como cabeça da cadeia, este teste roubava o `else if (kind == "imagefound")` —
+                // com a âncora ligada, o ramo que carrega a imagem de referência nunca rodava,
+                // templateMat ficava null e ProbeCondition respondia false em TODO tick, para
+                // sempre, com o painel verde dizendo Running. A auto-morte "reference image
+                // missing" mora naquele mesmo ramo e também era pulada, e o deslocamento de ROI
+                // escrito logo abaixo era código morto. A âncora é ORTOGONAL ao tipo: ela não
+                // substitui a preparação de nenhum deles, soma-se a ela.
+                if (cfg.UseRelativeCoordinates && (kind == "pixelcolormatch" || kind == "imagefound"))
+                {
+                    (anchorTarget, anchorRegex) = ActionReplayer.BuildWindowTarget(
+                        cfg.WindowProcessName, cfg.WindowTitle, cfg.WindowTitleMatchMode);
                 }
 
                 // Only the FIRST probe may report an unusable search region — the same gate
@@ -1368,7 +1377,31 @@ namespace TrueReplayer.Services
         /// </summary>
         internal static string? DescribeUnfireable(ProfileTriggerConfig cfg)
         {
-            switch (cfg.ConditionType?.ToLowerInvariant())
+            var kind = cfg.ConditionType?.ToLowerInvariant();
+
+            // A âncora de janela é opt-in e REUSA os campos do WindowOpen — que num gatilho de
+            // pixel ou de imagem estão vazios, porque nada nunca pediu que fossem preenchidos.
+            // Com os dois em branco WindowMatcher devolve zero POR DESENHO, TryAnchorOffset falha,
+            // e a condição é falsa em todo tick para sempre. Era o único estado "nunca dispara"
+            // que nenhum dos dois validadores conhecia: o vigia armava, dizia Running, e não dizia
+            // mais nada. Fica ANTES do switch porque vale para os dois tipos que têm coordenada.
+            if (cfg.UseRelativeCoordinates && (kind == "pixelcolormatch" || kind == "imagefound"))
+            {
+                if (string.IsNullOrWhiteSpace(cfg.WindowProcessName) && string.IsNullOrWhiteSpace(cfg.WindowTitle))
+                    return "coordinates are anchored to a window, but no process name or window title is set — this can never match";
+                // Mesma morte silenciosa do windowopen abaixo, pelo mesmo motivo: em modo regex um
+                // padrão que não compila vira um Regex nulo, e um Regex nulo rejeita TODA janela.
+                if (string.Equals(cfg.WindowTitleMatchMode, "regex", StringComparison.OrdinalIgnoreCase)
+                    && !string.IsNullOrWhiteSpace(cfg.WindowTitle))
+                {
+                    var (_, anchorCompiled) = ActionReplayer.BuildWindowTarget(
+                        cfg.WindowProcessName, cfg.WindowTitle, cfg.WindowTitleMatchMode);
+                    if (anchorCompiled == null)
+                        return "the anchor window-title regex does not compile — this can never match";
+                }
+            }
+
+            switch (kind)
             {
                 case "windowopen":
                     if (string.IsNullOrWhiteSpace(cfg.WindowProcessName) && string.IsNullOrWhiteSpace(cfg.WindowTitle))

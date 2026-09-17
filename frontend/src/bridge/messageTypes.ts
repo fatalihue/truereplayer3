@@ -1184,7 +1184,11 @@ export type OutgoingMessage =
   | { type: 'actions:addRunProfile'; payload: { profileName: string; repeatCount: number; runOverData?: boolean; insertIndex?: number } }
   | { type: 'actions:editRunProfile'; payload: { index: number; profileName: string; repeatCount: number; runOverData?: boolean } }
   | { type: 'waitimage:recapture'; payload: { index: number } }
-  | { type: 'waitimage:configureSearchRegion'; payload: { requestId: string; absolute?: boolean; x?: number; y?: number; w?: number; h?: number } }
+  // `anchor` (as tres abaixo): a janela a que um vigia de automacao ancora suas coordenadas.
+  // Presente => o backend subtrai a origem dela ao GRAVAR e a soma ao exibir/testar, para que o
+  // valor em disco viva no mesmo espaco que TriggerService.ProbeCondition le. Ortogonal a
+  // `absolute`, que continua significando 'nao use o alvo do perfil ATIVO'.
+  | { type: 'waitimage:configureSearchRegion'; payload: { requestId: string; absolute?: boolean; anchor?: { processName: string; windowTitle: string; titleMatchMode: string }; x?: number; y?: number; w?: number; h?: number } }
   // No requestId: there is no reply to correlate it with (see the note above).
   | { type: 'clicker:configureArea'; payload: Record<string, never> }
   | { type: 'clicker:configurePoint'; payload: Record<string, never> }
@@ -1194,11 +1198,11 @@ export type OutgoingMessage =
   | { type: 'clicker:applyPreset'; payload: { name: string } }
   | { type: 'clicker:deletePreset'; payload: { name: string } }
   | { type: 'waitimage:cropReference'; payload: { index: number; x: number; y: number; w: number; h: number } }
-  | { type: 'image:testMatch'; payload: { requestId: string; imagePath: string; confidence: number; searchRegion?: { x: number; y: number; w: number; h: number }; absolute?: boolean; profile?: string } }
+  | { type: 'image:testMatch'; payload: { requestId: string; imagePath: string; confidence: number; searchRegion?: { x: number; y: number; w: number; h: number }; absolute?: boolean; anchor?: { processName: string; windowTitle: string; titleMatchMode: string }; profile?: string } }
   | { type: 'mouse:pickPosition'; payload: { requestId: string } }
   // absolute: skip the profile-relative translation (automation watchers sample
   // virtual-screen coords with no window context).
-  | { type: 'pixel:pickColor'; payload: { requestId: string; absolute?: boolean } }
+  | { type: 'pixel:pickColor'; payload: { requestId: string; absolute?: boolean; anchor?: { processName: string; windowTitle: string; titleMatchMode: string } } }
   | { type: 'pixel:testMatch'; payload: { requestId: string; x: number; y: number; hex: string; tolerance: number } }
   | { type: 'selection:changed'; payload: { indices: number[] } }
   | { type: 'window:alwaysOnTop'; payload: { enabled: boolean } }

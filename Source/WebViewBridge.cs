@@ -6488,6 +6488,14 @@ namespace TrueReplayer
                         sx += winRect.Left;
                         sy += winRect.Top;
                     }
+                    // An anchored watcher's ROI is stored in its window's space, so the Test has to
+                    // search where the DAEMON will search — otherwise the button answers about a
+                    // rectangle the live watcher never looks at, which is the worst kind of green.
+                    else if (absolute && TryGetAnchorCaptureOffset(payload, out var anchorRect))
+                    {
+                        sx += anchorRect.Left;
+                        sy += anchorRect.Top;
+                    }
                     searchRegion = new System.Drawing.Rectangle(sx, sy, sw, sh);
                 }
             }
@@ -6821,6 +6829,14 @@ namespace TrueReplayer
                     storedX -= winRect.Left;
                     storedY -= winRect.Top;
                 }
+                // An anchored automation watcher stores its point in ITS window's space — the same
+                // space the daemon reads it in. `absolute` still means "not the active profile's
+                // target"; the anchor is the watcher's own, and it arrives in the payload.
+                else if (absolute && TryGetAnchorCaptureOffset(payload, out var anchorRect))
+                {
+                    storedX -= anchorRect.Left;
+                    storedY -= anchorRect.Top;
+                }
 
                 SendMessage("pixel:colorPicked", new
                 {
@@ -6964,6 +6980,9 @@ namespace TrueReplayer
             // when absolute; the && !absolute just gates whether we USE it. Short-circuiting the other
             // way would leave winRect possibly-unassigned for the `if (hasRelativeOffset)` block (CS0170).
             bool hasRelativeOffset = TryGetRelativeCaptureOffset(out var winRect) && !absolute;
+            // The watcher's own anchor, when the panel is editing an anchored ImageFound. Same
+            // call-first shape as the line above, for the same CS0170 reason.
+            bool hasAnchorOffset = TryGetAnchorCaptureOffset(payload, out var anchorRect) && absolute;
 
             System.Drawing.Rectangle? initialRect = null;
             if (payload.TryGetProperty("x", out var xEl) && xEl.ValueKind == JsonValueKind.Number &&
@@ -6978,6 +6997,13 @@ namespace TrueReplayer
                 {
                     initX += winRect.Left;
                     initY += winRect.Top;
+                }
+                // …and anchor-relative for an anchored watcher. The overlay always draws in screen
+                // space, so the stored rect has to come back UP into it before it is pre-drawn.
+                else if (hasAnchorOffset)
+                {
+                    initX += anchorRect.Left;
+                    initY += anchorRect.Top;
                 }
                 initialRect = new System.Drawing.Rectangle(initX, initY, wEl.GetInt32(), hEl.GetInt32());
             }
@@ -7002,6 +7028,13 @@ namespace TrueReplayer
             {
                 storedX -= winRectNow.Left;
                 storedY -= winRectNow.Top;
+            }
+            // Re-resolved rather than reusing anchorRect above, for the reason the sibling gives:
+            // the window can move or close between the overlay opening and the user letting go.
+            else if (absolute && TryGetAnchorCaptureOffset(payload, out var anchorRectNow))
+            {
+                storedX -= anchorRectNow.Left;
+                storedY -= anchorRectNow.Top;
             }
 
             SendMessage("waitimage:searchRegionSet", new
@@ -9709,6 +9742,45 @@ namespace TrueReplayer
                 : UserProfile.Current.TargetWindow;
             if (target == null || (string.IsNullOrEmpty(target.ProcessName) && string.IsNullOrEmpty(target.WindowTitle)))
                 return false;
+            return TryGetWindowRect(target, out rect) == WindowRectStatus.Ok;
+        }
+
+        /// <summary>
+        /// The origin of the window an AUTOMATION WATCHER anchors its coordinates to. The panel
+        /// sends it with every capture request while "Relative to a window" is on, and it is what
+        /// makes the stored coordinate live in the SAME space the daemon reads it in.
+        /// </summary>
+        /// <remarks>
+        /// Sibling of TryGetRelativeCaptureOffset, and deliberately not the same method: that one
+        /// asks the ACTIVE profile's target, which has nothing to do with a watcher. A watcher is
+        /// edited from a panel that may be pointed at any profile, and its anchor is its OWN
+        /// trigger's window fields — so the target travels in the payload rather than being looked
+        /// up here. Merging the two would silently anchor a watcher to whatever profile happened to
+        /// be selected.
+        ///
+        /// This is the WRITE half of the feature. It shipped with only the read half: the daemon
+        /// added the window origin at every tick (TriggerService.ProbeCondition) while the eyedropper,
+        /// the ROI picker and the Test button all kept storing virtual-screen coordinates, so an
+        /// anchored watcher sampled the picked point PLUS the window origin — off screen on a small
+        /// monitor (false for ever, in silence) and a meaningless pixel on a large one.
+        ///
+        /// Returning false degrades to storing the raw screen coordinate, which is the contract the
+        /// sibling already keeps and every caller is written for: a window that is closed or
+        /// minimised is not one the user can meaningfully pick inside anyway.
+        /// </remarks>
+        private static bool TryGetAnchorCaptureOffset(JsonElement payload, out NativeMethods.RECT rect)
+        {
+            rect = default;
+            if (!payload.TryGetProperty("anchor", out var a) || a.ValueKind != JsonValueKind.Object) return false;
+            string proc = a.TryGetProperty("processName", out var pEl) ? (pEl.GetString() ?? "") : "";
+            string title = a.TryGetProperty("windowTitle", out var tEl) ? (tEl.GetString() ?? "") : "";
+            string mode = a.TryGetProperty("titleMatchMode", out var mEl) ? (mEl.GetString() ?? "") : "";
+            // Same "no criteria means no anchor" rule WindowMatcher applies: a target with both
+            // fields blank matches the first window it walks, which would pin the coordinate to an
+            // arbitrary origin. DescribeUnfireable refuses to arm such a watcher; here it simply
+            // means there is nothing to subtract.
+            if (string.IsNullOrWhiteSpace(proc) && string.IsNullOrWhiteSpace(title)) return false;
+            var (target, _) = ActionReplayer.BuildWindowTarget(proc, title, mode);
             return TryGetWindowRect(target, out rect) == WindowRectStatus.Ok;
         }
 
