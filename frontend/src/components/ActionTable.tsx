@@ -6,7 +6,7 @@ import type { CollisionDetection, DragStartEvent, DragEndEvent } from '@dnd-kit/
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { CSS } from '@dnd-kit/utilities';
-import { Mouse, MousePointerClick, MousePointer2, Keyboard, ArrowUp, ArrowDown, Zap, Type, Trash2, ChevronRight, ChevronDown, ChevronsDownUp, ChevronsUpDown, Plus, Pencil, ScanSearch, Pipette, Globe, CheckCheck, Check, Code2, Files, Hourglass, Repeat2, ExternalLink, Crosshair, Link, GripVertical, Timer, GitBranch, ArrowRightLeft, Split, MoreHorizontal, Focus, Braces, AppWindow, Clipboard, ClipboardCopy, EyeOff, RotateCcw, Dice5, Cpu, FileCheck, Clock, ShieldCheck, CircleStop, CornerDownLeft, IterationCw, ChevronUp, ArrowRightFromLine, SkipForward, Table2 } from 'lucide-react';
+import { Mouse, MousePointerClick, MousePointer2, Keyboard, ArrowUp, ArrowDown, Zap, Type, Trash2, ChevronRight, ChevronDown, ChevronsDownUp, ChevronsUpDown, Plus, Pencil, ScanSearch, Pipette, Globe, CheckCheck, Check, Code2, Files, Hourglass, Repeat2, ExternalLink, Crosshair, Link, GripVertical, Timer, GitBranch, ArrowRightLeft, Split, MoreHorizontal, Focus, Braces, AppWindow, Clipboard, ClipboardCopy, ClipboardPaste, Eye, EyeOff, RotateCcw, Dice5, Cpu, FileCheck, Clock, ShieldCheck, CircleStop, CornerDownLeft, IterationCw, ChevronUp, ArrowRightFromLine, SkipForward, Table2 } from 'lucide-react';
 import { canCollapse, canExpand, expandKeystroke } from '../utils/keyRepeat';
 import type { ActionItem } from '../bridge/messageTypes';
 import { useAppState } from '../state/AppStateContext';
@@ -1762,6 +1762,11 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
       : [contextMenu.rowIndex];
   }, [contextMenu, selectedIndices]);
 
+  // How many rows the menu's selection-scoped entries will touch. One derivation for every label
+  // that shows "(N)", so the number a user reads on Duplicate is the number Skip and Copy act on
+  // — three inline `.length`s would be three chances for one of them to drift.
+  const contextCount = useMemo(() => contextSelectionIndices().length, [contextSelectionIndices]);
+
   // Collapse: gather the contiguous-validated selection of Down/Up pairs and
   // splice them into a single Keystroke × N row. Selection collapses to the
   // resulting row index so the user sees the transformation result highlighted.
@@ -3339,13 +3344,17 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
             return null;
           })()}
 
-          {/* Focus click and Convert to Double/Left Click used to sit here at top level.
-              Both are click-only tools and rarer than the top-level entries, so they
-              moved into More ▸ to keep the top level at five entries for click rows
-              (Edit · Pick from screen · Duplicate · More · Delete — Copy Coordinates
-              also lives in More now, as its first item). */}
+          {/* ── Row actions — the fixed spine every row gets, in this order ──
+              Everything above is a type SLOT (at most two render); everything from here down is
+              the same for a Pause, a Browser row and an If. That is the point: the entries whose
+              position you can learn are the ones you stop reading, and the menu is now at most
+              seven items for any row. Focus click and Convert to Double/Left Click live in More ▸
+              — both are click-only tools and rarer than these. */}
 
-          {/* Duplicate */}
+          {/* Duplicate and Skip both act on the EFFECTIVE selection (contextSelectionIndices:
+              the clicked row, or the whole multi-select when the clicked row is inside it), so
+              both carry the count. Right-clicking inside a 12-row selection and reading a bare
+              "Duplicate" was the menu understating what the click was about to do. */}
           <button
             onMouseEnter={() => setActiveSubmenu(null)}
             onClick={handleDuplicate}
@@ -3353,7 +3362,48 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
           >
             <Files size={13} className="text-text-tertiary" />
             Duplicate
+            {contextCount > 1 && <span className="text-text-disabled">({contextCount})</span>}
           </button>
+
+          {/* Skip / Enable — promoted from the bulk bar on 2026-09-16. The bar only exists while
+              something is selected, and a right-click deliberately does NOT select (see
+              handleRowContextMenu), so toggling skip on ONE row with the mouse was impossible
+              without selecting it first — for what is the most frequent per-row operation there
+              is. Same message, same raw indices and same Eye/EyeOff vocabulary as the bar; no
+              block snap, matching it exactly (a skipped opener already propagates to its block,
+              see conditionalBlocks). The label follows the selection: all skipped → Enable. */}
+          {(() => {
+            const indices = contextSelectionIndices();
+            if (indices.length === 0) return null;
+            const allSkipped = indices.every(i => actions[i]?.isSkipped);
+            return (
+              <button
+                onMouseEnter={() => setActiveSubmenu(null)}
+                onClick={() => {
+                  send({ type: 'actions:toggleSkip', payload: { indices } });
+                  showToast(
+                    allSkipped
+                      ? tt(`Enabled ${indices.length} action(s)`, `${indices.length} ação(ões) ativada(s)`)
+                      : tt(`Skipped ${indices.length} action(s)`, `${indices.length} ação(ões) ignorada(s)`),
+                    'success',
+                  );
+                  closeContextMenu();
+                }}
+                data-tip={allSkipped
+                  ? tt('Puts these rows back in the run', 'Devolve estas linhas ao run')
+                  : tt('Keeps the rows, skips them at run time', 'Mantém as linhas, pula na execução')}
+                className="menu-item text-text-primary"
+              >
+                {allSkipped
+                  ? <Eye size={13} className="text-text-tertiary" />
+                  : <EyeOff size={13} className="text-text-tertiary" />}
+                {allSkipped ? 'Enable' : 'Skip'}
+                {indices.length > 1 && <span className="text-text-disabled">({indices.length})</span>}
+              </button>
+            );
+          })()}
+
+          <div className="my-1 border-t border-border-subtle" />
 
           {/* More ▸ — lower-frequency tools tucked into a submenu so the top level stays
               short. Grouped by purpose: select-similar, paired↔combined conversion, and
@@ -3373,6 +3423,94 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
             {activeSubmenu === 'more' && (
               <div ref={moreFlyout.ref} className={`absolute min-w-[210px] bg-transparent ${moreFlyout.flipX ? 'right-full' : 'left-full'} ${moreFlyout.flipY ? 'bottom-0' : 'top-0'}`} style={moreFlyout.flipX ? { paddingRight: '4px' } : { paddingLeft: '4px' }}>
                 <div className="py-1 menu-surface z-[60]">
+                  {/* Copy / Paste here — added 2026-09-16, and Copy is the reason this pair
+                      exists: actions:copyInternal had exactly ONE door in the whole app, the
+                      Ctrl+C keybinding, with no button, no menu and no palette entry. Its twin
+                      actions:paste got a palette entry years ago on the written argument that
+                      "Ctrl+V works but has no visible control anywhere" — nobody ever applied the
+                      same sentence to Ctrl+C.
+                      NO kbd chip, deliberately: both context menus in this app carry exactly one,
+                      on Delete, where it means "this is what the bare Del key does" rather than
+                      cataloguing shortcuts. The shortcut rides in the tooltip instead — the same
+                      channel Delete already uses to explain its scope.
+                      Neither needs a run gate of its own: the menu does not open during
+                      record/replay (contextMenuEnabled) and the whole grid is unmounted in
+                      Clicker mode, which is the Toolbar's insertsDisabled by construction. */}
+                  <button
+                    onClick={() => {
+                      const indices = contextSelectionIndices();
+                      send({ type: 'actions:copyInternal', payload: { indices } });
+                      showToast(tt(`Copied ${indices.length} action(s)`, `${indices.length} ação(ões) copiada(s)`), 'success');
+                      closeContextMenu();
+                    }}
+                    data-tip={tt('Copies the selected rows (Ctrl+C)', 'Copia as linhas selecionadas (Ctrl+C)')}
+                    className="menu-item text-text-primary"
+                  >
+                    <ClipboardCopy size={13} className="text-text-tertiary" />
+                    Copy
+                    {contextCount > 1 && <span className="text-text-disabled">({contextCount})</span>}
+                  </button>
+                  {/* "here" is the whole point, and it is the one thing the Toolbar and the palette
+                      cannot say: they paste at min(selection) because a keystroke has no position.
+                      A right-click does. The rows land BEFORE the clicked row — the same direction
+                      every other insert in the app goes, so Ctrl+V and this land the same way up. */}
+                  <button
+                    onClick={() => {
+                      send({ type: 'actions:paste', payload: { insertIndex: contextMenu.rowIndex } });
+                      closeContextMenu();
+                    }}
+                    data-tip={tt('Pastes above this row (Ctrl+V)', 'Cola acima desta linha (Ctrl+V)')}
+                    className="menu-item text-text-primary"
+                  >
+                    <ClipboardPaste size={13} className="text-text-tertiary" />
+                    Paste here
+                  </button>
+
+                  <div className="my-1 border-t border-border-subtle" />
+
+                  {/* Select Similar sits alone between the clipboard pair and the click tools
+                      because it is the only entry here that CHANGES THE SELECTION rather than
+                      acting on it — the thing you run before reaching for the bulk bar. */}
+                  <button
+                    onClick={() => {
+                      const ref = actions[contextMenu.rowIndex];
+                      if (!ref) { closeContextMenu(); return; }
+                      // See similarActionKey above for why actionType+key+x+y alone
+                      // over-selects probe/condition rows (WaitImage, WaitPixelColor,
+                      // ActivateWindow, If/Assert) whose real identity lives elsewhere.
+                      const refKey = similarActionKey(ref);
+                      const similar = new Set<number>();
+                      actions.forEach((a, i) => {
+                        if (a.actionType === ref.actionType && similarActionKey(a) === refKey)
+                          similar.add(i);
+                      });
+                      setSelectedIndices(similar);
+                      showToast(tt(`Selected ${similar.size} similar action(s)`, `${similar.size} ação(ões) semelhante(s) selecionada(s)`), 'success');
+                      closeContextMenu();
+                    }}
+                    className="menu-item text-text-primary"
+                  >
+                    <CheckCheck size={13} className="text-text-tertiary" />
+                    Select Similar
+                  </button>
+
+                  {/* ── Click tools ── Copy Coordinates · Focus click · Convert to Double/Left.
+                      The divider is conditional because the whole GROUP is: on an If, a Pause or
+                      a Browser row all three entries return null, and an unconditional rule would
+                      sit directly on top of the next one. (Two adjacent dividers is exactly what
+                      this grouping produced the first time it was measured.) The predicate is the
+                      union of the three gates below — a coordinate click that is not at-cursor
+                      (Copy Coordinates), a focus-eligible click, or a DoubleClick (Convert) —
+                      so a MiddleClickHold pinned to the cursor, which satisfies none of them,
+                      correctly draws no rule at all. */}
+                  {(() => {
+                    const t = actions[contextMenu.rowIndex]?.actionType ?? '';
+                    const atCur = !!actions[contextMenu.rowIndex]?.atCursor;
+                    const hasClickTools = (isCoordinateClick(t) && !atCur)
+                      || isFocusClickEligible(t) || t === 'DoubleClick';
+                    return hasClickTools ? <div className="my-1 border-t border-border-subtle" /> : null;
+                  })()}
+
                   {/* Copy Coordinates — click rows only, FIRST item per user request.
                       Lived at top level in the type-specific slot until "Pick from
                       screen" took that spot. Paired-mode clicks are DOWN/UP pairs
@@ -3402,30 +3540,6 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                     );
                   })()}
 
-                  {/* Select Similar */}
-                  <button
-                    onClick={() => {
-                      const ref = actions[contextMenu.rowIndex];
-                      if (!ref) { closeContextMenu(); return; }
-                      // See similarActionKey above for why actionType+key+x+y alone
-                      // over-selects probe/condition rows (WaitImage, WaitPixelColor,
-                      // ActivateWindow, If/Assert) whose real identity lives elsewhere.
-                      const refKey = similarActionKey(ref);
-                      const similar = new Set<number>();
-                      actions.forEach((a, i) => {
-                        if (a.actionType === ref.actionType && similarActionKey(a) === refKey)
-                          similar.add(i);
-                      });
-                      setSelectedIndices(similar);
-                      showToast(tt(`Selected ${similar.size} similar action(s)`, `${similar.size} ação(ões) semelhante(s) selecionada(s)`), 'success');
-                      closeContextMenu();
-                    }}
-                    className="menu-item text-text-primary"
-                  >
-                    <CheckCheck size={13} className="text-text-tertiary" />
-                    Select Similar
-                  </button>
-
                   {/* Focus click — combined clicks only. Toggles the per-action flag that replays the
                       click TWICE a few pixels apart so a small target (e.g. a Roblox text field at the
                       window's minimum size) actually receives focus. The state shows as a small icon in
@@ -3436,10 +3550,10 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                   {(() => {
                     const row = actions[contextMenu.rowIndex];
                     if (!row || !isFocusClickEligible(row.actionType ?? '')) return null;
-                    const eff = selectedIndices.size > 0 && selectedIndices.has(contextMenu.rowIndex)
-                      ? Array.from(selectedIndices).sort((a, b) => a - b)
-                      : [contextMenu.rowIndex];
-                    const clickIdx = eff.filter(i => isFocusClickEligible(actions[i]?.actionType ?? ''));
+                    // The shared resolver, not a fourth inlined copy of its body — the comment on
+                    // contextSelectionIndices says this menu keeps one answer to "what am I acting on".
+                    const clickIdx = contextSelectionIndices()
+                      .filter(i => isFocusClickEligible(actions[i]?.actionType ?? ''));
                     const allOn = clickIdx.length > 0 && clickIdx.every(i => actions[i]?.isFocusClick);
                     return (
                       <button
@@ -3452,6 +3566,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                         <span className="flex items-center gap-2.5">
                           <Focus size={13} className="text-text-tertiary" />
                           Focus click
+                          {clickIdx.length > 1 && <span className="text-text-disabled">({clickIdx.length})</span>}
                         </span>
                         {allOn && <Check size={12} className="text-accent-light" />}
                       </button>
@@ -3469,10 +3584,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                     if (!row || (row.actionType !== 'LeftClick' && row.actionType !== 'DoubleClick')) return null;
                     const fromType = row.actionType;
                     const toType = fromType === 'LeftClick' ? 'DoubleClick' : 'LeftClick';
-                    const eff = selectedIndices.size > 0 && selectedIndices.has(contextMenu.rowIndex)
-                      ? Array.from(selectedIndices).sort((a, b) => a - b)
-                      : [contextMenu.rowIndex];
-                    const convertIdx = eff.filter(i => actions[i]?.actionType === fromType);
+                    const convertIdx = contextSelectionIndices().filter(i => actions[i]?.actionType === fromType);
                     if (convertIdx.length === 0) return null;
                     return (
                       <button
@@ -3505,11 +3617,12 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
 
                   {/* Collapse to × N / Expand × N — fold consecutive Down/Up pairs of the same
                       key into one Keystroke × N row (and back). Disabled (greyed) when the
-                      current selection wouldn't qualify, so the feature stays discoverable. */}
+                      current selection wouldn't qualify, so the feature stays discoverable —
+                      and since 2026-09-16 the greyed state SAYS WHY. Two permanently dead rows
+                      with no explanation is not discoverability, it is furniture; the palette
+                      already had the right pattern in its disabledHint. */}
                   {(() => {
-                    const indices = selectedIndices.size > 0 && selectedIndices.has(contextMenu.rowIndex)
-                      ? Array.from(selectedIndices).sort((a, b) => a - b)
-                      : [contextMenu.rowIndex];
+                    const indices = contextSelectionIndices();
                     let contiguous = true;
                     for (let i = 1; i < indices.length; i++) {
                       if (indices[i] !== indices[i - 1] + 1) { contiguous = false; break; }
@@ -3522,6 +3635,10 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                         <button
                           onClick={collapseOk ? handleCollapseToRepeat : undefined}
                           disabled={!collapseOk}
+                          data-tip={collapseOk
+                            ? tt(`Folds ${indices.length / 2} presses into one row`, `Junta ${indices.length / 2} pressões numa linha`)
+                            : tt('Select adjacent Key Down + Key Up pairs of the same key',
+                                 'Selecione pares Key Down + Key Up adjacentes da mesma tecla')}
                           // menu-item already owns the disabled look (text-disabled + default
                           // cursor, hover only :not(:disabled)), so the enabled half is all that
                           // is left to say here.
@@ -3533,6 +3650,10 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                         <button
                           onClick={expandOk ? handleExpandRepeat : undefined}
                           disabled={!expandOk}
+                          data-tip={expandOk
+                            ? tt('Splits it back into one row per press', 'Divide de volta numa linha por pressão')
+                            : tt('Select one Keystroke × N row with a single key (no combo)',
+                                 'Selecione uma linha Keystroke × N de tecla única (sem combo)')}
                           className={`menu-item ${expandOk ? 'text-text-primary cursor-pointer' : ''}`}
                         >
                           <ChevronsUpDown size={13} className={expandOk ? 'text-text-tertiary' : 'text-text-disabled'} />
@@ -3572,6 +3693,12 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                 : deleteScope === 'loop' ? 'Delete loop'
                   : deleteScope === 'arm' ? 'Delete arm'
                     : 'Delete'}
+              {/* Only on the plain 'rows' scope: the other three labels already NAME what goes
+                  (a block, a loop, an arm), and a count beside them would be read as a row count
+                  for something that deletes more rows than the selection holds. */}
+              {deleteScope === 'rows' && contextCount > 1 && (
+                <span className="text-text-disabled">({contextCount})</span>
+              )}
             </span>
             <span className="kbd">Del</span>
           </button>
