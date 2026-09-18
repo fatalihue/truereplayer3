@@ -12,7 +12,8 @@
     "mirror:check": "node tools/gen-boot-mirror.mjs --check",
     "lint:gate": "eslint -c eslint.gate.config.js --suppressions-location eslint-gate-suppressions.json .",
     "lint:gate:prune": "eslint -c eslint.gate.config.js --suppressions-location eslint-gate-suppressions.json --prune-suppressions .",
-    "lint:gate:accept": "eslint -c eslint.gate.config.js --suppressions-location eslint-gate-suppressions.json --suppress-all ."
+    "lint:gate:accept": "eslint -c eslint.gate.config.js --suppressions-location eslint-gate-suppressions.json --suppress-all .",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -32,6 +33,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/vite": "^4.2.0",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.7",

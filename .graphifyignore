@@ -9,3 +9,9 @@ tools/IconGen/preview/*.png
 TrueReplayer.ico
 TrueReplayerPurple.ico
 TrueReplayerRed.ico
+
+# Playwright E2E scaffolding — test harness, not app architecture. Owner asked for it
+# out of the graph on 2026-09-15. These are source files on disk (untracked at the time),
+# so .gitignore does NOT exclude them: only this file does.
+frontend/e2e/
+frontend/playwright.config.ts
