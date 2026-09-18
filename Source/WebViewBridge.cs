@@ -314,18 +314,26 @@ namespace TrueReplayer
         /// during an extension recording left DoubleClick + two BrowserClick rows, and replay fired
         /// four clicks where the user made two.
         ///
-        /// MiddleClick, TripleClick and the *ClickHold family are left OUT on purpose, and adding
-        /// them would be a regression, not a completion:
+        /// TripleClick belongs here for the same reason and by the same mechanism, now that the
+        /// recorder's merge chain runs LeftClick → DoubleClick → TripleClick: each hop rewrites
+        /// the SAME object, so a recorded triple-click is ONE row still carrying the FIRST click's
+        /// RecordedAt. That is also why the cutoff in the elementClicked sweep is derived from
+        /// GetDoubleClickTime instead of being a flat number — the stamp on the row this predicate
+        /// matches can be two full double-click windows older than the extension event that is
+        /// asking about it.
+        ///
+        /// MiddleClick and the *ClickHold family are left OUT on purpose, and adding them would be
+        /// a regression, not a completion:
         ///   • middle click raises auxclick, not click, so the extension never reports it and there
         ///     is no duplicate to remove;
-        ///   • TripleClick and *ClickHold exist only as AUTHORED rows — the recorder never escalates
-        ///     into them — and RecordedAt is stamped at construction, so a row typed during a
-        ///     recording carries a fresh timestamp and these sweeps would eat the user's own work.
+        ///   • *ClickHold exists only as an AUTHORED row — the recorder never produces one — and
+        ///     RecordedAt is stamped at construction, so a row typed during a recording carries a
+        ///     fresh timestamp and these sweeps would eat the user's own work.
         /// </summary>
         private static bool IsRecorderClickRow(string? actionType) =>
             actionType is "LeftClickDown" or "LeftClickUp"
                 or "RightClickDown" or "RightClickUp"
-                or "LeftClick" or "RightClick" or "DoubleClick";
+                or "LeftClick" or "RightClick" or "DoubleClick" or "TripleClick";
 
         // A row whose CONDITION owns image/pixel probe data — If since 2.3.0, While since the
         // loop family shipped, ElseIf since the branch chain. Every image-lifecycle site
@@ -426,12 +434,26 @@ namespace TrueReplayer
                     {
                         if (!recordingService.IsRecording) return;
 
-                        // Remove native click events recorded in the last 500ms (duplicates of this
-                        // browser click). Eight rows, not four, to match the two sibling sweeps
-                        // below: a double-click leaves a merged DoubleClick plus the BrowserClick
-                        // rows the extension appends, and the row to remove is no longer within
-                        // four of the tail by the time the second event lands.
-                        var cutoff = DateTime.UtcNow.AddMilliseconds(-500);
+                        // Remove the native click rows that are duplicates of this browser click.
+                        // Eight rows, not four, to match the two sibling sweeps below: a
+                        // double-click leaves a merged DoubleClick plus the BrowserClick rows the
+                        // extension appends, and the row to remove is no longer within four of the
+                        // tail by the time the second event lands.
+                        //
+                        // The window is DERIVED from GetDoubleClickTime, where it used to be a flat
+                        // 500 ms, because the row this is looking for does not carry the timestamp
+                        // of the click that triggered the sweep. A merged multi-click row keeps the
+                        // FIRST click's RecordedAt while the extension event describes the LAST
+                        // click of the chain, so the row is already up to one double-click window
+                        // old for a DoubleClick and two for a TripleClick before any extension or
+                        // dispatcher latency. At the flat 500 ms a legal-but-slow double-click fell
+                        // outside its own cutoff and survived the sweep — leaving DoubleClick plus
+                        // two BrowserClick rows and a replay that fires four clicks for two, the
+                        // exact bug this predicate was added to prevent, at the slow end of the
+                        // window. Two windows plus the original 500 ms of latency headroom covers
+                        // the longest chain the recorder can build.
+                        var cutoff = DateTime.UtcNow.AddMilliseconds(
+                            -(500 + 2 * (int)NativeMethods.GetDoubleClickTime()));
                         for (int i = actions.Count - 1; i >= 0 && i >= actions.Count - 8; i--)
                         {
                             var a = actions[i];

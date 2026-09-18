@@ -1449,31 +1449,43 @@ namespace TrueReplayer.Services
                 // unit in combined mode — the click is recorded without the modifier.
                 if (RecordCombined && _heldMods.Count > 0) _sessionUsed = true;
 
-                // Double-click merge: this LeftClick is the second half of a system
-                // double-click → upgrade the previous row in place instead of adding a
-                // new one. Always on in combined mode (paired mode keeps raw Down/Up
-                // rows untouched). Conditions: Left button + the previous row is still
-                // the most recently added action (consecutive) + within
-                // GetDoubleClickTime and the SM_CX/CYDOUBLECLK rectangle, both measured
-                // the way Windows itself pairs clicks. Skipped in capture mode (capture
-                // flows count actions and complete after exactly one click). The merged
-                // row keeps the FIRST click's coords/delay; tracking resets after a
-                // merge so a triple-click records DoubleClick + LeftClick. That stays true on
-                // purpose now that a TripleClick action type EXISTS: the type is authored in the
-                // Sheet (switch an existing click's type), never escalated by the recorder —
-                // extending the chain here would silently change what every existing fast-clicking
-                // recording produces, which is not a change to make as a side effect of adding a type.
+                // Multi-click merge: this LeftClick continues a system multi-click chain →
+                // upgrade the previous row in place instead of adding a new one. The chain is
+                // LeftClick → DoubleClick → TripleClick, one hop per physical click, and it STOPS
+                // there: a fourth click starts a fresh LeftClick. Always on in combined mode
+                // (paired mode keeps raw Down/Up rows untouched). Conditions: Left button + the
+                // previous row is still the most recently added action (consecutive) + within
+                // GetDoubleClickTime and the SM_CX/CYDOUBLECLK rectangle of the PREVIOUS physical
+                // click, both measured the way Windows itself pairs clicks. Skipped in capture
+                // mode (capture flows count actions and complete after exactly one click). The
+                // merged row keeps the FIRST click's coords/delay.
+                //
+                // The third hop is why the window and the rectangle are re-armed on every merge
+                // instead of staying centred on the first click: an OS chain pairs each click with
+                // the one BEFORE it, so hop 2→3 is measured from click 2. Leaving them on click 1
+                // would hand the third click a budget already half spent and a rectangle it has to
+                // hit from two clicks away — a hand-made triple-click would fail the check that a
+                // double-click at the same speed passes.
+                //
+                // The chain used to stop at two on purpose, leaving a physical triple-click to
+                // record as DoubleClick + LeftClick. That was wrong for the one case TripleClick
+                // exists to serve: replaying select-word and then clicking UNDOES the selection, so
+                // a recorded triple-click could not reproduce itself. Escalating does regroup fast
+                // repeated clicking — six clicks in one spot now record as two TripleClicks where
+                // they recorded as three DoubleClicks — which is deliberate, and is why the chain
+                // is capped at three rather than counting on forever.
                 if (RecordCombined && button == "Left"
                     && _captureType == CaptureType.None
                     && _lastCombinedLeftClick != null
                     && ReferenceEquals(_lastCombinedLeftClick, _lastAdded)
-                    && _lastCombinedLeftClick.ActionType == "LeftClick")
+                    && _lastCombinedLeftClick.ActionType is "LeftClick" or "DoubleClick")
                 {
                     long nowMs = Environment.TickCount64;
                     // SM_CX/CYDOUBLECLK are the FULL rectangle dimensions, but the distance check
-                    // measures the offset of each click from the rectangle's centre (the first
-                    // click), so the tolerance is HALF the metric per axis. Max(2, …) guards against
-                    // a degenerate 0/1-px metric collapsing the rectangle and never merging.
+                    // measures the offset of this click from the rectangle's centre — the PREVIOUS
+                    // click of the chain — so the tolerance is HALF the metric per axis. Max(2, …)
+                    // guards against a degenerate 0/1-px metric collapsing the rectangle and never
+                    // merging.
                     int maxW = Math.Max(2, NativeMethods.GetSystemMetrics(SM_CXDOUBLECLK) / 2);
                     int maxH = Math.Max(2, NativeMethods.GetSystemMetrics(SM_CYDOUBLECLK) / 2);
                     if (nowMs - _lastClickTickMs <= NativeMethods.GetDoubleClickTime()
@@ -1493,8 +1505,26 @@ namespace TrueReplayer.Services
                         if (mi >= 0)
                         {
                             var merged = _lastCombinedLeftClick;
-                            merged.ActionType = "DoubleClick";
-                            _lastCombinedLeftClick = null;
+                            // One hop up the chain. Reading the CURRENT type (not a counter) keeps
+                            // how far the chain has gone in the row itself, so there is no second
+                            // copy of that state to fall out of sync with it.
+                            bool chainEnds = merged.ActionType == "DoubleClick";
+                            merged.ActionType = chainEnds ? "TripleClick" : "DoubleClick";
+                            if (chainEnds)
+                            {
+                                // Three pairs is the whole vocabulary: a fourth click is a new row.
+                                _lastCombinedLeftClick = null;
+                            }
+                            else
+                            {
+                                // Stay armed for a third click, re-centred on THIS one (see the
+                                // header). _lastCombinedLeftClick and _lastAdded both still point at
+                                // `merged` — the type was mutated in place and no row was added —
+                                // so the consecutive-row check holds for the next click unchanged.
+                                _lastClickScreenX = x;
+                                _lastClickScreenY = y;
+                                _lastClickTickMs = nowMs;
+                            }
                             // An in-place property mutation only raises PropertyChanged — the
                             // bridge pushes the grid on COLLECTION changes. Re-assigning the
                             // same instance at its index raises a Replace event, so the
@@ -3075,8 +3105,10 @@ namespace TrueReplayer.Services
             // game macro — the next action fired with no interval at all. That is the same
             // failure described for TripleClick two paragraphs up, one step smaller.
             //
-            // A TripleClick row still can never come from a recording: the merge deliberately
-            // produces DoubleClick + LeftClick, so the type is only ever AUTHORED.
+            // Both types now reach here from a RECORDING as well as from authoring — the merge
+            // chain is LeftClick → DoubleClick → TripleClick — so provenance is unreadable for
+            // either one. It does not need to be: the arithmetic above is about what the row COSTS
+            // to replay, and that is the same however the row came to be written.
             //
             // Measured before adding either: the owner's 108 profiles hold 1247 actions and ZERO
             // DoubleClick and ZERO TripleClick rows, so this changes no existing profile's timing.
