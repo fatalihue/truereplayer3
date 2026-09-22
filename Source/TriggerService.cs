@@ -1342,9 +1342,21 @@ namespace TrueReplayer.Services
         // o que interessa e a configuracao, e as janelas vao e vem. Nunca limpo — sao poucas
         // strings e o aviso deve sair uma vez por sessao, nao uma vez por janela reaberta.
         private static readonly HashSet<string> _ambiguousAnchorWarned = new(StringComparer.OrdinalIgnoreCase);
+        // Vigias cuja ancora ja foi denunciada por levar a amostra para fora da tela. Mesma chave
+        // e mesma regra do conjunto acima: uma vez por configuracao, nunca por tick.
+        private static readonly HashSet<string> _offScreenAnchorWarned = new(StringComparer.OrdinalIgnoreCase);
 
         private static string DescribeTarget(Models.WindowTarget t) =>
             !string.IsNullOrWhiteSpace(t.ProcessName) ? t.ProcessName! : (t.WindowTitle ?? "?");
+
+        // The WARNING key, which is not the same string as the human-readable description above.
+        // DescribeTarget collapses to the process name whenever there is one, so two watchers
+        // anchored at different windows of one process shared a key and only the first ever warned
+        // — and, worse, the remedy the message itself recommends ("fill in the window title")
+        // produced a target with the SAME key, so following the advice never re-armed the warning.
+        // Keying on every field that can change the match means acting on the advice is heard.
+        private static string AmbiguityKey(Models.WindowTarget t) =>
+            $"{t.ProcessName}␟{t.WindowTitle}␟{t.TitleMatchMode}";
 
         private static bool TryAnchorOffset(Models.WindowTarget? target,
                                             System.Text.RegularExpressions.Regex? titleRegex,
@@ -1364,7 +1376,7 @@ namespace TrueReplayer.Services
             if (hwnd == IntPtr.Zero) return false;
             // Uma vez por vigia, nunca por tick: a 4 Hz isto viraria enxurrada de log, que e a
             // mesma razao pela qual a ausencia de janela falha calada.
-            if (matches > 1 && _ambiguousAnchorWarned.Add(DescribeTarget(target)))
+            if (matches > 1 && _ambiguousAnchorWarned.Add(AmbiguityKey(target)))
             {
                 DiagnosticLog.Warn($"[Automation] A ancora casa com {matches} janelas de {DescribeTarget(target)}. "
                     + "A origem foi fixada numa delas; preencha o titulo da janela para escolher.");
@@ -1539,6 +1551,22 @@ namespace TrueReplayer.Services
                         // de virar fonte de aviso a cada 250 ms enquanto o app alvo esta fechado.
                         if (!TryAnchorOffset(anchorTarget, anchorRegex, out int adx, out int ady)) return false;
                         var sampled = PixelColorService.GetPixelAt(cfg.PixelX + adx, cfg.PixelY + ady);
+                        // Uma ancora que empurra a amostra para FORA de toda tela nao e uma condicao
+                        // falsa — e uma coordenada no espaco errado, e a unica forma de ela aparecer
+                        // e alguem ter gravado TELA num campo lido como JANELA. E o que a 2.43.0
+                        // fazia: ela lancou a metade de leitura sem a de escrita, e nada converte o
+                        // que ficou em disco. Falar uma vez por vigia transforma "nunca dispara, em
+                        // silencio, para sempre" em algo que o usuario pode consertar — e cobre
+                        // qualquer outra forma de a coordenada nascer no espaco errado, que e mais
+                        // do que uma migracao por versao conseguiria.
+                        if (sampled == null && (adx != 0 || ady != 0)
+                            && _offScreenAnchorWarned.Add(AmbiguityKey(anchorTarget!)))
+                        {
+                            DiagnosticLog.Warn($"[Automation] O ponto ancorado ({cfg.PixelX},{cfg.PixelY}) + origem de "
+                                + $"{DescribeTarget(anchorTarget!)} ({adx},{ady}) cai FORA da tela: a condicao nunca vai ser "
+                                + "verdadeira. Provavel coordenada gravada em espaco de TELA antes da 2.43.1 — "
+                                + "desligue \"Relative to a window\" ou pegue o pixel de novo.");
+                        }
                         return sampled != null
                             && PixelColorService.MatchesWithinTolerance(sampled.Value, pixelColor.Value, cfg.PixelTolerance);
                     }

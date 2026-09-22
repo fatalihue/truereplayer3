@@ -28,7 +28,7 @@ import { ImageCropper } from './ImageCropper';
 const LexicalTokenEditor = lazy(() => import('./lexical/LexicalTokenEditor').then(m => ({ default: m.LexicalTokenEditor })));
 import type { LexicalEditorHandle } from './lexical/LexicalTokenEditor';
 import { getDisplayKey, isClickHold, CLICK_FAMILY_TYPES, clickFormOf, NO_COORD_TYPES } from '../utils/displayUtils';
-import { MIN_HOLD_MS, MAX_HOLD_MS, DEFAULT_HOLD_MS, DEFAULT_CLICK_GAP_MS, clickDefaultGap, rowDwellMs } from '../utils/actionCost';
+import { MIN_HOLD_MS, MAX_HOLD_MS, DEFAULT_HOLD_MS, DEFAULT_CLICK_GAP_MS, CLICK_COORD_TOLERANCE_PX, clickDefaultGap, rowDwellMs } from '../utils/actionCost';
 
 // How often the open row editor re-stamps its unsaved-work claim with AutomationGuard. Must stay
 // WELL under `AutomationGuard.EditorClaimTtl` (10 min) — that deadline is measured from the last
@@ -1514,16 +1514,14 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       }
     }
 
-    // Flush the collected field edits as ONE message, before the form change below — which is the
-    // same ordering the separate sends had, for the same reason spelled out next.
-    if (pendingEdits.length > 0) {
-      send({ type: 'actions:editMany', payload: { index: actionIndex, edits: pendingEdits } });
-    }
-
-    // FORM — LAST, after every field edit above, and the order is the point: a split changes
-    // the row COUNT, so anything addressed by actionIndex after this would land on the wrong row.
+    // FORM — computed here, sent WITH the field edits below. The order inside the backend is
+    // unchanged (fields first, then the conversion, because a split changes the row COUNT and the
+    // edits are addressed by index); what changes is that both travel in one message and land in
+    // ONE undo entry. As two messages a Save that also switched the form cost two Ctrl+Z, and the
+    // first of them put the fields back while leaving the row in the other form.
     // The backend refuses out loud (× N, at-cursor, Double/Triple, a drag that must stay paired),
     // so there is no second copy of those rules here to fall out of step with it.
+    let convert: { direction: 'toPaired' | 'toCombined'; indices: number[] } | undefined;
     if (formDraft !== initialForm) {
       // Merging needs BOTH halves. The sheet edits one row, so reach for the twin the same way
       // the row menu's Merge does — a half on its own would come back "select the Up that follows
@@ -1533,9 +1531,17 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
         : clickFormOf(action.actionType) === 'Down'
           ? [actionIndex, actionIndex + 1]
           : [actionIndex - 1, actionIndex];
+      convert = {
+        direction: formDraft === 'paired' ? 'toPaired' : 'toCombined',
+        indices: indices.filter(i => i >= 0),
+      };
+    }
+
+    // One message, one undo entry — whether it carries fields, a form change, or both.
+    if (pendingEdits.length > 0 || convert) {
       send({
-        type: 'actions:convertMode',
-        payload: { direction: formDraft === 'paired' ? 'toPaired' : 'toCombined', indices: indices.filter(i => i >= 0) },
+        type: 'actions:editMany',
+        payload: { index: actionIndex, edits: pendingEdits, ...(convert ? { convert } : {}) },
       });
     }
 
@@ -1939,6 +1945,9 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   // which is declared further down the component body.
   const handleSaveRef = useRef<() => void>(() => {});
   const saveBlockedRef = useRef(false);
+  // WHY it is blocked, for the keyboard path — the button says it in a tooltip, which a Ctrl+S
+  // never shows.
+  const saveBlockedReasonRef = useRef<string | null>(null);
 
   useImperativeHandle(ref, () => ({
     tryLeave: (kind) => {
@@ -1989,6 +1998,27 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   // is built out of buttons: SegmentedControl, DurationChips, the themed Checkbox and the
   // NumberInput steppers all render one.
   const markTouched = useCallback(() => setEditorTouched(true), []);
+
+  // The CLICK half needs a filter the input/change halves do not. onInput and onChange only fire
+  // when a value actually changed; onClick fires for everything that bubbles to the body div —
+  // and that div is the whole panel, down to labels, padding, the scroll area and result cards.
+  //
+  // The gap matters because the latch is not local. editorTouched becomes editor:pendingEdits,
+  // which becomes AutomationGuard.SetEditorBusy, which is RENEWED every 60 s against a 10-minute
+  // TTL — so the TTL never expires while the panel is open, and every autonomous fire from then on
+  // reports "skipped (editing a row)". A skipped fire is LOST, not queued, once it is past its
+  // grace window. Opening the Sheet on a WaitImage row, pressing "Test match" to read the current
+  // score, and walking away was enough to stop every armed automation in the profile, for as long
+  // as the panel stayed open, with nothing on screen saying so.
+  //
+  // A probe is a READ. Buttons that only report — Test match, the window-target Test, and a
+  // Pick-from-screen the user cancels — carry data-probe and do not claim. Anything that can write
+  // a field still does, including the ones that emit no input event, which is why the click
+  // handler exists at all.
+  const markTouchedFromClick = useCallback((e: React.MouseEvent) => {
+    if ((e.target as HTMLElement | null)?.closest('[data-probe]')) return;
+    setEditorTouched(true);
+  }, []);
 
   const pendingEdits = actionIndex != null && editorTouched;
   useEffect(() => {
@@ -2063,7 +2093,16 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       if (e.ctrlKey && !e.altKey && (e.key === 's' || e.key === 'S') && !e.defaultPrevented) {
         e.preventDefault();
         e.stopPropagation();
-        if (!saveBlockedRef.current) handleSaveRef.current();
+        // Blocked is not the same as nothing happened. This branch consumes the key so the
+        // window-level Ctrl+S (which saves the PROFILE) does not also fire — so returning quietly
+        // left the user with a shortcut that did nothing at all, no row save AND no profile save,
+        // while the Save button beside it states its reason in a tooltip. Refusals are spoken
+        // everywhere else in this panel; the keyboard is not a quieter door.
+        if (saveBlockedRef.current) {
+          if (saveBlockedReasonRef.current) showToast(saveBlockedReasonRef.current, 'error');
+          return;
+        }
+        handleSaveRef.current();
         return;
       }
       if (e.key !== 'Escape' || e.defaultPrevented) return;
@@ -2091,7 +2130,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     };
     document.addEventListener('keydown', onDocKeyDown);
     return () => document.removeEventListener('keydown', onDocKeyDown);
-  }, [actionIndex, onClose, send, armGuard, noteDiscard]);
+  }, [actionIndex, onClose, send, armGuard, noteDiscard, showToast]);
 
   // Reset the capture state whenever the panel switches to a different action (including
   // closing — actionIndex going null). Without this, focusing the field, closing the
@@ -2592,11 +2631,28 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   // So the panel states the SEQUENCING rule, which is its own rule and not a second copy of the
   // converter's: this Save is two Saves. The reserved line under Form says it and Save is blocked
   // until one of the two is backed out.
+  //
+  // Two refinements the first version missed:
+  //
+  //   • The coordinate terms compare with the converter's OWN tolerance, not for exact equality.
+  //     ActionModeConverter merges halves up to CLICK_COORD_TOLERANCE_PX apart — so nudging X by
+  //     one pixel blocked a Save the backend would have accepted, which is a refusal the app
+  //     cannot justify when asked.
+  //   • Merging keeps the DOWN half's fields — the converter clones that row — so editing the UP
+  //     half and merging in the same Save discards EVERY field edit, not just the three below.
+  //     Notes was the quiet one: typed on the Up half, gone after a successful-looking Save, with
+  //     no refusal anywhere because the shape check passed. Same sequencing rule, stated once:
+  //     when the row being edited is the half the merge does not keep, this Save is two Saves.
+  const mergeCoordMoved = (typed: string, stored: number) => {
+    const n = parseInt(typed, 10);
+    return !isNaN(n) && Math.abs(n - stored) > CLICK_COORD_TOLERANCE_PX;
+  };
   const mergeConflict = action != null
     && formDraft === 'combined' && initialForm === 'paired'
     && (actionType !== action.actionType
-      || (!isNaN(parseInt(x, 10)) && parseInt(x, 10) !== action.x)
-      || (!isNaN(parseInt(y, 10)) && parseInt(y, 10) !== action.y));
+      || mergeCoordMoved(x, action.x)
+      || mergeCoordMoved(y, action.y)
+      || (clickFormOf(action.actionType) === 'Up' && hasUnsavedChanges));
 
   // A single click (LeftClick/RightClick/MiddleClick), a Double/TripleClick or a *ClickHold
   // supports the inline "× N" repeat cluster. Paired halves (a Down/Up would double-fire one
@@ -2746,6 +2802,18 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   // gate — it was only the regex half, which let the keyboard through two refusals the button
   // states out loud.
   saveBlockedRef.current = !!regexError || runActive || mergeConflict;
+  // The same three reasons the Save button's tooltip gives, in the same order, so the keyboard
+  // and the button never disagree about WHY.
+  saveBlockedReasonRef.current = runActive
+    ? tt('Not saved — the action list is locked while a run is active.',
+         'Não salvo — a lista de ações está travada enquanto um run está ativo.')
+    : mergeConflict
+      ? tt('Not saved — the merge is checked against the other half, which this Save does not touch. Save the button or point change on its own first.',
+           'Não salvo — a fusão é conferida contra a outra metade, que este Save não toca. Salve a troca de botão ou de ponto sozinha primeiro.')
+      : regexError
+        ? tt('Not saved — fix the window-title pattern first.',
+             'Não salvo — corrija o padrão do título da janela primeiro.')
+        : null;
 
   return createPortal(
     <>
@@ -2827,7 +2895,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
         <div className="p-4 space-y-3 flex-1 min-h-0 overflow-y-auto"
           onInput={markTouched}
           onChange={markTouched}
-          onClick={markTouched}>
+          onClick={markTouchedFromClick}>
           {/* Action Type — only shown when the family has >1 meaningful option. Hidden for
               SendText (single option), WaitImage / Browser / Pause (each has its own editor
               shape). Cross-family conversions aren't offered: users who want to swap families
@@ -3124,6 +3192,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
             <div>
               <button
                 onClick={handleTestWindowProbe}
+                data-probe
                 disabled={windowProbeRequestId !== null || (!windowProcessName.trim() && !windowTitle.trim())}
                 className="w-full h-8 flex items-center justify-center gap-1.5 px-2.5 rounded text-xs font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-light transition-colors disabled:opacity-60"
               >
@@ -3579,6 +3648,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 </button>
                 <button
                   onClick={handleTestMatch}
+                  data-probe
                   disabled={!action?.imagePath || testMatchRequestId != null}
                   className="flex-1 flex items-center justify-center gap-1.5 h-8 px-2.5 rounded text-xs font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -4819,6 +4889,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
             <div>
               <button
                 onClick={handleTestWindowProbe}
+                data-probe
                 disabled={windowProbeRequestId !== null || (!windowProcessName.trim() && !windowTitle.trim())}
                 className="w-full h-8 flex items-center justify-center gap-1.5 px-2.5 rounded text-xs font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-light transition-colors disabled:opacity-60"
               >

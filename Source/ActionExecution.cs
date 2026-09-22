@@ -24,6 +24,19 @@ namespace TrueReplayer.Services
 
         public bool IsRecording { get; private set; }
 
+        /// <summary>
+        /// When the CURRENT recording session began, in UTC. DateTime.MaxValue while not recording,
+        /// so a "was this row produced by this session?" test is false for everything by default.
+        ///
+        /// Exists because ActionItem.RecordedAt is [JsonIgnore]: it is stamped by the property
+        /// initialiser at construction, and loading a profile constructs every row, so a freshly
+        /// loaded profile carries a "just now" stamp on rows the user saved weeks ago. The browser
+        /// dedup sweeps key on RecordedAt to find the native click rows that belong to the event
+        /// they are handling — without this floor they matched SAVED rows and deleted the user's
+        /// work at the first extension event of a new recording.
+        /// </summary>
+        public DateTime RecordingStartedUtc { get; private set; } = DateTime.MaxValue;
+
         public RecordingService(
             ActionRecorder recorder,
             Func<bool> getMouse,
@@ -53,6 +66,7 @@ namespace TrueReplayer.Services
         private void StartRecording()
         {
             IsRecording = true;
+            RecordingStartedUtc = DateTime.UtcNow;
             onButtonStateChanged?.Invoke("Pause", true);
             recorder.RecordMouse = getMouse();
             recorder.RecordScroll = getScroll();
@@ -72,6 +86,7 @@ namespace TrueReplayer.Services
         {
             if (!IsRecording) return;
             IsRecording = false;
+            RecordingStartedUtc = DateTime.MaxValue;
             onButtonStateChanged?.Invoke("Recording", false);
             recorder.Stop();
             // captured=N, not a bare "stopped". A recording that appended NOTHING while keyboard
@@ -91,6 +106,7 @@ namespace TrueReplayer.Services
         {
             if (IsRecording) StopRecording();
             IsRecording = true;
+            RecordingStartedUtc = DateTime.UtcNow;
             onButtonStateChanged?.Invoke("Pause", true);
             recorder.RecordMouse = captureType == CaptureType.Mouse;
             recorder.RecordScroll = captureType == CaptureType.Scroll;
@@ -3099,11 +3115,16 @@ namespace TrueReplayer.Services
             // Change click type (bulkUpdateType promotes N recorded single clicks in one go), and
             // the Sheet's own type picker.
             //
-            // The arithmetic, with the real constants: a plain click is 2 x MoveClickDelayMs =
-            // 20 ms; a DoubleClick is 2x10 + DoubleClickGapMs(50) + 2x10 = 90 ms. Exactly 70 ms
-            // came out of the next row's delay, and with Delay <= 90 ms after it — ordinary in a
-            // game macro — the next action fired with no interval at all. That is the same
-            // failure described for TripleClick two paragraphs up, one step smaller.
+            // The arithmetic, with the real constants: a DoubleClick is 2x10 + DoubleClickGapMs(50)
+            // + 2x10 = 90 ms, and the whole 90 came out of the next row's delay. NOT 70: subtracting
+            // a plain click's 20 ms as a baseline would only be right if the scheduler resynced
+            // after a plain click, and it does not — `LeftClick` is in neither LongWaitActionTypes
+            // nor any other term of this predicate, so a plain click's 20 ms is absorbed by the
+            // next delay exactly the same way and is never given back to anyone. The baseline is
+            // zero, because nothing in this cost model is ever refunded; what a row costs is what
+            // the following delay loses. With Delay <= 90 ms after it — ordinary in a game macro —
+            // the next action fired with no interval at all. Same failure described for TripleClick
+            // two paragraphs up, one step smaller.
             //
             // Both types now reach here from a RECORDING as well as from authoring — the merge
             // chain is LeftClick → DoubleClick → TripleClick — so provenance is unreadable for
@@ -3112,7 +3133,8 @@ namespace TrueReplayer.Services
             //
             // Measured before adding either: the owner's 108 profiles hold 1247 actions and ZERO
             // DoubleClick and ZERO TripleClick rows, so this changes no existing profile's timing.
-            // For anyone who does have one, the change GIVES BACK the 70 ms it was taking.
+            // For anyone who does have one, the change GIVES BACK the 90 ms it was taking (160 for
+            // a TripleClick), which is the row's full cost — see the baseline note above.
             || string.Equals(action.ActionType, "DoubleClick", StringComparison.OrdinalIgnoreCase)
             || string.Equals(action.ActionType, "TripleClick", StringComparison.OrdinalIgnoreCase)
             || (action.ConditionTimeout > 0
@@ -3527,6 +3549,30 @@ namespace TrueReplayer.Services
                         {
                             // Terminal ELSE — the unconditional fallback. Land ON the marker so the
                             // outer loop's i++ steps into the ELSE body.
+                            //
+                            // …unless it is greyed out. IsSkipped is checked HERE and not only at
+                            // the top of the loop, because this branch does not go round again: it
+                            // sets branchTaken and breaks, so the arm test above never sees the ELSE.
+                            // An ELSEIF elides by "the probe reads false and the chain walks on",
+                            // which needs no special case — but an ELSE has no probe to falsify, so
+                            // without this it was taken while the grid, the duration chip and
+                            // conditionalBlocks.armBodyEnd all painted its whole body as dead. The
+                            // front end derives "skipped arm takes its body with it" for BOTH arm
+                            // types from the engine's own ELSEIF comment; this is the half of that
+                            // sentence the engine did not implement.
+                            if (actions[nextArm].IsSkipped)
+                            {
+                                RecordRunStep(new RunStepRecord
+                                {
+                                    Row = nextArm + 1,
+                                    Profile = CurrentExecutingProfileName,
+                                    ActionType = "Else",
+                                    Detail = _runStepsFull ? null : DescribeIfDetail(actions[nextArm], null),
+                                    Status = "skipped",
+                                });
+                                branchArm = nextArm;
+                                break;   // branchTaken stays false → jump past the whole block
+                            }
                             branchArm = nextArm;
                             branchTaken = true;
                             break;
@@ -5056,7 +5102,18 @@ namespace TrueReplayer.Services
             //
             // Costs nothing on the hot path: it reads the rect GetWindowRect already returned,
             // no IsIconic P/Invoke per mouse event.
-            if (rect.Left <= MinimizedParkedLeft || rect.Top <= MinimizedParkedLeft) return false;
+            if (rect.Left <= MinimizedParkedLeft || rect.Top <= MinimizedParkedLeft)
+            {
+                // Remember WHICH refusal this was. Every caller funnels a false into
+                // ReportMissingTargetWindow, whose message is "not found — open it and retry" —
+                // advice that is actively wrong here, because the window IS open and the user is
+                // being told to open a second one. Recording it on the instance rather than
+                // threading an out-param through six call sites keeps those sites untouched;
+                // replay is single-threaded, and the flag is read by the very next call.
+                _lastRelativeFailureWasMinimised = true;
+                return false;
+            }
+            _lastRelativeFailureWasMinimised = false;
 
             // The translation below is exact only while the target is the SIZE it was recorded
             // at — see WarnRelativeGeometryDrift for why, and for why this warns instead of
@@ -5166,18 +5223,29 @@ namespace TrueReplayer.Services
         /// would land at the relative coord interpreted as absolute, almost certainly
         /// somewhere wrong. Now the user sees "target window X not found" instead.
         /// </summary>
+        private bool _lastRelativeFailureWasMinimised;
+
         private void ReportMissingTargetWindow()
         {
             var name = _windowTarget?.ProcessName ?? "target";
+            // A minimised target and an absent one both stop the run, but they are not the same
+            // problem and must not carry the same sentence. "Open it and retry" sends the user to
+            // open a window that is already open, and the diagnostic that would have named the
+            // minimised window was the very thing the old warning-only path suppressed.
+            bool minimised = _lastRelativeFailureWasMinimised;
+            _lastRelativeFailureWasMinimised = false;
+            string why = minimised ? $"target window '{name}' is minimised" : $"target window '{name}' not found";
             if (SkipRowOnErrorActive)
             {
-                FailCurrentStep($"target window '{name}' not found");
-                FaultRow($"target window '{name}' not found");
+                FailCurrentStep(why);
+                FaultRow(why);
                 return;
             }
-            DiagnosticLog.Warn($"Replay aborted: relative-coords target window not found [{name} {_windowTarget?.WindowTitle}]".TrimEnd());
-            OnReplayError?.Invoke($"Target window '{name}' not found — open it and retry");
-            FailCurrentStep($"target window '{name}' not found");
+            DiagnosticLog.Warn($"Replay aborted: relative-coords {why} [{name} {_windowTarget?.WindowTitle}]".TrimEnd());
+            OnReplayError?.Invoke(minimised
+                ? $"Target window '{name}' is minimised — restore it and retry. A minimised window has no on-screen position to place relative coordinates against."
+                : $"Target window '{name}' not found — open it and retry");
+            FailCurrentStep(why);
             try { _cts?.Cancel(); } catch (ObjectDisposedException) { }
         }
 

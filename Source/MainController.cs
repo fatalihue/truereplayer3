@@ -135,9 +135,16 @@ namespace TrueReplayer.Controllers
             // Handled by bridge — React auto-scrolls on actions:updated
         }
 
-        // Window (ms) during which a matching KeyUp is swallowed after a hotkey KeyDown,
-        // so the hotkey press doesn't also leak through as a key-up to the target app.
-        private const long HotkeyKeyUpSuppressMs = 300;
+        // Safety net (ms) on the swallowed-KeyUp claim, not the claim itself. The claim is
+        // CONSUMED by the matching KeyUp (see IsHotkeyKeyUpSuppressed), so the normal case never
+        // reaches this bound; it only stops a stamp whose KeyUp was never delivered from swallowing
+        // an unrelated press of the same key much later.
+        //
+        // It was 300 ms, which is shorter than a held key. A hotkey held longer than that had its
+        // down swallowed by the dispatch and its up recorded by the tail — a lone KeyUp in the
+        // macro, the same half-key defect the pass-through branches were fixed for, reachable with
+        // nothing but factory defaults and a finger resting on the key.
+        private const long HotkeyKeyUpSuppressMs = 10_000;
         // Debounce window (ms) collapsing rapid duplicate Record/Replay hotkey fires
         // (key auto-repeat / double registration) into a single toggle.
         private const long DuplicateHotkeyDebounceMs = 500;
@@ -160,7 +167,14 @@ namespace TrueReplayer.Controllers
 
         public bool IsHotkeyKeyUpSuppressed(string key)
         {
-            return hotkeyJustPressed == key && Environment.TickCount64 - hotkeyPressTicks < HotkeyKeyUpSuppressMs;
+            if (hotkeyJustPressed != key) return false;
+            if (Environment.TickCount64 - hotkeyPressTicks >= HotkeyKeyUpSuppressMs) return false;
+            // ONE key-down claims ONE key-up. Consuming the stamp is what lets the window be long
+            // enough to cover a held key without also swallowing the up of a later, unrelated press
+            // of the same key: a claim that is never redeemed expires, a claim that is redeemed is
+            // gone immediately.
+            hotkeyJustPressed = null;
+            return true;
         }
 
         public bool ShouldSuppressDuplicateRecordingHotkey()

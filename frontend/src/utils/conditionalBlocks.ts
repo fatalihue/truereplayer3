@@ -81,7 +81,7 @@ export function skippedRowMask(actions: ActionItem[]): boolean[] {
  * it. An unbalanced list (a hand-edited profile with no EndIf) ends the arm at the last row, which
  * is what the engine does too when it runs off the end.
  */
-function armBodyEnd(actions: ActionItem[], arm: number): number {
+export function armBodyEnd(actions: ActionItem[], arm: number): number {
   let depth = 0;
   for (let i = arm + 1; i < actions.length; i++) {
     const t = actions[i]?.actionType ?? '';

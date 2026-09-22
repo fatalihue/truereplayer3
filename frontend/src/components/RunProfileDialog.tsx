@@ -133,7 +133,13 @@ export function RunProfileDialog({ mode, initial, excludeProfileName, onConfirm,
               <label className="text-[10px] uppercase tracking-wide font-semibold text-text-tertiary">
                 Repeat
               </label>
-              <div className={`flex items-center gap-2 ${runOverData ? 'opacity-40 pointer-events-none' : ''}`}>
+              {/* REAL disabled on the input, not only a dimmed wrapper. `pointer-events-none`
+                  stops the mouse and nothing else — the field keeps its place in the tab order,
+                  and a value typed into it is kept in state and PERSISTED by Confirm, under a
+                  control the dialog is painting as unavailable. Over-data ignores RepeatCount at
+                  replay (the engine forces one pass per row), so what gets saved is a number that
+                  never runs, waiting to take effect the day the user turns over-data off. */}
+              <div className={`flex items-center gap-2 ${runOverData ? 'opacity-40' : ''}`}>
                 <span className="inline-flex">
                   <NumberInput
                     value={repeatCount}
@@ -142,6 +148,7 @@ export function RunProfileDialog({ mode, initial, excludeProfileName, onConfirm,
                     max={999}
                     inputWidth="w-16"
                     inputHeight="h-8"
+                    disabled={runOverData}
                     ariaLabel={'Repeat count'}
                   />
                 </span>

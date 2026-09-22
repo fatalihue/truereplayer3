@@ -14,7 +14,10 @@ namespace TrueReplayer
     public static class InputHookManager
     {
         public static event Action<string, int, int, bool, int>? OnMouseEvent;
-        public static event Action<string, bool>? OnKeyEvent;
+        // (keyName, isDown, isPassThroughFeed). The third term distinguishes "the hook is handing
+        // this key to the foreground app and the recorder should write it down" from "the user
+        // pressed this key" — see PassThroughRecordsDown. Only a real key event is a gesture.
+        public static event Action<string, bool, bool>? OnKeyEvent;
         public static event Action<string>? OnHotkeyPressed;
 
         /// <summary>
@@ -116,8 +119,40 @@ namespace TrueReplayer
         ///
         /// The subscriber gates itself on IsRecording, so this is inert outside a recording, and
         /// the recorder de-duplicates by its own pressed-key set, so auto-repeat needs nothing.
+        ///
+        /// Flagged as a FEED, not a key event, because the subscriber is not only a recorder: its
+        /// IsRecording gate is the last line, and above it sit two Escape branches that cancel
+        /// capture mode and insert mode. This passes `keyName` — the bare main key, not the combo
+        /// — so a hotkey of "Ctrl+Escape" or "Shift+Escape" arrived here as plain "Escape" and
+        /// tripped a cancel the user never asked for, discarding a partial capture or wiping the
+        /// insertion point mid-recording. A feed means "write this down", never "the user made a
+        /// gesture".
         /// </summary>
-        private static void PassThroughRecordsDown(string keyName) => OnKeyEvent?.Invoke(keyName, true);
+        private static void PassThroughRecordsDown(string keyName) => OnKeyEvent?.Invoke(keyName, true, true);
+
+        /// <summary>
+        /// Fire a hotkey whose key-down this hook is SWALLOWING, and claim its key-up.
+        /// </summary>
+        /// <remarks>
+        /// A branch that returns (IntPtr)1 eats the down: it never reaches the tail, so it never
+        /// reaches OnKeyEvent and never enters the recording. The matching UP is not swallowed by
+        /// anything — it walks the isDown ladder, finds nothing, and lands in the tail, whose only
+        /// shield is IsHotkeyKeyUpSuppressed. That shield needs a stamp, and only the profile
+        /// hotkeys had one: Foreground, Mode-toggle and Capture-to-Slot dispatched and returned
+        /// without stamping, so with factory defaults a Win+Ctrl+C during a recording wrote a lone
+        /// KeyUp into the macro. That is the same half-key the pass-through branches were fixed
+        /// for, arriving by the other door.
+        ///
+        /// Stamped HERE, at the swallow, and not in each dispatcher branch: the dispatcher is five
+        /// branches in another file and three of them forgot. A branch that swallows is the thing
+        /// that owes the claim.
+        /// </remarks>
+        private static IntPtr SwallowHotkey(string key)
+        {
+            MainController.Instance?.SetLastHotkeyPressed(key);
+            OnHotkeyPressed?.Invoke(key);
+            return (IntPtr)1;
+        }
 
         /// <summary>Something is running that its own hotkey should still be able to stop.</summary>
         private static bool IsRunInProgress()
@@ -3077,8 +3112,7 @@ namespace TrueReplayer
                                 // swallowing it. Still allowed to STOP a recording already running.
                                 if (PassThroughWhileProfileKeysOff(key, MainController.Instance?.IsRecording() == true))
                                     return NativeMethods.CallNextHookEx(_keyboardHookId, nCode, wParam, lParam);
-                                OnHotkeyPressed?.Invoke(key);
-                                return (IntPtr)1;
+                                return SwallowHotkey(key);
                             }
 
                             if (key == UserProfile.Current.ReplayHotkey)
@@ -3104,8 +3138,7 @@ namespace TrueReplayer
                                     return NativeMethods.CallNextHookEx(_keyboardHookId, nCode, wParam, lParam);
                                 }
                                 LastTriggerHotkey = key;
-                                OnHotkeyPressed?.Invoke(key);
-                                return (IntPtr)1;
+                                return SwallowHotkey(key);
                             }
                         }
 
@@ -3113,20 +3146,17 @@ namespace TrueReplayer
                         // Clicker mode; Profile-keys toggle and Foreground are mode-agnostic.
                         if (key == UserProfile.Current.ProfileKeyToggleHotkey)
                         {
-                            OnHotkeyPressed?.Invoke(key);
-                            return (IntPtr)1;
+                            return SwallowHotkey(key);
                         }
 
                         if (key == UserProfile.Current.ForegroundHotkey)
                         {
-                            OnHotkeyPressed?.Invoke(key);
-                            return (IntPtr)1;
+                            return SwallowHotkey(key);
                         }
 
                         if (key == UserProfile.Current.ModeToggleHotkey)
                         {
-                            OnHotkeyPressed?.Invoke(key);
-                            return (IntPtr)1;
+                            return SwallowHotkey(key);
                         }
 
                         // Capture-selection → slot. Empty = disabled (the setting's default);
@@ -3144,8 +3174,7 @@ namespace TrueReplayer
                                 return NativeMethods.CallNextHookEx(_keyboardHookId, nCode, wParam, lParam);
                             }
                             if (ShouldCancelMenuFor(key)) InjectMenuCancelKey();
-                            OnHotkeyPressed?.Invoke(key);
-                            return (IntPtr)1;
+                            return SwallowHotkey(key);
                         }
                     }
                     else
@@ -3426,7 +3455,7 @@ namespace TrueReplayer
                 {
                     if (!(isProfileKey && !UserProfile.Current.ProfileKeyEnabled && MainController.Instance != null && !MainController.Instance.IsRecording()))
                     {
-                        OnKeyEvent?.Invoke(keyName, isDown);
+                        OnKeyEvent?.Invoke(keyName, isDown, false);
                     }
                 }
             }

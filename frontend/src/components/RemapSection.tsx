@@ -391,6 +391,13 @@ export function RemapSection() {
   const keyChip = (side: 'from' | 'to', value: string, dimmed: boolean) => (
     <button
       type="button"
+      // REAL disabled, not only dimmed. `opacity-40 pointer-events-none` stops the mouse and
+      // nothing else: the chip stays in the tab order, and Enter or Space on a focused button
+      // fires its onClick. Here that arms the GLOBAL key capture on a control the UI is showing
+      // as unavailable — and the capture then swallows the user's next keypress and throws it
+      // away, so the app eats a key for a control it said was off. Same defect, same fix, as the
+      // five sites the previous sweep converted.
+      disabled={dimmed}
       onClick={() => (capturing === side ? stopCapture() : startCapture(side))}
       // flex-1 + min-w-0 lets the two chips split the row evenly instead of sizing to
       // their text and overflowing the 224px panel; truncate is the safety net for a
@@ -401,7 +408,7 @@ export function RemapSection() {
           : value
             ? 'border-border-strong text-text-primary bg-bg-input'
             : 'border-border-default text-text-tertiary bg-bg-input'
-      } ${dimmed ? 'opacity-40 pointer-events-none' : ''}`}
+      } ${dimmed ? 'opacity-40' : ''}`}
     >
       {capturing === side ? <span className="truncate">press…</span> : value ? <KeyLabel name={value} /> : <span className="truncate">set key</span>}
     </button>

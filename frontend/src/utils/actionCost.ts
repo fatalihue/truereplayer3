@@ -27,6 +27,14 @@ export const DEFAULT_CLICK_GAP_MS = 30;
  */
 export const DEFAULT_MULTICLICK_GAP_MS = 600;
 
+/**
+ * ActionModeConverter.ClickCoordTolerance — how far a pair's two halves may sit apart and still
+ * merge. A merge is a press and a release at "the same" point, and a hand-built pair is rarely
+ * pixel-identical, so the converter allows this much slop. Anything reasoning ABOUT whether a
+ * merge will be accepted has to use the same number, or it refuses what the converter would take.
+ */
+export const CLICK_COORD_TOLERANCE_PX = 2;
+
 /** ExecuteRepeatedCore's defaultGap, per type. Keep in lockstep with the C# side. */
 export const clickDefaultGap = (type: string): number =>
   type === 'DoubleClick' || type === 'TripleClick' ? DEFAULT_MULTICLICK_GAP_MS : DEFAULT_CLICK_GAP_MS;
@@ -52,6 +60,27 @@ export function rowDwellMs(a: ActionItem): number {
 }
 
 /**
+ * ActionExecution.DoubleClickGapMs — MultiClickPairs sleeps this between consecutive press/release
+ * pairs so the OS reads them as one multi-click instead of separate taps.
+ */
+export const MULTI_CLICK_PAIR_GAP_MS = 50;
+
+/**
+ * Time a row spends INSIDE itself, beyond any dwell: the gaps a multi-click holds between its own
+ * pairs. A DoubleClick is two pairs (one gap), a TripleClick three (two).
+ *
+ * Not an exotic case any more, which is why it is worth charging: since the recorder's merge chain
+ * (2.44.0) an ordinary recording PRODUCES these rows, and the engine also treats them as long
+ * enough to resync after — the estimate was charging a flat per-action floor for a row the engine
+ * itself classifies as taking real time.
+ */
+export function rowBodyMs(a: ActionItem): number {
+  if (a.actionType === 'DoubleClick') return MULTI_CLICK_PAIR_GAP_MS;
+  if (a.actionType === 'TripleClick') return MULTI_CLICK_PAIR_GAP_MS * 2;
+  return 0;
+}
+
+/**
  * What ONE row costs: its delay, the per-action floor, and the time the row itself spends.
  *
  * The row spends time two ways the grid can read exactly, and both used to be invisible to the
@@ -65,8 +94,19 @@ export function rowDwellMs(a: ActionItem): number {
 export function actionCostMs(a: ActionItem): number {
   const base = (a.delay > 0 ? a.delay : 0) + PER_ACTION_OVERHEAD_MS;
   const dwell = rowDwellMs(a);
+  const body = rowBodyMs(a);
   const repeats = Math.max(1, Math.min(999, a.repeatCount ?? 1));
-  if (repeats === 1) return base + dwell;
-  const gap = Math.max(0, Math.min(5000, a.repeatDelayMs ?? clickDefaultGap(a.actionType)));
-  return base + repeats * dwell + (repeats - 1) * gap;
+  if (repeats === 1) return base + dwell + body;
+  // A HoldKey pays its dwell ONCE however high Times is. `case "HoldKey"` in the engine is a
+  // single down / delay / up and never routes through ExecuteRepeated, so RepeatCount is inert
+  // there — charging `repeats × dwell` invented time the run does not spend, and at the 1 s
+  // default it invented whole seconds per row.
+  const dwellTotal = a.actionType === 'HoldKey' ? dwell : repeats * dwell;
+  // RunProfile repeats in its OWN loop (`for (int r = 0; r < repeats …)` in HandleRunProfile)
+  // with nothing between passes — no RepeatDelayMs, no jitter. Only rows that go through
+  // ExecuteRepeatedCore pay a gap.
+  const gap = a.actionType === 'RunProfile'
+    ? 0
+    : Math.max(0, Math.min(5000, a.repeatDelayMs ?? clickDefaultGap(a.actionType)));
+  return base + dwellTotal + repeats * body + (repeats - 1) * gap;
 }

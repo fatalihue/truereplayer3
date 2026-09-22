@@ -304,9 +304,12 @@ namespace TrueReplayer
         /// <summary>
         /// A click row the RECORDER can have produced on its own — the vocabulary the browser-side
         /// dedup sweeps have to mirror, since every one of them is a duplicate of the extension
-        /// event that arrived for the same physical click. One predicate, three call sites (the
-        /// select-interaction sweep, the elementClicked sweep and the SelectChanged sweep), because
-        /// three copied literals is how DoubleClick came to be missing from all three.
+        /// event that arrived for the same physical click. One predicate, FOUR call sites (the
+        /// select-interaction sweep, the elementClicked sweep, the SelectChanged sweep and the
+        /// typing-cleanup walk in _onBrowserTypingCaptured), because copied literals is how
+        /// DoubleClick came to be missing from all of them. This doc said "three" while a fourth
+        /// literal sat 180 lines below still carrying the pre-merge-chain list of six — count the
+        /// call sites before trusting a number in a comment, including this one.
         ///
         /// DoubleClick belongs here: combined mode (ON by default) MERGES the second physical
         /// LeftClick into the previous row and rewrites it to DoubleClick, reusing the same object
@@ -335,6 +338,52 @@ namespace TrueReplayer
                 or "RightClickDown" or "RightClickUp"
                 or "LeftClick" or "RightClick" or "DoubleClick" or "TripleClick";
 
+        /// <summary>
+        /// Remove the trailing RUN of rows matching <paramref name="match"/>, newest first, stopping
+        /// at the first row that does not match or that is older than <paramref name="floor"/>.
+        /// Returns how many were removed.
+        /// </summary>
+        /// <remarks>
+        /// Replaces three hand-written copies of
+        ///     for (int i = actions.Count - 1; i >= 0 &amp;&amp; i >= actions.Count - 8; i--)
+        /// whose bound was not a bound. `actions.Count` is re-evaluated on every turn of the loop,
+        /// so each RemoveAt lowered `actions.Count - 8` by one and the walk reached one row deeper:
+        /// with k removals it inspected 8+k rows, and nothing in the code said so.
+        ///
+        /// A RUN is the right shape, not a count. The rows these sweeps hunt are the native rows the
+        /// OS hook produced for the very click the caller is handling, and those are necessarily
+        /// contiguous at the tail. Stopping at the first non-match means an intervening keystroke —
+        /// or a row the user authored — ENDS the sweep instead of being stepped over, which is what
+        /// a fixed window of eight could not express.
+        ///
+        /// The floor is a hard one: `break`, not `continue`. Walking past an out-of-window row was
+        /// how the elementClicked sweep reached rows LOADED FROM A PROFILE — ActionItem.RecordedAt
+        /// is [JsonIgnore], so every row of a freshly loaded profile carries a construction-time
+        /// "now" stamp, and a profile that happened to end in click rows lost them to the first
+        /// extension event of the next recording. Chronological order is what makes `break` safe;
+        /// where it does not hold (the recorder inserting at a cursor rather than appending) the
+        /// sweep now does NOTHING, which is the correct direction to fail in — a missed duplicate
+        /// is visible and fixable, a deleted row the user recorded last week is neither.
+        /// </remarks>
+        // Later of two instants. RecordingStartedUtc is DateTime.MaxValue while not recording, so
+        // Max() with it is also the "not recording ⇒ sweep nothing" gate, without a second branch.
+        private static DateTime Max(DateTime a, DateTime b) => a > b ? a : b;
+
+        private static int RemoveTrailingRows(
+            IList<ActionItem> actions, DateTime floor, Func<ActionItem, bool> match)
+        {
+            int removed = 0;
+            for (int i = actions.Count - 1; i >= 0; i--)
+            {
+                var a = actions[i];
+                if (a.RecordedAt < floor) break;
+                if (!match(a)) break;
+                actions.RemoveAt(i);
+                removed++;
+            }
+            return removed;
+        }
+
         // A row whose CONDITION owns image/pixel probe data — If since 2.3.0, While since the
         // loop family shipped, ElseIf since the branch chain. Every image-lifecycle site
         // (thumbnail, paste, recapture, crop, duplicate, profile-copy, coordinate conversion)
@@ -361,21 +410,13 @@ namespace TrueReplayer
             // have produced them. (The picked path also runs this, harmlessly — the
             // SelectChanged handler does its own, wider cleanup right after.)
             if (interactionStart == null || !recordingService.IsRecording) return;
-            bool removedAny = false;
-            for (int i = actions.Count - 1; i >= 0 && i >= actions.Count - 8; i--)
-            {
-                var a = actions[i];
-                if (a.RecordedAt < interactionStart.Value) continue;
-                bool isNativeClick = IsRecorderClickRow(a.ActionType);
-                bool isEscTap = a.ActionType is "KeyDown" or "KeyUp" or "Keystroke"
-                    && (a.Key is "Escape" or "Esc");
-                if (isNativeClick || isEscTap)
-                {
-                    actions.RemoveAt(i);
-                    removedAny = true;
-                }
-            }
-            if (removedAny) HasUnsavedChanges = true;
+            // Never older than the interaction AND never older than the recording session, for the
+            // reason RemoveTrailingRows gives: a loaded row's RecordedAt is its construction time.
+            var floor = Max(interactionStart.Value, recordingService.RecordingStartedUtc);
+            int removed = RemoveTrailingRows(actions, floor, a =>
+                IsRecorderClickRow(a.ActionType)
+                || (a.ActionType is "KeyDown" or "KeyUp" or "Keystroke" && a.Key is "Escape" or "Esc"));
+            if (removed > 0) HasUnsavedChanges = true;
         }
 
         public WebViewBridge(
@@ -454,12 +495,14 @@ namespace TrueReplayer
                         // the longest chain the recorder can build.
                         var cutoff = DateTime.UtcNow.AddMilliseconds(
                             -(500 + 2 * (int)NativeMethods.GetDoubleClickTime()));
-                        for (int i = actions.Count - 1; i >= 0 && i >= actions.Count - 8; i--)
-                        {
-                            var a = actions[i];
-                            if (IsRecorderClickRow(a.ActionType) && a.RecordedAt >= cutoff)
-                                actions.RemoveAt(i);
-                        }
+                        // …and never before this recording session began. The derived cutoff is a
+                        // RELATIVE window, so on a freshly loaded profile — whose rows all carry a
+                        // construction-time stamp — every saved click row fell inside it. The window
+                        // says "recent enough to be this click's duplicate"; the session floor says
+                        // "produced by this recording at all", and only both together are the
+                        // question being asked.
+                        var floor = Max(cutoff, recordingService.RecordingStartedUtc);
+                        RemoveTrailingRows(actions, floor, a => IsRecorderClickRow(a.ActionType));
 
                         int delay = int.TryParse(CustomDelay, out var d) ? d : 100;
                         // Input fields → BrowserType with empty text (user fills in later)
@@ -512,8 +555,14 @@ namespace TrueReplayer
                         for (int i = actions.Count - 1; i >= 0; i--)
                         {
                             var row = actions[i];
-                            if (row.ActionType is "LeftClickDown" or "LeftClickUp" or "RightClickDown"
-                                or "RightClickUp" or "LeftClick" or "RightClick") continue;
+                            // THE predicate, not a fourth copy of its contents. This literal was
+                            // written out by hand and kept the six types the recorder produced
+                            // before the merge chain, so a DoubleClick or TripleClick row at the
+                            // tail fell through to the test below and BROKE the walk — aborting the
+                            // typing cleanup that exists to stop the field being typed twice on
+                            // replay. 2.44.0 made the recorder produce both of those types, which
+                            // only widened the window in which the copy was wrong.
+                            if (IsRecorderClickRow(row.ActionType)) continue;
                             if (row.ActionType is not ("KeyDown" or "KeyUp" or "Keystroke")) break;
                             if (!PreservedTypingKeys.Contains(row.Key ?? "")) actions.RemoveAt(i);
                         }
@@ -619,15 +668,10 @@ namespace TrueReplayer
                         // reason, fall back to a 3 s window — same behaviour as before
                         // the bracketing events were added.
                         var cutoff = interactionStart ?? DateTime.UtcNow.AddMilliseconds(-3000);
-                        for (int i = actions.Count - 1; i >= 0 && i >= actions.Count - 8; i--)
-                        {
-                            var a = actions[i];
-                            if (a.RecordedAt < cutoff) continue;
-                            if (IsRecorderClickRow(a.ActionType))
-                                actions.RemoveAt(i);
-                            else if (a.ActionType == "BrowserClick" && a.Key == selector)
-                                actions.RemoveAt(i);
-                        }
+                        var floor = Max(cutoff, recordingService.RecordingStartedUtc);
+                        RemoveTrailingRows(actions, floor, a =>
+                            IsRecorderClickRow(a.ActionType)
+                            || (a.ActionType == "BrowserClick" && a.Key == selector));
 
                         int delay = int.TryParse(CustomDelay, out var d) ? d : 100;
                         actions.Add(new ActionItem
@@ -1830,6 +1874,13 @@ namespace TrueReplayer
 
         private async Task HandleAutomationCaptureImageAsync(string requestId, string profileName)
         {
+            // Before everything — see RefuseCaptureDuringRun. The reply still goes out, or the
+            // panel's Capture button stays disabled waiting on a requestId that never answers.
+            if (RefuseCaptureDuringRun("Automation image capture"))
+            {
+                SendMessage("automation:imageCaptured", new { requestId, cancelled = true, refused = true });
+                return;
+            }
             // Gate autonomous fires for the whole capture: the region overlay is exactly the
             // "user mid-interaction" state the SkippedModal trigger gate exists for — a due
             // interval trigger could otherwise swap profiles and start injecting input while the
@@ -2147,6 +2198,15 @@ namespace TrueReplayer
                 foreach (var item in restored)
                 {
                     item.RowNumber = actions.Count + 1;
+                    // An undo RESTORES a row; it does not record one. RecordedAt is [JsonIgnore],
+                    // so every row rebuilt from this snapshot would otherwise carry a
+                    // construction-time "now" — and the browser dedup sweeps read that stamp to
+                    // decide which native click rows belong to the extension event they are
+                    // handling. A Ctrl+Z followed by a click on a page made the user's own
+                    // pre-existing click rows look like they had just been recorded, and the sweep
+                    // removed them without pushing an undo of its own. MinValue is the honest
+                    // answer: this session's recorder did not produce this row.
+                    item.RecordedAt = DateTime.MinValue;
                     actions.Add(item);
                 }
             }
@@ -2226,7 +2286,11 @@ namespace TrueReplayer
             return null;
         }
 
-        private void HandleConvertActionMode(JsonElement payload)
+        // pushUndo=false when the caller has ALREADY snapshotted — the Sheet's Save sends its
+        // field edits and its form change in one message so they share one undo entry. A Save is
+        // ONE edit the user made; as two messages it was two snapshots, and a single Ctrl+Z put
+        // the fields back while leaving the row split (or merged), a shape the user never authored.
+        private void HandleConvertActionMode(JsonElement payload, bool pushUndo = true)
         {
             string direction = payload.TryGetProperty("direction", out var d) ? d.GetString() ?? "" : "";
             bool toCombined = direction == "toCombined";
@@ -2260,6 +2324,9 @@ namespace TrueReplayer
             // field to land in — see ActionModeConverter.ToCombined's reporting overload. It is
             // summed here so the toast can say so instead of calling it a plain success.
             int dwellDropped = 0;
+            int dwellRuns = 0;      // how many applied runs dropped a dwell — "one press" or not
+            int refusedRuns = 0;    // runs that kept their rows while others applied
+            int rowDelta = 0;       // rows actually collapsed (merge) or produced (split)
 
             // Rows a rule turned down INSIDE a run that otherwise converted. `refusal` below only
             // ever speaks when a whole run stands still, so splitting five clicks with an
@@ -2311,13 +2378,20 @@ namespace TrueReplayer
                     if (!ShapeChanged(slice, converted))
                     {
                         refusal ??= ExplainRefusal(slice, toCombined);
+                        refusedRuns++;
                         continue;
                     }
+                    // How many pairs this run actually collapsed (or halves it produced). The row
+                    // delta IS the count, and it is the number the toast has to name: "Merged into
+                    // one row" was printed for every applied selection, including ones that
+                    // collapsed six pairs at once — a sentence the user could see was false.
+                    rowDelta += Math.Abs(slice.Count - converted.Count);
                     output.RemoveRange(start, count);
                     output.InsertRange(start, converted);
                     // Counted only for a run that was actually APPLIED — a refused run keeps its
                     // rows, so nothing of its was dropped and its reason is already `refusal`.
                     dwellDropped += runDropped;
+                    if (runDropped > 0) dwellRuns++;
                     var (skipped, reason) = ActionModeConverter.RefusedWithin(slice, toCombined);
                     partialSkipped += skipped;
                     partialReason ??= reason;
@@ -2325,12 +2399,22 @@ namespace TrueReplayer
                 }
                 if (!any)
                 {
-                    SendMessage("alert:show", new { message = refusal ?? "Nothing to convert" });
+                    // When this conversion rode along with a Sheet Save (pushUndo == false), the
+                    // field edits above it DID commit and the panel has already closed. Saying only
+                    // why the form change was refused reads as "nothing happened", which is the
+                    // half of the outcome the user cannot see: the split/merge is the visible part
+                    // and it is the part that did not happen.
+                    SendMessage("alert:show", new
+                    {
+                        message = pushUndo
+                            ? (refusal ?? "Nothing to convert")
+                            : $"Fields saved, but the form was not changed — {refusal ?? "nothing to convert"}",
+                    });
                     return;
                 }
             }
 
-            PushUndoState();
+            if (pushUndo) PushUndoState();
             ReplaceActions(output);
             HasUnsavedChanges = true;
             mainController.UpdateButtonStates();
@@ -2341,7 +2425,19 @@ namespace TrueReplayer
             string message = picked == null
                 ? (toCombined ? $"Converted to combined — {output.Count} actions"
                               : $"Converted to paired — {output.Count} actions")
-                : (toCombined ? "Merged into one row" : "Split into Down + Up");
+                : (toCombined
+                    ? (rowDelta <= 1 ? "Merged into one row" : $"Merged {rowDelta} pairs")
+                    : (rowDelta <= 1 ? "Split into Down + Up" : $"Split {rowDelta} rows into Down + Up"));
+
+            // A run that was refused OUTRIGHT had its reason dropped on the floor whenever any
+            // other run in the same Split/Merge applied: `refusal` was only ever shown on the
+            // all-refused path below. Selecting two blocks and having one silently keep its rows
+            // is exactly the case the reason exists for.
+            if (refusedRuns > 0)
+            {
+                string sel = refusedRuns == 1 ? "1 selection" : $"{refusedRuns} selections";
+                message += $" — {sel} left as-is. {refusal}";
+            }
 
             // A merge that dropped a dwell is NOT a plain success, and the row it produces looks
             // identical to one that lost nothing — so the toast has to carry the number. It says
@@ -2355,8 +2451,17 @@ namespace TrueReplayer
             }
             if (dwellDropped > 0)
             {
-                message += $" — the {dwellDropped} ms the button stayed down was dropped. "
-                         + "A merged click only carries a hold from 200 ms up; Ctrl+Z restores the two rows.";
+                // Singular only when it really was ONE press. dwellDropped is a SUM, and printing
+                // a sum as "the N ms the button stayed down" described a press nobody made — and
+                // contradicted the 200 ms threshold in the same sentence, since any single dropped
+                // dwell is below it while the total need not be. "the two rows" was wrong for the
+                // same reason: a multi-pair merge has more than two to restore.
+                bool single = dwellRuns <= 1 && rowDelta <= 1;
+                message += single
+                    ? $" — the {dwellDropped} ms the button stayed down was dropped. "
+                      + "A merged click only carries a hold from 200 ms up; Ctrl+Z restores the two rows."
+                    : $" — {dwellDropped} ms of button-down time was dropped in total. "
+                      + "A merged click only carries a hold from 200 ms up; Ctrl+Z restores the original rows.";
             }
             // Anything less than the whole ask is NOT a success, and the row it leaves behind looks
             // identical to one nobody selected. Downgraded so the tone matches the sentence.
@@ -4070,11 +4175,28 @@ namespace TrueReplayer
             var pending = new List<(string Field, string Value)>();
             foreach (var e in editsEl.EnumerateArray())
             {
-                if (e.ValueKind != JsonValueKind.Object) continue;
-                if (!e.TryGetProperty("field", out var fEl) || !e.TryGetProperty("value", out var vEl)) continue;
+                // `return`, not `continue` — the three shapes below were the hole in the
+                // ALL-OR-NOTHING promise above. Skipping a malformed entry and applying the rest is
+                // exactly the half-applied row the doc says this method exists to prevent, and it
+                // did it in SILENCE: the user pressed Save, the toast said saved, and one field of
+                // the edit was quietly gone. Only the actionType allowlist refused the batch.
+                if (e.ValueKind != JsonValueKind.Object)
+                {
+                    DiagnosticLog.Warn($"actions:editMany rejected: non-object edit entry at index {index}");
+                    return;
+                }
+                if (!e.TryGetProperty("field", out var fEl) || !e.TryGetProperty("value", out var vEl))
+                {
+                    DiagnosticLog.Warn($"actions:editMany rejected: edit entry missing field/value at index {index}");
+                    return;
+                }
                 string field = fEl.GetString() ?? "";
                 string value = vEl.GetString() ?? "";
-                if (string.IsNullOrEmpty(field)) continue;
+                if (string.IsNullOrEmpty(field))
+                {
+                    DiagnosticLog.Warn($"actions:editMany rejected: blank field name at index {index}");
+                    return;
+                }
                 // Same allowlist as the single-field door, and refused for the same reason: an
                 // arbitrary string would set a row no execution branch handles.
                 if (field == "actionType" && !KnownActionTypes.Contains(value))
@@ -4088,6 +4210,18 @@ namespace TrueReplayer
 
             PushUndoState();
             foreach (var (field, value) in pending) ApplyActionEdit(index, field, value);
+
+            // …and the FORM change, inside the same snapshot. The Sheet's Save can both edit
+            // fields and split/merge the row, and as two messages that was two undo entries for
+            // one press of one button: the first Ctrl+Z restored the fields and left the row in
+            // the other form, which is a shape the user never authored. Last, because a split
+            // changes the row COUNT and every edit above is addressed by `index`.
+            if (payload.TryGetProperty("convert", out var convertEl)
+                && convertEl.ValueKind == JsonValueKind.Object)
+            {
+                HandleConvertActionMode(convertEl, pushUndo: false);
+            }
+
             HasUnsavedChanges = true;
             PushActionsUpdate();
         }
@@ -5696,6 +5830,8 @@ namespace TrueReplayer
 
         private async Task HandleInsertConditionalImageAsync(int insertIndex, string openerType = "If")
         {
+            // Before the EditScope and before the window dance — see RefuseCaptureDuringRun.
+            if (RefuseCaptureDuringRun("If-Image insert")) return;
             // Captured BEFORE the overlay: it does not block the app, so an automation fire can
             // swap the profile and refill the action list while the user is still dragging.
             var scope = Services.EditScope.Capture(CurrentProfileName);
@@ -5821,6 +5957,8 @@ namespace TrueReplayer
 
         private async Task HandleInsertConditionalPixelAsync(int insertIndex, string openerType = "If")
         {
+            // Before the EditScope and before the window dance — see RefuseCaptureDuringRun.
+            if (RefuseCaptureDuringRun("If-Pixel insert")) return;
             // Mirror of HandleInsertWaitPixelColorAsync — same point-pick overlay, same
             // relative-coord translation. End result: {If(PixelColorMatch + coords + hex),
             // EndIf} pair inserted at insertIndex.
@@ -6321,6 +6459,8 @@ namespace TrueReplayer
 
         private async Task HandleInsertWaitImageAsync(int insertIndex)
         {
+            // Before the EditScope and before the window dance — see RefuseCaptureDuringRun.
+            if (RefuseCaptureDuringRun("WaitImage insert")) return;
             var scope = Services.EditScope.Capture(CurrentProfileName);
             // Keep-alive'd against the overlay thread, same as every capture overlay in this file
             // — see HandleAutomationCaptureImageAsync.
@@ -6430,6 +6570,8 @@ namespace TrueReplayer
 
         private async Task HandleInsertWaitPixelColorAsync(int insertIndex)
         {
+            // Before the EditScope and before the window dance — see RefuseCaptureDuringRun.
+            if (RefuseCaptureDuringRun("WaitPixelColor insert")) return;
             // Mirrors HandleInsertWaitImageAsync: minimise the app, capture the screen,
             // show the overlay in pointPick mode (single click instead of a drag), and
             // insert the action with the captured coords + colour pre-filled. If the
@@ -6543,6 +6685,8 @@ namespace TrueReplayer
 
         private async Task HandleWaitImageRecaptureAsync(Services.EditScope scope)
         {
+            // Before the EditScope and before the window dance — see RefuseCaptureDuringRun.
+            if (RefuseCaptureDuringRun("WaitImage recapture")) return;
             // Keep-alive'd against the overlay thread, same as every capture overlay in this file
             // — see HandleAutomationCaptureImageAsync.
             var overlayHost = new Services.CaptureOverlayHost("WaitImage recapture overlay");
@@ -6643,6 +6787,10 @@ namespace TrueReplayer
             // If callers omit both → CurrentProfileName + the rel-coords round-trip, byte-identical to before.
             bool absolute = payload.TryGetProperty("absolute", out var absEl2) && absEl2.ValueKind == JsonValueKind.True;
             string profileOverride = payload.TryGetProperty("profile", out var pEl2) && pEl2.ValueKind == JsonValueKind.String ? (pEl2.GetString() ?? "") : "";
+            // Before the await, for the reason TryGetAnchorCaptureOffset gives. Both HALVES of this
+            // handler need it: the search region goes UP into screen space on the way in, and the
+            // reported hit has to come back DOWN into the anchor's space on the way out.
+            TryParseAnchorTarget(payload, out var anchorTarget, out bool anchorRequested);
 
             System.Drawing.Rectangle? searchRegion = null;
             if (payload.TryGetProperty("searchRegion", out var srEl) && srEl.ValueKind == JsonValueKind.Object)
@@ -6661,7 +6809,7 @@ namespace TrueReplayer
                     // An anchored watcher's ROI is stored in its window's space, so the Test has to
                     // search where the DAEMON will search — otherwise the button answers about a
                     // rectangle the live watcher never looks at, which is the worst kind of green.
-                    else if (absolute && TryGetAnchorCaptureOffset(payload, out var anchorRect))
+                    else if (absolute && TryGetAnchorCaptureOffset(anchorTarget, out var anchorRect))
                     {
                         sx += anchorRect.Left;
                         sy += anchorRect.Top;
@@ -6706,6 +6854,17 @@ namespace TrueReplayer
                 {
                     reportX -= winRectReport.Left;
                     reportY -= winRectReport.Top;
+                }
+                // The anchored half of the SAME round trip. The input region was lifted into screen
+                // space above so the Test searches where the daemon searches; the hit comes back in
+                // screen space and the panel writes it straight into searchRegion, which the daemon
+                // reads as anchor-relative. Without this branch every successful "Test match" pushed
+                // the stored ROI one window-origin further away — a button that answers "Found —
+                // region snapped to it" and leaves the watcher permanently false.
+                else if (absolute && TryGetAnchorCaptureOffset(anchorTarget, out var anchorRectReport))
+                {
+                    reportX -= anchorRectReport.Left;
+                    reportY -= anchorRectReport.Top;
                 }
 
                 SendMessage("image:testMatchResult", new
@@ -6817,6 +6976,27 @@ namespace TrueReplayer
         /// IsReplayInProgress, never IsReplayingAction: the latter is FALSE between actions, which
         /// is most of a run.
         /// </summary>
+        /// <summary>
+        /// True when a full-screen picker must NOT open because a run is in progress; says so to
+        /// the user and the log before returning true.
+        /// </summary>
+        /// <remarks>
+        /// Every path that puts a ScreenOverlayForm on the screen has to ask this. An overlay over
+        /// a live run does three things at once: it covers the grid, it swallows the Stop key, and
+        /// it lets a click the RUN injects commit a point or a region the user never chose — and
+        /// nothing downstream can tell that click apart from a deliberate one.
+        ///
+        /// It is not enough to disable the buttons that open these. A run starts from a global
+        /// hotkey, the tray icon or an armed automation, none of which produce a mousedown, so a
+        /// picker that was already open when the run began stays open and stays live: a gate on
+        /// OPENING is not a gate on what is already open. InteractionScope is not this gate either
+        /// — replay takes no scope at all, so exclusivity never refuses a replay.
+        ///
+        /// Shipped on three of the eight overlay doors, which left the Automation panel's eyedropper
+        /// and ROI picker — the two most likely to be used while a macro runs — wide open. If a new
+        /// overlay path appears, it asks this first, before the EditScope and before the window
+        /// dance: a refusal must cost nothing.
+        /// </remarks>
         private bool RefuseCaptureDuringRun(string what)
         {
             bool replaying = mainController.IsReplayInProgress();
@@ -6980,6 +7160,18 @@ namespace TrueReplayer
             // samples them with no window context) — they must opt out of the profile-relative
             // translation the If/WaitPixelColor editors want.
             bool absolute = payload.TryGetProperty("absolute", out var absEl) && absEl.ValueKind == JsonValueKind.True;
+            // Before the scope and before the window dance — see RefuseCaptureDuringRun. This is
+            // one of the two doors that door-count missed: the Automation panel reads no run state
+            // at all, so its eyedropper stayed live for the whole of a macro.
+            if (RefuseCaptureDuringRun("Pixel colour pick"))
+            {
+                SendMessage("pixel:colorPicked", new { requestId, cancelled = true, refused = true });
+                return;
+            }
+            // Parsed HERE, before the overlay's await, and never re-read afterwards: the JsonDocument
+            // that backs `payload` is disposed the moment this method first yields. The rect is
+            // resolved from this target AFTER the pick, because the window can move meanwhile.
+            TryParseAnchorTarget(payload, out var anchorTarget, out bool anchorRequested);
 
             // Keep-alive'd against the overlay thread (see HandleAutomationCaptureImageAsync).
             // Coordinate-only, so no EditScope backs it — the same exposure as the position picker
@@ -7043,11 +7235,25 @@ namespace TrueReplayer
                 }
                 // An anchored automation watcher stores its point in ITS window's space — the same
                 // space the daemon reads it in. `absolute` still means "not the active profile's
-                // target"; the anchor is the watcher's own, and it arrives in the payload.
-                else if (absolute && TryGetAnchorCaptureOffset(payload, out var anchorRect))
+                // target"; the anchor is the watcher's own, and it arrived in the payload — parsed
+                // before the await, resolved here.
+                else if (absolute && TryGetAnchorCaptureOffset(anchorTarget, out var anchorRect))
                 {
                     storedX -= anchorRect.Left;
                     storedY -= anchorRect.Top;
+                }
+                // Anchored, but the window could not be resolved (closed, minimised, or gone while
+                // the overlay was up): the number about to be stored is a SCREEN coordinate, and the
+                // daemon will add the origin to it at every tick the window IS there. Silence here
+                // is what let a pick made against a minimised Notepad arm a watcher the panel then
+                // labelled "Relative to notepad's top-left corner". Say so instead of degrading.
+                else if (absolute && anchorRequested)
+                {
+                    SendMessage("pixel:colorPicked", new { requestId, cancelled = true, refused = true });
+                    SendMessage("alert:show", new { message = anchorTarget == null
+                        ? "Name the anchor window first (process name or window title) — until then there is no origin to store the point against."
+                        : "The anchor window is not open (or is minimised) — restore it and pick again, or turn off \"Relative to a window\"." });
+                    return;
                 }
 
                 SendMessage("pixel:colorPicked", new
@@ -7123,6 +7329,13 @@ namespace TrueReplayer
             System.Drawing.Rectangle? initialRect, string hintWhenSet, string hintWhenEmpty, string logPrefix,
             bool pointPick = false)
         {
+            // The run gate lives HERE, in the helper, not only in the callers — two of the three
+            // had it and the third (the Automation panel's ROI picker) did not, which is exactly
+            // the shape of bug a shared helper exists to make impossible. null is this method's
+            // own "cancelled" answer, so every caller already handles it. The two callers that
+            // still check first do so to name themselves in the message and to skip their own
+            // setup; they return before reaching this line, so nothing double-fires.
+            if (RefuseCaptureDuringRun($"{logPrefix} region pick")) return null;
             // One scope covers all three callers (search region, click area, click point) —
             // they reach the overlay only through here. Keep-alive'd against the overlay thread
             // (see HandleAutomationCaptureImageAsync): none of the three has an EditScope behind
@@ -7193,8 +7406,12 @@ namespace TrueReplayer
             // way would leave winRect possibly-unassigned for the `if (hasRelativeOffset)` block (CS0170).
             bool hasRelativeOffset = TryGetRelativeCaptureOffset(out var winRect) && !absolute;
             // The watcher's own anchor, when the panel is editing an anchored ImageFound. Same
-            // call-first shape as the line above, for the same CS0170 reason.
-            bool hasAnchorOffset = TryGetAnchorCaptureOffset(payload, out var anchorRect) && absolute;
+            // call-first shape as the line above, for the same CS0170 reason. The TARGET is kept
+            // as well as the rect: the rect below is for pre-drawing the stored box, but the one
+            // used to STORE the new box has to be resolved after the overlay closes — and by then
+            // `payload` is a disposed JsonDocument, so the criteria cannot be read again.
+            TryParseAnchorTarget(payload, out var anchorTarget, out bool anchorRequested);
+            bool hasAnchorOffset = TryGetAnchorCaptureOffset(anchorTarget, out var anchorRect) && absolute;
 
             System.Drawing.Rectangle? initialRect = null;
             if (payload.TryGetProperty("x", out var xEl) && xEl.ValueKind == JsonValueKind.Number &&
@@ -7243,10 +7460,23 @@ namespace TrueReplayer
             }
             // Re-resolved rather than reusing anchorRect above, for the reason the sibling gives:
             // the window can move or close between the overlay opening and the user letting go.
-            else if (absolute && TryGetAnchorCaptureOffset(payload, out var anchorRectNow))
+            // Re-resolved from the TARGET parsed before the await, never from `payload` — that
+            // JsonDocument is gone by now.
+            else if (absolute && TryGetAnchorCaptureOffset(anchorTarget, out var anchorRectNow))
             {
                 storedX -= anchorRectNow.Left;
                 storedY -= anchorRectNow.Top;
+            }
+            // Anchored but unresolvable — same refusal as the eyedropper, and for the same reason:
+            // storing a screen coordinate under a caption that promises window-relative is how the
+            // double-offset bug comes back.
+            else if (absolute && anchorRequested)
+            {
+                SendMessage("waitimage:searchRegionSet", new { requestId, cancelled = true, refused = true });
+                SendMessage("alert:show", new { message = anchorTarget == null
+                    ? "Name the anchor window first (process name or window title) — until then there is no origin to store the region against."
+                    : "The anchor window is not open (or is minimised) — restore it and set the region again, or turn off \"Relative to a window\"." });
+                return;
             }
 
             SendMessage("waitimage:searchRegionSet", new
@@ -10028,11 +10258,35 @@ namespace TrueReplayer
         /// Returning false degrades to storing the raw screen coordinate, which is the contract the
         /// sibling already keeps and every caller is written for: a window that is closed or
         /// minimised is not one the user can meaningfully pick inside anyway.
+        ///
+        /// SPLIT IN TWO ON PURPOSE. The criteria are parsed from the payload (TryParseAnchorTarget)
+        /// and the rect is resolved from the parsed target (this method), because a capture handler
+        /// needs them at two different moments: the criteria BEFORE the overlay opens, the rect
+        /// AFTER the user lets go. Reading the payload after the await is what HandleProfileSetMetadata
+        /// warns about in capitals — HandleMessage owns the JsonDocument and disposes it at the first
+        /// await, so a late payload.TryGetProperty throws ObjectDisposedException inside a fire-and-forget
+        /// Task that nobody observes: the reply never goes out and the panel waits on that requestId
+        /// for ever. Re-resolving the RECT after the await is right and stays; re-reading the PAYLOAD
+        /// after the await is always wrong.
+        ///
+        /// Resolves with FindWindowStable — the SAME matcher TriggerService.TryAnchorOffset reads
+        /// with. FindWindow stops at the first EnumWindows hit, which walks top-of-Z-order down, so
+        /// with two windows of one process the write half picked whichever the user last focused
+        /// while the daemon picked the lowest handle: the coordinate was born in one window's space
+        /// and read in another's. "Where is the window?" has to get the same answer on both sides.
         /// </remarks>
-        private static bool TryGetAnchorCaptureOffset(JsonElement payload, out NativeMethods.RECT rect)
+        /// <summary>
+        /// Parses the anchor CRITERIA. <paramref name="requested"/> says the caller asked for an
+        /// anchor at all, which is not the same question as whether one could be built: the panel
+        /// sends the object whenever "Relative to a window" is on, blank fields included, and that
+        /// blank state is the one worth refusing — the coordinate would be stored in screen space
+        /// under a switch that says otherwise.
+        /// </summary>
+        private static bool TryParseAnchorTarget(JsonElement payload, out Models.WindowTarget? target, out bool requested)
         {
-            rect = default;
-            if (!payload.TryGetProperty("anchor", out var a) || a.ValueKind != JsonValueKind.Object) return false;
+            target = null;
+            requested = payload.TryGetProperty("anchor", out var a) && a.ValueKind == JsonValueKind.Object;
+            if (!requested) return false;
             string proc = a.TryGetProperty("processName", out var pEl) ? (pEl.GetString() ?? "") : "";
             string title = a.TryGetProperty("windowTitle", out var tEl) ? (tEl.GetString() ?? "") : "";
             string mode = a.TryGetProperty("titleMatchMode", out var mEl) ? (mEl.GetString() ?? "") : "";
@@ -10041,8 +10295,26 @@ namespace TrueReplayer
             // arbitrary origin. DescribeUnfireable refuses to arm such a watcher; here it simply
             // means there is nothing to subtract.
             if (string.IsNullOrWhiteSpace(proc) && string.IsNullOrWhiteSpace(title)) return false;
-            var (target, _) = ActionReplayer.BuildWindowTarget(proc, title, mode);
-            return TryGetWindowRect(target, out rect) == WindowRectStatus.Ok;
+            (target, _) = ActionReplayer.BuildWindowTarget(proc, title, mode);
+            return true;
+        }
+
+        private static bool TryGetAnchorCaptureOffset(Models.WindowTarget? target, out NativeMethods.RECT rect)
+        {
+            rect = default;
+            if (target == null) return false;
+            IntPtr hwnd = TrueReplayer.Helpers.WindowMatcher.FindWindowStable(target, null, out _);
+            if (hwnd == IntPtr.Zero) return false;
+            if (NativeMethods.IsIconic(hwnd)) return false;
+            if (!NativeMethods.GetWindowRect(hwnd, out rect)) { rect = default; return false; }
+            return true;
+        }
+
+        // Parse-and-resolve in one call, for the sites that need the offset BEFORE any await.
+        private static bool TryGetAnchorCaptureOffset(JsonElement payload, out NativeMethods.RECT rect)
+        {
+            rect = default;
+            return TryParseAnchorTarget(payload, out var target, out _) && TryGetAnchorCaptureOffset(target, out rect);
         }
 
         private async void HandleProfileExport(JsonElement payload)

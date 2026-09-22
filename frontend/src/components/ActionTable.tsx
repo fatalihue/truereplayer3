@@ -8,7 +8,7 @@ import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { CSS } from '@dnd-kit/utilities';
 import { Mouse, MousePointerClick, MousePointer2, Keyboard, ArrowUp, ArrowDown, Zap, Type, Trash2, ChevronRight, ChevronDown, ChevronsDownUp, ChevronsUpDown, Plus, Pencil, ScanSearch, Pipette, Globe, CheckCheck, Check, Code2, Files, Hourglass, Repeat2, ExternalLink, Crosshair, Link, GripVertical, Timer, GitBranch, ArrowRightLeft, Combine, Split, Brackets, MoreHorizontal, Focus, Braces, AppWindow, Clipboard, ClipboardCopy, ClipboardPaste, Eye, EyeOff, RotateCcw, Dice5, Cpu, FileCheck, Clock, ShieldCheck, CircleStop, CornerDownLeft, IterationCw, ChevronUp, ArrowRightFromLine, SkipForward, Table2 } from 'lucide-react';
 import { canCollapse, canExpand, expandKeystroke } from '../utils/keyRepeat';
-import type { ActionItem } from '../bridge/messageTypes';
+import type { ActionItem, OutgoingMessage } from '../bridge/messageTypes';
 import { useAppState } from '../state/AppStateContext';
 import { ReplayRowMarker } from './ReplayRowMarker';
 import { InsertedRowMarker } from './InsertedRowMarker';
@@ -17,8 +17,13 @@ import { useTt, useLanguage } from '../state/LanguageContext';
 import type { Language } from '../state/LanguageContext';
 import { useSelectionRef } from '../state/SelectionContext';
 import { useToast } from '../state/ToastContext';
+
+// Heartbeat for the row dialogs' editor claim. Same value and same rationale as the Sheet's
+// EDITOR_CLAIM_RENEW_MS: the guard's TTL runs from the stamp, so the gap between renewals is the
+// only thing that can let a claim lapse under a dialog the user is still filling in.
+const ROW_DIALOG_CLAIM_RENEW_MS = 60_000;
 import { getDisplayKey, getDisplayX, getDisplayY, getActionTypeColors, formatKeyCombo, formatMs, isCombinedClick, isClickHold, isCoordinateClick, isFocusClickEligible, CLICK_FAMILY_TYPES, clickFormOf } from '../utils/displayUtils';
-import { snapIndicesToBlocks, carriesConditionProbe, hasConditionFields, skippedRowMask, isStructuralRow } from '../utils/conditionalBlocks';
+import { snapIndicesToBlocks, carriesConditionProbe, hasConditionFields, skippedRowMask, isStructuralRow, armBodyEnd } from '../utils/conditionalBlocks';
 import { uiZoom } from '../utils/zoomSpace';
 // Deferred: already rendered conditionally, but a static import pulls the whole Lexical editor
 // stack and emoji-picker-react (~300 KB minified) into the startup chunk for a dialog most sessions
@@ -804,6 +809,97 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
   const { showToast } = useToast();
   const contextMenuEnabled = !buttonStates.recordingActive && !buttonStates.replayActive;
 
+  // The funnel the row-edit DIALOGS were missing. openEditorForRow sends five row types to their
+  // own dialogs instead of the Sheet (SendText, RunProfile, Keystroke, HoldKey, Pause), and each
+  // of those Save handlers wrote the collection with a fixed index and no run term at all — while
+  // the Toolbar mounts the SAME components in 'add' mode behind refuseInsert(), and the Sheet,
+  // the SettingsPanel and the DataPanel each have their own. Four files had the pattern and the
+  // grid's own dialogs did not.
+  //
+  // Refused at Save, not at open: unlike the one-field inline editor, these hold a whole form, and
+  // a run that starts while the user is halfway through a Send Keystroke must not throw the typing
+  // away — it must decline to write it. Throttled for the same reason Toolbar's is: error toasts
+  // last eight seconds.
+  // The SAME claim the SheetPanel holds, for the five row types that never reach the Sheet.
+  //
+  // AutomationGuard's doc says the claim exists because "the SheetPanel's fields live in React
+  // state and only become actions:edit on Save, so HasUnsavedChanges — which an autonomous fire
+  // DOES respect — is still false while a half-filled form is on screen". That is true of these
+  // dialogs word for word, and editor:pendingEdits had exactly one sender in the whole frontend.
+  //
+  // Two of the five were protected by ACCIDENT, through the keyboard hook's capture refcount —
+  // and that refcount is dropped precisely when it starts to matter: KeystrokeCaptureDialog and
+  // PauseDialog both send {enabled:false} on focus of any <input>, so clicking into Times or Gap
+  // released the only thing standing between a due automation and a profile swap under an open
+  // dialog. SendText and RunProfile never had even that: neither file calls send() at all, and
+  // SendText is the longest edit session in the app.
+  const rowDialogOpen = !!(sendTextEdit || keystrokeEdit || pauseEdit || runProfileEdit || runProfileInsert);
+  useEffect(() => {
+    send({ type: 'editor:pendingEdits', payload: { pending: rowDialogOpen } });
+  }, [rowDialogOpen, send]);
+
+  /**
+   * Which delete a selection MEANS: the message to send and how many rows it will actually take.
+   *
+   * Four surfaces ask this — the Delete key, the row menu, the bulk bar and the drag — and each
+   * wrote the answer out by hand. Three of them grew the lone-marker branches as the If, the loop
+   * and then the Else If arm arrived; the bulk bar kept only the snap. So one Else If row selected
+   * on its own took its whole If…EndIf when deleted from the bar and only its arm when deleted by
+   * keyboard, from the same selection, with the bar reading "1 selected" either way.
+   *
+   * Derived once, here. The callers keep their own toasts, which is the part that legitimately
+   * differs between a menu with a label, a bar with a count and a bare keypress.
+   */
+  const deleteIntentFor = useCallback((sel: number[]): { message: OutgoingMessage; count: number } => {
+    if (sel.length === 1) {
+      const t = actions[sel[0]]?.actionType;
+      if (t === 'If') {
+        const end = blockInfo.closerOf.get(sel[0]);
+        return {
+          message: { type: 'actions:deleteConditional', payload: { ifRowIndex: sel[0] } },
+          count: end != null ? end - sel[0] + 1 : 1,
+        };
+      }
+      if (t === 'While' || t === 'ForEachRow') {
+        const end = blockInfo.closerOf.get(sel[0]);
+        return {
+          message: { type: 'actions:deleteLoop', payload: { loopRowIndex: sel[0] } },
+          count: end != null ? end - sel[0] + 1 : 1,
+        };
+      }
+      if (t === 'ElseIf') {
+        return {
+          message: { type: 'actions:deleteElseIfArm', payload: { elseIfRowIndex: sel[0] } },
+          count: armBodyEnd(actions, sel[0]) - sel[0] + 1,
+        };
+      }
+    }
+    const snapped = snapSelectionToBlocks(sel);
+    return { message: { type: 'actions:delete', payload: { indices: snapped } }, count: snapped.length };
+  }, [actions, blockInfo, snapSelectionToBlocks]);
+  useEffect(() => () => { send({ type: 'editor:pendingEdits', payload: { pending: false } }); }, [send]);
+  // Renewed on the same heartbeat and for the same reason as the Sheet's: the guard expires the
+  // claim a fixed TTL after it was STAMPED, and the effect above only fires on the transition.
+  useEffect(() => {
+    if (!rowDialogOpen) return;
+    const id = setInterval(() => {
+      send({ type: 'editor:pendingEdits', payload: { pending: true } });
+    }, ROW_DIALOG_CLAIM_RENEW_MS);
+    return () => clearInterval(id);
+  }, [rowDialogOpen, send]);
+
+  const lastRunRefusalRef = useRef(0);
+  const refuseDuringRun = useCallback(() => {
+    if (contextMenuEnabled) return false;
+    const now = Date.now();
+    if (now - lastRunRefusalRef.current > 2000) {
+      lastRunRefusalRef.current = now;
+      showToast(tt('Not saved — the action list is locked while a run is active.',
+                   'Não salvo — a lista de ações está travada enquanto um run está ativo.'), 'error');
+    }
+    return true;
+  }, [contextMenuEnabled, showToast, tt]);
+
   // Row action button handler (opens context menu at button position)
   // Suppress hotkeys while SendText edit dialog or inline key editing is active
 
@@ -949,6 +1045,14 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
     if (contextMenuEnabled) return;
     setContextMenu(null);
     setActiveSubmenu(null);
+    // The "+ Add Else If" family picker closes on the same edge, and for a stronger reason than
+    // the menu above: its items do not merely rewrite the grid, two of them (Image, Pixel) open a
+    // FULL-SCREEN capture overlay. Over a live run that covers the grid, swallows the Stop key and
+    // lets the run's own injected click commit a region the user never drew. Its opener button was
+    // already gated on the run — which is precisely the gate that does nothing for a picker that
+    // was open BEFORE the run started, and runs start from a global key, the tray or an armed
+    // automation, producing neither the mousedown nor the Escape its own dismissal listens for.
+    setElseIfPicker(null);
   }, [contextMenuEnabled]);
 
   // Close the "+ Add Else If" family picker on click outside or Escape — same contract as
@@ -1183,30 +1287,39 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
   // focus hostage, so it cancels as before.
   const commitEdit = useCallback((source: 'key' | 'blur' = 'blur') => {
     if (!editingCell) return;
+    // FIRST, before any branch. This gate used to sit below the coords branch, so the one editor
+    // that writes two fields was the one editor that could write into a list the engine was
+    // walking — the exact case the comment below describes, reachable because startEdit only
+    // guards OPENING and a run starts from a global hotkey with the editor already up.
+    if (buttonStates.recordingActive || buttonStates.replayActive) {
+      showToast(tt('Not saved — the action list is locked while a run is active.',
+                   'Não salvo — a lista de ações está travada enquanto um run está ativo.'), 'error');
+      setEditingCell(null);
+      setEditInvalid(false);
+      return;
+    }
     if (editingCell.field === 'coords') {
       // Merged "x, y" editor — accepts "123,456", "123, 456" or "123 456"
       // (same forgiving formats as the Sheet panel's Paste-coords button).
       // Both numbers are required so a typo can't half-update one axis.
       const m = editValue.trim().match(/^(-?\d+)\s*[,;\s]\s*(-?\d+)$/);
       if (m) {
-        send({ type: 'actions:edit', payload: { index: editingCell.index, field: 'x', value: m[1] } });
-        send({ type: 'actions:edit', payload: { index: editingCell.index, field: 'y', value: m[2] } });
+        // ONE message, so ONE undo entry. As two actions:edit this was two snapshots, and a single
+        // Ctrl+Z left the row at the NEW x with the OLD y — a point that existed at no moment of
+        // the edit, which the next replay would click. Same rule the Sheet's Save follows.
+        send({
+          type: 'actions:editMany',
+          payload: {
+            index: editingCell.index,
+            edits: [{ field: 'x', value: m[1] }, { field: 'y', value: m[2] }],
+          },
+        });
       } else if (source === 'key') {
         setEditInvalid(true);
         return; // stay open — the red border says why nothing happened
       }
       setEditingCell(null);
       setEditInvalid(false);
-      return;
-    }
-    // The other half of the startEdit gate: a run can begin while an editor is already open (runs
-    // start from global hotkeys), and blur would then commit into a running list. Closing without
-    // writing is the honest outcome here — the value is one field, and the cell goes back to
-    // showing what is actually stored.
-    if (buttonStates.recordingActive || buttonStates.replayActive) {
-      showToast(tt('Not saved — the action list is locked while a run is active.',
-                   'Não salvo — a lista de ações está travada enquanto um run está ativo.'), 'error');
-      setEditingCell(null);
       return;
     }
     send({
@@ -1241,27 +1354,18 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
       // straddling multi-select can't orphan block rows; a PURE body-row selection deletes
       // just those rows (snapSelectionToBlocks) — removing body rows can't unbalance the markers.
       const sel = Array.from(selectedIndices);
-      if (sel.length === 1 && actions[sel[0]]?.actionType === 'If') {
-        send({ type: 'actions:deleteConditional', payload: { ifRowIndex: sel[0] } });
-      } else if (sel.length === 1 && (actions[sel[0]]?.actionType === 'While' || actions[sel[0]]?.actionType === 'ForEachRow')) {
-        // Lone loop opener → the whole block goes, same never-orphan rule as the If.
-        send({ type: 'actions:deleteLoop', payload: { loopRowIndex: sel[0] } });
-      } else if (sel.length === 1 && actions[sel[0]]?.actionType === 'ElseIf') {
-        // Lone arm → just that arm (its marker + its body), chain and EndIf left standing.
-        // Without this the row falls to snapSelectionToBlocks, where ElseIf is STRUCTURAL and
-        // the whole If…EndIf goes — the bulk bar saying "1 selected" while seven rows vanish.
-        send({ type: 'actions:deleteElseIfArm', payload: { elseIfRowIndex: sel[0] } });
-      } else {
-        const snapped = snapSelectionToBlocks(sel);
-        // Say so when the snap widened. This path has no menu label to read and no toast of its
-        // own, so the only number on screen was the bulk bar's raw "N selected" — the same
-        // understatement the ElseIf comment above already names, just reached by the keyboard.
-        if (snapped.length > sel.length) {
-          showToast(tt(`Deleted ${snapped.length} rows — the selection touched a block marker, so whole blocks went with it.`,
-                       `${snapped.length} linhas apagadas — a seleção tocou um marcador de bloco, então blocos inteiros foram junto.`));
-        }
-        send({ type: 'actions:delete', payload: { indices: snapped } });
+      // One source for the routing — see deleteIntentFor. A lone If, loop opener or Else If each
+      // take their own scope; anything else snaps to whole blocks.
+      const { message, count } = deleteIntentFor(sel);
+      // Say so when the SNAP widened a multi-row selection. This path has no menu label to read
+      // and no toast of its own, so the only number on screen was the bulk bar's raw "N selected".
+      // Kept to the snap case: a lone marker taking its own block is what the user asked for by
+      // selecting the marker, and does not need to be announced as a surprise.
+      if (message.type === 'actions:delete' && count > sel.length) {
+        showToast(tt(`Deleted ${count} rows — the selection touched a block marker, so whole blocks went with it.`,
+                     `${count} linhas apagadas — a seleção tocou um marcador de bloco, então blocos inteiros foram junto.`));
       }
+      send(message);
       setSelectedIndices(new Set());
     }
 
@@ -1274,7 +1378,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
       e.preventDefault();
       setSelectedIndices(new Set());
     }
-  }, [editingCell, sendTextEdit, selectedIndices, send, actions, snapSelectionToBlocks, showToast, tt]);
+  }, [editingCell, sendTextEdit, selectedIndices, send, actions, deleteIntentFor, showToast, tt]);
 
   // Handle edit input key events
   const handleEditKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -1718,12 +1822,20 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
       // A lone opener of EITHER family clones exactly its own block, [opener..closerOf].
       const end = blockInfo.closerOf.get(sel[0]);
       if (end != null) indices = Array.from({ length: end - sel[0] + 1 }, (_, k) => sel[0] + k);
+    } else if (loneType === 'ElseIf') {
+      // A lone ARM clones the arm, the same scope its own Delete removes. It used to fall into
+      // snapSelectionToBlocks below, which widens any marker touch to the whole If…EndIf — so
+      // right-clicking ONE Else If and pressing Duplicate cloned the entire conditional, while
+      // the menu label promised "1". Delete on the same row takes only the arm; the two have to
+      // mean the same scope or the label cannot be right for both.
+      indices = Array.from({ length: armBodyEnd(actions, sel[0]) - sel[0] + 1 }, (_, k) => sel[0] + k);
     } else {
       indices = snapSelectionToBlocks(sel);
     }
     send({ type: 'actions:duplicate', payload: { indices } });
     closeContextMenu();
   }, [contextMenu, selectedIndices, send, closeContextMenu, actions, blockInfo, snapSelectionToBlocks]);
+
 
   const handleContextDelete = useCallback(() => {
     if (!contextMenu) return;
@@ -1733,35 +1845,13 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
     // Special case: deleting an IF row alone removes the whole block (body +
     // optional Else + matching EndIf) via the dedicated bridge message. Without
     // this, the orphaned body rows would silently execute unconditionally.
-    if (indices.length === 1) {
-      const idx = indices[0];
-      if (actions[idx]?.actionType === 'If') {
-        send({ type: 'actions:deleteConditional', payload: { ifRowIndex: idx } });
-        setSelectedIndices(new Set());
-        closeContextMenu();
-        return;
-      }
-      if (actions[idx]?.actionType === 'While' || actions[idx]?.actionType === 'ForEachRow') {
-        send({ type: 'actions:deleteLoop', payload: { loopRowIndex: idx } });
-        setSelectedIndices(new Set());
-        closeContextMenu();
-        return;
-      }
-      // Lone Else If → the arm only. Mirrors the Delete-key path; see there.
-      if (actions[idx]?.actionType === 'ElseIf') {
-        send({ type: 'actions:deleteElseIfArm', payload: { elseIfRowIndex: idx } });
-        setSelectedIndices(new Set());
-        closeContextMenu();
-        return;
-      }
-    }
-    // A selection touching a marker snaps to whole IF…EndIf blocks so a straddling multi-select
-    // can't orphan block rows; a pure body-row selection deletes just those rows
-    // (snapSelectionToBlocks) — same granular rule the Delete-key / bulk-bar paths use.
-    send({ type: 'actions:delete', payload: { indices: snapSelectionToBlocks(indices) } });
+    // One source for "what does deleting THIS selection mean" — see deleteIntentFor. A lone If,
+    // loop opener or Else If each take their own scope; anything else snaps to whole blocks so a
+    // straddling multi-select cannot orphan a marker.
+    send(deleteIntentFor(indices).message);
     setSelectedIndices(new Set());
     closeContextMenu();
-  }, [contextMenu, selectedIndices, send, closeContextMenu, actions, snapSelectionToBlocks]);
+  }, [contextMenu, selectedIndices, send, closeContextMenu, deleteIntentFor]);
 
   // What Delete will actually take, for the menu label. A lone marker row deletes its own SCOPE —
   // a block, a loop, or now a single arm — and one flat "Delete" gave no hint which of the three,
@@ -1828,8 +1918,10 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
         const end = blockInfo.closerOf.get(sel[0]);
         return end != null ? end - sel[0] + 1 : 1;
       }
-      // A lone ElseIf deletes only its arm, and Duplicate leaves it as one row.
-      if (t === 'ElseIf') return 1;
+      // A lone ElseIf is an ARM on both routes: Delete removes the arm, Duplicate clones it.
+      // Counted through its own span for the same reason the openers above are — the label has
+      // to name what the act takes, and the arm carries its body.
+      if (t === 'ElseIf') return armBodyEnd(actions, sel[0]) - sel[0] + 1;
     }
     return snapSelectionToBlocks(sel).length;
   }, [contextSelectionIndices, actions, blockInfo, snapSelectionToBlocks]);
@@ -2952,6 +3044,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
             initialCharDelayMs={sendTextEdit.charDelayMs}
             actionIndex={sendTextEdit.index}
             onConfirm={(r) => {
+              if (refuseDuringRun()) return;
               send({
                 type: 'actions:editSendText',
                 payload: {
@@ -2993,6 +3086,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
             initialRepeatDelayJitterPct={curJitter}
             initialHoldDurationMs={isHold ? curDuration : undefined}
             onConfirm={(result) => {
+              if (refuseDuringRun()) return;
               const idx = keystrokeEdit.index;
               // ONE message, so ONE undo entry. These used to be up to five separate actions:edit,
               // and the bridge snapshots per call — so undoing a single Save took five Ctrl+Z and
@@ -3029,6 +3123,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
             initialKey={editing?.key ?? ''}
             initialTimeoutMs={editing?.timeout ?? 0}
             onConfirm={(key, timeoutMs) => {
+              if (refuseDuringRun()) return;
               const idx = pauseEdit.index;
               // One Save, one undo entry — same reason as the keystroke dialog above.
               const edits: { field: string; value: string }[] = [];
@@ -3048,6 +3143,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
           initial={{ profileName: runProfileEdit.profileName, repeatCount: runProfileEdit.repeatCount, runOverData: runProfileEdit.runOverData }}
           excludeProfileName={activeProfile ?? undefined}
           onConfirm={(profileName, repeatCount, runOverData) => {
+            if (refuseDuringRun()) return;
             send({ type: 'actions:editRunProfile', payload: { index: runProfileEdit.index, profileName, repeatCount, runOverData } });
             setRunProfileEdit(null);
           }}
@@ -3064,6 +3160,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
           excludeProfileName={activeProfile ?? undefined}
           initial={runProfileInsert.profileName ? { profileName: runProfileInsert.profileName, repeatCount: 1 } : undefined}
           onConfirm={(profileName, repeatCount, runOverData) => {
+            if (refuseDuringRun()) return;
             send({ type: 'actions:addRunProfile', payload: { profileName, repeatCount, runOverData, insertIndex: runProfileInsert.insertIndex } });
             setRunProfileInsert(null);
           }}
@@ -3097,12 +3194,13 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
           canMoveDown={canMoveDown}
           onClearSelection={() => setSelectedIndices(new Set())}
           onDelete={() => {
-            // A selection touching a marker snaps to whole IF…ELSE…ENDIF blocks so the bulk
-            // bar can't orphan block rows; a pure body-row selection deletes just those rows
-            // (snapSelectionToBlocks) — same granular rule the drag / context / Delete-key paths use.
-            const indices = snapSelectionToBlocks(selSorted);
-            send({ type: 'actions:delete', payload: { indices } });
-            showToast(tt(`Deleted ${indices.length} action(s)`, `${indices.length} ação(ões) excluída(s)`), 'success');
+            // Routed through deleteIntentFor, the same answer the Delete key and the row menu
+            // get. This used to snap unconditionally, which was right for every selection EXCEPT
+            // a lone marker — and a lone Else If is exactly the case where snapping takes the
+            // whole conditional while the bar still reads "1 selected".
+            const { message, count } = deleteIntentFor(selSorted);
+            send(message);
+            showToast(tt(`Deleted ${count} action(s)`, `${count} ação(ões) excluída(s)`), 'success');
             setSelectedIndices(new Set());
           }}
           onMoveUp={() => {
@@ -3169,7 +3267,9 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
           backend owns WHERE the arm lands (FindBranchChainAnchor) — the UI only says which
           family, exactly like the Conditional ▾ menu. Image / Pixel run the capture overlay
           first, so Esc there inserts nothing. */}
-      {elseIfPicker && elseIfPickerPos && createPortal(
+      {/* contextMenuEnabled in the RENDER, not only in the effect above: render wins over effect,
+          and this portal must not exist for even one frame while a run is walking the grid. */}
+      {contextMenuEnabled && elseIfPicker && elseIfPickerPos && createPortal(
         <div
           ref={elseIfPickerRef}
           className="fixed z-50 min-w-[180px] py-1 menu-surface"

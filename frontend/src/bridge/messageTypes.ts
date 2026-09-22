@@ -1017,7 +1017,10 @@ export type OutgoingMessage =
   // own undo state, so a single Ctrl+Z landed on a snapshot taken BETWEEN two of them — X moved
   // with Y still old, a hold on the previous key, a point that existed at no moment of the edit.
   // The backend validates the whole batch before snapshotting, so it applies whole or not at all.
-  | { type: 'actions:editMany'; payload: { index: number; edits: { field: string; value: string }[] } }
+  // `convert` rides ALONG so a Sheet Save that both edits fields and switches the row's form is
+  // one message and therefore one undo entry. The backend applies the edits first and the
+  // conversion last, because a split changes the row count and `index` addresses the edits.
+  | { type: 'actions:editMany'; payload: { index: number; edits: { field: string; value: string }[]; convert?: { direction: 'toPaired' | 'toCombined'; indices: number[] } } }
   | { type: 'actions:delete'; payload: { indices: number[] } }
   | { type: 'profile:click'; payload: { name: string } }
   | { type: 'profile:create'; payload: { name: string; folder?: string } }

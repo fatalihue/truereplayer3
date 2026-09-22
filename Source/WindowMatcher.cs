@@ -245,6 +245,14 @@ namespace TrueReplayer.Helpers
             NativeMethods.EnumWindows((hwnd, lParam) =>
             {
                 if (!NativeMethods.IsWindowVisible(hwnd)) return true;
+                // IsWindowVisible is TRUE for a MINIMISED window — WS_VISIBLE stays set while it
+                // sits parked at (-32000,-32000). Without this test the lowest-handle rule could
+                // pin the anchor on the minimised one and the caller's parked-rect guard then
+                // failed at EVERY tick, killing the watcher in silence while a perfectly good
+                // window of the same process sat right next to it. A minimised window has no
+                // usable origin, so it is not a candidate at all — that keeps the count honest
+                // too, since an ambiguity the user cannot act on is not worth warning about.
+                if (NativeMethods.IsIconic(hwnd)) return true;
                 if (!Matches(hwnd, target, regex, titleBuffer, procBuffer)) return true;
                 count++;
                 if (best == IntPtr.Zero || (long)hwnd < (long)best) best = hwnd;

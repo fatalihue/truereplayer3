@@ -223,6 +223,9 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
   const [testMatchResult, setTestMatchResult] = useState<{ found: boolean; score: number; error?: string } | null>(null);
   // A not-yet-saved automation for a profile that has none. Only one at a time.
   const [newDraftProfile, setNewDraftProfile] = useState<string | null>(null);
+  // Por que a coordenada foi limpa ao virar o interruptor de âncora. Some na próxima captura,
+  // que é exatamente quando a frase deixa de ser verdadeira.
+  const [anchorSpaceNotice, setAnchorSpaceNotice] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const seededForRef = useRef<string | null>(null);
   // Confirm gates. `confirmDelete` mirrors the action grid's Clear All popover; `pendingNav`
@@ -445,6 +448,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
       if (msg.type === 'pixel:colorPicked' && msg.payload.requestId === pickReqRef.current) {
         pickReqRef.current = null;
         if (!msg.payload.cancelled && msg.payload.hex) {
+          setAnchorSpaceNotice(null);
           patch({ pixelX: msg.payload.x ?? 0, pixelY: msg.payload.y ?? 0, pixelColor: msg.payload.hex });
         }
       }
@@ -465,6 +469,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
         regionReqRef.current = null;
         const r = msg.payload;
         if (!r.cancelled && r.w && r.h && r.w > 0 && r.h > 0) {
+          setAnchorSpaceNotice(null);
           patch({ searchRegion: { x: r.x ?? 0, y: r.y ?? 0, w: r.w, h: r.h } });
         }
       }
@@ -553,10 +558,15 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
    * `absolute: true` stays on all three and means what it always meant: not the ACTIVE PROFILE's
    * target. The anchor is this trigger's own, and the two must not be confused.
    */
+  // Sent whenever the anchor is ON, even with the window fields still BLANK — the blank case
+  // is the one that needed a voice. Withholding it made 'anchor off' and 'anchor on, window not
+  // named yet' arrive at the backend as the same empty payload, so a pick made in that state was
+  // stored as a SCREEN coordinate in silence. And the panel forces the user into exactly that
+  // state: Save is blocked until a process or title is filled in, so the only way forward is to
+  // name the window AFTER picking — which re-reads the number in a space it was never in.
   const anchorPayload = () =>
     draft?.useRelativeCoordinates
       && (draft.conditionType === 'PixelColorMatch' || draft.conditionType === 'ImageFound')
-      && ((draft.windowProcessName ?? '').trim() || (draft.windowTitle ?? '').trim())
       ? {
         anchor: {
           processName: draft.windowProcessName ?? '',
@@ -1083,11 +1093,22 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                         // tipo de origem reacendia uma âncora que o usuário não sabia ter deixado
                         // ligada. Os CAMPOS de janela ficam (eles são do WindowOpen também); só o
                         // opt-in cai, que é o que a UI deixa de oferecer.
-                        const leavingAnchor = next !== 'PixelColorMatch' && next !== 'ImageFound';
+                        //
+                        // A FLAG FICA. Dropar o opt-in ao sair do tipo era seguro enquanto a flag
+                        // só somava (erradamente) uma origem na LEITURA; desde que a metade de
+                        // ESCRITA existe, ela DECLARA o espaço de pixelX/pixelY — que já estão em
+                        // coordenada de janela — e apagá-la re-significa esses números como tela
+                        // sem converter nada. Ir para WindowOpen e voltar deixava o vigia
+                        // amostrando (60,60) no canto do monitor, com o painel exibindo "X 60
+                        // Y 60", auto-salvo pelo debounce, armado e verde, e nunca disparando.
+                        //
+                        // Os dois motivos originais para dropar caíram: o pin de compatibilidade
+                        // agora gateia no KIND e no ConditionType, então uma flag residual não
+                        // prende mais o perfil; e "reacender uma âncora esquecida" é o mesmo
+                        // estado que estava lá antes da troca — preservar é o que não surpreende.
                         patch({
                           conditionType: next,
                           ...(leavingImage ? { imagePath: null, imageBase64: null, searchRegion: null } : {}),
-                          ...(leavingAnchor ? { useRelativeCoordinates: false } : {}),
                         });
                       }}
                     >
@@ -1154,7 +1175,32 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                     <>
                       <div className="flex items-center gap-2">
                         <Toggle size="sm" isOn={draft.useRelativeCoordinates}
-                          onChange={(v) => patch({ useRelativeCoordinates: v })} />
+                          onChange={(v) => {
+                            // This switch does not add a behaviour any more — it DECLARES which
+                            // space the stored numbers are in, and nothing here can convert them:
+                            // the origin belongs to a window that may not even be open. Flipping
+                            // it used to reinterpret whatever was on disk in silence, so a ROI the
+                            // user drew at (829,561) started being probed at (1829,761) with the
+                            // caption below cheerfully asserting the new space over the old number.
+                            //
+                            // Clearing the coordinate is the honest move: it costs one re-pick and
+                            // it cannot produce a watcher that is armed, green and permanently
+                            // false. The window FIELDS stay — they are the part worth keeping.
+                            const hadPoint = (draft.pixelX ?? 0) !== 0 || (draft.pixelY ?? 0) !== 0;
+                            const hadRegion = !!draft.searchRegion;
+                            patch({
+                              useRelativeCoordinates: v,
+                              ...(hadPoint ? { pixelX: 0, pixelY: 0 } : {}),
+                              ...(hadRegion ? { searchRegion: null } : {}),
+                            });
+                            if (hadPoint || hadRegion) {
+                              setAnchorSpaceNotice(v
+                                ? tt('Coordinates cleared — they were screen coordinates. Pick again to store them relative to the window.',
+                                     'Coordenadas limpas — elas eram de tela. Pegue de novo para gravá-las relativas à janela.')
+                                : tt('Coordinates cleared — they were relative to the window. Pick again to store them as screen coordinates.',
+                                     'Coordenadas limpas — elas eram relativas à janela. Pegue de novo para gravá-las como coordenadas de tela.'));
+                            }
+                          }} />
                         <span className="text-[12px] text-text-secondary"
                           data-tip={tt('Coordinates follow the window instead of the screen',
                                        'As coordenadas seguem a janela em vez da tela')}>
@@ -1195,6 +1241,12 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                         </span>
                       </div>
                     )}
+
+                  {/* Por que a coordenada sumiu. Mora aqui e não num toast porque é uma afirmação
+                      sobre o CAMPO logo abaixo, e some sozinha na próxima captura. */}
+                  <FieldError show={!!anchorSpaceNotice} tip={anchorSpaceNotice ?? undefined}>
+                    {anchorSpaceNotice}
+                  </FieldError>
 
                   {draft.conditionType === 'PixelColorMatch' && (
                     <>

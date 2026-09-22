@@ -107,7 +107,12 @@ namespace TrueReplayer.Services
                     // tap must not walk away carrying a dwell that nothing will ever read.
                     if (held)
                     {
-                        click.HoldDurationMs = Math.Clamp(input[i + 1].Delay, 10, 60000);
+                        int clamped = Math.Clamp(input[i + 1].Delay, 10, 60000);
+                        // The CEILING is a loss too, and it was the one the counter did not see.
+                        // dwellDroppedMs promises "0 when nothing is lost"; a 90 s hold coming back
+                        // as 60 s reported 0, which makes the counter a worse witness than none.
+                        if (input[i + 1].Delay > clamped) dwellDroppedMs += input[i + 1].Delay - clamped;
+                        click.HoldDurationMs = clamped;
                     }
                     else
                     {
@@ -132,7 +137,13 @@ namespace TrueReplayer.Services
                 {
                     var hold = a.Clone();
                     hold.ActionType = "HoldKey";
-                    hold.HoldDurationMs = Math.Clamp(input[i + 1].Delay, 10, 60000);
+                    int heldClamped = Math.Clamp(input[i + 1].Delay, 10, 60000);
+                    // Same ceiling, same accounting as the click branch above. This branch is also
+                    // why the counter could read 0 on a round-trip that DID lose time: split a
+                    // HoldKey and merge it back and the dwell goes through here, not through the
+                    // click branch that was the only one reporting.
+                    if (input[i + 1].Delay > heldClamped) dwellDroppedMs += input[i + 1].Delay - heldClamped;
+                    hold.HoldDurationMs = heldClamped;
                     result.Add(hold);
                     i += 2;
                     continue;
@@ -203,16 +214,32 @@ namespace TrueReplayer.Services
             {
                 for (int i = 0; i < input.Count; i++)
                 {
-                    // Only a Down half is a merge CANDIDATE; anything else in the range is simply
-                    // not this transform's business. A lone Down at the end counts — "the Up half
-                    // that follows it" is exactly what is missing, and saying so is the point.
-                    if (!TryClickButton(input[i].ActionType, down: true, out _)) continue;
-                    string? why = i + 1 < input.Count
-                        ? WhyCannotMerge(input[i], input[i + 1])
-                        : "Select a click's Down half and the Up half that follows it.";
-                    if (why == null) { i++; continue; }   // merged — skip its Up too
-                    count++;
-                    first ??= why;
+                    // A Down half is the ordinary merge CANDIDATE. A lone Down at the end counts —
+                    // "the Up half that follows it" is exactly what is missing, and saying so is
+                    // the point.
+                    if (TryClickButton(input[i].ActionType, down: true, out _))
+                    {
+                        string? why = i + 1 < input.Count
+                            ? WhyCannotMerge(input[i], input[i + 1])
+                            : "Select a click's Down half and the Up half that follows it.";
+                        if (why == null) { i++; continue; }   // merged — skip its Up too
+                        count++;
+                        first ??= why;
+                        // Refused, but its Up still belongs to this attempt: stepping over it
+                        // keeps ONE intended pair reported as ONE refusal instead of two.
+                        if (i + 1 < input.Count && TryClickButton(input[i + 1].ActionType, down: false, out _)) i++;
+                        continue;
+                    }
+                    // An UP half no Down in this range claimed — reached only when the row before it
+                    // was not a mergeable Down, because both paths above step over a claimed Up.
+                    // Without this the whole selection was refused in SILENCE whenever it was seeded
+                    // from the Up side, which the grid does by itself: a multi-selection expands
+                    // each half to its twin, so an Up can be the first row the transform sees.
+                    if (TryClickButton(input[i].ActionType, down: false, out _))
+                    {
+                        count++;
+                        first ??= "Select a click's Down half and the Up half that follows it.";
+                    }
                 }
             }
             else

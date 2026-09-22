@@ -667,10 +667,23 @@ namespace TrueReplayer.Services
             // inteiro na 2.43.0 por uma propriedade que provadamente nao muda nada, e recusava o
             // import num build antigo sem nenhum ganho. O editor agora limpa a flag nessa troca; o
             // gate aqui cobre o que ja esta em disco e o que chega importado.
+            // Gateado tambem no KIND, e nao so no tipo de condicao. So um gatilho de CONDICAO
+            // sonda um ponto; num schedule o ConditionType e um resto de rascunho (o painel guarda
+            // o campo ao trocar de kind, de proposito), e a flag ao lado dele nao significa nada.
+            // Sem este termo a flag residual prendia o perfil pela OUTRA porta — a que o comentario
+            // acima fecha e esta deixava aberta.
+            //
+            // O piso e 2.43.1, nao 2.43.0. A 2.43.0 lancou este dado com METADE da feature: o
+            // daemon somava a origem da janela a cada tick enquanto o conta-gotas, o seletor de ROI
+            // e o Test seguiam gravando coordenada de TELA. Um build 2.43.0 nao so le a coordenada
+            // no espaco errado — qualquer save dele a REESCREVE em tela sob uma flag que afirma
+            // janela. "Versao minima que abre este perfil com seguranca" e a versao cuja metade de
+            // ESCRITA existe, e essa e a 2.43.1.
             (p => p.Triggers is { UseRelativeCoordinates: true } t
+                  && string.Equals(t.Kind, "condition", StringComparison.OrdinalIgnoreCase)
                   && (string.Equals(t.ConditionType, "PixelColorMatch", StringComparison.OrdinalIgnoreCase)
                       || string.Equals(t.ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 43, 0), "Automation watcher window anchor"),
+                new Version(2, 43, 1), "Automation watcher window anchor"),
 
             // Automation active hours. NOT the destroy-on-round-trip mechanism of the two pins
             // above: TimeOfDay has existed since the 2.9.0 Triggers pin, so an older build reads

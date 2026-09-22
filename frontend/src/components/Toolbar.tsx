@@ -219,14 +219,37 @@ export function Toolbar(_props: ToolbarProps) {
       if (needed > available) {
         // Collapse as many as the deficit calls for in one step: a half-measure would leave a
         // clipped button painted for a frame before the next pass caught it.
-        setOverflowCount(c => Math.min(OVERFLOW_CANDIDATES, c + Math.ceil((needed - available) / unit)));
+        //
+        // …but the FIRST step does not free space, it COSTS it. Collapsing the tail also MOUNTS
+        // the More button, and More (icon + chevron + padding, ~41 px) is wider than the single
+        // control it hides (28 px) plus that control's divider and gaps. Measured on the running
+        // app, `needed` by overflowCount is [611, 613, 583, 542, 512]: count 1 is strictly
+        // DOMINATED by count 0 — wider AND showing one control less. So no deficit, however
+        // small, was ever covered by one step, and stepping to 1 guaranteed the next pass saw a
+        // deficit 2 px LARGER than the original and took a second control anyway. A window 1 px
+        // too narrow lost two controls and settled with 27 px of idle slack.
+        //
+        // Two is the floor, not a tuning constant: it is "pay for More, then free something".
+        setOverflowCount(c => {
+          const next = c + Math.ceil((needed - available) / unit);
+          return Math.min(OVERFLOW_CANDIDATES, c === 0 ? Math.max(2, next) : next);
+        });
       } else if (available - needed >= unit * 2) {
         // Restore ONE per pass, and only with a whole spare button of slack beyond the one being
         // put back. Restoring greedily — or on exactly its own width — puts a button into a space
         // that then spills, which collapses it again on the next pass: a flicker that never
         // settles. The effect re-runs on overflowCount, so climbing back one at a time still
         // reaches the top in a few frames.
-        setOverflowCount(c => Math.max(0, c - 1));
+        //
+        // Except into 1, which is the dominated state the collapse side skips for the same reason:
+        // it is WIDER than 0 while showing less, so stopping there would park the row ~30 px wider
+        // than it needs to be with a control still hidden. From 2 the only sane destination is 0,
+        // and the slack test above makes that safe — it already demands a whole spare unit beyond
+        // the one being restored, and 2→0 costs exactly one unit of width (583→611).
+        setOverflowCount(c => {
+          const next = c - 1;
+          return Math.max(0, next === 1 ? 0 : next);
+        });
       }
     };
     fitRef.current = fit;
