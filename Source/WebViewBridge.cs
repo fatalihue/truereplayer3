@@ -11750,23 +11750,24 @@ namespace TrueReplayer
                         browserBridge?.SetRecordingMode(BrowserSelectorEnabled);
                     break;
                 case "recordingHotkey":
-                    UserProfile.Current.RecordingHotkey = valueElement.GetString() ?? "Ctrl+PageUp";
+                    UserProfile.Current.RecordingHotkey = valueElement.GetString() ?? HotkeyDefaults.Recording;
                     break;
                 case "replayHotkey":
-                    UserProfile.Current.ReplayHotkey = valueElement.GetString() ?? "Ctrl+PageDown";
+                    UserProfile.Current.ReplayHotkey = valueElement.GetString() ?? HotkeyDefaults.Replay;
                     break;
                 case "profileKeyToggleHotkey":
-                    UserProfile.Current.ProfileKeyToggleHotkey = valueElement.GetString() ?? "Pause";
+                    UserProfile.Current.ProfileKeyToggleHotkey = valueElement.GetString() ?? HotkeyDefaults.ProfileKeyToggle;
                     break;
                 case "foregroundHotkey":
-                    UserProfile.Current.ForegroundHotkey = valueElement.GetString() ?? "Insert";
+                    UserProfile.Current.ForegroundHotkey = valueElement.GetString() ?? HotkeyDefaults.Foreground;
                     break;
                 case "modeToggleHotkey":
-                    UserProfile.Current.ModeToggleHotkey = valueElement.GetString() ?? "ScrollLock";
+                    UserProfile.Current.ModeToggleHotkey = valueElement.GetString() ?? HotkeyDefaults.ModeToggle;
                     break;
                 case "captureSlotHotkey":
-                    // Empty = disabled (the default) — clearing the input turns the feature off.
-                    UserProfile.Current.CaptureSlotHotkey = valueElement.GetString() ?? "";
+                    // Empty = disabled: clearing the input sends "" and turns the feature off. A null
+                    // restores the default, like the five above.
+                    UserProfile.Current.CaptureSlotHotkey = valueElement.GetString() ?? HotkeyDefaults.CaptureSlot;
                     break;
                 case "runAsAdmin":
                     {

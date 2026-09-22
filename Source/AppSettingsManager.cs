@@ -109,18 +109,18 @@ namespace TrueReplayer.Services
             // class default), so resetting returns to combined recording.
             public bool RecordCombinedInput { get; set; } = true;
             // Hotkeys
-            public string RecordingHotkey { get; set; } = "Ctrl+PageUp";
-            public string ReplayHotkey { get; set; } = "Ctrl+PageDown";
-            public string ProfileKeyToggleHotkey { get; set; } = "Pause";
-            public string ForegroundHotkey { get; set; } = "Insert";
-            public string ModeToggleHotkey { get; set; } = "ScrollLock";
+            public string RecordingHotkey { get; set; } = HotkeyDefaults.Recording;
+            public string ReplayHotkey { get; set; } = HotkeyDefaults.Replay;
+            public string ProfileKeyToggleHotkey { get; set; } = HotkeyDefaults.ProfileKeyToggle;
+            public string ForegroundHotkey { get; set; } = HotkeyDefaults.Foreground;
+            public string ModeToggleHotkey { get; set; } = HotkeyDefaults.ModeToggle;
             // Capture-selection → clipboard slot. Win+Ctrl+C by owner request (2026-07-19):
             // a three-key Win combo is safe to claim by default — nothing in the shell binds
             // it out of the box, and the low-level hook suppresses the shell's own handling
             // anyway. (It used to default to empty precisely to avoid swallowing a key
             // system-wide; a Win-modified combo is the compromise.) Clearable in
             // Settings → Keys → Hotkeys, where empty still means disabled.
-            public string CaptureSlotHotkey { get; set; } = "Win+Ctrl+C";
+            public string CaptureSlotHotkey { get; set; } = HotkeyDefaults.CaptureSlot;
             public bool ProfileKeyEnabled { get; set; } = true;
             public bool BrowserSelectorEnabled { get; set; } = true;
             // Automation master switch — armed per-profile triggers only run while this is on.

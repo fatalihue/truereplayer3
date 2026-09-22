@@ -28,6 +28,25 @@ namespace TrueReplayer.Models
         Hold
     }
 
+    /// <summary>
+    /// The shipped default of each global hotkey — the one place these strings live on the C# side.
+    /// AppSettings (fresh install and Reset settings), the UserProfile initializers and the bridge's
+    /// null fallbacks all read from here. Each site used to restate its literal, and a default change
+    /// reached some copies and not others: Foreground moved to Insert on 2026-05-22 and
+    /// UserProfile.Default kept Ctrl+Insert; Capture Slot moved to Win+Ctrl+C on 2026-07-19 and the
+    /// bridge's null fallback kept "". The frontend's pre-load placeholders (AppStateContext.tsx) are
+    /// a second copy by necessity (TS×C#), overwritten as soon as settings:loaded arrives.
+    /// </summary>
+    public static class HotkeyDefaults
+    {
+        public const string Recording = "Ctrl+PageUp";
+        public const string Replay = "Ctrl+PageDown";
+        public const string ProfileKeyToggle = "Pause";
+        public const string Foreground = "Insert";
+        public const string ModeToggle = "ScrollLock";
+        public const string CaptureSlot = "Win+Ctrl+C";
+    }
+
     public class UserProfile
     {
         public static UserProfile Current { get; set; } = Default;
@@ -35,27 +54,27 @@ namespace TrueReplayer.Models
         public ObservableCollection<ActionItem> Actions { get; set; } = new();
 
         [JsonIgnore]
-        public string RecordingHotkey { get; set; } = "Ctrl+PageUp";
+        public string RecordingHotkey { get; set; } = HotkeyDefaults.Recording;
 
         [JsonIgnore]
-        public string ReplayHotkey { get; set; } = "Ctrl+PageDown";
+        public string ReplayHotkey { get; set; } = HotkeyDefaults.Replay;
 
         [JsonIgnore]
-        public string ProfileKeyToggleHotkey { get; set; } = "Pause";
+        public string ProfileKeyToggleHotkey { get; set; } = HotkeyDefaults.ProfileKeyToggle;
 
         [JsonIgnore]
-        public string ForegroundHotkey { get; set; } = "Insert";
+        public string ForegroundHotkey { get; set; } = HotkeyDefaults.Foreground;
 
         // Flips UseCursorClick (Macro ↔ Clicker). Default ScrollLock — pairs with Pause as
         // the other single-key status-indicator hotkey already in use, and is almost
         // universally unused by other apps.
         [JsonIgnore]
-        public string ModeToggleHotkey { get; set; } = "ScrollLock";
+        public string ModeToggleHotkey { get; set; } = HotkeyDefaults.ModeToggle;
 
         // Capture-selection → clipboard slot ({clip:1}…{clip:9}, sequential). Empty = disabled;
         // the shipped default is Win+Ctrl+C — see AppSettings.CaptureSlotHotkey.
         [JsonIgnore]
-        public string CaptureSlotHotkey { get; set; } = "Win+Ctrl+C";
+        public string CaptureSlotHotkey { get; set; } = HotkeyDefaults.CaptureSlot;
 
         [JsonIgnore]
         public bool RecordMouse { get; set; } = true;
@@ -172,12 +191,11 @@ namespace TrueReplayer.Models
         [JsonIgnore]
         public bool AutomationEnabled { get; set; } = true;
 
+        // No hotkeys here: they come from the property initializers (HotkeyDefaults), and neither
+        // caller lets them reach the user — ResetProfile re-applies AppSettings right after, and a new
+        // profile file never stores them ([JsonIgnore]). Restating them here is how one copy drifted.
         public static UserProfile Default => new UserProfile
         {
-            RecordingHotkey = "Ctrl+PageUp",
-            ReplayHotkey = "Ctrl+PageDown",
-            ProfileKeyToggleHotkey = "Pause",
-            ForegroundHotkey = "Ctrl+Insert",
             RecordMouse = true,
             RecordScroll = true,
             RecordKeyboard = true,
