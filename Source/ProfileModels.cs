@@ -366,6 +366,12 @@ namespace TrueReplayer.Models
         // (mirrors ProfileController.ExpandWithRunProfileDependenciesAsync, which is what actually
         // bundles them). null when the profile calls none, so the pushed payload stays lean.
         public List<string>? RunProfileTargets { get; set; }
+        // The subset of RunProfileTargets called with "Run once per data row". The CALLED
+        // profile's Data panel reads it: a caller walking the sub's table row by row obeys the
+        // sub's own On row error (RunSubProfileOverDataAsync), whatever the sub's Loop over data
+        // says — so the panel must offer that control there too. Same shape and freshness as
+        // RunProfileTargets (read at list-load from the ON-DISK profile; null when none).
+        public List<string>? RunOverDataTargets { get; set; }
         public bool HasWindowTarget { get; set; }
         public string? WindowTargetProcessName { get; set; }
         public string? WindowTargetWindowTitle { get; set; }

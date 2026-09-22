@@ -271,6 +271,10 @@ export interface ProfileEntry {
   // round-trip. Resolve a ref to a local profile by EXACT (case-sensitive) name — mirrors the
   // Ordinal lookup the backend export uses, so a case-differing/dangling ref bundles nothing.
   runProfileTargets?: string[] | null;
+  // The subset called with "Run once per data row" (same shape; null when none). The CALLED
+  // profile's Data panel reads it: that call walks the sub's table and obeys the sub's own
+  // On row error, so the panel offers the control even with the sub's Loop over data off.
+  runOverDataTargets?: string[] | null;
 }
 
 // ── Sharing metadata payloads ──

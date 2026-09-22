@@ -131,8 +131,11 @@ namespace TrueReplayer.Services
             // Per-row skip-on-error (OnRowError == "skip") — an older build ignores the unknown
             // JSON property and HALTS the whole run on the first failed row instead of skipping,
             // a silent behavioural divergence. Property-level pin so plain tables keep the
-            // 2.8.0 floor; gated on LoopOverData because skip is runtime-inert without the
-            // batch loop (matches SkipRowOnErrorActive). Introduced after 2.8.1 — bump at release.
+            // 2.8.0 floor. Gated on LoopOverData although skip is NOT inert without it: a For
+            // Each Data Row block and a caller's "Run once per data row" read the policy too.
+            // Those two paths carry their own pins (For Each 2.25.0, RunProfile over data 2.9.0)
+            // and each shipped in the same commit as its skip handling, so no build that runs
+            // the path ignores the skip. Introduced after 2.8.1 — bump at release.
             (p => p.Data is { LoopOverData: true } d && string.Equals(d.OnRowError, "skip", StringComparison.OrdinalIgnoreCase),
                 new Version(2, 9, 0), "Data-loop skip-on-error"),
 

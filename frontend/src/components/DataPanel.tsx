@@ -386,7 +386,7 @@ type Editing = { kind: 'cell'; r: number; c: number } | { kind: 'header'; c: num
 
 export function DataPanel({ onClose }: DataPanelProps) {
   const { send } = useBridge();
-  const { dataTable, actions, activeProfile, settings, buttonStates } = useAppState();
+  const { dataTable, actions, activeProfile, profiles, settings, buttonStates } = useAppState();
   const { showToast } = useToast();
   const isClicker = settings.useCursorClick;
   const runActive = buttonStates.recordingActive || buttonStates.replayActive;
@@ -414,11 +414,36 @@ export function DataPanel({ onClose }: DataPanelProps) {
   const [loopOverData, setLoopState] = useState(false);
   const setLoop = useCallback((v: boolean) => { loopRef.current = v; setLoopState(v); }, []);
 
-  // Per-row error policy (only meaningful while loop-over-data). Same ref+state pair as
-  // loopOverData — dirtyNow()/handleSave read the ref synchronously.
+  // Per-row error policy. The TABLE owns it, and three paths walk the table row by row and obey
+  // it: Loop over data, a For Each Data Row block in this profile, and another profile's Run
+  // Profile with "Run once per data row". Same ref+state pair as loopOverData —
+  // dirtyNow()/handleSave read the ref synchronously.
   const onRowErrorRef = useRef<'halt' | 'skip'>('halt');
   const [onRowError, setOnRowErrorState] = useState<'halt' | 'skip'>('halt');
   const setOnRowError = useCallback((v: 'halt' | 'skip') => { onRowErrorRef.current = v; setOnRowErrorState(v); }, []);
+  // The two paths that walk the table WITHOUT Loop over data. Either one makes the policy live in
+  // cursor mode, so the rail offers it there too — it used to render only with Loop over data on,
+  // hiding a setting the For Each block and the caller still obeyed.
+  const usesForEach = useMemo(() => actions.some(a => a.actionType === 'ForEachRow'), [actions]);
+  // Matched by EXACT name, the way the engine resolves a Run Profile target
+  // (ProfileController.LoadProfileByNameAsync); the backend already trimmed the refs.
+  const overDataCallers = useMemo(
+    () => (activeProfile
+      ? profiles
+        .filter(p => p.name !== activeProfile && (p.runOverDataTargets ?? []).includes(activeProfile))
+        .map(p => p.name)
+      : []),
+    [profiles, activeProfile],
+  );
+  // Where the policy applies when Loop over data is off — shown under the control, since there
+  // the control appears for a reason the Run section above doesn't state.
+  const rowPolicyScope = useMemo(() => {
+    const parts: string[] = [];
+    if (usesForEach) parts.push('inside For Each Data Row');
+    if (overDataCallers.length === 1) parts.push(`when “${overDataCallers[0]}” runs this profile once per data row`);
+    else if (overDataCallers.length > 1) parts.push(`when ${overDataCallers.length} profiles run this one once per data row`);
+    return parts.length > 0 ? `Applies ${parts.join(', and ')}.` : '';
+  }, [usesForEach, overDataCallers]);
   // Lap notice — same ref+state pairing as onRowError so the synchronous dirty check and
   // handleSave can read it without waiting for a re-render. Defaults ON.
   const notifyLapRef = useRef(true);
@@ -1311,9 +1336,11 @@ export function DataPanel({ onClose }: DataPanelProps) {
                 <span className="flex items-center gap-1.5"><Bell size={12} /> {'Notify on list complete'}</span>
               </button>
             )}
-            {/* Per-row error policy — only meaningful while looping over data, so it only
-                renders then (no dead control in cursor mode). */}
-            {loopOverData && (
+            {/* Per-row error policy — renders wherever something walks this table row by row and
+                so obeys it: Loop over data, a For Each Data Row block here, or a caller's Run once
+                per data row. Plain cursor mode with none of those reads nothing, so it stays
+                hidden there (no dead control). */}
+            {(loopOverData || usesForEach || overDataCallers.length > 0) && (
               <div className="pt-2">
                 <div className="label-micro text-text-tertiary pb-1">{'On row error'}</div>
                 <SegmentedControl<'halt' | 'skip'>
@@ -1326,6 +1353,14 @@ export function DataPanel({ onClose }: DataPanelProps) {
                     { value: 'skip', label: 'Skip row', tip: tt('Log it and continue; summary at the end', 'Registra e continua; resumo no final') },
                   ]}
                 />
+                {!loopOverData && (
+                  <div
+                    className="pt-1.5 text-[11px] leading-relaxed text-text-tertiary"
+                    data-tip={overDataCallers.length > 1 ? overDataCallers.join(', ') : undefined}
+                  >
+                    {rowPolicyScope}
+                  </div>
+                )}
               </div>
             )}
           </div>

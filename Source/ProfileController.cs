@@ -912,6 +912,16 @@ namespace TrueReplayer.Controllers
                     .Select(k => k!)
                     .Distinct(StringComparer.Ordinal)
                     .ToList();
+                // The over-data subset, for the called profile's Data panel (see
+                // ProfileEntry.RunOverDataTargets). Same trimming and Ordinal distinct as above.
+                var overDataRefs = profile.Actions
+                    .Where(a => string.Equals(a.ActionType, "RunProfile", StringComparison.OrdinalIgnoreCase)
+                        && a.RunOverData == true)
+                    .Select(a => a.Key?.Trim())
+                    .Where(k => !string.IsNullOrEmpty(k))
+                    .Select(k => k!)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
 
                 var entry = new ProfileEntry
                 {
@@ -947,7 +957,8 @@ namespace TrueReplayer.Controllers
                     ActionCount = profile.Actions.Count,
                     // null (not an empty list) when the profile calls nothing — keeps the
                     // profiles:updated payload lean for the common no-RunProfile case.
-                    RunProfileTargets = runRefs.Count > 0 ? runRefs : null
+                    RunProfileTargets = runRefs.Count > 0 ? runRefs : null,
+                    RunOverDataTargets = overDataRefs.Count > 0 ? overDataRefs : null
                 };
 
                 // Collect referenced PNG filenames for orphan-cleanup at startup.

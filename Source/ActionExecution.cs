@@ -1938,8 +1938,10 @@ namespace TrueReplayer.Services
         // a completed cursor lap) still belong on screen. Set only by the two authored cancel
         // sites; reset at fresh-run.
         private bool _authoredStop;
-        // Skip mode gates on the BATCH data loop only — cursor mode and plain runs keep the
-        // exact halt semantics they had (skip-on-error is a data-loop robustness knob).
+        // Skip mode gates on the LIVE data-loop flag: the batch loop sets it, and so do the two
+        // paths that walk a table inside one run — a For Each Data Row block and a caller's
+        // Run once per data row (both hoist _dataLoopOver). A plain run, or cursor mode outside
+        // those blocks, keeps the exact halt semantics it had.
         // _softFaultOverride: RunProfile-over-data (Phase C) sets it while a HALT-mode sub
         // table runs UNDER a skip-active parent batch — the fault sites must then FaultRow
         // (soft) instead of cancelling _cts, or one bad sub row would kill the whole parent

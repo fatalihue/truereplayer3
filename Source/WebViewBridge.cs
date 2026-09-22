@@ -1422,10 +1422,10 @@ namespace TrueReplayer
                 }
 
             bool loopOverData = payload.TryGetProperty("loopOverData", out var lEl) && lEl.ValueKind == JsonValueKind.True;
-            // "skip" is kept even when the loop is currently off — it remembers the user's
-            // choice for when the loop comes back, is runtime-inert meanwhile (the engine
-            // gates on LoopOverData), and the compatibility pin is gated the same way so
-            // the dormant value can't over-pin the profile's min version.
+            // "skip" is kept even when the loop is off: a For Each Data Row block and a caller's
+            // Run once per data row walk this table and obey it regardless, and with neither in
+            // play it waits for the loop to come back. The compatibility pin stays gated on
+            // LoopOverData — the other two paths carry their own pins (see ProfileCompatibility).
             string? onRowError = payload.TryGetProperty("onRowError", out var oEl) && oEl.ValueKind == JsonValueKind.String
                 ? NormalizeOnRowError(oEl.GetString())
                 : null;
@@ -2581,7 +2581,10 @@ namespace TrueReplayer
                 // RunProfile refs — lets the Export dialog work out (client-side, no round-trip)
                 // which sub-profiles ride along with the current selection, and re-derive it as
                 // that selection changes. null when the profile calls none.
-                runProfileTargets = p.RunProfileTargets
+                runProfileTargets = p.RunProfileTargets,
+                // The ones called "once per data row" — the CALLED profile's Data panel shows its
+                // On row error when some caller walks its table (that call obeys it).
+                runOverDataTargets = p.RunOverDataTargets
             }).ToArray();
 
             var order = profileController.GetProfileOrder();
@@ -3346,7 +3349,10 @@ namespace TrueReplayer
                     // the Run Profile graph on a COLD START, so its "+N referenced sub-profiles
                     // included" disclosure stays hidden for the whole first session even though
                     // those sub-profiles do get bundled — the one case where silence is a lie.
-                    runProfileTargets = p.RunProfileTargets
+                    runProfileTargets = p.RunProfileTargets,
+                    // Same cold-start reason: without it a sub-profile's Data panel hides its
+                    // On row error until the first profiles:updated push.
+                    runOverDataTargets = p.RunOverDataTargets
                 }).ToArray(),
                 activeProfile = CurrentProfileName == "No Profile" ? (string?)null : CurrentProfileName,
                 // Cold-start mirror of the profile:loop push — MUST stay in sync with
