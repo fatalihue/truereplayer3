@@ -99,7 +99,17 @@ namespace TrueReplayer.Services
         // click that had worked earned the el.click() rescue and ran twice. And Paste no longer
         // writes the system clipboard: the paste never read it, the restore needed readText, which
         // most pages refuse, so the user's own clipboard was silently replaced.
-        public const string ExpectedExtensionVersion = "1.4.23";
+        // 1.4.24 = the extension wave of the function-by-function audit (2026-09-23). Recording: a
+        // label click is one row, not two; a click a KEY produced (Enter submitting a form, Space on a
+        // button) is left to the key the OS hook already recorded; a drag is left to its native rows;
+        // a contentEditable records its editing host; the previous field's typing is committed BEFORE
+        // the next click is announced, and on pagehide; the stop's own final typingCaptured is
+        // accepted for a moment after the stop; a page back from the back/forward cache re-syncs its
+        // recording state; an orphaned content script disarms itself. Pick: one at a time, and a
+        // cancel reaches the tab and the pick it names. Replay: range and color inputs get their
+        // value set; an empty text regex matches nothing; a /regex/ URL pattern with bad flags fails
+        // at once instead of timing out; a frame without <body> stays silent in the fan-out.
+        public const string ExpectedExtensionVersion = "1.4.24";
         private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
         private NamedPipeServerStream? _pipeServer;
         private StreamReader? _reader;
@@ -571,11 +581,14 @@ namespace TrueReplayer.Services
         /// Tells the extension to abort an in-progress element pick (user switched/closed the
         /// editor). The extension's stopPick resolves the pending pick with null, which flows back
         /// through the normal pickResult path; the frontend ignores it via its requestId guard.
+        /// With <paramref name="requestId"/> only THAT pick is cancelled: the timeout path below names
+        /// its own, so a cancel that crosses the pipe after the user has started another pick cannot
+        /// tear that one down. Without it (the editor closing) whatever pick is armed goes.
         /// </summary>
-        public void CancelPickElement()
+        public void CancelPickElement(string? requestId = null)
         {
             if (!IsConnected) return;
-            SendMessage(new { type = "browser:cancelPick" });
+            SendMessage(new { type = "browser:cancelPick", requestId });
         }
 
         public async Task<PickResult> PickElementAsync(CancellationToken token, int timeoutMs = 30000)
@@ -619,7 +632,7 @@ namespace TrueReplayer.Services
                 // still send a cancel. So tell the extension to stand down here. A pick reply already in
                 // flight is unaffected: stopPick resolves it through the normal path and the frontend's
                 // requestId guard drops it, and content.js's `if (picking)` makes the late cancel a no-op.
-                CancelPickElement();
+                CancelPickElement(requestId);
                 return new PickResult(null, new List<SelectorAlternative>());
             }
         }
@@ -898,7 +911,15 @@ namespace TrueReplayer.Services
             // has context) and leaves this one as the backstop for a pipe that never answers at all.
             // Costs nothing on success, and the fast failures still answer fast: a closed tab replies
             // TAB_GONE in ~0 ms and a page with no content script NO_CONTENT_SCRIPT in ~300 ms.
-            const int PipeGraceMs = 2000;
+            //
+            // 3.5 s, not the 2 s this was calibrated at: that was before background.js split a mutating
+            // command into LOCATE + EXECUTE, and the split is paid PAST the timeout the content script
+            // enforces. Worst case beyond the action's own timeout: up to 1.5 s of injection retries
+            // before the probe arms its timer, 150 ms of main-frame grace, the EXECUTE half's 1 s floor,
+            // the ~310 ms click sequence and the trip back — about 3.1 s. At 2 s this side could report
+            // ELEMENT_NOT_FOUND and halt the run while the click was still on its way to landing, which
+            // is the very inversion this margin exists to prevent.
+            const int PipeGraceMs = 3500;
             // A type payload's {delay:N} pauses, {key:N} repeats and per-character Delay all run
             // INSIDE the command, on the extension's side of the pipe (1.4.18), so they are added
             // to the budget here — or a "{delay:3000}" in a 5 s action, or 150 characters at 50 ms,

@@ -50,10 +50,13 @@ function generateSelector(el) {
     if (isUnique(selector, el)) return selector;
   }
 
-  // 6. Classes (if unique combination)
+  // 6. Classes (if unique combination), through the same filter getUniqueClassSelector uses. This
+  // rung decides the PRIMARY selector a recording stores, and it carried an older, weaker copy of
+  // that filter: state prefixes (is-/has-), UUIDs and build hashes that getUniqueClassSelector
+  // drops went straight into the stored selector, which then broke on the site's next build.
   if (el.classList.length > 0) {
     const classes = Array.from(el.classList)
-      .filter(c => !c.match(/^(hover|active|focus|selected|open|show|hidden)/i))
+      .filter(isStableClass)
       .slice(0, 3)
       .map(c => `.${CSS.escape(c)}`)
       .join('');
@@ -144,6 +147,19 @@ function buildNthChildPath(el, skipOwnId) {
 }
 
 /**
+ * A class worth putting in a selector: not a state class (hover, active, is-/has-…), not a UUID, not
+ * a build hash, not absurdly short or long. The one definition both class rungs use.
+ */
+function isStableClass(c) {
+  return !c.match(/^(hover|active|focus|selected|open|show|hidden|is-|has-|js-|u-)/i) &&
+    !c.match(/^(hovered|bordered|transparent|semibold)/i) &&
+    !c.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i) && // UUID
+    !c.match(/^[a-zA-Z]+-[0-9a-f]{6,}$/i) && // hash suffixes (css-modules, obfuscated)
+    c.length > 1 &&
+    c.length < 60;
+}
+
+/**
  * Try to build a unique selector from an element's classes.
  * Filters out state classes (hover, active, etc.) and dynamic classes.
  * Returns tag.class1.class2 if unique, or null.
@@ -151,14 +167,7 @@ function buildNthChildPath(el, skipOwnId) {
 function getUniqueClassSelector(el) {
   if (!el.classList || el.classList.length === 0) return null;
 
-  const validClasses = Array.from(el.classList).filter(c =>
-    !c.match(/^(hover|active|focus|selected|open|show|hidden|is-|has-|js-|u-)/i) &&
-    !c.match(/^(hovered|bordered|transparent|semibold)/i) &&
-    !c.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i) && // UUID
-    !c.match(/^[a-zA-Z]+-[0-9a-f]{6,}$/i) && // hash suffixes (css-modules, obfuscated)
-    c.length > 1 &&
-    c.length < 60
-  );
+  const validClasses = Array.from(el.classList).filter(isStableClass);
 
   if (validClasses.length === 0) return null;
 
@@ -254,7 +263,12 @@ function getElementDescription(el) {
   // Whitespace runs (including newlines) collapse to one space — this alone is most of the fix.
   const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
   const MAX = 40;
-  const cap = (s) => (s.length > MAX ? s.slice(0, MAX).trimEnd() + '...' : s);
+  // By code point, not by UTF-16 unit: cutting at 40 units could split an emoji's surrogate pair and
+  // leave a broken character in the action's comment.
+  const cap = (s) => {
+    const chars = Array.from(s);
+    return chars.length > MAX ? chars.slice(0, MAX).join('').trimEnd() + '...' : s;
+  };
 
   for (const attr of ['aria-label', 'title', 'alt', 'placeholder']) {
     const v = clean(el.getAttribute(attr));
@@ -401,34 +415,11 @@ function isTextUnique(text) {
   return count === 1;
 }
 
-/**
- * #2 — Estimate the stability tier of an arbitrary selector string for the
- * SheetPanel shield indicator. No DOM lookup; pure pattern detection.
- */
-function estimateSelectorTier(selector) {
-  if (!selector) return 'C';
-  const s = selector.trim();
-  // Text-based selectors → tier B
-  if (s.startsWith('text=') || s.startsWith('text*=') || s.startsWith('text~=') || s.startsWith('text/')) return 'B';
-  // ID or test-id → tier S
-  if (/^#[A-Za-z_][\w\-]*$/.test(s)) return 'S';
-  if (/\[data-(testid|test|cy|qa)=/.test(s)) return 'S';
-  // name / aria-label / placeholder → tier A
-  if (/\[(name|aria-label|placeholder)=/.test(s)) return 'A';
-  // nth-of-type / nth-child / direct child paths → tier C
-  if (s.includes(':nth-') || s.includes(' > ')) return 'C';
-  // Class-only selectors → tier B (decent but not test-id)
-  if (/^[a-z]+\./i.test(s)) return 'B';
-  // Default
-  return 'C';
-}
-
 // Export for content.js
 if (typeof window !== 'undefined') {
   window.__trueReplayerSelectorGenerator = {
     generateSelector,
     generateSelectorAlternatives,
-    estimateSelectorTier,
     getElementDescription,
   };
 }

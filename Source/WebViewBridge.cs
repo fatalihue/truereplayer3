@@ -365,12 +365,17 @@ namespace TrueReplayer
         /// sweep now does NOTHING, which is the correct direction to fail in — a missed duplicate
         /// is visible and fixable, a deleted row the user recorded last week is neither.
         /// </remarks>
+        // How long after a recording stops its final typingCaptured is still accepted (see
+        // _onBrowserTypingCaptured). The extension holds the same window on its side (LAST_WORD_MS).
+        private static readonly TimeSpan LastTypingGrace = TimeSpan.FromSeconds(3);
+
         // Later of two instants. RecordingStartedUtc is DateTime.MaxValue while not recording, so
         // Max() with it is also the "not recording ⇒ sweep nothing" gate, without a second branch.
         private static DateTime Max(DateTime a, DateTime b) => a > b ? a : b;
 
         private static int RemoveTrailingRows(
-            IList<ActionItem> actions, DateTime floor, Func<ActionItem, bool> match)
+            IList<ActionItem> actions, DateTime floor, Func<ActionItem, bool> match,
+            Action<ActionItem>? onRemoved = null)
         {
             int removed = 0;
             for (int i = actions.Count - 1; i >= 0; i--)
@@ -380,6 +385,7 @@ namespace TrueReplayer
                 if (!match(a)) break;
                 actions.RemoveAt(i);
                 removed++;
+                onRemoved?.Invoke(a);
             }
             return removed;
         }
@@ -502,7 +508,22 @@ namespace TrueReplayer
                         // "produced by this recording at all", and only both together are the
                         // question being asked.
                         var floor = Max(cutoff, recordingService.RecordingStartedUtc);
-                        RemoveTrailingRows(actions, floor, a => IsRecorderClickRow(a.ActionType));
+                        ActionItem? oldestRemoved = null;
+                        RemoveTrailingRows(actions, floor, a => IsRecorderClickRow(a.ActionType), r => oldestRemoved = r);
+                        // A press held past that window (a long-press; a slow drag in paired mode) leaves
+                        // its DOWN older than the cutoff, so the sweep took the UP and stopped at the
+                        // DOWN — and a lone LeftClickDown replays as a button pressed and never released,
+                        // for the rest of the run. The DOWN right above a removed UP is the same physical
+                        // click, so it goes too; only the session floor still applies (a row loaded with
+                        // the profile is never this click's other half).
+                        if (oldestRemoved != null && actions.Count > 0)
+                        {
+                            var down = actions[^1];
+                            bool pairs = (oldestRemoved.ActionType == "LeftClickUp" && down.ActionType == "LeftClickDown")
+                                || (oldestRemoved.ActionType == "RightClickUp" && down.ActionType == "RightClickDown");
+                            if (pairs && down.RecordedAt >= recordingService.RecordingStartedUtc)
+                                actions.RemoveAt(actions.Count - 1);
+                        }
 
                         int delay = int.TryParse(CustomDelay, out var d) ? d : 100;
                         // Input fields → BrowserType with empty text (user fills in later)
@@ -535,7 +556,15 @@ namespace TrueReplayer
                     if (_disposed) return;
                     dispatcherQueue.TryEnqueue(() =>
                     {
-                        if (!recordingService.IsRecording) return;
+                        // The recording's LAST word arrives after it ended, by construction: the stop
+                        // broadcast is what makes the page commit the text still in a focused field
+                        // (content.js stopRecording → flushTypingObserver), so that typingCaptured lands
+                        // after IsRecording went false, every time. Dropping it left the BrowserType row
+                        // empty and the raw keystrokes in the grid — what the cleanup below exists to
+                        // prevent — on every stop made by the global hotkey (the app's own Stop button
+                        // takes the focus off the field first, so that flush wins the race).
+                        if (!recordingService.IsRecording
+                            && DateTime.UtcNow - recordingService.RecordingEndedUtc > LastTypingGrace) return;
                         if (string.IsNullOrEmpty(text)) return;
 
                         // The keys this typing produced were ALSO recorded natively by the OS

@@ -45,6 +45,19 @@ let isBridgeReady = false;
 let isOutdated = false;
 // Immediate retries still owed to a bridge that dropped while live. See FAST_RETRY_ATTEMPTS.
 let fastRetriesLeft = 0;
+// When recording last stopped (ms). The stop broadcast is what makes a page commit the text still
+// sitting in a focused field (content.js stopRecording → flushTypingObserver), so that final
+// typingCaptured reaches the gate below AFTER isRecording went false — every time. It is the
+// recording's last word, not a stray event, and it is accepted for a moment past the stop.
+let recordingStoppedAt = 0;
+const LAST_WORD_MS = 3000;
+// Which tab each element pick in flight went to, by the app's requestId. A cancel has to reach THAT
+// tab: re-querying the active tab sent it wherever the user had switched to since, and the tab
+// really in crosshair mode went on eating every click. latestPickId answers a cancel that names no
+// pick (the editor closing). A service worker restarted since the pick has lost both; the cancel
+// then falls back to the active tab, as it always did.
+const pickTabs = new Map();
+let latestPickId = null;
 
 function connect() {
   if (port) return;
@@ -95,6 +108,7 @@ function connect() {
           break;
 
         case 'browser:setRecording':
+          if (isRecording && !msg.enabled) recordingStoppedAt = Date.now();
           isRecording = msg.enabled;
           updateBadge();
           chrome.tabs.query({}, (tabs) => {
@@ -502,7 +516,7 @@ function connect() {
             //     commandId already dropped and could never be seen. isInstantProbe, computed
             //     above for the frame decision, is the same question, so reuse it.
             // (2) Retrying eats time BEFORE content.js arms its own timer, while the C# grace is a
-            //     flat 2 s. Let this window grow with the action timeout and the two clocks invert:
+            //     flat 3.5 s (PipeGraceMs). Let this window grow with the action timeout and the two clocks invert:
             //     the C# side gives up first and reports "not found" for a step that then runs and
             //     clicks. A ceiling well under that grace keeps the ordering the grace bought.
             const injectBudget = isInstantProbe ? 750 : Math.min(1500, Math.max(1000, msg.timeout || 5000));
@@ -572,7 +586,7 @@ function connect() {
             const execIn = (frameId) => {
               // Phase 2 — EXECUTE, in one frame. The timeout is what is LEFT of the action's
               // budget: the waiting already happened during the probe, and handing this half a
-              // fresh full timeout would let a 30 s action run for 60 s — past the flat 2 s grace
+              // fresh full timeout would let a 30 s action run for 60 s — past the flat grace
               // the C# side allows itself over the timeout it asked for, which is what keeps
               // content.js's timeout classifier the authority on "not found".
               // The floor leaves room to re-acquire the element if the page re-rendered between
@@ -632,11 +646,19 @@ function connect() {
               });
               return;
             }
+            const pickId = msg.requestId;
+            pickTabs.set(pickId, tabs[0].id);
+            latestPickId = pickId;
+            const settled = () => {
+              pickTabs.delete(pickId);
+              if (latestPickId === pickId) latestPickId = null;
+            };
             // frameId 0 because content.js's startPick already returns early outside the main
             // frame (see its isMainFrame guard). Without this the sub-frames still received the
             // request, set pickResolve, bailed out of startPick and returned true — leaving a
             // message channel open per frame that nothing would ever answer.
-            chrome.tabs.sendMessage(tabs[0].id, { type: 'pickElement' }, { frameId: 0 }).then((response) => {
+            chrome.tabs.sendMessage(tabs[0].id, { type: 'pickElement', pickId }, { frameId: 0 }).then((response) => {
+              settled();
               sendToNative({
                 type: 'browser:pickResult',
                 requestId: msg.requestId,
@@ -644,6 +666,7 @@ function connect() {
                 alternatives: response?.alternatives || [],
               });
             }).catch(() => {
+              settled();
               sendToNative({
                 type: 'browser:pickResult',
                 requestId: msg.requestId,
@@ -654,12 +677,16 @@ function connect() {
           });
           break;
 
-        case 'browser:cancelPick':
-          // App asked to abort an in-progress element pick (editor switched/closed).
-          chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            if (tabs[0]) chrome.tabs.sendMessage(tabs[0].id, { type: 'cancelPick' }).catch(() => {});
-          });
+        case 'browser:cancelPick': {
+          // App asked to abort an in-progress element pick (editor switched/closed, or its own wait
+          // ran out). Aimed at the tab that pick went to, and naming it — see pickTabs.
+          const pickId = msg.requestId || latestPickId;
+          const tabId = pickId != null ? pickTabs.get(pickId) : undefined;
+          const cancel = (id) => chrome.tabs.sendMessage(id, { type: 'cancelPick', pickId: pickId || undefined }, { frameId: 0 }).catch(() => {});
+          if (typeof tabId === 'number') cancel(tabId);
+          else chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => { if (tabs[0]) cancel(tabs[0].id); });
           break;
+        }
       }
     });
 
@@ -828,7 +855,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // can't be spoofed from a non-content-script sender. getStatus (from the popup) has no tab.
   if (!msg || sender.id !== chrome.runtime.id) return;
   const RECORDING_TYPES = ['elementClicked', 'typingCaptured', 'selectInteractionStart',
-    'selectInteractionEnd', 'selectChanged', 'commandResult'];
+    'selectInteractionEnd', 'selectChanged'];
   if (RECORDING_TYPES.includes(msg.type) && !sender.tab) return;
   if (msg.type === 'elementClicked' && isRecording) {
     sendToNative({
@@ -845,7 +872,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       url: sender.tab?.url || '',
     });
     sendResponse({ ok: true });
-  } else if (msg.type === 'typingCaptured' && isRecording) {
+  } else if (msg.type === 'typingCaptured' && (isRecording || Date.now() - recordingStoppedAt < LAST_WORD_MS)) {
+    // …or the recording's last word, just after the stop — see recordingStoppedAt.
     // #10 — Typing in an input was observed; bridge fills the BrowserType action's text
     sendToNative({
       type: 'browser:typingCaptured',
@@ -938,15 +966,17 @@ chrome.runtime.onInstalled.addListener(() => connect());
  *
  * Cleared BEFORE the refresh, so a tab that fails to reload cannot leave the flag armed and
  * turn every future service-worker wake-up into a surprise refresh of the user's tabs.
- * Only http(s) tabs: nothing else can host a content script, and reloading a pinned app tab or
- * a chrome:// page would be an unrequested side effect.
+ * Only http(s) and file tabs — the test canHostScript applies before running a command: nothing
+ * else can host a content script (file: only once "Allow access to file URLs" is on, and then it
+ * does, so leaving it out left those tabs orphaned by the very button meant to prevent it), and
+ * reloading a pinned app tab or a chrome:// page would be an unrequested side effect.
  */
 chrome.storage.local.get('reloadTabsOnStart', (state) => {
   if (!state || !state.reloadTabsOnStart) return;
   chrome.storage.local.remove('reloadTabsOnStart', () => {
     chrome.tabs.query({}, (tabs) => {
       for (const tab of tabs) {
-        if (tab.id != null && /^https?:/i.test(tab.url || '')) {
+        if (tab.id != null && /^(https?|file):/i.test(tab.url || '')) {
           chrome.tabs.reload(tab.id).catch(() => {});
         }
       }

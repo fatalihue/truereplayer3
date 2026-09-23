@@ -63,6 +63,22 @@
   let highlightEl = null;
   let _mouseOverPending = false;
   let _lastHighlightedEl = null;
+  // The element the pending hover frame outlines — the LATEST one the pointer entered, not the one
+  // whose event scheduled the frame. Passing quickly from A into B used to leave the outline on A:
+  // B's mouseover was dropped while A's frame was pending, and A's mouseout had already cleared the
+  // "same element" guard that A's frame then checked.
+  let _hoverTarget = null;
+  // The id background.js gave the pick that is armed. A cancel is checked against it, so a cancel
+  // meant for an older pick cannot tear down a newer one.
+  let currentPickId = null;
+  // The control a label click is about to hand its click to (see labelActivating).
+  let _labelHandoff = null;
+  // Where the primary button last went down while recording — what tells a click from a drag.
+  // Generous on purpose: a hand that shivers a few pixels mid-click still records a click.
+  const DRAG_PX = 8;
+  let _pressX = 0;
+  let _pressY = 0;
+  let _pressed = false;
 
   // #10 — Typing capture during recording
   let _typingObserver = null;       // currently-monitored input element
@@ -103,15 +119,18 @@
 
   function onMouseOver(e) {
     if (!recording && !picking) return;
-    const el = e.target;
-    if (!el || el === document.body || el === document.documentElement) return;
-    if (el === _lastHighlightedEl) return; // Skip if same element — no reflow needed
+    if (orphaned()) { disarmOrphan(); return; }
+    const target = e.target;
+    if (!target || target === document.body || target === document.documentElement) return;
+    _hoverTarget = target;
+    if (target === _lastHighlightedEl) return; // Skip if same element — no reflow needed
     if (_mouseOverPending) return;
     _mouseOverPending = true;
     requestAnimationFrame(() => {
       _mouseOverPending = false;
       if (!recording && !picking) return;
-      if (el === _lastHighlightedEl) return;
+      const el = _hoverTarget;
+      if (!el || !el.isConnected || el === _lastHighlightedEl) return;
       _lastHighlightedEl = el;
       removeHighlight();
 
@@ -136,11 +155,15 @@
 
   function onMouseOut() {
     _lastHighlightedEl = null;
+    _hoverTarget = null;
     removeHighlight();
   }
 
   function onClick(e) {
-    if (!recording) return;
+    // A pick armed during a recording owns the click (onPickClick); recording it as well put a
+    // spurious row in the middle of the recording.
+    if (!recording || picking) return;
+    if (orphaned()) { disarmOrphan(); return; }
 
     // Right-clicks are handled by onContextMenu
     if (e.button === 2) return;
@@ -155,22 +178,67 @@
     const el = e.target;
     if (!el) return;
 
+    // Only the USER's clicks become rows. Three kinds of click are not theirs:
+    //  • a page script's el.click() — untrusted; the user's click that caused it is recorded;
+    //  • the browser's follow-up click on a label's control (see labelActivating);
+    //  • a click with detail 0, the activation a KEY produced. Measured in Chromium: Enter in a
+    //    text field submits by clicking the form's submit button (detail 0, the field still
+    //    focused), and Enter or Space on a focused button clicks it the same way. The OS hook has
+    //    already recorded that key, and the typing cleanup keeps Enter on purpose, so recording
+    //    the click as well replayed one key as two submissions, or two activations.
+    if (!e.isTrusted) return;
+    if (_labelHandoff && el === _labelHandoff) { _labelHandoff = null; return; }
+    if (e.detail === 0) { flushTypingObserver(); return; }
+
     // Native <select> clicks just open the OS dropdown popup. The meaningful action
     // is the value change, captured by onSelectChange below — recording the click
     // here would produce a redundant (and broken at replay) BrowserClick.
     if (el.tagName === 'SELECT') return;
 
-    const selector = generateSelector?.(el);
+    // A click on a label's own text: the browser is about to click the control itself. When that
+    // control is a field, ITS click is the row — it becomes the BrowserType and starts the typing
+    // observer — so this one is dropped. Otherwise (a checkbox, a radio) this click is the row and
+    // the control's is dropped: one physical click, one row. Both used to be recorded, and replay
+    // toggled the box twice, back where it started, or failed on the second step when the real
+    // checkbox is the visually hidden input behind a styled label.
+    const label = labelActivating(el);
+    if (label) {
+      if (isRecordedField(label.control)) return;
+      armLabelHandoff(label.control);
+    }
+
+    // A contentEditable click records the editing HOST (see editingHost).
+    const field = el.isContentEditable ? editingHost(el) : el;
+    // Detect input-like elements for auto BrowserType
+    const isInput = isRecordedField(field);
+
+    // A drag is not a click, but the browser still fires one: after a press and a release on the
+    // same element (a card dragged within its list), and after a press and a release on DIFFERENT
+    // elements, on their common ancestor (text selected across two paragraphs, an item dropped
+    // into another list). As a BrowserClick it replayed as a click on the centre of that element —
+    // or of the container — and it swept away the native press/release rows, the only faithful
+    // record of the gesture. A drag leaves the gesture to them. Fields are exempt: dragging selects
+    // text inside one, and it is how a range input is moved.
+    if (!isInput && movedSincePress(e)) { flushTypingObserver(); return; }
+
+    const selector = generateSelector?.(field);
     if (!selector) return;
 
-    const alternatives = selectorAlternativesFor(el);
-    const description = getElementDescription?.(el) || '';
+    const alternatives = selectorAlternativesFor(field);
+    const description = getElementDescription?.(field) || '';
+    const tag = field.tagName.toLowerCase();
 
-    // Detect input-like elements for auto BrowserType
-    const tag = el.tagName.toLowerCase();
-    const isInput = tag === 'textarea'
-      || (tag === 'input' && !['button', 'submit', 'reset', 'checkbox', 'radio', 'file', 'image', 'hidden'].includes(el.type))
-      || el.isContentEditable;
+    // Commit what was typed in the previous field BEFORE announcing this click. The C# side cleans
+    // the typed keys off the tail when typingCaptured lands, and stops at the first row that is
+    // neither a key nor a native click — so a BrowserClick that got there first ended the cleanup
+    // before it began, the keys stayed, and replay typed the text twice (a Send button that keeps
+    // the focus in the field; clicking the same field again). startTypingObserver commits the
+    // previous field itself before it starts on this one.
+    if (isInput) {
+      startTypingObserver(field, selector, alternatives);
+    } else {
+      flushTypingObserver();
+    }
 
     chrome.runtime.sendMessage({
       type: 'elementClicked',
@@ -181,14 +249,6 @@
       button: e.type === 'contextmenu' ? 'right' : 'left',
       isInput,
     });
-
-    // #10 — If user clicked into an input/contentEditable, start observing typing
-    if (isInput) {
-      startTypingObserver(el, selector, alternatives);
-    } else {
-      // Non-input click commits whatever was being typed
-      flushTypingObserver();
-    }
 
     // Visual feedback: flash green
     if (highlightEl) {
@@ -207,6 +267,83 @@
     return null;
   }
 
+  // Elements whose click becomes a BrowserType: fields that hold a typed or a set value. range and
+  // color belong here — the typing observer reads their .value like any field's, and replay sets
+  // it (executeCommand 'type').
+  function isRecordedField(el) {
+    if (!el || !el.tagName) return false;
+    const tag = el.tagName.toLowerCase();
+    return tag === 'textarea'
+      || (tag === 'input' && !['button', 'submit', 'reset', 'checkbox', 'radio', 'file', 'image', 'hidden'].includes(el.type))
+      || !!el.isContentEditable;
+  }
+
+  // The element a contentEditable click actually focuses: the editing HOST, not the <b> or <span>
+  // inside it that the click landed on. Focus, blur and the text worth capturing all live on the
+  // host — a blur listener on the inner node never fires, so the typing was only committed by some
+  // later click, and only the inner node's text — and inner nodes are rewritten as the user types,
+  // so a selector for one would not outlive the recording.
+  function editingHost(el) {
+    let host = el;
+    while (host.parentElement && host.parentElement.isContentEditable) host = host.parentElement;
+    return host;
+  }
+
+  // The <label> this click activates: it landed on the label's own content (its text, an icon),
+  // not on its control and not on a link or a button inside it. The browser then clicks the control
+  // itself, synchronously, inside this click — and that follow-up is trusted and carries detail 1,
+  // like a real click (measured in Chromium), so this relation is the only way to tell it apart.
+  function labelActivating(el) {
+    const label = el.closest ? el.closest('label') : null;
+    const control = label && label.control;
+    if (!control || control === el || control.contains(el)) return null;
+    const inner = el.closest('a[href], button, input, select, textarea, summary');
+    if (inner && label.contains(inner)) return null;
+    return label;
+  }
+
+  // Skip the control's follow-up click when it arrives. Cleared on the next task, so a follow-up
+  // that never comes (a disabled control) cannot swallow a real click later.
+  function armLabelHandoff(control) {
+    _labelHandoff = control;
+    setTimeout(() => { if (_labelHandoff === control) _labelHandoff = null; }, 0);
+  }
+
+  function onRecordPointerDown(e) {
+    if (e.button !== 0) return;
+    _pressed = true;
+    _pressX = e.clientX;
+    _pressY = e.clientY;
+  }
+
+  function movedSincePress(e) {
+    return _pressed && (Math.abs(e.clientX - _pressX) > DRAG_PX || Math.abs(e.clientY - _pressY) > DRAG_PX);
+  }
+
+  // True once the extension that injected this script has been reloaded or removed. The script
+  // keeps running with whatever state it had, but chrome.runtime is dead: nothing it records can be
+  // delivered, and nothing can ever tell it to stop.
+  function orphaned() {
+    try { return !chrome.runtime?.id; } catch { return true; }
+  }
+
+  // Step out of the page's way without talking to the dead extension. A recording or a pick left
+  // armed in an orphaned script kept every link inert and every right-click swallowed — every click,
+  // for a pick — until the tab was reloaded by hand, and reloading the extension from
+  // chrome://extensions does not refresh the tabs the way the popup's button does.
+  function disarmOrphan() {
+    if (recording) {
+      recording = false;
+      try { flushTypingObserver(); } catch { /* the send throws; the field's listeners are already off */ }
+      removeHighlight();
+      detachRecordingListeners();
+    }
+    if (picking) {
+      pickResolve = null;
+      stopPick(null, []);
+    }
+  }
+
   function removeHighlight() {
     if (highlightEl) {
       highlightEl.remove();
@@ -215,7 +352,8 @@
   }
 
   function onContextMenu(e) {
-    if (!recording) return;
+    if (!recording || picking) return;
+    if (orphaned()) { disarmOrphan(); return; }
 
     // Prevent the native context menu so we can record the right-click
     e.preventDefault();
@@ -223,11 +361,15 @@
     // Reuse the same logic as onClick
     const el = e.target;
     if (!el) return;
+    if (!e.isTrusted) return;
 
     const selector = generateSelector?.(el);
     if (!selector) return;
 
     const description = getElementDescription?.(el) || '';
+
+    // The typing first, for the reason onClick gives.
+    flushTypingObserver();
 
     chrome.runtime.sendMessage({
       type: 'elementClicked',
@@ -237,8 +379,6 @@
       tagName: el.tagName.toLowerCase(),
       button: 'right',
     });
-
-    flushTypingObserver();
 
     // Visual feedback: flash green
     if (highlightEl) {
@@ -296,10 +436,14 @@
     _typingObserverSelector = '';
     _typingObserverAlternatives = [];
 
-    // Compute typed delta
+    // Compute typed delta. A range or a colour input holds a value, not text, and that value is
+    // recorded whole — never as an append ("5" → "55" is a new value, not "5" appended) and never
+    // compared with the value at the click: pressing a range moves its thumb BEFORE the click event
+    // fires, so the value the user set is already there when the observer starts.
+    const valueOnly = el.tagName === 'INPUT' && /^(range|color)$/i.test(el.type || '');
     let typed = current;
     let isAppend = false;
-    if (initial && current.startsWith(initial)) {
+    if (!valueOnly && initial && current.startsWith(initial)) {
       typed = current.slice(initial.length);
       isAppend = true;
     }
@@ -326,6 +470,7 @@
   // and pick) would leave orphan click pairs in the action grid.
   function onSelectMouseDown(e) {
     if (!recording) return;
+    if (orphaned()) { disarmOrphan(); return; }
     if (!e.target || e.target.tagName !== 'SELECT') return;
     chrome.runtime.sendMessage({ type: 'selectInteractionStart' });
   }
@@ -335,6 +480,7 @@
   // unrelated clicks the user makes immediately after.
   function onSelectBlur(e) {
     if (!recording) return;
+    if (orphaned()) { disarmOrphan(); return; }
     if (!e.target || e.target.tagName !== 'SELECT') return;
     chrome.runtime.sendMessage({ type: 'selectInteractionEnd' });
   }
@@ -345,6 +491,7 @@
   // focus. (The backend also wipes the Esc tap the OS keyboard hook recorded.)
   function onRecordKeyDown(e) {
     if (!recording) return;
+    if (orphaned()) { disarmOrphan(); return; }
     if (e.key !== 'Escape') return;
     const el = document.activeElement;
     if (el && el.tagName === 'SELECT') {
@@ -357,6 +504,7 @@
   // resulting value change is captured here as a BrowserSelectOption action.
   function onSelectChange(e) {
     if (!recording) return;
+    if (orphaned()) { disarmOrphan(); return; }
     const el = e.target;
     if (!el || el.tagName !== 'SELECT') return;
 
@@ -387,8 +535,10 @@
   function startRecording() {
     if (!isMainFrame) return; // Only record in main frame — iframes cause multiplied handlers
     recording = true;
+    _pressed = false;
     document.addEventListener('mouseover', onMouseOver, true);
     document.addEventListener('mouseout', onMouseOut, true);
+    document.addEventListener('pointerdown', onRecordPointerDown, true);
     document.addEventListener('click', onClick, true);
     document.addEventListener('contextmenu', onContextMenu, true);
     document.addEventListener('change', onSelectChange, true);
@@ -401,8 +551,13 @@
     recording = false;
     flushTypingObserver();
     removeHighlight();
+    detachRecordingListeners();
+  }
+
+  function detachRecordingListeners() {
     document.removeEventListener('mouseover', onMouseOver, true);
     document.removeEventListener('mouseout', onMouseOut, true);
+    document.removeEventListener('pointerdown', onRecordPointerDown, true);
     document.removeEventListener('click', onClick, true);
     document.removeEventListener('contextmenu', onContextMenu, true);
     document.removeEventListener('change', onSelectChange, true);
@@ -416,6 +571,8 @@
   let pickResolve = null;
 
   function onPickClick(e) {
+    // An orphaned script lets the click through (see disarmOrphan).
+    if (orphaned()) { disarmOrphan(); return; }
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
@@ -446,6 +603,7 @@
   }
 
   function onPickKeydown(e) {
+    if (orphaned()) { disarmOrphan(); return; }
     if (e.key === 'Escape') {
       e.preventDefault();
       stopPick(null, []);
@@ -467,9 +625,11 @@
     document.removeEventListener('click', onPickClick, true);
     document.removeEventListener('contextmenu', onPickClick, true);
     document.removeEventListener('keydown', onPickKeydown, true);
+    currentPickId = null;
     if (pickResolve) {
-      pickResolve(selector, alternatives || []);
+      const resolve = pickResolve;
       pickResolve = null;
+      try { resolve(selector, alternatives || []); } catch { /* its channel is gone (page left, extension reloaded) */ }
     }
   }
 
@@ -773,10 +933,17 @@
   // cached one cannot — with them a match would flip on and off between elements.
   function ensureRegex(parsed) {
     if (parsed._re === undefined) {
-      try {
-        parsed._re = new RegExp(parsed.value, (parsed.flags || '').replace(/[gy]/g, ''));
-      } catch {
+      // An EMPTY pattern ("text//", "text//i") compiles and matches every string, so a selector
+      // emptied by a slip of the keyboard acted on the deepest element that had any text at all.
+      // It is treated like a pattern that does not compile: it matches nothing.
+      if (!parsed.value) {
         parsed._re = null;
+      } else {
+        try {
+          parsed._re = new RegExp(parsed.value, (parsed.flags || '').replace(/[gy]/g, ''));
+        } catch {
+          parsed._re = null;
+        }
       }
     }
     return parsed._re;
@@ -831,6 +998,11 @@
     // live page. The map entry is built exactly the way textContent is: descendant text nodes
     // concatenated in document order with NO separator (comments/PIs contribute nothing), and
     // only trimmed at the point of use — byte-identical to what el.textContent?.trim() read.
+    // A document with no <body> — an SVG or XML document in a frame; all_frames injects there too —
+    // has no text to search. Answering null keeps that frame silent, like any frame without the
+    // element. Reading document.body.firstChild threw, and the error was an INSTANT reply that won
+    // the fan-out race against the frame that was about to find the element.
+    if (!document.body) return null;
     const aggText = new Map();
     {
       const elStack = [document.body];
@@ -1040,7 +1212,11 @@
         }, timeoutMs);
 
         observer = new MutationObserver(schedule);
-        observer.observe(document.body, {
+        // documentElement when there is no <body> (see findByParsedText): observing null threw, and
+        // the frame answered with that error at once instead of waiting silently. The 250 ms poll
+        // below still runs, so a document with neither just waits out its timeout.
+        const root = document.body || document.documentElement;
+        if (root) observer.observe(root, {
           childList: true,
           subtree: true,
           attributes: true,
@@ -1812,10 +1988,19 @@
             el.focus();
             if (text) {
               const option = Array.from(el.options).find(o => o.value === text || o.textContent.trim() === text);
-              if (option) {
-                setNativeValue(el, option.value);
-                el.dispatchEvent(new Event('change', { bubbles: true }));
+              // selectOption's contract: an option that is not there is an error, not a success
+              // that changed nothing, and both events go out — frameworks listen to one or the other.
+              if (!option) {
+                throw mkError('OPTION_NOT_FOUND', `No <option> matched "${text}".`,
+                  'Check the exact option label or value, or use a Select Option action.');
               }
+              if (option.disabled) {
+                throw mkError('OPTION_DISABLED', `The matched <option> "${option.text.trim()}" is disabled.`,
+                  'Wait for the option to become enabled, or pick a different one.');
+              }
+              setNativeValue(el, option.value);
+              el.dispatchEvent(new Event('input', { bubbles: true }));
+              el.dispatchEvent(new Event('change', { bubbles: true }));
             } else {
               el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
             }
@@ -1936,6 +2121,19 @@
           scrollIntoViewIfNeeded(el);
           flashHighlight(el, 'active', 220);
           el.focus();
+
+          // A range or a colour input holds a VALUE, not typed text. The recorder captures what the
+          // user set it to (the typing observer reads .value), so replay sets that value and
+          // announces it the way the widget does — 'input', then 'change'. Typed at, the element is
+          // refused below (TYPE_TARGET_NOT_TEXT), which is how every recorded slider or colour pick
+          // used to fail, every time.
+          if (el.tagName === 'INPUT' && /^(range|color)$/i.test(el.type || '')) {
+            setNativeValue(el, String(text ?? '').trim());
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+            flashHighlight(el, 'success', 200);
+            return { success: true };
+          }
 
           // Parse text for key chips — Send Text's grammar: {enter}, {tab:2}, {space}, {home},
           // {delay:500}… Mixed sequences like "user{tab}pass{enter}" type each text segment, then
@@ -2204,6 +2402,11 @@
         case 'waitUrl': {
           const pattern = msg.urlPattern || '';
           if (!pattern) return { success: true };
+          const problem = urlPatternProblem(pattern);
+          if (problem) {
+            throw mkError('REGEX_INVALID', problem,
+              'A glob matches the whole URL: */checkout/success*. A regex goes between slashes: /checkout\\/success/.');
+          }
           const matches = (u) => urlMatchesPattern(u, pattern);
           if (matches(location.href)) return { success: true };
 
@@ -2349,6 +2552,26 @@
     try { return new RegExp('^' + escaped + '$').test(url); } catch { return false; }
   }
 
+  // Why a URL pattern cannot be used, or null. A leading and a later slash make it /regex/flags, and
+  // then the tail has to BE flags: "/checkout/success" read as /checkout/ with flags "success", the
+  // RegExp threw, the catch in urlMatchesPattern answered "no match", and the wait timed out on the
+  // very URL it was written for — with a message about the page, not about the pattern.
+  function urlPatternProblem(pattern) {
+    if (!pattern || !pattern.startsWith('/')) return null;
+    const last = pattern.lastIndexOf('/');
+    if (last <= 0) return null;
+    const flags = pattern.slice(last + 1);
+    if (!/^[dgimsuvy]*$/.test(flags)) {
+      return `"${pattern}" reads as /regex/flags, and "${flags}" is not a set of regex flags.`;
+    }
+    try {
+      new RegExp(pattern.slice(1, last), flags);
+    } catch (err) {
+      return `"${pattern}" is not a valid regular expression (${err.message}).`;
+    }
+    return null;
+  }
+
   // ── Message Handling ──
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -2378,18 +2601,31 @@
         });
         return true; // async response
 
-      case 'pickElement':
-        // Single-pick mode: highlights elements, returns selector + alternatives, ESC cancels
+      case 'pickElement': {
+        // Single-pick mode: highlights elements, returns selector + alternatives, ESC cancels.
+        // One pick at a time: a request that arrives while another is armed supersedes it, and the
+        // older one is answered — with nothing — instead of being dropped on the floor, which is
+        // what overwriting pickResolve did: its request waited forever.
+        if (pickResolve) {
+          const superseded = pickResolve;
+          pickResolve = null;
+          try { superseded(null, []); } catch { /* its channel is already gone */ }
+        }
+        currentPickId = msg.pickId || null;
         pickResolve = (selector, alternatives) => {
           sendResponse({ selector, alternatives });
         };
         startPick();
         return true; // async response
+      }
 
       case 'cancelPick':
         // App aborted the pick (editor switched/closed) — stop highlighting. stopPick resolves the
         // pending pickElement response with null, so the in-flight request completes cleanly.
-        if (picking) stopPick(null, []);
+        // Only the pick the cancel names: one meant for an older pick (the app's 30 s wait running
+        // out after the user had started another) must not tear down the newer one. A cancel that
+        // names none — the editor closing, or an older background — cancels whatever is armed.
+        if (picking && (!msg.pickId || !currentPickId || msg.pickId === currentPickId)) stopPick(null, []);
         sendResponse({ ok: true });
         break;
 
@@ -2406,12 +2642,41 @@
   // Main frame only: a subframe's answer is unusable anyway (startRecording has its own
   // isMainFrame guard), and each iframe's sendMessage wakes the MV3 service worker — whose
   // top-level connect() then spawns a fresh NativeHost. Ad-heavy pages made that a trigger.
-  if (isMainFrame) {
+  function syncRecordingState() {
+    if (!isMainFrame) return;
     try {
       chrome.runtime.sendMessage({ type: 'getStatus' }, (status) => {
         if (chrome.runtime.lastError) return;
-        if (status && status.recording) startRecording();
+        const on = !!(status && status.recording);
+        if (on && !recording) startRecording();
+        else if (!on && recording) stopRecording();
       });
-    } catch { /* extension context invalidated (e.g. extension was reloaded) */ }
+    } catch {
+      // extension context invalidated (e.g. extension was reloaded)
+      disarmOrphan();
+    }
   }
+  syncRecordingState();
+
+  // ── Page lifecycle ──
+  // pagehide: the document is going away — navigated from, reloaded, or frozen into the
+  // back/forward cache. What the user typed into the focused field is committed NOW, because nothing
+  // later will: an Enter that submits and navigates never blurs the field. A pick still armed is
+  // abandoned — Chrome closes a page's message channels when it enters the cache, so the app's
+  // request could never be answered from here anyway.
+  window.addEventListener('pagehide', () => {
+    if (recording) {
+      try { flushTypingObserver(); } catch { /* orphaned */ }
+    }
+    if (picking) stopPick(null, []);
+  }, true);
+
+  // pageshow from the cache: the SAME document comes back with every variable as it was frozen, and
+  // a frozen page misses the setRecording broadcasts sent meanwhile. A recording that ended while it
+  // was away left its links inert and its right-clicks swallowed until a reload; one that started
+  // while it was away never armed, and the page's clicks went unrecorded without a word. Re-ask,
+  // exactly as a page that loads mid-recording does.
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted) syncRecordingState();
+  }, true);
 })();

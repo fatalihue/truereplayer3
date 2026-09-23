@@ -243,7 +243,8 @@ function buildTextSelector(mode: TextMode, raw: string): string {
   return prefix + raw;
 }
 
-// #2 — Estimate selector tier client-side (mirrors selectorGenerator.estimateSelectorTier)
+// #2 — Estimate a selector's stability tier from its text alone, no DOM lookup. The only copy: the
+// extension carried a twin that nothing called, removed in 1.4.24.
 function estimateTier(selector: string): 'S' | 'A' | 'B' | 'C' {
   if (!selector) return 'C';
   const s = selector.trim();
@@ -3441,6 +3442,10 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 />
                 <button
                   onClick={() => {
+                    // Never during a run: while recording, the click that picks would ALSO be a
+                    // recorded click; while replaying, the page belongs to the macro. Every other
+                    // door this sheet has onto the screen refuses the same way.
+                    if (refuseDuringRun()) return;
                     const requestId = Math.random().toString(36).slice(2, 10);
                     setPickElementRequestId(requestId);
                     setIsPicking(true);
@@ -4158,6 +4163,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 {!isBrowserNavigate && (
                   <button
                     onClick={() => {
+                      if (refuseDuringRun()) return; // same refusal as the other pick button
                       const requestId = Math.random().toString(36).slice(2, 10);
                       setPickElementRequestId(requestId);
                       setIsPicking(true);

@@ -37,6 +37,10 @@ namespace TrueReplayer.Services
         /// </summary>
         public DateTime RecordingStartedUtc { get; private set; } = DateTime.MaxValue;
 
+        // When the last recording session ended (UTC); MinValue before the first one. WebViewBridge
+        // accepts the extension's final typingCaptured for a moment past it — see there.
+        public DateTime RecordingEndedUtc { get; private set; } = DateTime.MinValue;
+
         public RecordingService(
             ActionRecorder recorder,
             Func<bool> getMouse,
@@ -87,6 +91,7 @@ namespace TrueReplayer.Services
             if (!IsRecording) return;
             IsRecording = false;
             RecordingStartedUtc = DateTime.MaxValue;
+            RecordingEndedUtc = DateTime.UtcNow;
             onButtonStateChanged?.Invoke("Recording", false);
             recorder.Stop();
             // captured=N, not a bare "stopped". A recording that appended NOTHING while keyboard
