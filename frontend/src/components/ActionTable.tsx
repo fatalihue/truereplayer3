@@ -1347,8 +1347,20 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
     const tag = (e.target as HTMLElement)?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable) return;
 
+    // A run doesn't take the grid away, so the grid stays and REFUSES — and the refusal lives here,
+    // where the send happens. App.tsx's run lockout swallows only Tab/Space/Enter/arrows, so Delete
+    // and Ctrl+A reached this handler mid-run; and a replay with no target window types into
+    // whatever is in front, this window included, so a macro's own Ctrl+A, Delete selected and
+    // deleted every row of the list the engine was stepping through.
+    const runActive = buttonStates.recordingActive || buttonStates.replayActive;
+
     if (e.key === 'Delete' && selectedIndices.size > 0) {
       e.preventDefault();
+      if (runActive) {
+        showToast(tt('Not deleted — the action list is locked while a run is active.',
+                     'Nada apagado — a lista de ações está travada enquanto um run está ativo.'), 'error');
+        return;
+      }
       // Lone-IF selection routes through actions:deleteConditional so the whole block goes
       // with it. A selection that TOUCHES a marker snaps to whole IF…EndIf blocks so a
       // straddling multi-select can't orphan block rows; a PURE body-row selection deletes
@@ -1371,6 +1383,8 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
 
     if (e.key === 'a' && (e.ctrlKey || e.metaKey) && actions.length > 0) {
       e.preventDefault();
+      // Silent: selecting is not a write, but a macro's Ctrl+A must not reshape the selection either.
+      if (runActive) return;
       setSelectedIndices(new Set(actions.map((_, i) => i)));
     }
 
@@ -1378,7 +1392,8 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
       e.preventDefault();
       setSelectedIndices(new Set());
     }
-  }, [editingCell, sendTextEdit, selectedIndices, send, actions, deleteIntentFor, showToast, tt]);
+  }, [editingCell, sendTextEdit, selectedIndices, send, actions, deleteIntentFor, showToast, tt,
+      buttonStates.recordingActive, buttonStates.replayActive]);
 
   // Handle edit input key events
   const handleEditKeyDown = useCallback((e: React.KeyboardEvent) => {

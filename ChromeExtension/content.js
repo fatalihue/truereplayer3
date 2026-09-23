@@ -6,7 +6,7 @@
    *
    * This used to be a `data-tr-overlay` attribute, which put the answer to "is this node ours?"
    * inside the DOM — where the page can read it and, more to the point, WRITE it. A page that
-   * stamps the attribute on everything it mutates makes waitForClickEffect discard every record,
+   * stamps the attribute on everything it mutates makes armClickEffect discard every record,
    * so `landed` stays false and the click falls through to the native `el.click()` fallback. The
    * comment on that fallback already names the cost: duplicate orders, duplicate messages, a
    * counter that reads 2.
@@ -648,46 +648,79 @@
    *   too tight  → a click that worked is dispatched a SECOND time. Duplicate orders, duplicate
    *                messages, a counter that reads 2.
    * Doing the action twice is far worse than not detecting that it worked, so err loose.
+   *
+   * ARMED BEFORE THE PRESS, and it watches TEXT. Both holes let a click that had already worked
+   * earn the rescue anyway — exactly the "counter that reads 2" above:
+   *   • It used to be created AFTER the click was dispatched. A MutationObserver never replays the
+   *     past, so a vanilla handler that writes synchronously inside dispatchEvent
+   *     (`count.textContent = ++n`, a row appended to a list) was over before the observer
+   *     existed, clickChanged only looks at the element itself, and the page read as untouched.
+   *   • It did not observe characterData. React, Vue and Svelte update a text by writing
+   *     `nodeValue`, which produces ONLY a characterData record — "Items: {n}" going to 1 was
+   *     invisible to an observer of childList + attributes.
+   * Arming after focus() keeps that call out (see the snapshot comment at the call site); what the
+   * press itself provokes (pointerdown, mousedown) counts, which is the err-loose side.
    */
-  function waitForClickEffect(el, snap, budgetMs) {
-    return new Promise((resolve) => {
-      let settled = false;
-      const finish = (v) => {
-        if (settled) return;
-        settled = true;
-        observer.disconnect();
-        clearTimeout(timer);
-        resolve(v);
-      };
-
-      // flashHighlight appends a marked div straight into body right before the click and removes
-      // it after. Both the insertion AND the removal are mutations, and counting either made the
-      // detector read TrueReplayer's own highlight as proof the page reacted — which is how the
-      // fallback became unreachable for the very elements it exists to rescue. Note this cannot be
-      // done by filtering the record's TARGET: a childList record reports the PARENT, so an
-      // overlay appended to body arrives as a mutation on body. The added/removed nodes are what
-      // have to be inspected.
-      const isOurs = (n) => ourOverlays.has(n);
-
-      const observer = new MutationObserver((records) => {
-        for (const r of records) {
-          if (r.type === 'childList') {
-            // A record whose ONLY added/removed nodes are our own overlay is our own doing.
-            let real = false;
-            for (const n of r.addedNodes) if (!isOurs(n)) { real = true; break; }
-            if (!real) for (const n of r.removedNodes) if (!isOurs(n)) { real = true; break; }
-            if (real) return finish(true);
-            continue;
-          }
-          // attributes / characterData: the target IS the changed node, so filtering it works here.
-          if (!isOurs(r.target)) return finish(true);
+  function armClickEffect(el, snap) {
+    // flashHighlight appends a marked div straight into body right before the click and removes
+    // it after. Both the insertion AND the removal are mutations, and counting either made the
+    // detector read TrueReplayer's own highlight as proof the page reacted — which is how the
+    // fallback became unreachable for the very elements it exists to rescue. Note this cannot be
+    // done by filtering the record's TARGET: a childList record reports the PARENT, so an
+    // overlay appended to body arrives as a mutation on body. The added/removed nodes are what
+    // have to be inspected.
+    const isOurs = (n) => ourOverlays.has(n);
+    const scan = (records) => {
+      for (const r of records) {
+        if (r.type === 'childList') {
+          // A record whose ONLY added/removed nodes are our own overlay is our own doing.
+          for (const n of r.addedNodes) if (!isOurs(n)) return true;
+          for (const n of r.removedNodes) if (!isOurs(n)) return true;
+          continue;
         }
-        if (clickChanged(el, snap)) finish(true);
-      });
-      observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+        // attributes / characterData: the target IS the changed node, so filtering it works here.
+        if (!isOurs(r.target)) return true;
+      }
+      return false;
+    };
 
-      const timer = setTimeout(() => finish(clickChanged(el, snap)), budgetMs);
+    let hit = false;
+    let wake = null;
+    const observer = new MutationObserver((records) => {
+      if (!hit && (scan(records) || clickChanged(el, snap))) hit = true;
+      if (hit && wake) wake();
     });
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
+
+    return {
+      // Resolves true the instant evidence shows up — or at once, if it already has — and
+      // clickChanged's verdict after budgetMs otherwise.
+      wait(budgetMs) {
+        return new Promise((resolve) => {
+          let settled = false;
+          let timer = null;
+          const finish = (v) => {
+            if (settled) return;
+            settled = true;
+            wake = null;
+            observer.disconnect();
+            if (timer !== null) clearTimeout(timer);
+            resolve(v);
+          };
+          // Records a synchronous handler queued inside dispatchEvent are not delivered yet
+          // (delivery is a microtask), so take them now instead of waiting for it.
+          if (!hit && (scan(observer.takeRecords()) || clickChanged(el, snap))) hit = true;
+          if (hit) { finish(true); return; }
+          wake = () => finish(true);
+          timer = setTimeout(() => finish(hit || clickChanged(el, snap)), budgetMs);
+        });
+      },
+      // Idempotent: the click path calls it in a finally, whether or not wait() ran.
+      disarm() {
+        wake = null;
+        observer.disconnect();
+      },
+    };
   }
 
   // #1 — Parse a selector into {kind, mode, value}.
@@ -1202,7 +1235,7 @@
     };
     const c = colors[status] || colors.active;
     const overlay = document.createElement('div');
-    // Marks this node as ours so waitForClickEffect can ignore it. Recorded by identity in a
+    // Marks this node as ours so armClickEffect can ignore it. Recorded by identity in a
     // closure-scoped WeakSet rather than as a DOM attribute — see ourOverlays for why the page
     // must not be able to claim this.
     ourOverlays.add(overlay);
@@ -1336,28 +1369,20 @@
     const read = () => (el.isContentEditable ? (el.textContent || '') : (typeof el.value === 'string' ? el.value : ''));
     const before = read();
 
-    let clipboardOk = false;
-    // Snapshot the user's clipboard so it can be restored — typeViaPaste otherwise permanently
-    // clobbers whatever they had copied. readText may be blocked (no permission/gesture); if so we
-    // skip the restore rather than failing the paste.
-    let priorClipboard = null;
-    let priorClipboardRead = false;
+    // The paste is a synthetic ClipboardEvent carrying its OWN DataTransfer, and the fallback below
+    // writes at the caret — nothing on this path reads the system clipboard, so it is never touched.
+    // It used to be: readText() is refused on most pages (the extension has no clipboardRead and the
+    // page origin's clipboard-read permission sits at "prompt"), writeText() succeeds on any focused
+    // tab, so the "restore" was skipped and whatever the user had copied — text, image or file — was
+    // silently replaced by the action's text, often a row of data. execCommand('paste') went with
+    // it: without clipboardRead it did nothing, and with it, it would have pasted the USER's
+    // clipboard into the field.
     try {
-      try { priorClipboard = await navigator.clipboard.readText(); priorClipboardRead = true; } catch { priorClipboardRead = false; }
-      await navigator.clipboard.writeText(text);
-      clipboardOk = true;
-    } catch {
-      clipboardOk = false;
-    }
-    if (clipboardOk) {
-      try {
-        const dt = new DataTransfer();
-        dt.setData('text/plain', text);
-        const pasteEvent = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt });
-        el.dispatchEvent(pasteEvent);
-        try { document.execCommand('paste'); } catch { /* fallback */ }
-      } catch { /* fallback */ }
-    }
+      const dt = new DataTransfer();
+      dt.setData('text/plain', text);
+      const pasteEvent = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt });
+      el.dispatchEvent(pasteEvent);
+    } catch { /* fallback */ }
 
     // Fallback / final write — covers apps that ignore the synthetic paste event. Writing AT THE
     // CARET (rather than replacing the whole value) is what makes append and {home}/{end} work.
@@ -1366,11 +1391,6 @@
       else insertTypedText(el, text); // writes, then fires input
     }
     el.dispatchEvent(new Event('change', { bubbles: true }));
-
-    // Restore the user's original clipboard now that the paste has consumed it (best effort).
-    if (priorClipboardRead) {
-      try { await navigator.clipboard.writeText(priorClipboard); } catch { /* best effort */ }
-    }
   }
 
   // ── Key chip parsing for BrowserType ──
@@ -1826,20 +1846,28 @@
           // Snapshot AFTER focus() — that call is OURS, and letting it count as "the page
           // reacted" is what made the fallback below unreachable for every focusable element.
           const snap = clickSnapshot(el);
+          // Armed BEFORE the first event of the press — see armClickEffect for why after the
+          // click was too late.
+          const fx = armClickEffect(el, snap);
 
-          el.dispatchEvent(new PointerEvent('pointerdown', { ...opts, pointerId: 1, pointerType: 'mouse' }));
-          el.dispatchEvent(new MouseEvent('mousedown', opts));
-          // KEEP this one. Some sites measure how long the button was held to tell a click from
-          // the start of a drag, and an instantaneous down/up reads as neither.
-          await new Promise(r => setTimeout(r, 30));
-          el.dispatchEvent(new PointerEvent('pointerup', { ...opts, pointerId: 1, pointerType: 'mouse', buttons: 0 }));
-          el.dispatchEvent(new MouseEvent('mouseup', { ...opts, buttons: 0 }));
-          el.dispatchEvent(new MouseEvent('click', { ...opts, buttons: 0 }));
+          let landed = false;
+          try {
+            el.dispatchEvent(new PointerEvent('pointerdown', { ...opts, pointerId: 1, pointerType: 'mouse' }));
+            el.dispatchEvent(new MouseEvent('mousedown', opts));
+            // KEEP this one. Some sites measure how long the button was held to tell a click from
+            // the start of a drag, and an instantaneous down/up reads as neither.
+            await new Promise(r => setTimeout(r, 30));
+            el.dispatchEvent(new PointerEvent('pointerup', { ...opts, pointerId: 1, pointerType: 'mouse', buttons: 0 }));
+            el.dispatchEvent(new MouseEvent('mouseup', { ...opts, buttons: 0 }));
+            el.dispatchEvent(new MouseEvent('click', { ...opts, buttons: 0 }));
 
-          // Synchronous handlers have already run by now, so check before waiting at all.
-          // Frameworks that batch (React) land a frame later, which the observer catches.
-          let landed = clickChanged(el, snap);
-          if (!landed) landed = await waitForClickEffect(el, snap, 200);
+            // Synchronous handlers have already run by now and their mutations are already in the
+            // observer's queue; frameworks that batch (React) land a microtask or a frame later,
+            // which the observer catches.
+            landed = clickChanged(el, snap) || await fx.wait(200);
+          } finally {
+            fx.disarm();
+          }
 
           // #4 — Native .click() only when the synthetic sequence produced NO observable effect.
           // Guarded on the element still being in the document: a click that removed its own

@@ -92,7 +92,14 @@ namespace TrueReplayer.Services
         // clamps to 30 s, so restarting TrueReplayer cost a measured 25 s of dead bridge and the
         // run inside that window failed outright. The budget is refilled only by a port that
         // reached bridge:connected, which is what keeps a closed app from looping on process spawns.
-        public const string ExpectedExtensionVersion = "1.4.22";
+        // 1.4.23 = two fixes in the content script, both from the quick review of 2026-09-23. The
+        // click's did-it-land observer is armed BEFORE the press and watches text (characterData):
+        // armed after the click, it missed every mutation a synchronous handler makes inside
+        // dispatchEvent, and without characterData it missed a React text update — either way a
+        // click that had worked earned the el.click() rescue and ran twice. And Paste no longer
+        // writes the system clipboard: the paste never read it, the restore needed readText, which
+        // most pages refuse, so the user's own clipboard was silently replaced.
+        public const string ExpectedExtensionVersion = "1.4.23";
         private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
         private NamedPipeServerStream? _pipeServer;
         private StreamReader? _reader;

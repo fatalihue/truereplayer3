@@ -1555,13 +1555,16 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     // and this callback already rebuilds on every keystroke.
     refuseDuringRun]);
 
-  // Are there edits the Save-Changes button would persist? MIRRORS handleSave's diffs
+  // Are there FIELD edits the Save-Changes button would persist? MIRRORS handleSave's diffs
   // exactly (same guards/normalisation), returning true on the first field that differs —
   // so it is defined as "handleSave would send at least one actions:edit". Kept additive
   // (handleSave untouched) to keep the save path zero-risk; if a NEW field is ever added
   // to handleSave, mirror it HERE too or a stray Esc will silently drop that field's edit.
-  // Powers the dirty-aware Esc guard (a reflexive Esc arms a warning instead of discarding).
-  const hasUnsavedChanges = useMemo<boolean>(() => {
+  // The Form draft is NOT in here — hasUnsavedChanges below adds it. mergeConflict needs the
+  // two apart: it asks whether an Up half carries edits the merge would drop, and a form
+  // change is the merge itself, not an edit it drops. With the form folded in, that question
+  // answered yes for EVERY merge opened from the Up half, so all of them were refused.
+  const hasFieldEdits = useMemo<boolean>(() => {
     if (actionIndex == null || !action) return false;
     // Desktop Assert stores the SAME condition payload, so every condition field below must
     // persist for it too. Gating these on 'If' alone would render a full Assert editor whose
@@ -1571,9 +1574,6 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     const _isIfPixel = _hasCondition && action.conditionType === 'PixelColorMatch';
 
     if (actionType !== action.actionType) return true;
-    // The form is a draft like any other field, so it has to reach the dirty check — otherwise
-    // Save stays disabled on a form-only change, and Esc discards it without the guard.
-    if (formDraft !== initialForm) return true;
     const effectiveKey = textMatch.trim() ? buildTextSelector(textMode, textMatch.trim()) : key;
     if (effectiveKey !== action.key) return true;
 
@@ -1821,7 +1821,12 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     }
 
     return false;
-  }, [actionIndex, action, actionType, formDraft, initialForm, key, textMatch, textMode, x, y, delay, comment, repeatCount, repeatGapMs, jitterOn, jitterPct, posJitterOn, posJitterPx, atCursor, holdMs, timeout, confidence, browserText, variableValue, variableMode, slotMode, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, waitImageOnTimeout, waitImageInvert, waitImageClickOnMatch, waitImageSearchRegion, pixelX, pixelY, pixelColor, pixelTolerance, pixelOnTimeout, pixelInvert, pixelClickOnMatch, conditionNegate, ifOnProbeError, conditionTimeout, loopMaxIterations, windowProcessName, windowTitle, windowTitleMatchMode, windowMatchForegroundOnly, clipboardPatternType, clipboardPattern, randomPercent, conditionOperator, conditionOperand, filePath, timeStart, timeEnd, daysOfWeek, launchPath, launchArgs, activateOnTimeout, restorePosition, restoreSize, windowX, windowY, windowWidth, windowHeight, windowVerb, matchIndex, assertOnFail, alternatives, pickedThisSession]);
+  }, [actionIndex, action, actionType, key, textMatch, textMode, x, y, delay, comment, repeatCount, repeatGapMs, jitterOn, jitterPct, posJitterOn, posJitterPx, atCursor, holdMs, timeout, confidence, browserText, variableValue, variableMode, slotMode, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, waitImageOnTimeout, waitImageInvert, waitImageClickOnMatch, waitImageSearchRegion, pixelX, pixelY, pixelColor, pixelTolerance, pixelOnTimeout, pixelInvert, pixelClickOnMatch, conditionNegate, ifOnProbeError, conditionTimeout, loopMaxIterations, windowProcessName, windowTitle, windowTitleMatchMode, windowMatchForegroundOnly, clipboardPatternType, clipboardPattern, randomPercent, conditionOperator, conditionOperand, filePath, timeStart, timeEnd, daysOfWeek, launchPath, launchArgs, activateOnTimeout, restorePosition, restoreSize, windowX, windowY, windowWidth, windowHeight, windowVerb, matchIndex, assertOnFail, alternatives, pickedThisSession]);
+
+  // Powers the dirty-aware Esc guard (a reflexive Esc arms a warning instead of discarding). The
+  // form is a draft like any other field, so it has to reach the dirty check — otherwise Save
+  // stays disabled on a form-only change, and Esc discards it without the guard.
+  const hasUnsavedChanges = hasFieldEdits || (actionIndex != null && action != null && formDraft !== initialForm);
 
   // Key capture handler — focusing the field switches it to capture mode (empty + "New
   // key..." + pulse), the next non-modifier key is stored, and the input auto-blurs so
@@ -2647,12 +2652,14 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     const n = parseInt(typed, 10);
     return !isNaN(n) && Math.abs(n - stored) > CLICK_COORD_TOLERANCE_PX;
   };
-  const mergeConflict = action != null
-    && formDraft === 'combined' && initialForm === 'paired'
+  // Split so the refusal can name its real cause: a button or point change, or edits on the Up half.
+  const mergeShapeChanged = action != null
     && (actionType !== action.actionType
       || mergeCoordMoved(x, action.x)
-      || mergeCoordMoved(y, action.y)
-      || (clickFormOf(action.actionType) === 'Up' && hasUnsavedChanges));
+      || mergeCoordMoved(y, action.y));
+  const mergeConflict = action != null
+    && formDraft === 'combined' && initialForm === 'paired'
+    && (mergeShapeChanged || (clickFormOf(action.actionType) === 'Up' && hasFieldEdits));
 
   // A single click (LeftClick/RightClick/MiddleClick), a Double/TripleClick or a *ClickHold
   // supports the inline "× N" repeat cluster. Paired halves (a Down/Up would double-fire one
@@ -2808,8 +2815,11 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     ? tt('Not saved — the action list is locked while a run is active.',
          'Não salvo — a lista de ações está travada enquanto um run está ativo.')
     : mergeConflict
-      ? tt('Not saved — the merge is checked against the other half, which this Save does not touch. Save the button or point change on its own first.',
-           'Não salvo — a fusão é conferida contra a outra metade, que este Save não toca. Salve a troca de botão ou de ponto sozinha primeiro.')
+      ? (mergeShapeChanged
+        ? tt('Not saved — the merge is checked against the other half, which this Save does not touch. Save the button or point change on its own first.',
+             'Não salvo — a fusão é conferida contra a outra metade, que este Save não toca. Salve a troca de botão ou de ponto sozinha primeiro.')
+        : tt('Not saved — the merge keeps the Down half, so the edits on this Up half would be lost. Save them on their own first, or open the Down half to merge.',
+             'Não salvo — a fusão mantém a metade Down, então as edições desta metade Up se perderiam. Salve-as sozinhas primeiro, ou abra a metade Down para fundir.'))
       : regexError
         ? tt('Not saved — fix the window-title pattern first.',
              'Não salvo — corrija o padrão do título da janela primeiro.')
@@ -2988,7 +2998,9 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                 className={`text-[11px] mt-1 truncate ${mergeConflict ? 'text-recording' : formDraft !== initialForm ? 'text-warning-ink' : 'text-text-tertiary'}`}
               >
                 {mergeConflict
-                  ? 'Save the button and point change first — the merge is checked against the other half.'
+                  ? (mergeShapeChanged
+                    ? 'Save the button and point change first — the merge is checked against the other half.'
+                    : 'Save the edits on this Up half first — the merge keeps the Down half.')
                   : formDraft !== initialForm
                     ? (formDraft === 'paired'
                       ? 'Saving splits this row in two.'
@@ -5318,8 +5330,11 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
               data-tip={runActive
                 ? tt('Locked while a run is active', 'Travado enquanto um run está ativo')
                 : mergeConflict
-                  ? tt('The merge is checked against the other half, which this Save does not touch — save the button or point change on its own first',
-                       'A fusão é conferida contra a outra metade, que este Save não toca — salve a troca de botão ou de ponto sozinha primeiro')
+                  ? (mergeShapeChanged
+                    ? tt('The merge is checked against the other half, which this Save does not touch — save the button or point change on its own first',
+                         'A fusão é conferida contra a outra metade, que este Save não toca — salve a troca de botão ou de ponto sozinha primeiro')
+                    : tt('The merge keeps the Down half, so the edits on this Up half would be lost — save them on their own first',
+                         'A fusão mantém a metade Down, então as edições desta metade Up se perderiam — salve-as sozinhas primeiro'))
                   : tt('Save · Ctrl+S', 'Salvar · Ctrl+S')}>
               <Check size={14} />
               Save
