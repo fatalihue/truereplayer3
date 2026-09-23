@@ -55,6 +55,11 @@ interface PauseDialogProps {
 /** Coarser steps once we're in whole-second territory; 100 ms below 1 s. */
 const stepFor = (ms: number) => (ms >= 1000 ? 1000 : 100);
 
+// The Pause timeout ceiling, 24 h — mirrors MaxPauseTimeoutMs in WebViewBridge.cs. Without it the
+// field took any number, and past Int32 the backend's parse threw after this dialog had already
+// closed: Add inserted nothing and Save kept the old value, both without a word.
+const MAX_PAUSE_TIMEOUT_MS = 86_400_000;
+
 export function PauseDialog({ initialKey, initialTimeoutMs, onConfirm, onClose }: PauseDialogProps) {
   const { language } = useLanguage();
   const isEditing = initialKey !== undefined;
@@ -128,7 +133,7 @@ export function PauseDialog({ initialKey, initialTimeoutMs, onConfirm, onClose }
 
   const handleConfirm = () => {
     if (!canConfirm) return;
-    onConfirm((captured ?? '').trim(), Math.max(0, timeoutMs));
+    onConfirm((captured ?? '').trim(), Math.min(MAX_PAUSE_TIMEOUT_MS, Math.max(0, timeoutMs)));
   };
 
   // Timeout for the mode hint — always milliseconds, consistent with the grid and
@@ -214,6 +219,7 @@ export function PauseDialog({ initialKey, initialTimeoutMs, onConfirm, onClose }
                 value={timeoutMs}
                 onChange={setTimeoutMs}
                 min={0}
+                max={MAX_PAUSE_TIMEOUT_MS}
                 step={stepFor(timeoutMs)}
                 thousands
                 inputWidth="w-24"

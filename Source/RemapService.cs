@@ -461,7 +461,7 @@ namespace TrueReplayer.Services
         /// window, not here. This is the half that belongs to the service: the window's handler
         /// is one call to this method. Cheap and idempotent by design so that handler needs no
         /// filtering of its own — no disk I/O, and an unchanged layout returns immediately.
-        /// Call it on the UI thread: KeyUtils.ActiveLayout is the CALLING thread's layout.
+        /// KeyUtils.ActiveLayout is the UI thread's layout whichever thread asks (KeyUtils.BindUiThread).
         /// </summary>
         public static void RepublishForLayoutChange()
         {

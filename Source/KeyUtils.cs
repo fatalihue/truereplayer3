@@ -35,10 +35,22 @@ namespace TrueReplayer.Helpers
         /// thread's layout is the one the user is actually switching with Alt+Shift. It is also
         /// two P/Invokes cheaper per keystroke than asking the foreground window.
         ///
-        /// Callers on a pool thread get that thread's layout — the system default — which is
-        /// why the compiled remap snapshot is published from the UI thread and nowhere else.
+        /// "The calling thread" stopped being good enough once a pool thread became a caller: the
+        /// replay resolves every recorded key name here (TryResolveVirtualKeyCode) from its own
+        /// thread, and a pool thread's layout is the system default it was created with, not the
+        /// one the user switched to with Alt+Shift. A name recorded as "ç" on ABNT2 then resolved on
+        /// a US default — a different physical key, or "Key press skipped". So the authority is now
+        /// the UI thread BY ID (bound once by <see cref="BindUiThread"/> from the MainWindow ctor),
+        /// asked from whichever thread calls. On the UI thread and the hook callbacks that is the
+        /// same answer GetKeyboardLayout(0) gave; everywhere else it is the one that named the key.
+        /// Unbound (before the window exists) it falls back to the calling thread, as before.
         /// </summary>
-        public static IntPtr ActiveLayout => NativeMethods.GetKeyboardLayout(0);
+        public static IntPtr ActiveLayout => NativeMethods.GetKeyboardLayout(_uiThreadId);
+
+        private static uint _uiThreadId; // 0 = unbound → GetKeyboardLayout(0), the calling thread
+
+        /// <summary>Binds <see cref="ActiveLayout"/> to the calling thread. Call once, from the UI thread.</summary>
+        public static void BindUiThread() => _uiThreadId = NativeMethods.GetCurrentThreadId();
 
         // Cached answer for LayoutHasAltGr, together with the layout it was measured on: the
         // probe below is ~225 P/Invokes, and the answer only changes when the layout does.

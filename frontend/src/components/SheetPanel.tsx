@@ -948,6 +948,14 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     }
   }, [action]);
 
+  // editorTouched's reset (the flag is documented further down, where it is declared). It is
+  // declared HERE, above the pick-first seed that follows, on purpose: both run when actionIndex
+  // changes, effects run in declaration order, and the reset used to come LAST. A pick from the
+  // row menu opens the sheet on a new row and seeds its coordinates in the same commit, so the
+  // seed's setEditorTouched(true) was undone at once — the editor opened dirty, and no claim held
+  // autonomous fires off it until the first click or keystroke inside the panel.
+  useEffect(() => { setEditorTouched(false); }, [actionIndex]);
+
   // Context-menu pick-first seed — declared AFTER the [action] seed above on purpose:
   // effects run in declaration order, so on a fresh open the action's own coords land
   // first and this override wins. Keyed on the PROP (not [action]) so it also fires
@@ -1989,7 +1997,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   // it. Erring long is deliberate: holding an autonomous fire for a few extra seconds costs a
   // deferral, while releasing it early costs the edits.
   const [editorTouched, setEditorTouched] = useState(false);
-  useEffect(() => { setEditorTouched(false); }, [actionIndex]);
+  // Its reset on [actionIndex] is declared ABOVE the pick-first seed — see there for why.
   // Armed by a real edit, not by hasUnsavedChanges. That flag is a diff against the STORE, and any
   // actions:updated push replaces the store — so an editor nobody had touched latched itself and
   // then held autonomous fires for up to the guard's whole TTL. markTouched is called from the DOM

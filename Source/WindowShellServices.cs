@@ -555,20 +555,6 @@ namespace TrueReplayer.Services
             };
             appWindow.Move(centerPosition);
         }
-
-        public static void ApplyWindowState(Window window, UserProfile profile)
-        {
-            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
-            SetWindowPos(hwnd, profile.AlwaysOnTop ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-        }
-
-        private const uint SWP_NOMOVE = 0x0002;
-        private const uint SWP_NOSIZE = 0x0001;
-        private const uint SWP_NOACTIVATE = 0x0010;
-        private static readonly IntPtr HWND_TOPMOST = new(-1);
-        private static readonly IntPtr HWND_NOTOPMOST = new(-2);
-
-        [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
     }
 
     public class WindowEventManager
@@ -778,8 +764,8 @@ namespace TrueReplayer.Services
                 // Remaps whose from/to is a single character — ç [ ; - ' / , the whole ABNT2 OEM
                 // row — were compiled to the vks those characters had on the PREVIOUS layout, and
                 // would keep pointing at a different physical key or none at all. This message
-                // arrives after the thread's layout has already changed, and we are on the UI
-                // thread, so KeyUtils.ActiveLayout (GetKeyboardLayout(0)) reads the new one.
+                // arrives after the thread's layout has already changed, and KeyUtils.ActiveLayout
+                // reads the UI thread's layout, so it sees the new one.
                 //
                 // No filtering here on purpose: RepublishForLayoutChange is idempotent and does
                 // no disk I/O — it returns immediately when the layout it already compiled

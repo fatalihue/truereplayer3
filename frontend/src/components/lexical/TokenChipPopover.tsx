@@ -21,29 +21,18 @@ import {
   type TransformState,
 } from './clipboardModifiers';
 import { NumInput, PopoverHeader, RadioGroup, RadioRow, Section } from './popoverAtoms';
-import { normalizeToken } from './tokenNormalize';
+import { normalizeToken, SEGMENTING_TOKEN_NAMES } from './tokenNormalize';
 import { DEFAULT_DATE_FORMAT, parseDateTokenArgs, resolveDateToken, type DateHead, type DateUnit } from './dateFormat';
 import { tokenTip } from './tokenDescriptions';
 import { useAppState } from '../../state/AppStateContext';
 import { uiZoom, rectToLayout, viewportInLayout } from '../../utils/zoomSpace';
 
-// Tokens that accept a `:N` repeat count (e.g. {enter:5}).
-const REPEATABLE_TOKEN_NAMES = new Set([
-  'enter',
-  'tab',
-  'space',
-  'backspace',
-  'delete',
-  'escape',
-  'home',
-  'end',
-  'pageup',
-  'pagedown',
-  'up',
-  'down',
-  'left',
-  'right',
-]);
+// Tokens that accept a `:N` repeat count (e.g. {enter:5}) — the key tokens, taken from the list
+// tokenNormalize ports key-for-key from the engine, not from a third hand-written copy. The copy
+// that lived here had drifted: it lacked 'esc', so an {esc:3} chip opened "No editable parameters"
+// while the other lists (and the engine) treat it as three presses. 'delay' is in that set too,
+// but getTokenKind returns for it before this is consulted.
+const REPEATABLE_TOKEN_NAMES = SEGMENTING_TOKEN_NAMES;
 
 // The ceiling for that `:N`, ported from the parser that will actually run the token instead of
 // restated from its intent. ActionExecution.ParseSendTextSegments, after `int.TryParse(...) && n > 0`

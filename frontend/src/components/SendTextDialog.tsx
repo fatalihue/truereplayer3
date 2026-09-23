@@ -627,27 +627,31 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
     lexicalApiRef.current?.focus();
   }, []);
 
+  // The writes happen OUTSIDE setSurface's updater. They used to run inside it, and React may call
+  // an updater twice — StrictMode does, in dev — so one Insert put two identical chips in the
+  // editor. `surface` comes from the closure instead: each interaction re-renders before the next,
+  // so it is the current one (TokenChipPopover's update() carries the same fix).
   const handleSurfaceConfirm = useCallback(() => {
-    setSurface((cur) => {
-      if (!cur) return cur;
-      // An empty column/slot/variable name would build a broken token ({clip:}), so the same
-      // rule the popover editors follow applies here: refuse to write it.
-      if (!chainHeadIsUsable(clipHead)) return cur;
-      const token = buildChainToken(clipHead, clipState);
-      if (cur.mode === 'insert') {
-        // insertToken (not insertText): a surface-built token always becomes a
-        // chip even when its join separator defeats the typing grammar.
-        lexicalApiRef.current?.insertToken(token);
-      } else if (clipDirty && !clipState.unmodeled) {
-        // Never commit a rebuild of a chain we could not fully parse — that write is where the
-        // unrepresented modifier vanishes. The surface renders read-only in that case, so this
-        // only guards the path where the state was seeded from such a token.
-        cur.commit(token);
-      }
-      return null;
-    });
+    const cur = surface;
+    if (!cur) return;
+    // An empty column/slot/variable name would build a broken token ({clip:}), so the same
+    // rule the popover editors follow applies here: refuse to write it — and keep the surface,
+    // and the keyboard, where they are.
+    if (!chainHeadIsUsable(clipHead)) return;
+    const token = buildChainToken(clipHead, clipState);
+    if (cur.mode === 'insert') {
+      // insertToken (not insertText): a surface-built token always becomes a
+      // chip even when its join separator defeats the typing grammar.
+      lexicalApiRef.current?.insertToken(token);
+    } else if (clipDirty && !clipState.unmodeled) {
+      // Never commit a rebuild of a chain we could not fully parse — that write is where the
+      // unrepresented modifier vanishes. The surface renders read-only in that case, so this
+      // only guards the path where the state was seeded from such a token.
+      cur.commit(token);
+    }
+    setSurface(null);
     lexicalApiRef.current?.focus();
-  }, [clipState, clipHead, clipDirty]);
+  }, [surface, clipState, clipHead, clipDirty]);
 
   const handleSurfaceReset = useCallback(() => {
     const parsed = surface?.mode === 'edit' ? parseChainToken(surface.token) : null;

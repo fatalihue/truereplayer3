@@ -4275,12 +4275,16 @@ namespace TrueReplayer
                 case "delay": if (int.TryParse(value, out int delay)) action.Delay = Math.Max(0, delay); break;
                 case "comment": action.Comment = value; break;
                 case "timeout":
-                    if (int.TryParse(value, out int timeout))
+                    // long, then clamp: an int.TryParse that overflowed was a SILENT no-op — the Save
+                    // closed and the row kept its old timeout.
+                    if (long.TryParse(value, out long timeoutWide))
                     {
+                        int timeout = (int)Math.Clamp(timeoutWide, int.MinValue, int.MaxValue);
                         // Pause uses 0 as the "wait forever" sentinel — clamping would silently
-                        // rewrite it to 1s. Other actions (Browser, WaitImage) need a positive
-                        // timeout to make sense, so they still get clamped to 1 s minimum.
-                        action.Timeout = action.ActionType == "Pause" ? Math.Max(0, timeout) : Math.Max(1000, timeout);
+                        // rewrite it to 1s — and the same 24 h ceiling HandleInsertPause applies.
+                        // Other actions (Browser, WaitImage) need a positive timeout to make sense,
+                        // so they still get clamped to 1 s minimum.
+                        action.Timeout = action.ActionType == "Pause" ? Math.Clamp(timeout, 0, MaxPauseTimeoutMs) : Math.Max(1000, timeout);
                     }
                     break;
                 case "confidence": if (double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double conf)) action.Confidence = Math.Clamp(conf, 0.1, 1.0); break;
@@ -6422,6 +6426,10 @@ namespace TrueReplayer
             mainController.UpdateButtonStates();
         }
 
+        // The Pause timeout ceiling, 24 h. Mirrored by MAX_PAUSE_TIMEOUT_MS in frontend PauseDialog.tsx —
+        // the dialog clamps before sending; this is the backend's own guard.
+        private const int MaxPauseTimeoutMs = 86_400_000;
+
         // Pause insert (Pattern B normalization). Replaces the previous flow where
         // `actions:insertAction` with actionType="Pause" inserted an empty row and
         // followed up with sheet:openIndex — a Cancel on that Sheet left an orphan
@@ -6442,9 +6450,12 @@ namespace TrueReplayer
             // Timeout is in milliseconds on the wire (frontend converts seconds → ms before
             // sending) so the row stores the value consumed directly by ExecuteActionsAsync.
             // Negative or absurd values clamped to a sane range: 0 = no timeout, max = 24 h.
+            // Read WIDE and clamp before narrowing: GetInt32 threw on anything past Int32 (a
+            // mistyped 99999999999), the throw died in HandleMessage's catch, and the dialog had
+            // already closed — the Pause simply never appeared.
             int timeoutMs = 0;
             if (payload.TryGetProperty("timeoutMs", out var t) && t.ValueKind == JsonValueKind.Number)
-                timeoutMs = Math.Max(0, Math.Min(86_400_000, t.GetInt32()));
+                timeoutMs = (int)Math.Clamp(t.GetDouble(), 0, MaxPauseTimeoutMs);
 
             int delay = int.TryParse(CustomDelay, out var d) ? d : 0;
             PushUndoState();
@@ -8292,6 +8303,15 @@ namespace TrueReplayer
                         action.ImagePath = ImageStorageService.CloneReferenceImage(name, action.ImagePath!, copyName);
                         mutated = true;
                     }
+                    // Same reason as the trigger below: two profiles answering one hotstring is
+                    // never what Duplicate means — and unlike a hotkey, a hotstring collision had no
+                    // badge, so the copy silently took the sequence over from the original (the
+                    // match keeps the LAST profile in file order). The copy starts without one.
+                    if (copyProfile.CustomHotstring != null)
+                    {
+                        copyProfile.CustomHotstring = null;
+                        mutated = true;
+                    }
                     if (copyProfile.Triggers != null)
                     {
                         // Both firing the same schedule is never what Duplicate means.
@@ -10084,10 +10104,23 @@ namespace TrueReplayer
                     // deleted profile back, and the undo stack survives the same way. Each name is
                     // handed to DeleteProfileDirectory as well, which only the single-profile path
                     // did — otherwise the images sit orphaned until the next startup sweep.
-                    bool hadActive = folderItems.Contains(CurrentProfileName);
-                    await profileController.DeleteFolderAsync(name, deleteProfiles: true);
-                    foreach (var deleted in folderItems)
+                    // A profile whose FILE could not be deleted (read-only, locked by another
+                    // process) survives: its images stay, it is not the "deleted active profile",
+                    // and the user is told — it used to come back unpinned and ungrouped with its
+                    // images wiped, after a Delete All that reported nothing.
+                    var failed = await profileController.DeleteFolderAsync(name, deleteProfiles: true);
+                    bool hadActive = folderItems.Contains(CurrentProfileName) && !failed.Contains(CurrentProfileName);
+                    foreach (var deleted in folderItems.Except(failed))
                         ImageStorageService.DeleteProfileDirectory(deleted);
+                    if (failed.Count > 0)
+                    {
+                        SendMessage("alert:show", new
+                        {
+                            message = failed.Count == 1
+                                ? $"Could not delete \"{failed[0]}\" — its file is read-only or in use. It stays in your list."
+                                : $"Could not delete {failed.Count} profiles — their files are read-only or in use: {string.Join(", ", failed)}. They stay in your list."
+                        });
+                    }
                     if (hadActive)
                     {
                         DropToNoProfile();

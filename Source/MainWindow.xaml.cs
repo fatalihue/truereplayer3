@@ -146,6 +146,9 @@ namespace TrueReplayer
         public MainWindow()
         {
             this.InitializeComponent();
+            // Before RemapService.Load and the input hooks below: every key name the app records
+            // or resolves is read against THIS thread's layout, from whichever thread asks.
+            Helpers.KeyUtils.BindUiThread();
             this.Title = "TrueReplayer";
 
             AppSettingsManager.ApplyGlobalSettings(UserProfile.Current);

@@ -881,7 +881,10 @@ namespace TrueReplayer.Services
                         // the default configuration pays nothing at all for this. Fixed mode
                         // pays once, on the first tick. Area mode is the only one that moves
                         // every tick — and it is the one that needed this most.
-                        replayer.ClickerMoveTo(targetX, targetY, gameMove);
+                        replayer.ClickerMoveTo(targetX, targetY, gameMove, token);
+                        // A Stop that landed during a game-move walk returns it early (the walk now
+                        // honours the token between steps); pressing now would click after Stop.
+                        if (token.IsCancellationRequested) break;
 
                         // ── The click. The UP is guaranteed. ────────────────────────────────
                         // Cancelling inside the hold used to skip the UP entirely and leave the
@@ -1715,9 +1718,9 @@ namespace TrueReplayer.Services
             int fx = x + FocusClickOffsetPx, fy = y + FocusClickOffsetPx;
             // The focus tap is a deliberate few-px settle off the primary click, never a jump — opt it
             // out of fast approach so a tiny SettleDistancePx can't turn this nudge into a teleport.
-            SimulateMouse(fx, fy, down, coordsAreProfileSpace: coordsAreProfileSpace, allowFastApproach: false);
+            SimulateMouse(fx, fy, down, coordsAreProfileSpace: coordsAreProfileSpace, allowFastApproach: false, token: token);
             if (!token.IsCancellationRequested)
-                SimulateMouse(fx, fy, up, coordsAreProfileSpace: coordsAreProfileSpace, allowFastApproach: false);
+                SimulateMouse(fx, fy, up, coordsAreProfileSpace: coordsAreProfileSpace, allowFastApproach: false, token: token);
             // Outside the cancellation guard: a run stopped between the tap's down and up must
             // still leave the cursor where it was found, not 5 px adrift.
             if (restoreAnchor && !coordsAreProfileSpace) NativeMethods.SetCursorPos(x, y);
@@ -1740,9 +1743,9 @@ namespace TrueReplayer.Services
                 if (token.IsCancellationRequested) return;
                 if (p > 0 && DoubleClickGapMs > 0) Thread.Sleep(DoubleClickGapMs);
                 if (token.IsCancellationRequested) return;
-                SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_LEFTDOWN, coordsAreProfileSpace: coordsAreProfileSpace);
+                SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_LEFTDOWN, coordsAreProfileSpace: coordsAreProfileSpace, token: token);
                 if (token.IsCancellationRequested) return;
-                SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_LEFTUP, coordsAreProfileSpace: coordsAreProfileSpace);
+                SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_LEFTUP, coordsAreProfileSpace: coordsAreProfileSpace, token: token);
             }
         }
 
@@ -4042,12 +4045,12 @@ namespace TrueReplayer.Services
                             await ExecuteRepeated(action, token, (_, _) => SimulateKeystroke(combo, token));
                             break;
                         }
-                        case "LeftClickDown": SimulateMouse(action.X, action.Y, NativeMethods.MOUSEEVENTF_LEFTDOWN); break;
-                        case "LeftClickUp": SimulateMouse(action.X, action.Y, NativeMethods.MOUSEEVENTF_LEFTUP); break;
-                        case "RightClickDown": SimulateMouse(action.X, action.Y, NativeMethods.MOUSEEVENTF_RIGHTDOWN); break;
-                        case "RightClickUp": SimulateMouse(action.X, action.Y, NativeMethods.MOUSEEVENTF_RIGHTUP); break;
-                        case "MiddleClickDown": SimulateMouse(action.X, action.Y, NativeMethods.MOUSEEVENTF_MIDDLEDOWN); break;
-                        case "MiddleClickUp": SimulateMouse(action.X, action.Y, NativeMethods.MOUSEEVENTF_MIDDLEUP); break;
+                        case "LeftClickDown": SimulateMouse(action.X, action.Y, NativeMethods.MOUSEEVENTF_LEFTDOWN, token: token); break;
+                        case "LeftClickUp": SimulateMouse(action.X, action.Y, NativeMethods.MOUSEEVENTF_LEFTUP, token: token); break;
+                        case "RightClickDown": SimulateMouse(action.X, action.Y, NativeMethods.MOUSEEVENTF_RIGHTDOWN, token: token); break;
+                        case "RightClickUp": SimulateMouse(action.X, action.Y, NativeMethods.MOUSEEVENTF_RIGHTUP, token: token); break;
+                        case "MiddleClickDown": SimulateMouse(action.X, action.Y, NativeMethods.MOUSEEVENTF_MIDDLEDOWN, token: token); break;
+                        case "MiddleClickUp": SimulateMouse(action.X, action.Y, NativeMethods.MOUSEEVENTF_MIDDLEUP, token: token); break;
                         // Combined-mode clicks: one row = press + release at the same point.
                         // SimulateMouse moves the cursor and embeds the position in each event,
                         // so the two calls land the down/up together (the second move is a no-op).
@@ -4077,9 +4080,9 @@ namespace TrueReplayer.Services
                             await ExecuteRepeated(action, token, (jx, jy) => {
                                 var (cx, cy, ps) = ResolveClickPoint(action, jx, jy);
                                 StampCursorPoint(stepRec, action, cx, cy);
-                                SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_LEFTDOWN, coordsAreProfileSpace: ps);
+                                SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_LEFTDOWN, coordsAreProfileSpace: ps, token: token);
                                 if (!token.IsCancellationRequested)
-                                    SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_LEFTUP, coordsAreProfileSpace: ps);
+                                    SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_LEFTUP, coordsAreProfileSpace: ps, token: token);
                                 if (action.IsFocusClick && !token.IsCancellationRequested)
                                     FocusTap(cx, cy, NativeMethods.MOUSEEVENTF_LEFTDOWN, NativeMethods.MOUSEEVENTF_LEFTUP, token, ps, restoreAnchor: action.AtCursor);
                             });
@@ -4088,9 +4091,9 @@ namespace TrueReplayer.Services
                             await ExecuteRepeated(action, token, (jx, jy) => {
                                 var (cx, cy, ps) = ResolveClickPoint(action, jx, jy);
                                 StampCursorPoint(stepRec, action, cx, cy);
-                                SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_RIGHTDOWN, coordsAreProfileSpace: ps);
+                                SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_RIGHTDOWN, coordsAreProfileSpace: ps, token: token);
                                 if (!token.IsCancellationRequested)
-                                    SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_RIGHTUP, coordsAreProfileSpace: ps);
+                                    SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_RIGHTUP, coordsAreProfileSpace: ps, token: token);
                                 if (action.IsFocusClick && !token.IsCancellationRequested)
                                     FocusTap(cx, cy, NativeMethods.MOUSEEVENTF_RIGHTDOWN, NativeMethods.MOUSEEVENTF_RIGHTUP, token, ps, restoreAnchor: action.AtCursor);
                             });
@@ -4099,9 +4102,9 @@ namespace TrueReplayer.Services
                             await ExecuteRepeated(action, token, (jx, jy) => {
                                 var (cx, cy, ps) = ResolveClickPoint(action, jx, jy);
                                 StampCursorPoint(stepRec, action, cx, cy);
-                                SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_MIDDLEDOWN, coordsAreProfileSpace: ps);
+                                SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_MIDDLEDOWN, coordsAreProfileSpace: ps, token: token);
                                 if (!token.IsCancellationRequested)
-                                    SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_MIDDLEUP, coordsAreProfileSpace: ps);
+                                    SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_MIDDLEUP, coordsAreProfileSpace: ps, token: token);
                                 if (action.IsFocusClick && !token.IsCancellationRequested)
                                     FocusTap(cx, cy, NativeMethods.MOUSEEVENTF_MIDDLEDOWN, NativeMethods.MOUSEEVENTF_MIDDLEUP, token, ps, restoreAnchor: action.AtCursor);
                             });
@@ -4144,11 +4147,11 @@ namespace TrueReplayer.Services
                             await ExecuteRepeatedCore(action, token, async (jx, jy) => {
                                 var (cx, cy, ps) = ResolveClickPoint(action, jx, jy);
                                 StampCursorPoint(stepRec, action, cx, cy);
-                                SimulateMouse(cx, cy, downEvent, coordsAreProfileSpace: ps);
+                                SimulateMouse(cx, cy, downEvent, coordsAreProfileSpace: ps, token: token);
                                 try { await Task.Delay(holdMs, token); }
                                 catch (OperationCanceledException) { /* ResetMouseState releases */ }
                                 if (!token.IsCancellationRequested)
-                                    SimulateMouse(cx, cy, upEvent, coordsAreProfileSpace: ps);
+                                    SimulateMouse(cx, cy, upEvent, coordsAreProfileSpace: ps, token: token);
                             });
                             break;
                         }
@@ -5695,8 +5698,12 @@ namespace TrueReplayer.Services
         /// have absolute virtual-desktop coordinates (e.g. WaitImage match-centre
         /// click — the screenshot pipeline returns absolute hits regardless of
         /// profile rel-coord state) so we don't double-translate.
+        ///
+        /// <paramref name="token"/> is the RUN's token, and it is what lets Stop reach the parts of
+        /// a click that sleep: the smooth walk (MoveCursorTo) and the dwell below. Callers outside a
+        /// run — ResetMouseState, which must always release — pass nothing and are unaffected.
         /// </summary>
-        private void SimulateMouse(int x, int y, uint mouseEvent, int mouseData = 0, bool coordsAreProfileSpace = true, bool allowFastApproach = true)
+        private void SimulateMouse(int x, int y, uint mouseEvent, int mouseData = 0, bool coordsAreProfileSpace = true, bool allowFastApproach = true, CancellationToken token = default)
         {
             // Translate profile-space coords (window-relative when UseRelativeCoordinates is on)
             // to absolute virtual-desktop pixels. Callers that already hold absolute coords
@@ -5736,7 +5743,7 @@ namespace TrueReplayer.Services
 
             int inputSize = NativeMethods.InputSize;
 
-            MoveCursorTo(x, y, allowFastApproach);
+            MoveCursorTo(x, y, allowFastApproach, token: token);
 
             var clickInput = new NativeMethods.INPUT
             {
@@ -5750,9 +5757,15 @@ namespace TrueReplayer.Services
             // Small gap before the button fires: after a move it lets the app register the final
             // position; on the same-spot UP half it provides the press→release dwell. Kept on both
             // halves so synthetic clicks keep a realistic, non-zero dwell.
-            Thread.Sleep(Math.Max(0, MoveClickDelayMs));
+            if (!token.IsCancellationRequested) Thread.Sleep(Math.Max(0, MoveClickDelayMs));
             lock (_simInputLock)
             {
+                // A Stop that landed during the walk or the dwell: nothing is PRESSED after it —
+                // with slow Game Mode tuning the DOWN the walk was heading for used to go out
+                // seconds after the user asked to stop. An UP still goes out while its button is
+                // down, so a run stopped between the halves releases; once ResetMouseState has
+                // released it, a second UP is skipped (a stray UP reads as a click to some apps).
+                if (token.IsCancellationRequested && !IsTrackedRelease(mouseEvent)) return;
                 NativeMethods.SendInput(1, ref clickInput, inputSize);
 
                 // Track currently-pressed buttons here (atomic with the SendInput) so
@@ -5777,8 +5790,9 @@ namespace TrueReplayer.Services
         // section is not even rendered — so without this the clicker toggle silently did
         // nothing whenever the macro master happened to be off, with no way for the user to
         // see what was cancelling it. Macro callers never pass it and keep honouring the master.
-        private void MoveCursorTo(int x, int y, bool allowFastApproach, bool forceSmooth = false)
+        private void MoveCursorTo(int x, int y, bool allowFastApproach, bool forceSmooth = false, CancellationToken token = default)
         {
+            if (token.IsCancellationRequested) return;
             var (vx, vy, vw, vh) = NativeMethods.VirtualScreen.Bounds;
             uint posFlags = NativeMethods.MOUSEEVENTF_MOVE
                 | NativeMethods.MOUSEEVENTF_ABSOLUTE
@@ -5839,6 +5853,10 @@ namespace TrueReplayer.Services
                 int steps = Math.Max(1, (int)Math.Ceiling(dist / stepPx));
                 for (int i = 1; i <= steps; i++)
                 {
+                    // Stop reaches the walk between steps. With Fast approach off, a small step and a
+                    // long step delay, a cross-monitor walk is hundreds of steps and ran on for
+                    // seconds after Stop, then clicked.
+                    if (token.IsCancellationRequested) return;
                     double t = (double)i / steps;
                     MoveAbs(originX + (int)Math.Round(pathDx * t), originY + (int)Math.Round(pathDy * t));
                     if (i < steps && MoveStepDelayMs > 0) Thread.Sleep(MoveStepDelayMs);
@@ -5867,12 +5885,12 @@ namespace TrueReplayer.Services
         // Returns false when the cursor is already there, so the caller can skip the whole thing.
         // That is what keeps the default (cursor mode, no jitter) at exactly zero added cost:
         // its target IS the current position.
-        public bool ClickerMoveTo(int x, int y, bool gameAware)
+        public bool ClickerMoveTo(int x, int y, bool gameAware, CancellationToken token = default)
         {
             if (NativeMethods.GetCursorPos(out var cur) && cur.x == x && cur.y == y) return false;
             if (gameAware)
             {
-                MoveCursorTo(x, y, allowFastApproach: true, forceSmooth: true);
+                MoveCursorTo(x, y, allowFastApproach: true, forceSmooth: true, token: token);
             }
             else
             {
@@ -5906,6 +5924,12 @@ namespace TrueReplayer.Services
         // its own INPUTs and, before this existed, never set these flags at all — so
         // ResetMouseState early-returned and a Stop landing inside the clicker's hold window
         // left the button physically latched down system-wide.
+        // True for an UP whose button the engine currently holds down (TrackButtonState's view).
+        private bool IsTrackedRelease(uint mouseEvent) =>
+            ((mouseEvent & NativeMethods.MOUSEEVENTF_LEFTUP) != 0 && _simLeftDown)
+            || ((mouseEvent & NativeMethods.MOUSEEVENTF_RIGHTUP) != 0 && _simRightDown)
+            || ((mouseEvent & NativeMethods.MOUSEEVENTF_MIDDLEUP) != 0 && _simMiddleDown);
+
         private void TrackButtonState(uint mouseEvent)
         {
             if ((mouseEvent & NativeMethods.MOUSEEVENTF_LEFTDOWN) != 0) _simLeftDown = true;
@@ -8576,8 +8600,8 @@ namespace TrueReplayer.Services
                 {
                     int cx = matchResult.X + matchResult.W / 2;
                     int cy = matchResult.Y + matchResult.H / 2;
-                    SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_LEFTDOWN, coordsAreProfileSpace: false);
-                    SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_LEFTUP, coordsAreProfileSpace: false);
+                    SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_LEFTDOWN, coordsAreProfileSpace: false, token: token);
+                    SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_LEFTUP, coordsAreProfileSpace: false, token: token);
                 }
             }
             finally
@@ -8742,8 +8766,8 @@ namespace TrueReplayer.Services
                             // the colour was actually just sampled even if the window moved
                             // during the wait. Pass coordsAreProfileSpace: false so SimulateMouse
                             // doesn't translate a second time.
-                            SimulateMouse(px, py, NativeMethods.MOUSEEVENTF_LEFTDOWN, coordsAreProfileSpace: false);
-                            SimulateMouse(px, py, NativeMethods.MOUSEEVENTF_LEFTUP, coordsAreProfileSpace: false);
+                            SimulateMouse(px, py, NativeMethods.MOUSEEVENTF_LEFTDOWN, coordsAreProfileSpace: false, token: token);
+                            SimulateMouse(px, py, NativeMethods.MOUSEEVENTF_LEFTUP, coordsAreProfileSpace: false, token: token);
                         }
                         return;
                     }

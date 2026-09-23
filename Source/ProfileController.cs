@@ -1282,10 +1282,15 @@ namespace TrueReplayer.Controllers
         /// </summary>
         private readonly List<string> _hotkeyCollisions = new();
 
+        // Hotstring collisions found by the most recent GetProfileHotstrings call — same shape and
+        // same drain as the hotkey ones, cleared at the start of each call.
+        private readonly List<string> _hotstringCollisions = new();
+
         public IReadOnlyList<string> GetAndClearHotkeyCollisions()
         {
-            var copy = _hotkeyCollisions.ToList();
+            var copy = _hotkeyCollisions.Concat(_hotstringCollisions).ToList();
             _hotkeyCollisions.Clear();
+            _hotstringCollisions.Clear();
             return copy;
         }
 
@@ -1403,6 +1408,7 @@ namespace TrueReplayer.Controllers
         public Dictionary<string, HotstringConfig> GetProfileHotstrings()
         {
             var hotstrings = new Dictionary<string, HotstringConfig>();
+            _hotstringCollisions.Clear();
 
             foreach (var entry in ProfileEntries)
             {
@@ -1414,6 +1420,22 @@ namespace TrueReplayer.Controllers
                         Instant = entry.HotstringInstant
                     };
                 }
+            }
+
+            // The hotkey rule, for hotstrings: the same sequence on profiles whose effective targets
+            // overlap means only one fires (the matcher keeps the last in file order). The assign
+            // path refuses this (GetHotstringConflict), but import and a hand-edited JSON do not
+            // pass through it — and unlike a hotkey there was no warning at all.
+            foreach (var group in ProfileEntries
+                .Where(e => !string.IsNullOrEmpty(e.Hotstring) && !e.IsDisabled)
+                .GroupBy(e => (Seq: e.Hotstring!.ToLowerInvariant(), Target: GetEffectiveTargetSignature(e)))
+                .Where(g => g.Count() > 1))
+            {
+                var names = group.Select(e => e.Name).ToList();
+                var targetDesc = string.IsNullOrEmpty(group.Key.Target) ? "no target window" : $"target '{group.Key.Target}'";
+                _hotstringCollisions.Add(
+                    $"Hotstring '{group.Key.Seq}' is bound to {names.Count} profiles with the same {targetDesc}: " +
+                    $"{string.Join(", ", names)} — only one will fire");
             }
 
             return hotstrings;
@@ -2778,8 +2800,16 @@ namespace TrueReplayer.Controllers
             return true;
         }
 
-        public async Task DeleteFolderAsync(string folderName, bool deleteProfiles = false)
+        /// <summary>
+        /// Removes a folder, and with <paramref name="deleteProfiles"/> the profile files inside it.
+        /// Returns the profiles whose file could NOT be deleted — they survive, keep their pin and
+        /// move to the ungrouped list, and the caller must neither wipe their images nor treat them
+        /// as deleted. The failure used to be swallowed by an empty catch while the name was still
+        /// dropped from every order bucket.
+        /// </summary>
+        public async Task<IReadOnlyList<string>> DeleteFolderAsync(string folderName, bool deleteProfiles = false)
         {
+            var failed = new List<string>();
             var folder = _profileOrder.Folders.FirstOrDefault(f => f.Name == folderName);
             if (folder != null)
             {
@@ -2791,7 +2821,15 @@ namespace TrueReplayer.Controllers
                         var entry = ProfileEntries.FirstOrDefault(p => p.Name == item);
                         if (entry != null && File.Exists(entry.FilePath))
                         {
-                            try { File.Delete(entry.FilePath); } catch { }
+                            try { File.Delete(entry.FilePath); }
+                            catch (Exception ex)
+                            {
+                                DiagnosticLog.Warn($"[Profiles] Delete All in folder '{folderName}': could not delete '{item}': {ex.Message}");
+                                failed.Add(item);
+                                if (!_profileOrder.UngroupedOrder.Contains(item))
+                                    _profileOrder.UngroupedOrder.Add(item);
+                                continue;
+                            }
                         }
                         // Remove the deleted profile from every order bucket — not just Pinned —
                         // so its name can't linger as a ghost in UngroupedOrder.
@@ -2814,6 +2852,7 @@ namespace TrueReplayer.Controllers
                 if (deleteProfiles)
                     await RefreshProfileListAsync(true);
             }
+            return failed;
         }
 
         public async Task SetFolderColorAsync(string folderName, string color)
