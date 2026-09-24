@@ -132,6 +132,10 @@ namespace TrueReplayer.Services
             // the user ticks "Don't show again" on the warning dialog. Saved to appsettings.json
             // so it survives reinstalls (same Documents folder as the rest of the file).
             public bool HasAcknowledgedImportWarning { get; set; } = false;
+            // The last theme's base colour as opaque #rrggbb (the frontend's theme:colors push).
+            // Painted by the native window before the WebView2 has loaded anything — see
+            // MainWindow.ApplyWindowBackground. Null until a theme has been seen once.
+            public string? WindowBackground { get; set; }
         }
 
         // One saved Clicker setup. Ints and bools like AppSettings (the bridge mirrors are strings

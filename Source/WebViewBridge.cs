@@ -4034,6 +4034,21 @@ namespace TrueReplayer
             {
                 profileController.SetDialogThemeColors(bgSurface, bgCard ?? bgSurface, textPrimary, textSecondary ?? textPrimary, accentSolid, borderSubtle);
             }
+
+            // The native canvas under the WebView2: painted now (a recovery hides the WebView and
+            // shows it) and saved for the next launch, which paints it before any page exists.
+            // Written only on a change — this push arrives on every launch and every theme edit.
+            var bgBase = Str(payload, "bgBase");
+            if (Controllers.ProfileController.ParseCssHex(bgBase) != null)
+            {
+                window.ApplyWindowBackground(bgBase);
+                var settings = AppSettingsManager.Load();
+                if (!string.Equals(settings.WindowBackground, bgBase, StringComparison.OrdinalIgnoreCase))
+                {
+                    settings.WindowBackground = bgBase;
+                    AppSettingsManager.Save(settings);
+                }
+            }
         }
 
         private void HandleHotkeySuppress(JsonElement payload)

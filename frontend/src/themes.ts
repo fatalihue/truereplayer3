@@ -1479,7 +1479,8 @@ export function flattenOver(color: string, bg: string): string {
 }
 
 /**
- * The colours the native (WinUI) dialogs are themed from, each as OPAQUE #rrggbb — what the card
+ * The colours the native (WinUI) side is themed from — its dialogs and the window's own canvas — each
+ * as OPAQUE #rrggbb — what the card
  * actually looks like on screen: bg-card over bg-surface over bg-base, and the inks over that card.
  *
  * The C# side reads nothing but hex, and it used to receive the tokens raw: an imported theme's
@@ -1488,13 +1489,17 @@ export function flattenOver(color: string, bg: string): string {
  * XAML's alpha-first order, a near-transparent wrong colour. '' for a token that cannot be read;
  * the C# side then themes nothing rather than half a dialog.
  */
-export function nativeDialogColors(c: ThemeColors): Record<'bgSurface' | 'bgCard' | 'textPrimary' | 'textSecondary' | 'accentSolid' | 'borderSubtle', string> {
+export function nativeDialogColors(c: ThemeColors): Record<'bgBase' | 'bgSurface' | 'bgCard' | 'textPrimary' | 'textSecondary' | 'accentSolid' | 'borderSubtle', string> {
   const opaque = (color: string | undefined, under: string) => (isParsableColor(color) ? flattenOver(color, under) : '');
-  const base = opaque(c['bg-base'], '#000000') || '#000000';
+  const baseRead = opaque(c['bg-base'], '#000000');
+  const base = baseRead || '#000000';
   const surface = opaque(c['bg-surface'], base);
   const card = opaque(c['bg-card'], surface || base);
   const under = card || surface || base;
   return {
+    // The window's own canvas: the native layer under the WebView2 paints it before any page
+    // exists (MainWindow.ApplyWindowBackground), and the C# side saves it for the next launch.
+    bgBase: baseRead,
     bgSurface: surface,
     bgCard: card,
     textPrimary: opaque(c['text-primary'], under),
@@ -2231,11 +2236,9 @@ function sanitizeStoredConfig(config: ThemeConfig): number {
   // The four numeric fields land in the same cssText sink (`--ui-font-size: ${n}px`) and now in
   // `s.zoom` at boot, and after the spread over DEFAULT_UI_SETTINGS nothing had checked even their
   // TYPE. A stored fontSize of `0; background-image:url(...)` is a string that produces a valid
-  // extra declaration. Bounds mirror validateExportedTheme, which has guarded the file path all
-  // along — the split between the two paths is exactly how this hole survived.
-  for (const [f, lo, hi] of [
-    ['fontSize', 6, 48], ['borderRadius', 0, 64], ['rowHeight', 12, 120], ['zoom', 25, 500],
-  ] as const) {
+  // extra declaration. Bounds shared with validateExportedTheme and the boot mirror (UI_NUMBER_BOUNDS).
+  for (const f of UI_NUMBER_FIELDS) {
+    const [lo, hi] = UI_NUMBER_BOUNDS[f];
     const v = ui[f];
     if (typeof v !== 'number' || !Number.isFinite(v) || v < lo || v > hi) {
       ui[f] = DEFAULT_UI_SETTINGS[f]; dropped++;
@@ -2243,6 +2246,18 @@ function sanitizeStoredConfig(config: ThemeConfig): number {
   }
   return dropped;
 }
+
+/**
+ * The four numeric uiSettings and the range each is accepted in. ONE table for the three readers
+ * that need it — the storage sanitiser above, the import validator below, and the boot mirror that
+ * tools/gen-boot-mirror.mjs writes into index.html — because they used to be three hand-written
+ * copies and the mirror's copy was missing: a stored zoom of 0 blanked the page until React loaded
+ * and put the default back. Ranges are wide on purpose, so any reasonable hand-made theme imports.
+ */
+export const UI_NUMBER_BOUNDS = {
+  fontSize: [6, 48], borderRadius: [0, 64], rowHeight: [12, 120], zoom: [25, 500],
+} as const;
+const UI_NUMBER_FIELDS = Object.keys(UI_NUMBER_BOUNDS) as (keyof typeof UI_NUMBER_BOUNDS)[];
 
 export function validateExportedTheme(data: unknown): data is ExportedTheme {
   if (!data || typeof data !== 'object') return false;
@@ -2258,11 +2273,14 @@ export function validateExportedTheme(data: unknown): data is ExportedTheme {
   if (!d.uiSettings || typeof d.uiSettings !== 'object') return false;
   const ui = d.uiSettings as Record<string, unknown>;
   // Bounds-check (not just type-check) — these feed CSS sizing, so reject NaN/Infinity/negative/
-  // absurd values. Ranges are intentionally wide so any reasonable hand-made theme still imports.
-  if (typeof ui.fontSize !== 'number' || !(ui.fontSize >= 6 && ui.fontSize <= 48)) return false;
-  if (typeof ui.borderRadius !== 'number' || !(ui.borderRadius >= 0 && ui.borderRadius <= 64)) return false;
-  if (typeof ui.rowHeight !== 'number' || !(ui.rowHeight >= 12 && ui.rowHeight <= 120)) return false;
-  if (ui.zoom !== undefined && !(typeof ui.zoom === 'number' && ui.zoom >= 25 && ui.zoom <= 500)) return false;
+  // absurd values (UI_NUMBER_BOUNDS). zoom may be absent: it is newer than the other three, an
+  // older export carries none, and the import merges over the defaults.
+  for (const f of UI_NUMBER_FIELDS) {
+    const [lo, hi] = UI_NUMBER_BOUNDS[f];
+    const v = ui[f];
+    if (f === 'zoom' && v === undefined) continue;
+    if (typeof v !== 'number' || !(v >= lo && v <= hi)) return false;
+  }
   // uiSettings color fields are interpolated into cssText (incl. color-mix) — when present they
   // must be safe colors. Missing fields are tolerated (merged over DEFAULT_UI_SETTINGS on import).
   for (const f of UI_COLOR_FIELDS) {

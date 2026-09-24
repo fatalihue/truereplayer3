@@ -146,6 +146,11 @@ namespace TrueReplayer
         public MainWindow()
         {
             this.InitializeComponent();
+            // The theme's canvas, not a fixed black, from the first frame: the window is shown by
+            // Activate() long before the WebView2 has painted anything (it stays at Opacity 0 until
+            // NavigationCompleted, and again during every recovery), so a light preset launched on
+            // #0a0a0a and flashed to white. The boot mirror inside index.html cannot reach this far.
+            ApplyWindowBackground(AppSettingsManager.Load().WindowBackground);
             // Before RemapService.Load and the input hooks below: every key name the app records
             // or resolves is read against THIS thread's layout, from whichever thread asks.
             Helpers.KeyUtils.BindUiThread();
@@ -170,14 +175,20 @@ namespace TrueReplayer
             // Not DestroyIcon'd: the OS reclaims per-process GDI handles on exit (each launch is a
             // fresh process), and a Closed-handler free would be preempted by WindowEventManager's
             // Environment.Exit anyway. Just guard a null handle and log a load failure.
-            IntPtr hWindowIcon = LoadImage(IntPtr.Zero, iconPath, 1, 0, 0, 0x00000010);
-            if (hWindowIcon != IntPtr.Zero)
-            {
-                const int WM_SETICON = 0x80;
-                SendMessage(hwnd, WM_SETICON, (IntPtr)1, hWindowIcon);
-                SendMessage(hwnd, WM_SETICON, (IntPtr)0, hWindowIcon);
-            }
-            else
+            // One handle per slot, each at the size that slot is drawn at for this window's DPI.
+            // With no size LoadImage takes the .ico's FIRST entry — 16×16 — so the taskbar and
+            // Alt+Tab stretched a 16 px bitmap while the 24/32/48/256 entries sat unused.
+            uint iconDpi = NativeMethods.GetDpiForWindowSafe(hwnd);
+            IntPtr hSmallIcon = LoadImage(IntPtr.Zero, iconPath, 1,
+                NativeMethods.GetSystemMetricsForDpi(NativeMethods.SM_CXSMICON, iconDpi),
+                NativeMethods.GetSystemMetricsForDpi(NativeMethods.SM_CYSMICON, iconDpi), 0x00000010);
+            IntPtr hBigIcon = LoadImage(IntPtr.Zero, iconPath, 1,
+                NativeMethods.GetSystemMetricsForDpi(NativeMethods.SM_CXICON, iconDpi),
+                NativeMethods.GetSystemMetricsForDpi(NativeMethods.SM_CYICON, iconDpi), 0x00000010);
+            const int WM_SETICON = 0x80;
+            if (hBigIcon != IntPtr.Zero) SendMessage(hwnd, WM_SETICON, (IntPtr)1, hBigIcon);
+            if (hSmallIcon != IntPtr.Zero) SendMessage(hwnd, WM_SETICON, (IntPtr)0, hSmallIcon);
+            if (hBigIcon == IntPtr.Zero || hSmallIcon == IntPtr.Zero)
             {
                 Services.DiagnosticLog.Warn($"Window icon failed to load from '{iconPath}' — using default icon");
             }
@@ -2060,6 +2071,21 @@ namespace TrueReplayer
         public bool IsMinimizeToTrayEnabled()
         {
             return UserProfile.Current.MinimizeToTray;
+        }
+
+        /// <summary>
+        /// Paints the native layer under the WebView2 — the root Grid and the WebView2's own default
+        /// background — with the theme's base colour (#rrggbb). Called with the colour saved from the
+        /// last session at construction, and again on every theme push (WebViewBridge.HandleThemeColors),
+        /// so a recovery that hides the WebView shows the current theme too. Anything unreadable
+        /// leaves the XAML default.
+        /// </summary>
+        public void ApplyWindowBackground(string? hex)
+        {
+            if (ProfileController.ParseCssHex(hex) is not { } c) return;
+            var color = Microsoft.UI.ColorHelper.FromArgb(255, c.R, c.G, c.B);
+            RootGrid.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(color);
+            WebView.DefaultBackgroundColor = color;
         }
 
         [DllImport("user32.dll")]

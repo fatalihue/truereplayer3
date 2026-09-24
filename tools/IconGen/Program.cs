@@ -5,6 +5,13 @@
 // Tinting: blend(original, grayscale*tintColor, strength) preserves the silhouette/details of the source
 // art while applying the requested hue. A circular alpha mask matches the existing tile asset shape so
 // the .ico reads as a circular badge rather than a square crop.
+//
+// OBSOLETE — the shipped .ico files are NOT made by this tool any more. They were redrawn (the vector
+// robot, aa6fb7d and c197591) with five entries — 16/24/32/48 as DIB, the small sizes drawn on their
+// own, and 256 as PNG — which this all-PNG, tint-the-whole-image pipeline cannot reproduce. Kept for
+// reference. It used to default its output to "." (the repo root when run from there), silently
+// replacing the three release icons with the old art: it now needs both paths and refuses to overwrite
+// an existing .ico without --force.
 
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -12,8 +19,14 @@ using System.Drawing.Imaging;
 
 #pragma warning disable CA1416 // System.Drawing.Common is Windows-only — this is a Windows tool.
 
-string source = args.Length > 0 ? args[0] : "Assets/Square310x310Logo.png";
-string outDir = args.Length > 1 ? args[1] : ".";
+if (args.Length < 2)
+{
+    Console.Error.WriteLine("Usage: IconGen <source.png> <outDir> [--force]. Obsolete: see the header before running.");
+    return 1;
+}
+string source = args[0];
+string outDir = args[1];
+bool force = args.Contains("--force");
 
 Console.WriteLine($"Source: {Path.GetFullPath(source)}");
 Console.WriteLine($"Output dir: {Path.GetFullPath(outDir)}");
@@ -30,6 +43,16 @@ int[] sizes = { 16, 24, 32, 48, 64, 128, 256 };
     ("TrueReplayerRed",    1.30, 0.05, 0.05, 0.95),  // aggressive red     — profile keys paused
     ("TrueReplayerPurple", 0.70, 0.10, 1.30, 0.95),  // electric violet    — clicker mode
 };
+
+if (!force)
+{
+    var existing = variants.Select(v => Path.Combine(outDir, $"{v.Name}.ico")).Where(File.Exists).ToList();
+    if (existing.Count > 0)
+    {
+        Console.Error.WriteLine($"Refusing to overwrite: {string.Join(", ", existing)}. Pass --force to replace them.");
+        return 1;
+    }
+}
 
 foreach (var v in variants)
 {
@@ -58,6 +81,7 @@ foreach (var v in variants)
 }
 
 Console.WriteLine("\nDone.");
+return 0;
 
 // ─────────────────────────────────────────────────────────────────────────────
 

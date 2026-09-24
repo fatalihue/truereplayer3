@@ -6,10 +6,32 @@
 # washing the image in the requested hue. A circular alpha mask is also applied so the icon reads as a
 # circular badge instead of a square crop, matching the existing tile asset shape.
 
+#
+# OBSOLETE — the shipped TrueReplayer.ico / TrueReplayerRed.ico / TrueReplayerPurple.ico are NOT made by
+# this script any more. They were redrawn (the vector robot, aa6fb7d and c197591) with five entries —
+# 16/24/32/48 as DIB, the small sizes drawn on their own, and 256 as PNG — which this tinting pipeline
+# cannot reproduce. Kept for reference. It used to default to the repo root as its output, so running it
+# from there silently replaced the three release icons with the old art: it now needs both paths spelled
+# out and refuses to overwrite an existing .ico without -Force.
+
 param(
-  [string]$Source = "Assets/Square310x310Logo.png",
-  [string]$OutDir = "."
+  [string]$Source,
+  [string]$OutDir,
+  [switch]$Force
 )
+
+if (-not $Source -or -not $OutDir) {
+  Write-Error "Usage: generate-icons.ps1 -Source <png> -OutDir <folder> [-Force]. Obsolete: see the header before running."
+  exit 1
+}
+if (-not $Force) {
+  $existing = @("TrueReplayer", "TrueReplayerRed", "TrueReplayerPurple") |
+    ForEach-Object { Join-Path $OutDir "$_.ico" } | Where-Object { Test-Path $_ }
+  if ($existing) {
+    Write-Error "Refusing to overwrite: $($existing -join ', '). Pass -Force to replace them."
+    exit 1
+  }
+}
 
 Add-Type -AssemblyName System.Drawing
 

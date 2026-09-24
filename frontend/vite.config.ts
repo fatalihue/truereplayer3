@@ -27,5 +27,10 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // Fail instead of moving to 5174. The DEBUG build navigates to localhost:5173 by literal
+    // (MainWindow), and 5173 is every Vite project's default: with the port taken, this server
+    // used to come up elsewhere in silence and the app loaded whatever held 5173 — another
+    // project, or a stale harness left running.
+    strictPort: true,
   },
 })

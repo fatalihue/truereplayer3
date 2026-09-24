@@ -84,41 +84,53 @@
         // resolveThemeColors documents as "user wins".
         var resolve = function(id) { return customs[id] || presets[id] || presets[moved[id]] || null; };
         var colors = presets['lavender-coal'];
-        var ui = { fontSize: 13, borderRadius: 3, rowHeight: 34, zoom: 90 };
+        var DEF = { fontSize: 13, borderRadius: 3, rowHeight: 34, zoom: 90 };
+        var ui = { fontSize: DEF.fontSize, borderRadius: DEF.borderRadius, rowHeight: DEF.rowHeight, zoom: DEF.zoom };
+        // UI_NUMBER_BOUNDS: the range each number is accepted in, the table the sanitiser reads.
+        var BOUNDS = {"fontSize":[6,48],"borderRadius":[0,64],"rowHeight":[12,120],"zoom":[25,500]};
         if (saved) {
           try {
             var cfg = JSON.parse(saved);
-            // Any schema version, not just v1 — this gate read `=== 1` while the stored
-            // config had long moved past it, so the whole block was dead and every launch
-            // painted the hardcoded default no matter which theme the user picked.
-            // "Match Windows theme" is resolved HERE too, or the mirror paints the preset from
-            // the LAST session whenever the OS theme changed while the app was closed — the exact
-            // flash this whole block exists to prevent, arriving through the one door it did not
-            // watch. Same resolution loadThemeConfig makes (themes.ts), so the pre-React paint and
-            // React's first paint agree. colorOverrides are skipped in that case, as they are
-            // there: they belong to the preset being left.
-            var wantId = null;
-            if (cfg && cfg.uiSettings && cfg.uiSettings.matchSystemTheme && window.matchMedia) {
-              wantId = window.matchMedia('(prefers-color-scheme: light)').matches
-                ? cfg.uiSettings.lightPresetId : cfg.uiSettings.darkPresetId;
-              if (wantId && !resolve(wantId)) wantId = null;
-            }
-            var followed = wantId && cfg.baseThemeId !== wantId;
-            var base = cfg && cfg.version >= 1 && (wantId || cfg.baseThemeId)
-              ? resolve(wantId || cfg.baseThemeId) : null;
-            // The base may be null (an orphaned id); the overrides still apply on top of the
-            // default, which is what resolveThemeColors does.
-            var src = base || colors;
-            colors = {};
-            for (var ki = 0; ki < KEYS.length; ki++) { var kk = KEYS[ki]; if (src[kk]) colors[kk] = src[kk]; }
-            if (cfg && cfg.colorOverrides && !followed) {
-              for (var kj = 0; kj < KEYS.length; kj++) { var ko = KEYS[kj]; if (cfg.colorOverrides[ko]) colors[ko] = cfg.colorOverrides[ko]; }
-            }
-            if (cfg && cfg.uiSettings) {
-              if (typeof cfg.uiSettings.fontSize === 'number') ui.fontSize = cfg.uiSettings.fontSize;
-              if (typeof cfg.uiSettings.borderRadius === 'number') ui.borderRadius = cfg.uiSettings.borderRadius;
-              if (typeof cfg.uiSettings.rowHeight === 'number') ui.rowHeight = cfg.uiSettings.rowHeight;
-              if (typeof cfg.uiSettings.zoom === 'number') ui.zoom = cfg.uiSettings.zoom;
+            // loadThemeConfig takes a stored config only with a version (any, not just v1 — this
+            // gate once read "=== 1" and the whole block was dead) AND a base id; otherwise it
+            // starts from the defaults, overrides and uiSettings included. The mirror used to
+            // check that for the base colour alone, so a config missing either painted its
+            // overrides and sizes for a frame before React painted the defaults.
+            if (cfg && cfg.version >= 1 && cfg.baseThemeId) {
+              // "Match Windows theme" is resolved HERE too, or the mirror paints the preset from
+              // the LAST session whenever the OS theme changed while the app was closed — the exact
+              // flash this whole block exists to prevent, arriving through the one door it did not
+              // watch. Same resolution loadThemeConfig makes (themes.ts), so the pre-React paint and
+              // React's first paint agree. colorOverrides are skipped in that case, as they are
+              // there: they belong to the preset being left.
+              var wantId = null;
+              if (cfg.uiSettings && cfg.uiSettings.matchSystemTheme && window.matchMedia) {
+                wantId = window.matchMedia('(prefers-color-scheme: light)').matches
+                  ? cfg.uiSettings.lightPresetId : cfg.uiSettings.darkPresetId;
+                if (wantId && !resolve(wantId)) wantId = null;
+              }
+              var followed = wantId && cfg.baseThemeId !== wantId;
+              // The base may be null (an orphaned id); the overrides still apply on top of the
+              // default, which is what resolveThemeColors does.
+              var src = resolve(wantId || cfg.baseThemeId) || colors;
+              colors = {};
+              for (var ki = 0; ki < KEYS.length; ki++) { var kk = KEYS[ki]; if (src[kk]) colors[kk] = src[kk]; }
+              if (cfg.colorOverrides && !followed) {
+                for (var kj = 0; kj < KEYS.length; kj++) { var ko = KEYS[kj]; if (cfg.colorOverrides[ko]) colors[ko] = cfg.colorOverrides[ko]; }
+              }
+              if (cfg.uiSettings) {
+                // The loader's order: stored values over the defaults, then its migrations, then its
+                // sanitiser. v4 to v5 is the one migration that touches a painted number (a zoom still
+                // at the old default 95 becomes the new one); without it an upgraded install booted
+                // at 95 % and snapped to 90 %. Out of range, or not a number, is the default — a
+                // stored zoom of 0 used to blank the page until React loaded.
+                for (var nf in BOUNDS) { if (cfg.uiSettings[nf] !== undefined) ui[nf] = cfg.uiSettings[nf]; }
+                if (cfg.version < 5 && ui.zoom === 95) ui.zoom = DEF.zoom;
+                for (var nb in BOUNDS) {
+                  var nv = ui[nb];
+                  if (typeof nv !== 'number' || !isFinite(nv) || nv < BOUNDS[nb][0] || nv > BOUNDS[nb][1]) ui[nb] = DEF[nb];
+                }
+              }
             }
           } catch(e) {
             // Pre-v1 format: the value is a bare theme id string.

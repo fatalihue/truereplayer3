@@ -139,6 +139,12 @@
     <FrontendSources Include="frontend\src\**\*.ts" />
     <FrontendSources Include="frontend\src\**\*.tsx" />
     <FrontendSources Include="frontend\src\**\*.css" />
+    <!-- What `npm run build` reads beyond src: the boot-mirror generator (its first step rewrites
+         index.html from themes.ts) and public/, which Vite copies into dist verbatim (the update
+         splash's app-icon.png). A change to either alone left this target skipped, and the build
+         shipped the previous dist with nothing to say so. -->
+    <FrontendSources Include="frontend\tools\**\*.mjs" />
+    <FrontendSources Include="frontend\public\**\*" />
   </ItemGroup>
 
   <!-- Run "npm run build" before the dist→wwwroot copy when any frontend source

@@ -94,6 +94,12 @@ namespace TrueReplayer.Services
         private const uint IMAGE_ICON = 1;
         private const uint LR_LOADFROMFILE = 0x00000010;
 
+        // The notification area draws a SMALL icon at the system DPI — the size LoadIconMetric(LIM_SMALL)
+        // picks for a resource icon. With no size, LoadImage took the .ico's FIRST entry (16×16) and the
+        // shell stretched it on every display above 100 %; the 24/32/48/256 entries were never read.
+        private static IntPtr LoadTrayIcon(string iconPath) => LoadImage(IntPtr.Zero, iconPath, IMAGE_ICON,
+            NativeMethods.GetSystemMetrics(NativeMethods.SM_CXSMICON), NativeMethods.GetSystemMetrics(NativeMethods.SM_CYSMICON), LR_LOADFROMFILE);
+
         // Menu constants
         private const uint MF_STRING = 0x0000;
         private const uint MF_CHECKED = 0x0008;
@@ -127,7 +133,7 @@ namespace TrueReplayer.Services
             string iconPath = ResolveTrayIconPath(settings);
 
             ReleaseCurrentIcon();
-            currentIconHandle = LoadImage(IntPtr.Zero, iconPath, IMAGE_ICON, 0, 0, LR_LOADFROMFILE);
+            currentIconHandle = LoadTrayIcon(iconPath);
             currentIconPath = currentIconHandle == IntPtr.Zero ? "" : iconPath;
             if (currentIconHandle == IntPtr.Zero)
                 DiagnosticLog.Warn($"Tray icon LoadImage failed (Win32 error {Marshal.GetLastWin32Error()}) for '{iconPath}' — tray icon will appear blank");
@@ -182,7 +188,7 @@ namespace TrueReplayer.Services
             if (iconPath != currentIconPath || currentIconHandle == IntPtr.Zero)
             {
                 ReleaseCurrentIcon();
-                currentIconHandle = LoadImage(IntPtr.Zero, iconPath, IMAGE_ICON, 0, 0, LR_LOADFROMFILE);
+                currentIconHandle = LoadTrayIcon(iconPath);
                 currentIconPath = currentIconHandle == IntPtr.Zero ? "" : iconPath;
                 notifyIcon.hIcon = currentIconHandle;
             }

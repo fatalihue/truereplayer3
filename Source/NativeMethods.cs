@@ -200,6 +200,13 @@ namespace TrueReplayer.Interop
         [DllImport("user32.dll")]
         public static extern int GetSystemMetrics(int nIndex);
 
+        /// <summary>GetSystemMetrics for a given DPI — the icon sizes of a window on a scaled display.</summary>
+        [DllImport("user32.dll")]
+        public static extern int GetSystemMetricsForDpi(int nIndex, uint dpi);
+
+        // Icon metrics: the window's big icon (taskbar, Alt+Tab) and the small one (title bar, tray).
+        public const int SM_CXICON = 11, SM_CYICON = 12, SM_CXSMICON = 49, SM_CYSMICON = 50;
+
         // System double-click time (ms) — the same threshold the OS uses to pair two
         // clicks into a double-click. Used by the recorder's DoubleClick merge so
         // recording agrees with what the target app itself perceived.
