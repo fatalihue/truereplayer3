@@ -2036,10 +2036,10 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
 
   const pendingEdits = actionIndex != null && editorTouched;
   useEffect(() => {
-    send({ type: 'editor:pendingEdits', payload: { pending: pendingEdits } });
+    send({ type: 'editor:pendingEdits', payload: { pending: pendingEdits, owner: 'sheet' } });
   }, [pendingEdits, send]);
   // Unmount is not a value change, so the effect above never fires for it.
-  useEffect(() => () => { send({ type: 'editor:pendingEdits', payload: { pending: false } }); }, [send]);
+  useEffect(() => () => { send({ type: 'editor:pendingEdits', payload: { pending: false, owner: 'sheet' } }); }, [send]);
   // RENEW the claim while it is held. AutomationGuard expires it a fixed TTL after the moment it
   // was STAMPED, and the effect above only fires on the TRANSITION of pendingEdits — so the clock
   // started on the user's first keystroke in this row and nothing ever restarted it. Ten minutes
@@ -2066,7 +2066,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   useEffect(() => {
     if (!pendingEdits) return;
     const id = setInterval(() => {
-      send({ type: 'editor:pendingEdits', payload: { pending: true } });
+      send({ type: 'editor:pendingEdits', payload: { pending: true, owner: 'sheet' } });
     }, EDITOR_CLAIM_RENEW_MS);
     return () => clearInterval(id);
   }, [pendingEdits, send]);

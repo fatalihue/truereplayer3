@@ -564,8 +564,11 @@ namespace TrueReplayer
         // on a scoped key's first down only, and a user types many keys into one window before the
         // window changes, so the OpenProcess + image-name pair runs once per window switch. The pid
         // rides in the cache key because HWND values are recycled — a new window with an old handle
-        // must not inherit the old process. GetProcessImageFileName returns a device path; the file
-        // name without extension, lower-cased, is the key RemapService.NormalizeProcess produces.
+        // must not inherit the old process. GetProcessImageFileName returns a device path; its file
+        // name goes through RemapService.NormalizeProcess itself, so the two sides of the compare
+        // are one normalisation. It used to be GetFileNameWithoutExtension, which strips ANY
+        // extension where NormalizeProcess strips only ".exe": a rule scoped to "app.scr" was
+        // stored as "app.scr", the foreground read "app", and the rule never applied.
         private static IntPtr _fgProcHwnd = IntPtr.Zero;
         private static uint _fgProcPid;
         private static string? _fgProcKey;
@@ -585,7 +588,7 @@ namespace TrueReplayer
                     {
                         var sb = new StringBuilder(512);
                         if (NativeMethods.GetProcessImageFileName(h, sb, (uint)sb.Capacity) > 0)
-                            key = System.IO.Path.GetFileNameWithoutExtension(sb.ToString()).ToLowerInvariant();
+                            key = TrueReplayer.Services.RemapService.NormalizeProcess(System.IO.Path.GetFileName(sb.ToString()));
                     }
                     finally { NativeMethods.CloseHandle(h); }
                 }
@@ -965,9 +968,20 @@ namespace TrueReplayer
             lock (_captureOwnersLock)
             {
                 _captureOwners.Add(ownerId);
+                // Registration ORDER, newest last, so that when the newest owner leaves the label
+                // falls back to the one still listening. Only the latest registration moves an
+                // owner to the end, which is what "most recently registered" already meant.
+                _captureOwnerOrder.Remove(ownerId);
+                _captureOwnerOrder.Add(ownerId);
                 LastCaptureOwner = ownerId;
             }
         }
+
+        // Registration order of the live owners. LastCaptureOwner used to be written on register
+        // only: when the newest owner unregistered, the label kept naming it while an OLDER owner
+        // was the only one left listening — a remap chip still armed in Settings then dropped every
+        // capture as "meant for someone else" and sat on "press..." for good.
+        private static readonly List<string> _captureOwnerOrder = new();
 
         /// Removes an owner from the capture refcount. Hook deactivates when the last owner
         /// is removed. No-op if the owner wasn't registered — keeps the API safe to call
@@ -975,14 +989,24 @@ namespace TrueReplayer
         public static void UnregisterCapture(string ownerId)
         {
             if (string.IsNullOrEmpty(ownerId)) return;
-            lock (_captureOwnersLock) _captureOwners.Remove(ownerId);
+            lock (_captureOwnersLock)
+            {
+                _captureOwners.Remove(ownerId);
+                _captureOwnerOrder.Remove(ownerId);
+                LastCaptureOwner = _captureOwnerOrder.Count > 0 ? _captureOwnerOrder[^1] : null;
+            }
         }
 
         /// Zeroes the refcount. Called by MainWindow on WebView2 NavigationCompleted so a
         /// frontend reload doesn't leave immortal owner IDs from the previous mount alive.
         public static void ClearAllCaptures()
         {
-            lock (_captureOwnersLock) _captureOwners.Clear();
+            lock (_captureOwnersLock)
+            {
+                _captureOwners.Clear();
+                _captureOwnerOrder.Clear();
+                LastCaptureOwner = null;
+            }
         }
 
         /// When true, mouse click events are NOT recorded (but still pass through to the target
@@ -1018,9 +1042,9 @@ namespace TrueReplayer
 
         public static void Stop()
         {
-            // Disarmed FIRST: Stop is also the shutdown/update path, and a watchdog tick that
-            // slipped in behind it would reinstall the hooks the app is trying to let go of.
-            // Recovery re-arms by going through Start() at the end of the same reinstall.
+            // Disarmed FIRST: Stop is the shutdown/update path, and a watchdog tick that slipped in
+            // behind it would reinstall the hooks the app is trying to let go of. (The watchdog's
+            // own recovery no longer comes through here — see ReinstallDeadHooks.)
             _watchdogArmed = false;
 
             if (_mouseHookId != IntPtr.Zero)
@@ -1067,7 +1091,7 @@ namespace TrueReplayer
             _hotstringBufferLen = 0;
             _pendingReleaseProfile = null;
             _pendingReleaseVkCode = 0;
-            lock (_captureOwnersLock) _captureOwners.Clear();
+            ClearAllCaptures();
         }
 
         #region Hook watchdog
@@ -1088,9 +1112,8 @@ namespace TrueReplayer
         //
         // START() ALONE CANNOT RECOVER. Both installs are guarded by `if (id == IntPtr.Zero)` and
         // the removed hook's handle is still sitting in that field, so Start() on a dead hook is a
-        // no-op. Recovery has to route through Stop(), which is what zeroes the ids — and which
-        // also resets the transient key state, so the new session starts clean instead of
-        // inheriting a "held" key nobody is holding.
+        // no-op. Recovery zeroes the dead hook's id first — and resets that hook's key state, so it
+        // does not inherit a "held" key nobody is holding — in ReinstallDeadHooks.
 
         // Written by the hook callbacks before ANY gate; read by the probe. Not a lock: a stale
         // read costs one extra probe, and the mouse hook writes this on every WM_MOUSEMOVE.
@@ -1174,6 +1197,20 @@ namespace TrueReplayer
             if (IsReplayingAction || IsCaptureDialogOpen) return;
             if (MainController.Instance != null && MainController.Instance.IsRecording()) return;
 
+            // Nor while the lock screen, a UAC prompt or Ctrl+Alt+Del owns the input: SendInput does
+            // not reach the secure desktop and the hooks see nothing there, so every probe went
+            // unanswered and read as a dead hook. Four or five minutes of a locked screen — a lunch
+            // break — walked the counts past MaxReinstallsWithoutProof, and the probe-off latch then
+            // switched the watchdog off for the rest of the session: a hook that really died
+            // afterwards was never noticed. Strikes from before the switch are dropped too, so the
+            // first probe after unlocking starts a fresh count.
+            if (!IsInputDesktopInteractive())
+            {
+                _keyboardStrikes = 0;
+                _mouseStrikes = 0;
+                return;
+            }
+
             long now = Environment.TickCount64;
             long kbBefore = System.Threading.Volatile.Read(ref _keyboardBeat);
             long msBefore = System.Threading.Volatile.Read(ref _mouseBeat);
@@ -1254,14 +1291,12 @@ namespace TrueReplayer
                 TrueReplayer.Services.DiagnosticLog.Error("Hook watchdog: no UI dispatcher to reinstall from — restart the app to recover.");
                 return;
             }
-            // Stop() then Start(), in that order and on the installing thread. Stop() is the half
-            // that matters: it is the only thing that zeroes the stale ids Start() checks.
+            // On the installing thread, and only the hook that died. See ReinstallDeadHooks.
             bool queued = dispatcher.TryEnqueue(() =>
             {
                 try
                 {
-                    Stop();
-                    Start();
+                    ReinstallDeadHooks(keyboardDead, mouseDead);
                     TrueReplayer.Services.DiagnosticLog.Info(
                         $"Hook watchdog: hooks reinstalled (mouse={( _mouseHookId != IntPtr.Zero ? "ok" : "FAILED")}, " +
                         $"keyboard={(_keyboardHookId != IntPtr.Zero ? "ok" : "FAILED")}).");
@@ -1270,6 +1305,157 @@ namespace TrueReplayer
             });
             if (!queued)
                 TrueReplayer.Services.DiagnosticLog.Error("Hook watchdog: the UI thread refused the reinstall — restart the app to recover.");
+        }
+
+        /// <summary>
+        /// Recovery from a hook Windows dropped: unhook and reinstall the DEAD one only, and reset
+        /// only the state that hook was keeping.
+        ///
+        /// This used to be Stop() + Start(), and Stop() is the shutdown path: it clears the key state
+        /// of BOTH devices and forgets every armed trigger without resolving it. The mouse arm is the
+        /// one that strikes while a key is held — auto-repeat keeps the keyboard's heartbeat fresh —
+        /// so a dead mouse hook wiped a live keyboard session mid-hold. The WhilePressed hold was
+        /// forgotten with no PROFILE_STOP, so the real release later found nothing to stop and the
+        /// forced-infinite run went on; the held key, no longer swallowed, leaked into the target as
+        /// text; the held OnPress key's next auto-repeat read as a fresh press and stopped the run it
+        /// had started; and a side button held across it lost its swallow mark, so its release
+        /// reached the app as a Back/Forward.
+        ///
+        /// For the device that DID die, its releases may really have been missed, so its state is
+        /// dropped as before — but an armed trigger is resolved rather than forgotten: a confirmed
+        /// WhilePressed run is stopped (still holding the key simply starts it again), an OnRelease
+        /// or Hold pending on it is cancelled. Swallowed side-button downs are kept even then: an
+        /// entry whose release was missed costs one swallowed release later, while dropping one for a
+        /// button still held turns its release into a navigation.
+        /// </summary>
+        private static void ReinstallDeadHooks(bool keyboardDead, bool mouseDead)
+        {
+            // Start() re-arms it; nothing may tick in between.
+            _watchdogArmed = false;
+            if (keyboardDead && _keyboardHookId != IntPtr.Zero)
+            {
+                if (!NativeMethods.UnhookWindowsHookEx(_keyboardHookId))
+                    TrueReplayer.Services.DiagnosticLog.Warn("UnhookWindowsHookEx failed for the dead keyboard hook — handle already invalid, as expected for a hook Windows removed.");
+                _keyboardHookId = IntPtr.Zero;
+            }
+            if (mouseDead && _mouseHookId != IntPtr.Zero)
+            {
+                if (!NativeMethods.UnhookWindowsHookEx(_mouseHookId))
+                    TrueReplayer.Services.DiagnosticLog.Warn("UnhookWindowsHookEx failed for the dead mouse hook — handle already invalid, as expected for a hook Windows removed.");
+                _mouseHookId = IntPtr.Zero;
+            }
+            if (keyboardDead) ResetKeyboardSession();
+            if (mouseDead) ResetMouseSession();
+            Start();
+        }
+
+        // The side buttons' pseudo-vks. Every trigger pair and remap pairing a MOUSE event can open
+        // is keyed by one of these; everything else was opened by the keyboard.
+        private static bool IsMouseTriggerVk(int vk) => vk == 0x05 || vk == 0x06;
+
+        /// <summary>
+        /// Ends the trigger pairs armed on one device, for a moment when their releases can no longer
+        /// be trusted to arrive. A confirmed WhilePressed hold is STOPPED — PROFILE_STOP, as its
+        /// release would have sent — never silently dropped: dropping it is what left a forced-
+        /// infinite run with nothing that could end it. OnRelease and Hold pairs are cancelled
+        /// unfired. UI thread (the hooks' thread).
+        /// </summary>
+        private static void ResolveTriggerPairs(bool mouse)
+        {
+            bool Mine(int vk) => vk != 0 && IsMouseTriggerVk(vk) == mouse;
+            if (_pendingHoldFireProfile != null && Mine(_pendingHoldFireVkCode)) ClearPendingHoldFire();
+            if (_pendingReleaseProfile != null && Mine(_pendingReleaseVkCode))
+            {
+                _pendingReleaseProfile = null;
+                _pendingReleaseVkCode = 0;
+            }
+            if (_activeHoldProfile != null && Mine(_activeHoldVkCode))
+            {
+                string? heldProfile;
+                bool wasConfirmed;
+                lock (_holdLock)
+                {
+                    heldProfile = _activeHoldProfile;
+                    wasConfirmed = _holdConfirmed;
+                    ClearActiveHold();
+                }
+                if (wasConfirmed && heldProfile != null)
+                    OnHotkeyPressed?.Invoke($"PROFILE_STOP::{heldProfile}");
+            }
+        }
+
+        // Closes the remap pairings one device opened, through the single release path, so the
+        // refcount and the mirror rules hold (a TO still held by the other device stays down).
+        private static void CloseRemapPairings(bool mouse)
+        {
+            if (_activeRemapDowns.Count == 0) return;
+            foreach (var fromVk in _activeRemapDowns.Keys.Where(v => IsMouseTriggerVk(v) == mouse).ToList())
+                CloseRemapPairing(fromVk);
+        }
+
+        /// <summary>The keyboard's share of <see cref="Stop"/>'s reset, resolving instead of dropping.</summary>
+        private static void ResetKeyboardSession()
+        {
+            ResolveTriggerPairs(mouse: false);
+            CloseRemapPairings(mouse: false);
+            _remapBypassedDowns.Clear();
+            _vkCodesCurrentlyDown.Clear();
+            // A pairing opened by a side button (XButton1 → Ctrl) still holds its TO key through the
+            // hook that is alive; its mirror is not the dead keyboard's to drop.
+            foreach (var vk in _remapMirroredVks) _vkCodesCurrentlyDown.Add(vk);
+            _altGrPhantomCtrlHeld = false;
+            _hotstringBufferLen = 0;
+            _lastTapKey = null;
+            _lastTapTicks = 0;
+        }
+
+        /// <summary>The mouse's share of <see cref="Stop"/>'s reset, resolving instead of dropping.</summary>
+        private static void ResetMouseSession()
+        {
+            ResolveTriggerPairs(mouse: true);
+            CloseRemapPairings(mouse: true);
+            _physicalMouseDowns.Clear();
+            _captureSwallowedXDowns.Clear();
+            // _swallowedXDowns deliberately kept — see ReinstallDeadHooks.
+        }
+
+        /// <summary>
+        /// The session came back to this desktop (unlocked, or a console/remote reconnect). Every key
+        /// and button the user held when it left was released over there, on the secure desktop,
+        /// where these hooks see nothing — so each "held" record is stale: a Win from Win+L prefixed
+        /// every later hotkey with "Win+" until Win was pressed again, a remapped TO key (CapsLock →
+        /// Ctrl) stayed down in the app in front, and a WhilePressed run kept going with its key long
+        /// released. Both devices are reset the way a reinstall resets a dead one; the remap releases
+        /// land now that SendInput reaches this desktop again. Called on the UI thread from the main
+        /// window's WM_WTSSESSION_CHANGE.
+        /// </summary>
+        public static void ResetAfterSessionReturn()
+        {
+            ResetKeyboardSession();
+            ResetMouseSession();
+            // Nothing is held any more, so no swallowed side-button down has a release to come.
+            _swallowedXDowns.Clear();
+            _keyboardStrikes = 0;
+            _mouseStrikes = 0;
+            TrueReplayer.Services.DiagnosticLog.Info("Session returned to this desktop — held-key state reset (keys released on the secure desktop are never seen by the hooks).");
+        }
+
+        // True when the normal desktop has the input. OpenInputDesktop is refused for the secure
+        // desktop (lock screen, UAC, Ctrl+Alt+Del); a desktop that opens but is not "Default" is the
+        // screen saver's. If the name cannot be read, the open succeeding already rules out the
+        // secure desktop, so it counts as interactive.
+        private static bool IsInputDesktopInteractive()
+        {
+            IntPtr desk = NativeMethods.OpenInputDesktop(0, false, NativeMethods.DESKTOP_READOBJECTS);
+            if (desk == IntPtr.Zero) return false;
+            try
+            {
+                var name = new StringBuilder(64);
+                if (!NativeMethods.GetUserObjectInformation(desk, NativeMethods.UOI_NAME, name, (uint)(name.Capacity * sizeof(char)), out _))
+                    return true;
+                return string.Equals(name.ToString(), "Default", StringComparison.OrdinalIgnoreCase);
+            }
+            finally { NativeMethods.CloseDesktop(desk); }
         }
 
         // A lone key-UP for a key nothing has down, so nothing sees a release. KEYEVENTF_KEYUP
@@ -1440,7 +1626,7 @@ namespace TrueReplayer
                 // and must stay absent from the map (a present-but-null entry is not the same
                 // thing to the matcher). Cache key is the pattern alone because the mode is what
                 // decides whether we get here at all.
-                if (target?.TitleMatchMode == "regex" && !string.IsNullOrEmpty(target.WindowTitle))
+                if (target != null && TrueReplayer.Helpers.WindowMatcher.IsRegexMode(target) && !string.IsNullOrEmpty(target.WindowTitle))
                 {
                     if (!_titleRegexCache.TryGetValue(target.WindowTitle, out var cached))
                     {
@@ -1468,16 +1654,12 @@ namespace TrueReplayer
         private static readonly StringBuilder _windowTextBuffer = new(512);
         private static readonly StringBuilder _processNameBuffer = new(512);
 
-        // Reused to compose the scroll-wheel hotkey combo string on the mouse-hook hot path
-        // (avoids a per-wheel-event List<string> allocation). Touched only on the hook thread,
-        // like _windowTextBuffer / _processNameBuffer above — no synchronization required.
-        private static readonly StringBuilder _scrollComboBuilder = new(32);
-
-        // Same deal for the KEY combo path (BuildComposedKey / ComposeMouseCombo), which is even
-        // hotter: it ran per key down AND up, plus every auto-repeat while a key is held, and each
-        // call allocated a List<string> + its backing array + the joined string. Both hooks are
-        // installed from the same thread and neither function can be re-entered mid-compose (the
-        // ToString lands before any dispatch), so this needs no synchronization either.
+        // Reused to compose every hotkey combo string on the hook hot paths (BuildComposedKey and
+        // ComposeMouseCombo — side buttons and the scroll wheel alike), instead of a List<string>
+        // + string.Join per event: they ran per key down AND up, every auto-repeat while a key is
+        // held, and every wheel notch. Both hooks are installed from the same thread and neither
+        // function can be re-entered mid-compose (the ToString lands before any dispatch), so this
+        // needs no synchronization.
         private static readonly StringBuilder _comboBuilder = new(32);
 
         private static bool IsForegroundWindowMatch(string profileName)
@@ -1555,7 +1737,7 @@ namespace TrueReplayer
             var parts = new List<string>();
             if (!string.IsNullOrEmpty(target.ProcessName)) parts.Add(target.ProcessName);
             if (!string.IsNullOrEmpty(target.WindowTitle))
-                parts.Add($"title{(target.TitleMatchMode == "regex" ? "~" : ":")}\"{target.WindowTitle}\"");
+                parts.Add($"title{(TrueReplayer.Helpers.WindowMatcher.IsRegexMode(target) ? "~" : ":")}\"{target.WindowTitle}\"");
             return parts.Count > 0 ? string.Join(" ", parts) : "(empty target)";
         }
 
@@ -1652,16 +1834,23 @@ namespace TrueReplayer
             _hotstringBufferLen = 0;
         }
 
-        private static string? CheckHotstringMatch(bool isTerminator)
+        // Returns the match TOGETHER with its config, both from one read of the volatile map. The
+        // caller used to index ProfileHotstrings[match] afterwards — a second, independent read —
+        // and a RegisterProfileHotstrings from the UI thread landing between the two (a rename, a
+        // hotstring edited or removed) threw KeyNotFoundException inside the hook: the key that
+        // should have been swallowed leaked to the app, and the event's remaining dispatch was lost.
+        private static string? CheckHotstringMatch(bool isTerminator, out HotstringConfig? matchedConfig)
         {
-            if (_hotstringBufferLen == 0 || ProfileHotstrings.Count == 0)
+            matchedConfig = null;
+            var hotstrings = ProfileHotstrings;
+            if (_hotstringBufferLen == 0 || hotstrings.Count == 0)
                 return null;
 
             var bufferSpan = new ReadOnlySpan<char>(_hotstringBuffer, 0, _hotstringBufferLen);
             string? bestMatch = null;
             int bestLen = 0;
 
-            foreach (var (profileName, config) in ProfileHotstrings)
+            foreach (var (profileName, config) in hotstrings)
             {
                 var seq = config.Sequence;
                 if (seq.Length == 0 || seq.Length > _hotstringBufferLen)
@@ -1678,6 +1867,7 @@ namespace TrueReplayer
                     {
                         bestLen = seq.Length;
                         bestMatch = profileName;
+                        matchedConfig = config;
                     }
                 }
             }
@@ -1797,13 +1987,20 @@ namespace TrueReplayer
             // second). CaptureHotkeyMode takes a lock and — since the focus gate landed — two
             // P/Invokes; evaluating it first meant every WM_MOUSEMOVE paid that cost three times
             // at the mouse's polling rate. Reordering makes a move event skip all three.
+            // Injected events are not the user's press (LLMHF_INJECTED, bit 0), exactly as in the
+            // keyboard capture branch: a mouse or macro-pad utility's synthetic side button or
+            // scroll, or a key→wheel remap of this app's own, would otherwise be saved as the hotkey
+            // — one the trigger dispatch below then never fires, since it drops injected input too.
             if ((int)wParam == NativeMethods.WM_XBUTTONDOWN && CaptureHotkeyMode)
             {
                 var xCapStruct = Marshal.PtrToStructure<NativeMethods.MSLLHOOKSTRUCT>(lParam);
-                string xCapName = XButtonName(xCapStruct.mouseData);
-                _captureSwallowedXDowns.Add(XButtonVk(xCapName));
-                OnHotkeyCaptured?.Invoke(ComposeMouseCombo(xCapName));
-                return (IntPtr)1;
+                if ((xCapStruct.flags & 0x1) == 0)
+                {
+                    string xCapName = XButtonName(xCapStruct.mouseData);
+                    _captureSwallowedXDowns.Add(XButtonVk(xCapName));
+                    OnHotkeyCaptured?.Invoke(ComposeMouseCombo(xCapName));
+                    return (IntPtr)1;
+                }
             }
             // Gated on the CAPTURE-private pending-down set, not on CaptureHotkeyMode: the pair
             // must be resolved by whoever swallowed the down, and capture can now legitimately
@@ -1831,28 +2028,12 @@ namespace TrueReplayer
             if ((int)wParam == NativeMethods.WM_MOUSEWHEEL && CaptureHotkeyMode)
             {
                 var wheelHookStruct = Marshal.PtrToStructure<NativeMethods.MSLLHOOKSTRUCT>(lParam);
-                int wheelDelta = (short)((wheelHookStruct.mouseData >> 16) & 0xffff);
-                string scrollKey = wheelDelta > 0 ? "ScrollUp" : "ScrollDown";
-
-                // Tracked state, not GetAsyncKeyState — modifiers swallowed by the keyboard
-                // hook (Win in particular) won't show up in the async OS state.
-                bool winHeld = _vkCodesCurrentlyDown.Contains(0x5B) || _vkCodesCurrentlyDown.Contains(0x5C);
-                bool ctrlHeld = _vkCodesCurrentlyDown.Contains(0xA2) || _vkCodesCurrentlyDown.Contains(0xA3) || _vkCodesCurrentlyDown.Contains(0x11);
-                bool altHeld = _vkCodesCurrentlyDown.Contains(0xA4) || _vkCodesCurrentlyDown.Contains(0xA5) || _vkCodesCurrentlyDown.Contains(0x12);
-                bool shiftHeld = _vkCodesCurrentlyDown.Contains(0xA0) || _vkCodesCurrentlyDown.Contains(0xA1) || _vkCodesCurrentlyDown.Contains(0x10);
-
-                // Same reusable builder as the non-capture wheel path below — this branch kept the
-                // original List<string> + string.Join when that one was converted.
-                _scrollComboBuilder.Clear();
-                if (winHeld) _scrollComboBuilder.Append("Win+");
-                if (ctrlHeld) _scrollComboBuilder.Append("Ctrl+");
-                if (altHeld) _scrollComboBuilder.Append("Alt+");
-                if (shiftHeld) _scrollComboBuilder.Append("Shift+");
-                _scrollComboBuilder.Append(scrollKey);
-                string combo = _scrollComboBuilder.ToString();
-
-                OnHotkeyCaptured?.Invoke(combo);
-                return (IntPtr)1;
+                if ((wheelHookStruct.flags & 0x1) == 0)
+                {
+                    int wheelDelta = (short)((wheelHookStruct.mouseData >> 16) & 0xffff);
+                    OnHotkeyCaptured?.Invoke(ComposeMouseCombo(wheelDelta > 0 ? "ScrollUp" : "ScrollDown"));
+                    return (IntPtr)1;
+                }
             }
 
             if (!SuppressAllHotkeys)
@@ -1982,36 +2163,7 @@ namespace TrueReplayer
                     !IgnoreProfileHotkeys &&
                     MainController.Instance != null && !MainController.Instance.IsRecording())
                 {
-                    string scrollKey = scrollDelta > 0 ? "ScrollUp" : "ScrollDown";
-
-                    // Same rationale as BuildComposedKey: read modifier state from the tracked
-                    // set (populated only from non-injected events), not GetAsyncKeyState. A
-                    // macro that holds Shift via SendInput would otherwise make every user
-                    // scroll look like Shift+ScrollUp/Down, breaking scroll-bound profile
-                    // hotkeys mid-replay even though the user only meant to scroll.
-                    bool ctrlHeld = _vkCodesCurrentlyDown.Contains(0x11)
-                                 || _vkCodesCurrentlyDown.Contains(0xA2)
-                                 || _vkCodesCurrentlyDown.Contains(0xA3);
-                    bool altHeld = _vkCodesCurrentlyDown.Contains(0x12)
-                                || _vkCodesCurrentlyDown.Contains(0xA4)
-                                || _vkCodesCurrentlyDown.Contains(0xA5);
-                    bool shiftHeld = _vkCodesCurrentlyDown.Contains(0x10)
-                                  || _vkCodesCurrentlyDown.Contains(0xA0)
-                                  || _vkCodesCurrentlyDown.Contains(0xA1);
-                    bool winHeld = _vkCodesCurrentlyDown.Contains(0x5B)
-                                || _vkCodesCurrentlyDown.Contains(0x5C);
-
-                    // Hot path: every wheel event with profile hotkeys configured lands here, so
-                    // compose the combo into a reusable StringBuilder instead of allocating a
-                    // List<string> + string.Join on each scroll. _scrollComboBuilder is only ever
-                    // touched on the (single) hook thread, so no synchronization is needed.
-                    _scrollComboBuilder.Clear();
-                    if (winHeld) _scrollComboBuilder.Append("Win+");
-                    if (ctrlHeld) _scrollComboBuilder.Append("Ctrl+");
-                    if (altHeld) _scrollComboBuilder.Append("Alt+");
-                    if (shiftHeld) _scrollComboBuilder.Append("Shift+");
-                    _scrollComboBuilder.Append(scrollKey);
-                    string combo = _scrollComboBuilder.ToString();
+                    string combo = ComposeMouseCombo(scrollDelta > 0 ? "ScrollUp" : "ScrollDown", out bool hasModifier);
 
                     // Global hotkeys — OUTSIDE the ProfileKeyEnabled/ProfileHotkeys.Count gate
                     // below, which is what kept them dead: a user with no profile hotkeys (or
@@ -2023,7 +2175,6 @@ namespace TrueReplayer
                     // live. X-buttons have no such cost, which is why they take bare combos.
                     // Bare scroll stays valid for PROFILE hotkeys (the case that works today,
                     // and additionally limited by the foreground-window match below).
-                    bool hasModifier = winHeld || ctrlHeld || altHeld || shiftHeld;
                     if (hasModifier)
                     {
                         var wheelGlobal = TryDispatchGlobalHotkey(combo);
@@ -2044,8 +2195,12 @@ namespace TrueReplayer
                     // note above, swallowing a wheel event kills that scroll SYSTEM-WIDE. Bare scroll
                     // stays valid for profile hotkeys because the foreground-window match narrows when
                     // it can fire at all; in Clicker it can never fire, so the scroll passes through.
+                    // No replay gate, for the reason the keyboard ladder gives: IsReplayingAction was
+                    // this branch's only defence against a macro's own Scroll re-triggering it, and
+                    // the LLMHF_INJECTED test above now owns that; left in, it made a scroll-bound
+                    // profile key stop a run only when the scroll landed between two actions.
                     if (!IsCursorClickMode
-                        && !IsReplayingAction && UserProfile.Current.ProfileKeyEnabled && ProfileHotkeys.Count > 0)
+                        && UserProfile.Current.ProfileKeyEnabled && ProfileHotkeys.Count > 0)
                     {
                         string? matchedProfile = null;
                         foreach (var p in ProfileHotkeys)
@@ -2086,6 +2241,21 @@ namespace TrueReplayer
                         OnMouseEvent?.Invoke(button, hookStruct.pt.x, hookStruct.pt.y, isDown, scrollDelta);
                 }
             }
+            else if ((int)wParam == NativeMethods.WM_XBUTTONUP)
+            {
+                // The keyboard gate's mirror (see the suppressAll branch there). A side button whose
+                // down was taken as a trigger before a dialog opened still owes its up: the pair it
+                // armed is resolved without firing anything new, and the up is swallowed when the
+                // down was — a delivered orphan WM_XBUTTONUP is the Back/Forward that
+                // _swallowedXDowns exists to prevent.
+                var gatedUp = Marshal.PtrToStructure<NativeMethods.MSLLHOOKSTRUCT>(lParam);
+                if ((gatedUp.flags & 0x1) == 0)
+                {
+                    int gatedVk = XButtonVk(XButtonName(gatedUp.mouseData));
+                    bool resolved = DispatchPendingTriggerUp(gatedVk, mayFire: false);
+                    if (_swallowedXDowns.Remove(gatedVk) || resolved) return (IntPtr)1;
+                }
+            }
 
             return NativeMethods.CallNextHookEx(_mouseHookId, nCode, wParam, lParam);
         }
@@ -2097,14 +2267,24 @@ namespace TrueReplayer
         // GetAsyncKeyState-based release polling (WaitForHotkeyReleaseAsync) works on them.
         private static int XButtonVk(string name) => name == "XButton2" ? 0x06 : 0x05;
 
-        // Composes "Mods+XButtonN" from tracked modifier state — same rationale and canonical
-        // Win/Ctrl/Alt/Shift order as the wheel path and BuildComposedKey.
-        private static string ComposeMouseCombo(string mainName)
+        // Composes "Mods+XButtonN" / "Mods+ScrollUp" from tracked modifier state, in the canonical
+        // Win/Ctrl/Alt/Shift order BuildComposedKey uses. The ONE mouse copy: the wheel's capture
+        // and dispatch paths each carried their own (same ten vks, same order), and a fix landing in
+        // one of three hand-written lists is how they drift apart.
+        //
+        // Tracked state, not GetAsyncKeyState: modifiers the keyboard hook swallowed (Win in
+        // particular) never reach the async OS state, and a macro holding Shift via SendInput would
+        // make every user scroll read as Shift+Scroll mid-replay. The set is fed only by physical,
+        // non-injected events.
+        private static string ComposeMouseCombo(string mainName) => ComposeMouseCombo(mainName, out _);
+
+        private static string ComposeMouseCombo(string mainName, out bool anyModifier)
         {
             bool winHeld = _vkCodesCurrentlyDown.Contains(0x5B) || _vkCodesCurrentlyDown.Contains(0x5C);
             bool ctrlHeld = _vkCodesCurrentlyDown.Contains(0xA2) || _vkCodesCurrentlyDown.Contains(0xA3) || _vkCodesCurrentlyDown.Contains(0x11);
             bool altHeld = _vkCodesCurrentlyDown.Contains(0xA4) || _vkCodesCurrentlyDown.Contains(0xA5) || _vkCodesCurrentlyDown.Contains(0x12);
             bool shiftHeld = _vkCodesCurrentlyDown.Contains(0xA0) || _vkCodesCurrentlyDown.Contains(0xA1) || _vkCodesCurrentlyDown.Contains(0x10);
+            anyModifier = winHeld || ctrlHeld || altHeld || shiftHeld;
             _comboBuilder.Clear();
             if (winHeld) _comboBuilder.Append("Win+");
             if (ctrlHeld) _comboBuilder.Append("Ctrl+");
@@ -2154,8 +2334,20 @@ namespace TrueReplayer
         ///
         /// Three volatile reads and three int comparisons when nothing is armed, which is the
         /// case for every ordinary remap release.
+        ///
+        /// <paramref name="mayFire"/> false is the release arriving while a suppression gate is up
+        /// (a dialog or picker opened between the down and the up): the pair is still resolved —
+        /// the WhilePressed run still stops, the Hold still cancels — but an OnRelease does not
+        /// START anything behind the dialog; its pair is consumed unfired.
         /// </summary>
-        private static bool DispatchPendingTriggerUp(int vk)
+        // A trigger pair is armed on this physical key — the state the unconditional-swallow guards
+        // in the keyboard callback test, gathered for the suppression gate.
+        private static bool IsArmedTriggerKey(int vk) =>
+            (_activeHoldProfile != null && _activeHoldVkCode == vk)
+            || (_pendingReleaseProfile != null && _pendingReleaseVkCode == vk)
+            || (_pendingHoldFireProfile != null && _pendingHoldFireVkCode == vk);
+
+        private static bool DispatchPendingTriggerUp(int vk, bool mayFire = true)
         {
             if (_pendingHoldFireProfile != null && _pendingHoldFireVkCode == vk)
             {
@@ -2169,8 +2361,8 @@ namespace TrueReplayer
                 var pendingProfile = _pendingReleaseProfile;
                 _pendingReleaseProfile = null;
                 _pendingReleaseVkCode = 0;
-                if (MainController.Instance != null && !MainController.Instance.IsRecording()
-                    && !IsReplayingAction)
+                // Recording only, as on the keyboard path — a release during a run is its stop.
+                if (mayFire && MainController.Instance != null && !MainController.Instance.IsRecording())
                     OnHotkeyPressed?.Invoke($"PROFILE::{pendingProfile}");
                 return true;
             }
@@ -2357,10 +2549,8 @@ namespace TrueReplayer
 
             var triggerMode = ProfileTriggerModes.TryGetValue(matchedProfile, out var tm) ? tm : TriggerMode.OnPress;
 
-            // Same replay-time rule as the keyboard path: Toggle/WhilePressed still dispatch
-            // (stop semantics); everything else is swallowed-but-inert mid-action.
-            if (IsReplayingAction && triggerMode != TriggerMode.Toggle && triggerMode != TriggerMode.WhilePressed)
-                return true;
+            // Same rule as the keyboard path: no replay gate — the dispatcher turns a press during
+            // a run into its stop. See the note there.
 
             bool needsMenuCancel = ShouldCancelMenuFor(combo);
 
@@ -2435,9 +2625,15 @@ namespace TrueReplayer
                 return false;
             }
 
-            if (IsReplayingAction || !UserProfile.Current.ProfileKeyEnabled
+            // IsReplayInProgress, not IsReplayingAction: the latter is FALSE in the delay between
+            // actions (see IsRunInProgress), so the engine went live and dead many times a second
+            // during a run — a sequence completed in a gap erased characters in the window the
+            // replay was driving and fired PROFILE::, which stops the run, while the same keys
+            // typed a moment later did nothing. Silent for the whole run, like during a recording.
+            var mc = MainController.Instance;
+            if (!UserProfile.Current.ProfileKeyEnabled
                 || ProfileHotstrings.Count == 0
-                || MainController.Instance == null || MainController.Instance.IsRecording())
+                || mc == null || mc.IsRecording() || mc.IsReplayInProgress())
             {
                 return false;
             }
@@ -2455,10 +2651,9 @@ namespace TrueReplayer
             }
             else if (_terminatorVkCodes.Contains(vkCode)) // Enter, Space, Tab
             {
-                var matchedProfile = CheckHotstringMatch(isTerminator: true);
-                if (matchedProfile != null && IsForegroundWindowMatch(matchedProfile))
+                var matchedProfile = CheckHotstringMatch(isTerminator: true, out var config);
+                if (matchedProfile != null && config != null && IsForegroundWindowMatch(matchedProfile))
                 {
-                    var config = ProfileHotstrings[matchedProfile];
                     int backspaceCount = config.Sequence.Length; // erase typed chars
                     HotstringBufferClear();
                     EraseCharacters(backspaceCount);
@@ -2476,10 +2671,9 @@ namespace TrueReplayer
                 {
                     HotstringBufferAppend(ch.Value);
 
-                    var matchedProfile = CheckHotstringMatch(isTerminator: false);
-                    if (matchedProfile != null && IsForegroundWindowMatch(matchedProfile))
+                    var matchedProfile = CheckHotstringMatch(isTerminator: false, out var config);
+                    if (matchedProfile != null && config != null && IsForegroundWindowMatch(matchedProfile))
                     {
-                        var config = ProfileHotstrings[matchedProfile];
                         int backspaceCount = config.Sequence.Length - 1; // previous chars (current key swallowed)
                         HotstringBufferClear();
                         if (backspaceCount > 0)
@@ -2805,15 +2999,21 @@ namespace TrueReplayer
                 int vkCode = Marshal.ReadInt32(lParam);
                 bool isDown = wParam == (IntPtr)NativeMethods.WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN;
 
-                if (suppressAll)
+                if (suppressAll || ignoreProfileKeys)
                 {
                     ReleaseHeldKeyUnderGate(vkCode, isDown, lParam);
-                    return NativeMethods.CallNextHookEx(_keyboardHookId, nCode, wParam, lParam);
-                }
-
-                if (ignoreProfileKeys)
-                {
-                    ReleaseHeldKeyUnderGate(vkCode, isDown, lParam);
+                    // A trigger pair armed by a down that passed these gates — WhilePressed, OnRelease,
+                    // Hold. Its handlers sit far below, so a gate that went up mid-hold (a dialog opened
+                    // with the key still down) left the pair armed: the key's auto-repeat leaked into
+                    // the dialog as text, the WhilePressed run went on after the key was let go, and
+                    // every later press of the key was eaten by the unconditional-swallow guards until
+                    // one more release reached them. Served here the way the remap pairing above is:
+                    // repeats swallowed, the release resolving the pair without firing anything new —
+                    // its down was swallowed, so its up is too.
+                    if (((uint)Marshal.ReadInt32(lParam, 8) & LLKHF_INJECTED) == 0
+                        && !IsAltGrPhantomCtrl(vkCode, lParam)
+                        && (isDown ? IsArmedTriggerKey(vkCode) : DispatchPendingTriggerUp(vkCode, mayFire: false)))
+                        return (IntPtr)1;
                     return NativeMethods.CallNextHookEx(_keyboardHookId, nCode, wParam, lParam);
                 }
 
@@ -3250,12 +3450,14 @@ namespace TrueReplayer
 
                         var triggerMode = ProfileTriggerModes.TryGetValue(matchedProfile, out var tm) ? tm : TriggerMode.OnPress;
 
-                        // Toggle is the only mode that needs to dispatch even when a replay is active
-                        // (second press = stop). For other modes, ignore presses during replay.
-                        if (IsReplayingAction && triggerMode != TriggerMode.Toggle && triggerMode != TriggerMode.WhilePressed)
-                        {
-                            return (IntPtr)1; // still swallow to prevent leak
-                        }
+                        // No replay gate here. A press during a run is dispatched like any other, and
+                        // the dispatcher decides: PROFILE:: with a run in progress STOPS it
+                        // (MainWindow — "re-triggering OnPress / OnRelease during an active replay
+                        // stops it"). The gate this replaces read IsReplayingAction, which is only
+                        // true INSIDE an action, so the same stop press worked in the delay between
+                        // actions and was swallowed inert during one — the "sometimes it stops" race
+                        // IsRunInProgress documents. Injected input never gets this far (the
+                        // LLKHF_INJECTED gate above), so the run's own keys cannot trip it.
 
                         // If the swallowed hotkey uses Alt or Win as a modifier, inject a
                         // phantom F15 so the target app doesn't later interpret the modifier
@@ -3366,8 +3568,11 @@ namespace TrueReplayer
                     var pendingProfile = _pendingReleaseProfile;
                     _pendingReleaseProfile = null;
                     _pendingReleaseVkCode = 0;
-                    if (MainController.Instance != null && !MainController.Instance.IsRecording()
-                        && !IsReplayingAction)
+                    // Recording only. A release during a run fires like any other and the
+                    // dispatcher turns it into the run's stop; gating on IsReplayingAction dropped
+                    // a release that landed inside an action — the down had armed the pair and the
+                    // user had let go to stop the run, and nothing happened.
+                    if (MainController.Instance != null && !MainController.Instance.IsRecording())
                     {
                         LastTriggerHotkey = key;
                         OnHotkeyPressed?.Invoke($"PROFILE::{pendingProfile}");
@@ -3437,7 +3642,7 @@ namespace TrueReplayer
                     if (releaseProfile != null)
                     {
                         var mode = ProfileTriggerModes.TryGetValue(releaseProfile, out var rm) ? rm : TriggerMode.OnPress;
-                        if (mode == TriggerMode.OnRelease && !IsReplayingAction)
+                        if (mode == TriggerMode.OnRelease)
                         {
                             LastTriggerHotkey = key;
                             // Inject phantom key BEFORE firing so if the hotkey uses Alt/Win, the

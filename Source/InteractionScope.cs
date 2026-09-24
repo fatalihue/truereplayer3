@@ -379,13 +379,17 @@ namespace TrueReplayer.Services
                         continue;
                     }
                     _live.Remove(id);
+                    // An exclusive scope that leaked would otherwise refuse every future exclusive
+                    // claim for the life of the process — the same permanent-death failure the
+                    // sweep exists to end, one level up. Released by ID, as Close does: it used to
+                    // wait for the whole registry to empty, so a leaked picker expiring while any
+                    // ordinary scope (a ModalGate dialog) was still open kept the slot pointing at
+                    // an id that would never exist again, and every later overlay and picker was
+                    // refused until restart.
+                    if (id == _exclusiveId) { _exclusive = 0; _exclusiveOwner = ""; _exclusiveId = 0; }
                     (expired ??= new()).Add((owner, entry.ForceClose));
                 }
                 Volatile.Write(ref _count, _live.Count);
-                // An exclusive scope that leaked would otherwise refuse every future exclusive
-                // claim for the life of the process — the same permanent-death failure the sweep
-                // exists to end, one level up.
-                if (_live.Count == 0) { _exclusive = 0; _exclusiveOwner = ""; _exclusiveId = 0; }
             }
 
             if (renewed != null)

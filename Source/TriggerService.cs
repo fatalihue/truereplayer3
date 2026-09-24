@@ -503,6 +503,10 @@ namespace TrueReplayer.Services
                         break;
                     default:
                         SetLastResult(stats, $"unknown trigger kind '{rt.Config.Kind}'");
+                        // A self-stop like the three in the loops below, and announced like them:
+                        // a profile saved by a newer build (a Kind this one does not know) stays
+                        // armed on every surface while watching nothing.
+                        AnnounceWatcherStopped(name, $"Its trigger kind '{rt.Config.Kind}' is not known to this version of TrueReplayer.");
                         break;
                 }
             }
@@ -905,6 +909,10 @@ namespace TrueReplayer.Services
                 // never offered — and without it the stale-edge line would blame the engine for
                 // being busy, which is the exact mislabel the reason switch below exists to end.
                 bool heldByHours = false;
+                // Same idea for the watcher's own cooldown. It is checked before any fire is
+                // offered, so an edge that spent its whole TTL behind it has no refusal to report
+                // either, and the stale-edge line fell back to blaming a busy engine.
+                bool heldByCooldown = false;
                 DateTime CooldownUntil() { lock (_lock) return new DateTime(stats.CooldownUntilTicks); }
                 void StampCooldown() { lock (_lock) stats.CooldownUntilTicks = DateTime.Now.AddSeconds(cooldownSec).Ticks; }
                 // A cooldown the user just LOWERED must not keep the watcher mute for the old one.
@@ -970,6 +978,7 @@ namespace TrueReplayer.Services
                         // inherit the last one's excuse — the window that held yesterday's, or a
                         // refusal from an attempt this edge never made.
                         heldByHours = false;
+                        heldByCooldown = false;
                         lastRefusal = null;
                     }
                     wasTrue = isTrue;
@@ -986,6 +995,8 @@ namespace TrueReplayer.Services
                         // line is the durable record of why last night's fire did not happen.
                         SetLastResult(stats, heldByHours
                             ? $"fire skipped (outside active hours {cfg.TimeOfDay} — edge expired)"
+                            : heldByCooldown
+                            ? "fire skipped (cooldown from the previous fire still running — edge expired)"
                             : lastRefusal switch
                         {
                             // LastReason ALREADY reads "skipped (a dialog is open)" — it is composed
@@ -1000,7 +1011,9 @@ namespace TrueReplayer.Services
                         NotifyStateChanged();
                         continue;
                     }
-                    if (DateTime.Now < CooldownUntil()) continue;
+                    if (DateTime.Now < CooldownUntil()) { heldByCooldown = true; continue; }
+                    // Past it, so it is not what holds the edge from here on.
+                    heldByCooldown = false;
                     // Placed AFTER the stale-edge branch above on purpose: an edge raised just
                     // before closing time still ages out on schedule instead of being frozen and
                     // released hours later, which is the same ambush by a slower route.
@@ -1345,6 +1358,15 @@ namespace TrueReplayer.Services
         // Vigias cuja ancora ja foi denunciada por levar a amostra para fora da tela. Mesma chave
         // e mesma regra do conjunto acima: uma vez por configuracao, nunca por tick.
         private static readonly HashSet<string> _offScreenAnchorWarned = new(StringComparer.OrdinalIgnoreCase);
+        // Os dois conjuntos acima sao estaticos e cada automacao armada roda o seu laco numa Task
+        // propria: dois vigias avisando no mesmo tick mexiam no mesmo HashSet ao mesmo tempo, e um
+        // HashSet corrompido lanca em todo Add seguinte — a sonda devolvia false em silencio pelo
+        // resto da sessao. O lock so e tomado no caminho raro do aviso.
+        private static readonly object _anchorWarnLock = new();
+        private static bool FirstAnchorWarning(HashSet<string> warned, string key)
+        {
+            lock (_anchorWarnLock) return warned.Add(key);
+        }
 
         private static string DescribeTarget(Models.WindowTarget t) =>
             !string.IsNullOrWhiteSpace(t.ProcessName) ? t.ProcessName! : (t.WindowTitle ?? "?");
@@ -1376,7 +1398,7 @@ namespace TrueReplayer.Services
             if (hwnd == IntPtr.Zero) return false;
             // Uma vez por vigia, nunca por tick: a 4 Hz isto viraria enxurrada de log, que e a
             // mesma razao pela qual a ausencia de janela falha calada.
-            if (matches > 1 && _ambiguousAnchorWarned.Add(AmbiguityKey(target)))
+            if (matches > 1 && FirstAnchorWarning(_ambiguousAnchorWarned, AmbiguityKey(target)))
             {
                 DiagnosticLog.Warn($"[Automation] A ancora casa com {matches} janelas de {DescribeTarget(target)}. "
                     + "A origem foi fixada numa delas; preencha o titulo da janela para escolher.");
@@ -1560,7 +1582,7 @@ namespace TrueReplayer.Services
                         // qualquer outra forma de a coordenada nascer no espaco errado, que e mais
                         // do que uma migracao por versao conseguiria.
                         if (sampled == null && (adx != 0 || ady != 0)
-                            && _offScreenAnchorWarned.Add(AmbiguityKey(anchorTarget!)))
+                            && FirstAnchorWarning(_offScreenAnchorWarned, AmbiguityKey(anchorTarget!)))
                         {
                             DiagnosticLog.Warn($"[Automation] O ponto ancorado ({cfg.PixelX},{cfg.PixelY}) + origem de "
                                 + $"{DescribeTarget(anchorTarget!)} ({adx},{ady}) cai FORA da tela: a condicao nunca vai ser "
@@ -1981,13 +2003,21 @@ namespace TrueReplayer.Services
             SaveStats();
         }
 
-        // Serializing AND writing inside _lock is deliberate — the same discipline
-        // RunCursorService.SaveLocked documents. Flush() (exit paths) and the debounce timer
-        // callback can both reach here, and Timer.Dispose does not wait for a callback already in
-        // flight; with the write outside the lock, two WriteAllTextAtomic calls race on the same
-        // target and the older snapshot can land last, losing the very fire the exit flush existed
-        // to save. The payload is a handful of counters per automation, so holding the lock across
-        // the write costs nothing measurable.
+        // Writers are SERIALIZED, and each takes its snapshot inside that serialization — the
+        // discipline RunCursorService.SaveLocked documents. Flush() (exit paths) and the debounce
+        // timer callback can both reach here, and Timer.Dispose does not wait for a callback already
+        // in flight; unserialized, two WriteAllTextAtomic calls race on the same target and the
+        // older snapshot can land last, losing the very fire the exit flush existed to save.
+        //
+        // But serialized on _saveLock, not on _lock. The write goes through MoveWithRetry, whose
+        // backoff sleeps up to 3.81 s while antivirus or OneDrive holds the file, and _lock is what
+        // Reload, GetStatus and GetStatsFor take on the UI thread — the thread that pumps both
+        // low-level input hooks. Holding _lock across that ladder froze the UI thread behind a pool
+        // thread's disk retry, and a hook that overruns LowLevelHooksTimeout is removed by Windows
+        // in silence. _lock now covers only the copy, which is microseconds. Order is always
+        // _saveLock then _lock, and nothing that holds _lock ever reaches this method.
+        private readonly object _saveLock = new();
+
         private void SaveStats()
         {
             // The gate lives HERE and not in Flush(): every writer funnels through this method —
@@ -1996,22 +2026,26 @@ namespace TrueReplayer.Services
             if (!_statsLoaded) return;
             try
             {
-                lock (_lock)
+                lock (_saveLock)
                 {
-                    var snapshot = _stats.ToDictionary(
-                        kv => kv.Key,
-                        kv => new PersistedStats
-                        {
-                            LastFiredAt = kv.Value.LastFiredAt,
-                            FireCount = kv.Value.FireCount,
-                            SkippedBusy = kv.Value.SkippedBusy,
-                            SkippedDirty = kv.Value.SkippedDirty,
-                            SkippedModal = kv.Value.SkippedModal,
-                            SkippedSuppressed = kv.Value.SkippedSuppressed,
-                            LastResult = kv.Value.LastResult,
-                            LastScheduleOccurrenceTicks = kv.Value.LastScheduleOccurrenceTicks,
-                        },
-                        StringComparer.OrdinalIgnoreCase);
+                    Dictionary<string, PersistedStats> snapshot;
+                    lock (_lock)
+                    {
+                        snapshot = _stats.ToDictionary(
+                            kv => kv.Key,
+                            kv => new PersistedStats
+                            {
+                                LastFiredAt = kv.Value.LastFiredAt,
+                                FireCount = kv.Value.FireCount,
+                                SkippedBusy = kv.Value.SkippedBusy,
+                                SkippedDirty = kv.Value.SkippedDirty,
+                                SkippedModal = kv.Value.SkippedModal,
+                                SkippedSuppressed = kv.Value.SkippedSuppressed,
+                                LastResult = kv.Value.LastResult,
+                                LastScheduleOccurrenceTicks = kv.Value.LastScheduleOccurrenceTicks,
+                            },
+                            StringComparer.OrdinalIgnoreCase);
+                    }
 
                     var path = StatsPath();
                     // Empty snapshot is only a no-op when there is nothing on disk either. Once a

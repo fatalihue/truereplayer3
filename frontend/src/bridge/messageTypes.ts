@@ -1255,7 +1255,9 @@ export type OutgoingMessage =
   // swapping the profile out from under the open form. Deliberately not hotkey:suppress —
   // that would take the user's own hotkeys down with it — and not the unsaved-changes flag,
   // whose skip is terminal.
-  | { type: 'editor:pendingEdits'; payload: { pending: boolean } }
+  // `owner` keeps the Sheet's claim and the row dialogs' claim apart, so one editor closing does
+  // not release the other's (AutomationGuard holds one stamp per owner).
+  | { type: 'editor:pendingEdits'; payload: { pending: boolean; owner: 'sheet' | 'row-dialog' } }
   // Zero one automation's fire/skip tallies. The interval anchor (lastFiredAt) and the schedule's
   // double-fire guard are kept — they are state, not history.
   | { type: 'automation:resetCounters'; payload: { profile: string } }

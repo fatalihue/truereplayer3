@@ -422,6 +422,38 @@ namespace TrueReplayer.Interop
         public const uint SPI_SETFOREGROUNDLOCKTIMEOUT = 0x2001;
         public const uint SPIF_SENDCHANGE = 0x0002;
 
+        // Which desktop has the input. The lock screen, the UAC prompt and Ctrl+Alt+Del run on the
+        // secure desktop ("Winlogon"), which a user process cannot open — and there the low-level
+        // hooks see nothing and SendInput delivers nothing. See InputHookManager's watchdog.
+        public const uint DESKTOP_READOBJECTS = 0x0001;
+        public const int UOI_NAME = 2;
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern IntPtr OpenInputDesktop(uint dwFlags, bool fInherit, uint dwDesiredAccess);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool CloseDesktop(IntPtr hDesktop);
+
+        [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        public static extern bool GetUserObjectInformation(IntPtr hObj, int nIndex, System.Text.StringBuilder? pvInfo, uint nLength, out uint lpnLengthNeeded);
+
+        // Session change notifications (lock/unlock, console or remote reconnect), delivered to the
+        // main window as WM_WTSSESSION_CHANGE with the event in wParam.
+        public const int WM_WTSSESSION_CHANGE = 0x02B1;
+        public const int WTS_CONSOLE_CONNECT = 0x1;
+        public const int WTS_REMOTE_CONNECT = 0x3;
+        public const int WTS_SESSION_UNLOCK = 0x8;
+        public const uint NOTIFY_FOR_THIS_SESSION = 0;
+
+        [DllImport("wtsapi32.dll", SetLastError = true)]
+        public static extern bool WTSRegisterSessionNotification(IntPtr hWnd, uint dwFlags);
+
+        [DllImport("wtsapi32.dll", SetLastError = true)]
+        public static extern bool WTSUnRegisterSessionNotification(IntPtr hWnd);
+
+        [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        public static extern uint RegisterWindowMessage(string lpString);
+
         [DllImport("user32.dll")]
         public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
 

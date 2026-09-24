@@ -272,23 +272,19 @@ namespace TrueReplayer.Services
         public static void ApplyAndRestart()
         {
             if (_pendingUpdate?.TargetFullRelease == null) return;
-            // This path bypasses ForceExit, so flush the debounced run cursors here too —
-            // an update must not cost the user their place in a list, nor its automation history.
-            RunCursorService.Flush();
-            TriggerService.Instance?.Flush();
-            // Same reason ForceExit does it: Stop() is the only caller of the remap layer's
-            // release path, and the remap layer has been live since the MainWindow constructor.
-            // Exit with a pairing still open and the injected TO key stays logically DOWN
-            // system-wide with no process left to release it — with Ctrl/Shift/Alt that turns
-            // every subsequent keystroke into a shortcut, and with a key the user's keyboard
-            // lacks, only a logoff clears it. The updated app relaunches into a fresh process
-            // that installs its own hooks, so unhooking here costs nothing.
+            // This path bypasses ForceExit, so it runs the same teardown here: the debounced run
+            // cursors and automation history (an update must not cost the user their place in a
+            // list), then everything the process holds on the system — the remap layer's injected
+            // keys above all, which stay logically DOWN system-wide with no process left to release
+            // them, and the tray icon the updated process will add its own next to. The updated
+            // app relaunches into a fresh process that installs its own hooks, so letting go here
+            // costs nothing.
             //
-            // Before WaitExitThenApplyUpdates, and guarded: a throw after the apply is queued
-            // would skip Environment.Exit(0) and leave Update.exe waiting on a process that
-            // never leaves, which stalls the update instead of applying it.
-            try { TrueReplayer.InputHookManager.Stop(); }
-            catch (Exception ex) { DiagnosticLog.Error($"[UpdateService] InputHookManager.Stop() threw before update restart: {ex.Message}"); }
+            // Before WaitExitThenApplyUpdates, and guarded step by step inside AppExit: a throw
+            // after the apply is queued would skip Environment.Exit(0) and leave Update.exe waiting
+            // on a process that never leaves, which stalls the update instead of applying it.
+            AppExit.FlushState();
+            AppExit.ReleaseSystem();
             // Carry --startup across the restart, and ONLY that flag.
             //
             // It is produced exclusively by the Run registry key, and it is the sole input to the

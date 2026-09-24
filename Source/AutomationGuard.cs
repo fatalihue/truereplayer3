@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 
 namespace TrueReplayer.Services
@@ -100,8 +101,15 @@ namespace TrueReplayer.Services
         /// And it is NOT routed through SkippedDirty, which is terminal — never retried. A row
         /// editor is a moment of contention like an open dialog, so it reports as SkippedModal:
         /// retriable, with a reason the panel can show.
+        ///
+        /// One stamp PER OWNER. There are two editors — the SheetPanel and the ActionTable's row
+        /// dialogs (SendText, Keystroke, Pause, RunProfile) — and this used to be a single stamp:
+        /// whichever wrote last won, so closing a row dialog wrote "not busy" over a Sheet still
+        /// holding unsaved fields, and until the Sheet's next minute-long renewal an automation fire
+        /// could swap the profile out from under it.
         /// </summary>
-        private static long _editorBusySinceTicks;
+        private static readonly Dictionary<string, long> _editorClaims = new(StringComparer.Ordinal);
+        private static readonly object _editorLock = new();
 
         /// <summary>
         /// Leak backstop. A claim this old is a WebView that went away without releasing, not a
@@ -117,25 +125,54 @@ namespace TrueReplayer.Services
 
         private static bool EditorHoldsUnsavedWork()
         {
-            long since = Volatile.Read(ref _editorBusySinceTicks);
-            if (since == 0) return false;
-            if (DateTime.UtcNow.Ticks - since < EditorClaimTtl.Ticks) return true;
+            List<string>? expired = null;
+            bool held = false;
+            lock (_editorLock)
+            {
+                if (_editorClaims.Count == 0) return false;
+                long now = DateTime.UtcNow.Ticks;
+                foreach (var (owner, since) in _editorClaims)
+                {
+                    if (now - since < EditorClaimTtl.Ticks) held = true;
+                    else (expired ??= new()).Add(owner);
+                }
+                // Cleared rather than just skipped, so the warning is written once instead of on
+                // every fire attempt for the rest of the session.
+                if (expired != null) foreach (var owner in expired) _editorClaims.Remove(owner);
+            }
+            if (expired != null)
+                DiagnosticLog.Warn(
+                    $"Row editor's unsaved-work claim ({string.Join(", ", expired)}) expired after {EditorClaimTtl.TotalMinutes:0} min without release — " +
+                    "automations are no longer held by it. The editor was most likely torn down by a UI reload.");
+            return held;
+        }
 
-            // Clear it rather than just answering false, so the warning is written once instead of
-            // on every fire attempt for the rest of the session.
-            Volatile.Write(ref _editorBusySinceTicks, 0);
-            DiagnosticLog.Warn(
-                $"Row editor's unsaved-work claim expired after {EditorClaimTtl.TotalMinutes:0} min without release — " +
-                "automations are no longer held by it. The editor was most likely torn down by a UI reload.");
-            return false;
+        /// <summary>True while any editor holds a claim — for the bridge's transition log.</summary>
+        public static bool AnyEditorClaim
+        {
+            get { lock (_editorLock) return _editorClaims.Count > 0; }
         }
 
         /// <summary>
-        /// Called by the bridge when the row editor gains or loses pending edits, and
-        /// unconditionally with false on <c>ui:ready</c> — a reload means the panel that claimed
-        /// this no longer exists, and its release will never arrive.
+        /// Called by the bridge when an editor (<paramref name="owner"/>) gains or loses pending
+        /// edits. A renewal re-stamps the owner's claim.
         /// </summary>
-        public static void SetEditorBusy(bool busy)
-            => Volatile.Write(ref _editorBusySinceTicks, busy ? DateTime.UtcNow.Ticks : 0);
+        public static void SetEditorBusy(string owner, bool busy)
+        {
+            lock (_editorLock)
+            {
+                if (busy) _editorClaims[owner] = DateTime.UtcNow.Ticks;
+                else _editorClaims.Remove(owner);
+            }
+        }
+
+        /// <summary>
+        /// Drops every claim — on <c>ui:ready</c>: a reload means the editors that claimed no
+        /// longer exist, and their releases will never arrive.
+        /// </summary>
+        public static void ClearEditorClaims()
+        {
+            lock (_editorLock) _editorClaims.Clear();
+        }
     }
 }

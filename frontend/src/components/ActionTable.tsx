@@ -820,7 +820,9 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
   // a run that starts while the user is halfway through a Send Keystroke must not throw the typing
   // away — it must decline to write it. Throttled for the same reason Toolbar's is: error toasts
   // last eight seconds.
-  // The SAME claim the SheetPanel holds, for the five row types that never reach the Sheet.
+  // The SAME kind of claim the SheetPanel holds, for the five row types that never reach the
+  // Sheet — under its own owner, 'row-dialog', so closing one of these no longer releases a Sheet
+  // that still holds unsaved fields (AutomationGuard keeps one stamp per owner).
   //
   // AutomationGuard's doc says the claim exists because "the SheetPanel's fields live in React
   // state and only become actions:edit on Save, so HasUnsavedChanges — which an autonomous fire
@@ -835,7 +837,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
   // SendText is the longest edit session in the app.
   const rowDialogOpen = !!(sendTextEdit || keystrokeEdit || pauseEdit || runProfileEdit || runProfileInsert);
   useEffect(() => {
-    send({ type: 'editor:pendingEdits', payload: { pending: rowDialogOpen } });
+    send({ type: 'editor:pendingEdits', payload: { pending: rowDialogOpen, owner: 'row-dialog' } });
   }, [rowDialogOpen, send]);
 
   /**
@@ -877,13 +879,13 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
     const snapped = snapSelectionToBlocks(sel);
     return { message: { type: 'actions:delete', payload: { indices: snapped } }, count: snapped.length };
   }, [actions, blockInfo, snapSelectionToBlocks]);
-  useEffect(() => () => { send({ type: 'editor:pendingEdits', payload: { pending: false } }); }, [send]);
+  useEffect(() => () => { send({ type: 'editor:pendingEdits', payload: { pending: false, owner: 'row-dialog' } }); }, [send]);
   // Renewed on the same heartbeat and for the same reason as the Sheet's: the guard expires the
   // claim a fixed TTL after it was STAMPED, and the effect above only fires on the transition.
   useEffect(() => {
     if (!rowDialogOpen) return;
     const id = setInterval(() => {
-      send({ type: 'editor:pendingEdits', payload: { pending: true } });
+      send({ type: 'editor:pendingEdits', payload: { pending: true, owner: 'row-dialog' } });
     }, ROW_DIALOG_CLAIM_RENEW_MS);
     return () => clearInterval(id);
   }, [rowDialogOpen, send]);

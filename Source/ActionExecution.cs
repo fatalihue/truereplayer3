@@ -9145,16 +9145,15 @@ namespace TrueReplayer.Services
         }
 
         // Shared matcher builder for the per-action window fields (If-Window probe,
-        // ActivateWindow, and the bridge's window:testProbe). Forgiving process input:
-        // window targets store "chrome.exe" but users type "chrome" — every Windows
-        // process image has an extension, so append the missing ".exe" rather than
-        // silently never matching.
+        // ActivateWindow, and the bridge's window:testProbe). Forgiving process input — "chrome"
+        // as well as "chrome.exe" — now lives in WindowMatcher.ProcessNameMatches, for every
+        // consumer at once. The ".exe" this used to append went only onto names WITHOUT a dot, so
+        // "my.app" never became "my.app.exe" and never matched; and appending to a dotted name
+        // would break an image that is not an .exe. The name is kept as typed.
         internal static (Models.WindowTarget Target, Regex? TitleRegex) BuildWindowTarget(
             string? processName, string? windowTitle, string? titleMatchMode)
         {
             var proc = processName?.Trim();
-            if (!string.IsNullOrEmpty(proc) && !proc.Contains('.'))
-                proc += ".exe";
             var target = new Models.WindowTarget
             {
                 ProcessName = string.IsNullOrWhiteSpace(proc) ? null : proc,

@@ -157,6 +157,7 @@ namespace TrueReplayer
 
             windowEventManager = new WindowEventManager(this);
             HwndHookManager.SetupHook(hwnd, windowEventManager.WndProc);
+            windowEventManager.RegisterShellNotifications();
 
             TrayIconService.Initialize(this, hwnd);
 
@@ -1958,21 +1959,16 @@ namespace TrueReplayer
                 // icon, no daemon, and a last log line reading "Launched replacement process".
                 //
                 // Flushing first also makes the sentence above literally true rather than a hope.
-                RunCursorService.Flush();
-                TriggerService.Instance?.Flush();
+                Services.AppExit.FlushState();
                 System.Diagnostics.Process.Start(startInfo);
                 Services.DiagnosticLog.Info($"Launched replacement process (recovery relaunch #{nextGeneration}), exiting current");
-                // The remap layer has been live since the constructor, and Stop() is the only
-                // caller of its release-the-held-keys path. Exit without it and any pairing
-                // still open leaves the injected TO key logically DOWN system-wide with no
-                // process left to release it — with Ctrl/Shift/Alt every later keystroke turns
-                // into a shortcut, and with a key the keyboard doesn't have, only a logoff
-                // clears it. Deliberately AFTER Process.Start: if the launch throws we return
-                // without exiting and this process keeps running, and it needs its hooks. Its
-                // own try/catch because the outer one would swallow a throw here and skip
-                // Environment.Exit(0), leaving two live processes.
-                try { InputHookManager.Stop(); }
-                catch (Exception hookEx) { Services.DiagnosticLog.Error("InputHookManager.Stop() threw during restart", hookEx); }
+                // Everything this process holds on the system — the replay's pressed keys, the
+                // remap layer's injected ones, the hooks, the tray icon the replacement is about to
+                // add its own next to. Deliberately AFTER Process.Start: if the launch throws we
+                // return without exiting and this process keeps running, and it needs all of them.
+                // Each step is guarded inside, so nothing here can skip Environment.Exit(0) and
+                // leave two live processes.
+                Services.AppExit.ReleaseSystem();
                 Environment.Exit(0);
             }
             catch (Exception ex)

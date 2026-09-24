@@ -12,6 +12,56 @@ using TrueReplayer.Models;
 
 namespace TrueReplayer.Services
 {
+    /// <summary>
+    /// What every way out of the process owes the machine it leaves behind. There are four exits —
+    /// the window's close (WindowEventManager.ForceExit), the tray's Exit, the UI-recovery relaunch
+    /// (MainWindow.TryRestartProcess) and the update restart (UpdateService.ApplyAndRestart) — and
+    /// each carried its own subset of this list, so each forgot something another one did:
+    ///   - none stopped a replay in flight, so a KeyDown/LeftClickDown whose up had not run yet
+    ///     stayed down system-wide with no process left to release it (only a logoff clears it);
+    ///   - the tray's Exit flushed nothing and unhooked nothing, and ended on Application.Exit
+    ///     alone, which the other three never trust to actually end the process;
+    ///   - the relaunch and the update left their tray icon behind as a ghost next to the new
+    ///     process's icon until the mouse passed over it.
+    /// The callers keep their own ORDER around these two calls (the relaunch must start its
+    /// replacement before letting go of its hooks, the update must release before queueing the
+    /// apply); what they no longer keep is their own list.
+    /// </summary>
+    public static class AppExit
+    {
+        /// <summary>The debounced sidecars — before anything else tears down.</summary>
+        public static void FlushState()
+        {
+            Guard("run-cursor flush", RunCursorService.Flush);
+            Guard("automation stats flush", () => TriggerService.Instance?.Flush());
+        }
+
+        /// <summary>
+        /// Everything the process holds on the SYSTEM: the keys and buttons a running replay has
+        /// pressed, the automation watchers, the input hooks (and the remapped keys they hold
+        /// down), the window subclass and the tray icon. Each step is guarded on its own: a throw
+        /// must neither skip the steps after it nor the caller's Environment.Exit.
+        /// </summary>
+        public static void ReleaseSystem()
+        {
+            // Synchronous: cancels the run and releases what it holds on this thread.
+            Guard("replay stop", () => TrueReplayer.Controllers.MainController.Instance?.StopReplayIfRunning());
+            Guard("automation stop", () => TriggerService.Instance?.StopAll());
+            Guard("input hooks stop", InputHookManager.Stop);
+            // The original WndProc goes back before the process starts dying: with the subclass
+            // left installed, the WM_DESTROY/WM_NCDESTROY still to come would re-enter a managed
+            // thunk after Environment.Exit(0) has begun tearing the CLR down.
+            Guard("window subclass removal", HwndHookManager.RemoveHook);
+            Guard("tray icon removal", TrayIconService.RemoveTrayIcon);
+        }
+
+        private static void Guard(string step, Action action)
+        {
+            try { action(); }
+            catch (Exception ex) { DiagnosticLog.Error($"Exit teardown: {step} threw", ex); }
+        }
+    }
+
     public static class TrayIconService
     {
         // Shell_NotifyIcon messages
@@ -164,6 +214,20 @@ namespace TrueReplayer.Services
             // reuse this field and do NOT rewrite uFlags — don't re-pop the balloon on an
             // unrelated tray refresh (mode toggle, profile-key toggle, settings change, etc.).
             notifyIcon.uFlags &= ~NIF_INFO;
+        }
+
+        /// <summary>
+        /// Explorer restarted (TaskbarCreated) and took every tray icon with it. Nothing re-added
+        /// this one: every later NIM_MODIFY aimed at an icon that no longer existed, so the tooltip
+        /// refreshes and — the one that matters — the "Automation stopped" balloon failed with only
+        /// a log line, while the automation it was warning about stayed armed on every surface.
+        /// Not after RemoveTrayIcon: that is the process leaving.
+        /// </summary>
+        public static void RecreateAfterShellRestart()
+        {
+            if (!isInitialized) return;
+            CreateTrayIcon();
+            DiagnosticLog.Info("Explorer recreated the taskbar — tray icon registered again");
         }
 
         public static void RemoveTrayIcon()
@@ -476,8 +540,11 @@ namespace TrueReplayer.Services
                 }
 
                 DiagnosticLog.Info("Tray Exit — terminating application");
-                RemoveTrayIcon();
+                // The same teardown as closing the window: see AppExit for what skipping it cost.
+                AppExit.FlushState();
+                AppExit.ReleaseSystem();
                 Microsoft.UI.Xaml.Application.Current.Exit();
+                Environment.Exit(0);
             }
         }
 
@@ -691,18 +758,33 @@ namespace TrueReplayer.Services
             // Before anything else tears down: the cursor sidecar is debounced, so a run that
             // advanced a list in the last second still has its position only in memory. The
             // automation fire history is debounced the same way.
-            RunCursorService.Flush();
-            TriggerService.Instance?.Flush();
-            TriggerService.Instance?.StopAll();
-            InputHookManager.Stop();
-            // Put the original WndProc back before the process starts dying. This runs from
-            // Window_Closed, i.e. WHILE the window is being destroyed, so WM_DESTROY and
-            // WM_NCDESTROY are still to come — and with the subclass left installed they would
-            // re-enter a managed thunk after Environment.Exit(0) has begun tearing the CLR down.
-            Interop.HwndHookManager.RemoveHook();
-            TrayIconService.RemoveTrayIcon();
+            AppExit.FlushState();
+            // This runs from Window_Closed, i.e. WHILE the window is being destroyed — the reason
+            // AppExit puts the original WndProc back before anything else can arrive.
+            NativeMethods.WTSUnRegisterSessionNotification(hwnd);
+            AppExit.ReleaseSystem();
             Microsoft.UI.Xaml.Application.Current.Exit();
             Environment.Exit(0);
+        }
+
+        // Explorer re-broadcasts this to every top-level window whenever it (re)creates the
+        // taskbar — after a crash, an update, "Restart" from Task Manager. Every tray icon is gone
+        // by then and each app must add its own again.
+        private static readonly uint WM_TASKBARCREATED = NativeMethods.RegisterWindowMessage("TaskbarCreated");
+
+        /// <summary>
+        /// Session and shell notifications for this window. Called once the WndProc subclass is in
+        /// place (MainWindow), since both arrive through it.
+        /// </summary>
+        public void RegisterShellNotifications()
+        {
+            // Lock/unlock and reconnects: InputHookManager.ResetAfterSessionReturn.
+            if (!NativeMethods.WTSRegisterSessionNotification(hwnd, NativeMethods.NOTIFY_FOR_THIS_SESSION))
+                Services.DiagnosticLog.Warn($"WTSRegisterSessionNotification failed (Win32 error {Marshal.GetLastWin32Error()}) — held keys will not be reset after an unlock");
+            // TaskbarCreated comes from Explorer at medium integrity; an elevated instance (Run as
+            // administrator) would have it dropped by UIPI, the same way the tray message is.
+            if (WM_TASKBARCREATED != 0)
+                ChangeWindowMessageFilterEx(hwnd, WM_TASKBARCREATED, 1 /* MSGFLT_ALLOW */, IntPtr.Zero);
         }
 
         public IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam)
@@ -793,6 +875,19 @@ namespace TrueReplayer.Services
                 try { RunCursorService.Flush(); } catch (Exception ex) { Services.DiagnosticLog.Warn($"Run-cursor flush at session end failed: {ex.Message}"); }
                 try { Services.TriggerService.Instance?.Flush(); } catch (Exception ex) { Services.DiagnosticLog.Warn($"Automation stats flush at session end failed: {ex.Message}"); }
                 return (IntPtr)1;
+            }
+            else if (msg == NativeMethods.WM_WTSSESSION_CHANGE)
+            {
+                // Back on this desktop after the lock screen, or reconnected: whatever the user held
+                // when the session left was released where the hooks cannot see.
+                int evt = (int)wParam;
+                if (evt == NativeMethods.WTS_SESSION_UNLOCK || evt == NativeMethods.WTS_CONSOLE_CONNECT
+                    || evt == NativeMethods.WTS_REMOTE_CONNECT)
+                    InputHookManager.ResetAfterSessionReturn();
+            }
+            else if (WM_TASKBARCREATED != 0 && (uint)msg == WM_TASKBARCREATED)
+            {
+                TrayIconService.RecreateAfterShellRestart();
             }
             return HwndHookManager.CallOriginalWndProc(hwnd, msg, wParam, lParam);
         }
@@ -907,8 +1002,8 @@ namespace TrueReplayer.Services
             bool lockTimeoutZeroed = false;
             try
             {
-                if (SystemParametersInfo(SPI_GETFOREGROUNDLOCKTIMEOUT, 0, ref prevLockTimeout, 0))
-                    lockTimeoutZeroed = SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, IntPtr.Zero, SPIF_SENDCHANGE);
+                if (NativeMethods.SystemParametersInfo(NativeMethods.SPI_GETFOREGROUNDLOCKTIMEOUT, 0, ref prevLockTimeout, 0))
+                    lockTimeoutZeroed = NativeMethods.SystemParametersInfo(NativeMethods.SPI_SETFOREGROUNDLOCKTIMEOUT, 0, IntPtr.Zero, NativeMethods.SPIF_SENDCHANGE);
 
                 BringWindowToTop(hwnd);
                 SetForegroundWindow(hwnd);
@@ -916,7 +1011,7 @@ namespace TrueReplayer.Services
             finally
             {
                 if (lockTimeoutZeroed)
-                    SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, new IntPtr(prevLockTimeout), SPIF_SENDCHANGE);
+                    NativeMethods.SystemParametersInfo(NativeMethods.SPI_SETFOREGROUNDLOCKTIMEOUT, 0, new IntPtr(prevLockTimeout), NativeMethods.SPIF_SENDCHANGE);
                 if (attached)
                     AttachThreadInput(foregroundThread, currentThread, false);
             }
@@ -951,12 +1046,8 @@ namespace TrueReplayer.Services
         [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
         [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr hWnd);
         [DllImport("user32.dll")] private static extern bool BringWindowToTop(IntPtr hWnd);
-        // Two overloads: GET writes the value through a ref; SET passes the new value IN the
-        // pvParam slot itself (SPI_SETFOREGROUNDLOCKTIMEOUT is a "value-in-pointer" action).
-        [DllImport("user32.dll", SetLastError = true)] private static extern bool SystemParametersInfo(uint uiAction, uint uiParam, ref uint pvParam, uint fWinIni);
-        [DllImport("user32.dll", SetLastError = true)] private static extern bool SystemParametersInfo(uint uiAction, uint uiParam, IntPtr pvParam, uint fWinIni);
-        private const uint SPI_GETFOREGROUNDLOCKTIMEOUT = 0x2000;
-        private const uint SPI_SETFOREGROUNDLOCKTIMEOUT = 0x2001;
-        private const uint SPIF_SENDCHANGE = 0x0002;
+        [DllImport("user32.dll", SetLastError = true)] private static extern bool ChangeWindowMessageFilterEx(IntPtr hwnd, uint message, uint action, IntPtr pChangeFilterStruct);
+        // SystemParametersInfo and the foreground-lock constants come from NativeMethods, as in
+        // WindowActivation: this class used to carry a byte-for-byte private copy of both.
     }
 }

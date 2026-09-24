@@ -3410,7 +3410,7 @@ namespace TrueReplayer
             // freshly mounted UI has no row editor open, so clearing can never be wrong here, and
             // this is the cheap half of the leak protection (AutomationGuard's TTL is the backstop
             // for the case where ui:ready itself never comes).
-            Services.AutomationGuard.SetEditorBusy(false);
+            Services.AutomationGuard.ClearEditorClaims();
 
             // React sends ui:ready the instant it mounts, which on a cold start beats the startup
             // profile load. state:init REPLACES the frontend store wholesale (AppStateContext
@@ -3952,6 +3952,14 @@ namespace TrueReplayer
         private void HandleEditorPendingEdits(JsonElement payload)
         {
             bool pending = payload.TryGetProperty("pending", out var el) && el.ValueKind == JsonValueKind.True;
+            // Which editor is speaking: the Sheet and the row dialogs each hold their own claim, so
+            // one closing no longer releases the other's (see AutomationGuard). A sender without an
+            // owner is one editor among the rest.
+            string owner = payload.TryGetProperty("owner", out var ownerEl) && ownerEl.ValueKind == JsonValueKind.String
+                ? (ownerEl.GetString() ?? "editor") : "editor";
+            Services.AutomationGuard.SetEditorBusy(owner, pending);
+            // The log follows the COMBINED claim — what the automation gate actually reads.
+            pending = Services.AutomationGuard.AnyEditorClaim;
             // Logged because this channel is otherwise INVISIBLE: it has no UI of its own, and its
             // only effect is a refusal that names a different gate when it is not working.
             //
@@ -3969,10 +3977,9 @@ namespace TrueReplayer
                 _editorPendingLogged = pending;
                 _editorPendingLoggedAt = DateTime.UtcNow;
                 Services.DiagnosticLog.Info(pending
-                    ? $"Row editor pending edits: YES — autonomous fires held{(changed ? "" : " (still held)")}"
+                    ? $"Row editor pending edits: YES — autonomous fires held{(changed ? $" ({owner})" : " (still held)")}"
                     : "Row editor pending edits: no");
             }
-            Services.AutomationGuard.SetEditorBusy(pending);
         }
 
         private void HandleHotkeyCapture(JsonElement payload)

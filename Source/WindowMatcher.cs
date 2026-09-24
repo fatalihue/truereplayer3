@@ -66,7 +66,7 @@ namespace TrueReplayer.Helpers
         public static Regex? CompileTitleRegex(WindowTarget? target)
         {
             if (target == null) return null;
-            if (target.TitleMatchMode != "regex") return null;
+            if (!IsRegexMode(target)) return null;
             if (string.IsNullOrEmpty(target.WindowTitle)) return null;
             try
             {
@@ -78,6 +78,34 @@ namespace TrueReplayer.Helpers
             {
                 return null;
             }
+        }
+
+        /// <summary>
+        /// The one reading of <see cref="WindowTarget.TitleMatchMode"/>. The field is free text in
+        /// the profile JSON, and its readers disagreed on case: TriggerService and BuildWindowTarget
+        /// compared ignoring it, this file and the hook did not — so "Regex" compiled no pattern here
+        /// and fell to a substring search for the pattern's literal text, which matches nothing.
+        /// </summary>
+        public static bool IsRegexMode(WindowTarget target) =>
+            string.Equals(target.TitleMatchMode, "regex", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Does the image file name of a process (always with its extension, "chrome.exe") answer
+        /// to the name the user gave? Exactly, or as that name plus ".exe" — "chrome" and "my.app"
+        /// are how people type a process, and it is how the sidebar, the Info tab and the icon
+        /// lookup already present it ("chrome.exe"). The profile's own Window Target was the one
+        /// consumer that compared the raw text: "chrome" read as matched on screen, and the hotkey
+        /// gate and the replay's window search never found it. BuildWindowTarget appended ".exe"
+        /// only to names without ANY dot, so "my.app" never reached "my.app.exe" there either.
+        /// Allocation-free: it runs for every window an enumeration visits.
+        /// </summary>
+        public static bool ProcessNameMatches(string imageFileName, string wanted)
+        {
+            if (imageFileName.Equals(wanted, StringComparison.OrdinalIgnoreCase)) return true;
+            return !wanted.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                && imageFileName.Length == wanted.Length + 4
+                && imageFileName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                && imageFileName.StartsWith(wanted, StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -110,7 +138,7 @@ namespace TrueReplayer.Helpers
                 NativeMethods.GetWindowText(hwnd, buf, buf.Capacity);
                 string title = buf.ToString();
 
-                if (target.TitleMatchMode == "regex")
+                if (IsRegexMode(target))
                 {
                     if (compiledTitleRegex == null) return false;
                     try
@@ -166,7 +194,7 @@ namespace TrueReplayer.Helpers
                     string fullPath = buf.ToString();
                     string fileName = System.IO.Path.GetFileName(fullPath);
 
-                    if (!fileName.Equals(target.ProcessName, StringComparison.OrdinalIgnoreCase))
+                    if (!ProcessNameMatches(fileName, target.ProcessName))
                         return false;
                 }
                 finally
