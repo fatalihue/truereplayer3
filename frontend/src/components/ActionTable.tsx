@@ -198,6 +198,8 @@ function SortableRowShell({ id, disabled, children }: {
 
 // Friendly pill label — shared between the grid's Action pill and the floating
 // drag ghost so the picked-up row reads identically to its in-grid sibling.
+// Every explicit case is copied verbatim into ClipboardService.FriendlyActionType (C#), which
+// labels the rows "Copy Actions" puts on the clipboard. A label changed here changes there too.
 function actionPillLabel(action: ActionItem): string {
   switch (action.actionType) {
     case 'WaitImage': return 'Wait Image';

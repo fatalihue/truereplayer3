@@ -22,6 +22,16 @@ namespace TrueReplayer.Services
         {
             if (actions == null || actions.Count == 0) return;
 
+            var (tsv, html) = BuildFlavors(actions);
+            var dataPackage = new DataPackage();
+            dataPackage.SetText(tsv);
+            dataPackage.SetHtmlFormat(HtmlFormatHelper.CreateHtmlFormat(html));
+            Clipboard.SetContent(dataPackage);
+        }
+
+        // The two clipboard flavors, built apart from the clipboard itself.
+        private static (string Tsv, string Html) BuildFlavors(IList<ActionItem> actions)
+        {
             var headers = new[] { "#", "Action", "Key", "X", "Y", "Delay", "Notes" };
             var rows = new List<string[]>(actions.Count);
             for (int i = 0; i < actions.Count; i++)
@@ -38,6 +48,12 @@ namespace TrueReplayer.Services
                     a.Comment ?? ""
                 });
             }
+            // The TSV flavor is one line per row and one tab per column, so a cell may carry
+            // neither. Notes is a multi-line textarea and a SendText key can hold anything: an
+            // Enter typed in a note split the row in two and shifted every column after it in
+            // whatever the plain text was pasted into. The HTML flavor below keeps the originals.
+            static string TsvCell(string cell) => cell.IndexOfAny(TsvBreakers) < 0 ? cell
+                : cell.Replace("\r\n", " ").Replace('\r', ' ').Replace('\n', ' ').Replace('\t', ' ');
 
             int totalDelay = actions.Sum(a => a.Delay);
             string summary = $"Actions: {actions.Count} | Total delay: {FormatDuration(totalDelay)}";
@@ -47,7 +63,7 @@ namespace TrueReplayer.Services
             tsv.AppendLine($"# {summary}");
             tsv.AppendLine(string.Join("\t", headers));
             foreach (var row in rows)
-                tsv.AppendLine(string.Join("\t", row));
+                tsv.AppendLine(string.Join("\t", row.Select(TsvCell)));
 
             // HTML table (for rich-text editors)
             var html = new StringBuilder();
@@ -67,11 +83,10 @@ namespace TrueReplayer.Services
             }
             html.AppendLine("</table>");
 
-            var dataPackage = new DataPackage();
-            dataPackage.SetText(tsv.ToString());
-            dataPackage.SetHtmlFormat(HtmlFormatHelper.CreateHtmlFormat(html.ToString()));
-            Clipboard.SetContent(dataPackage);
+            return (tsv.ToString(), html.ToString());
         }
+
+        private static readonly char[] TsvBreakers = { '\t', '\r', '\n' };
 
         private static string FormatDuration(int totalMs)
         {
@@ -83,24 +98,49 @@ namespace TrueReplayer.Services
             return $"{minutes}m {remainingSeconds:F1}s";
         }
 
-        // Mirrors the labels shown in the action-type pill in ActionTable. For action types
-        // without an explicit UI label (KeyDown, LeftClickDown, ScrollUp, etc.) we split the
-        // CamelCase name into spaced words for readability in spreadsheets/emails.
+        // Every explicit case is the grid's own pill label (ActionTable.tsx actionPillLabel),
+        // copied VERBATIM — a hand-kept list that covered ten of them had already drifted
+        // ("Wait Pixel Color" pasted for the grid's "Pixel Color", "If" for its "if"). Keep the two
+        // in step. Types the grid shows raw (KeyDown, LeftClickDown, ScrollUp, etc.) get their
+        // CamelCase split into words instead, for readability in spreadsheets/emails.
         private static string FriendlyActionType(string? type)
         {
             if (string.IsNullOrEmpty(type)) return "";
             return type switch
             {
                 "WaitImage" => "Wait Image",
+                "WaitPixelColor" => "Pixel Color",
                 "BrowserClick" => "Click Element",
                 "BrowserRightClick" => "Right Click Element",
                 "BrowserType" => "Type Text",
                 "BrowserSelectOption" => "Select Option",
-                "BrowserWaitElement" => "Wait Element",
                 "BrowserAssert" => "Assert Element",
+                "Assert" => "Assert",
+                "BrowserWaitElement" => "Wait Element",
                 "BrowserNavigate" => "Open URL",
+                "SendText" => "Send Text",
                 "RunProfile" => "Run Profile",
+                "Pause" => "Pause",
+                "HoldKey" => "Hold Key",
+                "SetVariable" => "Set Variable",
                 "CopyToSlot" => "Copy to Slot",
+                "ActivateWindow" => "Activate Window",
+                "DoubleClick" => "Double Click",
+                "TripleClick" => "Triple Click",
+                "LeftClickHold" => "Hold Left Click",
+                "RightClickHold" => "Hold Right Click",
+                "MiddleClickHold" => "Hold Middle Click",
+                "If" => "if",
+                "ElseIf" => "else if",
+                "Else" => "else",
+                "EndIf" => "endif",
+                "Stop" => "stop",
+                "Return" => "return",
+                "While" => "while",
+                "EndLoop" => "end loop",
+                "BreakLoop" => "break",
+                "ContinueLoop" => "next",
+                "ForEachRow" => "each row",
                 _ => SplitCamelCase(type)
             };
         }
@@ -121,7 +161,7 @@ namespace TrueReplayer.Services
         // Browser actions store the full CSS selector in Key. DisplayKey truncates selectors
         // longer than 40 chars with "..." for the grid, but the clipboard should preserve the
         // full text so users can paste it elsewhere intact. Other action types use DisplayKey
-        // (which formats Pause as "F4 / 5s", RunProfile as "Name ×3", WaitImage as "5s", etc).
+        // (which formats Pause as "F4 / 5s", RunProfile as "Name ×3", etc).
         private static string FriendlyKey(ActionItem a)
         {
             if (a.ActionType?.StartsWith("Browser") == true)

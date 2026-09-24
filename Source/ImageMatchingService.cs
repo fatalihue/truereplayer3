@@ -58,6 +58,7 @@ namespace TrueReplayer.Services
             // with a resolver: a region that only becomes unusable LATER stays quiet, which is
             // exactly what the frozen-region code did too, so this is not a new blind spot.
             bool reportRegion = true;
+            bool captureFailureLogged = false;
 
             while (DateTime.UtcNow < deadline && !cancellationToken.IsCancellationRequested)
             {
@@ -68,7 +69,29 @@ namespace TrueReplayer.Services
                 if (searchRegionResolver != null && !searchRegionResolver(out region))
                     return null;
 
-                var result = MatchOnce(templateMat, region, reportRegion);
+                // A tick whose capture FAILS saw nothing — neither the image nor its absence. The
+                // secure desktop (a UAC prompt, Ctrl+Alt+Del, the lock screen) or a minimised RDP
+                // session refuses the screen copy, and the throw used to escape to the step and
+                // abort the whole run, where the If probe and the automation watcher already read
+                // the same failure as "not this tick". The deadline and its OnTimeout policy still
+                // decide; a failed tick simply does not count, either way.
+                MatchResult result;
+                try
+                {
+                    result = MatchOnce(templateMat, region, reportRegion);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    if (!captureFailureLogged)
+                    {
+                        captureFailureLogged = true;
+                        DiagnosticLog.Warn($"[ImageMatch] Screen capture failed ({ex.GetType().Name}: {ex.Message}) — skipping the tick and waiting on; a locked or secure desktop does this.");
+                    }
+                    reportRegion = false;
+                    try { await Task.Delay(pollIntervalMs, cancellationToken); }
+                    catch (TaskCanceledException) { break; }
+                    continue;
+                }
                 reportRegion = false;
                 bool matched = waitForDisappear
                     ? result.Score < confidenceThreshold
@@ -218,6 +241,18 @@ namespace TrueReplayer.Services
                 if (screenMat.Width < templateMat.Width || screenMat.Height < templateMat.Height)
                     return new MatchResult(0, 0, 0, templateMat.Width, templateMat.Height);
 
+                // A reference of ONE flat colour (a button face, an empty panel — the capture overlay
+                // only asks for 10x10) has no shape to correlate. OpenCV answers that degenerate
+                // input by filling the whole map with 1.0, so MinMaxLoc reported a perfect match at
+                // the search area's top-left corner: WaitImage clicked there, If-Image was always
+                // true, the image watcher fired on every poll. Not found, and said why.
+                if (IsFlatTemplate(templateMat))
+                {
+                    if (reportUnusableRegion)
+                        DiagnosticLog.Warn($"[ImageMatch] The {templateMat.Width}x{templateMat.Height} reference image is a single flat colour — it has nothing to match on, so it reads as NOT FOUND. Recapture an area with some detail.");
+                    return new MatchResult(0, 0, 0, templateMat.Width, templateMat.Height);
+                }
+
                 using var matchResult = new Mat();
                 Cv2.MatchTemplate(screenMat, templateMat, matchResult, TemplateMatchModes.CCoeffNormed);
                 Cv2.MinMaxLoc(matchResult, out _, out double maxVal, out _, out var maxLoc);
@@ -236,6 +271,14 @@ namespace TrueReplayer.Services
                 screenMat?.Dispose();
                 screenBitmap?.Dispose();
             }
+        }
+
+        // Every channel constant (8-bit pixels: a template that varies at all has a deviation far
+        // above this) — the input TM_CCOEFF_NORMED cannot normalise.
+        private static bool IsFlatTemplate(Mat templateMat)
+        {
+            Cv2.MeanStdDev(templateMat, out _, out var deviation);
+            return deviation.Val0 < 1e-3 && deviation.Val1 < 1e-3 && deviation.Val2 < 1e-3 && deviation.Val3 < 1e-3;
         }
     }
 }

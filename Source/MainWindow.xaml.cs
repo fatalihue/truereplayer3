@@ -160,6 +160,10 @@ namespace TrueReplayer
             windowEventManager.RegisterShellNotifications();
 
             TrayIconService.Initialize(this, hwnd);
+            // Wired with the icon, not with the bridge: it needs neither, and when WebView2 fails
+            // to start — the case where the log is the only diagnosis — the bridge never exists and
+            // "Open Logs Folder" was a dead menu item.
+            TrayIconService.OnOpenLogsFolder = OpenLogsFolder;
 
             string iconPath = Path.Combine(AppContext.BaseDirectory, "TrueReplayer.ico");
             // LR_LOADFROMFILE returns an HICON the window holds for its lifetime via WM_SETICON.
@@ -180,19 +184,26 @@ namespace TrueReplayer
 
             mainController = null!;
 
+            // What to record and with which delay, as SAVED — until the bridge exists and takes
+            // over. The global hotkeys arm in this constructor, well before WebView2 is up and the
+            // bridge is built, and a recording started in that window used fixed defaults
+            // (everything recorded, 100 ms) instead of the user's choices, then switched to them
+            // mid-take once the bridge arrived.
+            var bootSettings = AppSettingsManager.Load();
+
             actionRecorder = new ActionRecorder(
                 Actions,
                 () => mainController.GetDelay(),
-                () => bridge?.UseCustomDelay ?? true,
+                () => bridge?.UseCustomDelay ?? bootSettings.UseCustomDelay,
                 () => mainController.ScrollToLastAction()
             );
 
             recordingService = new RecordingService(
                 actionRecorder,
-                () => bridge?.RecordMouse ?? true,
-                () => bridge?.RecordScroll ?? true,
-                () => bridge?.RecordKeyboard ?? true,
-                () => bridge?.RecordCombinedInput ?? true,
+                () => bridge?.RecordMouse ?? bootSettings.RecordMouse,
+                () => bridge?.RecordScroll ?? bootSettings.RecordScroll,
+                () => bridge?.RecordKeyboard ?? bootSettings.RecordKeyboard,
+                () => bridge?.RecordCombinedInput ?? bootSettings.RecordCombinedInput,
                 time => mainController.SetLastActionTime(time),
                 status => bridge?.PushStatusChange(status),
                 (text, isActive) => bridge?.PushButtonStates()
@@ -217,7 +228,7 @@ namespace TrueReplayer
                 replayService,
                 () =>
                 {
-                    if (bridge == null) return 100;
+                    if (bridge == null) return bootSettings.UseCustomDelay ? bootSettings.CustomDelay : 100;
                     return bridge.UseCustomDelay && int.TryParse(bridge.CustomDelay, out int d) ? d : 100;
                 },
                 () => bridge?.PushButtonStates()
@@ -435,25 +446,46 @@ namespace TrueReplayer
             // process alive, but every recovery affordance below (tray Reload UI, ProcessFailed,
             // watchdog) is wired AFTER this await — so a failure here would otherwise leave a
             // silent blank window with no way back. Surface an actionable message and bail.
-            try
+            //
+            // Retried before that message, because not every failure here is the runtime. The
+            // user-data folder is shared by every process of this app, and a recovery relaunch or a
+            // post-update restart can reach this point while the previous process's msedgewebview2
+            // children are still letting go of it — a lock that clears by itself a moment later,
+            // which the message used to diagnose as a runtime to reinstall.
+            const int envAttempts = 3;
+            for (int attempt = 1; ; attempt++)
             {
-                var envOptions = new Microsoft.Web.WebView2.Core.CoreWebView2EnvironmentOptions();
-                var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateWithOptionsAsync(
-                    null, userDataFolder, envOptions);
-                await WebView.EnsureCoreWebView2Async(env);
-            }
-            catch (Exception ex)
-            {
-                Services.DiagnosticLog.Error("InitializeWebView: WebView2 environment creation failed", ex);
-                NativeMethods.MessageBoxW(hwnd,
-                    "TrueReplayer couldn't start its UI because the Microsoft Edge WebView2 Runtime " +
-                    "failed to initialize.\n\nInstall or repair the WebView2 Runtime, then restart TrueReplayer.",
-                    "TrueReplayer", NativeMethods.MB_ICONERROR);
-                // No load will ever run from here, so nothing else would open the gate. Releasing
-                // it on a path where the UI is already dead costs nothing and keeps the invariant
-                // whole: InitialDataLoaded always completes.
-                _initialDataLoaded.TrySetResult(true);
-                return;
+                try
+                {
+                    var envOptions = new Microsoft.Web.WebView2.Core.CoreWebView2EnvironmentOptions();
+                    var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateWithOptionsAsync(
+                        null, userDataFolder, envOptions);
+                    await WebView.EnsureCoreWebView2Async(env);
+                    break;
+                }
+                catch (Exception ex) when (attempt < envAttempts)
+                {
+                    Services.DiagnosticLog.Warn($"InitializeWebView: WebView2 environment creation failed (attempt {attempt}/{envAttempts}), retrying: {ex.GetType().Name}: {ex.Message}");
+                    await Task.Delay(1500);
+                }
+                catch (Exception ex)
+                {
+                    Services.DiagnosticLog.Error("InitializeWebView: WebView2 environment creation failed", ex);
+                    NativeMethods.MessageBoxW(hwnd,
+                        "TrueReplayer couldn't start its UI because the Microsoft Edge WebView2 Runtime " +
+                        "failed to initialize.\n\nInstall or repair the WebView2 Runtime, then restart TrueReplayer.",
+                        "TrueReplayer", NativeMethods.MB_ICONERROR);
+                    // The rest of the tray menu is wired only with the bridge, which will never
+                    // exist. "Reload UI" becomes the restart the message asks for, so a repaired
+                    // runtime is one click away (Open Logs Folder is already wired, and Exit never
+                    // needed a handler).
+                    TrayIconService.OnReloadUI = TryRestartProcess;
+                    // No load will ever run from here, so nothing else would open the gate. Releasing
+                    // it on a path where the UI is already dead costs nothing and keeps the invariant
+                    // whole: InitialDataLoaded always completes.
+                    _initialDataLoaded.TrySetResult(true);
+                    return;
+                }
             }
 
             // Everything past the env-creation await wires up the bridge, tray callbacks,
@@ -587,28 +619,7 @@ namespace TrueReplayer
                 });
             };
 
-            TrayIconService.OnOpenLogsFolder = () =>
-            {
-                try
-                {
-                    var dir = Services.DiagnosticLog.LogDirectory;
-                    if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir))
-                    {
-                        Services.DiagnosticLog.Warn("Open Logs: directory missing");
-                        return;
-                    }
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                    {
-                        FileName = "explorer.exe",
-                        Arguments = $"\"{dir}\"",
-                        UseShellExecute = true,
-                    });
-                }
-                catch (Exception ex)
-                {
-                    Services.DiagnosticLog.Error("Open Logs Folder failed", ex);
-                }
-            };
+            // (OnOpenLogsFolder is wired in the constructor, with the tray icon.)
 
             // Recover from any WebView2 process failure — renderer exit, unresponsive renderer,
             // GPU crash, etc. We do NOT try to recover from BrowserProcessExited because that
@@ -901,8 +912,23 @@ namespace TrueReplayer
 
                 if (best == null) return;
                 Services.DiagnosticLog.Info($"Migrating WebView2 user data from '{best}' → '{targetDir}'");
-                Directory.CreateDirectory(targetDir);
-                CopyDirectoryRecursive(best, targetDir);
+                // Copied into a STAGING folder and moved into place only once the whole tree made
+                // it. The guard above reads "target not empty" as "already migrated", so a copy that
+                // threw halfway (a subfolder held by antivirus, an ACL) left a partial target that
+                // was never retried — and the rest was lost when Velopack discarded the old folder.
+                var staging = targetDir.TrimEnd(Path.DirectorySeparatorChar) + ".migrating";
+                try
+                {
+                    if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
+                    CopyDirectoryRecursive(best, staging);
+                    if (Directory.Exists(targetDir)) Directory.Delete(targetDir); // empty, per the guard
+                    Directory.Move(staging, targetDir);
+                }
+                catch
+                {
+                    try { if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true); } catch { }
+                    throw;
+                }
             }
             catch (Exception ex)
             {
@@ -1770,20 +1796,25 @@ namespace TrueReplayer
         /// </summary>
         private void RecoverWebView(string reason)
         {
-            _consecutiveRecoveryAttempts++;
-            Services.DiagnosticLog.Warn($"Recovery requested — reason='{reason}', attempt #{_consecutiveRecoveryAttempts}");
+            // THIS request's level, taken now. The body below runs later, from the queue, and it
+            // used to read the shared counter there: a crash reports itself twice (ProcessFailed,
+            // then the failed navigation) before either body runs, so both read 2 — Level 1 was
+            // skipped and Navigate issued twice — and a third near-simultaneous trigger (the
+            // watchdog) sent every body straight to a process restart on the first real failure.
+            int attempt = ++_consecutiveRecoveryAttempts;
+            Services.DiagnosticLog.Warn($"Recovery requested — reason='{reason}', attempt #{attempt}");
 
             DispatcherQueue.TryEnqueue(() =>
             {
                 // Level 1: Reload (cheapest)
-                if (_consecutiveRecoveryAttempts == 1 && TryReload())
+                if (attempt == 1 && TryReload())
                 {
                     Services.DiagnosticLog.Info("Recovery level 1 (Reload) issued");
                     return;
                 }
 
                 // Level 2: Navigate to stored URL
-                if (_consecutiveRecoveryAttempts <= 2 && TryNavigate())
+                if (attempt <= 2 && TryNavigate())
                 {
                     Services.DiagnosticLog.Info("Recovery level 2 (Navigate) issued");
                     return;
@@ -1916,6 +1947,29 @@ namespace TrueReplayer
             }
         }
 
+        private static void OpenLogsFolder()
+        {
+            try
+            {
+                var dir = Services.DiagnosticLog.LogDirectory;
+                if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir))
+                {
+                    Services.DiagnosticLog.Warn("Open Logs: directory missing");
+                    return;
+                }
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "explorer.exe",
+                    Arguments = $"\"{dir}\"",
+                    UseShellExecute = true,
+                });
+            }
+            catch (Exception ex)
+            {
+                Services.DiagnosticLog.Error("Open Logs Folder failed", ex);
+            }
+        }
+
         private void TryRestartProcess()
         {
             try
@@ -1942,7 +1996,14 @@ namespace TrueReplayer
                     // breaks any pixel or image watcher whose region it covers. The update path
                     // learned this; this one was left behind.
                     Arguments = RelaunchArgPrefix + nextGeneration.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                                + (App.HasStartupFlag() ? " --startup" : ""),
+                                + (App.HasStartupFlag() ? " --startup" : "")
+                                // The replacement waits for THIS process to be gone before it
+                                // claims the instance (Program.WaitForPredecessor): the flush below
+                                // closed one race for the mutex, but everything after Process.Start
+                                // — the teardown, the log's own exit flush, the CLR going down — is
+                                // still a window in which the child found the mutex held and exited
+                                // in silence, and in which our WebView2 still held the data folder.
+                                + " " + Program.WaitForPidArg + Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     UseShellExecute = true,
                 };
                 // Bypasses ForceExit — flush the debounced run cursors before the process dies,

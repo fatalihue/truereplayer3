@@ -50,6 +50,12 @@ namespace TrueReplayer.Services
 
         private static Thread? _drainThread;
 
+        // Lines logged before Initialize (see WriteRaw). A second instance that exits at the
+        // single-instance gate never initializes, so its lines die with it — as they always did.
+        private static readonly ConcurrentQueue<string> _preInit = new();
+        private static int _preInitCount;
+        private const int MaxPreInitLines = 256;
+
         public static string LogDirectory { get; private set; } = "";
 
         /// <summary>
@@ -82,6 +88,8 @@ namespace TrueReplayer.Services
                 var os = Environment.OSVersion.VersionString;
                 var arch = RuntimeArchString();
                 WriteHeader($"TrueReplayer v{appVersion} | {os} | {arch}");
+                // Their own timestamps say they came first.
+                while (_preInit.TryDequeue(out var early)) WriteRaw(early);
             }
             catch
             {
@@ -126,7 +134,16 @@ namespace TrueReplayer.Services
         /// </summary>
         private static void WriteRaw(string line)
         {
-            if (_logPath == null) return;
+            if (_logPath == null)
+            {
+                // Before Initialize — which runs in App's constructor, after Program.Main has already
+                // decided about elevation, registered the extension's native host and read the
+                // settings file. Those failures used to be dropped right here, under comments
+                // promising they were "visible in the session log". Held (bounded) and written
+                // after the header instead.
+                if (Interlocked.Increment(ref _preInitCount) <= MaxPreInitLines) _preInit.Enqueue(line);
+                return;
+            }
 
             if (Interlocked.Increment(ref _pendingCount) > MaxPendingLines)
             {

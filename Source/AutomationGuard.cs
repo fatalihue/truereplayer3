@@ -123,7 +123,11 @@ namespace TrueReplayer.Services
         /// </summary>
         private static readonly TimeSpan EditorClaimTtl = TimeSpan.FromMinutes(10);
 
-        private static bool EditorHoldsUnsavedWork()
+        /// <summary>
+        /// A row editor (Sheet or row dialog) holds typed fields not yet sent. Also read by the
+        /// update gate, which exits the process just as surely as an automation writes over them.
+        /// </summary>
+        internal static bool EditorHoldsUnsavedWork()
         {
             List<string>? expired = null;
             bool held = false;

@@ -279,12 +279,7 @@ namespace TrueReplayer.Services
             // them, and the tray icon the updated process will add its own next to. The updated
             // app relaunches into a fresh process that installs its own hooks, so letting go here
             // costs nothing.
-            //
-            // Before WaitExitThenApplyUpdates, and guarded step by step inside AppExit: a throw
-            // after the apply is queued would skip Environment.Exit(0) and leave Update.exe waiting
-            // on a process that never leaves, which stalls the update instead of applying it.
             AppExit.FlushState();
-            AppExit.ReleaseSystem();
             // Carry --startup across the restart, and ONLY that flag.
             //
             // It is produced exclusively by the Run registry key, and it is the sole input to the
@@ -296,7 +291,15 @@ namespace TrueReplayer.Services
             // post-update process a spent recovery budget, defeating the ladder that argument
             // exists to bound.
             string[]? restartArgs = TrueReplayer.App.HasStartupFlag() ? new[] { "--startup" } : null;
+            // The system is let go AFTER this call, not before. It is the one step here that can
+            // throw without ending the process — a corrupt staged package, an antivirus lock,
+            // install-folder permissions — and releasing first left the survivor without global
+            // hotkeys, automations or tray icon, while the caller's toast said it was "still
+            // running the current version". Nothing can come between the queued apply and the Exit
+            // either: ReleaseSystem guards every step, so a throw there cannot skip Exit(0) and
+            // leave Update.exe waiting on a process that never leaves.
             _manager.WaitExitThenApplyUpdates(_pendingUpdate.TargetFullRelease, silent: true, restart: true, restartArgs);
+            AppExit.ReleaseSystem();
             Environment.Exit(0);
         }
     }

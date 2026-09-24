@@ -3097,22 +3097,32 @@ namespace TrueReplayer
             });
         }
 
+        /// <summary>
+        /// The button slice, from the services' real state — for button:states AND for state:init.
+        /// state:init used to carry constants ("not recording, not replaying"): right on a cold
+        /// start, wrong on every other ui:ready. A UI reloaded during a run (tray Reload UI, a
+        /// renderer crash, the watchdog) showed Record/Replay idle and the grid editable, the
+        /// reducer replaces the whole slice, and the click meant as "start" reached a toggle that
+        /// reads the real state — and STOPPED the run.
+        /// </summary>
+        private object ProjectButtonStates() => new
+        {
+            // Recording is meaningless in Clicker mode (ignores recorded actions). Replay button
+            // doubles as the "Click" trigger in Clicker mode, so it's enabled even with 0 actions.
+            recordEnabled = !UseCursorClick,
+            replayEnabled = UseCursorClick || actions.Count > 0,
+            recordingActive = recordingService.IsRecording,
+            replayActive = replayService.IsReplaying,
+            recordButtonText = recordingService.IsRecording ? "Pause" : "Recording",
+            replayButtonText = replayService.IsReplaying ? "Stop" : (UseCursorClick ? "Click" : "Replay"),
+            canUndo = CanUndo,
+            copiedCount = _copiedActions?.Count ?? 0,
+            canRedo = CanRedo
+        };
+
         public void PushButtonStates()
         {
-            SendMessage("button:states", new
-            {
-                // Recording is meaningless in Clicker mode (ignores recorded actions). Replay button
-                // doubles as the "Click" trigger in Clicker mode, so it's enabled even with 0 actions.
-                recordEnabled = !UseCursorClick,
-                replayEnabled = UseCursorClick || actions.Count > 0,
-                recordingActive = recordingService.IsRecording,
-                replayActive = replayService.IsReplaying,
-                recordButtonText = recordingService.IsRecording ? "Pause" : "Recording",
-                replayButtonText = replayService.IsReplaying ? "Stop" : (UseCursorClick ? "Click" : "Replay"),
-                canUndo = CanUndo,
-                copiedCount = _copiedActions?.Count ?? 0,
-                canRedo = CanRedo
-            });
+            SendMessage("button:states", ProjectButtonStates());
 
             // Recording/replay start+stop both land here, which makes this the cheapest honest
             // signal that a run has ENDED — and the end of a run is when an update the run
@@ -3453,6 +3463,12 @@ namespace TrueReplayer
             // for what each Load() costs. This is the cold-start path, where the dispatcher is
             // already the scarce resource.
             var appSettings = AppSettingsManager.Load();
+            // Same per-call dedup PushProfilesUpdate uses (see there): profiles and folders that
+            // share a target would each pay GetIconBase64's revalidation I/O.
+            var iconLookup = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+            string? Icon(string? proc) => string.IsNullOrWhiteSpace(proc) ? null
+                : iconLookup.TryGetValue(proc, out var v) ? v
+                : (iconLookup[proc] = AppIconService.GetIconBase64(proc));
             SendMessage("state:init", new
             {
                 status = "ready",
@@ -3497,7 +3513,7 @@ namespace TrueReplayer
                     // after launch renders the crosshair fallback for every targeted profile
                     // even though the on-disk icon cache has the PNG ready. The icon only
                     // appears on the next push (drag, expand, etc.), which feels broken.
-                    appIconBase64 = AppIconService.GetIconBase64(p.EffectiveTargetProcessName),
+                    appIconBase64 = Icon(p.EffectiveTargetProcessName),
                     useRelativeCoordinates = p.UseRelativeCoordinates,
                     bringToFocus = p.BringToFocus,
                     restorePosition = p.RestorePosition,
@@ -3548,7 +3564,7 @@ namespace TrueReplayer
                         windowTargetProcessName = f.TargetWindow?.ProcessName,
                         windowTargetWindowTitle = f.TargetWindow?.WindowTitle,
                         windowTargetTitleMatchMode = f.TargetWindow?.TitleMatchMode ?? "contains",
-                        appIconBase64 = AppIconService.GetIconBase64(f.TargetWindow?.ProcessName),
+                        appIconBase64 = Icon(f.TargetWindow?.ProcessName),
                         useRelativeCoordinates = f.UseRelativeCoordinates,
                         bringToFocus = f.BringToFocus,
                         restorePosition = f.RestorePosition,
@@ -3571,18 +3587,7 @@ namespace TrueReplayer
                     profileName = CurrentProfileName == "No Profile" ? (string?)null : CurrentProfileName,
                     actionCount = actions.Count
                 },
-                buttonStates = new
-                {
-                    recordEnabled = !UseCursorClick,
-                    replayEnabled = UseCursorClick || actions.Count > 0,
-                    recordingActive = false,
-                    replayActive = false,
-                    recordButtonText = "Recording",
-                    replayButtonText = UseCursorClick ? "Click" : "Replay",
-                    canUndo = CanUndo,
-                    canRedo = CanRedo,
-                    copiedCount = _copiedActions?.Count ?? 0
-                }
+                buttonStates = ProjectButtonStates()
             });
 
             // Apply saved window settings that require the window handle
@@ -3595,6 +3600,14 @@ namespace TrueReplayer
             // would never hear anything and could only show "unknown" until the first flap. One
             // message at boot is what makes the indicator honest from the first frame.
             SendMessage("browser:status", new { connected = browserBridge?.IsConnected ?? false });
+            // Same for the extension's version, which the handshake reports once per connection:
+            // it could arrive before this bridge subscribed, and a remounted UI never hears it
+            // again, so the "reload the extension" banner was simply missing.
+            if (browserBridge?.IsConnected == true && browserBridge.LastExtensionVersion is { } extensionVersion)
+                SendMessage("browser:extensionOutdated", new { currentVersion = extensionVersion, expectedVersion = BrowserBridgeService.ExpectedExtensionVersion });
+
+            // A run the UI reloaded under: its pause and its Ask-Input prompt (see _livePause).
+            ReseedLiveWaits();
 
             // A Clicker/utility hotkey collision found while LOADING settings (see the load path)
             // — said once, now that there is a UI to say it to. Cleared after, so a UI reload
@@ -3643,6 +3656,14 @@ namespace TrueReplayer
         {
             if (recordingService.IsRecording) { reason = "a recording is in progress"; return UpdateGate.Busy; }
             if (replayService.IsReplaying) { reason = "a replay is running"; return UpdateGate.Busy; }
+            // The two signals AutomationGuard already holds the other autonomous actor to: a
+            // capture overlay or a native file picker (Save As, Import, Export) mid-flight, and a
+            // row editor with typed fields not yet sent. Exiting under either loses that work with
+            // no prompt, so they are Busy — never Unsaved, whose resolution is the Save/Discard
+            // dialog, which has nothing to say about a picker (see the enum's remark).
+            // SuppressAllHotkeys is NOT read: the update overlay is itself a React modal.
+            if (Services.InteractionScope.CurrentOwner is { } open) { reason = $"{open} is open"; return UpdateGate.Busy; }
+            if (Services.AutomationGuard.EditorHoldsUnsavedWork()) { reason = "a row editor has unsent changes"; return UpdateGate.Busy; }
             if (HasUnsavedLoopChange || HasUnsavedActionWork) { reason = "the profile has unsaved changes"; return UpdateGate.Unsaved; }
             reason = string.Empty;
             return UpdateGate.Clear;
@@ -3853,6 +3874,14 @@ namespace TrueReplayer
                     // atualização" / pulsing progress. 1.8 s matches the user's eye on the
                     // checkmark animation cycle without dragging the restart noticeably.
                     await Task.Delay(1800);
+                    // And once more, NOW. Those 1.8 s are a live app: a profile hotkey or an
+                    // automation fired inside them starts a run that ApplyAndRestart would cut down
+                    // mid-step — the exact damage Busy exists to prevent, one statement from the Exit.
+                    if (EvaluateUpdateGate(out var finalReason) != UpdateGate.Clear)
+                    {
+                        ReportUpdatePostponed(finalReason);
+                        return;
+                    }
                     UpdateService.ApplyAndRestart();
                 }
                 else
@@ -4209,7 +4238,18 @@ namespace TrueReplayer
 
         private void HandleActionsCopy()
         {
-            ClipboardService.CopyActions(actions);
+            // Same guard as HandleDiagnosticsCopy, over the same clipboard API: a clipboard held by
+            // another process (a clipboard manager, an RDP session) throws, and unguarded that
+            // ended in HandleMessage's catch-all — nothing on screen, the copy simply missing.
+            try
+            {
+                ClipboardService.CopyActions(actions);
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Error("actions:copy failed", ex);
+                SendMessage("alert:show", new { message = "Could not copy the actions to the clipboard. Try again." });
+            }
         }
 
         private void HandleActionsCopyInternal(JsonElement payload)
@@ -5322,13 +5362,23 @@ namespace TrueReplayer
             SendMessage("replay:chainStep", new { current, total });
         }
 
+        // What the engine is waiting on RIGHT NOW, kept so a UI that remounts mid-run can be told
+        // again (SendInitialState). Both pushes are edges — sent once, when the wait begins — and a
+        // React tree that mounts afterwards never hears them: a paused run showed no PAUSED banner,
+        // and an Ask-Input prompt vanished while the engine kept waiting for it, then aborted the
+        // run on its 60 s timeout. UI thread only (every push arrives through the dispatcher).
+        private (string Hotkey, int TimeoutMs, long StartedAt)? _livePause;
+        private readonly Dictionary<string, (string Label, string[]? Options)> _liveInputRequests = new();
+
         public void PushReplayPaused(string hotkey, int timeoutMs)
         {
+            _livePause = (hotkey, timeoutMs, Environment.TickCount64);
             SendMessage("replay:paused", new { hotkey, timeoutMs });
         }
 
         public void PushReplayResumed()
         {
+            _livePause = null;
             SendMessage("replay:resumed", new { });
         }
 
@@ -5336,12 +5386,36 @@ namespace TrueReplayer
         // and dismiss a still-open prompt when the run is cancelled/stopped mid-prompt.
         public void PushInputRequest(string requestId, string label, string[]? options)
         {
+            _liveInputRequests[requestId] = (label, options);
             SendMessage("replay:inputRequest", new { requestId, label, options });
         }
 
         public void PushInputDismiss(string requestId)
         {
+            _liveInputRequests.Remove(requestId);
             SendMessage("replay:inputDismiss", new { requestId });
+        }
+
+        // Re-sends the live waits to a freshly mounted UI. A pause's countdown resumes from what is
+        // left of it, not from the top. Anything left over from a run that has since ended (an edge
+        // that never came) is dropped instead of resurrected.
+        private void ReseedLiveWaits()
+        {
+            if (!replayService.IsReplaying)
+            {
+                _livePause = null;
+                _liveInputRequests.Clear();
+                return;
+            }
+            if (_livePause is { } pause)
+            {
+                int left = pause.TimeoutMs <= 0
+                    ? pause.TimeoutMs
+                    : (int)Math.Max(1, pause.TimeoutMs - (Environment.TickCount64 - pause.StartedAt));
+                SendMessage("replay:paused", new { hotkey = pause.Hotkey, timeoutMs = left });
+            }
+            foreach (var (requestId, request) in _liveInputRequests)
+                SendMessage("replay:inputRequest", new { requestId, label = request.Label, options = request.Options });
         }
 
         // Live-variables pane feed: the current run-state snapshot (variables + clip slots +
@@ -8228,6 +8302,16 @@ namespace TrueReplayer
         {
             string name = payload.GetProperty("name").GetString() ?? "";
             if (string.IsNullOrEmpty(name)) return;
+
+            // The panel refuses a switch mid-run, but it was the ONLY gate, and it reads the button
+            // slice — which a UI remounted during a run used to receive as "idle" (see
+            // ProjectButtonStates). A switch clears the grid and swaps UserProfile.Current under a
+            // live run, so the backend refuses it as well.
+            if (recordingService.IsRecording || replayService.IsReplaying)
+            {
+                SendMessage("alert:show", new { message = "Stop the recording or replay before switching profiles." });
+                return;
+            }
 
             // Guard: check for unsaved changes before switching
             if (!await CheckUnsavedChangesAsync("switching profiles")) return;

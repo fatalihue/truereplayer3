@@ -207,9 +207,13 @@ namespace TrueReplayer.Services
             string exeName = nameNoExt + ".exe";
 
             // 1. Running processes. MainModule throws on elevation mismatch — swallow per-proc.
+            //    EVERY Process in the array is disposed, not only the ones visited: each holds a
+            //    native handle, and returning from inside the loop left the rest of them — dozens
+            //    for a chrome.exe — to the finalizer.
+            Process[] procs = Array.Empty<Process>();
             try
             {
-                var procs = Process.GetProcessesByName(nameNoExt);
+                procs = Process.GetProcessesByName(nameNoExt);
                 foreach (var p in procs)
                 {
                     try
@@ -224,20 +228,25 @@ namespace TrueReplayer.Services
                     {
                         // Access denied — try next instance.
                     }
-                    finally
-                    {
-                        p.Dispose();
-                    }
                 }
             }
             catch
             {
                 // Process enumeration itself failed — fall through.
             }
+            finally
+            {
+                foreach (var p in procs) p.Dispose();
+            }
 
-            // 2. App Paths registry — per-machine, then per-user.
+            // 2. App Paths registry — per-machine, then per-user, then the per-machine 32-bit view.
+            //    HKLM\SOFTWARE is redirected for 32-bit software: a 32-bit installer registers under
+            //    WOW6432Node, which this 64-bit process does not see through the default view, so an
+            //    installed-but-closed 32-bit app showed the generic icon until it was first opened.
+            //    (HKCU\SOFTWARE is shared between the views.)
             string? registryPath = TryReadAppPath(Registry.LocalMachine, exeName)
-                                   ?? TryReadAppPath(Registry.CurrentUser, exeName);
+                                   ?? TryReadAppPath(Registry.CurrentUser, exeName)
+                                   ?? TryReadAppPath32(exeName);
 
             if (!string.IsNullOrEmpty(registryPath) && File.Exists(registryPath))
             {
@@ -263,6 +272,20 @@ namespace TrueReplayer.Services
                 // Registry access denied / key malformed — give up silently.
             }
             return null;
+        }
+
+        private static string? TryReadAppPath32(string exeName)
+        {
+            if (!Environment.Is64BitProcess) return null; // the default view already IS the 32-bit one
+            try
+            {
+                using var hklm32 = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry32);
+                return TryReadAppPath(hklm32, exeName);
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         // ─────────────────────────────────────────────────────────────────────────

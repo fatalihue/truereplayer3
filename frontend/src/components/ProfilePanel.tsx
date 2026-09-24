@@ -107,8 +107,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
   // organization (drag, folders, context menu) stays available.
   const isClicker = settings.useCursorClick;
   // Mid-run activation gate: switching (or deselecting) the profile yanks the
-  // action list from under the engine — the backend HandleProfileClick has no
-  // run guard, so the UI is the only gate.
+  // action list from under the engine. The backend HandleProfileClick refuses it
+  // too; this keeps the rows from looking clickable at all.
   const runActive = buttonStates.recordingActive || buttonStates.replayActive;
 
   // Pre-compute the count of actions whose stored coordinates would benefit from a

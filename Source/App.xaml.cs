@@ -11,11 +11,13 @@ namespace TrueReplayer
     {
         public App()
         {
-            this.InitializeComponent();
-
-            // Initialize the diagnostic log FIRST so any startup errors are captured.
+            // Initialize the diagnostic log FIRST so any startup errors are captured — before
+            // InitializeComponent too, which loads the compiled XAML resources and can throw on a
+            // damaged install, the one failure that used to leave the log empty.
             var appVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "unknown";
             DiagnosticLog.Initialize(appVersion);
+
+            this.InitializeComponent();
             DiagnosticLog.Info("App constructor: UnhandledException handler attached");
 
             // Record this session's elevation up-front. The 'admin target while TrueReplayer
@@ -47,6 +49,10 @@ namespace TrueReplayer
                     DiagnosticLog.Error($"AppDomain.UnhandledException (terminating={e.IsTerminating})", ex);
                 else
                     DiagnosticLog.Error($"AppDomain.UnhandledException (non-Exception object, terminating={e.IsTerminating})");
+                // Written NOW, on this thread. The line above only queues, the drain thread wakes
+                // up to a second later, and ProcessExit — the other flush — is not raised for an
+                // unhandled exception: the line saying why the app died was the likeliest to be lost.
+                DiagnosticLog.Flush();
             };
 
             System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (_, e) =>

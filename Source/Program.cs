@@ -22,42 +22,13 @@ namespace TrueReplayer
             // invoked by the updater (e.g. --velopack-install).
             VelopackApp.Build().Run();
 
-            // Prevent multiple instances
-            using var mutex = new Mutex(true, "TrueReplayer_SingleInstance_Mutex", out bool createdNew);
-            if (!createdNew)
-            {
-                // Another instance is already running — bring it to focus and exit.
-                //
-                // MainWindowHandle alone was not enough, and the case it missed is the NORMAL one:
-                // .NET only reports a VISIBLE top-level window there, while this app spends most of
-                // its life hidden — the X button minimises to the tray by default, and autostart
-                // opens hidden. So relaunching the exe did nothing whatsoever: no window, no
-                // message, not even a log line. That matters because relaunching is the only way
-                // back when the tray icon is gone (nothing re-registers it if Explorer restarts),
-                // and without it the sole remedy is killing the process, which takes the automation
-                // daemon down with it.
-                var existing = Process.GetProcessesByName("TrueReplayer");
-                foreach (var proc in existing)
-                {
-                    using (proc) // Process objects from GetProcessesByName own a native handle — dispose them
-                    {
-                        if (proc.Id == Environment.ProcessId) continue;
-                        IntPtr hwnd = proc.MainWindowHandle;
-                        if (hwnd == IntPtr.Zero) hwnd = FindTopLevelWindow(proc.Id);
-                        if (hwnd == IntPtr.Zero) continue;
-                        ShowWindow(hwnd, 9); // SW_RESTORE
-                        SetForegroundWindow(hwnd);
-                        // Route through the running instance's OWN restore path — the tray
-                        // double-click its WndProc already handles — because a window that was
-                        // hidden through the AppWindow API does not reliably come back from
-                        // ShowWindow alone. The receiver opens this message to UIPI when it creates
-                        // the tray icon, so it also arrives when that instance is elevated and this
-                        // one is not (self-elevation happens after this gate).
-                        PostMessage(hwnd, WM_USER_TRAY, IntPtr.Zero, (IntPtr)WM_LBUTTONDBLCLK);
-                    }
-                }
-                return;
-            }
+            // A recovery relaunch: let the process that launched it finish dying first.
+            WaitForPredecessor(args);
+
+            // Prevent multiple instances. Null means another instance is running (and was asked
+            // to show itself), so this one exits.
+            using var mutex = ClaimSingleInstance();
+            if (mutex == null) return;
 
             // Self-elevate if RunAsAdmin setting is enabled and not already elevated
             if (ShouldElevate())
@@ -138,6 +109,123 @@ namespace TrueReplayer
                 SynchronizationContext.SetSynchronizationContext(context);
                 new App();
             });
+        }
+
+        /// <summary>Handed to a recovery relaunch by MainWindow.TryRestartProcess: "--wait-pid=&lt;pid&gt;".</summary>
+        internal const string WaitForPidArg = "--wait-pid=";
+
+        private const string InstanceMutexName = "TrueReplayer_SingleInstance_Mutex";
+
+        /// <summary>
+        /// Blocks (bounded) until the process named by <see cref="WaitForPidArg"/> has exited. The
+        /// parent of a recovery relaunch still holds the instance mutex and the WebView2 data folder
+        /// through its whole teardown, and a child that got there first either exited in silence (the
+        /// mutex said "already running", then the parent left too — zero processes, no tray, no
+        /// automations) or failed to start WebView2 on the parent's locked folder.
+        /// </summary>
+        private static void WaitForPredecessor(string[] args)
+        {
+            var arg = args.FirstOrDefault(a => a.StartsWith(WaitForPidArg, StringComparison.OrdinalIgnoreCase));
+            if (arg == null || !int.TryParse(arg.AsSpan(WaitForPidArg.Length), out int pid) || pid == Environment.ProcessId)
+                return;
+            try
+            {
+                using var predecessor = Process.GetProcessById(pid);
+                // A recycled pid belongs to someone else — nothing to wait for.
+                if (!predecessor.ProcessName.Equals("TrueReplayer", StringComparison.OrdinalIgnoreCase)) return;
+                if (!predecessor.WaitForExit(15000))
+                    DiagnosticLog.Warn($"[Startup] Predecessor {pid} still alive after 15 s; starting anyway.");
+            }
+            catch (ArgumentException) { /* already gone */ }
+            catch (InvalidOperationException) { /* exited between the lookup and the wait */ }
+            catch (System.ComponentModel.Win32Exception ex)
+            {
+                DiagnosticLog.Warn($"[Startup] Could not wait for predecessor {pid}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Takes the single-instance mutex, or asks the running instance to show itself and returns
+        /// null. Retries for ~3 s because "another instance" is not always a settled one:
+        ///   • it may still be BOOTING — it takes the mutex first thing and has a window only once
+        ///     WinUI is up, so a second click on the shortcut (or autostart colliding with one)
+        ///     found no window and exited without a trace;
+        ///   • it may be DYING — then the mutex frees up on a later lap and this process becomes
+        ///     the instance instead of leaving nobody running.
+        /// </summary>
+        private static Mutex? ClaimSingleInstance()
+        {
+            const int attempts = 10;
+            for (int attempt = 1; attempt <= attempts; attempt++)
+            {
+                Mutex? mutex = null;
+                bool createdNew;
+                try
+                {
+                    mutex = new Mutex(true, InstanceMutexName, out createdNew);
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    // The mutex exists and this token may not open it: an instance created it
+                    // ELEVATED (RunAsAdmin), and an elevated creator's default DACL admits
+                    // Administrators and SYSTEM only — which a non-elevated relaunch (a shortcut, the
+                    // Run key) does not satisfy. It is still another instance; this used to be an
+                    // unhandled exception that killed the relaunch before any handler or log existed.
+                    createdNew = false;
+                }
+                if (createdNew) return mutex;
+                mutex?.Dispose();
+
+                if (SignalRunningInstance()) return null;
+                if (attempt < attempts && AnotherInstanceAlive()) Thread.Sleep(300);
+            }
+            DiagnosticLog.Warn("[Startup] Another instance holds the single-instance mutex but never showed a window; exiting.");
+            return null;
+        }
+
+        /// <summary>
+        /// Brings a running instance to the front. True when some instance's window got the message.
+        ///
+        /// MainWindowHandle alone was not enough, and the case it missed is the NORMAL one: .NET
+        /// only reports a VISIBLE top-level window there, while this app spends most of its life
+        /// hidden — the X button minimises to the tray by default, and autostart opens hidden. So
+        /// relaunching the exe did nothing whatsoever: no window, no message, not even a log line.
+        /// That matters because relaunching is the only way back when the tray icon is gone, and
+        /// without it the sole remedy is killing the process, which takes the automation daemon
+        /// down with it.
+        /// </summary>
+        private static bool SignalRunningInstance()
+        {
+            bool signalled = false;
+            foreach (var proc in Process.GetProcessesByName("TrueReplayer"))
+            {
+                using (proc) // Process objects from GetProcessesByName own a native handle — dispose them
+                {
+                    if (proc.Id == Environment.ProcessId) continue;
+                    IntPtr hwnd = proc.MainWindowHandle;
+                    if (hwnd == IntPtr.Zero) hwnd = FindTopLevelWindow(proc.Id);
+                    if (hwnd == IntPtr.Zero) continue;
+                    ShowWindow(hwnd, 9); // SW_RESTORE
+                    SetForegroundWindow(hwnd);
+                    // Route through the running instance's OWN restore path — the tray
+                    // double-click its WndProc already handles — because a window that was
+                    // hidden through the AppWindow API does not reliably come back from
+                    // ShowWindow alone. The receiver opens this message to UIPI when it creates
+                    // the tray icon, so it also arrives when that instance is elevated and this
+                    // one is not (self-elevation happens after this gate).
+                    PostMessage(hwnd, WM_USER_TRAY, IntPtr.Zero, (IntPtr)WM_LBUTTONDBLCLK);
+                    signalled = true;
+                }
+            }
+            return signalled;
+        }
+
+        private static bool AnotherInstanceAlive()
+        {
+            bool alive = false;
+            foreach (var proc in Process.GetProcessesByName("TrueReplayer"))
+                using (proc) alive |= proc.Id != Environment.ProcessId;
+            return alive;
         }
 
         private static bool ShouldElevate()

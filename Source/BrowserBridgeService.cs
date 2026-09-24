@@ -133,6 +133,15 @@ namespace TrueReplayer.Services
         public bool IsRecordingMode { get; private set; }
         public event Action<bool>? ConnectionChanged;
         public event Action<string, string>? ExtensionVersionMismatch; // currentVersion, expectedVersion
+
+        // The version the connected extension reported in this connection's handshake, or null
+        // (not connected, or no handshake yet). The handshake happens ONCE per connection, and
+        // ExtensionVersionMismatch reaches only whoever is subscribed at that instant: it could
+        // fire before the WebViewBridge existed (the pipe opens in MainWindow's ctor, the bridge
+        // only after WebView2 is up), and a UI that remounts with the extension still connected
+        // never hears it again. The bridge re-seeds the banner from this on every ui:ready.
+        private volatile string? _lastExtensionVersion;
+        public string? LastExtensionVersion => _lastExtensionVersion;
         // G1 — the trailing alternatives list is the SAME ranked shape the crosshair pick returns.
         // Empty (never null) when the extension sent none: a pre-1.4.10 content script, or an
         // element the generator found no unique fallback for. Empty means "record it exactly as
@@ -235,6 +244,16 @@ namespace TrueReplayer.Services
 
                     await Task.WhenAny(reading, heartbeat).ConfigureAwait(false);
                     sessionCts.Cancel();
+                    // The loser is still running — usually the read, whose ReadLineAsync takes no
+                    // token and stays blocked on the dead pipe until something closes it. It used
+                    // to be closed only by the NEXT lap's Dispose, so this session's last words
+                    // ("Read failed…") landed in the log after the next session's "connected.",
+                    // blaming a bridge that was up. Closed and awaited here, the session ends whole.
+                    // Bounded: a read that somehow ignored the close must not stall every reconnect.
+                    try { _pipeServer?.Dispose(); } catch { }
+                    var bothDone = Task.WhenAll(reading, heartbeat);
+                    await Task.WhenAny(bothDone, Task.Delay(2000, CancellationToken.None)).ConfigureAwait(false);
+                    _ = bothDone.ContinueWith(t => _ = t.Exception, TaskScheduler.Default); // observe, never rethrow
                 }
                 catch (OperationCanceledException)
                 {
@@ -252,6 +271,7 @@ namespace TrueReplayer.Services
                 finally
                 {
                     IsConnected = false;
+                    _lastExtensionVersion = null;
                     // On the EDGE, not every lap. The name of the event is the contract: it says
                     // Changed. This loop retries every second forever, so a PERMANENT failure —
                     // the pipe name already held by a second instance in another Windows session,
@@ -351,8 +371,11 @@ namespace TrueReplayer.Services
                 {
                     // Release-visible for the same reason as the listen catch above. Bounded to
                     // one line per session — this breaks the read loop, which ends the session —
-                    // so it needs none of the run-collapsing the retry loop does.
-                    DiagnosticLog.Warn($"[BrowserBridge] Read failed, dropping the connection: {ex.GetType().Name}: {ex.Message}");
+                    // so it needs none of the run-collapsing the retry loop does. Not when the
+                    // session is already over: that read failed because the teardown closed the
+                    // pipe under it, after the heartbeat had already named the real failure.
+                    if (!token.IsCancellationRequested)
+                        DiagnosticLog.Warn($"[BrowserBridge] Read failed, dropping the connection: {ex.GetType().Name}: {ex.Message}");
                     break;
                 }
                 if (line == null) break; // EOF = pipe closed
@@ -477,6 +500,7 @@ namespace TrueReplayer.Services
                                 DiagnosticLog.Info(extVersion == ExpectedExtensionVersion
                                     ? $"[BrowserBridge] extension {extVersion} (expected {ExpectedExtensionVersion})."
                                     : $"[BrowserBridge] extension {extVersion} does NOT match the expected {ExpectedExtensionVersion} — reload it in chrome://extensions.");
+                                _lastExtensionVersion = extVersion;
                                 ExtensionVersionMismatch?.Invoke(extVersion, ExpectedExtensionVersion);
                             }
                             break;
@@ -532,9 +556,12 @@ namespace TrueReplayer.Services
                         _writer?.WriteLine("{\"type\":\"heartbeat\"}");
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
-                    break; // Pipe broken
+                    // Pipe broken. Named here: when the heartbeat notices first, the read that
+                    // fails during the teardown stays quiet (see ReadMessagesAsync).
+                    DiagnosticLog.Warn($"[BrowserBridge] Heartbeat failed, dropping the connection: {ex.GetType().Name}: {ex.Message}");
+                    break;
                 }
             }
         }
@@ -605,7 +632,14 @@ namespace TrueReplayer.Services
             var tcs = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
             _pendingCommands[requestId] = tcs;
 
-            SendMessage(new { type = "browser:pickElement", requestId });
+            // The IsConnected check above and this send are not one step (see SendMessage): a pipe
+            // that died in between used to leave the picker armed for the whole 30 s, waiting on a
+            // request that never left. Fail now, the way ExecuteBrowserCommandAsync does.
+            if (!SendMessage(new { type = "browser:pickElement", requestId }))
+            {
+                _pendingCommands.TryRemove(requestId, out _);
+                throw new InvalidOperationException("Browser extension is not connected.");
+            }
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
             cts.CancelAfter(timeoutMs);
@@ -668,7 +702,9 @@ namespace TrueReplayer.Services
             var tcs = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
             _pendingCommands[commandId] = tcs;
 
-            SendMessage(new
+            // Same gap as PickElementAsync: a send that did not go out answers false now, instead
+            // of after the whole pipe timeout.
+            bool sent = SendMessage(new
             {
                 type = "browser:executeCommand",
                 commandId,
@@ -687,6 +723,11 @@ namespace TrueReplayer.Services
                 // condition could pass on one tab while the click lands on another.
                 tabId = ignoreTabPin ? (int?)null : _pinnedTabId
             });
+            if (!sent)
+            {
+                _pendingCommands.TryRemove(commandId, out _);
+                return false;
+            }
 
             using var timeoutCts = new CancellationTokenSource(pipeTimeoutMs);
             try
