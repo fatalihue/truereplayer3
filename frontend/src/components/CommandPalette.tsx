@@ -82,12 +82,24 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   const [focusedIndex, setFocusedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Where the focus was when the palette opened, handed back when it closes (Esc, a command, a
+  // click outside). It was left to the browser, which drops it on <body> when the focused input
+  // unmounts — and everything keyed on focus went deaf until the next click: the grid's arrows,
+  // a dialog's Esc, Ctrl+Enter and Tab trap. A command that moved the focus itself (one that opens
+  // a dialog) keeps it: the hand-back only acts while the focus is still nowhere.
+  const returnFocusRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
     if (isOpen) {
+      const was = document.activeElement;
+      returnFocusRef.current = was instanceof HTMLElement && was !== document.body ? was : null;
       inputRef.current?.focus();
       setQuery('');
       setFocusedIndex(0);
+      return;
     }
+    const back = returnFocusRef.current;
+    returnFocusRef.current = null;
+    if (back?.isConnected && (!document.activeElement || document.activeElement === document.body)) back.focus();
   }, [isOpen]);
 
   // Build command groups

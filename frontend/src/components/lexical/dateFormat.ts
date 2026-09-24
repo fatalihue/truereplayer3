@@ -241,6 +241,10 @@ function custom(d: Date, format: string, locale: string, k: Clock = LOCAL): stri
     const piece = specifier(d, c, j - i, locale, k);
     // An 'F' run that came out empty takes the '.' before it with it — .NET's FormatCustomized
     // does this so "ss.FFF" on a whole second prints "30", not "30.".
+    // A letter specifier() does not know is copied through as written, and that is .NET's rule
+    // too, not a leniency: FormatCustomized's default case appends the character, so
+    // "DD/MM/YYYY" prints "DD/09/YYYY" on both sides (checked against the runtime, 2026-09-24).
+    // What .NET throws on is an unknown SINGLE-letter format, which is standard()'s job above.
     if (c === 'F' && piece === '' && out.endsWith('.')) out = out.slice(0, -1);
     else out += piece === null ? format.slice(i, j) : piece;
     i = j;

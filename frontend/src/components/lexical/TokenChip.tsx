@@ -180,7 +180,14 @@ export function TokenChip({ nodeKey, token }: { nodeKey: NodeKey; token: string 
         {token.slice(1, -1)}
       </span>
       {open && anchorEl && (
+        // Keyed on the token: the editors inside read it ONCE, at mount. A Ctrl+Z with the popover
+        // open (the focus stays in the editor, so the undo reaches Lexical) changed the chip under
+        // an editor still showing the old value, and the next touch wrote that old value back over
+        // the undo when the popover closed. While it is open the token only changes from OUTSIDE —
+        // the popover's own edits wait in liveTokenRef until close — so a remount follows exactly
+        // those changes, and drops an in-progress edit the document has moved past.
         <TokenChipPopover
+          key={token}
           anchor={anchorEl}
           token={token}
           onLiveChange={handleLiveChange}

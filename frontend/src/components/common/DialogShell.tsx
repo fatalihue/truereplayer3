@@ -169,6 +169,9 @@ export interface DialogShellProps {
   children: ReactNode;
 }
 
+// What the focus trap cycles through.
+const TABBABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [contenteditable="true"], [tabindex]:not([tabindex="-1"])';
+
 export function DialogShell({
   icon,
   title,
@@ -271,20 +274,32 @@ export function DialogShell({
           // Focus trap — Tab cycles within the card. Without this, Tab walks out
           // into the app behind the scrim, where Space/Enter can actuate
           // background controls through a modal.
+          //
+          // The card AND the layers its content floats over it: a chip popover and the name prompt
+          // are portals at the end of <body> — outside the card's DOM, inside its React tree, which
+          // is why their keys reach this handler at all. Scanning the card alone left the trap blind
+          // with the focus in a layer, and Tab from the layer's last field walked straight out to
+          // the app. A layer declares itself with data-dialog-layer. Between the card's own fields
+          // the browser's order is kept; the edges and the layers are driven from here.
           if (e.key === 'Tab') {
-            const tabbables = cardRef.current?.querySelectorAll<HTMLElement>(
-              'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [contenteditable="true"], [tabindex]:not([tabindex="-1"])'
-            );
-            if (!tabbables?.length) { e.preventDefault(); return; }
-            const first = tabbables[0];
-            const last = tabbables[tabbables.length - 1];
-            const active = document.activeElement;
-            if (e.shiftKey && (active === first || active === cardRef.current)) {
+            // A key a handler below already used (the token list's Tab commits an entry) is not
+            // focus navigation.
+            if (e.nativeEvent.defaultPrevented) return;
+            const card = cardRef.current;
+            if (!card) return;
+            const inCard = Array.from(card.querySelectorAll<HTMLElement>(TABBABLE));
+            const inLayers = Array.from(document.querySelectorAll('[data-dialog-layer]'))
+              .flatMap((layer) => Array.from(layer.querySelectorAll<HTMLElement>(TABBABLE)));
+            const ring = [...inCard, ...inLayers];
+            if (!ring.length) { e.preventDefault(); return; }
+            const at = ring.indexOf(document.activeElement as HTMLElement);
+            const atEdge = e.shiftKey ? at === 0 : at === inCard.length - 1;
+            if (at === -1 || at >= inCard.length || atEdge) {
               e.preventDefault();
-              last.focus();
-            } else if (!e.shiftKey && active === last) {
-              e.preventDefault();
-              first.focus();
+              const next = at === -1
+                ? (e.shiftKey ? ring.length - 1 : 0)
+                : (at + (e.shiftKey ? -1 : 1) + ring.length) % ring.length;
+              ring[next].focus();
             }
             return;
           }

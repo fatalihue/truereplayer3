@@ -2,7 +2,7 @@
 // the label typography (the app-wide label-micro recipe) and the optional
 // hint line below the control, so individual sections stop hand-rolling
 // slightly-different label/hint markup.
-export function Field({ label, labelAdornment, hint, children, className = '' }: {
+export function Field({ label, labelAdornment, hint, hintTone, children, className = '' }: {
   label: string;
   // Small inline element rendered right after the label text (e.g. the browser
   // selector tier shield, or a mode toggle for the field). Rendered as a SIBLING
@@ -14,6 +14,9 @@ export function Field({ label, labelAdornment, hint, children, className = '' }:
   // Muted explainer rendered under the control — replaces the ad-hoc
   // `text-[10px] text-text-tertiary mt-1` divs scattered through the panel.
   hint?: string;
+  // 'warn' when the hint is saying something is wrong with the value — the SAME line in warning
+  // ink, so a field never grows or shifts to raise a warning.
+  hintTone?: 'warn';
   children: React.ReactNode;
   className?: string;
 }) {
@@ -24,7 +27,7 @@ export function Field({ label, labelAdornment, hint, children, className = '' }:
         {labelAdornment}
       </div>
       {children}
-      {hint && <div className="text-[10px] text-text-tertiary leading-snug mt-1">{hint}</div>}
+      {hint && <div className={`text-[10px] ${hintTone === 'warn' ? 'text-warning-ink' : 'text-text-tertiary'} leading-snug mt-1`}>{hint}</div>}
     </div>
   );
 }

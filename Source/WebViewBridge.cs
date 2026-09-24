@@ -8211,10 +8211,19 @@ namespace TrueReplayer
                 // Click / RightClick / WaitElement stay unresolved ON PURPOSE — the replay does not
                 // resolve their Text Match either, and resolving here would just invent the same
                 // divergence pointing the other way.
+                // Each type through the same door the replay uses: Type keeps substituted braces as
+                // sentinels, Assert pins its authored text mode.
                 string? resolvedText = browserText;
-                if (!string.IsNullOrEmpty(browserText)
-                    && (actionType == "BrowserType" || actionType == "BrowserSelectOption" || actionType == "BrowserAssert"))
-                    resolvedText = await ActionReplayer.ResolveBrowserTextPlaceholdersAsync(browserText, dispatcherQueue);
+                if (!string.IsNullOrEmpty(browserText))
+                {
+                    if (actionType == "BrowserType")
+                        resolvedText = await ActionReplayer.ResolveBrowserTypeTextAsync(browserText, dispatcherQueue);
+                    else if (actionType == "BrowserSelectOption")
+                        resolvedText = await ActionReplayer.ResolveBrowserTextPlaceholdersAsync(browserText, dispatcherQueue);
+                    else if (actionType == "BrowserAssert")
+                        resolvedText = ActionReplayer.KeepAuthoredTextMode(browserText,
+                            await ActionReplayer.ResolveBrowserTextPlaceholdersAsync(browserText, dispatcherQueue));
+                }
 
                 // The 1000 ms floor here mirrors the minimum the editor allows, for a payload that
                 // arrives without one. What the field covers is finding the ELEMENT: the pauses and

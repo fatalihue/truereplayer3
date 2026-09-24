@@ -398,6 +398,8 @@ function NamePromptPopover({
     <div
       ref={popRef}
       onMouseDown={(e) => e.stopPropagation()}
+      // Part of the dialog's Tab ring, though it is a portal outside the card (DialogShell).
+      data-dialog-layer=""
       // menu-surface + the gated pop-in like every other floating surface; the accent-tinted
       // border stays as the token popover's own signature.
       style={{ position: 'fixed', ...visibilityStyle, zIndex: 100, width: 260, borderColor: 'color-mix(in srgb, var(--color-accent-solid) 35%, transparent)' }}
@@ -665,8 +667,10 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
   // ── Snippets (persistence + guards unchanged from 2.7.x) ──
   const handleSaveSnippet = useCallback(() => {
     const trimmedName = snippetName.trim();
-    const trimmedText = text.trim();
-    if (!trimmedName || !trimmedText) return;
+    // The TEXT is stored as typed: trim only decides emptiness, as in handleConfirm, where
+    // leading/trailing spaces are intentional ("oi " ≠ "oi"). Trimmed, a snippet saved as "Oi "
+    // re-inserted as "Oi", and its html flavor (never trimmed) disagreed with its own text.
+    if (!trimmedName || !text.trim()) return;
 
     // Capture the rich flavor too (undefined when the doc has no formatting) so a
     // formatted snippet re-inserts formatted. Pre-rich snippets simply lack the field.
@@ -678,7 +682,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
         ? crypto.randomUUID()
         : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       name: trimmedName,
-      text: trimmedText,
+      text,
       ...(snippetHtml ? { html: snippetHtml } : {}),
     };
     const updated = [...snippets, newSnippet];
@@ -1098,6 +1102,10 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
         // Ctrl+Enter routes by surface: clipboard surface open → Insert/Apply;
         // otherwise confirm the dialog (incl. from inside the editor, whose
         // SubmitPlugin can only fire while the editor is visible/focused).
+        // The rule behind the routing: a layer that edits the MESSAGE takes Ctrl+Enter first, so
+        // a confirm can never drop an edit still in flight — the clipboard surface here, a chip
+        // popover and the link field in their own handlers (they stop the key before it arrives).
+        // The snippet forms hold no message edit, so the key passes through them to the dialog.
         if (e.key === 'Enter' && e.ctrlKey) {
           e.preventDefault();
           if (namePrompt) return; // prompt owns Enter; Ctrl+Enter is a no-op there
@@ -1359,7 +1367,10 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                       value={snippetName}
                       onChange={(e) => setSnippetName(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') { e.preventDefault(); handleSaveSnippet(); }
+                        // Plain Enter saves the snippet; Ctrl+Enter is the DIALOG's, as in
+                        // SnippetEditForm. Handling both here also saved the snippet on the
+                        // Ctrl+Enter that confirmed and closed the whole dialog.
+                        if (e.key === 'Enter' && !e.ctrlKey) { e.preventDefault(); handleSaveSnippet(); }
                         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setSavingSnippet(false); }
                       }}
                       placeholder="Snippet name..."

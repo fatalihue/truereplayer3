@@ -4207,10 +4207,17 @@ namespace TrueReplayer.Services
                                 // mutating original. Applies to BrowserType AND BrowserSelectOption
                                 // (where a user might want to pick an option dynamically by clipboard
                                 // content, e.g. clipboard holds "Option 1" → select matches that).
+                                // BrowserType keeps a SUBSTITUTED brace as its sentinel (see
+                                // ResolveBrowserTypeTextAsync); Select Option matches the text, so it
+                                // gets the real characters.
                                 string? resolvedText = null;
-                                if ((action.ActionType == "BrowserType" || action.ActionType == "BrowserSelectOption")
-                                    && !string.IsNullOrEmpty(action.BrowserText))
-                                    resolvedText = await ResolveBrowserTextPlaceholders(action.BrowserText);
+                                if (!string.IsNullOrEmpty(action.BrowserText))
+                                {
+                                    if (action.ActionType == "BrowserType")
+                                        resolvedText = await ResolveBrowserTypeTextAsync(action.BrowserText, dispatcherQueue, CurrentRunCtx);
+                                    else if (action.ActionType == "BrowserSelectOption")
+                                        resolvedText = await ResolveBrowserTextPlaceholders(action.BrowserText);
+                                }
                                 // The result was previously discarded. It carries matchedVia — WHICH
                                 // selector tier actually matched — which is the single most useful
                                 // thing to know when a macro starts failing on DOM drift, because a
@@ -5403,7 +5410,7 @@ namespace TrueReplayer.Services
                 // BrowserType/SelectOption. Other modes ignore the text.
                 string? resolvedText = string.IsNullOrEmpty(action.BrowserText)
                     ? null
-                    : await ResolveBrowserTextPlaceholders(action.BrowserText);
+                    : KeepAuthoredTextMode(action.BrowserText, await ResolveBrowserTextPlaceholders(action.BrowserText));
                 await _browserBridge.ExecuteBrowserCommandAsync(action, token, timeout, resolvedText);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -7030,7 +7037,14 @@ namespace TrueReplayer.Services
         {
             var name = action.Key?.Trim();
             if (string.IsNullOrEmpty(name) || !VariableNameRegex.IsMatch(name))
-                return; // unusable name — no-op, same forgiveness as an unknown clipboard modifier
+            {
+                // Unusable name — no-op, same forgiveness as an unknown clipboard modifier. Said in
+                // the log: the step otherwise reads as having run, and nothing else tells a user why
+                // {var:…} came out literal further down. The Sheet filters new names to this charset.
+                if (!string.IsNullOrEmpty(name))
+                    Services.DiagnosticLog.Warn($"Set Variable '{name}': not a usable name (letters, digits and _ only) — skipped");
+                return;
+            }
             var key = name.ToLowerInvariant();
             // escapeBracesInSubstitution:false — the dict stores raw text, braces and all. The
             // resolver escapes them only while it runs (so a clipboard holding "{counter}" is
@@ -7257,6 +7271,7 @@ namespace TrueReplayer.Services
                 }
                 else
                 {
+                    Services.DiagnosticLog.Warn($"Copy to Slot (clear) '{name}': not a usable slot name (letters, digits and _ only) — skipped");
                     return; // unusable slot name — no-op
                 }
                 PushVariablesSnapshot(force: true);
@@ -7264,7 +7279,12 @@ namespace TrueReplayer.Services
             }
 
             if (string.IsNullOrEmpty(name) || !VariableNameRegex.IsMatch(name))
-                return; // unusable slot name — no-op, same forgiveness as SetVariable
+            {
+                // Same forgiveness as SetVariable, and the same line in the log.
+                if (!string.IsNullOrEmpty(name))
+                    Services.DiagnosticLog.Warn($"Copy to Slot '{name}': not a usable slot name (letters, digits and _ only) — skipped");
+                return;
+            }
             var key = name.ToLowerInvariant();
             var captured = await CaptureSelectionTextAsync(token);
             if (captured == null)
@@ -7713,16 +7733,50 @@ namespace TrueReplayer.Services
             => ResolveBrowserTextPlaceholdersAsync(text, dispatcherQueue, CurrentRunCtx);
 
         /// <summary>
-        /// Resolves data placeholders ({clipboard[:mods]}, {datetime}, {date}, {time}) for
-        /// BrowserType actions via the unified resolver. Special-key placeholders ({enter}, {tab}, …)
-        /// are left untouched — they are interpreted by the Chrome extension's own parser, so the
-        /// Browser path asks for real braces back (escapeBracesInSubstitution: false). The resolvers
-        /// still escape while they run and ResolveTokensAsync restores the characters at the end, so
-        /// a substituted value is never re-read as a token on this path either. Static so the Test
-        /// Action path can call it without an ActionReplayer instance (runCtx defaults to RunCtx.Empty there).
+        /// Resolves data placeholders ({clipboard[:mods]}, {datetime}, {date}, {time}, …) in the text a
+        /// Browser action MATCHES — Select Option's option text, Assert's text pattern — via the unified
+        /// resolver, with real braces back (escapeBracesInSubstitution: false): the extension compares
+        /// this text, it never reads tokens out of it. Inside the C# pipeline a substituted value is
+        /// never re-read as a token (the resolvers escape while they run). Static so the Test Action path
+        /// can call it without an ActionReplayer instance (runCtx defaults to RunCtx.Empty there).
+        /// BrowserType is NOT this path — see ResolveBrowserTypeTextAsync.
         /// </summary>
         internal static Task<string> ResolveBrowserTextPlaceholdersAsync(string text, DispatcherQueue dispatcherQueue, RunCtx runCtx = default)
             => ResolveTokensAsync(text, dispatcherQueue, runCtx, clipboardOverride: null, escapeBracesInSubstitution: false);
+
+        /// <summary>
+        /// BrowserType's payload. The extension DOES read tokens out of it — {enter}, {tab:2},
+        /// {delay:500} are key chips its parseTypeSegments turns into presses and pauses — and it
+        /// cannot tell a brace the user typed from one inside a substituted value. With real braces
+        /// back, a clipboard, {var} or {row} value holding "Press {Enter} to continue" pressed Enter
+        /// (submitting the form), and a "{delay:60000}" in the data froze the typing for a minute,
+        /// while the same value on the SendText path typed as text. So this keeps the sentinels for
+        /// substituted braces, the private contract SendText already has with its own parser, and
+        /// the extension (1.4.25+) types a sentinel as the literal brace AFTER splitting out the
+        /// chips. BrowserBridgeService restores real braces for an older extension, which would
+        /// otherwise type the control character itself.
+        /// </summary>
+        internal static Task<string> ResolveBrowserTypeTextAsync(string text, DispatcherQueue dispatcherQueue, RunCtx runCtx = default)
+            => ResolveTokensAsync(text, dispatcherQueue, runCtx, clipboardOverride: null, escapeBracesInSubstitution: true);
+
+        /// <summary>
+        /// A text-match pattern's MODE belongs to what the user TYPED. content.js reads it from a
+        /// prefix of the text it receives (parseTextSelector: "text=" exact, "text*=" contains,
+        /// "text~=" contains ignoring case, "text/…/flags" regex; no prefix = exact), and it receives
+        /// the RESOLVED text — so a {var} or {clipboard} value that happened to begin with one of
+        /// those ("text=Pedido confirmado") switched the Assert's mode and dropped the prefix from
+        /// the comparison. When the authored pattern has no prefix, the resolved one is pinned to
+        /// exact with an explicit "text=". HasTextModePrefix mirrors parseTextSelector: the two
+        /// change together.
+        /// </summary>
+        internal static string KeepAuthoredTextMode(string authored, string resolved)
+            => !HasTextModePrefix(authored) && HasTextModePrefix(resolved) ? "text=" + resolved : resolved;
+
+        private static bool HasTextModePrefix(string s)
+            => s.StartsWith("text*=", StringComparison.Ordinal)
+               || s.StartsWith("text~=", StringComparison.Ordinal)
+               || s.StartsWith("text=", StringComparison.Ordinal)
+               || (s.StartsWith("text/", StringComparison.Ordinal) && s.LastIndexOf('/') > 4);
 
         /// <summary>
         /// The single token-resolution pipeline for user text (SendText, BrowserType, variable

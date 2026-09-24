@@ -4,6 +4,7 @@ import { BridgeProvider, useBridge } from './bridge/BridgeContext';
 import { AppStateProvider, useAppState } from './state/AppStateContext';
 import { SelectionProvider } from './state/SelectionContext';
 import { SheetGuardProvider, useSheetGuard } from './state/SheetGuardContext';
+import { isModalDialogOpen } from './utils/modalDialog';
 import { ThemeProvider, useTheme } from './state/ThemeContext';
 import { ToastProvider } from './state/ToastContext';
 import { LanguageProvider } from './state/LanguageContext';
@@ -204,6 +205,10 @@ function AppShell() {
       // is intentionally excluded so Win+K/S/Z/Y don't trigger these.
       const ctrl = e.ctrlKey;
       if (ctrl && (e.key === 'k' || e.key === 'K')) {
+        // A modal dialog owns the keyboard (see isModalDialogOpen). Opened over one, the palette's
+        // commands acted on the list behind the scrim — a paste under an Insert Text about to
+        // insert by position — and closing it dropped the focus where the dialog's keys went deaf.
+        if (isModalDialogOpen()) return;
         e.preventDefault();
         setCmdPaletteOpen(prev => !prev);
         return;

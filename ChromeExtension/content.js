@@ -1611,6 +1611,13 @@
     return n;
   }
 
+  // A brace that came from SUBSTITUTED data ({clipboard}, {var}, {row}…) arrives as a private
+  // sentinel, U+0001 for '{' and U+0002 for '}' — the contract the app's SendText parser already
+  // has (ActionReplayer.ResolveBrowserTypeTextAsync). The chip pattern needs a real '{', so a
+  // sentinel can never form a key chip; it becomes the literal brace only in the text it types.
+  // Without this, a value holding "{enter}" pressed Enter. The app sends sentinels from 1.4.25 on.
+  const literalBraces = (s) => s.replace(/\u0001/g, '{').replace(/\u0002/g, '}');
+
   function parseTypeSegments(text) {
     if (!text) return [{ kind: 'text', value: '' }];
     const segments = [];
@@ -1619,7 +1626,7 @@
     KEY_CHIP_PATTERN.lastIndex = 0;
     while ((match = KEY_CHIP_PATTERN.exec(text)) !== null) {
       if (match.index > lastIndex) {
-        segments.push({ kind: 'text', value: text.slice(lastIndex, match.index) });
+        segments.push({ kind: 'text', value: literalBraces(text.slice(lastIndex, match.index)) });
       }
       const name = match[1].toLowerCase();
       const n = parseKeyParam(match[2]);
@@ -1628,9 +1635,9 @@
       lastIndex = match.index + match[0].length;
     }
     if (lastIndex < text.length) {
-      segments.push({ kind: 'text', value: text.slice(lastIndex) });
+      segments.push({ kind: 'text', value: literalBraces(text.slice(lastIndex)) });
     }
-    return segments.length > 0 ? segments : [{ kind: 'text', value: text }];
+    return segments.length > 0 ? segments : [{ kind: 'text', value: literalBraces(text) }];
   }
   // <<< KEY GRAMMAR END
 
@@ -2128,7 +2135,7 @@
           // refused below (TYPE_TARGET_NOT_TEXT), which is how every recorded slider or colour pick
           // used to fail, every time.
           if (el.tagName === 'INPUT' && /^(range|color)$/i.test(el.type || '')) {
-            setNativeValue(el, String(text ?? '').trim());
+            setNativeValue(el, literalBraces(String(text ?? '')).trim());
             el.dispatchEvent(new Event('input', { bubbles: true }));
             el.dispatchEvent(new Event('change', { bubbles: true }));
             flashHighlight(el, 'success', 200);

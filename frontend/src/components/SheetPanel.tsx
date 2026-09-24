@@ -157,6 +157,14 @@ const DEFAULT_CLICK_POS_JITTER_PX = 3;   // seeded when the user turns POSITION 
                                          // keeps the burst inside any real target; the cap is 500
                                          // (MAX_POSITION_PX, the Clicker's own position ceiling)
 const clampRepeatCount = (v: number) => Math.max(1, Math.min(999, Math.floor(v)));
+// The name a Set Variable or a Copy to Slot WRITES, in the only alphabet the engine accepts
+// (ActionExecution.VariableNameRegex). Anything else was saved without a word and skipped at replay
+// in silence, while every READER of the name — the {var:…}/{clip:…} chips, the name prompt —
+// already filtered to it. The two inputs filter typing the same way; a stored name outside it
+// (hand-edited, imported) says so in its hint line.
+const RUN_STATE_NAME = /^[A-Za-z0-9_]+$/;
+const RUN_STATE_NAME_OUTSIDE = /[^A-Za-z0-9_]/g;
+const unusableRunStateName = (name: string) => name.trim() !== '' && !RUN_STATE_NAME.test(name.trim());
 // The ONE canonical spelling of a stored pixel colour ("#RRGGBB" upper-case), used on both legs of
 // the dirty check — the seed and the save. The seed used to copy the stored text raw, so a colour
 // saved as "ff0000" (a hand edit, an import) opened the editor dirty and a reflex Save rewrote it.
@@ -4795,12 +4803,15 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
             <>
               <Field
                 label="Variable Name"
-                hint={'Read it back with {var:name}.'}
+                hint={unusableRunStateName(key)
+                  ? 'Letters, digits and _ only — skipped at replay as written.'
+                  : 'Read it back with {var:name}.'}
+                hintTone={unusableRunStateName(key) ? 'warn' : undefined}
               >
                 <input
                   type="text"
                   value={key}
-                  onChange={(e) => setKey(e.target.value)}
+                  onChange={(e) => setKey(e.target.value.replace(RUN_STATE_NAME_OUTSIDE, ''))}
                   placeholder="name"
                   spellCheck={false}
                   className="input-field"
@@ -4858,14 +4869,17 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
               </Field>
               <Field
                 label="Slot"
-                hint={slotMode === 'clear'
-                  ? 'Blank clears all slots.'
-                  : 'Read it back with {clip:slot}.'}
+                hint={unusableRunStateName(key)
+                  ? 'Letters, digits and _ only — skipped at replay as written.'
+                  : slotMode === 'clear'
+                    ? 'Blank clears all slots.'
+                    : 'Read it back with {clip:slot}.'}
+                hintTone={unusableRunStateName(key) ? 'warn' : undefined}
               >
                 <input
                   type="text"
                   value={key}
-                  onChange={(e) => setKey(e.target.value)}
+                  onChange={(e) => setKey(e.target.value.replace(RUN_STATE_NAME_OUTSIDE, ''))}
                   placeholder={slotMode === 'clear' ? 'all slots' : '1'}
                   spellCheck={false}
                   className="input-field"

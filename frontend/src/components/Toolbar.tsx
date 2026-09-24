@@ -4,6 +4,7 @@ import { useAppState } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
 import { useSelectionRef } from '../state/SelectionContext';
 import { useSheetGuard } from '../state/SheetGuardContext';
+import { isModalDialogOpen } from '../utils/modalDialog';
 import { useTt } from '../state/LanguageContext';
 import { useToast } from '../state/ToastContext';
 // Deferred — see the note on the same import in ActionTable: the Lexical stack plus
@@ -18,6 +19,10 @@ import { useFlyoutFlip } from '../hooks/useFlyoutFlip';
 import { iconButtonClass } from './common/IconButton';
 import { useDismissOnOutside } from '../hooks/useDismissOnOutside';
 import { snapIndicesToBlocks, loopDepthAt } from '../utils/conditionalBlocks';
+
+// The insert dialogs' editor claim is re-stamped on the Sheet's and the grid's heartbeat
+// (EDITOR_CLAIM_RENEW_MS / ROW_DIALOG_CLAIM_RENEW_MS): well inside AutomationGuard's 10-minute TTL.
+const INSERT_DIALOG_CLAIM_RENEW_MS = 60_000;
 
 export interface ColumnVisibility {
   action: boolean;
@@ -309,21 +314,17 @@ export function Toolbar(_props: ToolbarProps) {
   const [showRunProfileDialog, setShowRunProfileDialog] = useState(false);
   // Pause modal (Pattern B normalization) — was an insert-then-Sheet flow before;
   // now configures up-front like the other dialog-based inserts so Cancel leaves
-  // the grid untouched. The ref captures the intended insertIndex at click time
-  // because the user's selection may shift while they configure.
+  // the grid untouched. Where the row goes is fixed when the dialog opens (insertTargetRef).
   const [showPauseDialog, setShowPauseDialog] = useState(false);
-  const pauseDialogInsertIndex = useRef<number>(0);
   // Send Keystroke — unified dialog covers single press, press × N, and hold-key
   // flows via its Mode toggle. Legacy Send Key / Press Key × N / Hold Key state
   // collapsed into this one slot.
   const [showKeystrokeCapture, setShowKeystrokeCapture] = useState(false);
-  const keystrokeCaptureInsertIndex = useRef<number>(0);
   // Insert Click — the mouse twin of Send Keystroke, and the ONLY insert in this toolbar that
   // produces a CLICK row (every other click in a profile comes from the recorder). Its own Mode
   // toggle covers tap and hold, so one button here stands in for what would be two.
   // Pattern B like Pause: the dialog owns the whole configuration, including the screen pick.
   const [showClickDialog, setShowClickDialog] = useState(false);
-  const clickDialogInsertIndex = useRef<number>(0);
   const browserMenuRef = useRef<HTMLDivElement>(null);
   // Each toolbar dropdown opens downward (`top-full left-0`); flip it up/right near the
   // viewport bottom/right edge so it isn't clipped. Measured on open by useFlyoutFlip.
@@ -382,34 +383,84 @@ export function Toolbar(_props: ToolbarProps) {
     return () => window.removeEventListener('cmd:clearactions', onClear);
   }, [buttonStates.recordingActive, buttonStates.replayActive, actions.length]);
 
-  // Pause from the command palette — same insertIndex-stash trick as the keystroke
-  // path below so a race during dialog config doesn't lose the original target row.
+  // Pause and Send Keystroke from the command palette. Where the row goes is taken when the dialog
+  // opens (insertTargetRef, below), for these as for every insert dialog. The dialog's own Mode
+  // toggle picks Press vs Hold internally — no `mode` prop needed.
   useEffect(() => {
-    const onPause = () => {
-      const sel = selectionRef.current;
-      pauseDialogInsertIndex.current = sel.size > 0 ? Math.min(...sel) : actions.length;
-      setShowPauseDialog(true);
-    };
+    const onPause = () => setShowPauseDialog(true);
     window.addEventListener('cmd:pause', onPause);
     return () => window.removeEventListener('cmd:pause', onPause);
-  }, [actions.length, selectionRef]);
+  }, []);
 
-  // Command-palette wrappers for the three keyboard inserts. Mirrors what the
-  // "Add Action" dropdown does on click: compute the insertIndex from the
-  // current selection (or end-of-list), stash it in the dialog's ref so a
-  // race during capture doesn't lose it, and open the dialog. The dialog's
-  // own Mode toggle picks Press vs Hold internally — no `mode` prop needed.
   useEffect(() => {
-    const onSendKeystroke = () => {
-      const sel = selectionRef.current;
-      keystrokeCaptureInsertIndex.current = sel.size > 0 ? Math.min(...sel) : actions.length;
-      setShowKeystrokeCapture(true);
-    };
+    const onSendKeystroke = () => setShowKeystrokeCapture(true);
     window.addEventListener('cmd:sendkeystroke', onSendKeystroke);
     return () => {
       window.removeEventListener('cmd:sendkeystroke', onSendKeystroke);
     };
-  }, [actions.length, selectionRef]);
+  }, []);
+
+  // ── The insert dialogs: one claim, one target ──
+  // The six insert dialogs below hold typed work (Send Text a whole editor) while the app keeps
+  // running behind them, and two things were missing — both about WHERE the confirm writes.
+  //   • No claim. The Sheet and the grid's dialogs hold autonomous fires off with
+  //     editor:pendingEdits; these held nothing, so a due automation swapped the profile under an
+  //     open Insert Text and the confirm added the text to the OTHER profile. They claim under
+  //     their own owner: AutomationGuard keeps one stamp per owner, so closing one of these can
+  //     never release the grid's or the Sheet's claim.
+  //   • No fixed target. Three read the grid's selection at confirm time and three stashed an index
+  //     when their button was clicked — either way an index, re-read against whatever list was
+  //     there at the confirm. The target is taken when a dialog OPENS: the profile, and the row the
+  //     new one goes in front of, by Id. The confirm resolves it (resolveInsertTarget): a profile
+  //     that changed refuses, and the dialog stays parked like the run/Clicker refusal; a row that
+  //     moved is followed; a row that is gone falls back to the end, with a toast.
+  const insertDialogOpen = showSendTextDialog || showRunProfileDialog || showNavigateDialog
+    || showPauseDialog || showClickDialog || showKeystrokeCapture;
+  const insertTargetRef = useRef<{ profile: string | null; beforeId: string | null } | null>(null);
+  // Read by the capture below without making it re-run on every list push while a dialog is open.
+  const liveListRef = useRef({ actions, activeProfile });
+  liveListRef.current = { actions, activeProfile };
+  useEffect(() => {
+    if (!insertDialogOpen) { insertTargetRef.current = null; return; }
+    const sel = selectionRef.current;
+    const { actions: list, activeProfile: profile } = liveListRef.current;
+    const first = sel.size > 0 ? Math.min(...sel) : null;
+    insertTargetRef.current = { profile, beforeId: first !== null ? (list[first]?.id ?? null) : null };
+  }, [insertDialogOpen, selectionRef]);
+  useEffect(() => {
+    send({ type: 'editor:pendingEdits', payload: { pending: insertDialogOpen, owner: 'insert-dialog' } });
+  }, [insertDialogOpen, send]);
+  useEffect(() => () => { send({ type: 'editor:pendingEdits', payload: { pending: false, owner: 'insert-dialog' } }); }, [send]);
+  // Renewed on the Sheet's heartbeat and for its reason: the guard expires a claim a fixed TTL
+  // after it was STAMPED, and the effect above only fires on the transition.
+  useEffect(() => {
+    if (!insertDialogOpen) return;
+    const id = setInterval(() => {
+      send({ type: 'editor:pendingEdits', payload: { pending: true, owner: 'insert-dialog' } });
+    }, INSERT_DIALOG_CLAIM_RENEW_MS);
+    return () => clearInterval(id);
+  }, [insertDialogOpen, send]);
+  // null = refused (the toast says why, the dialog stays open); index undefined = the end.
+  const resolveInsertTarget = (): { index: number | undefined } | null => {
+    const t = insertTargetRef.current;
+    if (!t) return { index: undefined };
+    if (t.profile !== activeProfile) {
+      const now = Date.now();
+      if (now - lastRefusalRef.current > 2000) {
+        lastRefusalRef.current = now;
+        const was = t.profile ?? 'No Profile';
+        showToast(tt(`Not added — the active profile changed while this was open. Switch back to "${was}" to add it there, or cancel.`,
+                     `Não adicionado — o perfil ativo mudou com isto aberto. Volte para "${was}" para adicionar lá, ou cancele.`), 'error');
+      }
+      return null;
+    }
+    if (t.beforeId === null) return { index: undefined };
+    const idx = actions.findIndex((a) => a.id === t.beforeId);
+    if (idx >= 0) return { index: idx };
+    showToast(tt('The row this was going in front of is gone — added at the end.',
+                 'A linha antes da qual isto entraria sumiu — adicionado no fim.'), 'info');
+    return { index: undefined };
+  };
 
   // Global keyboard shortcuts forwarded from App.tsx (which has no bridge access).
   // Undo/Redo share the buttons' gate via a ref (the listener stays bound once):
@@ -436,8 +487,11 @@ export function Toolbar(_props: ToolbarProps) {
     };
     // An undo re-seeds an open Sheet from the store like any other list change, so it asks the
     // sheet first — App's Ctrl+Z/Y only skips text fields, and the sheet is mostly buttons.
-    const onUndo = () => { if (!insertsDisabledRef.current && sheetGuard.allowListChange()) send({ type: 'actions:undo', payload: {} }); };
-    const onRedo = () => { if (!insertsDisabledRef.current && sheetGuard.allowListChange()) send({ type: 'actions:redo', payload: {} }); };
+    // Behind a modal dialog it stands down entirely (isModalDialogOpen): the list is behind the
+    // scrim, and a Ctrl+Z on one of the dialog's buttons undid a list edit nobody could see — under
+    // an Insert Text about to insert by position, or a row editor about to save by index.
+    const onUndo = () => { if (!insertsDisabledRef.current && !isModalDialogOpen() && sheetGuard.allowListChange()) send({ type: 'actions:undo', payload: {} }); };
+    const onRedo = () => { if (!insertsDisabledRef.current && !isModalDialogOpen() && sheetGuard.allowListChange()) send({ type: 'actions:redo', payload: {} }); };
     window.addEventListener('cmd:save', onSave);
     window.addEventListener('cmd:undo', onUndo);
     window.addEventListener('cmd:redo', onRedo);
@@ -537,6 +591,8 @@ export function Toolbar(_props: ToolbarProps) {
       // could silently reshape the invisible macro list). Ctrl+C above is
       // read-only, so it stays allowed (it returns before reaching here).
       if (insertsDisabledRef.current) return;
+      // Behind a modal dialog they stand down, as undo/redo do: the grid is behind the scrim.
+      if (isModalDialogOpen()) return;
       // Both below act on the GRID's selection, and the Sheet sits over the grid without clearing
       // it: with focus on one of the sheet's own buttons (not a text field, so the skip above lets
       // the key through) Ctrl+V or Alt+arrow reshaped the list under a dirty editor. They ask the
@@ -678,11 +734,7 @@ export function Toolbar(_props: ToolbarProps) {
               Hold for X ms; mode toggle lives inside the dialog). */}
           <button
             tabIndex={-1}
-            onClick={() => {
-              const sel = selectionRef.current;
-              keystrokeCaptureInsertIndex.current = sel.size > 0 ? Math.min(...sel) : actions.length;
-              setShowKeystrokeCapture(true);
-            }}
+            onClick={() => setShowKeystrokeCapture(true)}
             disabled={insertsDisabled}
             className={iconButtonClass('md')}
             data-tip={clickerTip('Send Keystroke', 'Enviar tecla')}
@@ -698,11 +750,7 @@ export function Toolbar(_props: ToolbarProps) {
               recorder and "Pick from screen" on a row that already was one. */}
           <button
             tabIndex={-1}
-            onClick={() => {
-              const sel = selectionRef.current;
-              clickDialogInsertIndex.current = sel.size > 0 ? Math.min(...sel) : actions.length;
-              setShowClickDialog(true);
-            }}
+            onClick={() => setShowClickDialog(true)}
             disabled={insertsDisabled}
             className={iconButtonClass('md')}
             // Names what the dialog holds, like the Wait button's tip does for its two probes.
@@ -763,11 +811,7 @@ export function Toolbar(_props: ToolbarProps) {
               then auto-open Sheet" flow — Cancel here means no row is created at all. */}
           <button
             tabIndex={-1}
-            onClick={() => {
-              const sel = selectionRef.current;
-              pauseDialogInsertIndex.current = sel.size > 0 ? Math.min(...sel) : actions.length;
-              setShowPauseDialog(true);
-            }}
+            onClick={() => setShowPauseDialog(true)}
             disabled={insertsDisabled}
             className={iconButtonClass('md')}
             data-tip={clickerTip('Pause', 'Pausa')}
@@ -1455,8 +1499,9 @@ export function Toolbar(_props: ToolbarProps) {
             // row is byte-identical on disk to one authored before this feature.
             onConfirm={(r) => {
               if (refuseInsert()) return;
-              const sel = selectionRef.current;
-              const insertIndex = sel.size > 0 ? Math.min(...sel) : undefined;
+              const target = resolveInsertTarget();
+              if (!target) return;
+              const insertIndex = target.index;
               send({
                 type: 'actions:addSendText',
                 payload: {
@@ -1482,8 +1527,9 @@ export function Toolbar(_props: ToolbarProps) {
           excludeProfileName={activeProfile ?? undefined}
           onConfirm={(profileName, repeatCount, runOverData) => {
             if (refuseInsert()) return;
-            const sel = selectionRef.current;
-            const insertIndex = sel.size > 0 ? Math.min(...sel) : undefined;
+            const target = resolveInsertTarget();
+            if (!target) return;
+            const insertIndex = target.index;
             // runOverData must ride along: dropping it here silently discarded the
             // dialog's "Run once per data row" tick on the toolbar-add path, while
             // the grid's add/edit paths (ActionTable) carried it correctly.
@@ -1498,8 +1544,9 @@ export function Toolbar(_props: ToolbarProps) {
         <NavigateDialog
           onConfirm={(url, newTab) => {
             if (refuseInsert()) return;
-            const sel = selectionRef.current;
-            const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
+            const target = resolveInsertTarget();
+            if (!target) return;
+            const insertIndex = target.index ?? actions.length;
             send({ type: 'actions:addBrowserAction', payload: { actionType: 'BrowserNavigate', selector: url, newTab, insertIndex } });
             setShowNavigateDialog(false);
           }}
@@ -1511,9 +1558,11 @@ export function Toolbar(_props: ToolbarProps) {
         <PauseDialog
           onConfirm={(key, timeoutMs) => {
             if (refuseInsert()) return;
+            const target = resolveInsertTarget();
+            if (!target) return;
             send({
               type: 'actions:insertPause',
-              payload: { key, timeoutMs: Math.max(0, Math.round(timeoutMs)), insertIndex: pauseDialogInsertIndex.current },
+              payload: { key, timeoutMs: Math.max(0, Math.round(timeoutMs)), insertIndex: target.index ?? actions.length },
             });
             setShowPauseDialog(false);
           }}
@@ -1531,9 +1580,11 @@ export function Toolbar(_props: ToolbarProps) {
         <ClickDialog
           onConfirm={(r) => {
             if (refuseInsert()) return;
+            const target = resolveInsertTarget();
+            if (!target) return;
             send({
               type: 'actions:insertClick',
-              payload: { ...r, insertIndex: clickDialogInsertIndex.current },
+              payload: { ...r, insertIndex: target.index ?? actions.length },
             });
             setShowClickDialog(false);
           }}
@@ -1544,13 +1595,14 @@ export function Toolbar(_props: ToolbarProps) {
       {/* Send Keystroke — unified capture dialog. The user picks Press or Hold via
           the dialog's own Mode toggle; this mount stays agnostic and dispatches the
           appropriate bridge message based on the result.actionType the dialog returns.
-          insertIndex is stashed in a ref at the moment the menu item was clicked
-          because by the time the user presses a key the selection may have moved. */}
+          Where the row goes was fixed when the dialog opened (insertTargetRef). */}
       {showKeystrokeCapture && (
         <KeystrokeCaptureDialog
           onConfirm={(result) => {
             if (refuseInsert()) return;
-            const insertIndex = keystrokeCaptureInsertIndex.current;
+            const target = resolveInsertTarget();
+            if (!target) return;
+            const insertIndex = target.index ?? actions.length;
             if (result.actionType === 'HoldKey') {
               send({
                 type: 'actions:insertHoldKey',

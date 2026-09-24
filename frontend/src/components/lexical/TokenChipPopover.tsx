@@ -24,6 +24,8 @@ import { NumInput, PopoverHeader, RadioGroup, RadioRow, Section } from './popove
 import { normalizeToken, SEGMENTING_TOKEN_NAMES } from './tokenNormalize';
 import { DEFAULT_DATE_FORMAT, parseDateTokenArgs, resolveDateToken, type DateHead, type DateUnit } from './dateFormat';
 import { tokenTip } from './tokenDescriptions';
+import { Callout } from '../common/Callout';
+import { tryParseInt32 } from '../../utils/int32';
 import { useAppState } from '../../state/AppStateContext';
 import { uiZoom, rectToLayout, viewportInLayout } from '../../utils/zoomSpace';
 
@@ -107,11 +109,14 @@ function parseRepeatable(token: string): { name: string; n: number } {
   return { name, n: Math.min(usable, MAX_KEY_REPEAT) };
 }
 
+// What the ENGINE pauses for (ParseSendTextSegments): `int.TryParse(arg) && n > 0`, capped at 60 s,
+// else the 500 ms default. parseInt read {delay:1000ms} as 1000 and {delay:0} as 0 — a number in the
+// field the run never honours, since both run as 500. Same two gates as parseRepeatable.
 function parseDelay(token: string): { ms: number } {
   const inner = token.slice(1, -1);
-  const parts = inner.split(':');
-  const parsed = parts[1] !== undefined ? parseInt(parts[1], 10) : 500;
-  return { ms: !Number.isFinite(parsed) || parsed < 0 ? 500 : parsed };
+  const colonIdx = inner.indexOf(':');
+  const n = colonIdx >= 0 ? tryParseInt32(inner.slice(colonIdx + 1)) : null;
+  return { ms: n !== null && n > 0 ? Math.min(n, 60000) : 500 };
 }
 
 function parseRandom(token: string): { min: number; max: number } {
@@ -199,8 +204,14 @@ export function TokenChipPopover({
     };
   }, [anchor, kind, token]);
 
-  // Dismiss on outside click or Escape — both delegate to onClose, which the
+  // Dismiss on outside click, Escape or Ctrl+Enter — all delegate to onClose, which the
   // parent maps to its commit-and-close handler.
+  //
+  // Ctrl+Enter is the HOST dialog's confirm (the Insert Text footer promises it), and from a field
+  // in here it used to go straight to it: the dialog saved the chip's OLD value — an edit lives in
+  // the chip's live ref until this popover closes — and the popover stayed open over a dialog that
+  // had closed. The popover is the topmost layer, so it takes the key first: commit and close, like
+  // Esc. The next Ctrl+Enter confirms the dialog, with the edit in it.
   useEffect(() => {
     const onMouseDown = (e: MouseEvent) => {
       const t = e.target as Node;
@@ -209,7 +220,7 @@ export function TokenChipPopover({
       onClose();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' || (e.key === 'Enter' && e.ctrlKey)) {
         e.preventDefault();
         e.stopPropagation();
         onClose();
@@ -234,6 +245,8 @@ export function TokenChipPopover({
       // Marker for host-level Esc routers (SendTextDialog): when a chip popover
       // is open, its own capture-phase Esc owns the key — routers must stand down.
       data-token-popover=""
+      // Part of the host dialog's Tab ring, though it is a portal outside the card (DialogShell).
+      data-dialog-layer=""
       onMouseDown={(e) => e.stopPropagation()}
       // menu-surface + the gated pop-in (index.css) like every other floating surface — the inline
       // keyframes this used to inject ignored the animations toggle. The accent-tinted border
@@ -374,7 +387,8 @@ function DelayEditor({ token, onChange }: { token: string; onChange: (t: string)
       <div className="flex items-center gap-2 py-1">
         {/* width here is the TOTAL span (input + the two 24px steppers), unlike the dialogs'
             inputWidth which sizes the input alone — so it needs extra room to fit "60.000 ms". */}
-        <NumInput value={ms} onChange={update} min={0} width={140} thousands suffix="ms" suffixInside />
+        {/* min 1: the engine reads {delay:0} as "no parameter" and pauses the 500 ms default. */}
+        <NumInput value={ms} onChange={update} min={1} width={140} thousands suffix="ms" suffixInside />
       </div>
     </Section>
   );
@@ -800,9 +814,14 @@ function InputEditor({ token, onChange }: { token: string; onChange: (t: string)
           />
         </div>
         {/* "Replay pauses and asks" is the header's line; what the control needs is where the
-            answer goes afterwards. */}
+            answer goes afterwards. Only while it is TRUE: the answer is stored under the label, and
+            {var:…} reads names of letters, digits and _ only (VarTokenRegex) — so for a label with
+            a space or an accent, which this field allows on purpose, the old fixed line taught a
+            token that stays literal in the message. */}
         <div className="text-[10px] text-text-tertiary mt-1">
-          Answer also readable as {'{var:label}'}.
+          {/^[A-Za-z0-9_]+$/.test(label.trim())
+            ? <>Answer also readable as {`{var:${label.trim()}}`}.</>
+            : <>To reuse the answer as {'{var:…}'}, use letters, digits and _ only.</>}
         </div>
       </Section>
       <Section label="Menu options (optional)">
@@ -831,8 +850,14 @@ function InputEditor({ token, onChange }: { token: string; onChange: (t: string)
 // empty-label rule — a broken {pick:} must not be written).
 function PickEditor({ token, onChange }: { token: string; onChange: (t: string) => void }) {
   const [text, setText] = useState(() => parseNameArg(token).split('|').join('\n'));
+  // An option that already holds a line break — a hand-edited or imported profile; this textarea
+  // never makes one, since Enter always starts a new option — cannot be shown one per line without
+  // looking like two, and any keystroke rebuilt the token from the lines, splitting it for real
+  // (1-in-N became 1-in-N+1). Shown read-only, like every chain editor's unmodeled token.
+  const [unmodeled] = useState(() => parseNameArg(token).split('|').some((o) => o.includes('\n')));
 
   const onEdit = (raw: string) => {
+    if (unmodeled) return;
     setText(raw);
     const options = raw
       .split('\n')
@@ -849,18 +874,27 @@ function PickEditor({ token, onChange }: { token: string; onChange: (t: string) 
         <textarea
           value={text}
           onChange={(e) => onEdit(e.target.value)}
-          autoFocus
+          readOnly={unmodeled}
+          autoFocus={!unmodeled}
           spellCheck={false}
           rows={5}
           placeholder={'Olá! Tudo bem?\nOi, como posso ajudar?\nBom dia!'}
-          className="w-full px-2 py-1.5 text-xs bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid placeholder:text-text-disabled resize-none font-mono leading-relaxed"
+          className={`w-full px-2 py-1.5 text-xs bg-bg-input border border-border-default rounded text-text-primary outline-none placeholder:text-text-disabled resize-none font-mono leading-relaxed ${
+            unmodeled ? 'opacity-60 cursor-not-allowed' : 'focus:border-accent-solid'
+          }`}
         />
       </div>
       {/* The header says "types ONE of the options, drawn each run"; the instruction is all that
           is left for the control. */}
-      <div className="text-[10px] text-text-tertiary mt-1">
-        One per line.
-      </div>
+      {unmodeled ? (
+        <Callout tone="warn" still role="status">
+          Read-only: an option holds a line break, which one option per line can’t show. It still runs; edit the token text in the editor to change it.
+        </Callout>
+      ) : (
+        <div className="text-[10px] text-text-tertiary mt-1">
+          One per line.
+        </div>
+      )}
     </Section>
   );
 }

@@ -331,8 +331,19 @@ type MdMarks = { bold: string; italic: string; strikethrough: string; code: stri
 const WA_MARKS: MdMarks = { bold: '*', italic: '_', strikethrough: '~', code: '`' };
 const DISCORD_MARKS: MdMarks = { bold: '**', italic: '_', strikethrough: '~~', code: '`' };
 
+// Line by line. A TextNode holds a '\n' only on the LOAD path: a SendText saved without KeyHtml is
+// rebuilt as one paragraph whose line breaks live INSIDE the node (see $inlinePlain). Typed text
+// never does — Enter makes a paragraph, Shift+Enter a LineBreakNode — so its formatted runs were
+// always wrapped per line, while a loaded one got ONE pair of markers across the break
+// ("*Olá,\n\nSegue*"), which WhatsApp and Discord do not read as emphasis. The same visual content
+// now serializes the same way whichever door it came through.
 function $wrapMarkdown(node: TextNode, marks: MdMarks): string {
   const value = node.getTextContent();
+  if (!value.includes('\n')) return $wrapMarkdownRun(node, value, marks);
+  return value.split('\n').map((line) => $wrapMarkdownRun(node, line, marks)).join('\n');
+}
+
+function $wrapMarkdownRun(node: TextNode, value: string, marks: MdMarks): string {
   if (value.trim() === '') return value;
   const lead = value.match(/^\s*/)![0];
   const trail = value.match(/\s*$/)![0];
@@ -797,7 +808,11 @@ function TokenAutocompletePlugin({ scope }: { scope: TokenScope }) {
 
   const options = useMemo(() => (match ? filterCatalog(catalog, match.query) : []), [match, catalog]);
   const open = match !== null && options.length > 0;
-  useEffect(() => { setActive(0); }, [match?.query]);
+  // Back to the top for a new query AND for a different brace: moving the caret straight from one
+  // `{` to another with the same query (two empty ones) kept the old highlight, past the end of a
+  // shorter list — nothing lit, and Enter committed options[0], not the row the arrows had chosen.
+  const braceAt = match ? match.end - match.query.length : null;
+  useEffect(() => { setActive(0); }, [match?.query, match?.nodeKey, braceAt]);
 
   // Below the caret, above it when the bottom would leave the viewport, clamped to the sides.
   useLayoutEffect(() => {
@@ -1197,7 +1212,10 @@ function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDe
           if (formats.link) {
             editor.dispatchCommand(TOGGLE_LINK_COMMAND, null);   // unlink
           } else if (linkInputOpen) {
+            // Cleared like the other two ways out (Esc, the ✕), or the next Link reopened with
+            // the URL this attempt abandoned.
             setLinkInputOpen(false);
+            setLinkUrl('');
           } else {
             openLinkInput();   // snapshots the selection BEFORE the input steals focus
           }
@@ -1214,7 +1232,10 @@ function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDe
             value={linkUrl}
             onChange={(e) => setLinkUrl(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') { e.preventDefault(); applyLink(); }
+              // Ctrl+Enter applies the link and goes no further. It is also the host dialog's
+              // confirm, which read the document before applyLink's update had committed: the
+              // message was saved without the link the same keystroke had just applied.
+              if (e.key === 'Enter') { e.preventDefault(); if (e.ctrlKey) e.stopPropagation(); applyLink(); }
               if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setLinkInputOpen(false); setLinkUrl(''); editor.focus(); }
             }}
             placeholder="https://…"
@@ -1283,20 +1304,31 @@ function ChipActivationPlugin() {
 }
 
 // Ctrl+Enter submit forwarded to parent so the same shortcut behaves the same.
+//
+// A KEY_ENTER_COMMAND handler, not a raw keydown listener on the root. Lexical dispatches that
+// command for Ctrl+Enter too (isParagraph takes ctrlKey 'any'), and rich-text's handler checks
+// shiftKey, never ctrlKey — while its own keydown listener is attached first (ContentEditable sets
+// the root in a layout effect, before this effect ran). So every Ctrl+Enter split the paragraph at
+// the caret BEFORE the raw listener submitted: a line the user never typed. At
+// COMMAND_PRIORITY_HIGH this runs ahead of that handler (EDITOR) and of the chip activation
+// (LOW), and returning true ends the dispatch.
+//
+// It also STOPS the key. The host's card handler answers Ctrl+Enter too (SendTextDialog confirms
+// from anywhere in the card), and this key is on its way up to it: two routes to one confirm. That
+// the second found the dialog already gone was a matter of React flushing the close between two
+// listeners — true for a key the browser dispatches, false for one dispatched from script, where
+// the confirm ran twice and inserted the text twice. One key, one confirm, by construction.
 function SubmitPlugin({ onSubmit }: { onSubmit?: () => void }) {
   const [editor] = useLexicalComposerContext();
   useEffect(() => {
     if (!onSubmit) return;
-    const root = editor.getRootElement();
-    if (!root) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Enter' && e.ctrlKey) {
-        e.preventDefault();
-        onSubmit();
-      }
-    };
-    root.addEventListener('keydown', handler);
-    return () => root.removeEventListener('keydown', handler);
+    return editor.registerCommand(KEY_ENTER_COMMAND, (event: KeyboardEvent | null) => {
+      if (!event?.ctrlKey) return false;
+      event.preventDefault();
+      event.stopPropagation();
+      onSubmit();
+      return true;
+    }, COMMAND_PRIORITY_HIGH);
   }, [editor, onSubmit]);
   return null;
 }

@@ -109,7 +109,17 @@ namespace TrueReplayer.Services
         // cancel reaches the tab and the pick it names. Replay: range and color inputs get their
         // value set; an empty text regex matches nothing; a /regex/ URL pattern with bad flags fails
         // at once instead of timing out; a frame without <body> stays silent in the fan-out.
-        public const string ExpectedExtensionVersion = "1.4.24";
+        // 1.4.25 = BrowserType types a brace that came from SUBSTITUTED data as a brace. The app keeps
+        // such braces as private sentinels (ActionReplayer.ResolveBrowserTypeTextAsync) and the
+        // content script turns them back into '{' / '}' after splitting out its key chips, so a
+        // clipboard or variable holding "{enter}" no longer presses Enter.
+        public const string ExpectedExtensionVersion = "1.4.25";
+
+        // The extension that knows the sentinels above. An older one would type the control
+        // character itself, so ExecuteBrowserCommandAsync hands it real braces (and the old re-read).
+        private static readonly Version BraceSentinelExtensionVersion = new(1, 4, 25);
+        internal bool SupportsTypeBraceSentinels
+            => Version.TryParse(_lastExtensionVersion, out var v) && v >= BraceSentinelExtensionVersion;
         private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
         private NamedPipeServerStream? _pipeServer;
         private StreamReader? _reader;
@@ -961,13 +971,20 @@ namespace TrueReplayer.Services
             // ELEMENT_NOT_FOUND and halt the run while the click was still on its way to landing, which
             // is the very inversion this margin exists to prevent.
             const int PipeGraceMs = 3500;
+            // The text as the extension will get it. BrowserType's payload arrives with SUBSTITUTED
+            // braces as sentinels (ResolveBrowserTypeTextAsync) — kept for an extension that types
+            // them as braces, restored for one that would type the control character. Every other
+            // command matches the text and never types it: real braces, always.
+            string sendText = resolvedText ?? action.BrowserText ?? "";
+            if (command != "type" || !SupportsTypeBraceSentinels)
+                sendText = ActionReplayer.UnescapeBraceSentinels(sendText);
             // A type payload's {delay:N} pauses, {key:N} repeats and per-character Delay all run
             // INSIDE the command, on the extension's side of the pipe (1.4.18), so they are added
             // to the budget here — or a "{delay:3000}" in a 5 s action, or 150 characters at 50 ms,
             // would trip this backstop while the page was doing exactly what it was told.
             var pipeTimeout = command == "navigate" ? Math.Max(timeoutMs * 6, 30000)
                 : timeoutMs + PipeGraceMs + (command == "type"
-                    ? TypeKeyBudgetMs(resolvedText ?? action.BrowserText, action.TypePaste ? 0 : (action.TypeDelay ?? 0))
+                    ? TypeKeyBudgetMs(sendText, action.TypePaste ? 0 : (action.TypeDelay ?? 0))
                     : 0);
 
             bool sent = SendMessage(new
@@ -976,7 +993,7 @@ namespace TrueReplayer.Services
                 commandId,
                 command,
                 selector = action.Key ?? "",
-                text = resolvedText ?? action.BrowserText ?? "",
+                text = sendText,
                 url = action.Key ?? "",
                 newTab = action.NewTab,
                 timeout = timeoutMs,
