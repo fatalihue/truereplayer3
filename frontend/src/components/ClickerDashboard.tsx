@@ -98,7 +98,7 @@ export function ClickerDashboard() {
   // Compact recall — shared with the empty state through describeClickerConfig, so the line
   // the user reads before the first run and the one they read after it can never disagree.
   // Hold-aware rate, the engine's precedence for the "where" (Area > Fixed > Position), and
-  // both limits. The rate used to be targetCps(delay, gap): with a 200 ms hold it printed 10/s
+  // both limits. The rate used to be 1000 / (delay + gap): with a 200 ms hold it printed 10/s
   // for a run the engine delivers at ~5/s.
   const summary = describeClickerConfig(settings);
 

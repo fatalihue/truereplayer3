@@ -78,7 +78,10 @@ export function useContextMenuPosition(
     // re-runs this effect, and this is where that second run stops (a measured x can never
     // be the sentinel: it is either a Math.max(MARGIN, …) or a converted clientX).
     if (pos.x !== OFFSCREEN) return;
-    requestAnimationFrame(() => {
+    // Cancelled on the way out: a second right-click before this frame ran used to leave BOTH
+    // frames queued, and the stale one wrote the first click's position over the new menu for a
+    // frame before the fresh one corrected it.
+    const frame = requestAnimationFrame(() => {
       const el = menuRef.current;
       if (!el) return;
       const zoom = uiZoom();
@@ -96,6 +99,7 @@ export function useContextMenuPosition(
       }
       setPos({ x, y });
     });
+    return () => cancelAnimationFrame(frame);
   }, [anchor, pos, menuRef]);
 
   return pos;

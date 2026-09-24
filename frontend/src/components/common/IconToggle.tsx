@@ -31,7 +31,7 @@ export function IconToggle({ isOn, onChange, icon: Icon, disabled = false, ariaL
       aria-label={ariaLabel}
       aria-disabled={disabled}
       disabled={disabled}
-      onClick={() => !disabled && onChange(!isOn)}
+      onClick={() => onChange(!isOn)}
       className={`w-[22px] h-[22px] grid place-items-center rounded-md border transition-colors ${
         disabled
           ? 'border-transparent opacity-40 cursor-not-allowed'

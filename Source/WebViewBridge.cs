@@ -1192,6 +1192,10 @@ namespace TrueReplayer
             {
                 _lastRunOutcome = null;
                 _runSeqAtReplayStart = replayService.RunSequence;
+                // A new run owes nothing to the last one's row and lap: a reload before its first
+                // push must not be handed the previous run's (see _liveHighlightIndex).
+                _liveHighlightIndex = null;
+                _liveLoopProgress = null;
             }
             if (status == "ready" && _lastRunStatus == "replaying"
                 // …and a macro run really did open a report in between. Without this, a Clicker
@@ -1668,25 +1672,46 @@ namespace TrueReplayer
             incoming.Armed = stored?.Armed ?? false;
         }
 
+        // A JSON number as an int, truncating a fraction. ParseTriggerConfig builds a NEW config, so
+        // a field it cannot read keeps the class default rather than the saved value: TryGetInt32
+        // refused "10.5" from the panel's Every field and the automation was saved firing every
+        // 300 s, with no error anywhere. The panel sends whole numbers now; this keeps a stray
+        // fraction from ever meaning "reset".
+        private static bool TryGetWhole(JsonElement v, out int value)
+        {
+            value = 0;
+            // TryGetInt32 THROWS on a non-number (it only "tries" the range): check the kind first.
+            if (v.ValueKind != JsonValueKind.Number) return false;
+            if (v.TryGetInt32(out value)) return true;
+            if (v.TryGetDouble(out var d) && double.IsFinite(d)
+                && d >= int.MinValue && d <= int.MaxValue)
+            {
+                value = (int)Math.Truncate(d);
+                return true;
+            }
+            value = 0;
+            return false;
+        }
+
         private static ProfileTriggerConfig? ParseTriggerConfig(JsonElement el)
         {
             if (el.ValueKind != JsonValueKind.Object) return null;
             var t = new ProfileTriggerConfig();
             if (el.TryGetProperty("kind", out var v) && v.ValueKind == JsonValueKind.String) t.Kind = v.GetString() ?? "interval";
             t.Armed = el.TryGetProperty("armed", out v) && v.ValueKind == JsonValueKind.True;
-            if (el.TryGetProperty("intervalSeconds", out v) && v.TryGetInt32(out var iv)) t.IntervalSeconds = iv;
+            if (el.TryGetProperty("intervalSeconds", out v) && TryGetWhole(v, out var iv)) t.IntervalSeconds = iv;
             if (el.TryGetProperty("timeOfDay", out v) && v.ValueKind == JsonValueKind.String) t.TimeOfDay = v.GetString();
-            if (el.TryGetProperty("daysOfWeek", out v) && v.TryGetInt32(out var dw)) t.DaysOfWeek = dw;
+            if (el.TryGetProperty("daysOfWeek", out v) && TryGetWhole(v, out var dw)) t.DaysOfWeek = dw;
             if (el.TryGetProperty("conditionType", out v) && v.ValueKind == JsonValueKind.String) t.ConditionType = v.GetString();
             if (el.TryGetProperty("windowProcessName", out v) && v.ValueKind == JsonValueKind.String) t.WindowProcessName = v.GetString();
             if (el.TryGetProperty("windowTitle", out v) && v.ValueKind == JsonValueKind.String) t.WindowTitle = v.GetString();
             if (el.TryGetProperty("windowTitleMatchMode", out v) && v.ValueKind == JsonValueKind.String) t.WindowTitleMatchMode = v.GetString();
             t.WindowMatchForegroundOnly = el.TryGetProperty("windowMatchForegroundOnly", out v) && v.ValueKind == JsonValueKind.True;
             if (el.TryGetProperty("filePath", out v) && v.ValueKind == JsonValueKind.String) t.FilePath = v.GetString();
-            if (el.TryGetProperty("pixelX", out v) && v.TryGetInt32(out var px)) t.PixelX = px;
-            if (el.TryGetProperty("pixelY", out v) && v.TryGetInt32(out var py)) t.PixelY = py;
+            if (el.TryGetProperty("pixelX", out v) && TryGetWhole(v, out var px)) t.PixelX = px;
+            if (el.TryGetProperty("pixelY", out v) && TryGetWhole(v, out var py)) t.PixelY = py;
             if (el.TryGetProperty("pixelColor", out v) && v.ValueKind == JsonValueKind.String) t.PixelColor = v.GetString();
-            if (el.TryGetProperty("pixelTolerance", out v) && v.TryGetInt32(out var pt)) t.PixelTolerance = pt;
+            if (el.TryGetProperty("pixelTolerance", out v) && TryGetWhole(v, out var pt)) t.PixelTolerance = pt;
             if (el.TryGetProperty("imagePath", out v) && v.ValueKind == JsonValueKind.String) t.ImagePath = v.GetString();
             if (el.TryGetProperty("imageConfidence", out v) && v.ValueKind == JsonValueKind.Number) t.ImageConfidence = v.GetDouble();
             // ImageFound ROI: nested {x,y,w,h} object, or null to clear. Absent → stays full-screen.
@@ -1695,10 +1720,10 @@ namespace TrueReplayer
             {
                 if (v.ValueKind == JsonValueKind.Object)
                 {
-                    if (v.TryGetProperty("x", out var srx) && srx.TryGetInt32(out var sx)) t.SearchRegionX = sx;
-                    if (v.TryGetProperty("y", out var sry) && sry.TryGetInt32(out var sy)) t.SearchRegionY = sy;
-                    if (v.TryGetProperty("w", out var srw) && srw.TryGetInt32(out var sw)) t.SearchRegionW = sw;
-                    if (v.TryGetProperty("h", out var srh) && srh.TryGetInt32(out var sh)) t.SearchRegionH = sh;
+                    if (v.TryGetProperty("x", out var srx) && TryGetWhole(srx, out var sx)) t.SearchRegionX = sx;
+                    if (v.TryGetProperty("y", out var sry) && TryGetWhole(sry, out var sy)) t.SearchRegionY = sy;
+                    if (v.TryGetProperty("w", out var srw) && TryGetWhole(srw, out var sw)) t.SearchRegionW = sw;
+                    if (v.TryGetProperty("h", out var srh) && TryGetWhole(srh, out var sh)) t.SearchRegionH = sh;
                 }
                 else if (v.ValueKind == JsonValueKind.Null)
                 {
@@ -1706,11 +1731,11 @@ namespace TrueReplayer
                 }
             }
             if (el.TryGetProperty("clipboardPattern", out v) && v.ValueKind == JsonValueKind.String) t.ClipboardPattern = v.GetString();
-            if (el.TryGetProperty("cooldownSeconds", out v) && v.TryGetInt32(out var cd)) t.CooldownSeconds = cd;
+            if (el.TryGetProperty("cooldownSeconds", out v) && TryGetWhole(v, out var cd)) t.CooldownSeconds = cd;
             if (el.TryGetProperty("retrigger", out v) && v.ValueKind == JsonValueKind.String) t.Retrigger = v.GetString();
             if (el.TryGetProperty("useRelativeCoordinates", out v) && (v.ValueKind == JsonValueKind.True || v.ValueKind == JsonValueKind.False))
                 t.UseRelativeCoordinates = v.GetBoolean();
-            if (el.TryGetProperty("pollIntervalMs", out v) && v.TryGetInt32(out var pi)) t.PollIntervalMs = pi;
+            if (el.TryGetProperty("pollIntervalMs", out v) && TryGetWhole(v, out var pi)) t.PollIntervalMs = pi;
             return t;
         }
 
@@ -3185,6 +3210,7 @@ namespace TrueReplayer
 
         public void PushActionHighlight(int index)
         {
+            _liveHighlightIndex = index;
             SendMessage("actions:highlight", new { index });
         }
 
@@ -3493,7 +3519,10 @@ namespace TrueReplayer
                 : (iconLookup[proc] = AppIconService.GetIconBase64(proc));
             SendMessage("state:init", new
             {
-                status = "ready",
+                // The REAL run state, as the button slice below already carries. A constant "ready"
+                // left every status reader wrong for a UI reloaded mid-run — the Clicker dashboard
+                // showed its "press X to start" screen over a live countdown, with no Stop on it.
+                status = replayService.IsReplaying ? "replaying" : recordingService.IsRecording ? "recording" : "ready",
                 // Per-action DTO is projected by the shared ProjectActionsForFrontend()
                 // helper — identical to PushActionsUpdate's actions:updated payload so
                 // the cold-start state and subsequent pushes can never drift.
@@ -4417,7 +4446,7 @@ namespace TrueReplayer
             var id = idEl.GetString();
             if (string.IsNullOrEmpty(id) || string.Equals(actions[index].Id, id, StringComparison.Ordinal)) return true;
             DiagnosticLog.Warn($"{door} refused: row {index} is no longer the row the editor opened (the list changed under it).");
-            SendMessage("alert:show", new { message = "Not saved: that row changed while it was being edited (the list or the profile changed underneath)." });
+            SendMessage("alert:show", new { message = "Not saved: that row changed while it was being edited (the list or the profile changed underneath).", type = "error" });
             return false;
         }
 
@@ -5371,12 +5400,16 @@ namespace TrueReplayer
             string targetName = payload.GetProperty("profileName").GetString() ?? "";
             if (string.IsNullOrEmpty(targetName)) return;
 
+            // Every number is read BEFORE the snapshot. GetInt32 threw on a fractional repeat
+            // (the dialog's field took "5.7") after PushUndoState had run: no row was inserted, the
+            // redo stack was gone, and the dialog had already closed as if it had worked.
+            int repeat = 1;
+            if (payload.TryGetProperty("repeatCount", out var rEl) && TryGetWhole(rEl, out var rv))
+                repeat = Math.Clamp(rv, 1, 999);
+            int? insertAt = payload.TryGetProperty("insertIndex", out var idxEl) && idxEl.TryGetInt32(out var idxV) ? idxV : null;
+
             // Snapshot after the empty-name guard so a blank target doesn't leak undo state.
             PushUndoState();
-
-            int repeat = 1;
-            if (payload.TryGetProperty("repeatCount", out var rEl) && rEl.ValueKind == JsonValueKind.Number)
-                repeat = Math.Clamp(rEl.GetInt32(), 1, 999);
 
             int delay = int.TryParse(CustomDelay, out var d) ? d : 100;
             var action = new ActionItem
@@ -5390,18 +5423,10 @@ namespace TrueReplayer
                 Delay = delay,
             };
 
-            if (payload.TryGetProperty("insertIndex", out var idxEl) && idxEl.ValueKind == JsonValueKind.Number)
-            {
-                int idx = idxEl.GetInt32();
-                if (idx >= 0 && idx <= actions.Count)
-                    actions.Insert(idx, action);
-                else
-                    actions.Add(action);
-            }
+            if (insertAt is int idx && idx >= 0 && idx <= actions.Count)
+                actions.Insert(idx, action);
             else
-            {
                 actions.Add(action);
-            }
 
             for (int i = 0; i < actions.Count; i++)
                 actions[i].RowNumber = i + 1;
@@ -5418,22 +5443,23 @@ namespace TrueReplayer
             if (!RowStillMatches(payload, index, "actions:editRunProfile")) return;
             if (actions[index].ActionType != "RunProfile") return;
 
+            // Read everything first, write after the snapshot. The fractional-repeat GetInt32 used to
+            // throw BETWEEN the snapshot and the writes, with the new target name already applied in
+            // memory and no push to show it.
+            string? newName = payload.TryGetProperty("profileName", out var nameEl) && nameEl.ValueKind == JsonValueKind.String
+                ? nameEl.GetString() : null;
+            int? newRepeat = payload.TryGetProperty("repeatCount", out var rEl) && TryGetWhole(rEl, out var rv)
+                ? Math.Clamp(rv, 1, 999) : null;
+            // Phase C toggle — stored null-means-false so pre-feature rows stay byte-identical.
+            bool hasRunOverData = payload.TryGetProperty("runOverData", out var rodEl)
+                && (rodEl.ValueKind == JsonValueKind.True || rodEl.ValueKind == JsonValueKind.False);
+
             // Snapshot after the bounds + type guards so a stale/mismatched edit is a clean no-op.
             PushUndoState();
 
-            if (payload.TryGetProperty("profileName", out var nameEl) && nameEl.ValueKind == JsonValueKind.String)
-            {
-                var name = nameEl.GetString();
-                if (!string.IsNullOrEmpty(name)) actions[index].Key = name;
-            }
-
-            if (payload.TryGetProperty("repeatCount", out var rEl) && rEl.ValueKind == JsonValueKind.Number)
-                actions[index].RepeatCount = Math.Clamp(rEl.GetInt32(), 1, 999);
-
-            // Phase C toggle — stored null-means-false so pre-feature rows stay byte-identical.
-            if (payload.TryGetProperty("runOverData", out var rodEl)
-                && (rodEl.ValueKind == JsonValueKind.True || rodEl.ValueKind == JsonValueKind.False))
-                actions[index].RunOverData = rodEl.ValueKind == JsonValueKind.True ? true : null;
+            if (!string.IsNullOrEmpty(newName)) actions[index].Key = newName;
+            if (newRepeat is int repeat) actions[index].RepeatCount = repeat;
+            if (hasRunOverData) actions[index].RunOverData = rodEl.ValueKind == JsonValueKind.True ? true : null;
 
             HasUnsavedChanges = true;
             PushActionsUpdate();
@@ -5467,6 +5493,12 @@ namespace TrueReplayer
         // run on its 60 s timeout. UI thread only (every push arrives through the dispatcher).
         private (string Hotkey, int TimeoutMs, long StartedAt)? _livePause;
         private readonly Dictionary<string, (string Label, string[]? Options)> _liveInputRequests = new();
+        // Two more edges of the same kind. The row being executed is pushed once per action and the
+        // loop counter once per lap, so a remounted grid had no row marked — a paused run showed no
+        // row it was paused on — and a forced-infinite run's chip read "1×" until the next lap,
+        // which on a slow data loop can be minutes.
+        private int? _liveHighlightIndex;
+        private (int Current, int Total)? _liveLoopProgress;
 
         public void PushReplayPaused(string hotkey, int timeoutMs)
         {
@@ -5503,8 +5535,14 @@ namespace TrueReplayer
             {
                 _livePause = null;
                 _liveInputRequests.Clear();
+                _liveHighlightIndex = null;
+                _liveLoopProgress = null;
                 return;
             }
+            if (_liveLoopProgress is { } loop)
+                SendMessage("macro:loopProgress", new { current = loop.Current, total = loop.Total });
+            if (_liveHighlightIndex is int row && row >= 0)
+                SendMessage("actions:highlight", new { index = row });
             if (_livePause is { } pause)
             {
                 int left = pause.TimeoutMs <= 0
@@ -5573,6 +5611,7 @@ namespace TrueReplayer
         // single-shot replays never reach this path.
         public void PushLoopProgress(int current, int total)
         {
+            _liveLoopProgress = (current, total);
             SendMessage("macro:loopProgress", new { current, total });
         }
 
@@ -9440,8 +9479,10 @@ namespace TrueReplayer
         // A handler asked for a profile by name and it is gone — renamed or deleted since the UI
         // sent the message, typically an Undo clicked inside its 10 s window. That used to end the
         // handler in silence: no change, no toast, a button that did nothing.
+        // Typed: untyped, the frontend guessed the colour from the words, and "deleted" made this
+        // refusal a green success toast.
         private void ReportProfileGone(string name) =>
-            SendMessage("alert:show", new { message = $"\"{name}\" no longer exists — it was renamed or deleted. Nothing was changed." });
+            SendMessage("alert:show", new { message = $"\"{name}\" no longer exists — it was renamed or deleted. Nothing was changed.", type = "error" });
 
         private async void HandleProfileSetWindowTarget(JsonElement payload)
         {
@@ -10190,7 +10231,7 @@ namespace TrueReplayer
             // since the message left, typically before an Undo. Say so instead.
             if (!profileController.GetProfileOrder().Folders.Any(f => f.Name == folderName))
             {
-                SendMessage("alert:show", new { message = $"The folder \"{folderName}\" no longer exists — it was renamed or deleted. Nothing was changed." });
+                SendMessage("alert:show", new { message = $"The folder \"{folderName}\" no longer exists — it was renamed or deleted. Nothing was changed.", type = "error" });
                 return;
             }
 
@@ -10253,7 +10294,7 @@ namespace TrueReplayer
 
             if (folder == null)
             {
-                SendMessage("alert:show", new { message = $"The folder \"{folderName}\" no longer exists — it was renamed or deleted. Nothing was changed." });
+                SendMessage("alert:show", new { message = $"The folder \"{folderName}\" no longer exists — it was renamed or deleted. Nothing was changed.", type = "error" });
                 return;
             }
             // Everything the removal wipes, for the confirmation below: the toast's Undo has to put

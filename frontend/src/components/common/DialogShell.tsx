@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode, type KeyboardEvent, type MouseEvent } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode, type KeyboardEvent, type MouseEvent } from 'react';
 import { X } from 'lucide-react';
 import { Button } from './Button';
 import { IconButton } from './IconButton';
+import { DialogLayerContext } from './dialogLayer';
 
 /**
  * Shared chrome for the modal-dialog family — the scrim + card + header/footer
@@ -195,6 +196,8 @@ export function DialogShell({
   children,
 }: DialogShellProps) {
   const cardRef = useRef<HTMLDivElement>(null);
+  // This shell's id for the layers its content floats over it — see dialogLayer.ts.
+  const layerId = useId();
   const [leaving, setLeaving] = useState(false);
   // Width: the size step, or the legacy widthClass when a caller still passes one. The full
   // panel size must not be clawed back by the default 90vw clamp (see PANEL_MAX_WIDTH).
@@ -281,8 +284,10 @@ export function DialogShell({
           // are portals at the end of <body> — outside the card's DOM, inside its React tree, which
           // is why their keys reach this handler at all. Scanning the card alone left the trap blind
           // with the focus in a layer, and Tab from the layer's last field walked straight out to
-          // the app. A layer declares itself with data-dialog-layer. Between the card's own fields
-          // the browser's order is kept; the edges and the layers are driven from here.
+          // the app. A layer declares itself with data-dialog-layer — THIS shell's id, so a dialog
+          // stacked on top never rings the layers of the one underneath (dialogLayer.ts). Between
+          // the card's own fields the browser's order is kept; the edges and the layers are driven
+          // from here.
           if (e.key === 'Tab') {
             // A key a handler below already used (the token list's Tab commits an entry) is not
             // focus navigation.
@@ -291,6 +296,7 @@ export function DialogShell({
             if (!card) return;
             const inCard = Array.from(card.querySelectorAll<HTMLElement>(TABBABLE));
             const inLayers = Array.from(document.querySelectorAll('[data-dialog-layer]'))
+              .filter((layer) => layer.getAttribute('data-dialog-layer') === layerId)
               .flatMap((layer) => Array.from(layer.querySelectorAll<HTMLElement>(TABBABLE)));
             const ring = [...inCard, ...inLayers];
             if (!ring.length) { e.preventDefault(); return; }
@@ -345,7 +351,7 @@ export function DialogShell({
           )}
         </div>
 
-        {children}
+        <DialogLayerContext.Provider value={layerId}>{children}</DialogLayerContext.Provider>
 
         {/* Footer — left edge: a tertiary action OR the hint, never both; right edge: the
             actions (a DialogFooter, or hand-composed buttons for the four panels). */}

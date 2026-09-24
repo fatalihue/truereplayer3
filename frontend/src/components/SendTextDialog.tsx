@@ -6,6 +6,7 @@ import { iconButtonClass } from './common/IconButton';
 import EmojiPicker, { Theme } from 'emoji-picker-react';
 import type { EmojiClickData } from 'emoji-picker-react';
 import { DialogShell, DialogFooter  } from './common/DialogShell';
+import { useDialogLayer } from './common/dialogLayer';
 import { Button } from './common/Button';
 import { SegmentedControl } from './common/SegmentedControl';
 import { useTt } from '../state/LanguageContext';
@@ -293,6 +294,7 @@ function NamePromptPopover({
   onClose: () => void;
 }) {
   const tt = useTt();
+  const dialogLayer = useDialogLayer();
   const popRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState('');
@@ -399,7 +401,7 @@ function NamePromptPopover({
       ref={popRef}
       onMouseDown={(e) => e.stopPropagation()}
       // Part of the dialog's Tab ring, though it is a portal outside the card (DialogShell).
-      data-dialog-layer=""
+      data-dialog-layer={dialogLayer}
       // menu-surface + the gated pop-in like every other floating surface; the accent-tinted
       // border stays as the token popover's own signature.
       style={{ position: 'fixed', ...visibilityStyle, zIndex: 100, width: 260, borderColor: 'color-mix(in srgb, var(--color-accent-solid) 35%, transparent)' }}
@@ -1041,6 +1043,9 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
       canClose={() => {
         if (confirmDiscard) return false;  // the prompt already up owns the decision
         if (!isDirty()) return true;
+        // The name prompt goes first. It floats at z-100, above the z-60 "Unsaved text" prompt, so
+        // left open it sat on top of the question with a live text field in it.
+        if (namePrompt) setNamePrompt(null);
         setConfirmDiscard(true);
         return false;
       }}

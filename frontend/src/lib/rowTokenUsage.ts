@@ -57,12 +57,38 @@ function collectStrings(v: unknown, out: string[]): void {
   }
 }
 
-/** Lower-cased column name → usage, scanning every string field of every action. */
+// The fields the engine resolves tokens in, per ActionType — the twin of ProfileCompatibility's
+// AnyTokenField, which lists ActionExecution's ResolveTokens callers. A row whose TYPE changed keeps
+// its old fields (switching type clears none of them), so scanning every string counted a
+// {row:Nome} left in the Key of what is now a Wait as a live use: the column read "×1" while no run
+// ever reads it, and deleting it looked unsafe when it was not.
+const KEY_TYPES = new Set(['sendtext', 'keystroke', 'keydown', 'keyup', 'holdkey']);
+const BROWSER_TEXT_TYPES = new Set(['browsertype', 'browserselectoption']);
+const CONDITION_TYPES = new Set(['if', 'elseif', 'while', 'assert']);
+
+function tokenFields(action: unknown): unknown[] {
+  if (!action || typeof action !== 'object') return [];
+  const a = action as Record<string, unknown>;
+  const type = String(a.actionType ?? '').toLowerCase();
+  const out: unknown[] = [];
+  if (KEY_TYPES.has(type)) out.push(a.key);
+  if (BROWSER_TEXT_TYPES.has(type)) out.push(a.browserText);
+  if (type === 'setvariable') out.push(a.variableValue);
+  if (CONDITION_TYPES.has(type)) {
+    const condition = String(a.conditionType ?? '').toLowerCase();
+    if (condition === 'variable') out.push(a.conditionOperand);
+    if (condition === 'fileexists') out.push(a.filePath);
+  }
+  if (type === 'activatewindow') out.push(a.launchPath, a.launchArgs);
+  return out;
+}
+
+/** Lower-cased column name → usage, scanning the fields the engine resolves on each action. */
 export function scanRowTokenUsage(actions: readonly unknown[]): Map<string, ColumnUsage> {
   const usage = new Map<string, ColumnUsage>();
   for (const a of actions) {
     const fields: string[] = [];
-    collectStrings(a, fields);
+    collectStrings(tokenFields(a), fields);
     for (const s of fields) {
       // A fresh /g instance per string — a shared one carries lastIndex from call to call.
       const re = new RegExp(ROW_TOKEN_SOURCE, 'gi');

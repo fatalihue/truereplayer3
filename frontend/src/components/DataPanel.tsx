@@ -621,6 +621,30 @@ export function DataPanel({ onClose }: DataPanelProps) {
   // actions — lib/rowTokenUsage owns the rules (both heads read the same column; BuildRowDict key
   // semantics; a modifier tail counts, an empty one does not).
   const usage = useMemo(() => scanRowTokenUsage(actions), [actions]);
+  // Sub-profiles that run on THIS profile's row. A Run Profile without "Run once per data row"
+  // runs its target with the caller's table and current row (the plain branch never swaps the
+  // data context), so a {row:Email} written in the SUB reads this profile's Email — and the scan
+  // above sees only this profile's actions. "unused" said so anyway, inviting the delete that
+  // leaves the sub typing empty text.
+  const rowInheritingSubs = useMemo(
+    () => [...new Set(actions
+      .filter(a => a.actionType === 'RunProfile' && a.runOverData !== true && (a.key ?? '').trim() !== '')
+      .map(a => a.key.trim()))],
+    [actions],
+  );
+  // The other direction, for the orphan list: profiles that run THIS one that way. Their row is
+  // what an orphan token here reads when they call it. Exact-name match, as overDataCallers; a
+  // profile that calls this one both ways is listed only as an over-data caller.
+  const rowPassingCallers = useMemo(
+    () => (activeProfile
+      ? profiles
+        .filter(p => p.name !== activeProfile
+          && (p.runProfileTargets ?? []).includes(activeProfile)
+          && !(p.runOverDataTargets ?? []).includes(activeProfile))
+        .map(p => p.name)
+      : []),
+    [profiles, activeProfile],
+  );
   const orphans = useMemo(() => {
     const have = new Set(grid.headers.map((h) => h.trim().toLowerCase()));
     return [...usage.entries()].filter(([k]) => !have.has(k));
@@ -1457,9 +1481,14 @@ export function DataPanel({ onClose }: DataPanelProps) {
                           </button>
                           <span
                             className={`text-[10px] tabular-nums ml-auto shrink-0 ${count > 0 ? 'text-text-tertiary' : 'text-text-disabled'}`}
-                            data-tip={count > 0 ? tt(`Used in ${count} action(s)`, `Usado em ${count} action(s)`) : undefined}
+                            data-tip={count > 0
+                              ? tt(`Used in ${count} action(s)`, `Usado em ${count} action(s)`)
+                              : rowInheritingSubs.length > 0
+                                ? tt(`Not used by this profile's own actions. ${rowInheritingSubs.join(', ')} run(s) on this profile's row (Run Profile without “Run once per data row”) and may read it — check before deleting.`,
+                                  `Não usada pelas actions deste perfil. ${rowInheritingSubs.join(', ')} roda(m) na linha deste perfil (Run Profile sem “Run once per data row”) e pode(m) ler esta coluna — confira antes de apagar.`)
+                                : undefined}
                           >
-                            {count > 0 ? `×${count}` : 'unused'}
+                            {count > 0 ? `×${count}` : rowInheritingSubs.length > 0 ? 'unused here' : 'unused'}
                           </span>
                         </>
                       ) : (
@@ -1495,7 +1524,10 @@ export function DataPanel({ onClose }: DataPanelProps) {
                     <span className="text-[11px] font-mono text-warning-ink truncate">{`{${orphanHead(u)}:${name}}`}</span>
                     <span
                       className="text-[10px] text-warning-ink ml-auto shrink-0"
-                      data-tip={tt('Referenced by an action, but no such column — types empty text', 'Referenciada por uma action, mas a coluna não existe — digita texto vazio')}
+                      data-tip={rowPassingCallers.length > 0
+                        ? tt(`No such column in this profile — types empty text when it runs on its own. Run from ${rowPassingCallers.join(', ')} (Run Profile without “Run once per data row”), it reads the caller's row instead.`,
+                          `A coluna não existe neste perfil — digita texto vazio quando ele roda sozinho. Rodado a partir de ${rowPassingCallers.join(', ')} (Run Profile sem “Run once per data row”), lê a linha de quem chamou.`)
+                        : tt('Referenced by an action, but no such column — types empty text', 'Referenciada por uma action, mas a coluna não existe — digita texto vazio')}
                     >
                       ×{u.count} · {'no column'}
                     </span>

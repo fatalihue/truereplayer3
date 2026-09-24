@@ -131,6 +131,9 @@ function AutoCollapseOnZoom({ setSidebarCollapsed, setSettingsCollapsed, autoCol
 
 // AppShell is rendered inside AppStateProvider so it can read settings to drive
 // mode-dependent visuals (Clicker mode glow, ActionTable replacement).
+/** <input> types that are controls rather than typing surfaces — see AppShell's key handler. */
+const NON_TEXT_INPUT_TYPES = new Set(['checkbox', 'radio', 'range', 'button', 'submit', 'reset', 'color', 'file', 'image']);
+
 function AppShell() {
   const { settings, buttonStates } = useAppState();
   const { send, subscribe } = useBridge();
@@ -230,9 +233,14 @@ function AppShell() {
         return;
       }
 
-      // Allow keys inside inputs/textareas (user is actively typing)
-      const tag = (e.target as HTMLElement)?.tagName;
-      const inEditable = tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable;
+      // Allow keys inside inputs/textareas (user is actively typing). A TYPING input only: a
+      // checkbox, radio or range is a control — Space toggles it, arrows move it — and counting
+      // every INPUT as typing let those skip the run lockout below. Space meant for the game
+      // flipped "Run once per data row" in a dialog left open over a hotkey-started run.
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      const inEditable = (tag === 'INPUT' && !NON_TEXT_INPUT_TYPES.has((target as HTMLInputElement).type))
+        || tag === 'TEXTAREA' || !!target?.isContentEditable;
 
       if (ctrl && !inEditable) {
         if (e.key === 's' || e.key === 'S') {
@@ -267,8 +275,10 @@ function AppShell() {
       // are how the browser activates buttons/checkboxes/links (it synthesizes a
       // click), and arrows drive selects. closest() catches nested targets too
       // (e.g. an icon inside a <button>).
+      // `input`: a typing input returned above, so one that gets here is a control (a checkbox, a
+      // range) and its keys are its own when no run is active.
       const interactive = (e.target as HTMLElement)?.closest?.(
-        'button, a[href], select, summary, [role="button"], [role="checkbox"], [tabindex]'
+        'button, a[href], select, summary, input, [role="button"], [role="checkbox"], [tabindex]'
       );
       if (interactive) return;
 

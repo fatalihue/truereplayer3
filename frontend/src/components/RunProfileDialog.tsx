@@ -77,7 +77,9 @@ export function RunProfileDialog({ mode, initial, excludeProfileName, onConfirm,
 
   const handleConfirm = () => {
     if (!canConfirm) return;
-    onConfirm(profileName, Math.max(1, Math.min(999, repeatCount)), runOverData);
+    // Truncated as well as clamped: the backend reads an int, and a fraction it could not read used
+    // to throw there after the undo snapshot, losing the insert with the dialog already closed.
+    onConfirm(profileName, Math.max(1, Math.min(999, Math.trunc(repeatCount))), runOverData);
   };
 
   return (
@@ -144,6 +146,7 @@ export function RunProfileDialog({ mode, initial, excludeProfileName, onConfirm,
                   <NumberInput
                     value={repeatCount}
                     onChange={setRepeatCount}
+                    integer
                     min={1}
                     max={999}
                     inputWidth="w-16"

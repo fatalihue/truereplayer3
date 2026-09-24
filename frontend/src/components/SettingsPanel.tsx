@@ -592,7 +592,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
   // Strip trailing ".0" so whole-number CPS shows as "1" not "1.0", "5" not "5.0", etc.
   const trimCps = (cps: number) => cps.toFixed(1).replace(/\.0$/, '');
   // The rate the run DELIVERS, hold included — see clickerFormat.effectiveCps. In /s mode the
-  // field states it directly; in ms mode it rides in the label. targetCps alone said 10/s for
+  // field states it directly; in ms mode it rides in the label. 1000 / (delay + gap) said 10/s for
   // a 100 ms delay under a 200 ms hold, a run the engine paces at ~5/s.
   const liveCps = effectiveCps(localDelayMs, gapMs, holdMs);
   const displayValue = unit === 'cps' ? trimCps(liveCps) : String(localDelayMs);

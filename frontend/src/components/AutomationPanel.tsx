@@ -1014,6 +1014,9 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   <NumberInput
                     value={draft.intervalSeconds}
                     onChange={(v) => patch({ intervalSeconds: Math.max(5, v ?? 5) })}
+                    // Whole seconds: the backend reads an int, and a fraction used to be dropped there
+                    // in favour of the 300 s default — the saved automation fired every five minutes.
+                    integer
                     min={5}
                     max={86400}
                     suffix="s"
@@ -1300,11 +1303,11 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                       <div className="flex items-end gap-2">
                         <Field label="X">
                           <NumberInput value={draft.pixelX} onChange={(v) => patch({ pixelX: v ?? 0 })}
-                            min={-20000} max={20000} inputWidth="w-20" />
+                            integer min={-20000} max={20000} inputWidth="w-20" />
                         </Field>
                         <Field label="Y">
                           <NumberInput value={draft.pixelY} onChange={(v) => patch({ pixelY: v ?? 0 })}
-                            min={-20000} max={20000} inputWidth="w-20" />
+                            integer min={-20000} max={20000} inputWidth="w-20" />
                         </Field>
                         {/* Swatch + hex, same pairing as Wait Pixel Color / If Pixel in the Sheet:
                             a hex code alone is unreadable, and this is the field a user checks to
@@ -1341,7 +1344,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                       </div>
                       <Field label="Tolerance" hint={'Per channel. 0 = exact.'}>
                         <NumberInput value={draft.pixelTolerance} onChange={(v) => patch({ pixelTolerance: v ?? 10 })}
-                          min={0} max={255} inputWidth="w-20" />
+                          integer min={0} max={255} inputWidth="w-20" />
                       </Field>
                     </>
                   )}
@@ -1438,7 +1441,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                     return (
                       <Field label="Cooldown" hint={`0 = default (${cd} s).`}>
                         <NumberInput value={draft.cooldownSeconds} onChange={(v) => patch({ cooldownSeconds: v ?? 0 })}
-                          min={0} max={86400} suffix="s" inputWidth="w-24" />
+                          integer min={0} max={86400} suffix="s" inputWidth="w-24" />
                       </Field>
                     );
                   })()}

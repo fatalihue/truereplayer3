@@ -43,8 +43,14 @@ const ToastListContext = createContext<ToastItem[]>([]);
 
 let nextId = 0;
 
+// The colour of a message sent without a type — a guess from its words, so the negations are
+// read first: "Not saved: …" and "… renamed or deleted. Nothing was changed." contain a success
+// word and were painted green. A sender that knows should pass the type (most do).
+const NEGATED = /\b(not|nothing|no longer|couldn't|could not|can't|cannot|unable to|refused)\b/;
+
 function inferType(message: string): ToastType {
   const lower = message.toLowerCase();
+  if (NEGATED.test(lower)) return lower.includes('error') || lower.includes('fail') ? 'error' : 'info';
   if (lower.includes('error') || lower.includes('fail') || lower.includes('conflict') || lower.includes('invalid') || lower.includes('timed out'))
     return 'error';
   if (lower.includes('saved') || lower.includes('created') || lower.includes('updated') || lower.includes('success') || lower.includes('deleted') || lower.includes('removed') || lower.includes('imported') || lower.startsWith('set '))

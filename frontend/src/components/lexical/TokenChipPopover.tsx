@@ -27,6 +27,7 @@ import { tokenTip } from './tokenDescriptions';
 import { Callout } from '../common/Callout';
 import { tryParseInt32 } from '../../utils/int32';
 import { useAppState } from '../../state/AppStateContext';
+import { useDialogLayer } from '../common/dialogLayer';
 import { uiZoom, rectToLayout, viewportInLayout } from '../../utils/zoomSpace';
 
 // Tokens that accept a `:N` repeat count (e.g. {enter:5}) — the key tokens, taken from the list
@@ -150,6 +151,7 @@ export function TokenChipPopover({
   onClose,
 }: TokenChipPopoverProps) {
   const kind = getTokenKind(token);
+  const dialogLayer = useDialogLayer();
   const popRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   // Local state so the header can show the live token; mirror to onLiveChange
@@ -246,7 +248,7 @@ export function TokenChipPopover({
       // is open, its own capture-phase Esc owns the key — routers must stand down.
       data-token-popover=""
       // Part of the host dialog's Tab ring, though it is a portal outside the card (DialogShell).
-      data-dialog-layer=""
+      data-dialog-layer={dialogLayer}
       onMouseDown={(e) => e.stopPropagation()}
       // menu-surface + the gated pop-in (index.css) like every other floating surface — the inline
       // keyframes this used to inject ignored the animations toggle. The accent-tinted border

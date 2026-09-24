@@ -49,11 +49,6 @@ export function clickPeriodMs(delayMs: number, intervalMs: number): number {
   return base + Math.max(0, Number.isFinite(intervalMs) ? intervalMs : 0);
 }
 
-/** Clicks per second the engine will actually produce for this configuration. */
-export function targetCps(delayMs: number, intervalMs: number): number {
-  return 1000 / clickPeriodMs(delayMs, intervalMs);
-}
-
 /**
  * Ceiling for the current hold/interval: the fastest the engine can go once the delay is
  * pushed down to its own floor.
@@ -75,7 +70,7 @@ export function maxCps(holdMs: number, intervalMs: number): number {
 }
 
 /**
- * Inverse of targetCps: the delay to store for a requested clicks/second.
+ * Inverse of the asked rate (1000 / clickPeriodMs): the delay to store for a requested clicks/second.
  * `clamped` reports that the request was out of reach, so the caller can say so instead
  * of silently storing a number that means something else.
  */
@@ -129,13 +124,13 @@ export function formatEta(
 
 // ── Hold-aware rate ─────────────────────────────────────────────────────────────────
 //
-// targetCps above is the rate the delay and gap ASK for. The hold is spent inside the
+// 1000 / clickPeriodMs is the rate the delay and gap ASK for. The hold is spent inside the
 // period, so it changes nothing until it outlasts that period — then the scheduler's wait
 // goes non-positive, it resyncs (`nextTickMs = elapsed`), and the hold (plus one) becomes the
 // period. That is the `safeHold >= nominalPeriod` branch of the engine's own start banner, and
 // it is why a 100 ms delay with a 200 ms hold runs at ~5/s, not 10/s. Every readout of "what
 // rate will this produce" (the Rate row's ≈, the status bar, the dashboard recall) goes through
-// this, never through targetCps alone. Identity: effectiveCps == min(targetCps, maxCps).
+// this, never through the asked rate alone. Identity: effectiveCps == min(1000 / clickPeriodMs, maxCps).
 
 /** Clicks per second the run actually delivers, hold included. */
 export function effectiveCps(delayMs: number, intervalMs: number, holdMs: number): number {

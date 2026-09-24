@@ -162,6 +162,9 @@ export function NumberInput({
     if (text === '' || !Number.isFinite(n)) {
       if (onClear && value != null) {
         lastPropValueRef.current = null;
+        // The text too: the sync effect skips a value it was told about (the ref above), so an
+        // invalid "5-" stayed on screen over a field that was already cleared.
+        setText('');
         onClear();
       } else if (value != null) {
         commit(value);

@@ -23,6 +23,7 @@ export interface CollapseResult {
   count: number;          // number of press cycles (= rows.length / 2)
   delay: number;          // pre-action wait carried over from the first KeyDown
   repeatDelayMs: number;  // averaged gap between cycles, clamped 0..5000
+  comment: string;        // the rows' notes, distinct and in order, joined with " · "
 }
 
 /**
@@ -64,11 +65,17 @@ export function canCollapse(rows: (ActionItem | undefined)[]): CollapseResult | 
     ? Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length)
     : 30;
 
+  // The rows' notes travel with them. The folded row used to be written with comment '' — a note
+  // on any of the pairs ("menu shortcut") vanished without a word, recoverable only by an undo
+  // right away. Distinct notes, in row order, so a note repeated on every pair reads once.
+  const notes = [...new Set(defined.map(r => (r.comment ?? '').trim()).filter(Boolean))];
+
   return {
     key,
     count: defined.length / 2,
     delay: defined[0].delay,
     repeatDelayMs: Math.max(0, Math.min(5000, avgGap)),
+    comment: notes.join(' · '),
   };
 }
 
@@ -103,6 +110,8 @@ export function canExpand(row: ActionItem | undefined): boolean {
  *   • `isSkipped` propagates from the source so a skipped Keystroke × N
  *     expands to N skipped pairs (otherwise expand silently un-skipped the
  *     work, hiding the user's intent).
+ *   • The row's note goes on the first KeyDown — it used to be dropped, the
+ *     same loss Collapse had in the other direction.
  *
  * The returned rows are Partial<ActionItem> so the C# side fills in
  * RowNumber/etc on deserialise — the caller passes them straight into the
@@ -118,7 +127,7 @@ export function expandKeystroke(row: ActionItem): Partial<ActionItem>[] {
       actionType: 'KeyDown',
       key: row.key,
       delay: i === 0 ? row.delay : gap,
-      comment: '',
+      comment: i === 0 ? (row.comment ?? '') : '',
       isSkipped: skip,
     });
     out.push({

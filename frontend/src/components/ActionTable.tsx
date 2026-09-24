@@ -2135,7 +2135,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
       delay: result.delay,
       repeatCount: result.count,
       repeatDelayMs: result.repeatDelayMs,
-      comment: '',
+      comment: result.comment,
     }];
     send({ type: 'actions:replaceRange', payload: {
       startIndex: indices[0],

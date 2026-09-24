@@ -17,6 +17,7 @@ import {
   loadCustomPresets,
   saveCustomPresets,
   makeCustomPresetId,
+  nativeDialogColors,
   CURRENT_THEME_CONFIG_VERSION,
 } from '../themes';
 
@@ -109,16 +110,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       try {
         const webview = (window as any).chrome?.webview;
         if (webview) {
+          // Opaque #rrggbb, flattened the way the card paints — the C# side reads hex only, and an
+          // imported theme can spell a token any way isSafeCssColor admits.
           webview.postMessage({
             type: 'theme:colors',
-            payload: {
-              bgSurface: resolvedColors['bg-surface'],
-              bgCard: resolvedColors['bg-card'],
-              textPrimary: resolvedColors['text-primary'],
-              textSecondary: resolvedColors['text-secondary'],
-              accentSolid: resolvedColors['accent-solid'],
-              borderSubtle: resolvedColors['border-subtle'],
-            },
+            payload: nativeDialogColors(resolvedColors),
           });
         }
       } catch (err) {

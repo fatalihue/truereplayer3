@@ -13,7 +13,24 @@ export function rangeParts(timeOfDay: string | null | undefined): { from: string
   if (dash <= 0 || dash === s.length - 1) return null;
   const from = s.slice(0, dash).trim();
   const to = s.slice(dash + 1).trim();
-  return from && to && from !== to ? { from, to } : null;
+  if (!from || !to || from === to) return null;
+  // Compared as TIMES, as the backend compares them (TimeSpan equality): "09:00" and "9:00" are one
+  // instant, a zero-width window it treats as unset. Compared as spellings, the panel labelled a
+  // "09:00–9:00" window on an automation the daemon fires at any hour.
+  const a = exactClockMs(from);
+  if (a !== null && a === exactClockMs(to)) return null;
+  return { from, to };
+}
+
+/** Milliseconds since midnight WITH the seconds and their fraction — equality the way TimeSpan
+ *  sees it. clockSeconds drops the seconds on purpose (the window is read to the minute), so it
+ *  would call "09:00:30" and "09:00" equal where the backend does not. Same clock grammar. */
+function exactClockMs(hhmm: string): number | null {
+  const m = /^(\d{1,2}):(\d{1,2})(?::(\d{1,2})(\.\d+)?)?$/.exec(hhmm);
+  if (!m) return null;
+  const h = Number(m[1]), min = Number(m[2]), sec = m[3] != null ? Number(m[3]) : 0;
+  if (h >= 24 || min >= 60 || sec >= 60) return null;
+  return Math.round(((h * 60 + min) * 60 + sec + (m[4] ? Number(m[4]) : 0)) * 1000);
 }
 
 /** Seconds since midnight, or null when the half is not a clock. */

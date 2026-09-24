@@ -137,24 +137,44 @@ namespace TrueReplayer.Controllers
         // straight pass-through and a future dialog can start consuming them without a contract change.
         public void SetDialogThemeColors(string bgSurface, string bgCard, string textPrimary, string textSecondary, string? accentSolid, string? borderSubtle)
         {
-            _dialogBackground = ParseHexBrush(bgCard) ?? ParseHexBrush(bgSurface);
-            _dialogForeground = ParseHexBrush(textPrimary);
+            // Background and text as a PAIR, or neither. Parsed independently, a theme whose
+            // background failed and whose text did not left the WinUI default background under the
+            // theme's text — a dark theme's light text on a light default, or the reverse. The
+            // default pair is always readable; half of a theme is not.
+            if (DialogColorPair(bgSurface, bgCard, textPrimary) is { } pair)
+            {
+                _dialogBackground = new SolidColorBrush(ColorHelper.FromArgb(pair.Background.A, pair.Background.R, pair.Background.G, pair.Background.B));
+                _dialogForeground = new SolidColorBrush(ColorHelper.FromArgb(pair.Foreground.A, pair.Foreground.R, pair.Foreground.G, pair.Foreground.B));
+            }
+            else
+            {
+                _dialogBackground = null;
+                _dialogForeground = null;
+            }
         }
 
-        private static SolidColorBrush? ParseHexBrush(string? hex)
+        /// <summary>The dialog's background (card, else surface) and text, or null unless BOTH read.</summary>
+        internal static ((byte A, byte R, byte G, byte B) Background, (byte A, byte R, byte G, byte B) Foreground)? DialogColorPair(
+            string? bgSurface, string? bgCard, string? textPrimary)
+        {
+            var background = ParseCssHex(bgCard) ?? ParseCssHex(bgSurface);
+            var foreground = ParseCssHex(textPrimary);
+            return background is { } bg && foreground is { } fg ? (bg, fg) : null;
+        }
+
+        // CSS hex, the only dialect the frontend writes: #RGB, #RRGGBB or #RRGGBBAA with the alpha
+        // LAST. It was read as XAML's #AARRGGBB, which turned an opaque "#343746ff" into a 20%-alpha
+        // blue. The frontend now sends opaque #rrggbb (nativeDialogColors); the other lengths are
+        // read correctly anyway rather than trusted not to arrive.
+        internal static (byte A, byte R, byte G, byte B)? ParseCssHex(string? hex)
         {
             if (string.IsNullOrEmpty(hex) || hex[0] != '#') return null;
-            try
-            {
-                hex = hex.TrimStart('#');
-                byte a = 255;
-                byte r, g, b;
-                if (hex.Length == 8) { a = Convert.ToByte(hex[..2], 16); r = Convert.ToByte(hex[2..4], 16); g = Convert.ToByte(hex[4..6], 16); b = Convert.ToByte(hex[6..8], 16); }
-                else if (hex.Length == 6) { r = Convert.ToByte(hex[..2], 16); g = Convert.ToByte(hex[2..4], 16); b = Convert.ToByte(hex[4..6], 16); }
-                else return null;
-                return new SolidColorBrush(ColorHelper.FromArgb(a, r, g, b));
-            }
-            catch { return null; }
+            var digits = hex[1..];
+            if (digits.Length == 3) digits = string.Concat(digits.Select(ch => new string(ch, 2)));
+            if ((digits.Length != 6 && digits.Length != 8) || !digits.All(Uri.IsHexDigit)) return null;
+            byte r = Convert.ToByte(digits[..2], 16), g = Convert.ToByte(digits[2..4], 16), b = Convert.ToByte(digits[4..6], 16);
+            byte a = digits.Length == 8 ? Convert.ToByte(digits[6..8], 16) : (byte)255;
+            return (a, r, g, b);
         }
 
         public void ApplyDialogTheme(ContentDialog dialog, TextBlock? messageBlock = null)

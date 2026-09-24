@@ -1265,27 +1265,142 @@ export function hslToHex(h: number, s: number, l: number): string {
   return rgbToHex((rf + m) * 255, (gf + m) * 255, (bf + m) * 255);
 }
 
-/** Convert any color string to hex (handles rgba() and hex) */
-export function toHex(color: string): string {
-  if (color.startsWith('#')) {
-    // Normalize to #RRGGBB for <input type="color">: pass #RRGGBB through, expand #RGB
-    // shorthand, and drop the alpha from #RRGGBBAA. Malformed lengths fall through below.
-    if (color.length === 7) return color;
-    if (color.length === 4) return `#${color[1]}${color[1]}${color[2]}${color[2]}${color[3]}${color[3]}`;
-    if (color.length === 9) return color.slice(0, 7);
-  }
-  const m = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-  if (m) return rgbToHex(+m[1], +m[2], +m[3]);
-  return '#000000';
+type Rgba = { r: number; g: number; b: number; a: number };
+
+const PARSED_COLORS = new Map<string, Rgba | null>();
+let colorProbe: CanvasRenderingContext2D | null | undefined;
+
+/**
+ * Every colour string the app admits, read as sRGB channels (0–255) plus alpha (0–1). `null` when
+ * it cannot be read.
+ *
+ * isSafeCssColor admits whatever the engine calls a colour — hex in four lengths, rgb()/hsl() in
+ * both syntaxes, named colours, color-mix(), oklch() — while the readers below knew three hex
+ * lengths and comma-separated rgb(). Everything in between was read as BLACK: the contrast chip
+ * measured a colour nothing paints, a hue ink was solved from black, an imported #RRGGBBAA lost its
+ * alpha the first time the picker touched it. They all read through this now.
+ *
+ * Hex and the functional notations are read by hand — they are what presets, the editor and export
+ * write, and Node (tools/gen-boot-mirror.mjs imports this module) has no canvas. Anything else is
+ * painted into a 1×1 canvas and read back, which is the engine's own answer; without a document it
+ * is unreadable. Cached, because applyThemeConfig reads the same few dozen strings on every change.
+ */
+export function parseCssColor(c: unknown): Rgba | null {
+  if (typeof c !== 'string') return null;
+  const s = c.trim();
+  if (!s) return null;
+  const hit = PARSED_COLORS.get(s);
+  if (hit !== undefined) return hit;
+  const parsed = readColor(s);
+  if (PARSED_COLORS.size >= 512) PARSED_COLORS.clear();
+  PARSED_COLORS.set(s, parsed);
+  return parsed;
 }
 
-/** Rebuild rgba() string preserving alpha from original */
+function readColor(s: string): Rgba | null {
+  const hex = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(s);
+  if (hex) {
+    const h = hex[1].length <= 4 ? hex[1].split('').map(ch => ch + ch).join('') : hex[1];
+    return {
+      r: parseInt(h.slice(0, 2), 16), g: parseInt(h.slice(2, 4), 16), b: parseInt(h.slice(4, 6), 16),
+      // CSS puts the alpha LAST (#RRGGBBAA) — not first, as XAML's #AARRGGBB does.
+      a: h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1,
+    };
+  }
+  const fn = /^(rgba?|hsla?)\(([^()]*)\)$/i.exec(s);
+  // A notation the hand reader does not follow (`none`, a unit it does not know) still goes to
+  // the engine rather than being called unreadable.
+  return (fn && readFunctional(fn[1].toLowerCase(), fn[2].trim())) ?? probeColor(s);
+}
+
+/** rgb()/rgba()/hsl()/hsla() bodies, in the legacy comma syntax ("1, 2, 3, .5") and the modern
+ *  space one ("1 2 3 / 50%"); rgb/rgba and hsl/hsla are aliases in both. */
+function readFunctional(name: string, body: string): Rgba | null {
+  let parts: string[];
+  let alphaTok: string | undefined;
+  if (body.includes(',')) {
+    parts = body.split(',').map(t => t.trim());
+    if (parts.length === 4) alphaTok = parts.pop();
+  } else {
+    const halves = body.split('/').map(t => t.trim());
+    if (halves.length > 2) return null;
+    parts = halves[0].split(/\s+/);
+    alphaTok = halves[1];
+  }
+  if (parts.length !== 3) return null;
+  const num = (t: string | undefined, pctScale: number): number => {
+    if (t === undefined) return NaN;
+    const pct = t.endsWith('%');
+    const v = Number(pct ? t.slice(0, -1) : t);
+    return pct ? v * pctScale : v;
+  };
+  const a = alphaTok === undefined ? 1 : num(alphaTok, 0.01);
+  if (!Number.isFinite(a)) return null;
+  const alpha = Math.max(0, Math.min(1, a));
+  if (name.startsWith('rgb')) {
+    const [r, g, b] = parts.map(t => num(t, 2.55));
+    if (![r, g, b].every(Number.isFinite)) return null;
+    const cl = (v: number) => Math.max(0, Math.min(255, v));
+    return { r: cl(r), g: cl(g), b: cl(b), a: alpha };
+  }
+  const hue = /^(-?(?:\d+\.?\d*|\.\d+))(deg|turn|rad|grad)?$/i.exec(parts[0]);
+  const sat = num(parts[1], 1), light = num(parts[2], 1);
+  if (!hue || !Number.isFinite(sat) || !Number.isFinite(light)) return null;
+  const unit = (hue[2] ?? 'deg').toLowerCase();
+  const deg = Number(hue[1]) * (unit === 'turn' ? 360 : unit === 'rad' ? 180 / Math.PI : unit === 'grad' ? 0.9 : 1);
+  const clp = (v: number) => Math.max(0, Math.min(100, v));
+  const { r, g, b } = hexToRGB(hslToHex(((deg % 360) + 360) % 360, clp(sat), clp(light)));
+  return { r, g, b, a: alpha };
+}
+
+/** The engine's reading of a colour it accepts, via a 1×1 canvas. An invalid value leaves
+ *  fillStyle untouched, so it is assigned over two different sentinels: a value the engine took
+ *  serialises the same both times, a refused one reads back as each sentinel in turn. */
+function probeColor(s: string): Rgba | null {
+  if (typeof document === 'undefined') return null;
+  if (colorProbe === undefined) {
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 1;
+      colorProbe = canvas.getContext('2d', { willReadFrequently: true });
+    } catch {
+      colorProbe = null;
+    }
+  }
+  const ctx = colorProbe;
+  if (!ctx) return null;
+  ctx.fillStyle = '#000000';
+  ctx.fillStyle = s;
+  const first = ctx.fillStyle;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = s;
+  if (ctx.fillStyle !== first) return null;
+  ctx.clearRect(0, 0, 1, 1);
+  ctx.fillRect(0, 0, 1, 1);
+  const d = ctx.getImageData(0, 0, 1, 1).data;
+  return { r: d[0], g: d[1], b: d[2], a: d[3] / 255 };
+}
+
+/** #rrggbb of any colour parseCssColor reads, alpha dropped (an <input type="color"> has none).
+ *  '#000000' when it cannot be read — a caller that must tell black from unreadable asks
+ *  isParsableColor first. */
+export function toHex(color: string): string {
+  const c = parseCssColor(color);
+  return c ? rgbToHex(c.r, c.g, c.b) : '#000000';
+}
+
+/** `newHex` carrying the alpha of `originalColor`, in the original's spelling: #RRGGBBAA for a hex
+ *  original, rgba() for any other. An opaque original gives newHex back. It used to know only an
+ *  `rgba(` prefix, so the first picker touch on an imported translucent #3c3c3c40 border (or an
+ *  hsla()) saved it fully opaque. */
 export function withOriginalAlpha(newHex: string, originalColor: string): string {
-  if (!originalColor.startsWith('rgba')) return newHex;
-  const m = originalColor.match(/rgba?\([^,]+,[^,]+,[^,]+,\s*([^)]+)\)/);
-  const alpha = m ? m[1].trim() : '1';
-  const { r, g, b } = hexToRGB(newHex);
-  return `rgba(${r},${g},${b},${alpha})`;
+  const a = colorAlpha(originalColor);
+  if (a >= 1) return newHex;
+  const { r, g, b } = hexToRGB(toHex(newHex));
+  if (originalColor.trim().startsWith('#')) {
+    return rgbToHex(r, g, b) + Math.round(a * 255).toString(16).padStart(2, '0');
+  }
+  return `rgba(${r},${g},${b},${+a.toFixed(3)})`;
 }
 
 // ── WCAG contrast ──
@@ -1324,24 +1439,15 @@ export function pickInk(fillHex: string): string {
     : '#1c1c1c';
 }
 
-/** True for the colour strings toHex can actually parse. Anything else toHex silently maps to
- *  #000000, which would make a contrast derivation solve against black on a white surface. */
+/** True for the colour strings parseCssColor can read. Anything else toHex maps to #000000, which
+ *  would make a contrast derivation solve against black on a white surface. */
 function isParsableColor(c: unknown): c is string {
-  if (typeof c !== 'string') return false;
-  if (c.startsWith('#')) return c.length === 4 || c.length === 7 || c.length === 9;
-  return /rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+/.test(c);
+  return parseCssColor(c) !== null;
 }
 
-/** Alpha of a colour string, 1 when it carries none. Covers the two forms the palettes and the
- *  import validator actually admit: `rgba(r,g,b,a)` and `#RRGGBBAA` (plus `#RGBA`). */
+/** Alpha of a colour string, 1 when it carries none or cannot be read. */
 function colorAlpha(c: unknown): number {
-  if (typeof c !== 'string') return 1;
-  const s = c.trim();
-  const m = /^rgba?\([^)]*,\s*([\d.]+)\s*\)$/.exec(s);
-  if (m) { const a = parseFloat(m[1]); return Number.isFinite(a) ? Math.max(0, Math.min(1, a)) : 1; }
-  if (/^#[0-9a-fA-F]{8}$/.test(s)) return parseInt(s.slice(7, 9), 16) / 255;
-  if (/^#[0-9a-fA-F]{4}$/.test(s)) return parseInt(s[4] + s[4], 16) / 255;
-  return 1;
+  return parseCssColor(c)?.a ?? 1;
 }
 
 /**
@@ -1357,9 +1463,8 @@ function colorAlpha(c: unknown): number {
  * The single answer to a question three places used to answer three ways. applyThemeConfig picks
  * `color-scheme` from it, and the Theme Editor's Light/Dark filter used its own hand-rolled
  * perceived-brightness formula fed by a raw string slice — which returned NaN for `rgba()` and
- * therefore classified every alpha background as dark. Routing through toHex fixes rgba but not
- * `hsl()`, a named colour or `color-mix()`, all of which isSafeCssColor admits and toHex silently
- * maps to #000000, i.e. "dark" again. isParsableColor is the check that actually knows.
+ * therefore classified every alpha background as dark. parseCssColor reads `hsl()`, named colours
+ * and `color-mix()` too; what it cannot read (Node, garbage) is unknown, not "dark".
  */
 export function isLightColor(color: unknown): boolean | null {
   if (!isParsableColor(color)) return null;
@@ -1371,6 +1476,32 @@ export function flattenOver(color: string, bg: string): string {
   if (a >= 1) return toHex(color);
   const f = hexToRGB(toHex(color)), b = hexToRGB(toHex(bg));
   return rgbToHex(f.r * a + b.r * (1 - a), f.g * a + b.g * (1 - a), f.b * a + b.b * (1 - a));
+}
+
+/**
+ * The colours the native (WinUI) dialogs are themed from, each as OPAQUE #rrggbb — what the card
+ * actually looks like on screen: bg-card over bg-surface over bg-base, and the inks over that card.
+ *
+ * The C# side reads nothing but hex, and it used to receive the tokens raw: an imported theme's
+ * rgb()/hsl()/named background failed to parse while its hex text did not, so the dialog kept the
+ * WinUI default background under the theme's text — dark on dark; and an #RRGGBBAA was read in
+ * XAML's alpha-first order, a near-transparent wrong colour. '' for a token that cannot be read;
+ * the C# side then themes nothing rather than half a dialog.
+ */
+export function nativeDialogColors(c: ThemeColors): Record<'bgSurface' | 'bgCard' | 'textPrimary' | 'textSecondary' | 'accentSolid' | 'borderSubtle', string> {
+  const opaque = (color: string | undefined, under: string) => (isParsableColor(color) ? flattenOver(color, under) : '');
+  const base = opaque(c['bg-base'], '#000000') || '#000000';
+  const surface = opaque(c['bg-surface'], base);
+  const card = opaque(c['bg-card'], surface || base);
+  const under = card || surface || base;
+  return {
+    bgSurface: surface,
+    bgCard: card,
+    textPrimary: opaque(c['text-primary'], under),
+    textSecondary: opaque(c['text-secondary'], under),
+    accentSolid: opaque(c['accent-solid'], under),
+    borderSubtle: opaque(c['border-subtle'], under),
+  };
 }
 
 /**
@@ -1427,7 +1558,9 @@ export function deriveHueInk(
 ): string {
   const usable = surfaces.filter(isParsableColor).map(toHex);
   // No surface we can reason about: keep the static index.css recipe rather than inventing one.
-  if (usable.length === 0 || !isParsableColor(textPrimary)) {
+  // The hue is checked as well: an unreadable one went on to toHex, which reads it as black, and
+  // the ink was solved from black instead of the user's colour.
+  if (usable.length === 0 || !isParsableColor(textPrimary) || !isParsableColor(hueHex)) {
     // The hue passes through as authored rather than being swapped for amber when it is not a
     // hex we can parse: color-mix() accepts named colours and hsl() perfectly well, and painting
     // a recording indicator amber because its colour was spelled "red" would be a worse answer
@@ -1945,11 +2078,15 @@ export function measurePaintedContrast(
   // all 37 presets were wrong the same way, by up to 12.8x. That is the precise failure this
   // function exists to prevent, so the fix belongs here rather than at the call sites.
   const worstAgainst = (ink: string, backdrops: string[]) =>
-    backdrops.reduce((w, b) => Math.min(w, contrastRatio(flattenOver(ink, b), b)), Infinity);
+    backdrops.filter(isParsableColor).reduce((w, b) => Math.min(w, contrastRatio(flattenOver(ink, b), b)), Infinity);
 
   if (kind === 'theme') {
     // A background has no ink of its own — the text fields already measure against it.
     if (key.startsWith('bg-')) return null;
+    // A colour, or all of its backdrops, that cannot be read gets no chip: measured anyway, it
+    // went through toHex as #000000 and the chip reported a colour nothing paints.
+    const own = colors[key as keyof ThemeColors];
+    if (!isParsableColor(own) || !surfaces.some(isParsableColor)) return null;
     if (key.startsWith('text-')) {
       // text-disabled is NOT exempt here, and the WCAG exemption was the wrong reading: that
       // exemption covers controls in the [disabled] state, while this token is the RESTING colour

@@ -15,9 +15,7 @@ interface KbdTagProps {
  * dialogs' hero key-caps (KeyCaps) so both render literal-plus combos right.
  */
 export function splitCombo(combo: string): string[] {
-  return combo === '+'
-    ? ['+']
-    : combo.split('+').map((p, i, arr) => (p === '' && i === arr.length - 1 ? '+' : p)).filter(p => p !== '');
+  return combo.split('+').map((p, i, arr) => (p === '' && i === arr.length - 1 ? '+' : p)).filter(p => p !== '');
 }
 
 // The keycap spelling (PgDn, Esc, Del...) lives in utils/keyNames so the grid, the sheet and the
