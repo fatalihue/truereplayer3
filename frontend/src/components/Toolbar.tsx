@@ -19,10 +19,7 @@ import { useFlyoutFlip } from '../hooks/useFlyoutFlip';
 import { iconButtonClass } from './common/IconButton';
 import { useDismissOnOutside } from '../hooks/useDismissOnOutside';
 import { snapIndicesToBlocks, loopDepthAt } from '../utils/conditionalBlocks';
-
-// The insert dialogs' editor claim is re-stamped on the Sheet's and the grid's heartbeat
-// (EDITOR_CLAIM_RENEW_MS / ROW_DIALOG_CLAIM_RENEW_MS): well inside AutomationGuard's 10-minute TTL.
-const INSERT_DIALOG_CLAIM_RENEW_MS = 60_000;
+import { useEditorClaim } from '../hooks/useEditorClaim';
 
 export interface ColumnVisibility {
   action: boolean;
@@ -427,19 +424,8 @@ export function Toolbar(_props: ToolbarProps) {
     const first = sel.size > 0 ? Math.min(...sel) : null;
     insertTargetRef.current = { profile, beforeId: first !== null ? (list[first]?.id ?? null) : null };
   }, [insertDialogOpen, selectionRef]);
-  useEffect(() => {
-    send({ type: 'editor:pendingEdits', payload: { pending: insertDialogOpen, owner: 'insert-dialog' } });
-  }, [insertDialogOpen, send]);
-  useEffect(() => () => { send({ type: 'editor:pendingEdits', payload: { pending: false, owner: 'insert-dialog' } }); }, [send]);
-  // Renewed on the Sheet's heartbeat and for its reason: the guard expires a claim a fixed TTL
-  // after it was STAMPED, and the effect above only fires on the transition.
-  useEffect(() => {
-    if (!insertDialogOpen) return;
-    const id = setInterval(() => {
-      send({ type: 'editor:pendingEdits', payload: { pending: true, owner: 'insert-dialog' } });
-    }, INSERT_DIALOG_CLAIM_RENEW_MS);
-    return () => clearInterval(id);
-  }, [insertDialogOpen, send]);
+  // Transition, unmount and the Sheet's heartbeat, in one place (useEditorClaim).
+  useEditorClaim('insert-dialog', insertDialogOpen);
   // null = refused (the toast says why, the dialog stays open); index undefined = the end.
   const resolveInsertTarget = (): { index: number | undefined } | null => {
     const t = insertTargetRef.current;
@@ -694,11 +680,15 @@ export function Toolbar(_props: ToolbarProps) {
             badge, destructive Trash, tooltip pass) all stay; only the
             grouping containers were rolled back. */}
         <div ref={toolsRowRef} className="flex items-center gap-0.5 shrink-0" onMouseDown={(e) => e.preventDefault()}>
-          {/* Undo / Redo */}
+          {/* Undo / Redo — through the SAME funnel as Ctrl+Z / Ctrl+Y (the cmd:undo / cmd:redo
+              listeners above), so the two doors carry one gate: the run lockout, the modal stand-down
+              and the Sheet's list guard. The buttons sent straight to the bridge and skipped all
+              three. The Sheet's scrim covers this row today, so the guard is the rule holding by
+              construction rather than a path a click can take. */}
           <button
             tabIndex={-1}
             disabled={!buttonStates.canUndo || insertsDisabled}
-            onClick={() => send({ type: 'actions:undo', payload: {} })}
+            onClick={() => window.dispatchEvent(new CustomEvent('cmd:undo'))}
             className={iconButtonClass('md')}
             data-tip={clickerTip('Undo (Ctrl+Z)', 'Desfazer (Ctrl+Z)')}
           >
@@ -707,7 +697,7 @@ export function Toolbar(_props: ToolbarProps) {
           <button
             tabIndex={-1}
             disabled={!buttonStates.canRedo || insertsDisabled}
-            onClick={() => send({ type: 'actions:redo', payload: {} })}
+            onClick={() => window.dispatchEvent(new CustomEvent('cmd:redo'))}
             className={iconButtonClass('md')}
             data-tip={clickerTip('Redo (Ctrl+Y)', 'Refazer (Ctrl+Y)')}
           >
@@ -1252,7 +1242,10 @@ export function Toolbar(_props: ToolbarProps) {
               Once all three have gone into the menu it divides nothing — the More button is
               itself the boundary by then — so it steps aside and gives the row back its 9 px,
               which at the narrowest layout is the difference between fitting and not. */}
-          {inRow('activateWindow') && <div className="w-px h-4 bg-border-subtle mx-1" />}
+          {/* Keyed on Run Profile, the LAST of the three to fold (OVERFLOW_ORDER): keyed on Activate
+              Window it vanished one step early, at the width where Activate Window had folded and
+              Run Profile had not, leaving Run Profile against the Browser menu with no rule. */}
+          {inRow('runProfile') && <div className="w-px h-4 bg-border-subtle mx-1" />}
 
           {/* Run Profile — sub-macro call (picker dialog). Sits next to Browser
               because both delegate work elsewhere (a profile / a browser tab). */}
@@ -1359,6 +1352,9 @@ export function Toolbar(_props: ToolbarProps) {
                   </button>
                   <button
                     onClick={() => {
+                      // A reset is one of the list changes the Sheet's guard is asked about
+                      // (SheetGuardContext) — the same question Ctrl+V and Undo put.
+                      if (!sheetGuard.allowListChange()) return;
                       send({ type: 'actions:clear', payload: {} });
                       setShowClearConfirm(false);
                     }}
@@ -1459,6 +1455,7 @@ export function Toolbar(_props: ToolbarProps) {
                         </button>
                         <button
                           onClick={() => {
+                            if (!sheetGuard.allowListChange()) return;
                             send({ type: 'actions:clear', payload: {} });
                             setClearArmed(false);
                             setShowMoreMenu(false);

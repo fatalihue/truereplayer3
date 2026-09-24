@@ -40,9 +40,17 @@ namespace TrueReplayer.Services
                 LastReason = reason;
                 return reason;
             }
-            if (EditorHoldsUnsavedWork())
+            // Only the editors a profile swap can hurt. The Automations panel edits a trigger by
+            // profile NAME and re-seeds only when it holds nothing of the user's, so a fire that
+            // swaps the active profile leaves its draft alone — holding every automation off while
+            // someone tunes one of them would lose schedule fires for nothing. Its claim is for the
+            // two gates that END the process (the close guard and the update gate).
+            string? editor = null;
+            foreach (var held in HeldEditors())
+                if (!FireSafeEditors.Contains(held)) { editor = held; break; }
+            if (editor != null)
             {
-                const string reason = "skipped (editing a row)";
+                var reason = $"skipped ({EditorActivity(editor)})";
                 LastReason = reason;
                 return reason;
             }
@@ -102,13 +110,20 @@ namespace TrueReplayer.Services
         /// editor is a moment of contention like an open dialog, so it reports as SkippedModal:
         /// retriable, with a reason the panel can show.
         ///
-        /// One stamp PER OWNER. There are three owners — the SheetPanel; the ActionTable, whose
+        /// One stamp PER OWNER. There are five owners — the SheetPanel; the ActionTable, whose
         /// row dialogs (SendText, Keystroke, Pause, RunProfile) and one-field inline cell editor all
-        /// ride its single 'row-dialog' claim; and the Toolbar's six insert dialogs, under
-        /// 'insert-dialog' — and this used to be a single stamp:
+        /// ride its single 'row-dialog' claim; the Toolbar's six insert dialogs, under
+        /// 'insert-dialog'; the Data table ('data-panel') and the Automations panel
+        /// ('automation-panel') — and this used to be a single stamp:
         /// whichever wrote last won, so closing a row dialog wrote "not busy" over a Sheet still
         /// holding unsaved fields, and until the Sheet's next minute-long renewal an automation fire
         /// could swap the profile out from under it.
+        ///
+        /// The last two joined for the gates that END the process. The Data table and the
+        /// Automations panel keep their work in React state until their own Save, exactly like the
+        /// Sheet, and neither the window's close guard nor the silent update after a run could see
+        /// it: closing the app or restarting it for an update threw a half-edited table away
+        /// without a word.
         /// </summary>
         private static readonly Dictionary<string, long> _editorClaims = new(StringComparer.Ordinal);
         private static readonly object _editorLock = new();
@@ -126,20 +141,26 @@ namespace TrueReplayer.Services
         private static readonly TimeSpan EditorClaimTtl = TimeSpan.FromMinutes(10);
 
         /// <summary>
-        /// A row editor (Sheet or row dialog) holds typed fields not yet sent. Also read by the
-        /// update gate, which exits the process just as surely as an automation writes over them.
+        /// An editor holds typed work not yet sent. Also read by the update gate, which exits the
+        /// process just as surely as an automation writes over it.
         /// </summary>
-        internal static bool EditorHoldsUnsavedWork()
+        internal static bool EditorHoldsUnsavedWork() => HeldEditors().Count > 0;
+
+        /// <summary>
+        /// The owners whose claims are live now — for the close guard, which has to NAME what the
+        /// user is about to lose, and for BlockedReason, which skips the owners a fire cannot hurt.
+        /// </summary>
+        internal static IReadOnlyList<string> HeldEditors()
         {
             List<string>? expired = null;
-            bool held = false;
+            List<string>? held = null;
             lock (_editorLock)
             {
-                if (_editorClaims.Count == 0) return false;
+                if (_editorClaims.Count == 0) return Array.Empty<string>();
                 long now = DateTime.UtcNow.Ticks;
                 foreach (var (owner, since) in _editorClaims)
                 {
-                    if (now - since < EditorClaimTtl.Ticks) held = true;
+                    if (now - since < EditorClaimTtl.Ticks) (held ??= new()).Add(owner);
                     else (expired ??= new()).Add(owner);
                 }
                 // Cleared rather than just skipped, so the warning is written once instead of on
@@ -148,9 +169,48 @@ namespace TrueReplayer.Services
             }
             if (expired != null)
                 DiagnosticLog.Warn(
-                    $"Row editor's unsaved-work claim ({string.Join(", ", expired)}) expired after {EditorClaimTtl.TotalMinutes:0} min without release — " +
+                    $"Editor's unsaved-work claim ({string.Join(", ", expired)}) expired after {EditorClaimTtl.TotalMinutes:0} min without release — " +
                     "automations are no longer held by it. The editor was most likely torn down by a UI reload.");
-            return held;
+            return (IReadOnlyList<string>?)held ?? Array.Empty<string>();
+        }
+
+        /// <summary>Owners whose work an autonomous fire cannot reach — see BlockedReason.</summary>
+        private static readonly HashSet<string> FireSafeEditors = new(StringComparer.Ordinal) { "automation-panel" };
+
+        /// <summary>What the skip line says the user is doing.</summary>
+        private static string EditorActivity(string owner) => owner switch
+        {
+            "data-panel" => "editing the data table",
+            "automation-panel" => "editing an automation",
+            _ => "editing a row",
+        };
+
+        /// <summary>
+        /// The close guard's sentence: which editors hold changes that never reached the profile.
+        /// Several owners read as a list, with the verb agreeing.
+        /// </summary>
+        internal static string DescribeUnappliedEdits(IReadOnlyList<string> owners)
+        {
+            var names = new List<string>();
+            foreach (var owner in owners)
+            {
+                string name = owner switch
+                {
+                    "sheet" => "the action editor",
+                    "row-dialog" => "a row editor",
+                    "insert-dialog" => "an insert dialog",
+                    "data-panel" => "the data table",
+                    "automation-panel" => "the Automations panel",
+                    _ => "an open editor",
+                };
+                if (!names.Contains(name)) names.Add(name);
+            }
+            if (names.Count == 0) names.Add("an open editor");
+            var text = names.Count == 1
+                ? names[0]
+                : string.Join(", ", names.GetRange(0, names.Count - 1)) + " and " + names[^1];
+            return char.ToUpperInvariant(text[0]) + text[1..]
+                + (names.Count == 1 ? " has" : " have") + " changes that haven't been applied.";
         }
 
         /// <summary>True while any editor holds a claim — for the bridge's transition log.</summary>

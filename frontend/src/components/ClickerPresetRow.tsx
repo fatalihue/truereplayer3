@@ -31,7 +31,10 @@ function sameSetup(p: ClickerPreset, s: SettingsState): boolean {
   return PRESET_KEYS.every((k) => JSON.stringify(p[k] ?? null) === JSON.stringify(s[k] ?? null));
 }
 
-export function ClickerPresetRow({ settings, width, lastMatched }: {
+/** A name being typed into "Save current as…", kept across this row's remounts (see pendingName). */
+export interface PendingPresetName { name: string; openedWith: string }
+
+export function ClickerPresetRow({ settings, width, lastMatched, pendingName }: {
   settings: SettingsState;
   width: string;
   /** Owned by SettingsPanel, like seedUndo, and for the same reason: this row is remounted by a tab
@@ -39,13 +42,19 @@ export function ClickerPresetRow({ settings, width, lastMatched }: {
    *  back to the profile tab. A ref declared HERE started empty again after each of those, and the
    *  prefill this exists for was silently back to blank. */
   lastMatched: React.MutableRefObject<string | null>;
+  /** Same owner, same reason: a typed name survives a stray click (onBlur below keeps it), but not
+   *  a remount — the tab switch, the collapse, and ScrLk to Macro and back threw it away without a
+   *  word. The row comes back naming, with the text, and without stealing the focus. */
+  pendingName: React.MutableRefObject<PendingPresetName | null>;
 }) {
   const { send } = useBridge();
   const presets = settings.cursorClickPresets ?? [];
   const active = presets.find((p) => sameSetup(p, settings)) ?? null;
   const [open, setOpen] = useState(false);
-  const [naming, setNaming] = useState(false);
-  const [name, setName] = useState('');
+  // Read once, by the initializers; the mount effect below marks the slot consumed.
+  const restored = pendingName.current;
+  const [naming, setNaming] = useState(() => restored !== null);
+  const [name, setName] = useState(() => restored?.name ?? '');
   const wrapRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -90,11 +99,32 @@ export function ClickerPresetRow({ settings, width, lastMatched }: {
   const remembered = lastMatched.current;
   const prefill = remembered && presets.some((p) => p.name === remembered) ? remembered : '';
   // What the field opened with, so onBlur can tell "untouched prefill" from "the user typed this".
-  const openedWithRef = useRef('');
+  const openedWithRef = useRef(restored?.openedWith ?? '');
 
   // Select, not just focus: the prefilled name is a suggestion to overwrite, so typing replaces it
-  // and the user never has to clear the field to save under a different name.
-  useEffect(() => { if (naming) { inputRef.current?.focus(); inputRef.current?.select(); } }, [naming]);
+  // and the user never has to clear the field to save under a different name. Only on the OPENING
+  // (naming false → true): a RESTORED field comes back after a remount the user did not aim at this
+  // row, so it waits for a click. A transition, not a one-shot skip flag — the dev StrictMode runs
+  // the effect twice on mount, and a flag spent on the first run let the second steal the focus.
+  const namingWasRef = useRef(naming);
+  useEffect(() => {
+    const was = namingWasRef.current;
+    namingWasRef.current = naming;
+    if (naming && !was) { inputRef.current?.focus(); inputRef.current?.select(); }
+  }, [naming]);
+
+  // Hand a typed name to SettingsPanel on the way out; take the slot back on the way in. Only a
+  // name the user WROTE is kept — empty or still the prefill is the "did not write" case onBlur
+  // already cancels.
+  const pendingRef = useRef<PendingPresetName | null>(null);
+  pendingRef.current = naming && name.trim() !== '' && name.trim() !== openedWithRef.current
+    ? { name, openedWith: openedWithRef.current }
+    : null;
+  useEffect(() => {
+    const pending = pendingRef;
+    pendingName.current = null;
+    return () => { pendingName.current = pending.current; };
+  }, [pendingName]);
 
   const commitName = () => {
     const trimmed = name.trim();

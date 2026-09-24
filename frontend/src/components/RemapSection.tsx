@@ -133,24 +133,47 @@ function parseRemapImport(text: string): ImportResult {
  * shared low-level hotkey:capture channel — combos are rejected (a remap source/target is
  * ONE key) — and offers the mouse-side targets from a menu.
  */
-export function RemapSection() {
+/** Which rule the form edits: its ruleKey, and WHICH of the rules sharing that key (see editKey). */
+type RemapEditKey = { key: string; nth: number };
+
+/** The add/edit form, kept by SettingsPanel across this section's remounts (see `draft`). */
+export interface RemapDraft {
+  editKey: RemapEditKey | null;
+  fromKey: string;
+  toKey: string;
+  disableMode: boolean;
+  processKey: string;
+}
+
+export function RemapSection({ draft }: {
+  /** Owned by SettingsPanel, like the Clicker's seedUndo and lastPresetName, and for the same
+   *  reason: this section is remounted by a tab switch, by the collapse and by narrowing the window
+   *  below the two-column breakpoint (decision-nao-re-sugerir-2-39-0). A form with a key captured
+   *  and not yet saved vanished through any of them, without a word; now it comes back. */
+  draft?: React.MutableRefObject<RemapDraft | null>;
+}) {
   const tt = useTt();
   const { send, subscribe } = useBridge();
   const { settings, profiles } = useAppState();
   const remaps = settings.remaps;
 
-  const [addOpen, setAddOpen] = useState(false);
+  // Read once, by the initializers below; the mount effect further down marks it consumed.
+  const restored = draft?.current ?? null;
+  const [addOpen, setAddOpen] = useState(() => restored !== null);
   // IDENTITY of the row being edited, not its index: the list is re-sent by the backend on every
   // save, and a plain index went stale the moment a row ABOVE the edited one was removed — the
   // highlight ring jumped to the next rule, the duplicate check compared the edited row against
   // itself ("That key is already remapped."), and Save overwrote the wrong entry. ruleKey is
   // FROM + scope, which is what makes a rule unique; captured when editing starts, so changing
   // FROM in the form does not move the target. null = adding a new one.
-  const [editKey, setEditKey] = useState<string | null>(null);
-  const [fromKey, setFromKey] = useState('');
-  const [toKey, setToKey] = useState('');
-  const [disableMode, setDisableMode] = useState(false);
-  const [processKey, setProcessKey] = useState('');
+  // Plus WHICH of the rules sharing that ruleKey: a hand-edited remaps.json can hold two that
+  // differ only in case ("CapsLock" / "capslock") — the list keeps them apart with raw keys, but
+  // ruleKey folds case, so editing the second resolved to the first and Save overwrote it.
+  const [editKey, setEditKey] = useState<RemapEditKey | null>(() => restored?.editKey ?? null);
+  const [fromKey, setFromKey] = useState(() => restored?.fromKey ?? '');
+  const [toKey, setToKey] = useState(() => restored?.toKey ?? '');
+  const [disableMode, setDisableMode] = useState(() => restored?.disableMode ?? false);
+  const [processKey, setProcessKey] = useState(() => restored?.processKey ?? '');
   // 'from' | 'to' | null — which chip is armed for capture.
   const [capturing, setCapturing] = useState<'from' | 'to' | null>(null);
   const [captureError, setCaptureError] = useState<string | null>(null);
@@ -207,6 +230,18 @@ export function RemapSection() {
   // Leaving the section (panel collapse/unmount) must release the global capture.
   useEffect(() => () => stopCapture(), []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Hand the form to SettingsPanel on the way out, and take the slot back on the way in (the
+  // initializers above already read it). Only a form with something in it is worth keeping.
+  const formRef = useRef<RemapDraft | null>(null);
+  formRef.current = addOpen && (editKey !== null || fromKey !== '' || toKey !== '' || processKey.trim() !== '')
+    ? { editKey, fromKey, toKey, disableMode, processKey }
+    : null;
+  useEffect(() => {
+    const form = formRef;
+    if (draft) draft.current = null;
+    return () => { if (draft) draft.current = form.current; };
+  }, [draft]);
+
   // The mouse menu closes on an outside click or Esc — capture phase so the Esc stops here
   // and does not also reach whatever hosts the panel.
   useEffect(() => {
@@ -256,16 +291,25 @@ export function RemapSection() {
     setProcessKey(r.process ?? '');
     setCaptureError(null);
     setMouseMenuOpen(false);
-    setEditKey(ruleKey(r));
+    const key = ruleKey(r);
+    setEditKey({ key, nth: remaps.entries.slice(0, i).filter((e) => ruleKey(e) === key).length });
     setAddOpen(true);
   };
 
-  // Derived per render: where the edited rule sits NOW. -1 → the rule is gone (removed by the
-  // row's own ✕, or by an edit elsewhere), and everything below treats that as "not editing", so
-  // the form can never write to a row it did not open.
+  // Derived per render: where the edited rule sits NOW — the nth rule with its ruleKey. null → the
+  // rule is gone (removed by the row's own ✕, or by an edit elsewhere), and everything below treats
+  // that as "not editing", so the form can never write to a row it did not open.
   const editIndex = editKey === null
     ? null
-    : (() => { const i = remaps.entries.findIndex(e => ruleKey(e) === editKey); return i === -1 ? null : i; })();
+    : (() => {
+      let seen = 0;
+      for (let i = 0; i < remaps.entries.length; i++) {
+        if (ruleKey(remaps.entries[i]) !== editKey.key) continue;
+        if (seen === editKey.nth) return i;
+        seen++;
+      }
+      return null;
+    })();
 
   // The same FROM in the same scope is a duplicate; the same FROM in another app is a second
   // rule (the hook picks the one whose app is in front). The row being edited is not its own

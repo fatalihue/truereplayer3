@@ -13,7 +13,9 @@
 export interface PassFacts {
   /** The data table drives the run (loop over data ON with rows present). */
   perRow: boolean;
-  /** The active profile's trigger forces an unbounded run (whilePressed / toggle). */
+  /** The LIVE run is unbounded — the engine's loop total is 0. Only a profile's own Toggle /
+   *  While-pressed hotkey starts one; the Replay button and the global Replay hotkey run the
+   *  count, so the trigger mode alone must never set this. */
   forcedInfinite: boolean;
   /** The profile's own repeat switch. */
   loopEnabled: boolean;

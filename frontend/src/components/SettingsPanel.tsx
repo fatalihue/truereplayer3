@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useContext, createContext } from 'react';
 import { Timer, TimerReset, Mic, Zap, Monitor, ChevronDown, ChevronRight, ChevronsLeft, ChevronsRight, MousePointerClick, Palette, Gamepad2, AlertTriangle, Power, BellRing, X, ArrowLeftRight, Crosshair, Hourglass, SlidersHorizontal } from 'lucide-react';
 import { APP_VERSION } from '../appVersion';
-import { RemapSection } from './RemapSection';
+import { RemapSection, type RemapDraft } from './RemapSection';
 import { useLanguage, useTt } from '../state/LanguageContext';
 // `Search` import removed with the disabled Settings filter — re-add it to revive the filter.
 import { useAppState } from '../state/AppStateContext';
@@ -12,7 +12,7 @@ import { Toggle } from './common/Toggle';
 import { SegmentedControl } from './common/SegmentedControl';
 import { iconButtonClass } from './common/IconButton';
 import { KbdTag } from './common/KbdTag';
-import { ClickerPresetRow } from './ClickerPresetRow';
+import { ClickerPresetRow, type PendingPresetName } from './ClickerPresetRow';
 import type { SettingsState } from '../bridge/messageTypes';
 import { chipOn, chipOff, chipDotOn, chipDotOff } from './common/chipStyles';
 import { formatMs } from '../utils/displayUtils';
@@ -96,11 +96,15 @@ function Section({ title, color, action, children }: {
 // FIELD_W as the plain value fields so the column stays aligned. The dot toggles enable;
 // editing the number commits on blur/Enter (Enter also runs onEnterActivate — e.g. flip the
 // setting on when the user types a value into a disabled chip).
-function EnableChip({ value, isOn, unit, format, min, max, width, offDisplay, onCommitValue, onToggle, onEnterActivate }: {
+function EnableChip({ value, isOn, unit, format, min, max, width, offDisplay, owner, onCommitValue, onToggle, onEnterActivate }: {
   value: string;
   isOn: boolean;
   unit?: string;
   format?: boolean;
+  // Whose value this is, when that can change UNDER the focus — the loaded profile, for Loops and
+  // Interval. A profile hotkey pressed with the cursor in the field swapped the profile, and the
+  // blur then wrote the OLD profile's number into the new one and marked it edited.
+  owner?: string;
   // Text to render INSTEAD of the number while the chip is off and unfocused. Used by the
   // clicker Loops row, where "off" means unbounded — showing the stored number there
   // announces a limit that is not going to be applied. Focusing restores the real value.
@@ -123,7 +127,24 @@ function EnableChip({ value, isOn, unit, format, min, max, width, offDisplay, on
   const { language } = useLanguage();
   const [local, setLocal] = useState(value);
   const [isFocused, setIsFocused] = useState(false);
-  useEffect(() => { if (!isFocused) setLocal(value); }, [value, isFocused]);
+  // What the field held when it took the focus, and whose it was. commit() runs on EVERY blur, and
+  // a focus-and-leave re-sent the stored value as if typed: on Loops that marked the profile edited
+  // (the unsaved dot, then the switch and close prompts over a change nobody made), on Rate-style
+  // projections it rewrote the stored number from a rounded display, and on the Clicker chips it
+  // wiped the seed memory a toggle-off restores from. Only a value the user changed is committed.
+  const focusValueRef = useRef<string | null>(null);
+  const focusOwnerRef = useRef(owner);
+  useEffect(() => {
+    if (!isFocused) { setLocal(value); return; }
+    // Focused. A new owner under the focus is a different field: show its value and re-anchor, so
+    // the blur neither writes the old number into it nor calls the untouched value an edit. The
+    // same while the user has not typed: the field follows the value it is showing.
+    if (focusOwnerRef.current !== owner || local === focusValueRef.current) {
+      focusOwnerRef.current = owner;
+      focusValueRef.current = value;
+      setLocal(value);
+    }
+  }, [value, isFocused, owner, local]);
   const display = !isFocused && offDisplay != null && !isOn
     ? offDisplay
     : !isFocused && format && local !== '' && Number.isFinite(Number(local))
@@ -140,7 +161,10 @@ function EnableChip({ value, isOn, unit, format, min, max, width, offDisplay, on
       const n = parseInt(local, 10);
       if (!isNaN(n) && n > max) { v = String(max); setLocal(v); }
     }
-    onCommitValue(v);
+    // A blur landing between an owner switch and the re-anchor above belongs to NO field: dropped.
+    if (v !== focusValueRef.current && focusOwnerRef.current === owner) onCommitValue(v);
+    // An Enter commit is followed by the blur it triggers; that blur is the same edit, not another.
+    focusValueRef.current = v;
     return v;
   };
   return (
@@ -168,7 +192,7 @@ function EnableChip({ value, isOn, unit, format, min, max, width, offDisplay, on
         // then degraded silently in the engine (a negative Loops became one click, a negative
         // Jitter switched jitter off). None of the eight call sites takes a negative value.
         onChange={(e) => setLocal(e.target.value.replace(/[^\d]/g, ''))}
-        onFocus={() => setIsFocused(true)}
+        onFocus={() => { focusValueRef.current = local; focusOwnerRef.current = owner; setIsFocused(true); }}
         onBlur={() => { setIsFocused(false); commit(); }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') { const v = commit(); onEnterActivate?.(v); (e.target as HTMLInputElement).blur(); }
@@ -378,6 +402,15 @@ function ComboInput({ value, onCommit, options, width = FIELD_W, editable = true
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const focused = useRef(false);
+  // The text when the field took the focus. The blur commits only a CHANGE: the Rate field shows a
+  // rounded projection (5 for 4.975/s), and a focus-and-leave committed that rounding back as a
+  // new delay — the stored rate moved on a read, and the preset chip turned "Custom".
+  const focusTextRef = useRef<string | null>(null);
+  const commitIfEdited = () => {
+    if (text === focusTextRef.current) return;
+    focusTextRef.current = text;
+    onCommit(text);
+  };
 
   // Sync the external value in when not actively editing (matches SettingInput).
   useEffect(() => { if (!focused.current) setText(value); }, [value]);
@@ -406,14 +439,15 @@ function ComboInput({ value, onCommit, options, width = FIELD_W, editable = true
         value={shownValue}
         readOnly={!editable}
         onChange={editable ? (e) => setText(e.target.value) : undefined}
-        onFocus={editable ? () => { focused.current = true; } : undefined}
+        onFocus={editable ? () => { focused.current = true; focusTextRef.current = text; } : undefined}
         // After committing, snap the visible text back to the canonical `value`. When the commit
         // is REJECTED (empty / non-numeric / <=0 — commitRate returns without changing anything),
         // the parent doesn't change `value` and the keyed remount never fires, so without this the
         // field would keep showing the bad text. When the commit is ACCEPTED the parent remounts
-        // via its key anyway, making this a harmless no-op. (Enter calls blur(), so it's covered too.)
-        onBlur={editable ? () => { focused.current = false; onCommit(text); setText(value); } : undefined}
-        onKeyDown={editable ? (e) => { if (e.key === 'Enter') { onCommit(text); (e.target as HTMLInputElement).blur(); } } : undefined}
+        // via its key anyway, making this a harmless no-op. (Enter calls blur(), so it's covered too
+        // — and commitIfEdited makes the Enter and the blur it triggers ONE commit, not two.)
+        onBlur={editable ? () => { focused.current = false; commitIfEdited(); setText(value); } : undefined}
+        onKeyDown={editable ? (e) => { if (e.key === 'Enter') { commitIfEdited(); (e.target as HTMLInputElement).blur(); } } : undefined}
         onClick={editable ? undefined : () => setOpen((o) => !o)}
         className={`w-full h-7 px-2 text-ui font-mono text-text-primary bg-bg-input border border-border-default rounded text-center outline-none focus:border-accent-solid ${editable ? '' : 'cursor-pointer'}`}
       />
@@ -457,7 +491,7 @@ function ComboInput({ value, onCommit, options, width = FIELD_W, editable = true
 // Takes the whole settings slice rather than 22 mirrored props: every new Clicker setting used
 // to touch four places in this file (prop, type, destructure, call site) before it did anything.
 // The local names below are the ones the body always used, so it reads as before.
-function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, lastPresetName }: {
+function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, lastPresetName, pendingPresetName }: {
   unit: 'ms' | 'cps';
   onUnitChange: (u: 'ms' | 'cps') => void;
   settings: SettingsState;
@@ -467,6 +501,8 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
   /** Owned by SettingsPanel for the same reason: the last preset name that matched, so the
    *  "Save current as…" field can open on it after a remount instead of empty. */
   lastPresetName: React.MutableRefObject<string | null>;
+  /** Same owner, same reason: the name being typed into "Save current as…". */
+  pendingPresetName: React.MutableRefObject<PendingPresetName | null>;
 }) {
   const {
     cursorClickButton: button,
@@ -527,6 +563,23 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
   };
   /** The user typed in this field: their value now, so a later toggle-off must not overwrite it. */
   const forgetSeed = (key: string) => { seedUndo.current[key] = null; };
+
+  // Position is switched OFF by doors that are not its own dot: Area's and Fixed's dots (the mutex
+  // in setClickMode) and the backend, which disarms it when an area or point pick lands. Only the
+  // dot ran unseedOnDisable, so through every other door the seeded "10" outlived the mode it was
+  // seeded for — on disk, and in the preset compare, which then read "Custom" against a preset
+  // that differed only in that dormant number. Watching the flag itself covers every door; after
+  // the dot's own toggle the memory is already clear, so this is a no-op there.
+  const POSITION_SEED = '10';
+  const positionWasOn = useRef(usePositionJitter);
+  useEffect(() => {
+    const was = positionWasOn.current;
+    positionWasOn.current = usePositionJitter;
+    if (!was || usePositionJitter) return;
+    const prev = seedUndo.current.cursorClickPositionJitter;
+    if (prev != null && positionJitter === POSITION_SEED) onChange('cursorClickPositionJitter', prev);
+    seedUndo.current.cursorClickPositionJitter = null;
+  }, [usePositionJitter, positionJitter, seedUndo, onChange]);
 
   // The two values that make the ENGINE's period differ from the raw delay. The interval
   // is added to every cycle (in Clicker mode one iteration is one click, so it is not a
@@ -603,7 +656,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
           {/* Presets — named snapshots of every row below. Everything Clicker is global and
               Save/Load are disabled in this mode, so this is the only way to keep two setups. */}
           <SettingRow label="Preset" tooltip={tt('Save or apply a named setup. Custom = none matches.', 'Salve ou aplique um setup nomeado. Custom = nenhum bate.')}>
-            <ClickerPresetRow settings={settings} width={FIELD_W} lastMatched={lastPresetName} />
+            <ClickerPresetRow settings={settings} width={FIELD_W} lastMatched={lastPresetName} pendingName={pendingPresetName} />
           </SettingRow>
           {/* Mouse button picker — moved here from the ActionBar so the panel is the single
               source of truth for "every Clicker setting". Left/Right/Middle, always applied. */}
@@ -691,8 +744,8 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
                 // Seed a visible scatter when switching ON from the 1 px default: ±1 px is
                 // imperceptible, so the switch looked dead. Same seed-on-enable the Clicks
                 // chip uses (0 → 100). A value the user typed (≥ 2) is left alone.
-                if (v && (parseInt(positionJitter, 10) || 0) < 2) seedOnEnable('cursorClickPositionJitter', positionJitter, '10');
-                else if (!v) unseedOnDisable('cursorClickPositionJitter', positionJitter, '10');
+                if (v && (parseInt(positionJitter, 10) || 0) < 2) seedOnEnable('cursorClickPositionJitter', positionJitter, POSITION_SEED);
+                else if (!v) unseedOnDisable('cursorClickPositionJitter', positionJitter, POSITION_SEED);
               }}
               onEnterActivate={() => setClickMode('cursorClickUsePositionJitter', true)}
             />
@@ -1132,7 +1185,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
   // profileLoop: the Execution section's Loops/Interval rows edit the LOADED PROFILE, not the
   // app. `scoped` is what tells the tooltip whether it's describing a profile value or the
   // no-profile fallback.
-  const { settings, settingsResetEpoch, status, profileLoop, profiles, buttonStates } = useAppState();
+  const { settings, settingsResetEpoch, status, profileLoop, profiles, buttonStates, activeProfile } = useAppState();
   const { showToast } = useToast();
   // Clicker Rate unit — lifted out of ClickerSection so it survives that component's
   // remounts. settingsResetEpoch still bounces it back to the default, which was its only
@@ -1150,6 +1203,10 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
   // remount, or a tab switch (or narrowing the window, or a run stealing focus back to the profile
   // tab) empties the field again and overwriting means retyping the name from memory.
   const lastPresetNameRef = useRef<string | null>(null);
+  // Two more of the same kind, for the same remounts: a preset name being typed, and the Key
+  // Remaps add/edit form. Both used to vanish, typed work included, on a tab switch or a collapse.
+  const pendingPresetNameRef = useRef<PendingPresetName | null>(null);
+  const remapDraftRef = useRef<RemapDraft | null>(null);
   const firstEpochRef = useRef(true);
   useEffect(() => {
     if (firstEpochRef.current) { firstEpochRef.current = false; return; }
@@ -1461,6 +1518,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                 onChange={changeSetting}
                 seedUndo={seedUndoRef}
                 lastPresetName={lastPresetNameRef}
+                pendingPresetName={pendingPresetNameRef}
               />
             ) : (
               <>
@@ -1500,6 +1558,8 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                 <EnableChip
                   value={profileLoop.count}
                   isOn={profileLoop.enabled}
+                  // The loaded profile owns this value (see EnableChip's `owner`).
+                  owner={activeProfile ?? ''}
                   min={1} max={999}
                   onCommitValue={(v) => changeSetting('profileLoopCount', v)}
                   onToggle={(v) => changeSetting('profileEnableLoop', v)}
@@ -1515,6 +1575,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                 <EnableChip
                   value={profileLoop.interval}
                   isOn={profileLoop.intervalEnabled}
+                  owner={activeProfile ?? ''}
                   unit="ms" format max={MAX_DELAY_MS}
                   onCommitValue={(v) => changeSetting('profileLoopInterval', v)}
                   onToggle={(v) => changeSetting('profileLoopIntervalEnabled', v)}
@@ -1705,7 +1766,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                   onChange={(v) => send({ type: 'remap:save', payload: { enabled: v, remaps: settings.remaps.entries } })}
                 />
               </SettingRow>
-              <RemapSection />
+              <RemapSection draft={remapDraftRef} />
             </Section>
           </>
         ) : (

@@ -17,11 +17,7 @@ import { useTt, useLanguage } from '../state/LanguageContext';
 import type { Language } from '../state/LanguageContext';
 import { useSelectionRef } from '../state/SelectionContext';
 import { useToast } from '../state/ToastContext';
-
-// Heartbeat for the row dialogs' editor claim. Same value and same rationale as the Sheet's
-// EDITOR_CLAIM_RENEW_MS: the guard's TTL runs from the stamp, so the gap between renewals is the
-// only thing that can let a claim lapse under a dialog the user is still filling in.
-const ROW_DIALOG_CLAIM_RENEW_MS = 60_000;
+import { useEditorClaim } from '../hooks/useEditorClaim';
 import { getDisplayKey, getDisplayX, getDisplayY, getActionTypeColors, formatKeyCombo, formatMs, isCombinedClick, isClickHold, isCoordinateClick, isFocusClickEligible, CLICK_FAMILY_TYPES, clickFormOf } from '../utils/displayUtils';
 import { snapIndicesToBlocks, hasConditionFields, skippedRowMask, isStructuralRow, armBodyEnd } from '../utils/conditionalBlocks';
 import { uiZoom } from '../utils/zoomSpace';
@@ -952,9 +948,24 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
   // Enter that followed wrote it into the new profile's row. One owner covers all of them because
   // they all live here and the claim is one boolean — any of them open.
   const rowDialogOpen = !!(sendTextEdit || keystrokeEdit || pauseEdit || runProfileEdit || runProfileInsert || editingCell);
+  // Transition, unmount and the Sheet's heartbeat, in one place (useEditorClaim).
+  useEditorClaim('row-dialog', rowDialogOpen);
+
+  // The mode flip takes this whole table away — App renders the Clicker dashboard in its place —
+  // and every row editor with it. App says so for the Sheet (discardAndClose); these closed in
+  // silence, a SendText mid-sentence included, and the flip is a global hotkey that can land
+  // while the user is typing. Nothing can refuse it (it is the backend's), so the unmount SAYS it,
+  // the way the profile-switch effect below does. Read through a ref: the cleanup runs once, on
+  // the way out, and must see the editors as they were then.
+  const unmountNoticeRef = useRef<(() => void) | null>(null);
+  unmountNoticeRef.current = rowDialogOpen
+    ? () => showToast(tt('Clicker mode closed the open row editor without saving.',
+                         'O modo Clicker fechou o editor de linha aberto sem salvar.'), 'info')
+    : null;
   useEffect(() => {
-    send({ type: 'editor:pendingEdits', payload: { pending: rowDialogOpen, owner: 'row-dialog' } });
-  }, [rowDialogOpen, send]);
+    const notice = unmountNoticeRef;
+    return () => { notice.current?.(); };
+  }, []);
 
   /**
    * Which delete a selection MEANS: the message to send and how many rows it will actually take.
@@ -995,16 +1006,6 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
     const snapped = snapSelectionToBlocks(sel);
     return { message: { type: 'actions:delete', payload: { indices: snapped } }, count: snapped.length };
   }, [actions, blockInfo, snapSelectionToBlocks]);
-  useEffect(() => () => { send({ type: 'editor:pendingEdits', payload: { pending: false, owner: 'row-dialog' } }); }, [send]);
-  // Renewed on the same heartbeat and for the same reason as the Sheet's: the guard expires the
-  // claim a fixed TTL after it was STAMPED, and the effect above only fires on the transition.
-  useEffect(() => {
-    if (!rowDialogOpen) return;
-    const id = setInterval(() => {
-      send({ type: 'editor:pendingEdits', payload: { pending: true, owner: 'row-dialog' } });
-    }, ROW_DIALOG_CLAIM_RENEW_MS);
-    return () => clearInterval(id);
-  }, [rowDialogOpen, send]);
 
   const lastRunRefusalRef = useRef(0);
   const refuseDuringRun = useCallback(() => {

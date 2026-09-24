@@ -958,6 +958,20 @@ namespace TrueReplayer
         {
             Services.DiagnosticLog.Info("Close requested — checking unsaved changes");
 
+            // Work that lives only in an open EDITOR comes first, and it has its own question. The
+            // two flags below see only what reached the backend, so a Data table or an Automation
+            // draft typed into a clean profile closed without a word, and with the profile dirty
+            // for another reason the prompt's "Save" wrote the profile and still dropped the open
+            // Sheet's fields — "saved" over work that was not in the file. Declining keeps the
+            // window; accepting moves on to the profile's own prompt, which still guards the rest.
+            var editors = Services.AutomationGuard.HeldEditors();
+            if (editors.Count > 0
+                && !await profileController.ShowUnappliedEditsDialogAsync(Services.AutomationGuard.DescribeUnappliedEdits(editors)))
+            {
+                Services.DiagnosticLog.Info($"Close guard resolved: canClose=False (unapplied edits in {string.Join(", ", editors)})");
+                return false;
+            }
+
             bool canClose;
             // A pending Loops/Interval edit is unsaved work by itself. Same two readers as
             // WebViewBridge.CheckUnsavedChangesAsync — see HasUnsavedActionWork for the grid half.

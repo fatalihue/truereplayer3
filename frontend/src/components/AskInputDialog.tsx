@@ -32,6 +32,10 @@ function AskInputDialog({ label, options, onSubmit, onCancel }: AskInputDialogPr
       icon={<Keyboard size={14} className="text-accent-solid" />}
       title="Input needed"
       size="sm"
+      // Above every editor layer (the Sheet is z-60/70, the panels opened over it z-80, their
+      // prompts z-90): a run's prompt arrives from outside any stack, and at the default z-50 it
+      // sat dimmed under an open Sheet, whose scrim took the clicks meant for the menu options.
+      zClass="z-[90]"
       onClose={onCancel}
       closeOnBackdrop={false}
       footerHint={isMenu

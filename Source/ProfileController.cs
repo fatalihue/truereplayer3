@@ -1383,6 +1383,43 @@ namespace TrueReplayer.Controllers
             return await dialog.ShowAsync();
         }
 
+        /// <summary>
+        /// The close guard's question when an open EDITOR — not the profile — holds the work: the
+        /// Sheet, a row or insert dialog, the Data table, the Automations panel. That work lives in
+        /// the UI until the editor's own Save, so the profile prompt's "Save" cannot keep it, and
+        /// offering Save here would be the lie the old close path told. Two answers: close anyway,
+        /// or stay. True = close anyway.
+        /// </summary>
+        public async Task<bool> ShowUnappliedEditsDialogAsync(string sentence)
+        {
+            var messageBlock = new TextBlock
+            {
+                Text = $"{sentence} Closing now discards them.",
+                TextWrapping = TextWrapping.Wrap
+            };
+
+            var dialog = new ContentDialog
+            {
+                Title = "Unapplied Changes",
+                XamlRoot = window.Content.XamlRoot,
+                RequestedTheme = ElementTheme.Dark,
+                PrimaryButtonText = "Close Anyway",
+                CloseButtonText = "Cancel",
+                // Cancel is the default: Enter on a prompt the user did not expect must not be the
+                // key that throws the work away.
+                DefaultButton = ContentDialogButton.Close,
+                CornerRadius = new CornerRadius(8),
+                Content = messageBlock
+            };
+            ApplyDialogTheme(dialog, messageBlock);
+
+            // See ModalGate. Refused = stay open, the same reading every caller gives Cancel.
+            using var gate = Services.ModalGate.TryEnter("unapplied edits");
+            if (gate == null) return false;
+
+            return await dialog.ShowAsync() == ContentDialogResult.Primary;
+        }
+
         public void UpdateProfileColors(string? activeProfileName)
         {
             _activeProfileName = activeProfileName;

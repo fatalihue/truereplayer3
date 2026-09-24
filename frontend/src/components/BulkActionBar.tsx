@@ -34,6 +34,12 @@ const INT32_MAX = 2147483647;
 const isValidCoordValue = (v: string) =>
   /^[+-]?\d+$/.test(v) && Number(v) >= INT32_MIN && Number(v) <= INT32_MAX;
 
+// The Delay's grammar, held to the same standard: digits only (a delay is never signed, and an
+// offset means nothing here), up to the C# int it becomes. parseInt read a PREFIX — "5oo" set every
+// selected row to 5 ms with no red border — and had no ceiling, so a long number crashed the
+// backend's GetInt32 after it had already pushed an undo step.
+const isValidDelayValue = (v: string) => /^\d+$/.test(v) && Number(v) <= INT32_MAX;
+
 export function BulkActionBar({
   selectedCount,
   allSelectedSkipped,
@@ -62,7 +68,7 @@ export function BulkActionBar({
   const delayInvalid =
     activeInput === 'delay' &&
     inputValue.trim() !== '' &&
-    !(parseInt(inputValue, 10) >= 0);
+    !isValidDelayValue(inputValue.trim());
 
   // X/Y had NO validation at all — the field accepted any text and handed it straight to the
   // bridge, where a failed int.TryParse falls through to 0. A typo like "5oo" therefore drove
@@ -81,8 +87,7 @@ export function BulkActionBar({
     if (activeInput === 'delay') {
       // Keep the field open + invalid-styled instead of discarding silently.
       if (delayInvalid) return;
-      const delay = parseInt(inputValue, 10);
-      if (!isNaN(delay) && delay >= 0) onSetDelay(delay);
+      if (inputValue.trim() !== '') onSetDelay(Number(inputValue.trim()));
     } else if (activeInput === 'x' || activeInput === 'y') {
       // Same treatment: hold the field open rather than send a value the backend would
       // silently coerce to 0.

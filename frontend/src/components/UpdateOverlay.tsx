@@ -100,9 +100,18 @@ export function UpdateOverlay() {
           });
           break;
         case 'update:none':
+          // No update: hide the splash — unless one is already being downloaded or installed.
+          // update:none only ever answers a CHECK, and a check can overlap an apply (the backend
+          // now runs one check at a time and none during an apply, and this is the other half):
+          // a second check timing out answered "none" mid-download, the splash vanished, and the
+          // install carried on underneath until the process simply restarted.
+          setPhase((prev) => (prev.step === 'downloading' || prev.step === 'installing' || prev.step === 'complete' ? prev : { step: 'hidden' }));
+          break;
         case 'update:error':
-          // No update / network failure: hide the splash. Errors fall back to silent so
-          // the user can keep using the app — they'll get the update on the next check.
+          // Failure: hide the splash, in EVERY phase. Unlike update:none this is also how the
+          // apply itself says it failed (download failed, apply threw, postponed at the last
+          // gate), so it must be able to take down a splash mid-download. Errors fall back to
+          // silent so the user can keep using the app — they'll get the update on the next check.
           setPhase({ step: 'hidden' });
           break;
       }

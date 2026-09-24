@@ -329,6 +329,10 @@ const keepEditing = () => {
     <DialogShell
       icon={<Info size={14} style={{ color: 'var(--color-accent)' }} />}
       title={`Profile Info — ${profileName}`}
+      // Above the Sheet (z-60/70): the palette's "Edit Profile Info" opens this over an open
+      // Sheet, and at the default z-50 it painted under it — unreachable, with the focus pulled
+      // into it. The discard prompt below sits a layer higher.
+      zClass="z-[80]"
       // Pre-close veto, NOT an onClose that declines: DialogShell's onClose runs after it has
       // committed to leaving. Without this, Esc and Cancel threw away an edited description in
       // silence — while closeOnBackdrop=false below existed precisely so a stray click could not.
@@ -646,7 +650,7 @@ const keepEditing = () => {
         icon={<AlertTriangle size={14} style={{ color: 'var(--color-warning-ink)' }} />}
         title="Unsaved info"
         size="sm"
-        zClass="z-[60]"
+        zClass="z-[90]"
         onClose={keepEditing}
         footer={
           <DialogFooter

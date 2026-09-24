@@ -15,6 +15,7 @@ import { FieldError } from './common/FieldError';
 import { WindowTargetFields } from './WindowTargetFields';
 import { ImageCropper } from './ImageCropper';
 import { rangeParts, phaseLockRisk } from '../utils/activeHours';
+import { useEditorClaim } from '../hooks/useEditorClaim';
 import type { AutomationEntry, TriggerConfig } from '../bridge/messageTypes';
 
 // Day-pill order matches the backend bitmask convention (Sun = 1<<0, the If-Time one).
@@ -49,8 +50,8 @@ function defaultTrigger(): TriggerConfig {
     windowTitle: '',
     windowTitleMatchMode: 'contains',
     windowMatchForegroundOnly: false,
-    // Mesma posicao que o literal de push no WebViewBridge: o painel compara a config por
-    // JSON.stringify, entao uma chave fora de ordem faz trabalho salvo ser lido como nao salvo.
+    // Same position as the push literal in WebViewBridge, for readability only: triggerShape
+    // compares canonically (keys sorted, null = absent), so the order no longer decides anything.
     useRelativeCoordinates: false,
     filePath: '',
     pixelX: 0,
@@ -82,8 +83,26 @@ const SAVE_ECHO_TIMEOUT_MS = 4000;
  * list toggle owns it), so neither takes part. At module scope because two places ask the same
  * question and they must not drift: the echo that confirms a save, and the seeding effect that
  * decides whether a fresh push has anything new to show.
+ *
+ * CANONICAL, not a plain JSON.stringify of the object as it stands. The bridge serialises with
+ * WhenWritingNull, so a null imagePath / searchRegion / timeOfDay arrives as a MISSING key, while
+ * the draft holds the key with null — and a key the draft gained by a patch lands at the end of
+ * its key order, not where the push puts it. Either way the two strings never matched: the echo
+ * never confirmed, and a saved automation stayed "unsaved" for good (the dot, "Run now" refused
+ * with "Save first", Close offering to discard work already on disk). Keys sorted, null and absent
+ * read as the same thing, all the way down.
  */
-const triggerShape = (t: TriggerConfig) => JSON.stringify({ ...t, imageBase64: null, armed: false });
+function canonicalShape(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(canonicalShape);
+  if (v === null || typeof v !== 'object') return v;
+  const out: Record<string, unknown> = {};
+  for (const k of Object.keys(v).sort()) {
+    const x = (v as Record<string, unknown>)[k];
+    if (x !== null && x !== undefined) out[k] = canonicalShape(x);
+  }
+  return out;
+}
+const triggerShape = (t: TriggerConfig) => JSON.stringify(canonicalShape({ ...t, imageBase64: null, armed: false }));
 
 // Default poll cadence per condition type — mirrors TriggerService.PollCadenceMs so the
 // placeholder shown when the field is left at 0 is the number the daemon will actually use.
@@ -332,6 +351,10 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
   const saving = pendingSave != null && pendingSave.profile === selected;
   const hasUnsavedWork = !saving && (dirty || isNewDraft) && draft != null;
   const canSave = hasUnsavedWork && !cannotFire;
+  // The draft lives here until Save, so the backend cannot see it: closing the window or a silent
+  // update after a run threw it away without a word. The claim lets both gates ask first. (It does
+  // NOT hold automations off — a fire cannot reach this draft; see AutomationGuard.BlockedReason.)
+  useEditorClaim('automation-panel', hasUnsavedWork);
 
   // Every exit from a dirty editor routes through here. Without it, Close, Escape (DialogShell
   // turns a bare Esc into onClose) and a click on another row all discarded the draft in
@@ -405,6 +428,12 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
 
   const handleRemove = () => {
     if (!selected) return;
+    // Not while a save is in the air. newDraftProfile outlives the first save's flight (see
+    // handleSave), so "still a new draft" did not mean "nothing on disk": a delete in that window
+    // only dropped the local marker, the save landed after it, and the automation the user had
+    // just deleted came back in the list. The buttons are disabled for the flight; this is the
+    // funnel behind them, for a confirm that was already showing when Save was pressed.
+    if (saving) return;
     if (newDraftProfile === selected) {
       setNewDraftProfile(null);
     } else {
@@ -494,12 +523,15 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subscribe]);
 
-  // Drop stale badges when switching automations.
+  // Drop stale badges when switching automations. The anchor notice is one of them: it is a
+  // sentence about the coordinate fields of the automation that was on screen, and it used to
+  // follow the user to the next one — a clipboard watcher included, which has no coordinates.
   useEffect(() => {
     setTestMatchResult(null);
     setTestFireResult(null);
     setConfirmDelete(false);
     setPendingSave(null);
+    setAnchorSpaceNotice(null);
     // Drop the in-flight correlation ids too, not just the rendered badges. The subscribe
     // handlers match on requestId alone, so a reply that lands after the user has moved on
     // would attach an authoritative-sounding result ("Fired — the profile is running now") to
@@ -627,6 +659,11 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
       icon={<Zap size={14} className="text-accent-light" />}
       title="Automation"
       size="full"
+      // Above the Sheet (scrim z-60, panel z-70): the tray's "Automations…" opens this from
+      // OUTSIDE the stack, and at the default z-50 it painted under an open Sheet — unreachable,
+      // with DialogShell pulling the focus into it. Its own prompt sits a layer higher still, and
+      // the cropper (z-80, rendered after this shell) paints over it by DOM order.
+      zClass="z-[80]"
       onClose={onClose}
       // Pre-close veto, NOT an onClose that declines: DialogShell's onClose runs after it has
       // already committed to leaving, so refusing there fades the panel out and leaves it
@@ -861,17 +898,21 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   {confirmDelete ? (
                     <div className="flex items-center gap-1">
                       <span className="text-[11px] text-text-secondary">{'Delete?'}</span>
-                      <Button variant="destructive" size="sm" onClick={handleRemove}>{'Yes'}</Button>
+                      <span data-tip={saving ? tt('Saving…', 'Salvando…') : undefined}>
+                        <Button variant="destructive" size="sm" onClick={handleRemove} disabled={saving}>{'Yes'}</Button>
+                      </span>
                       <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>{'No'}</Button>
                     </div>
                   ) : (
                     // Confirm rather than fire-and-forget: this deletes a captured reference
                     // image, a hand-snapped ROI and a weekday mask with no undo. The action
                     // grid's Clear All already asks; a one-click destroy here was the outlier.
-                    <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(true)}
->
-                      <Trash2 size={12} />
-                    </Button>
+                    // Held for a save's flight, like Run now: see handleRemove.
+                    <span data-tip={saving ? tt('Saving…', 'Salvando…') : undefined}>
+                      <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(true)} disabled={saving}>
+                        <Trash2 size={12} />
+                      </Button>
+                    </span>
                   )}
                 </div>
               </div>
@@ -1110,6 +1151,8 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                           conditionType: next,
                           ...(leavingImage ? { imagePath: null, imageBase64: null, searchRegion: null } : {}),
                         });
+                        // The anchor notice speaks about the coordinate fields of the type being left.
+                        setAnchorSpaceNotice(null);
                       }}
                     >
                       {CONDITION_TYPES.map((c) => (
@@ -1188,18 +1231,22 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                             // false. The window FIELDS stay — they are the part worth keeping.
                             const hadPoint = (draft.pixelX ?? 0) !== 0 || (draft.pixelY ?? 0) !== 0;
                             const hadRegion = !!draft.searchRegion;
+                            // Both are cleared — a residual point from a Pixel-color past is in the
+                            // wrong space too — but the notice only speaks for the field ON SCREEN:
+                            // X/Y belong to Pixel color, the search region to Image on screen. It
+                            // used to announce "Coordinates cleared" on an Image watcher over a
+                            // point it never shows, with no visible field having changed.
+                            const visibleCleared = draft.conditionType === 'PixelColorMatch' ? hadPoint : hadRegion;
                             patch({
                               useRelativeCoordinates: v,
                               ...(hadPoint ? { pixelX: 0, pixelY: 0 } : {}),
                               ...(hadRegion ? { searchRegion: null } : {}),
                             });
-                            if (hadPoint || hadRegion) {
-                              setAnchorSpaceNotice(v
-                                ? tt('Coordinates cleared — they were screen coordinates. Pick again to store them relative to the window.',
-                                     'Coordenadas limpas — elas eram de tela. Pegue de novo para gravá-las relativas à janela.')
-                                : tt('Coordinates cleared — they were relative to the window. Pick again to store them as screen coordinates.',
-                                     'Coordenadas limpas — elas eram relativas à janela. Pegue de novo para gravá-las como coordenadas de tela.'));
-                            }
+                            setAnchorSpaceNotice(!visibleCleared ? null : v
+                              ? tt('Coordinates cleared — they were screen coordinates. Pick again to store them relative to the window.',
+                                   'Coordenadas limpas — elas eram de tela. Pegue de novo para gravá-las relativas à janela.')
+                              : tt('Coordinates cleared — they were relative to the window. Pick again to store them as screen coordinates.',
+                                   'Coordenadas limpas — elas eram relativas à janela. Pegue de novo para gravá-las como coordenadas de tela.'));
                           }} />
                         <span className="text-[12px] text-text-secondary"
                           data-tip={tt('Coordinates follow the window instead of the screen',
@@ -1476,7 +1523,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
         icon={<TriangleAlert size={14} style={{ color: 'var(--color-warning-ink)' }} />}
         title="Unsaved automation"
         size="sm"
-        zClass="z-[60]"
+        zClass="z-[90]"
         onClose={() => setPendingNav(null)}
         footer={
           <DialogFooter

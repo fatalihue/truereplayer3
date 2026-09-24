@@ -136,6 +136,9 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
       // the app's 0.9 zoom scales it down, so 85vh would paint as 76vh.
       size="xl"
       cardClassName="h-[calc(85vh/var(--ui-zoom))]"
+      // Above the Sheet (z-60/70): the palette opens this over whatever is up, the Sheet included,
+      // and at the default z-50 it painted under it — unreachable, with the focus pulled into it.
+      zClass="z-[80]"
       onClose={onClose}
       showClose
       footer={<DialogFooter secondary={{ label: <><RefreshCw size={12} /> Refresh</>, onClick: () => send({ type: 'replay:reportRequest', payload: {} }) }} primary={{ label: 'Close', onClick: onClose }} />}

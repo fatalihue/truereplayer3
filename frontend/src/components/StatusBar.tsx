@@ -82,7 +82,7 @@ const ICON: Record<LastRunKind, React.ReactNode> = {
 const Sep = () => <div className="w-px h-3 bg-border-subtle mx-3 shrink-0" />;
 
 export function StatusBar() {
-  const { statusBar, status, replayChain, pauseState, settings, actions, profiles, profileLoop, dataTable } = useAppState();
+  const { statusBar, status, replayChain, pauseState, settings, actions, profileLoop, dataTable } = useAppState();
   // Separate contexts on purpose: the live slices update ~4×/s during a run and the highlight
   // advances once per executed action; keeping them out of AppState is what stops every other
   // panel re-rendering at those cadences.
@@ -147,16 +147,18 @@ export function StatusBar() {
     const skipped = skippedRowMask(actions);
     return actions.reduce((sum, a, i) => (skipped[i] ? sum : sum + actionCostMs(a)), 0);
   }, [actions]);
-  const passes = useMemo(() => {
-    const entry = statusBar.profileName ? profiles.find(p => p.name === statusBar.profileName) : undefined;
-    return replayPasses({
-      perRow: dataTable.loopOverData && dataTable.rows.length > 0,
-      forcedInfinite: entry?.triggerMode === 'whilePressed' || entry?.triggerMode === 'toggle',
-      loopEnabled: profileLoop.enabled,
-      loopCount: profileLoop.count,
-      rowCount: dataTable.rows.length,
-    });
-  }, [statusBar.profileName, profiles, dataTable.loopOverData, dataTable.rows.length, profileLoop.enabled, profileLoop.count]);
+  // Unbounded only when the engine SAYS so for the live run (its loop total is 0) — the ActionBar's
+  // LoopChip reads the same signal. The profile's Toggle / While-pressed hotkey forces it; the
+  // Replay button and the global Replay hotkey run the profile's count, which this used to
+  // contradict by reading the trigger mode: "no total" for a run that was one pass.
+  const runUnbounded = status === 'replaying' && loopProgress.active && loopProgress.total === 0;
+  const passes = useMemo(() => replayPasses({
+    perRow: dataTable.loopOverData && dataTable.rows.length > 0,
+    forcedInfinite: runUnbounded,
+    loopEnabled: profileLoop.enabled,
+    loopCount: profileLoop.count,
+    rowCount: dataTable.rows.length,
+  }), [runUnbounded, dataTable.loopOverData, dataTable.rows.length, profileLoop.enabled, profileLoop.count]);
   const intervalMs = profileLoop.intervalEnabled ? Number.parseInt(profileLoop.interval, 10) || 0 : 0;
   const allPassesMs = estimateAllPassesMs(onePassMs, passes, intervalMs);
   const estimateMs = allPassesMs ?? onePassMs;

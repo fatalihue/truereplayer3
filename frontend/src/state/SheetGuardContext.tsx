@@ -13,9 +13,10 @@ import type { ReactNode } from 'react';
  *
  * `allowListChange()` answers true when the change may go ahead: no sheet open, a clean sheet,
  * or the repeat that discards. App is the only caller of `install` — it owns the sheet's handle.
- * Hand-written list of the doors that ask: the Toolbar's Ctrl+V, Alt+↑/↓ and the cmd:undo /
- * cmd:redo funnel, and the Command Palette's list rewrites. A new list-changing door that can
- * be reached while the sheet is open belongs on it.
+ * Hand-written list of the doors that ask: the Toolbar's Ctrl+V, Alt+↑/↓, the cmd:undo /
+ * cmd:redo funnel (the Undo / Redo buttons go through it too) and both Clear All confirms, and the
+ * Command Palette's list rewrites and its Reload UI. A new list-changing door belongs on it — even
+ * one the sheet's scrim covers today, since a door that asks cannot regress when the layout moves.
  */
 export interface SheetGuard {
   install: (fn: (() => boolean) | null) => void;

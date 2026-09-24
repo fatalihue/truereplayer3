@@ -2248,10 +2248,16 @@ namespace TrueReplayer
         /// <param name="space">The window context as it stands BEFORE the edit, for the one edit
         /// that rewrites it along with the list (coordinate conversion). Null for every other.</param>
         private void PushUndoState(CoordinateSpace? space = null)
-        {
             // No .ToList(): the serializer takes any IEnumerable and emits the same JSON array, so
             // the copy only duplicated the whole collection on a path that runs on every edit.
-            var snapshot = JsonSerializer.Serialize(actions, JsonOptions);
+            => PushUndoSnapshot(JsonSerializer.Serialize(actions, JsonOptions), space);
+
+        /// <summary>
+        /// PushUndoState with the snapshot taken EARLIER — for a handler that has to apply the edit
+        /// before it can tell whether anything changed (see HandleActionsEdit).
+        /// </summary>
+        private void PushUndoSnapshot(string snapshot, CoordinateSpace? space = null)
+        {
             _undoStack.Push(new UndoEntry(snapshot, space));
             if (_undoStack.Count > MaxHistory)
             {
@@ -3663,7 +3669,7 @@ namespace TrueReplayer
             // dialog, which has nothing to say about a picker (see the enum's remark).
             // SuppressAllHotkeys is NOT read: the update overlay is itself a React modal.
             if (Services.InteractionScope.CurrentOwner is { } open) { reason = $"{open} is open"; return UpdateGate.Busy; }
-            if (Services.AutomationGuard.EditorHoldsUnsavedWork()) { reason = "a row editor has unsent changes"; return UpdateGate.Busy; }
+            if (Services.AutomationGuard.EditorHoldsUnsavedWork()) { reason = "an open editor has changes that haven't been applied"; return UpdateGate.Busy; }
             if (HasUnsavedLoopChange || HasUnsavedActionWork) { reason = "the profile has unsaved changes"; return UpdateGate.Unsaved; }
             reason = string.Empty;
             return UpdateGate.Clear;
@@ -3735,7 +3741,31 @@ namespace TrueReplayer
             });
         }
 
+        // One check at a time. The startup check and the Settings button overlap easily — the
+        // button stays clickable while the silent startup check is in flight — and every check ends
+        // in a terminal update:* message the overlay obeys. A second check that timed out (the
+        // service reads a timeout as "up to date") answered update:none in the middle of the first
+        // one's download: the splash vanished and the install carried on underneath it, until the
+        // process simply restarted. The button still gets its answer: the running check's result
+        // reaches it the same way.
+        private bool _checkInProgress;
+
         private async Task CheckForUpdateAsync()
+        {
+            // An apply already owns the overlay and the button; its own messages end both.
+            if (_checkInProgress || _updateInProgress) return;
+            _checkInProgress = true;
+            try
+            {
+                await CheckForUpdateCoreAsync();
+            }
+            finally
+            {
+                _checkInProgress = false;
+            }
+        }
+
+        private async Task CheckForUpdateCoreAsync()
         {
             // Announce we're starting so the overlay can show its indeterminate "Checking…"
             // state during the network round-trip. Resolves into update:available or
@@ -4401,10 +4431,26 @@ namespace TrueReplayer
                 return;
             }
 
-            // Snapshot only once the edit is guaranteed to land — pushing before the bounds
-            // guard would leave a duplicate undo state (and clear the redo stack) on a no-op.
-            PushUndoState();
+            // A number that does not parse is refused OUT LOUD for the three fields the grid's
+            // inline editor sends as free text — before anything is touched.
+            if ((field == "delay" || field == "x" || field == "y") && !int.TryParse(value, out _))
+            {
+                DiagnosticLog.Warn($"actions:edit rejected non-numeric {field} '{value}' at index {index}");
+                SendMessage("alert:show", new { message = $"\"{value}\" is not a valid {(field == "delay" ? "delay" : field.ToUpperInvariant())}. Use a whole number." });
+                return;
+            }
+
+            // Snapshot first, DECIDE after. ApplyActionEdit drops a value it cannot use without a
+            // word — a number that does not parse in any of its twenty-odd numeric fields, a value
+            // equal to the one stored — and pushing the undo state before it left an undo step that
+            // restored nothing, an emptied redo stack and the profile marked unsaved over an edit
+            // that never landed. Comparing the ROW keeps that rule free of a second list of which
+            // field parses what; the snapshot is the same one PushUndoState would have taken.
+            var snapshot = JsonSerializer.Serialize(actions, JsonOptions);
+            var rowBefore = JsonSerializer.Serialize(actions[index], JsonOptions);
             ApplyActionEdit(index, field, value);
+            if (JsonSerializer.Serialize(actions[index], JsonOptions) == rowBefore) return;
+            PushUndoSnapshot(snapshot);
             HasUnsavedChanges = true;
             PushActionsUpdate();
         }
@@ -4912,12 +4958,24 @@ namespace TrueReplayer
 
         private void HandleBulkUpdateDelay(JsonElement payload)
         {
+            // Read and check the number BEFORE PushUndoState, as HandleBulkUpdateCoord does: a
+            // rejection must touch neither the undo nor the redo stack. GetInt32 used to run after
+            // the push and throw on anything past Int32 — HandleMessage's catch only writes to
+            // Debug — so the bar closed as if it had applied, no row changed, and the push had
+            // already emptied the redo history.
+            if (!payload.TryGetProperty("delay", out var delayEl)
+                || delayEl.ValueKind != JsonValueKind.Number
+                || !delayEl.TryGetInt32(out int delay))
+            {
+                string shown = payload.TryGetProperty("delay", out var raw) ? raw.GetRawText() : "(none)";
+                SendMessage("alert:show", new { message = $"{shown} is not a valid delay. Use a whole number of milliseconds." });
+                return;
+            }
+            delay = Math.Max(0, delay);
             PushUndoState();
             var indices = payload.GetProperty("indices").EnumerateArray()
                 .Select(e => e.GetInt32())
                 .ToList();
-            int delay = payload.GetProperty("delay").GetInt32();
-            delay = Math.Max(0, delay);
 
             foreach (var idx in indices)
             {
@@ -12050,6 +12108,11 @@ namespace TrueReplayer
         {
             bool scoped = CurrentProfileName != "No Profile";
             var p = UserProfile.Current;
+            // Whether the loaded profile's value actually moved. The chips commit on blur, and a
+            // focus-and-leave without typing re-sent the value already there — which still marked
+            // the profile edited: the unsaved dot lit, and the switch prompt, the close guard and
+            // the update gate all went on to ask about a change nobody made.
+            bool changed = false;
 
             switch (key)
             {
@@ -12060,25 +12123,25 @@ namespace TrueReplayer
                     // `format` is off) parses to nothing and must not become 0 = forever.
                     int n = int.TryParse(value.GetString(), out var c) ? c : UserProfile.MinLoopCount;
                     n = UserProfile.NormalizeLoopCount(n);
-                    if (scoped) p.LoopCount = n; else LoopCount = n.ToString();
+                    if (scoped) { changed = p.LoopCount != n; p.LoopCount = n; } else LoopCount = n.ToString();
                     break;
                 }
                 case "profileEnableLoop":
                 {
                     bool on = value.GetBoolean();
-                    if (scoped) p.EnableLoop = on; else EnableLoop = on;
+                    if (scoped) { changed = p.EnableLoop != on; p.EnableLoop = on; } else EnableLoop = on;
                     break;
                 }
                 case "profileLoopInterval":
                 {
                     int n = int.TryParse(value.GetString(), out var i) && i >= 0 ? i : 0;
-                    if (scoped) p.LoopInterval = n; else LoopInterval = n.ToString();
+                    if (scoped) { changed = p.LoopInterval != n; p.LoopInterval = n; } else LoopInterval = n.ToString();
                     break;
                 }
                 case "profileLoopIntervalEnabled":
                 {
                     bool on = value.GetBoolean();
-                    if (scoped) p.LoopIntervalEnabled = on; else LoopIntervalEnabled = on;
+                    if (scoped) { changed = p.LoopIntervalEnabled != on; p.LoopIntervalEnabled = on; } else LoopIntervalEnabled = on;
                     break;
                 }
             }
@@ -12089,7 +12152,7 @@ namespace TrueReplayer
                 // Loops row sitting next to an Interval row that waits for Ctrl+S would be the
                 // worst of both. HasUnsavedLoopChange (not HasUnsavedChanges) so an armed
                 // automation keeps firing — see the flag's declaration.
-                MarkLoopEdited();
+                if (changed) MarkLoopEdited();
             }
             else
             {

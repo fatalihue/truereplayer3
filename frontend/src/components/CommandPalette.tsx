@@ -250,11 +250,14 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             onAction: () => { onClose(); window.dispatchEvent(new CustomEvent('cmd:runreport')); },
           },
           {
-            // Recovery hatch for a wedged WebView2 UI.
+            // Recovery hatch for a wedged WebView2 UI. It asks the Sheet like the list rewrites
+            // above: a reload throws away every editor's typed fields, and a UI that answered
+            // Ctrl+K is not wedged. The repeat still goes through, so the hatch stays one gesture
+            // away — and the tray's Reload, the door for a UI that cannot answer, asks nothing.
             id: 'reloadui', label: 'Reload UI',
             keywords: ['refresh', 'stuck', 'frozen'],
             icon: <RefreshCw size={14} className="text-text-secondary" />,
-            onAction: () => { send({ type: 'window:reloadUI', payload: {} }); onClose(); },
+            onAction: () => { if (!sheetAllows()) return; send({ type: 'window:reloadUI', payload: {} }); onClose(); },
           },
           {
             // Opens %LocalAppData%\TrueReplayer\Logs in Explorer. Otherwise reachable only

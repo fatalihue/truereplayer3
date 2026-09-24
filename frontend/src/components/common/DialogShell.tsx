@@ -129,7 +129,9 @@ export interface DialogShellProps {
    *  form, which is where the copies of the bug kept coming from. */
   cardClassName?: string;
   /** Stacking layer. Default z-50; a dialog opened from INSIDE another layer (the sheet is
-   *  z-70, the Insert Text shell z-50) passes a higher one so it paints above its opener. */
+   *  z-70, the Insert Text shell z-50) passes a higher one so it paints above its opener.
+   *  A dialog opened from OUTSIDE every stack — a tray push, the palette, a run's Ask-Input —
+   *  can land over an open Sheet, so it passes z-[80] (its own prompts z-[90]; Ask-Input z-[90]). */
   zClass?: string;
   /** Left-anchored tertiary action in the footer (Remove, Reset ▾). Replaces the hint text
    *  when present — the two share the left edge and never both appear. */

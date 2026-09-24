@@ -137,6 +137,12 @@ function ColorRow({ label, value, overridden, check, hslOpen, onChange, onReset,
   const tt = useTt();
   const hexValue = toHex(value);
   const ratio = check ? check.ratio : null;
+  // The text field's own copy while it has focus. Controlled straight by hexValue, a keystroke only
+  // stuck when it COMPLETED a valid #rrggbb, so every partial state lived in the DOM alone — and any
+  // re-render of the editor (a hover over another row, an HSL panel opening) wrote the stored hex
+  // back over it mid-typing. Same shape as NumberInput's buffer: a complete value still applies live;
+  // leaving the field shows the stored one again.
+  const [hexDraft, setHexDraft] = useState<string | null>(null);
 
   return (
     <div
@@ -159,8 +165,14 @@ function ColorRow({ label, value, overridden, check, hslOpen, onChange, onReset,
 
         <input
           type="text"
-          value={hexValue}
-          onChange={(e) => { if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) onChange(e.target.value); }}
+          value={hexDraft ?? hexValue}
+          onFocus={() => setHexDraft(hexValue)}
+          onBlur={() => setHexDraft(null)}
+          onChange={(e) => {
+            const v = e.target.value;
+            setHexDraft(v);
+            if (/^#[0-9a-fA-F]{6}$/.test(v)) onChange(v);
+          }}
           className="w-[76px] h-6 px-1 text-xs font-mono text-text-primary bg-bg-input border border-border-default rounded text-center outline-none focus:border-accent-solid"
         />
 
@@ -343,7 +355,10 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   const [importError, setImportError] = useState('');
   const [copySuccess, setCopySuccess] = useState(false);
   const [copyError, setCopyError] = useState(false);
-  const [copiedRecent, setCopiedRecent] = useState<number | null>(null);
+  // The COLOUR that was copied, not its slot: any colour applied anywhere in the editor re-sorts the
+  // recent strip (pushRecent puts it first), and an index then lit the ✓ and the "copied!" tip on a
+  // different swatch for the rest of the 1.2 s.
+  const [copiedRecent, setCopiedRecent] = useState<string | null>(null);
   const [presetSearch, setPresetSearch] = useState('');
   const [presetFilter, setPresetFilter] = useState<'all' | ThemeTag>('all');
   const [savePresetName, setSavePresetName] = useState('');
@@ -557,14 +572,19 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
 
   // Recent-swatch click: apply to the currently open HSL row if any, else copy to clipboard.
   const openField = openHslKey ? ALL_FIELDS.find(f => f.key === openHslKey) : undefined;
-  const handleRecentClick = useCallback(async (c: string, i: number) => {
+  const handleRecentClick = useCallback(async (c: string) => {
     if (openField) { applyColor(openField, c); return; }
     try {
       await navigator.clipboard?.writeText(c);
-      setCopiedRecent(i);
-      setTimeout(() => setCopiedRecent(prev => (prev === i ? null : prev)), 1200);
-    } catch { /* clipboard unavailable */ }
-  }, [openField, applyColor]);
+      setCopiedRecent(c);
+      setTimeout(() => setCopiedRecent(prev => (prev === c ? null : prev)), 1200);
+    } catch {
+      // A refused write (the window without OS focus, a clipboard another app holds) left the
+      // click with no ✓ and no word; the export's copy button reports its own failure, so should this.
+      showToast(tt('Could not copy the color — click inside the window and try again.',
+                   'Não foi possível copiar a cor — clique dentro da janela e tente de novo.'), 'error');
+    }
+  }, [openField, applyColor, showToast, tt]);
 
   // Preview hotspots are click-to-edit: cursor + pointerEvents:auto make them interactive (the rail
   // disables pointer-events on mock buttons; the inline style re-enables just these), plus the
@@ -967,18 +987,18 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
           <div className="sticky bottom-0 bg-bg-elevated pt-2 mt-1 border-t border-border-subtle px-4 pb-3 flex items-center gap-2">
             <span className="label-micro text-text-tertiary">Recent</span>
             <div className="flex gap-1">
-              {recentColors.map((c, i) => (
+              {recentColors.map((c) => (
                 <button
-                  key={i}
-                  onClick={() => handleRecentClick(c, i)}
+                  key={c}
+                  onClick={() => handleRecentClick(c)}
                   className="w-4 h-4 rounded border border-border-default flex items-center justify-center"
                   style={{ backgroundColor: c }}
-                  data-tip={openField ? tt(`Apply ${c} to ${openField.label}`, `Aplicar ${c} em ${openField.label}`) : copiedRecent === i ? tt(`${c} — copied!`, `${c} — copiado!`) : tt(`${c} — click to copy`, `${c} — clique para copiar`)}
+                  data-tip={openField ? tt(`Apply ${c} to ${openField.label}`, `Aplicar ${c} em ${openField.label}`) : copiedRecent === c ? tt(`${c} — copied!`, `${c} — copiado!`) : tt(`${c} — click to copy`, `${c} — clique para copiar`)}
                 >
                   {/* The swatch colour is known here, so the tick can be CHOSEN rather than
                       painted white and rescued with a drop shadow — pickInk is the same call
                       that decides the ink on every solid fill in the app. */}
-                  {copiedRecent === i && <Check size={9} style={{ color: pickInk(toHex(c)) }} />}
+                  {copiedRecent === c && <Check size={9} style={{ color: pickInk(toHex(c)) }} />}
                 </button>
               ))}
             </div>

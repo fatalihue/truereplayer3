@@ -29,12 +29,7 @@ const LexicalTokenEditor = lazy(() => import('./lexical/LexicalTokenEditor').the
 import type { LexicalEditorHandle } from './lexical/LexicalTokenEditor';
 import { getDisplayKey, isClickHold, CLICK_FAMILY_TYPES, clickFormOf, NO_COORD_TYPES } from '../utils/displayUtils';
 import { MIN_HOLD_MS, MAX_HOLD_MS, DEFAULT_HOLD_MS, DEFAULT_CLICK_GAP_MS, CLICK_COORD_TOLERANCE_PX, clickDefaultGap, rowDwellMs } from '../utils/actionCost';
-
-// How often the open row editor re-stamps its unsaved-work claim with AutomationGuard. Must stay
-// WELL under `AutomationGuard.EditorClaimTtl` (10 min) — that deadline is measured from the last
-// stamp, so the gap between renewals is the only thing that can let it lapse under a live editor.
-// One small message a minute, and only while the editor actually holds unsaved fields.
-const EDITOR_CLAIM_RENEW_MS = 60_000;
+import { useEditorClaim } from '../hooks/useEditorClaim';
 import { Field, Section } from './sheet/Field';
 import { WindowTargetFields } from './WindowTargetFields';
 import { Slider } from './sheet/Slider';
@@ -2089,11 +2084,8 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
   }, []);
 
   const pendingEdits = actionIndex != null && editorTouched;
-  useEffect(() => {
-    send({ type: 'editor:pendingEdits', payload: { pending: pendingEdits, owner: 'sheet' } });
-  }, [pendingEdits, send]);
-  // Unmount is not a value change, so the effect above never fires for it.
-  useEffect(() => () => { send({ type: 'editor:pendingEdits', payload: { pending: false, owner: 'sheet' } }); }, [send]);
+  // The transition, the unmount and the renewal all live in useEditorClaim now.
+  //
   // RENEW the claim while it is held. AutomationGuard expires it a fixed TTL after the moment it
   // was STAMPED, and the effect above only fires on the TRANSITION of pendingEdits — so the clock
   // started on the user's first keystroke in this row and nothing ever restarted it. Ten minutes
@@ -2116,14 +2108,8 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
   // fire reports "skipped (editing a row)", counts as SkippedModal, and is retried inside its
   // grace window. What it costs when it lapses is not: the fields are overwritten in silence.
   // Four live paths still release it — ui:ready, unmount, moving to another row, and the TTL
-  // itself the moment this interval stops.
-  useEffect(() => {
-    if (!pendingEdits) return;
-    const id = setInterval(() => {
-      send({ type: 'editor:pendingEdits', payload: { pending: true, owner: 'sheet' } });
-    }, EDITOR_CLAIM_RENEW_MS);
-    return () => clearInterval(id);
-  }, [pendingEdits, send]);
+  // itself the moment the renewal stops.
+  useEditorClaim('sheet', pendingEdits);
 
   // The row this editor edits, by IDENTITY — its Id and the profile it belongs to — not just by
   // index. The panel addresses its row by index, and the list can change under it: a delete or a

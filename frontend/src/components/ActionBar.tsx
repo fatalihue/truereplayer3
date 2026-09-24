@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react';
 import { Circle, Play, Square, Save, FolderOpen, MousePointerClick, List } from 'lucide-react';
 import { SegmentedControl } from './common/SegmentedControl';
 import { Button, BUTTON_VARIANT_CLASSES } from './common/Button';
-import { useAppState } from '../state/AppStateContext';
+import { useAppState, useClickerLive } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
 import { useSelectionRef } from '../state/SelectionContext';
 import { useTt } from '../state/LanguageContext';
@@ -58,44 +58,10 @@ export function ActionBar() {
     send({ type: 'settings:change', payload: { key: 'useCursorClick', value: clicker } });
   };
 
-  // ── Loop chip ──
-  // Loops moved out of Settings-as-a-global into the profile, and a value you can only see by
-  // opening a side panel is a value that surprises you mid-run. The chip answers "how many
-  // passes will this Replay do?" at the point of pressing it.
-  //
-  // The order below IS the engine's precedence chain (StartReplay + SetForceInfiniteLoop):
-  // loop-over-data > forced infinite > the profile's own count. Reporting the raw count while
-  // one of the first two is in effect would be a lie — a 40-row data profile showing "3x" is
-  // worse than no chip.
+  // ── Loop chip ── (LoopChip, below: the only part of the bar that reads the live run slice)
   const activeEntry = activeProfile ? profiles.find(p => p.name === activeProfile) : undefined;
-  const forcedInfinite = activeEntry?.triggerMode === 'whilePressed' || activeEntry?.triggerMode === 'toggle';
+  const hotkeyLoops = activeEntry?.triggerMode === 'whilePressed' || activeEntry?.triggerMode === 'toggle';
   const perRow = dataTable.loopOverData && dataTable.rows.length > 0;
-  // True only when the chip is actually reporting the Loops number. The other two branches
-  // report something that OVERRIDES it, and both the accent tint and the unsaved marker below
-  // are gated on this — an amber "unsaved Loops" outline around a chip reading "per row" would
-  // decorate a value that this run is not going to use.
-  const showsCount = !perRow && !forcedInfinite;
-  const loopLabel = perRow
-    ? 'per row'
-    : forcedInfinite
-      ? '∞'
-      : profileLoop.enabled
-        ? `${profileLoop.count}×`
-        : '1×';
-  // Quiet by default: only an actual repeat earns the accent tint. A corner dot marks an
-  // edit that Ctrl+S has not written yet — the value is live for this session but will not
-  // survive a profile switch. The two are INDEPENDENT and now compose: a profile that
-  // repeats 12× with an unsaved count shows the accent skin and the dot together, where the
-  // previous amber treatment painted over the emphasis and reported only one of the facts.
-  const loopEmphasised = showsCount && profileLoop.enabled && profileLoop.count !== '1';
-  const loopDirty = showsCount && profileLoop.dirty;
-  const loopTip = perRow
-    ? tt('One run per data row.', 'Uma execução por linha de dados.')
-    : forcedInfinite
-      ? tt('Runs until you stop it.', 'Roda até você parar.')
-      : loopDirty
-        ? tt('Repeats per run. Not saved — press Ctrl+S.', 'Repetições por execução. Não salvo — aperte Ctrl+S.')
-        : tt('Repeats per run. Change in Settings → Execution.', 'Repetições por execução. Ajuste em Settings → Execution.');
 
   // ── Primary skins ──
   // Resting: the semantic hue at the on-intensity, carried on border + icon. Two
@@ -243,21 +209,14 @@ export function ActionBar() {
             It stays at full strength during a run, unlike every control around it: it is a
             readout, not a control, and mid-run it names the count this very run is using. */}
         {!isClicker && (
-          <span
-            data-tip={loopTip}
-            // `relative` is explicit rather than inherited from the [data-tip] base rule,
-            // because the dot below anchors to it and that rule is not this file's to rely on.
-            className={`relative h-7 min-w-9 px-2 flex items-center justify-center rounded border text-[11px] font-mono tabular-nums select-none ${
-              loopEmphasised ? 'text-accent-solid' : 'text-text-tertiary'
-            }`}
-            // The unsaved edit does NOT touch the skin — see .loop-unsaved-dot in
-            // index.css. The chip answers one question ("how many passes?") and
-            // answers it the same way whether or not the value is written yet.
-            style={loopEmphasised ? chipOn : chipOff}
-          >
-            {loopLabel}
-            {loopDirty && <span className="loop-unsaved-dot" aria-hidden="true" />}
-          </span>
+          <LoopChip
+            isReplaying={isReplaying}
+            perRow={perRow}
+            hotkeyLoops={hotkeyLoops}
+            loopEnabled={profileLoop.enabled}
+            loopCount={profileLoop.count}
+            loopDirty={profileLoop.dirty}
+          />
         )}
       </div>
 
@@ -290,5 +249,82 @@ export function ActionBar() {
         </Button>
       </div>
     </div>
+  );
+}
+
+/**
+ * The Loop chip. Loops moved out of Settings-as-a-global into the profile, and a value you can only
+ * see by opening a side panel is a value that surprises you mid-run. The chip answers "how many
+ * passes will this Replay do?" at the point of pressing it.
+ *
+ * The order below IS the engine's precedence chain (StartReplay + SetForceInfiniteLoop):
+ * loop-over-data > forced infinite > the profile's own count. Reporting the raw count while one of
+ * the first two is in effect would be a lie — a 40-row data profile showing "3x" is worse than no
+ * chip.
+ *
+ * "Forced infinite" is a fact about the RUN, not the profile. Only the profile's own Toggle /
+ * While-pressed hotkey forces it (MainWindow: PROFILE_TOGGLE:: / PROFILE_HOLD::); the Replay button
+ * and the global Replay hotkey run the profile's count. Read off the triggerMode, the chip promised
+ * "∞ — runs until you stop it" beside a button that ran one pass. So: while a run is live, the
+ * engine's own loop counter says whether it is unbounded (total 0); at rest, the chip describes the
+ * button. Its own component because that counter is the ~4 Hz live slice (useClickerLive) — only
+ * the chip re-renders with it, not the bar.
+ */
+function LoopChip({ isReplaying, perRow, hotkeyLoops, loopEnabled, loopCount, loopDirty: countDirty }: {
+  isReplaying: boolean;
+  perRow: boolean;
+  /** The profile's own hotkey is Toggle / While-pressed — it loops; this button does not. */
+  hotkeyLoops: boolean;
+  loopEnabled: boolean;
+  loopCount: string;
+  loopDirty: boolean;
+}) {
+  const tt = useTt();
+  const { loopProgress } = useClickerLive();
+  const forcedInfinite = isReplaying && loopProgress.active && loopProgress.total === 0;
+  // True only when the chip is actually reporting the Loops number. The other two branches
+  // report something that OVERRIDES it, and both the accent tint and the unsaved marker below
+  // are gated on this — an amber "unsaved Loops" outline around a chip reading "per row" would
+  // decorate a value that this run is not going to use.
+  const showsCount = !perRow && !forcedInfinite;
+  const loopLabel = perRow
+    ? 'per row'
+    : forcedInfinite
+      ? '∞'
+      : loopEnabled
+        ? `${loopCount}×`
+        : '1×';
+  // Quiet by default: only an actual repeat earns the accent tint. A corner dot marks an
+  // edit that Ctrl+S has not written yet — the value is live for this session but will not
+  // survive a profile switch. The two are INDEPENDENT and now compose: a profile that
+  // repeats 12× with an unsaved count shows the accent skin and the dot together, where the
+  // previous amber treatment painted over the emphasis and reported only one of the facts.
+  const loopEmphasised = showsCount && loopEnabled && loopCount !== '1';
+  const loopDirty = showsCount && countDirty;
+  const loopTip = perRow
+    ? tt('One run per data row.', 'Uma execução por linha de dados.')
+    : forcedInfinite
+      ? tt('Runs until you stop it.', 'Roda até você parar.')
+      : loopDirty
+        ? tt('Repeats per run. Not saved — press Ctrl+S.', 'Repetições por execução. Não salvo — aperte Ctrl+S.')
+        : hotkeyLoops
+          ? tt("Repeats per run. The profile's own hotkey loops until stopped.", 'Repetições por execução. A hotkey do próprio perfil repete até parar.')
+          : tt('Repeats per run. Change in Settings → Execution.', 'Repetições por execução. Ajuste em Settings → Execution.');
+  return (
+    <span
+      data-tip={loopTip}
+      // `relative` is explicit rather than inherited from the [data-tip] base rule,
+      // because the dot below anchors to it and that rule is not this file's to rely on.
+      className={`relative h-7 min-w-9 px-2 flex items-center justify-center rounded border text-[11px] font-mono tabular-nums select-none ${
+        loopEmphasised ? 'text-accent-solid' : 'text-text-tertiary'
+      }`}
+      // The unsaved edit does NOT touch the skin — see .loop-unsaved-dot in
+      // index.css. The chip answers one question ("how many passes?") and
+      // answers it the same way whether or not the value is written yet.
+      style={loopEmphasised ? chipOn : chipOff}
+    >
+      {loopLabel}
+      {loopDirty && <span className="loop-unsaved-dot" aria-hidden="true" />}
+    </span>
   );
 }

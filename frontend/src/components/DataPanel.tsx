@@ -16,6 +16,7 @@ import { DataPasteSurface, type PasteMode } from './DataPasteSurface';
 import { parseTsv, encodeTsv, deepEqualGrid, tokenizeTsvGrid, sniffDelimiter, type Grid } from '../lib/tsv';
 import { scanRowTokenUsage, orphanHead } from '../lib/rowTokenUsage';
 import { uiZoom, rectToLayout, viewportInLayout } from '../utils/zoomSpace';
+import { useEditorClaim } from '../hooks/useEditorClaim';
 
 interface DataPanelProps {
   onClose: () => void;
@@ -130,6 +131,7 @@ function HeaderMenu({
   header,
   colIndex,
   colCount,
+  readOnly,
   onAction,
   onClose,
 }: {
@@ -137,6 +139,9 @@ function HeaderMenu({
   header: string;
   colIndex: number;
   colCount: number;
+  /** The large-table state: the grid says it is read-only, so the column edits are off too and
+   *  only the token copy is left. */
+  readOnly: boolean;
   onAction: (a: HeaderMenuAction) => void;
   onClose: () => void;
 }) {
@@ -236,21 +241,22 @@ function HeaderMenu({
         <span className="font-mono truncate">{valid ? `Copy {row:${name}}` : 'Invalid token name'}</span>
       </button>
       <div className="h-px bg-border-subtle my-1" />
-      <button type="button" className={itemCls} onClick={() => { onAction('insert-left'); onClose(); }}>
+      <button type="button" className={itemCls} disabled={readOnly} onClick={() => { onAction('insert-left'); onClose(); }}>
         <Plus size={12} className="shrink-0" /> {'Insert column left'}
       </button>
-      <button type="button" className={itemCls} onClick={() => { onAction('insert-right'); onClose(); }}>
+      <button type="button" className={itemCls} disabled={readOnly} onClick={() => { onAction('insert-right'); onClose(); }}>
         <Plus size={12} className="shrink-0" /> {'Insert column right'}
       </button>
-      <button type="button" className={itemCls} disabled={colIndex === 0} onClick={() => { onAction('move-left'); onClose(); }}>
+      <button type="button" className={itemCls} disabled={readOnly || colIndex === 0} onClick={() => { onAction('move-left'); onClose(); }}>
         ← {'Move left'}
       </button>
-      <button type="button" className={itemCls} disabled={colIndex === colCount - 1} onClick={() => { onAction('move-right'); onClose(); }}>
+      <button type="button" className={itemCls} disabled={readOnly || colIndex === colCount - 1} onClick={() => { onAction('move-right'); onClose(); }}>
         → {'Move right'}
       </button>
       <div className="h-px bg-border-subtle my-1" />
       <button
         type="button"
+        disabled={readOnly}
         // The armed colour has to beat itemCls's `hover:text-text-primary`, which is a more
         // specific selector — and the pointer is NECESSARILY on this item, since arming it took a
         // click. Dropping the old `hover:` half left the confirm state visible only after moving
@@ -473,7 +479,16 @@ export function DataPanel({ onClose }: DataPanelProps) {
   // derive from the full table). Highlights every matching cell; next/prev scrolls each hit into view.
   const gridScrollRef = useRef<HTMLDivElement>(null);
   const [find, setFind] = useState('');
-  const findLower = find.trim().toLowerCase();
+  // Debounced like the paste preview below, and for the same reason: the term feeds matchRows AND
+  // every GridRow's highlight, so each keystroke re-rendered the whole table — thousands of rows
+  // once a big paste has landed (Replace has no row cap; the grid only turns read-only past 2000).
+  // Enter and the ✕ flush it, so a jump never runs on a term the user has already changed.
+  const [findTerm, setFindTerm] = useState('');
+  useEffect(() => {
+    const t = window.setTimeout(() => setFindTerm(find), 120);
+    return () => window.clearTimeout(t);
+  }, [find]);
+  const findLower = findTerm.trim().toLowerCase();
   const [findPos, setFindPos] = useState(0);
   const matchRows = useMemo(() => {
     if (findLower === '') return [];
@@ -577,9 +592,18 @@ export function DataPanel({ onClose }: DataPanelProps) {
   const cursorRow = Math.max(0, dataTable.cursorRow ?? 0);
   // Park the cursor on a row. Allowed even in the read-only (row-cap) state: this is not an edit
   // to the table, and a big list is exactly where re-walking from row 1 hurts most.
+  // The cursor points into the SAVED table: the backend checks the row against it and ignores
+  // anything past its end on purpose (HandleActionsResetRow). A row added here and not saved yet
+  // is past that end, so the click did nothing and nothing said why — it says why now.
+  const savedRowCount = dataTable.rows.length;
   const handleSetCursor = useCallback((r: number) => {
+    if (r >= savedRowCount) {
+      showToast(tt(`Row ${r + 1} isn't saved yet — save the table, then move the cursor there.`,
+                   `A linha ${r + 1} ainda não foi salva — salve a tabela e depois mova o cursor para ela.`), 'info');
+      return;
+    }
     send({ type: 'actions:resetRow', payload: { row: r } });
-  }, [send]);
+  }, [send, savedRowCount, showToast, tt]);
 
   const headerMeta = useMemo(() => {
     const seen = new Map<string, number>();
@@ -672,6 +696,10 @@ export function DataPanel({ onClose }: DataPanelProps) {
       copyToken(`{row:${grid.headers[c].trim()}}`, `h${c}`);
       return;
     }
+    // The menu disables these in the large-table state; this is the funnel behind it. Every other
+    // grid edit already stood down there (cells, rows, the header rename, both "+" buttons) while
+    // the strip announced "grid is read-only" — the column menu and the header fix did not.
+    if (readOnly) return;
     setEditing(null);
     if (a === 'delete') {
       updateGrid((g) => ({
@@ -716,6 +744,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
   };
 
   const fixHeader = (c: number) => {
+    if (readOnly) return;
     updateGrid((g) => {
       const headers = [...g.headers];
       // Only the token grammar's three characters are swapped for '_' — the rest of the header
@@ -749,12 +778,16 @@ export function DataPanel({ onClose }: DataPanelProps) {
     }));
   };
 
+  // The ✓ appears only when the write landed; a refused one (the window without OS focus, a
+  // clipboard held by another app) used to be an unhandled rejection with no ✓ and no word.
+  const copyFailed = () => showToast(tt('Could not copy — click inside the window and try again.',
+                                        'Não foi possível copiar — clique dentro da janela e tente de novo.'), 'error');
   const copyToken = (token: string, key: string) => {
     navigator.clipboard?.writeText(token).then(() => {
       setCopiedKey(key);
       window.clearTimeout(copiedTimer.current);
       copiedTimer.current = window.setTimeout(() => setCopiedKey(null), 1000);
-    });
+    }, copyFailed);
   };
 
   // ── Paste surface ──
@@ -774,6 +807,9 @@ export function DataPanel({ onClose }: DataPanelProps) {
   const csvInputRef = useRef<HTMLInputElement>(null);
   const importCsvFile = (file: File) => {
     const reader = new FileReader();
+    // Every other FileReader in the app says so when the read fails (a file held by another
+    // process, a drive that went away); this one did nothing at all, so Import CSV looked broken.
+    reader.onerror = () => showToast(tt('Could not read that file.', 'Não foi possível ler esse arquivo.'), 'error');
     reader.onload = () => {
       const text = String(reader.result ?? '');
       if (text.trim() === '') return;
@@ -832,8 +868,15 @@ export function DataPanel({ onClose }: DataPanelProps) {
           const key = keyOf(h);
           if (!claimedKeys.has(key)) {
             claimedKeys.add(key);
-            const i = headers.findIndex((eh) => keyOf(eh) === key);
-            if (i >= 0) return i;
+            // The LAST existing column with that name, and only among the table's own columns:
+            // BuildRowDict keeps the last occurrence of a duplicated header (the header's own
+            // tooltip says "the last one wins"), so appending into the first one filled a column
+            // {row:Name} never reads — the pasted values were in the grid and invisible to the
+            // run. Columns this paste just added are not candidates: a later pasted "nome_2"
+            // would otherwise land on the "Nome_2" slot made for a repeated "Nome".
+            for (let i = g.headers.length - 1; i >= 0; i--) {
+              if (keyOf(g.headers[i]) === key) return i;
+            }
           }
           let name = h.trim();
           if (headers.some((eh) => keyOf(eh) === keyOf(name))) {
@@ -921,6 +964,11 @@ export function DataPanel({ onClose }: DataPanelProps) {
   const workPending = useCallback(
     () => dirtyNow() || (pasteOpen && pasteText.trim() !== '' && pasteText !== prefillRef.current),
     [dirtyNow, pasteOpen, pasteText]);
+  // The same answer, told to the backend (the render-time twin of workPending: `dirty` is the
+  // memo of what dirtyNow reads). Without it the window's close guard and the silent update after
+  // a run saw a clean profile and threw the table away without a word — and an automation fire,
+  // which swaps the profile and so closes this panel, went ahead over it too.
+  useEditorClaim('data-panel', dirty || (pasteOpen && pasteText.trim() !== '' && pasteText !== prefillRef.current));
 
   // ONE door for every close this panel does not choose, so the next one cannot be born mute.
   // Both callers are events that arrive from OUTSIDE the window — ScrLk and a global profile
@@ -1036,14 +1084,26 @@ export function DataPanel({ onClose }: DataPanelProps) {
           type="text"
           value={find}
           onChange={(e) => setFind(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') jumpToMatch(e.shiftKey ? -1 : 1); }}
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter') return;
+            if (find !== findTerm) {
+              // The term is still in the debounce: apply it now and show its first hit, the
+              // "1/N" the counter is about to read.
+              setFindTerm(find);
+              const lower = find.trim().toLowerCase();
+              const first = lower === '' ? -1 : grid.rows.findIndex((row) => row.some((cell) => cell.toLowerCase().includes(lower)));
+              if (first >= 0) gridScrollRef.current?.querySelector(`[data-row="${first}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+              return;
+            }
+            jumpToMatch(e.shiftKey ? -1 : 1);
+          }}
           placeholder={'Find in table…'}
           className="input-inline pl-7 pr-7 font-sans text-[11px]"
         />
         {find && (
           <button
             type="button"
-            onClick={() => setFind('')}
+            onClick={() => { setFind(''); setFindTerm(''); }}
             className="absolute right-1.5 text-text-disabled hover:text-text-secondary"
           >
             <X size={11} />
@@ -1411,11 +1471,15 @@ export function DataPanel({ onClose }: DataPanelProps) {
                           <button
                             type="button"
                             onClick={() => fixHeader(c)}
-                            className="w-6 h-6 flex items-center justify-center rounded text-text-tertiary hover:text-text-primary hover:bg-bg-card transition-colors ml-auto shrink-0"
-                            data-tip={tt(
-                              'Not a valid token name ({ } : not allowed) — click to fix',
-                              'Nome inválido para token ({ } : não podem) — clique para corrigir',
-                            )}
+                            disabled={readOnly}
+                            className="w-6 h-6 flex items-center justify-center rounded text-text-tertiary hover:text-text-primary hover:bg-bg-card transition-colors ml-auto shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                            data-tip={readOnly
+                              ? tt('Not a valid token name ({ } : not allowed) — the grid is read-only, fix it via Paste / bulk edit',
+                                   'Nome inválido para token ({ } : não podem) — a grade está só leitura, corrija pelo Paste / bulk edit')
+                              : tt(
+                                'Not a valid token name ({ } : not allowed) — click to fix',
+                                'Nome inválido para token ({ } : não podem) — clique para corrigir',
+                              )}
                           >
                             <Wand2 size={12} />
                           </button>
@@ -1481,7 +1545,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
                   setCopiedKey('__table');
                   window.clearTimeout(copiedTimer.current);
                   copiedTimer.current = window.setTimeout(() => setCopiedKey(null), 1000);
-                });
+                }, copyFailed);
               }}
               disabled={emptyGrid}
               className="flex items-center gap-2 px-3 h-7 text-[11px] text-text-secondary hover:text-text-primary hover:bg-bg-card transition-colors disabled:opacity-40 disabled:cursor-not-allowed"            >
@@ -1528,6 +1592,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
           header={grid.headers[headerMenu.c] ?? ''}
           colIndex={headerMenu.c}
           colCount={grid.headers.length}
+          readOnly={readOnly}
           onAction={(a) => headerMenuAction(headerMenu.c, a)}
           onClose={() => setHeaderMenu(null)}
         />
