@@ -35,9 +35,33 @@ namespace TrueReplayer
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
         };
 
-        // Undo/Redo history
-        private readonly Stack<string> _undoStack = new();
-        private readonly Stack<string> _redoStack = new();
+        // Undo/Redo history. An entry is the action list as JSON and, for a coordinate conversion
+        // only, the window context that list's coordinates belong to.
+        private sealed record UndoEntry(string Actions, CoordinateSpace? Space = null);
+
+        /// <summary>
+        /// What Convert to Relative/Absolute rewrites OUTSIDE the action list: the flag naming the
+        /// space the coordinates are in, and the window rect they were measured against. An undo
+        /// entry that restored only the list put absolute coordinates back under a flag still
+        /// saying relative, and the next Save wrote that pair to disk.
+        /// </summary>
+        private sealed record CoordinateSpace(bool UseRelative, int X, int Y, int Width, int Height)
+        {
+            public static CoordinateSpace Capture(UserProfile p) =>
+                new(p.UseRelativeCoordinates, p.WindowX, p.WindowY, p.WindowWidth, p.WindowHeight);
+
+            public void ApplyTo(UserProfile p)
+            {
+                p.UseRelativeCoordinates = UseRelative;
+                p.WindowX = X;
+                p.WindowY = Y;
+                p.WindowWidth = Width;
+                p.WindowHeight = Height;
+            }
+        }
+
+        private readonly Stack<UndoEntry> _undoStack = new();
+        private readonly Stack<UndoEntry> _redoStack = new();
         private const int MaxHistory = 50;
 
         // Base64 cache for WaitImage / IF-Image reference PNGs, keyed by "profileName\0imagePath".
@@ -186,7 +210,37 @@ namespace TrueReplayer
             }
         }
         public string? CurrentProfilePath { get; set; }
-        public bool HasUnsavedChanges { get; set; }
+
+        // Every write that sets the flag (and every loop edit, MarkLoopEdited) also advances
+        // _dirtyGeneration. A save that awaits I/O compares the number before and after: an edit
+        // that landed DURING the write is not in the file, so its flag must survive the save that
+        // raced it (see HandleProfileSave).
+        private bool _hasUnsavedChanges;
+        private long _dirtyGeneration;
+        public bool HasUnsavedChanges
+        {
+            get => _hasUnsavedChanges;
+            set
+            {
+                _hasUnsavedChanges = value;
+                if (value) _dirtyGeneration++;
+            }
+        }
+
+        /// <summary>
+        /// The GRID half of "is there unsaved work", and the one reader every gate shares: the
+        /// switch/load prompt (CheckUnsavedChangesAsync), the update gate, the window close guard
+        /// and both automation-fire gates. They used to spell it two ways — the first three waved
+        /// an EMPTY grid through as "nothing to lose" while the daemon parked on the bare flag, so
+        /// deleting every row of a saved profile skipped automations but let a profile switch
+        /// throw the deletion away with no dialog.
+        ///
+        /// An emptied grid IS an edit when a profile file stands behind it: the file still holds
+        /// the rows. It is nothing only under "No Profile", where there is no file to differ from.
+        /// The pending loop edit is deliberately NOT part of this — see HasUnsavedLoopChange.
+        /// </summary>
+        public bool HasUnsavedActionWork =>
+            HasUnsavedChanges && (actions.Count > 0 || CurrentProfileName != "No Profile");
 
         // Clears ONLY the per-profile (serialized) window/target fields on the shared static
         // profile, so they don't leak across a "No Profile" transition (see the CurrentProfileName
@@ -455,6 +509,17 @@ namespace TrueReplayer
             {
                 if (_disposed) return;
                 dispatcherQueue.TryEnqueue(() => SendMessage("alert:show", new { message }));
+            };
+            // Both already arrive on the UI thread (the watcher enqueues them).
+            this.profileController.OnListChangedExternally = () =>
+            {
+                if (_disposed) return;
+                PushProfilesUpdate();
+            };
+            this.profileController.OnProfileRenamedExternally = (oldName, newName, newPath) =>
+            {
+                if (_disposed) return;
+                HandleExternalProfileRename(oldName, newName, newPath);
             };
 
             // Watch for browser extension events
@@ -1674,16 +1739,23 @@ namespace TrueReplayer
             {
                 if (name != "No Profile" && entry != null && File.Exists(entry.FilePath))
                 {
-                    var profile = await profileController.LoadProfileByNameAsync(name);
-                    if (profile != null)
-                    {
-                        profile.Triggers = trigger;
-                        await profileController.SaveProfileByNameAsync(name, profile);
-                    }
+                    var profile = await profileController.LoadProfileByNameAsync(name)
+                        ?? throw new InvalidOperationException($"\"{name}\" could not be read from disk.");
+                    profile.Triggers = trigger;
+                    await profileController.SaveProfileByNameAsync(name, profile);
                 }
                 else if (name == CurrentProfileName)
                 {
                     HasUnsavedChanges = true;
+                }
+                else
+                {
+                    // Neither a file to write nor the grid to carry it: the profile's file was
+                    // renamed or deleted outside the app and the list has not caught up. Falling
+                    // through here used to report success — the panel showed the automation armed —
+                    // and the change was gone at the next launch. The catch below rolls the mirrors
+                    // back and the caller says why.
+                    throw new InvalidOperationException($"the file of \"{name}\" is no longer in the Profiles folder.");
                 }
             }
             catch
@@ -2173,15 +2245,17 @@ namespace TrueReplayer
             _redoStack.Clear();
         }
 
-        private void PushUndoState()
+        /// <param name="space">The window context as it stands BEFORE the edit, for the one edit
+        /// that rewrites it along with the list (coordinate conversion). Null for every other.</param>
+        private void PushUndoState(CoordinateSpace? space = null)
         {
             // No .ToList(): the serializer takes any IEnumerable and emits the same JSON array, so
             // the copy only duplicated the whole collection on a path that runs on every edit.
             var snapshot = JsonSerializer.Serialize(actions, JsonOptions);
-            _undoStack.Push(snapshot);
+            _undoStack.Push(new UndoEntry(snapshot, space));
             if (_undoStack.Count > MaxHistory)
             {
-                var temp = new Stack<string>(_undoStack.Reverse().Skip(_undoStack.Count - MaxHistory));
+                var temp = new Stack<UndoEntry>(_undoStack.Reverse().Skip(_undoStack.Count - MaxHistory));
                 _undoStack.Clear();
                 foreach (var item in temp.Reverse()) _undoStack.Push(item);
             }
@@ -2192,27 +2266,73 @@ namespace TrueReplayer
         private void HandleUndo()
         {
             if (_undoStack.Count == 0) return;
-            var current = JsonSerializer.Serialize(actions, JsonOptions);
-            _redoStack.Push(current);
-            var snapshot = _undoStack.Pop();
-            RestoreActionsFromSnapshot(snapshot);
+            var entry = _undoStack.Pop();
+            // The state being left goes to the other stack in the same shape: redoing a conversion
+            // has to put the converted coordinates back together with the space they were
+            // converted into.
+            _redoStack.Push(new UndoEntry(JsonSerializer.Serialize(actions, JsonOptions),
+                entry.Space != null ? CoordinateSpace.Capture(UserProfile.Current) : null));
+            RestoreFromHistory(entry);
             mainController.UpdateButtonStates();
         }
 
         private void HandleRedo()
         {
             if (_redoStack.Count == 0) return;
-            var current = JsonSerializer.Serialize(actions, JsonOptions);
-            _undoStack.Push(current);
-            var snapshot = _redoStack.Pop();
-            RestoreActionsFromSnapshot(snapshot);
+            var entry = _redoStack.Pop();
+            _undoStack.Push(new UndoEntry(JsonSerializer.Serialize(actions, JsonOptions),
+                entry.Space != null ? CoordinateSpace.Capture(UserProfile.Current) : null));
+            RestoreFromHistory(entry);
             mainController.UpdateButtonStates();
         }
 
-        private void RestoreActionsFromSnapshot(string snapshot)
+        private void RestoreFromHistory(UndoEntry entry)
+        {
+            if (RestoreActionsFromSnapshot(entry.Actions))
+                entry.Space?.ApplyTo(UserProfile.Current);
+        }
+
+        /// <summary>
+        /// A rename rewrites the RunProfile rows that name the renamed profile. The history has to
+        /// follow, or Ctrl+Z after the rename brings back rows pointing at a name that no longer
+        /// exists — a RunProfile that silently does nothing at replay. The rename is not itself an
+        /// undoable step (it renamed a file), so no entry is pushed for it.
+        /// </summary>
+        private void RewriteRunProfileRefsInHistory(string oldName, string newName)
+        {
+            RewriteStack(_undoStack);
+            RewriteStack(_redoStack);
+
+            void RewriteStack(Stack<UndoEntry> stack)
+            {
+                var items = stack.ToArray(); // top first
+                stack.Clear();
+                for (int i = items.Length - 1; i >= 0; i--)
+                    stack.Push(items[i] with { Actions = Rewrite(items[i].Actions) });
+            }
+
+            string Rewrite(string snapshot)
+            {
+                // Cheap reject first: most entries never mention the renamed profile at all.
+                if (snapshot.IndexOf(oldName, StringComparison.OrdinalIgnoreCase) < 0) return snapshot;
+                var list = JsonSerializer.Deserialize<List<ActionItem>>(snapshot, JsonOptions);
+                if (list == null) return snapshot;
+                bool changed = false;
+                foreach (var act in list)
+                {
+                    if (!string.Equals(act.ActionType, "RunProfile", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (!string.Equals(act.Key, oldName, StringComparison.OrdinalIgnoreCase)) continue;
+                    act.Key = newName;
+                    changed = true;
+                }
+                return changed ? JsonSerializer.Serialize(list, JsonOptions) : snapshot;
+            }
+        }
+
+        private bool RestoreActionsFromSnapshot(string snapshot)
         {
             var restored = JsonSerializer.Deserialize<List<ActionItem>>(snapshot, JsonOptions);
-            if (restored == null) return;
+            if (restored == null) return false;
 
             // AFTER the null check: a snapshot that failed to deserialize changes nothing, so it
             // must not invalidate anyone's scope. Undo/redo rebuilds every row from JSON, so the
@@ -2245,6 +2365,7 @@ namespace TrueReplayer
             }
             HasUnsavedChanges = true;
             PushActionsUpdate();
+            return true;
         }
 
         /// <summary>
@@ -2549,12 +2670,32 @@ namespace TrueReplayer
         public bool CanUndo => _undoStack.Count > 0;
         public bool CanRedo => _redoStack.Count > 0;
 
+        /// <summary>
+        /// Re-stamps the loaded profile's INHERITED window flags from its folder. Activation writes
+        /// the effective values into UserProfile.Current, and the recorder, the capture helpers and
+        /// the Replay of the loaded grid all read them there — but moving the profile to another
+        /// folder, editing or removing its folder's target, or dropping its own target changed
+        /// the effective value without touching Current. The next recorded click or captured
+        /// region then landed in one space while the replay read the other, offset by the window
+        /// origin. A profile with its OWN target is left alone: its flag is its own, and Convert
+        /// may have moved it together with the grid before a Save.
+        /// Called from PushProfilesUpdate, which every one of those handlers already ends in.
+        /// </summary>
+        private void SyncActiveInheritedWindowFlags()
+        {
+            if (CurrentProfileName == "No Profile") return;
+            if (profileController.HasOwnWindowTarget(CurrentProfileName)) return;
+            UserProfile.Current.UseRelativeCoordinates = profileController.GetEffectiveRelativeCoordinates(CurrentProfileName);
+            UserProfile.Current.BringToFocus = profileController.GetEffectiveBringToFocus(CurrentProfileName);
+        }
+
         public void PushProfilesUpdate()
         {
             // Refresh derived effective-target fields before serializing — handlers that mutate
             // folder membership or folder targets don't always call RefreshProfileListAsync,
             // and the UI relies on these fields to render the inherited-target badge.
             profileController.PopulateEffectiveTargets();
+            SyncActiveInheritedWindowFlags();
             // Per-call dedup only, NOT a persistent cache (AppIconService owns caching) — it just
             // collapses GetIconBase64's per-hit revalidation I/O across profiles sharing a target.
             var iconLookup = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
@@ -2679,6 +2820,7 @@ namespace TrueReplayer
         {
             _hasUnsavedLoopChange = true;
             _loopEditProfile = CurrentProfileName;
+            _dirtyGeneration++; // an edit a save in flight has not written — see HasUnsavedChanges
         }
         public void ClearLoopEdit()
         {
@@ -2980,10 +3122,11 @@ namespace TrueReplayer
 
         public void PushToolbarUpdate()
         {
+            // profileName only: the frontend reads nothing else from this message. The action count
+            // it used to carry had no reader — the status bar has its own, on statusbar:updated.
             SendMessage("toolbar:updated", new
             {
                 profileName = CurrentProfileName,
-                actionCount = actions.Count
             });
         }
 
@@ -3069,13 +3212,12 @@ namespace TrueReplayer
         private async Task<bool> CheckUnsavedChangesAsync(string beforeWhat = "continuing")
         {
             // A pending Loops/Interval edit counts as unsaved work on its OWN — including on a
-            // profile with zero actions, which the `actions.Count == 0` short-circuit below
-            // would otherwise wave through. Without this, editing the loop count and clicking
-            // another profile discarded the value with no dialog at all.
-            if (!HasUnsavedLoopChange && (!HasUnsavedChanges || actions.Count == 0))
+            // profile with zero actions. Without this, editing the loop count and clicking another
+            // profile discarded the value with no dialog at all.
+            if (!HasUnsavedLoopChange && !HasUnsavedActionWork)
                 return true;
 
-            bool loopOnly = HasUnsavedLoopChange && (!HasUnsavedChanges || actions.Count == 0);
+            bool loopOnly = HasUnsavedLoopChange && !HasUnsavedActionWork;
             var result = await profileController.ShowUnsavedChangesDialogAsync(loopOnly, beforeWhat);
 
             if (result == Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary) // Save
@@ -3094,6 +3236,9 @@ namespace TrueReplayer
                     // the trigger would silently never fire again.
                     HasUnsavedChanges = false;
                     ClearLoopEdit();
+                    // This write skips RefreshProfileListAsync, and the list entry is what a later
+                    // fire of this profile reads its coordinate flag from — see MirrorSavedWindowFlags.
+                    profileController.MirrorSavedWindowFlags(CurrentProfileName, profile);
                     return true;
                 }
                 else
@@ -3419,7 +3564,7 @@ namespace TrueReplayer
                 // Cold-start automation state — MUST mirror PushAutomationState (same builder,
                 // so it can't drift). Without it the panel seeds empty until the first push.
                 automation = BuildAutomationStatePayload(),
-                toolbar = new { profileName = CurrentProfileName, actionCount = actions.Count },
+                toolbar = new { profileName = CurrentProfileName },
                 statusBar = new
                 {
                     directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "TrueReplayer", "Profiles"),
@@ -3498,7 +3643,7 @@ namespace TrueReplayer
         {
             if (recordingService.IsRecording) { reason = "a recording is in progress"; return UpdateGate.Busy; }
             if (replayService.IsReplaying) { reason = "a replay is running"; return UpdateGate.Busy; }
-            if (HasUnsavedLoopChange || (HasUnsavedChanges && actions.Count > 0)) { reason = "the profile has unsaved changes"; return UpdateGate.Unsaved; }
+            if (HasUnsavedLoopChange || HasUnsavedActionWork) { reason = "the profile has unsaved changes"; return UpdateGate.Unsaved; }
             reason = string.Empty;
             return UpdateGate.Clear;
         }
@@ -3912,7 +4057,13 @@ namespace TrueReplayer
             int variationPercent = int.TryParse(DelayVariation, out var vp) ? vp : 20;
             bool hasCur = CurrentProfileName != "No Profile";
             var effTarget = hasCur ? profileController.GetEffectiveWindowTarget(CurrentProfileName) : UserProfile.Current.TargetWindow;
-            var effRelCoords = hasCur ? profileController.GetEffectiveRelativeCoordinates(CurrentProfileName) : UserProfile.Current.UseRelativeCoordinates;
+            // This replays the GRID, so the flag comes from where the grid's coordinates were last
+            // put into a space: UserProfile.Current. Activation stamps the effective value there,
+            // Convert changes both together, and PushProfilesUpdate re-stamps an inheriting
+            // profile when its folder changes (SyncActiveInheritedWindowFlags). The list entry is
+            // the DISK's flag: after Convert and before Save it still named the old space, and the
+            // converted clicks ran offset by the window origin.
+            var effRelCoords = UserProfile.Current.UseRelativeCoordinates;
             var effBringFocus = hasCur ? profileController.GetEffectiveBringToFocus(CurrentProfileName) : UserProfile.Current.BringToFocus;
             var effRestorePos = hasCur ? profileController.GetEffectiveRestorePosition(CurrentProfileName) : UserProfile.Current.RestorePosition;
             var effRestoreSz = hasCur ? profileController.GetEffectiveRestoreSize(CurrentProfileName) : UserProfile.Current.RestoreSize;
@@ -3976,7 +4127,11 @@ namespace TrueReplayer
             PushUndoState();
             Services.ProfileEpoch.Bump("action list cleared");
             actions.Clear();
-            HasUnsavedChanges = false;
+            // An edit like any other row removal: the profile's file still holds every row, so an
+            // automation fire must not swap the grid out and a switch must ask. Under "No Profile"
+            // HasUnsavedActionWork reads an empty grid as nothing to lose, which is why this can
+            // be unconditional. It used to write false, the one list mutator that did.
+            HasUnsavedChanges = true;
             mainController.UpdateButtonStates();
         }
 
@@ -4769,6 +4924,16 @@ namespace TrueReplayer
             if (targets.Count == 0)
             {
                 SendMessage("alert:show", new { message = "X/Y can only be set on mouse click actions." });
+                return;
+            }
+
+            // The parse above bounds what was TYPED; an offset lands on each row's current value,
+            // and that sum was never checked. X near int.MaxValue plus "+10" wrapped to a large
+            // negative coordinate, written in silence under the success toast. Refused before the
+            // undo push, like the other rejections here, so nothing changes.
+            if (isOffset && targets.Any(a => (long)(axis == "x" ? a.X : a.Y) + val is > int.MaxValue or < int.MinValue))
+            {
+                SendMessage("alert:show", new { message = $"{axis.ToUpper()} {valueStr} would push some of the selected rows past the largest possible coordinate. Nothing was changed." });
                 return;
             }
 
@@ -6158,9 +6323,18 @@ namespace TrueReplayer
 
         private void HandleInsertKeystroke(JsonElement payload)
         {
-            var keystroke = payload.GetProperty("keystroke").GetString();
-            var insertIndex = payload.GetProperty("insertIndex").GetInt32();
-            if (string.IsNullOrEmpty(keystroke)) return;
+            // Try* like the optional fields below: a missing or fractional field used to throw into
+            // HandleMessage's catch, which is Debug-only — the dialog had closed, no row appeared,
+            // and nothing anywhere said why. A missing index appends, the clamp's own answer.
+            var keystroke = payload.TryGetProperty("keystroke", out var ksEl) && ksEl.ValueKind == JsonValueKind.String
+                ? ksEl.GetString() : null;
+            int insertIndex = payload.TryGetProperty("insertIndex", out var idxEl) && idxEl.TryGetInt32(out var idx)
+                ? idx : actions.Count;
+            if (string.IsNullOrEmpty(keystroke))
+            {
+                Services.DiagnosticLog.Warn("actions:insertKeystroke without a keystroke — nothing inserted");
+                return;
+            }
             if (insertIndex < 0 || insertIndex > actions.Count) insertIndex = actions.Count;
 
             // Optional repeat fields — present when the "Press × N" insert flow is used,
@@ -6215,9 +6389,16 @@ namespace TrueReplayer
 
         private void HandleInsertHoldKey(JsonElement payload)
         {
-            var key = payload.GetProperty("key").GetString();
-            var insertIndex = payload.GetProperty("insertIndex").GetInt32();
-            if (string.IsNullOrEmpty(key)) return;
+            // Same reading as HandleInsertKeystroke just above, for the same reason.
+            var key = payload.TryGetProperty("key", out var keyEl) && keyEl.ValueKind == JsonValueKind.String
+                ? keyEl.GetString() : null;
+            int insertIndex = payload.TryGetProperty("insertIndex", out var idxEl) && idxEl.TryGetInt32(out var idx)
+                ? idx : actions.Count;
+            if (string.IsNullOrEmpty(key))
+            {
+                Services.DiagnosticLog.Warn("actions:insertHoldKey without a key — nothing inserted");
+                return;
+            }
             if (insertIndex < 0 || insertIndex > actions.Count) insertIndex = actions.Count;
 
             // Optional hold duration — clamped 10..60000 (same range as the inline editor).
@@ -6781,6 +6962,26 @@ namespace TrueReplayer
             // handler need it: the search region goes UP into screen space on the way in, and the
             // reported hit has to come back DOWN into the anchor's space on the way out.
             TryParseAnchorTarget(payload, out var anchorTarget, out bool anchorRequested);
+
+            // Anchored, but the window cannot be resolved (closed, minimised, or never named): both
+            // halves below would skip their shift in silence. The search then ran on anchor-space
+            // numbers as if they were screen coordinates, and a hit came back in screen space for
+            // the panel to store as anchor-relative — the double offset the eyedropper and the
+            // region picker already refuse. Say so instead of answering about the wrong rectangle.
+            if (absolute && anchorRequested && !TryGetAnchorCaptureOffset(anchorTarget, out _))
+            {
+                SendMessage("image:testMatchResult", new
+                {
+                    requestId,
+                    found = false,
+                    score = 0.0,
+                    x = 0, y = 0, w = 0, h = 0,
+                    error = anchorTarget == null
+                        ? "Name the anchor window first (process name or window title) — until then there is no origin to test against."
+                        : "The anchor window is not open (or is minimised) — restore it and test again, or turn off \"Relative to a window\"."
+                });
+                return;
+            }
 
             System.Drawing.Rectangle? searchRegion = null;
             if (payload.TryGetProperty("searchRegion", out var srEl) && srEl.ValueKind == JsonValueKind.Object)
@@ -8046,7 +8247,17 @@ namespace TrueReplayer
                 return;
             }
 
-            var profile = await profileController.LoadProfileByNameAsync(name);
+            UserProfile? profile;
+            string? loadError = null;
+            try { profile = await profileController.LoadProfileByNameAsync(name); }
+            catch (Exception ex)
+            {
+                // A malformed file throws out of the parse instead of returning null, and this
+                // handler is async void: the app-wide net caught it and the click did nothing.
+                Services.DiagnosticLog.Error($"Opening '{name}' failed", ex);
+                profile = null;
+                loadError = ex.Message;
+            }
             if (profile != null)
             {
                 var entry = profileController.ProfileEntries.FirstOrDefault(p => p.Name == name);
@@ -8074,6 +8285,17 @@ namespace TrueReplayer
                 PushProfileLoop();
                 PushProfilesUpdate();
                 TrayIconService.UpdateTrayIcon();
+            }
+            else
+            {
+                // The file is gone (renamed or deleted outside the app) or unreadable, and the
+                // list is stale. Say so, and re-read the list so the dead row goes away.
+                SendMessage("alert:show", new { message = loadError == null
+                    ? $"Could not open \"{name}\" — its file is no longer in the Profiles folder."
+                    : $"Could not open \"{name}\": {loadError}" });
+                try { await profileController.RefreshProfileListAsync(true); }
+                catch (Exception ex) { Services.DiagnosticLog.Error("Profile list refresh after a failed open failed", ex); }
+                PushProfilesUpdate();
             }
         }
 
@@ -8112,6 +8334,14 @@ namespace TrueReplayer
             // HandleProfileDuplicate/HandleProfileRename/HandleProfileDelete.
             try
             {
+                // The new profile is loaded into the grid below, which replaces whatever is there —
+                // so this is a profile switch, and it asks like one. Nothing is lost for the NEW
+                // profile; the edits at stake belong to the one on screen. Asked BEFORE the file
+                // exists: Cancel then creates nothing, and a Save-As picked in this prompt under the
+                // same name finds its file in place instead of being overwritten by the empty
+                // default below. Inside the try because its Save writes to disk too.
+                if (!await CheckUnsavedChangesAsync("creating a new profile")) return;
+
                 Directory.CreateDirectory(profileDir);
 
                 if (File.Exists(fullPath))
@@ -8144,10 +8374,10 @@ namespace TrueReplayer
 
                 // Auto-select the freshly created profile so the user can start adding
                 // actions without clicking it first. Mirrors what HandleProfileClick does
-                // on the activate path, minus the unsaved-changes guard (this row didn't
-                // exist a moment ago, nothing to lose) and the deselect branch (it's not
-                // a re-click). Works identically inside or outside a folder — folder
-                // placement happened above, activation just needs the canonical name.
+                // on the activate path, minus the deselect branch (it's not a re-click); the
+                // unsaved-changes guard ran before the file was written. Works identically
+                // inside or outside a folder — folder placement happened above, activation
+                // just needs the canonical name.
                 var loaded = await profileController.LoadProfileByNameAsync(profileName);
                 if (loaded != null)
                 {
@@ -8359,6 +8589,10 @@ namespace TrueReplayer
 
             try
             {
+                // The watcher reports this move too; HandleExternalProfileRename skips its echo. A
+                // case-only rename is never reported as a rename of the NAME, so nothing to skip.
+                if (!string.Equals(entry.FilePath, newFilePath, StringComparison.OrdinalIgnoreCase))
+                    _selfRenamedPaths.Add(newFilePath);
                 File.Move(entry.FilePath, newFilePath);
                 var actualNewName = Path.GetFileNameWithoutExtension(newFileName);
                 ImageStorageService.RenameProfileDirectory(oldName, actualNewName);
@@ -8383,8 +8617,10 @@ namespace TrueReplayer
 
                 // Rewrite RunProfile references in every OTHER profile that points to the
                 // renamed name — otherwise those references become silent no-ops at replay
-                // time. Touches profiles on disk + the active in-memory action list.
+                // time. Touches profiles on disk + the active in-memory action list, and the
+                // undo/redo history behind that list.
                 int refsUpdated = await ScanRunProfileReferencesAsync(oldName, actualNewName);
+                RewriteRunProfileRefsInHistory(oldName, actualNewName);
 
                 // The scan rewrote RunProfile Keys ON DISK after the refresh above had already
                 // built ProfileEntries, so those entries — and the RunProfileTargets mirror the
@@ -8413,8 +8649,49 @@ namespace TrueReplayer
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[Bridge] Rename error: {ex.Message}");
+                // Debug.WriteLine is compiled out of Release, so a rename that hit a locked file
+                // or a full disk failed with nothing on screen and nothing in the log — the
+                // defect HandleProfileToggleDisable already names.
+                Services.DiagnosticLog.Error($"Rename '{oldName}' -> '{newName}' failed", ex);
+                SendMessage("alert:show", new { message = $"Could not rename \"{oldName}\": {ex.Message}" });
+                if (!File.Exists(newFilePath)) _selfRenamedPaths.Remove(newFilePath);
             }
+        }
+
+        // Paths this app just renamed a profile TO. The folder watcher reports those moves like any
+        // other; the entry lets HandleExternalProfileRename tell its own echo from a real outside
+        // rename. UI thread only.
+        private readonly HashSet<string> _selfRenamedPaths = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// A profile .json renamed OUTSIDE the app (Explorer, a sync client), reported by the
+        /// ProfileController watcher ahead of its list reload. The in-app rename moves three
+        /// name-keyed stores with the file; this one moved none of them, so the reference images
+        /// stayed under the old name (every WaitImage and If-Image of the profile then found no
+        /// image and fell through in silence), and the automation history and the data cursors
+        /// stayed orphaned until the next boot pruned them. Each call is a no-op when the old key is
+        /// absent. The RunProfile rows naming the old name are left as they are: rewriting other
+        /// profiles' files is the in-app rename's job, not a reaction to an outside event.
+        /// </summary>
+        private void HandleExternalProfileRename(string oldName, string newName, string newPath)
+        {
+            if (_selfRenamedPaths.Remove(newPath)) return;
+
+            ImageStorageService.RenameProfileDirectory(oldName, newName);
+            TriggerService.Instance?.RenameStats(oldName, newName);
+            RunCursorService.RenameProfile(oldName, newName);
+            // The profile on screen: without this its next Save wrote the OLD file back next to the
+            // renamed one, a duplicate profile under the name the user had just retired.
+            if (CurrentProfileName == oldName)
+            {
+                CurrentProfileName = newName;
+                CurrentProfilePath = newPath;
+                RetargetLoopEdit(newName);
+                profileController.UpdateProfileColors(newName);
+                PushToolbarUpdate();
+                PushStatusBarUpdate();
+            }
+            Services.DiagnosticLog.Info($"Profile renamed outside the app: '{oldName}' -> '{newName}'");
         }
 
         /// <summary>
@@ -8429,50 +8706,73 @@ namespace TrueReplayer
         private async Task<int> ScanRunProfileReferencesAsync(string targetName, string? rewriteTo)
         {
             int total = 0;
+            static bool Same(string? a, string? b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 
             // Read ONCE, before anything below touches it: whether the grid already carried the
             // user's unsaved work is what decides how the active profile's rewrite is persisted
             // (see the long comment at the end of loop 2). Reading it afterwards would always
             // answer "dirty", because this method is one of the writers.
             bool gridWasDirty = HasUnsavedChanges;
+            // Frozen for the same reason. Every profile costs a disk read below, nothing holds the
+            // UI while they run, and a click on the sidebar can load another profile in between.
+            // Read live, the name skipped by loop 1 and the name loop 2 treats as "in the grid"
+            // could be two different profiles, and the one loaded at the start was then rewritten
+            // by neither loop.
+            string activeAtStart = CurrentProfileName;
 
-            // 1. Every other profile on disk. Skip the renamed/deleted profile itself and the
-            //    active one (whose source of truth is the in-memory `actions` list — saving
-            //    the on-disk copy would clobber unsaved edits).
-            foreach (var entry in profileController.ProfileEntries.ToList())
+            // One profile's copy ON DISK: count, and in rewrite mode fix and save.
+            async Task<int> ScanOnDiskAsync(string name)
             {
-                if (string.Equals(entry.Name, targetName, StringComparison.OrdinalIgnoreCase)) continue;
-                if (string.Equals(entry.Name, CurrentProfileName, StringComparison.OrdinalIgnoreCase)) continue;
-
                 try
                 {
-                    var profile = await profileController.LoadProfileByNameAsync(entry.Name);
-                    if (profile == null) continue;
+                    var profile = await profileController.LoadProfileByNameAsync(name);
+                    if (profile == null) return 0;
                     int hits = 0;
                     foreach (var act in profile.Actions)
                     {
                         if (!string.Equals(act.ActionType, "RunProfile", StringComparison.OrdinalIgnoreCase)) continue;
-                        if (!string.Equals(act.Key, targetName, StringComparison.OrdinalIgnoreCase)) continue;
+                        if (!Same(act.Key, targetName)) continue;
                         hits++;
                         if (rewriteTo != null) act.Key = rewriteTo;
                     }
                     if (hits > 0 && rewriteTo != null)
                     {
-                        await profileController.SaveProfileByNameAsync(entry.Name, profile);
+                        await profileController.SaveProfileByNameAsync(name, profile);
                     }
-                    total += hits;
+                    return hits;
                 }
                 catch (Exception ex)
                 {
-                    Services.DiagnosticLog.Info($"[Chain] Scan refs in '{entry.Name}' failed: {ex.Message}");
+                    Services.DiagnosticLog.Info($"[Chain] Scan refs in '{name}' failed: {ex.Message}");
+                    return 0;
                 }
             }
+
+            // 1. Every other profile on disk. Skip the renamed/deleted profile itself and the
+            //    one in the grid (whose source of truth is the in-memory `actions` list — saving
+            //    the on-disk copy would clobber unsaved edits): the one loaded at the start, and
+            //    whichever is loaded when its entry comes up, which loop 2 then handles.
+            foreach (var entry in profileController.ProfileEntries.ToList())
+            {
+                if (Same(entry.Name, targetName)) continue;
+                if (Same(entry.Name, activeAtStart) || Same(entry.Name, CurrentProfileName)) continue;
+                total += await ScanOnDiskAsync(entry.Name);
+            }
+
+            // 1b. The profile loaded at the start, when the user left it during the scan: it is out
+            //     of the grid now, so its file is the truth — and loop 1 skipped it. (Switching away
+            //     went through the unsaved-changes prompt, so nothing of it is left in memory.)
+            if (!Same(activeAtStart, CurrentProfileName) && activeAtStart != "No Profile" && !Same(activeAtStart, targetName))
+                total += await ScanOnDiskAsync(activeAtStart);
 
             // 2. The active in-memory profile's actions, which may carry unsaved edits.
             //    Skip if the active profile IS the renamed/deleted one (it's already being
             //    handled by the rename/delete path itself).
-            if (!string.Equals(CurrentProfileName, targetName, StringComparison.OrdinalIgnoreCase))
+            if (!Same(CurrentProfileName, targetName))
             {
+                // gridWasDirty describes the profile loaded at the START. If another one is in the
+                // grid now, its own flag is the answer — nothing in this method has written it yet.
+                if (!Same(CurrentProfileName, activeAtStart)) gridWasDirty = HasUnsavedChanges;
                 int inMemory = 0;
                 foreach (var act in actions)
                 {
@@ -8536,6 +8836,40 @@ namespace TrueReplayer
         }
 
         /// <summary>
+        /// Counts RunProfile rows — in every surviving profile, and in the grid — that name one of
+        /// <paramref name="names"/>. The count-only half of <see cref="ScanRunProfileReferencesAsync"/>
+        /// for a batch that is ALREADY deleted (a folder's "Delete All"): one pass over the list
+        /// instead of one per name, and the deleted profiles are not in it any more.
+        /// </summary>
+        private async Task<int> CountRunProfileReferencesAsync(IReadOnlyCollection<string> names)
+        {
+            if (names.Count == 0) return 0;
+            var gone = new HashSet<string>(names, StringComparer.OrdinalIgnoreCase);
+            bool Refers(ActionItem a) =>
+                string.Equals(a.ActionType, "RunProfile", StringComparison.OrdinalIgnoreCase)
+                && a.Key != null && gone.Contains(a.Key);
+
+            int total = 0;
+            // The grid is the loaded profile's truth, so its file is skipped and its rows counted.
+            string inGrid = CurrentProfileName;
+            foreach (var entry in profileController.ProfileEntries.ToList())
+            {
+                if (gone.Contains(entry.Name) || string.Equals(entry.Name, inGrid, StringComparison.OrdinalIgnoreCase)) continue;
+                try
+                {
+                    var profile = await profileController.LoadProfileByNameAsync(entry.Name);
+                    if (profile != null) total += profile.Actions.Count(Refers);
+                }
+                catch (Exception ex)
+                {
+                    Services.DiagnosticLog.Info($"[Chain] Scan refs in '{entry.Name}' failed: {ex.Message}");
+                }
+            }
+            if (!gone.Contains(inGrid)) total += actions.Count(Refers);
+            return total;
+        }
+
+        /// <summary>
         /// Hands the app back to "No Profile" after the profile on screen stopped EXISTING.
         /// The third member of the class <see cref="ClearEditHistory"/> names — the action list
         /// losing its IDENTITY rather than its contents — beside the deselect branch of
@@ -8589,7 +8923,8 @@ namespace TrueReplayer
                 if (File.Exists(entry.FilePath))
                     File.Delete(entry.FilePath);
 
-                ImageStorageService.DeleteProfileDirectory(name);
+                if (!SharesNoProfileImageFolder(name))
+                    ImageStorageService.DeleteProfileDirectory(name);
                 // Its data-table row and cycle cursors go with it, or a new profile given the same
                 // name in this session starts where the deleted one stopped.
                 RunCursorService.RemoveProfile(name);
@@ -8623,9 +8958,24 @@ namespace TrueReplayer
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[Bridge] Delete error: {ex.Message}");
+                // Same Release-silence as the rename above.
+                Services.DiagnosticLog.Error($"Delete '{name}' failed", ex);
+                SendMessage("alert:show", new { message = $"Could not delete \"{name}\": {ex.Message}" });
             }
         }
+
+        /// <summary>
+        /// True when <paramref name="profileName"/>'s image folder is the one the "No Profile"
+        /// session captures into ("default" — see StorageProfileName). A real profile may carry
+        /// that name, and deleting it must not wipe the folder recursively: it also holds the
+        /// reference PNGs of whatever is being built under "No Profile" right now. Left for the
+        /// startup orphan sweep instead, which keeps what a profile still references and was
+        /// always what cleared that folder.
+        /// </summary>
+        private static bool SharesNoProfileImageFolder(string profileName) =>
+            string.Equals(ImageStorageService.GetSanitizedProfileFolder(profileName),
+                          ImageStorageService.GetSanitizedProfileFolder(StorageProfileName("No Profile")),
+                          StringComparison.OrdinalIgnoreCase);
 
         private async void HandleProfileAssignHotkey(JsonElement payload)
         {
@@ -8647,29 +8997,40 @@ namespace TrueReplayer
                 return;
             }
 
-            var profile = await profileController.LoadProfileByNameAsync(name);
-            if (profile != null)
+            // async void, and the load/save below is real I/O: a locked or unreadable file used to
+            // end in the app-wide UnhandledException net, which keeps the process alive and says
+            // nothing — the chip simply did not change. Same catch as ToggleDisable/Duplicate.
+            try
             {
-                profile.CustomHotkey = hotkey;
-                if (newMode.HasValue) profile.TriggerMode = newMode.Value;
-                await profileController.SaveProfileByNameAsync(name, profile);
-                if (CurrentProfileName == name)
+                var profile = await profileController.LoadProfileByNameAsync(name);
+                if (profile != null)
                 {
-                    UserProfile.Current.CustomHotkey = hotkey;
-                    if (newMode.HasValue) UserProfile.Current.TriggerMode = newMode.Value;
+                    profile.CustomHotkey = hotkey;
+                    if (newMode.HasValue) profile.TriggerMode = newMode.Value;
+                    await profileController.SaveProfileByNameAsync(name, profile);
+                    if (CurrentProfileName == name)
+                    {
+                        UserProfile.Current.CustomHotkey = hotkey;
+                        if (newMode.HasValue) UserProfile.Current.TriggerMode = newMode.Value;
+                    }
+                    await profileController.RefreshProfileListAsync(true);
+                    var map = profileController.GetProfileHotkeys();
+                    InputHookManager.RegisterProfileHotkeys(map);
+                    InputHookManager.RegisterProfileTriggerModes(profileController.GetProfileTriggerModes());
+                    // Surface collisions right after the assign so the user gets immediate feedback
+                    // when they bind a hotkey that another profile already claims. Single alert per
+                    // colliding combo, "only one will fire" wording is in the helper.
+                    foreach (var msg in profileController.GetAndClearHotkeyCollisions())
+                    {
+                        SendMessage("alert:show", new { message = msg });
+                    }
+                    PushProfilesUpdate();
                 }
-                await profileController.RefreshProfileListAsync(true);
-                var map = profileController.GetProfileHotkeys();
-                InputHookManager.RegisterProfileHotkeys(map);
-                InputHookManager.RegisterProfileTriggerModes(profileController.GetProfileTriggerModes());
-                // Surface collisions right after the assign so the user gets immediate feedback
-                // when they bind a hotkey that another profile already claims. Single alert per
-                // colliding combo, "only one will fire" wording is in the helper.
-                foreach (var msg in profileController.GetAndClearHotkeyCollisions())
-                {
-                    SendMessage("alert:show", new { message = msg });
-                }
-                PushProfilesUpdate();
+            }
+            catch (Exception ex)
+            {
+                Services.DiagnosticLog.Error($"Assign hotkey to '{name}' failed", ex);
+                SendMessage("alert:show", new { message = $"Could not save the hotkey of \"{name}\": {ex.Message}" });
             }
         }
 
@@ -8678,18 +9039,26 @@ namespace TrueReplayer
             string name = payload.GetProperty("name").GetString() ?? "";
             if (string.IsNullOrEmpty(name)) return;
 
-            var profile = await profileController.LoadProfileByNameAsync(name);
-            if (profile != null)
+            try
             {
-                profile.CustomHotkey = null;
-                await profileController.SaveProfileByNameAsync(name, profile);
-                if (CurrentProfileName == name)
-                    UserProfile.Current.CustomHotkey = null;
-                await profileController.RefreshProfileListAsync(true);
-                var map = profileController.GetProfileHotkeys();
-                InputHookManager.RegisterProfileHotkeys(map);
-                InputHookManager.RegisterProfileTriggerModes(profileController.GetProfileTriggerModes());
-                PushProfilesUpdate();
+                var profile = await profileController.LoadProfileByNameAsync(name);
+                if (profile != null)
+                {
+                    profile.CustomHotkey = null;
+                    await profileController.SaveProfileByNameAsync(name, profile);
+                    if (CurrentProfileName == name)
+                        UserProfile.Current.CustomHotkey = null;
+                    await profileController.RefreshProfileListAsync(true);
+                    var map = profileController.GetProfileHotkeys();
+                    InputHookManager.RegisterProfileHotkeys(map);
+                    InputHookManager.RegisterProfileTriggerModes(profileController.GetProfileTriggerModes());
+                    PushProfilesUpdate();
+                }
+            }
+            catch (Exception ex)
+            {
+                Services.DiagnosticLog.Error($"Remove hotkey of '{name}' failed", ex);
+                SendMessage("alert:show", new { message = $"Could not remove the hotkey of \"{name}\": {ex.Message}" });
             }
         }
 
@@ -8716,17 +9085,25 @@ namespace TrueReplayer
                 return;
             }
 
-            var profile = await profileController.LoadProfileByNameAsync(name);
-            if (profile != null)
+            try
             {
-                profile.CustomHotstring = new Models.HotstringConfig { Sequence = sequence, Instant = instant };
-                await profileController.SaveProfileByNameAsync(name, profile);
-                if (CurrentProfileName == name)
-                    UserProfile.Current.CustomHotstring = profile.CustomHotstring;
-                await profileController.RefreshProfileListAsync(true);
-                var hotstringMap = profileController.GetProfileHotstrings();
-                InputHookManager.RegisterProfileHotstrings(hotstringMap);
-                PushProfilesUpdate();
+                var profile = await profileController.LoadProfileByNameAsync(name);
+                if (profile != null)
+                {
+                    profile.CustomHotstring = new Models.HotstringConfig { Sequence = sequence, Instant = instant };
+                    await profileController.SaveProfileByNameAsync(name, profile);
+                    if (CurrentProfileName == name)
+                        UserProfile.Current.CustomHotstring = profile.CustomHotstring;
+                    await profileController.RefreshProfileListAsync(true);
+                    var hotstringMap = profileController.GetProfileHotstrings();
+                    InputHookManager.RegisterProfileHotstrings(hotstringMap);
+                    PushProfilesUpdate();
+                }
+            }
+            catch (Exception ex)
+            {
+                Services.DiagnosticLog.Error($"Assign hotstring to '{name}' failed", ex);
+                SendMessage("alert:show", new { message = $"Could not save the hotstring of \"{name}\": {ex.Message}" });
             }
         }
 
@@ -8735,17 +9112,25 @@ namespace TrueReplayer
             string name = payload.GetProperty("name").GetString() ?? "";
             if (string.IsNullOrEmpty(name)) return;
 
-            var profile = await profileController.LoadProfileByNameAsync(name);
-            if (profile != null)
+            try
             {
-                profile.CustomHotstring = null;
-                await profileController.SaveProfileByNameAsync(name, profile);
-                if (CurrentProfileName == name)
-                    UserProfile.Current.CustomHotstring = null;
-                await profileController.RefreshProfileListAsync(true);
-                var hotstringMap = profileController.GetProfileHotstrings();
-                InputHookManager.RegisterProfileHotstrings(hotstringMap);
-                PushProfilesUpdate();
+                var profile = await profileController.LoadProfileByNameAsync(name);
+                if (profile != null)
+                {
+                    profile.CustomHotstring = null;
+                    await profileController.SaveProfileByNameAsync(name, profile);
+                    if (CurrentProfileName == name)
+                        UserProfile.Current.CustomHotstring = null;
+                    await profileController.RefreshProfileListAsync(true);
+                    var hotstringMap = profileController.GetProfileHotstrings();
+                    InputHookManager.RegisterProfileHotstrings(hotstringMap);
+                    PushProfilesUpdate();
+                }
+            }
+            catch (Exception ex)
+            {
+                Services.DiagnosticLog.Error($"Remove hotstring of '{name}' failed", ex);
+                SendMessage("alert:show", new { message = $"Could not remove the hotstring of \"{name}\": {ex.Message}" });
             }
         }
 
@@ -9173,7 +9558,10 @@ namespace TrueReplayer
                 return;
             }
 
-            PushUndoState();
+            // The flag and the rect below change WITH the coordinates, so the undo entry carries
+            // them as they stand now. On "Apply target & convert" that is the flag Set Target just
+            // saved: undoing the conversion lands on the plain Set Target, which the dialog allows.
+            PushUndoState(CoordinateSpace.Capture(UserProfile.Current));
 
             int converted = 0;
 
@@ -9528,11 +9916,22 @@ namespace TrueReplayer
                 return;
             }
 
-            _isDetectingWindow = true;
-            SendMessage("windowTarget:detectState", new { detecting = true });
-
             _detectMouseProc = DetectMouseHookCallback;
             _detectMouseHook = NativeMethods.SetMouseHook(_detectMouseProc);
+            // SetWindowsHookEx answers IntPtr.Zero when Windows refuses the hook. The UI used to be
+            // told "detecting" BEFORE that answer, so a refused hook left the button on
+            // "Detecting…" waiting for a click nothing would ever see. Announce only a live hook.
+            if (_detectMouseHook == IntPtr.Zero)
+            {
+                int err = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
+                _detectMouseProc = null;
+                Services.DiagnosticLog.Warn($"Window detection: SetMouseHook failed (Win32 error {err})");
+                SendMessage("windowTarget:detectState", new { detecting = false });
+                SendMessage("alert:show", new { message = "Could not start window detection — Windows refused the mouse hook. Type the process name or window title instead." });
+                return;
+            }
+            _isDetectingWindow = true;
+            SendMessage("windowTarget:detectState", new { detecting = true });
         }
 
         private IntPtr DetectMouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
@@ -10086,9 +10485,11 @@ namespace TrueReplayer
                     // images wiped, after a Delete All that reported nothing.
                     var failed = await profileController.DeleteFolderAsync(name, deleteProfiles: true);
                     bool hadActive = folderItems.Contains(CurrentProfileName) && !failed.Contains(CurrentProfileName);
-                    foreach (var deleted in folderItems.Except(failed))
+                    var deletedNames = folderItems.Except(failed).ToList();
+                    foreach (var deleted in deletedNames)
                     {
-                        ImageStorageService.DeleteProfileDirectory(deleted);
+                        if (!SharesNoProfileImageFolder(deleted))   // see HandleProfileDelete
+                            ImageStorageService.DeleteProfileDirectory(deleted);
                         RunCursorService.RemoveProfile(deleted);   // see HandleProfileDelete
                     }
                     if (failed.Count > 0)
@@ -10108,6 +10509,16 @@ namespace TrueReplayer
                         PushToolbarUpdate();
                         PushStatusBarUpdate();
                         TrayIconService.UpdateTrayIcon();
+                    }
+
+                    // The single delete warns about RunProfile rows left pointing at the deleted
+                    // profile; deleting a whole folder of them warned about nothing. Counted after
+                    // the files are gone, so only the survivors (and the grid) are read.
+                    int dangling = await CountRunProfileReferencesAsync(deletedNames);
+                    if (dangling > 0)
+                    {
+                        string plural = dangling == 1 ? "reference" : "references";
+                        SendMessage("alert:show", new { message = $"Deleted \"{name}\" and its profiles. {dangling} RunProfile {plural} in other profiles still point at them and will silently no-op at replay." });
                     }
                 }
                 else
@@ -10701,6 +11112,20 @@ namespace TrueReplayer
                     // post-import armed set.
                     var hotkeyCollisions = profileController.GetAndClearHotkeyCollisions();
 
+                    // An Overwrite is a delete-and-recreate under the same name, and the delete
+                    // handlers drop what is keyed by that name: the data-table row and cycle cursors
+                    // and the automation's fire history. Kept, the imported profile started its table
+                    // on the replaced one's row and inherited its interval anchor — RunCursorService
+                    // .RemoveProfile and TriggerService.ClearStats describe exactly that case.
+                    foreach (var written in writtenNames)
+                    {
+                        if (conflictResolutions.TryGetValue(written, out var res) && res == ImportConflictResult.Overwrite)
+                        {
+                            RunCursorService.RemoveProfile(written);
+                            TriggerService.Instance?.ClearStats(written);
+                        }
+                    }
+
                     // If the import OVERWROTE the profile currently loaded in the grid, its
                     // on-disk file changed underneath us. Reload it so UserProfile.Current +
                     // the grid reflect the imported content — otherwise replay fires the STALE
@@ -11007,39 +11432,67 @@ namespace TrueReplayer
 
         private async void HandleProfileSave()
         {
-            if (CurrentProfilePath != null)
+            // async void around real I/O: a locked file or a full disk used to end in the app-wide
+            // UnhandledException net — Save pressed, nothing written, nothing said.
+            try
             {
-                var choice = await profileController.ShowSaveOverwriteDialogAsync(CurrentProfileName);
-                if (choice == SaveDialogResult.Overwrite)
+                if (CurrentProfilePath != null)
                 {
-                    var profile = CreateProfileForSave();
-                    profile.CustomHotkey = UserProfile.Current.CustomHotkey;
-                    await SettingsManager.SaveProfileAsync(CurrentProfilePath, profile);
-                    // Re-read the list so the in-memory ProfileEntries mirror (and the caches
-                    // LoadProfileListAsync rebuilds from it — window targets, referenced images)
-                    // reflect what we just wrote. PushProfilesUpdate at the end of this handler only
-                    // PROJECTS that mirror, so without this an overwrite-save pushes stale metadata
-                    // (e.g. Profile Info's "Updated" keeps the previous timestamp). Every other save
-                    // path already does this — ProfileController.SaveProfileAsync refreshes right
-                    // after its write, as do the hotkey/hotstring handlers.
-                    await profileController.RefreshProfileListAsync(true);
-                    UserProfile.Current = profile;
-                    AppSettingsManager.ApplyGlobalSettings(UserProfile.Current);
-                    HasUnsavedChanges = false;
-                    // The pending loop edit is now on disk — the chip drops its dashed outline.
-                    ClearLoopEdit();
+                    var choice = await profileController.ShowSaveOverwriteDialogAsync(CurrentProfileName);
+                    if (choice == SaveDialogResult.Overwrite && CurrentProfilePath is string savingPath)
+                    {
+                        // Who is being saved, and the edit count, frozen before the writes. Both
+                        // awaits below yield the dispatcher — the second re-reads every profile — and
+                        // an automation fire or a sidebar click can load ANOTHER profile meanwhile.
+                        // Writing back afterwards unconditionally put this profile's object under the
+                        // other one's grid, and that profile's next Save carried this one's hotkey,
+                        // target and data table into its file.
+                        string savingName = CurrentProfileName;
+                        long generation = _dirtyGeneration;
+                        var profile = CreateProfileForSave();
+                        await SettingsManager.SaveProfileAsync(savingPath, profile);
+                        // Re-read the list so the in-memory ProfileEntries mirror (and the caches
+                        // LoadProfileListAsync rebuilds from it — window targets, referenced images)
+                        // reflect what we just wrote. PushProfilesUpdate at the end of this handler only
+                        // PROJECTS that mirror, so without this an overwrite-save pushes stale metadata
+                        // (e.g. Profile Info's "Updated" keeps the previous timestamp). Every other save
+                        // path already does this — ProfileController.SaveProfileAsync refreshes right
+                        // after its write, as do the hotkey/hotstring handlers.
+                        await profileController.RefreshProfileListAsync(true);
+                        if (CurrentProfileName == savingName && CurrentProfilePath == savingPath)
+                        {
+                            // The dates the file now carries, stamped onto the LIVE object. Swapping
+                            // the snapshot in instead would roll back anything edited during the
+                            // writes (a loop count, a data-table cell), which lives on this object.
+                            UserProfile.Current.UpdatedAt = profile.UpdatedAt;
+                            UserProfile.Current.CreatedAt = profile.CreatedAt;
+                            // An edit that landed during the writes is not in the file: keep the
+                            // flags for it.
+                            if (_dirtyGeneration == generation)
+                            {
+                                HasUnsavedChanges = false;
+                                // The pending loop edit is now on disk — the chip drops its dashed outline.
+                                ClearLoopEdit();
+                            }
+                        }
+                    }
+                    else if (choice == SaveDialogResult.SaveAsNew)
+                    {
+                        bool saved = await profileController.SaveProfileAsync();
+                        if (saved) { HasUnsavedChanges = false; ClearLoopEdit(); }
+                    }
+                    // Cancel = do nothing
                 }
-                else if (choice == SaveDialogResult.SaveAsNew)
+                else
                 {
                     bool saved = await profileController.SaveProfileAsync();
                     if (saved) { HasUnsavedChanges = false; ClearLoopEdit(); }
                 }
-                // Cancel = do nothing
             }
-            else
+            catch (Exception ex)
             {
-                bool saved = await profileController.SaveProfileAsync();
-                if (saved) { HasUnsavedChanges = false; ClearLoopEdit(); }
+                Services.DiagnosticLog.Error($"Save of '{CurrentProfileName}' failed", ex);
+                SendMessage("alert:show", new { message = $"Could not save \"{CurrentProfileName}\": {ex.Message}" });
             }
             PushProfileLoop();
             PushProfilesUpdate();

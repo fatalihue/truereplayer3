@@ -88,7 +88,7 @@ const initialState: AppState = {
   // Mirrors WebViewBridge's "No Profile" fallback so there's no wrong-value flash before the
   // first profile:loop / state:init lands. count '1', never '0' — 0 means forever to the engine.
   profileLoop: { count: '1', enabled: false, interval: '200', intervalEnabled: false, dirty: false, scoped: false },
-  toolbar: { profileName: 'No Profile', actionCount: 0 },
+  toolbar: { profileName: 'No Profile' },
   statusBar: { directory: 'Profiles', profileName: null, actionCount: 0 },
   buttonStates: {
     recordEnabled: true,

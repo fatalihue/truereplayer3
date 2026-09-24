@@ -73,6 +73,15 @@ namespace TrueReplayer.Services
         private static readonly HashSet<string> ReservedAppFileNames =
             new(StringComparer.OrdinalIgnoreCase) { "profile-order", "profile" };
 
+        // The bridge's sentinel for "nothing loaded" — WebViewBridge.CurrentProfileName holds this
+        // exact string, and every "is a profile loaded?" test compares against it. A real profile
+        // by that name was unreachable from a clean start (the click read as re-clicking the
+        // active profile and deselected), and opened from another profile it tripped the setter's
+        // leave-the-profile reset, which wiped its window target before the next Save wrote the
+        // loss to disk. Folded case-insensitively, like the file names above: the file system
+        // would not keep "no profile.json" apart from it anyway.
+        private const string NoProfileSentinel = "No Profile";
+
         /// <summary>
         /// True when <paramref name="name"/> is a bare, storable profile name: no traversal, no
         /// path separators / invalid chars, no trailing dot or space, and not a reserved device
@@ -122,6 +131,7 @@ namespace TrueReplayer.Services
             // default path; that one is at least listed, but the startup default-profile load/save
             // treats it as its own scratch file.
             if (ReservedAppFileNames.Contains(baseName)) return false;
+            if (string.Equals(baseName, NoProfileSentinel, StringComparison.OrdinalIgnoreCase)) return false;
             return true;
         }
     }

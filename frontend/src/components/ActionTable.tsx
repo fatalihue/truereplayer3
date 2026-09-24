@@ -1266,6 +1266,13 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
   // Refused at the door rather than at the commit: this editor holds one field, so not letting it
   // open costs nothing, while letting someone type and then refusing would cost them the typing.
   // commitEdit carries the same term anyway, for an editor already open when the run starts.
+  //
+  // editOriginRef is the text the editor opened with. commitEdit compares against it: clicking
+  // into a cell to read it and clicking away sent the same value back as an edit, and the backend
+  // cannot tell — it pushed an undo entry and marked the profile unsaved, which parks every armed
+  // automation in SkippedDirty until a Save of nothing. The Keystroke and Pause dialogs already
+  // send only what changed.
+  const editOriginRef = useRef('');
   const startEdit = useCallback((index: number, field: EditingCell['field'], currentValue: string) => {
     if (buttonStates.recordingActive || buttonStates.replayActive) {
       showToast(tt('The action list is locked while a run is active.',
@@ -1274,6 +1281,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
     }
     setEditingCell({ index, field });
     setEditValue(currentValue);
+    editOriginRef.current = currentValue;
     setEditInvalid(false);
   }, [buttonStates.recordingActive, buttonStates.replayActive, showToast, tt]);
 
@@ -1287,7 +1295,14 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
   // focus hostage, so it cancels as before.
   const commitEdit = useCallback((source: 'key' | 'blur' = 'blur') => {
     if (!editingCell) return;
-    // FIRST, before any branch. This gate used to sit below the coords branch, so the one editor
+    // Unchanged text writes nothing, so it just closes — ahead of the run gate below, whose
+    // refusal would announce "Not saved" for an edit nobody made. See editOriginRef.
+    if (editValue === editOriginRef.current) {
+      setEditingCell(null);
+      setEditInvalid(false);
+      return;
+    }
+    // FIRST of the writes. This gate used to sit below the coords branch, so the one editor
     // that writes two fields was the one editor that could write into a list the engine was
     // walking — the exact case the comment below describes, reachable because startEdit only
     // guards OPENING and a run starts from a global hotkey with the editor already up.

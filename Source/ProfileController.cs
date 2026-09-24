@@ -66,6 +66,22 @@ namespace TrueReplayer.Controllers
         /// don't have to provide one.
         /// </summary>
         public Action<string>? OnAlert { get; set; }
+
+        /// <summary>
+        /// Raised on the UI thread after the folder watcher re-read the list for a change made
+        /// OUTSIDE the app. Every in-app mutator pushes the list to the frontend itself; this is
+        /// the only reload nobody pushed, so the sidebar kept a deleted profile and missed a new
+        /// one until something unrelated refreshed it. The bridge wires it to PushProfilesUpdate.
+        /// </summary>
+        public Action? OnListChangedExternally { get; set; }
+
+        /// <summary>
+        /// Raised on the UI thread when a profile .json is renamed to another .json outside the app,
+        /// with (old name, new name, new path) — BEFORE the debounced list reload. Images, automation
+        /// history and data cursors are keyed by the name and only the app's own rename moved them.
+        /// </summary>
+        public Action<string, string, string>? OnProfileRenamedExternally { get; set; }
+
         private Dictionary<string, WindowTarget> _cachedWindowTargets = new();
         // Built during LoadProfileListAsync — maps sanitized profile folder name → set of
         // ImagePath filenames referenced by WaitImage actions. Used by ImageStorageService
@@ -601,7 +617,25 @@ namespace TrueReplayer.Controllers
                 profile.UpdatedAt = nowUtc;
                 if (profile.CreatedAt == null) profile.CreatedAt = nowUtc;
                 await SettingsManager.SaveProfileAsync(entry.FilePath, profile);
+                MirrorSavedWindowFlags(profileName, profile);
             }
+        }
+
+        /// <summary>
+        /// Copies the window flags just written for <paramref name="profileName"/> onto its list
+        /// entry. For a profile with its own target the entry IS where GetEffectiveRelativeCoordinates
+        /// and friends read the flag, and it is otherwise refreshed only when something re-reads the
+        /// whole list. A save that skipped that re-read left the entry naming the old coordinate
+        /// space while the file held coordinates converted to the new one.
+        /// </summary>
+        public void MirrorSavedWindowFlags(string profileName, UserProfile saved)
+        {
+            var entry = ProfileEntries.FirstOrDefault(p => p.Name == profileName);
+            if (entry == null) return;
+            entry.UseRelativeCoordinates = saved.UseRelativeCoordinates;
+            entry.BringToFocus = saved.BringToFocus;
+            entry.RestorePosition = saved.RestorePosition;
+            entry.RestoreSize = saved.RestoreSize;
         }
 
         public void ResetProfile()
@@ -1105,17 +1139,6 @@ namespace TrueReplayer.Controllers
                 UpdateProfileColors(_activeProfileName);
         }
 
-        public void RefreshProfileList(bool suppressWatcher = false)
-        {
-            // Fire-and-forget, but observe the task so a load/UI failure is logged instead of
-            // vanishing into an unobserved-task exception (which would otherwise be silent).
-            _ = RefreshProfileListAsync(suppressWatcher).ContinueWith(
-                t => DiagnosticLog.Error("RefreshProfileList background refresh failed", t.Exception!.GetBaseException()),
-                CancellationToken.None,
-                TaskContinuationOptions.OnlyOnFaulted,
-                TaskScheduler.Default);
-        }
-
         private void SetupProfileWatcher()
         {
             string profileDir = Path.Combine(
@@ -1143,6 +1166,22 @@ namespace TrueReplayer.Controllers
             if (string.Equals(Path.GetFileName(e.FullPath), "profile-order.json", StringComparison.OrdinalIgnoreCase))
                 return;
 
+            // A profile renamed to another profile name. Only .json on BOTH sides: an atomic save
+            // lands as a rename from a random temp name, which is not a profile. Handed over right
+            // away, ahead of the debounced reload below, so the new name already carries its images
+            // and history when the list re-reads it.
+            if (e is RenamedEventArgs r
+                && r.OldFullPath.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
+                && r.FullPath.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(Path.GetFileName(r.OldFullPath), "profile-order.json", StringComparison.OrdinalIgnoreCase))
+            {
+                string oldName = Path.GetFileNameWithoutExtension(r.OldFullPath);
+                string newName = Path.GetFileNameWithoutExtension(r.FullPath);
+                string newPath = r.FullPath;
+                if (!string.Equals(oldName, newName, StringComparison.OrdinalIgnoreCase))
+                    window.DispatcherQueue.TryEnqueue(() => OnProfileRenamedExternally?.Invoke(oldName, newName, newPath));
+            }
+
             // Atomically retire the in-flight debounce and start a fresh one. Without the lock,
             // two overlapping watcher callbacks could Cancel/Dispose the same CTS twice (or await
             // a disposed token) and both reach RefreshProfileList.
@@ -1160,11 +1199,19 @@ namespace TrueReplayer.Controllers
                 await Task.Delay(300, token);
                 if (!token.IsCancellationRequested)
                 {
-                    window.DispatcherQueue.TryEnqueue(() =>
+                    window.DispatcherQueue.TryEnqueue(async () =>
                     {
                         if (DateTime.UtcNow < suppressWatcherUntil)
                             return;
-                        RefreshProfileList();
+                        try
+                        {
+                            await RefreshProfileListAsync();
+                            OnListChangedExternally?.Invoke();
+                        }
+                        catch (Exception ex)
+                        {
+                            DiagnosticLog.Error("RefreshProfileList background refresh failed", ex);
+                        }
                     });
                 }
             }
@@ -1473,6 +1520,12 @@ namespace TrueReplayer.Controllers
 
             return null;
         }
+
+        /// <summary>
+        /// True when the profile owns its window target — the same gate every GetEffective* below
+        /// uses to choose between the profile's own values and its folder's.
+        /// </summary>
+        public bool HasOwnWindowTarget(string profileName) => _cachedWindowTargets.ContainsKey(profileName);
 
         public bool GetEffectiveRelativeCoordinates(string profileName)
         {

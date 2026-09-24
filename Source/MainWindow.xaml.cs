@@ -932,15 +932,15 @@ namespace TrueReplayer
             Services.DiagnosticLog.Info("Close requested — checking unsaved changes");
 
             bool canClose;
-            // A pending Loops/Interval edit is unsaved work by itself — the Actions.Count == 0
-            // short-circuit must not swallow it. Mirrors WebViewBridge.CheckUnsavedChangesAsync.
-            if (bridge == null || (!bridge.HasUnsavedLoopChange && (!bridge.HasUnsavedChanges || Actions.Count == 0)))
+            // A pending Loops/Interval edit is unsaved work by itself. Same two readers as
+            // WebViewBridge.CheckUnsavedChangesAsync — see HasUnsavedActionWork for the grid half.
+            if (bridge == null || (!bridge.HasUnsavedLoopChange && !bridge.HasUnsavedActionWork))
             {
                 canClose = true;
             }
             else
             {
-                bool loopOnly = bridge.HasUnsavedLoopChange && (!bridge.HasUnsavedChanges || Actions.Count == 0);
+                bool loopOnly = bridge.HasUnsavedLoopChange && !bridge.HasUnsavedActionWork;
                 var result = await profileController.ShowUnsavedChangesDialogAsync(loopOnly);
 
                 if (result == ContentDialogResult.Primary) // Save
@@ -957,9 +957,15 @@ namespace TrueReplayer
                         try
                         {
                             var profile = bridge.CreateProfileForSave();
-                            profile.CustomHotkey = UserProfile.Current.CustomHotkey;
                             await SettingsManager.SaveProfileAsync(bridge.CurrentProfilePath, profile);
                             canClose = true;
+                            // Cleared where the write lands, like every other save path (the note
+                            // in CheckUnsavedChangesAsync says why). Tray Exit ends in
+                            // Application.Exit, not the ForceExit teardown, so a process that
+                            // lingers must not keep reading this profile as dirty and park every
+                            // automation in SkippedDirty.
+                            bridge.HasUnsavedChanges = false;
+                            bridge.ClearLoopEdit();
                         }
                         catch (Exception ex)
                         {
@@ -973,6 +979,11 @@ namespace TrueReplayer
                     else
                     {
                         canClose = await profileController.SaveProfileAsync();
+                        if (canClose)
+                        {
+                            bridge.HasUnsavedChanges = false;
+                            bridge.ClearLoopEdit();
+                        }
                     }
                 }
                 else if (result == ContentDialogResult.Secondary) // Discard
@@ -1247,7 +1258,9 @@ namespace TrueReplayer
                             var curName = bridge?.CurrentProfileName ?? "";
                             bool hasCurName = curName != "No Profile" && !string.IsNullOrEmpty(curName);
                             var effTarget = hasCurName ? profileController.GetEffectiveWindowTarget(curName) : UserProfile.Current.TargetWindow;
-                            var effRelCoords = hasCurName ? profileController.GetEffectiveRelativeCoordinates(curName) : UserProfile.Current.UseRelativeCoordinates;
+                            // The grid on screen, in the space its coordinates are in — see the
+                            // matching line in WebViewBridge.HandleReplayToggle.
+                            var effRelCoords = UserProfile.Current.UseRelativeCoordinates;
                             var effBringFocus = hasCurName ? profileController.GetEffectiveBringToFocus(curName) : UserProfile.Current.BringToFocus;
                             // Geometry + Restore flags: profile's own takes priority when its target is
                             // set; otherwise the FOLDER's apply — geometry whole, never mixed with the
@@ -1447,17 +1460,28 @@ namespace TrueReplayer
                 // AutomationGuard.
                 if (Services.AutomationGuard.BlockedReason() != null)
                     return TriggerFireResult.SkippedModal;
-                if (bridge.HasUnsavedChanges)
+                // The same reader as the switch prompt and the close guard (see
+                // HasUnsavedActionWork): the gates must agree on what "unsaved" means.
+                if (bridge.HasUnsavedActionWork)
                     return TriggerFireResult.SkippedDirty;
             }
 
             var entry = profileController.ProfileEntries.FirstOrDefault(p => p.Name == profileName);
             if (hotkeyKey != null)
                 mainController.SetLastHotkeyPressed(hotkeyKey);
+            // The coordinate flag has to come from the SAME place as the coordinates. With its own
+            // target the profile's flag lives in the file just loaded, and the list entry is only a
+            // mirror of it, refreshed when something re-reads the list. A save that did not (the
+            // switch prompt's Save used to be one) left the mirror on the old flag while the file
+            // held converted coordinates, and every fire replayed them in the wrong space.
+            // Inherited: the folder's flag, as before.
+            bool effectiveRelCoords = profileController.HasOwnWindowTarget(profileName)
+                ? profile.UseRelativeCoordinates
+                : profileController.GetEffectiveRelativeCoordinates(profileName);
             UserProfile.Current = profile;
             AppSettingsManager.ApplyGlobalSettings(UserProfile.Current);
             // Apply effective folder-inherited values
-            UserProfile.Current.UseRelativeCoordinates = profileController.GetEffectiveRelativeCoordinates(profileName);
+            UserProfile.Current.UseRelativeCoordinates = effectiveRelCoords;
             UserProfile.Current.BringToFocus = profileController.GetEffectiveBringToFocus(profileName);
             if (bridge == null) return TriggerFireResult.NotReady;
             // Set CurrentProfileName BEFORE the action-grid push: the push reads each
@@ -1480,7 +1504,6 @@ namespace TrueReplayer
             bridge.ClearLoopEdit();
 
             var effectiveTarget = profileController.GetEffectiveWindowTarget(profileName);
-            var effectiveRelCoords = profileController.GetEffectiveRelativeCoordinates(profileName);
             var effectiveBringToFocus = profileController.GetEffectiveBringToFocus(profileName);
             // Effective Restore + geometry — same inheritance rule as the global Replay path.
             var effectiveRestorePos = profileController.GetEffectiveRestorePosition(profileName);
@@ -1597,8 +1620,9 @@ namespace TrueReplayer
                     // below force-clears the dirty flag when it swaps profiles (fine for a
                     // deliberate hotkey press, silent data loss for a timer). Re-checked
                     // inside RunProfileTriggerAsync too — its profile-load await yields the
-                    // dispatcher, so these gates can flip in the window.
-                    if (bridge.HasUnsavedChanges)
+                    // dispatcher, so these gates can flip in the window. HasUnsavedActionWork, not
+                    // the bare flag: the prompt that would rescue the edit reads the same thing.
+                    if (bridge.HasUnsavedActionWork)
                     {
                         tcs.TrySetResult(TriggerFireResult.SkippedDirty);
                         return;

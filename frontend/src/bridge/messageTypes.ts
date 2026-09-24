@@ -688,7 +688,6 @@ export interface AppState {
   profileLoop: ProfileLoopState;
   toolbar: {
     profileName: string;
-    actionCount: number;
   };
   statusBar: {
     directory: string;
@@ -852,7 +851,7 @@ export type IncomingMessage =
   // see ProfileLoopState for why this cannot ride inside settings:loaded.
   | { type: 'profile:loop'; payload: ProfileLoopState }
   | { type: 'button:states'; payload: ButtonStates }
-  | { type: 'toolbar:updated'; payload: { profileName: string; actionCount: number } }
+  | { type: 'toolbar:updated'; payload: { profileName: string } }
   | { type: 'statusbar:updated'; payload: { directory: string; profileName: string | null; actionCount: number } }
   | { type: 'alert:show'; payload: { message: string; type?: 'success' | 'error' | 'info'; duration?: number } }
   | { type: 'windowTarget:detected'; payload: { processName: string; windowTitle: string } }
