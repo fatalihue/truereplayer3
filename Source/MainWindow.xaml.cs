@@ -1341,18 +1341,11 @@ namespace TrueReplayer
             InputHookManager.OnKeyEvent += (key, isDown, isPassThroughFeed) =>
             {
                 // A pass-through FEED is not a gesture: it means "the foreground app is getting
-                // this key, write it into the recording". The Escape branches below cancel capture
-                // mode and insert mode, and the feed carries the BARE main key, so a hotkey of
-                // "Ctrl+Escape" reached them looking exactly like a lone Escape press.
+                // this key, write it into the recording". The Escape branch below cancels insert
+                // mode, and the feed carries the BARE main key, so a hotkey of "Ctrl+Escape"
+                // reached it looking exactly like a lone Escape press.
                 if (isDown && !isPassThroughFeed && key == "Escape")
                 {
-                    // If in capture mode, cancel it and discard partial actions
-                    if (mainController.IsCaptureMode())
-                    {
-                        mainController.CancelCaptureMode();
-                        return;
-                    }
-
                     if (mainController.IsInsertMode())
                     {
                         mainController.CancelInsertMode();

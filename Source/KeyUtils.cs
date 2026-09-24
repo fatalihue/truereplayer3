@@ -300,6 +300,33 @@ namespace TrueReplayer.Helpers
             // the CURRENT keyboard layout (US, ABNT2, AZERTY, etc.).
         };
 
+        /// <summary>
+        /// Splits a combo ("Ctrl+Shift+T") into its modifier prefix and the key it ends on. The key
+        /// may itself be "+": "Ctrl++" is Ctrl with the + key — the recorder composes exactly that
+        /// on layouts where + has a key of its own — and a plain Split('+') reads it as Ctrl with an
+        /// EMPTY key. Same rule as the front's splitCombo (KbdTag.tsx): a trailing empty segment is
+        /// the + key, other empty segments are dropped. Used by the engine's Keystroke and by the
+        /// paired expansion, so the two cannot read one combo two ways.
+        /// </summary>
+        public static (List<string> Prefix, string Key) SplitCombo(string? combo)
+        {
+            var parts = new List<string>();
+            if (!string.IsNullOrEmpty(combo))
+            {
+                var raw = combo.Split('+');
+                for (int i = 0; i < raw.Length; i++)
+                {
+                    var p = raw[i].Trim();
+                    if (p.Length == 0 && i == raw.Length - 1 && raw.Length > 1) p = "+";
+                    if (p.Length > 0) parts.Add(p);
+                }
+            }
+            if (parts.Count == 0) return (new List<string>(), "");
+            string key = parts[^1];
+            parts.RemoveAt(parts.Count - 1);
+            return (parts, key);
+        }
+
         public static bool TryResolveVirtualKeyCode(string key, out ushort vkCode)
         {
             vkCode = 0;

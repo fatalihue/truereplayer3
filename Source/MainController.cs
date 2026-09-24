@@ -39,13 +39,6 @@ namespace TrueReplayer.Controllers
             if (replayService.IsReplaying)
                 replayService.ToggleReplay(false, "1", false, "0");
 
-            // If in capture mode, cancel it (discard partial actions)
-            if (recordingService.IsRecording && recorder.IsCaptureMode)
-            {
-                CancelCaptureMode();
-                return;
-            }
-
             recordingService.ToggleRecording();
         }
 
@@ -78,37 +71,7 @@ namespace TrueReplayer.Controllers
             recorder.SetInsertIndex(index);
         }
 
-        public bool IsCaptureMode() => recorder.IsCaptureMode;
         public bool IsInsertMode() => recorder.IsInsertMode;
-
-        public void StartCaptureMode(int insertIndex, CaptureType captureType, string? mouseButton, Action? onComplete)
-        {
-            if (replayService.IsReplaying)
-                replayService.ToggleReplay(false, "1", false, "0");
-            if (recordingService.IsRecording)
-                recordingService.StopRecording();
-
-            // Swallow mouse clicks during capture so they don't reach the target app
-            if (captureType == CaptureType.Mouse)
-                InputHookManager.SuppressMouseClick = true;
-
-            recorder.SetInsertIndex(insertIndex);
-            recorder.StartCapture(captureType, () =>
-            {
-                InputHookManager.SuppressMouseClick = false;
-                recordingService.StopRecording();
-                onComplete?.Invoke();
-            }, mouseButton);
-            recordingService.StartCaptureRecording(captureType);
-        }
-
-        public void CancelCaptureMode()
-        {
-            if (!recorder.IsCaptureMode) return;
-            InputHookManager.SuppressMouseClick = false;
-            recorder.DiscardCapturedActions();
-            recordingService.StopRecording();
-        }
 
         public bool IsRecording() => recordingService.IsRecording;
 

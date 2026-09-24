@@ -169,6 +169,32 @@ namespace TrueReplayer.Services
         }
 
         /// <summary>
+        /// Drops one profile's cursors — its row cursor and every cycle cursor keyed under it — when
+        /// the profile is DELETED. The startup prune was the only other place that cleared them, so a
+        /// profile deleted and re-created under the same name in one session inherited the old one's
+        /// row: its data table started wherever the dead profile had stopped. The delete handlers
+        /// call this; RenameProfile is its counterpart for a rename.
+        /// </summary>
+        public static void RemoveProfile(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return;
+            lock (_lock)
+            {
+                bool changed = _row.Remove(name);
+                foreach (var key in new List<string>(_cycle.Keys))
+                {
+                    int sep = key.IndexOf('|');
+                    if (sep > 0 && string.Equals(key[..sep], name, StringComparison.Ordinal))
+                    {
+                        _cycle.Remove(key);
+                        changed = true;
+                    }
+                }
+                if (changed) { _dirty = true; SaveLocked(); }
+            }
+        }
+
+        /// <summary>
         /// Drops cursors for profiles that no longer exist, so a deleted profile's position doesn't
         /// rot in the file forever (and can't be resurrected by a new profile reusing the name).
         /// Call ONCE after the first successful profile-list load, with the full set of names.

@@ -737,8 +737,9 @@ export interface AppState {
  * only consumer of this context is the StatusBar. Kept as-is rather than renamed: the rename
  * would churn three files for no behaviour.
  */
-/** Why a Clicker run ended — the three words the engine puts on the wire (clicker:ended). */
-export type ClickerEndReason = 'stopped' | 'clicks' | 'time';
+/** Why a Clicker run ended — the four words the engine puts on the wire (clicker:ended). 'error' is a
+ *  loop that threw: it used to arrive as 'stopped', indistinguishable from the user's own Stop. */
+export type ClickerEndReason = 'stopped' | 'clicks' | 'time' | 'error';
 
 /** Live target warnings (clicker:warning). One code today; a union so the next one is a one-liner. */
 export type ClickerWarningCode = 'elevatedTarget';

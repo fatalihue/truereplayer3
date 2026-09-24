@@ -94,7 +94,11 @@ namespace TrueReplayer.Services
                     && TryClickButton(input[i + 1].ActionType, down: false, out string upBtn)
                     && upBtn == btn
                     && Math.Abs(input[i + 1].X - a.X) <= ClickCoordTolerance
-                    && Math.Abs(input[i + 1].Y - a.Y) <= ClickCoordTolerance)
+                    && Math.Abs(input[i + 1].Y - a.Y) <= ClickCoordTolerance
+                    // Both halves on, or both off. The merged click is a clone of the DOWN row, so a
+                    // pair with ONE half turned off (a press deliberately left held) came back as a
+                    // whole click switched on. Same rule WhyCannotMerge states.
+                    && input[i + 1].IsSkipped == a.IsSkipped)
                 {
                     var click = a.Clone();
                     bool held = input[i + 1].Delay >= HoldThresholdMs;
@@ -133,7 +137,8 @@ namespace TrueReplayer.Services
                 if (a.ActionType == "KeyDown" && !IsModifier(a.Key)
                     && i + 1 < input.Count
                     && input[i + 1].ActionType == "KeyUp" && KeyEq(input[i + 1].Key, a.Key)
-                    && input[i + 1].Delay >= HoldThresholdMs)
+                    && input[i + 1].Delay >= HoldThresholdMs
+                    && input[i + 1].IsSkipped == a.IsSkipped)   // see the click fold above
                 {
                     var hold = a.Clone();
                     hold.ActionType = "HoldKey";
@@ -189,6 +194,8 @@ namespace TrueReplayer.Services
                 return "A repeating click can't be split — set Times to 1 first.";
             if (a.AtCursor)
                 return "An at-cursor click can't be split — the halves read a stored point.";
+            if (a.IsFocusClick)
+                return "A focus click can't be split — the halves don't fire the focus tap.";
             return null;
         }
 
@@ -268,6 +275,8 @@ namespace TrueReplayer.Services
                 return "These two halves are not the same button's press and release.";
             if (Math.Abs(up.X - down.X) > ClickCoordTolerance || Math.Abs(up.Y - down.Y) > ClickCoordTolerance)
                 return "These halves press and release at different points — that is a drag, and only the paired form can express it.";
+            if (up.IsSkipped != down.IsSkipped)
+                return "One half is turned off and the other is not — merging would switch the whole click on or off.";
             return null;
         }
 
@@ -296,7 +305,11 @@ namespace TrueReplayer.Services
                         // replay cases read action.X/Y directly and never consult the flag, so a
                         // split at-cursor click would SILENTLY revert to the stale stored point —
                         // a click somewhere else entirely, with no error. Pass it through whole.
-                        if (a.RepeatCount > 1 || a.AtCursor) { result.Add(a.Clone()); break; }
+                        //
+                        // A focus click is the same shape once more: only the combined replay cases fire
+                        // the focus tap, and the halves copied IsFocusClick onto rows that never read
+                        // it — the tap silently vanished from the run.
+                        if (a.RepeatCount > 1 || a.AtCursor || a.IsFocusClick) { result.Add(a.Clone()); break; }
                         string btn = a.ActionType[..^"Click".Length]; // "LeftClick" → "Left"
                         var down = a.Clone(); down.ActionType = btn + "ClickDown";
                         var up = a.Clone(); up.ActionType = btn + "ClickUp"; up.Delay = 0; up.Comment = "";
@@ -346,6 +359,12 @@ namespace TrueReplayer.Services
                         result.Add(a);
                         break;
                     case "Keystroke":
+                        // Passed through whole, like the × N clicks above, in two cases:
+                        //  • × N: expanded as N raw cycles, it came back from ToCombined as one row still
+                        //    carrying RepeatCount = N plus N-1 plain rows — Ctrl+C × 3 fired five times;
+                        //  • a key TOKEN ({var:combo}): what it resolves to is only known at run time, and
+                        //    a KeyDown row cannot press "Ctrl+V" — only the Keystroke case parses a combo.
+                        if (a.RepeatCount > 1 || (a.Key?.IndexOf('{') ?? -1) >= 0) { result.Add(a.Clone()); break; }
                         ExpandKeystroke(a, result);
                         break;
                     case "HoldKey":
@@ -358,7 +377,11 @@ namespace TrueReplayer.Services
                             ? Math.Clamp(a.HoldDurationMs, 10, 60000)
                             : ActionItem.DefaultHoldDurationMs;
                         result.Add(down);
-                        result.Add(new ActionItem { ActionType = "KeyUp", Key = a.Key, Delay = hold });
+                        // The Up is a clone as well, like the *ClickHold halves: built with `new`, it
+                        // came out switched ON under a HoldKey the user had turned off, and released a
+                        // key nothing had pressed.
+                        var up = a.Clone(); up.ActionType = "KeyUp"; up.Delay = hold; up.HoldDurationMs = 0; up.Comment = "";
+                        result.Add(up);
                         break;
                     }
                     default:
@@ -376,9 +399,10 @@ namespace TrueReplayer.Services
         {
             if (string.IsNullOrWhiteSpace(ks.Key)) { result.Add(ks.Clone()); return; }
 
-            var parts = ks.Key.Split('+');
-            string target = parts[^1].Trim();
-            var prefix = parts.Take(parts.Length - 1).Select(p => p.Trim()).ToList();
+            // KeyUtils.SplitCombo, not Split('+'): "Ctrl++" is Ctrl with the + key, and a plain
+            // split read it as Ctrl with an EMPTY key — the expanded rows carried Key="" and the +
+            // was never pressed.
+            var (prefix, target) = Helpers.KeyUtils.SplitCombo(ks.Key);
             var mods = ModifierOrder
                 .Where(m => prefix.Any(p => KeyEq(p, m)))
                 .ToList();
@@ -391,6 +415,9 @@ namespace TrueReplayer.Services
             // TryMatchKeystroke clones THIS leading row when folding the run back to a
             // Keystroke, so stamping here is what makes the Keystroke->paired->combined
             // round-trip preserve those fields instead of silently dropping them.
+            // IsSkipped goes on EVERY row: a Keystroke the user turned off must expand to rows that
+            // are all off. Built with `new ActionItem`, they came out on, and the disabled shortcut
+            // fired again.
             ActionItem? leadRow = null;
             for (int r = 0; r < repeats; r++)
             {
@@ -400,17 +427,17 @@ namespace TrueReplayer.Services
                 bool first = true;
                 foreach (var m in mods)
                 {
-                    var row = new ActionItem { ActionType = "KeyDown", Key = m, Delay = first ? leadDelay : 0 };
+                    var row = new ActionItem { ActionType = "KeyDown", Key = m, Delay = first ? leadDelay : 0, IsSkipped = ks.IsSkipped };
                     leadRow ??= row;
                     result.Add(row);
                     first = false;
                 }
-                var targetRow = new ActionItem { ActionType = "KeyDown", Key = target, Delay = first ? leadDelay : 0 };
+                var targetRow = new ActionItem { ActionType = "KeyDown", Key = target, Delay = first ? leadDelay : 0, IsSkipped = ks.IsSkipped };
                 leadRow ??= targetRow;
                 result.Add(targetRow);
-                result.Add(new ActionItem { ActionType = "KeyUp", Key = target, Delay = 0 });
+                result.Add(new ActionItem { ActionType = "KeyUp", Key = target, Delay = 0, IsSkipped = ks.IsSkipped });
                 for (int m = mods.Count - 1; m >= 0; m--)
-                    result.Add(new ActionItem { ActionType = "KeyUp", Key = mods[m], Delay = 0 });
+                    result.Add(new ActionItem { ActionType = "KeyUp", Key = mods[m], Delay = 0, IsSkipped = ks.IsSkipped });
             }
 
             // Stamp the Keystroke's carried-through fields onto the leading row so a later
@@ -452,6 +479,7 @@ namespace TrueReplayer.Services
                     if (k >= input.Count || input[k].ActionType != "KeyUp" || !KeyEq(input[k].Key, mods[m])) return 0;
                     k++;
                 }
+                if (!SameSkip(input, start, k)) return 0;
                 // Clone the leading row so Comment (and any other persisted field) carries through,
                 // matching the click + held-key folds above. Delay rides along via Clone().
                 combined = input[start].Clone();
@@ -469,6 +497,7 @@ namespace TrueReplayer.Services
                 if (j >= input.Count || input[j].ActionType != "KeyUp" || !KeyEq(input[j].Key, mods[m])) return 0;
                 j++;
             }
+            if (!SameSkip(input, start, j)) return 0;
             // Clone the leading row so Comment (and any other persisted field) carries through,
             // matching the click + held-key folds above. Delay rides along via Clone().
             combined = input[start].Clone();
@@ -478,6 +507,16 @@ namespace TrueReplayer.Services
         }
 
         private static bool KeyEq(string? a, string? b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+
+        // Every row of a run shares its on/off state, or the run does not fold — the folded row is a
+        // clone of the first one, so a run with a row turned off would come back switched on (see
+        // the click fold in ToCombined).
+        private static bool SameSkip(IReadOnlyList<ActionItem> input, int start, int end)
+        {
+            for (int r = start + 1; r < end; r++)
+                if (input[r].IsSkipped != input[start].IsSkipped) return false;
+            return true;
+        }
 
         private static bool TryClickButton(string actionType, bool down, out string button)
         {

@@ -1,4 +1,4 @@
-import { Pause as PauseIcon, Check, Square } from 'lucide-react';
+import { Pause as PauseIcon, Check, Square, AlertTriangle } from 'lucide-react';
 import { useAppState, useClickerLive } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
 import { usePauseTick } from '../hooks/usePauseTick';
@@ -87,8 +87,9 @@ export function ClickerDashboard() {
   const endLabel = ended === 'stopped' ? 'stopped'
     : ended === 'time' ? "time's up"
     : ended === 'clicks' ? 'limit reached'
+    : ended === 'error' ? 'failed'
     : 'finished';
-  const EndIcon = ended === 'stopped' ? Square : Check;
+  const EndIcon = ended === 'stopped' ? Square : ended === 'error' ? AlertTriangle : Check;
 
   const pauseRemainingSec = pauseState.timeoutMs > 0
     ? Math.max(0, Math.ceil((pauseState.timeoutMs - (Date.now() - pauseState.startedAt)) / 1000))

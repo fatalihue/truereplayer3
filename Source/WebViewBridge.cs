@@ -5208,7 +5208,7 @@ namespace TrueReplayer
             SendMessage("clicker:countdown", new { remainingMs });
         }
 
-        // Why the Clicker run ended — "stopped" | "clicks" | "time" — plus the number of
+        // Why the Clicker run ended — "stopped" | "clicks" | "time" | "error" — plus the number of
         // SendInput calls rejected outright. One message per run, right before the READY status.
         public void PushClickerEnded(string reason, long blocked)
         {
@@ -5254,29 +5254,16 @@ namespace TrueReplayer
             // The array is empty on the overwhelmingly common path (nothing to redo) and this
             // runs once per Insert click, so the allocation is not worth engineering around.
             //
-            // The WaitImage and capture (LeftClick/KeyPress) branches keep this push — it's
-            // their only undo step since their async insert paths don't push one of their own.
+            // The WaitImage branch keeps this push — it's its only undo step, since its async
+            // insert path doesn't push one of its own.
             var discardedRedo = _redoStack.ToArray();
             PushUndoState();
 
             insertIndex = Math.Max(0, Math.Min(insertIndex, actions.Count));
 
-            // Scroll: insert directly (no capture needed)
-            if (actionType == "ScrollUp" || actionType == "ScrollDown")
-            {
-                int delay = int.TryParse(CustomDelay, out var d) ? d : 100;
-                actions.Insert(insertIndex, new ActionItem { ActionType = actionType, Delay = delay, Comment = "" });
-                for (int i = 0; i < actions.Count; i++)
-                    actions[i].RowNumber = i + 1;
-                HasUnsavedChanges = true;
-                PushActionsUpdate();
-                mainController.UpdateButtonStates();
-                return;
-            }
-
             // Stop / Return: flow leaves — insert directly, nothing to configure, no Sheet.
-            // Same direct-insert mold as Scroll above (the return exits from inside the
-            // branch, ahead of the unrecognized-type redo-unwind tail).
+            // Direct insert: the return exits from inside the branch, ahead of the
+            // unrecognized-type redo-unwind tail.
             if (actionType == "Stop" || actionType == "Return")
             {
                 int delay = int.TryParse(CustomDelay, out var fd) ? fd : 100;
@@ -5317,34 +5304,8 @@ namespace TrueReplayer
             // generic empty-insert below so the row at least exists — but the toolbar
             // and context menu both use the dedicated message now.
 
-            // Browser actions: insert directly
-            if (actionType.StartsWith("Browser"))
-            {
-                int delay = int.TryParse(CustomDelay, out var bd) ? bd : 100;
-                actions.Insert(insertIndex, new ActionItem
-                {
-                    ActionType = actionType,
-                    Key = "",
-                    Delay = delay,
-                    Timeout = 5000
-                });
-                HasUnsavedChanges = true;
-                PushActionsUpdate();
-                mainController.UpdateButtonStates();
-                // Auto-open the editor for action types that need a selector / text / option list
-                // filled in before they're useful. BrowserNavigate captures its URL via the
-                // dedicated NavigateDialog at add-time, so it's already complete — skip the sheet.
-                if (actionType == "BrowserClick" || actionType == "BrowserRightClick"
-                    || actionType == "BrowserType" || actionType == "BrowserSelectOption"
-                    || actionType == "BrowserWaitElement")
-                {
-                    SendMessage("sheet:openIndex", new { index = insertIndex });
-                }
-                return;
-            }
-
             // SetVariable: insert directly and open the Sheet so the user fills Name/Value
-            // (Pattern A — same flow the selector-less Browser actions use above).
+            // (Pattern A: insert, then the Sheet).
             if (actionType == "SetVariable")
             {
                 int delay = int.TryParse(CustomDelay, out var vd) ? vd : 100;
@@ -5429,39 +5390,22 @@ namespace TrueReplayer
                 return;
             }
 
-            CaptureType captureType;
-            string? mouseButton = null;
-
-            if (actionType == "LeftClick" || actionType == "RightClick" || actionType == "MiddleClick")
-            {
-                captureType = CaptureType.Mouse;
-                mouseButton = actionType.Replace("Click", "");
-            }
-            else if (actionType == "KeyPress")
-            {
-                captureType = CaptureType.Keyboard;
-            }
-            else
-            {
-                // Unrecognized type — nothing was inserted, so undo the bookkeeping the snapshot
-                // above did. Popping the undo entry is only half of it: PushUndoState CLEARS the
-                // redo stack, and until this restore existed a stale caller dispatching a type
-                // this method does not handle silently wiped the user's redo history while
-                // inserting nothing. Stack<T>.ToArray hands back top-first, so pushing in reverse
-                // rebuilds the original order. UpdateButtonStates re-runs because PushUndoState
-                // last computed the button states against the pushed-and-cleared stacks.
-                _undoStack.TryPop(out _);
-                for (int i = discardedRedo.Length - 1; i >= 0; i--)
-                    _redoStack.Push(discardedRedo[i]);
-                mainController.UpdateButtonStates();
-                return;
-            }
-
-            mainController.StartCaptureMode(insertIndex, captureType, mouseButton, () =>
-            {
-                HasUnsavedChanges = true;
-                mainController.UpdateButtonStates();
-            });
+            // Unrecognized type — nothing was inserted, so undo the bookkeeping the snapshot
+            // above did. Popping the undo entry is only half of it: PushUndoState CLEARS the
+            // redo stack, and until this restore existed a stale caller dispatching a type
+            // this method does not handle silently wiped the user's redo history while
+            // inserting nothing. Stack<T>.ToArray hands back top-first, so pushing in reverse
+            // rebuilds the original order. UpdateButtonStates re-runs because PushUndoState
+            // last computed the button states against the pushed-and-cleared stacks.
+            //
+            // ScrollUp/ScrollDown, Browser* and the capture types (Left/Right/MiddleClick,
+            // KeyPress) end here too: nothing sends them any more — the toolbar is the only
+            // sender of actions:insertAction, Browser rows travel as actions:addBrowserAction —
+            // and their branches, with the whole capture mode behind the last one, were removed.
+            _undoStack.TryPop(out _);
+            for (int i = discardedRedo.Length - 1; i >= 0; i--)
+                _redoStack.Push(discardedRedo[i]);
+            mainController.UpdateButtonStates();
         }
 
         // ── Conditional logic: Add Else branch ────────────────────────────────
@@ -8646,6 +8590,9 @@ namespace TrueReplayer
                     File.Delete(entry.FilePath);
 
                 ImageStorageService.DeleteProfileDirectory(name);
+                // Its data-table row and cycle cursors go with it, or a new profile given the same
+                // name in this session starts where the deleted one stopped.
+                RunCursorService.RemoveProfile(name);
 
                 // Deleting the active profile drops to "No Profile" — same handoff back to the
                 // global fallback as the deselect branch in HandleProfileClick, and now literally
@@ -10140,7 +10087,10 @@ namespace TrueReplayer
                     var failed = await profileController.DeleteFolderAsync(name, deleteProfiles: true);
                     bool hadActive = folderItems.Contains(CurrentProfileName) && !failed.Contains(CurrentProfileName);
                     foreach (var deleted in folderItems.Except(failed))
+                    {
                         ImageStorageService.DeleteProfileDirectory(deleted);
+                        RunCursorService.RemoveProfile(deleted);   // see HandleProfileDelete
+                    }
                     if (failed.Count > 0)
                     {
                         SendMessage("alert:show", new

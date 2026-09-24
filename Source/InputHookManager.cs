@@ -985,10 +985,6 @@ namespace TrueReplayer
             lock (_captureOwnersLock) _captureOwners.Clear();
         }
 
-        /// When true, mouse click events (Down/Up) are swallowed (not passed to the target app).
-        /// Used during capture mode to capture coordinates without performing the actual click.
-        public static bool SuppressMouseClick { get; set; } = false;
-
         /// When true, mouse click events are NOT recorded (but still pass through to the target
         /// app). Bridge flips this on while a native <select> dropdown is being interacted with,
         /// so the OS-level click pairs (open popup + pick option) don't end up in the macro grid
@@ -2074,8 +2070,6 @@ namespace TrueReplayer
                     if ((int)wParam != NativeMethods.WM_MOUSEWHEEL)
                         _hotstringBufferLen = 0;
 
-                    // Snapshot suppress state before invoking event (callback may clear the flag)
-                    bool shouldSuppress = SuppressMouseClick && button != "Scroll";
                     // Suppress recording during a native <select> interaction so the open
                     // popup + pick option clicks don't bleed into the macro alongside the
                     // BrowserSelectOption action that semantically captures the change.
@@ -2090,10 +2084,6 @@ namespace TrueReplayer
 
                     if (!skipRecording && !ourInjection)
                         OnMouseEvent?.Invoke(button, hookStruct.pt.x, hookStruct.pt.y, isDown, scrollDelta);
-
-                    // In capture mode, swallow mouse clicks so they don't reach the target app
-                    if (shouldSuppress)
-                        return (IntPtr)1;
                 }
             }
 
@@ -2172,18 +2162,19 @@ namespace TrueReplayer
                 ClearPendingHoldFire();
                 return true;
             }
-            if (_pendingReleaseProfile != null && _pendingReleaseVkCode == vk
-                && MainController.Instance != null && !MainController.Instance.IsRecording()
-                && !IsReplayingAction)
+            // Consumed whatever the gate says, as on the keyboard path (see its OnRelease block):
+            // gating the whole branch left the pairing armed across a recording started mid-hold.
+            if (_pendingReleaseProfile != null && _pendingReleaseVkCode == vk)
             {
                 var pendingProfile = _pendingReleaseProfile;
                 _pendingReleaseProfile = null;
                 _pendingReleaseVkCode = 0;
-                OnHotkeyPressed?.Invoke($"PROFILE::{pendingProfile}");
+                if (MainController.Instance != null && !MainController.Instance.IsRecording()
+                    && !IsReplayingAction)
+                    OnHotkeyPressed?.Invoke($"PROFILE::{pendingProfile}");
                 return true;
             }
-            if (_activeHoldVkCode == vk && _activeHoldProfile != null
-                && MainController.Instance != null && !MainController.Instance.IsRecording())
+            if (_activeHoldVkCode == vk && _activeHoldProfile != null)
             {
                 string? heldProfile;
                 bool wasConfirmed;
@@ -3363,24 +3354,34 @@ namespace TrueReplayer
                 // the modifier before the main key still fires the profile). The composed
                 // key at this point may be just "Q" instead of "Alt+Q" — we ignore that and
                 // match against the vkCode we recorded on key-down.
-                if (!isDown && _pendingReleaseVkCode == vkCode && _pendingReleaseProfile != null
-                    && MainController.Instance != null && !MainController.Instance.IsRecording()
-                    && !IsReplayingAction)
+                //
+                // The pairing is CONSUMED here whatever happens; the recording/replay gate only
+                // decides whether the release still fires. It used to gate the whole block: a
+                // recording (or a replay) that began DURING the hold left the pair armed, and the
+                // unconditional down-swallow above then ate every later press of this key — the key
+                // was gone for the rest of the recording, and the profile fired out of nowhere at
+                // the first release after it ended. The up is swallowed either way: its down was.
+                if (!isDown && _pendingReleaseVkCode == vkCode && _pendingReleaseProfile != null)
                 {
                     var pendingProfile = _pendingReleaseProfile;
                     _pendingReleaseProfile = null;
                     _pendingReleaseVkCode = 0;
-                    LastTriggerHotkey = key;
-                    OnHotkeyPressed?.Invoke($"PROFILE::{pendingProfile}");
+                    if (MainController.Instance != null && !MainController.Instance.IsRecording()
+                        && !IsReplayingAction)
+                    {
+                        LastTriggerHotkey = key;
+                        OnHotkeyPressed?.Invoke($"PROFILE::{pendingProfile}");
+                    }
                     return (IntPtr)1;
                 }
 
                 // KEY UP handling for WhilePressed release (matched by physical vkCode so
                 // modifier-state flicker between down and up doesn't break the match). Runs
                 // outside the isProfileKey gate so it still fires even if the hotkey config
-                // changed mid-hold.
-                if (!isDown && _activeHoldVkCode == vkCode && _activeHoldProfile != null
-                    && MainController.Instance != null && !MainController.Instance.IsRecording())
+                // changed mid-hold. No recording gate either, for the reason the OnRelease block
+                // above gives: a recording started mid-hold left the hold armed and the key
+                // swallowed for good. The STOP below only ever follows a hold that started a run.
+                if (!isDown && _activeHoldVkCode == vkCode && _activeHoldProfile != null)
                 {
                     string? heldProfile;
                     bool wasConfirmed;

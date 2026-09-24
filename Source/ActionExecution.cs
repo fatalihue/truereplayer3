@@ -106,24 +106,7 @@ namespace TrueReplayer.Services
             InputHookManager.SuppressMouseRecording = false;
             onStatusChanged?.Invoke("ready");
         }
-
-        public void StartCaptureRecording(CaptureType captureType)
-        {
-            if (IsRecording) StopRecording();
-            IsRecording = true;
-            RecordingStartedUtc = DateTime.UtcNow;
-            onButtonStateChanged?.Invoke("Pause", true);
-            recorder.RecordMouse = captureType == CaptureType.Mouse;
-            recorder.RecordScroll = captureType == CaptureType.Scroll;
-            recorder.RecordKeyboard = captureType == CaptureType.Keyboard;
-            recorder.RecordCombined = getCombined();
-            recorder.Start();
-            setLastActionTime(DateTime.Now);
-            onStatusChanged?.Invoke("recording");
-        }
     }
-
-    public enum CaptureType { None, Mouse, Keyboard, Scroll }
 
     public class ReplayService
     {
@@ -1016,6 +999,14 @@ namespace TrueReplayer.Services
                         : "loop count reached";
                 }
                 catch (OperationCanceledException) { endReason = "cancelled"; }
+                catch
+                {
+                    // A loop that THREW is not a stop. endReason kept its initial "cancelled" and the
+                    // dashboard showed a normal "stopped"; the fault only reached the log. Rethrown so
+                    // the OnlyOnFaulted continuation below still logs it.
+                    endReason = "error";
+                    throw;
+                }
                 finally
                 {
                     // Clear pause state so a stop-while-paused doesn't leave the loop "armed"
@@ -1049,10 +1040,11 @@ namespace TrueReplayer.Services
                     var finalIteration = iteration;
                     var finalLoopTotal = isInfinite ? 0 : loopCount;
                     var emitFinalLoop = isInfinite || loopCount > 1;
-                    // The log keeps its prose; the wire gets three fixed words the dashboard maps
-                    // to a badge ("stopped" / "limit reached" / "time's up").
+                    // The log keeps its prose; the wire gets four fixed words the dashboard maps
+                    // to a badge ("stopped" / "limit reached" / "time's up" / "failed").
                     var wireReason = endReason == "cancelled" ? "stopped"
                         : endReason == "duration limit reached" ? "time"
+                        : endReason == "error" ? "error"
                         : "clicks";
                     dispatcherQueue.TryEnqueue(() =>
                     {
@@ -1150,15 +1142,6 @@ namespace TrueReplayer.Services
         private bool _isRecording;
         private DateTime? _lastActionTime;
 
-        // Capture mode state
-        private CaptureType _captureType = CaptureType.None;
-        private int _captureActionCount;
-        private int _captureTargetCount;
-        private bool _captureKeyWasPressed;
-        private int _captureStartIndex;
-        private string? _captureMouseButton;
-        private Action? _onCaptureComplete;
-
         public bool RecordMouse { get; set; } = true;
         public bool RecordScroll { get; set; } = true;
         public bool RecordKeyboard { get; set; } = true;
@@ -1166,7 +1149,6 @@ namespace TrueReplayer.Services
         // instead of the paired Down+Up. Set per-session from the global toggle in Start().
         public bool RecordCombined { get; set; } = false;
         public bool UseRelativeCoordinates { get; set; } = false;
-        public bool IsCaptureMode => _captureType != CaptureType.None;
 
         // ── Double-click merge state ──
         // The merge is always active in combined mode (two LeftClicks within the SYSTEM
@@ -1247,70 +1229,9 @@ namespace TrueReplayer.Services
             _lastCombinedLeftClick = null;
             _lastAdded = null;
             foreach (var action in _actions) action.IsInsertionPoint = false;
-            ClearCapture();
         }
 
         public bool IsRecording => _isRecording;
-
-        public void StartCapture(CaptureType type, Action onComplete, string? mouseButton = null)
-        {
-            _captureType = type;
-            _captureActionCount = 0;
-            _captureKeyWasPressed = false;
-            _captureStartIndex = insertIndex ?? _actions.Count;
-            _captureMouseButton = mouseButton;
-            _onCaptureComplete = onComplete;
-            _captureTargetCount = type switch
-            {
-                CaptureType.Mouse => 2,
-                CaptureType.Scroll => 1,
-                _ => 0
-            };
-        }
-
-        public void ClearCapture()
-        {
-            _captureType = CaptureType.None;
-            _captureActionCount = 0;
-            _captureTargetCount = 0;
-            _captureKeyWasPressed = false;
-            _captureStartIndex = 0;
-            _captureMouseButton = null;
-            _onCaptureComplete = null;
-        }
-
-        public void DiscardCapturedActions()
-        {
-            if (_captureActionCount > 0 && _captureStartIndex >= 0)
-            {
-                int removeCount = Math.Min(_captureActionCount, _actions.Count - _captureStartIndex);
-                for (int i = 0; i < removeCount; i++)
-                {
-                    if (_captureStartIndex < _actions.Count)
-                        _actions.RemoveAt(_captureStartIndex);
-                }
-            }
-        }
-
-        private void CheckCaptureCompletion()
-        {
-            if (_captureType == CaptureType.None) return;
-
-            bool complete = _captureType switch
-            {
-                // Combined mode records a click as ONE event (press only), so Mouse capture
-                // completes after 1 action instead of the paired Down+Up's 2. Evaluated live
-                // here (not baked into _captureTargetCount in StartCapture) because RecordCombined
-                // is assigned by StartCaptureRecording, which runs just AFTER StartCapture.
-                CaptureType.Mouse => _captureActionCount >= (RecordCombined ? 1 : 2),
-                CaptureType.Scroll => _captureActionCount >= _captureTargetCount,
-                CaptureType.Keyboard => _captureKeyWasPressed && _pressedKeys.Count == 0,
-                _ => false
-            };
-
-            if (complete)
-                _onCaptureComplete?.Invoke();
-        }
 
         private int GetDelayForNewAction()
         {
@@ -1349,12 +1270,9 @@ namespace TrueReplayer.Services
             {
                 AddAction(new ActionItem { ActionType = actionType, Key = key, Delay = delay });
                 _pressedKeys.Add(key);
-                if (_captureType == CaptureType.Keyboard)
-                    _captureKeyWasPressed = true;
             }
             else if (!isDown)
             {
-                // Remove before AddAction so CheckCaptureCompletion sees _pressedKeys.Count == 0
                 _pressedKeys.Remove(key);
                 AddAction(new ActionItem { ActionType = actionType, Key = key, Delay = delay });
             }
@@ -1381,11 +1299,6 @@ namespace TrueReplayer.Services
                     // once the whole chord is released so multi-modifier taps fold together.
                     if (_heldMods.Count == 0 && !_sessionUsed && _sessionMods.Count > 0)
                     {
-                        // Set the capture flag BEFORE AddAction — AddAction runs CheckCaptureCompletion
-                        // synchronously, and the Keyboard arm needs _captureKeyWasPressed already true.
-                        // This modifier-up is BOTH the emitter and the terminal event (no follow-up
-                        // event to complete the capture), so setting it after would hang capture mode.
-                        if (_captureType == CaptureType.Keyboard) _captureKeyWasPressed = true;
                         AddAction(new ActionItem { ActionType = "Keystroke", Key = BuildCombo(_sessionMods, null), Delay = GetDelayForNewAction() });
                         _sessionMods.Clear();
                     }
@@ -1400,15 +1313,10 @@ namespace TrueReplayer.Services
                 AddAction(new ActionItem { ActionType = "Keystroke", Key = combo, Delay = GetDelayForNewAction() });
                 _pressedKeys.Add(key);
                 if (_heldMods.Count > 0) _sessionUsed = true;
-                if (_captureType == CaptureType.Keyboard) _captureKeyWasPressed = true;
             }
             else if (!isDown)
             {
-                _pressedKeys.Remove(key);
-                // Combined mode emits nothing on key-up, but keyboard capture completes on
-                // release (_captureKeyWasPressed && no keys held). Paired mode triggers this
-                // via the KeyUp's AddAction; here we call it directly. Self-guards when idle.
-                CheckCaptureCompletion();
+                _pressedKeys.Remove(key);   // combined mode emits nothing on key-up
             }
         }
 
@@ -1429,9 +1337,6 @@ namespace TrueReplayer.Services
         public void RecordMouseAction(string button, int x, int y, bool isDown, int scrollDelta = 0)
         {
             if (!_isRecording) return;
-            // In capture mode, only accept the specific mouse button
-            if (_captureType == CaptureType.Mouse && _captureMouseButton != null && button != _captureMouseButton)
-                return;
 
             bool isScroll = button == "Scroll";
             if ((isScroll && !RecordScroll) || (!isScroll && !RecordMouse)) return;
@@ -1499,7 +1404,6 @@ namespace TrueReplayer.Services
                 // they recorded as three DoubleClicks — which is deliberate, and is why the chain
                 // is capped at three rather than counting on forever.
                 if (RecordCombined && button == "Left"
-                    && _captureType == CaptureType.None
                     && _lastCombinedLeftClick != null
                     && ReferenceEquals(_lastCombinedLeftClick, _lastAdded)
                     && _lastCombinedLeftClick.ActionType is "LeftClick" or "DoubleClick")
@@ -1634,12 +1538,6 @@ namespace TrueReplayer.Services
             _lastAdded = action;
             _capturedThisSession++;
             _onActionAdded?.Invoke();
-
-            if (_captureType != CaptureType.None)
-            {
-                _captureActionCount++;
-                CheckCaptureCompletion();
-            }
         }
     }
 
@@ -2490,6 +2388,9 @@ namespace TrueReplayer.Services
             }
 
             bool raisedTimerRes = false;
+            // Set when the run ends by THROWING rather than by cancellation (see the finally).
+            bool faulted = false;
+            _waitedOnUser = false;
             // Which report this run is allowed to stamp. Stays 0 until ResetRunReport claims one —
             // a run cancelled before it gets that far owns no report and must stamp nothing.
             int reportGen = 0;
@@ -2524,6 +2425,7 @@ namespace TrueReplayer.Services
                 // (restore-if-minimized, NULL-foreground-guarded AttachThreadInput,
                 // foreground-lock bypass, verified) — see WindowActivation. Best-effort:
                 // a refused switch doesn't block the run, matching the old behavior.
+                IntPtr focusedHwnd = IntPtr.Zero;
                 if (_bringToFocus && _windowTarget != null)
                 {
                     var targetHwnd = FindTargetWindow();
@@ -2532,6 +2434,7 @@ namespace TrueReplayer.Services
                         await TrueReplayer.Helpers.WindowActivation.ActivateAsync(
                             targetHwnd, _windowTarget, _windowTargetTitleRegex, token);
                         await Task.Delay(300, token); // Wait for window to restore and gain focus
+                        focusedHwnd = targetHwnd;
                     }
                     else
                     {
@@ -2562,7 +2465,12 @@ namespace TrueReplayer.Services
                 bool applyPos = _restorePosition;
                 if (_windowTarget != null && (applySize || applyPos))
                 {
-                    var sizeHwnd = FindTargetWindow();
+                    // The window just brought forward, not a second lookup — the rule
+                    // ExecuteActivateWindow already follows. With two windows that match (a process
+                    // name alone, a loose title regex), a fresh FindTargetWindow walks the Z-order
+                    // again and, after a refused or superseded activation, moves and sizes the OTHER
+                    // one.
+                    var sizeHwnd = focusedHwnd != IntPtr.Zero ? focusedHwnd : FindTargetWindow();
                     if (sizeHwnd != IntPtr.Zero && !NativeMethods.IsIconic(sizeHwnd))
                     {
                         // Chrome fix: SetWindowPos resize é silenciosamente ignorado em janelas
@@ -2762,6 +2670,11 @@ namespace TrueReplayer.Services
             // rethrow) — catching only TaskCanceledException let it escape and fault the run, making
             // StartReplay's continuation show a spurious "error:" toast on a normal cancel.
             catch (OperationCanceledException) { }
+            catch
+            {
+                faulted = true;
+                throw;
+            }
             finally
             {
                 // Always paired with TimeBeginPeriod — the resolution is process-wide.
@@ -2781,7 +2694,13 @@ namespace TrueReplayer.Services
                 // SimulateKey (whose Thread.Sleep window Stop's own ResetMouseState may have
                 // raced) has finished and recorded its state — closing the stuck-button/key
                 // race. Idempotent with Stop()'s reset (lock-guarded, no-op when nothing down).
-                if (token.IsCancellationRequested)
+                //
+                // A run that ends by THROWING is over just as surely, and it cancels nothing: a
+                // browser action failing under Halt, an If probe's Halt rethrow. Gated on the token
+                // alone, that ending skipped this release and left the KeyDown W or LeftClickDown
+                // the row before it pressed system-wide after the error toast — for the keys and the
+                // buttons nothing else ever releases. A NATURAL end still leaves them as authored.
+                if (token.IsCancellationRequested || faulted)
                 {
                     ResetMouseState();
                     ResetKeyState();
@@ -3150,6 +3069,20 @@ namespace TrueReplayer.Services
             || (action.ConditionTimeout > 0
                 && string.Equals(action.ActionType, "Assert", StringComparison.OrdinalIgnoreCase));
 
+        // An authored delay with the run's jitter applied, never negative. The ONE copy: the action
+        // delay, the If/ElseIf arm and the While guard each carried their own, byte for byte.
+        private int JitteredDelay(int delay)
+        {
+            int d = Math.Max(0, delay);
+            if (_useDelayVariation && _delayVariationPercent > 0 && d > 0)
+            {
+                int variation = d * _delayVariationPercent / 100;
+                d += Random.Shared.Next(-variation, variation + 1);
+                d = Math.Max(0, d);
+            }
+            return d;
+        }
+
         /// <summary>
         /// The innermost loop opener (While / ForEachRow row index) whose block encloses
         /// <paramref name="idx"/>, or -1. Innermost = the enclosing opener with the highest index:
@@ -3471,13 +3404,7 @@ namespace TrueReplayer.Services
                             // wrongly skipped. The delay lets the screen catch up first. (ELSE/ENDIF are
                             // pure jumps and carry no delay; ELSEIF runs a probe, so it keeps the knob.)
                             // Honours the same jitter setting as a regular action's delay.
-                            int ifDelay = Math.Max(0, armRow.Delay);
-                            if (_useDelayVariation && _delayVariationPercent > 0 && ifDelay > 0)
-                            {
-                                int variation = ifDelay * _delayVariationPercent / 100;
-                                ifDelay += Random.Shared.Next(-variation, variation + 1);
-                                ifDelay = Math.Max(0, ifDelay);
-                            }
+                            int ifDelay = JitteredDelay(armRow.Delay);
                             if (ifDelay > 0)
                             {
                                 try { await Task.Delay(ifDelay, token); }
@@ -3532,7 +3459,11 @@ namespace TrueReplayer.Services
                             // feature, not schedule debt. Same wait-class resync as the one after the
                             // action switch, for the same settle-delay reason. (Branch rows never reach
                             // that switch — they `continue` out of the loop body right below.)
-                            if (armRow.ConditionTimeout > 0)
+                            //
+                            // An INSTANT probe resyncs too when it stopped for the Ask-Input modal — a
+                            // {input:} in its operand parks it for up to a minute (ConsumeWaitedOnUser).
+                            bool armWaited = ConsumeWaitedOnUser();
+                            if (armRow.ConditionTimeout > 0 || armWaited)
                                 nextTickMs = sw.ElapsedMilliseconds;
                             if (branchTrue)
                             {
@@ -3683,13 +3614,7 @@ namespace TrueReplayer.Services
 
                     // Delay BEFORE the probe, PER ITERATION — double duty: the If's "let the
                     // screen settle before checking" plus the pacing between iterations.
-                    int whileDelay = Math.Max(0, action.Delay);
-                    if (_useDelayVariation && _delayVariationPercent > 0 && whileDelay > 0)
-                    {
-                        int variation = whileDelay * _delayVariationPercent / 100;
-                        whileDelay += Random.Shared.Next(-variation, variation + 1);
-                        whileDelay = Math.Max(0, whileDelay);
-                    }
+                    int whileDelay = JitteredDelay(action.Delay);
                     if (whileDelay > 0)
                     {
                         try { await Task.Delay(whileDelay, token); }
@@ -3742,7 +3667,8 @@ namespace TrueReplayer.Services
                     whileRec.DurationMs = whileWatch.ElapsedMilliseconds;
                     whileRec.Status = "ok";      // the PROBE ran; false is an answer (loop exit)
                     if (!_runStepsFull) whileRec.Detail = DescribeIfDetail(action, loopTrue);
-                    if (action.ConditionTimeout > 0)
+                    bool guardWaited = ConsumeWaitedOnUser();   // see the If arm
+                    if (action.ConditionTimeout > 0 || guardWaited)
                         nextTickMs = sw.ElapsedMilliseconds;   // timed probe = wait-class resync
                     if (!loopTrue)
                     {
@@ -3932,13 +3858,7 @@ namespace TrueReplayer.Services
                 }
 
                 if (action.IsSkipped) continue;
-                int safeDelay = Math.Max(0, action.Delay);
-                if (_useDelayVariation && _delayVariationPercent > 0 && safeDelay > 0)
-                {
-                    int variation = safeDelay * _delayVariationPercent / 100;
-                    safeDelay += Random.Shared.Next(-variation, variation + 1);
-                    safeDelay = Math.Max(0, safeDelay);
-                }
+                int safeDelay = JitteredDelay(action.Delay);
 
                 // The (jittered) delay advances a deadline instead of feeding Task.Delay
                 // directly, so the wait measures from the PREVIOUS action's deadline rather
@@ -4377,7 +4297,12 @@ namespace TrueReplayer.Services
                 // the NEXT action's delay runs in full: users configure that delay as a
                 // settle period after the wait, and deadline scheduling would otherwise
                 // compress it to zero.
-                if (ShouldResyncAfter(action))
+                // …and after any row that stopped for the Ask-Input modal: a {input:} in a
+                // SetVariable value or a Keystroke key parks the run for up to a minute, and that
+                // wait was never part of any recorded gap either. Consumed on every row, so a flag
+                // set here cannot leak into a later one.
+                bool waitedOnUser = ConsumeWaitedOnUser();
+                if (ShouldResyncAfter(action) || waitedOnUser)
                     nextTickMs = sw.ElapsedMilliseconds;
             }
         }
@@ -4429,6 +4354,7 @@ namespace TrueReplayer.Services
         /// </summary>
         private async Task ApplyWindowContextAsync(CancellationToken token)
         {
+            IntPtr focusedHwnd = IntPtr.Zero;
             if (_bringToFocus && _windowTarget != null)
             {
                 var targetHwnd = FindTargetWindow();
@@ -4438,15 +4364,18 @@ namespace TrueReplayer.Services
                     await TrueReplayer.Helpers.WindowActivation.ActivateAsync(
                         targetHwnd, _windowTarget, _windowTargetTitleRegex, token);
                     await Task.Delay(200, token);
+                    focusedHwnd = targetHwnd;
                 }
             }
 
-            // Size gated, position not — see the note in StartAsync on why.
+            // Size gated, position not — see the note in StartAsync on why. The geometry goes to the
+            // window just activated, not to a second lookup (see StartAsync's sizeHwnd).
             bool hasSize = _lockWidth > 0 && _lockHeight > 0;
             bool applySize = _restoreSize && hasSize;
             bool applyPos = _restorePosition;
             if (_windowTarget != null && (applySize || applyPos))
-                await ApplyWindowGeometryAsync(FindTargetWindow(), _lockX, _lockY, _lockWidth, _lockHeight, applyPos, applySize, token);
+                await ApplyWindowGeometryAsync(focusedHwnd != IntPtr.Zero ? focusedHwnd : FindTargetWindow(),
+                    _lockX, _lockY, _lockWidth, _lockHeight, applyPos, applySize, token);
         }
 
         /// <summary>
@@ -4944,12 +4873,36 @@ namespace TrueReplayer.Services
             }
         }
 
+        // The modifier keys the engine itself has down right now — KeyDown rows whose KeyUp has not
+        // run — by the names they were pressed with.
+        private List<string> ModifiersHeldByEngine()
+        {
+            var held = new List<string>();
+            lock (_simInputLock)
+            {
+                foreach (var k in _simulatedKeysDown)
+                    if (Helpers.KeyUtils.TryResolveVirtualKeyCode(k, out ushort vk) && IsModifierVk(vk))
+                        held.Add(k);
+            }
+            return held;
+        }
+
+        private static bool IsModifierVk(ushort vk) =>
+            vk is 0x10 or 0x11 or 0x12 or (>= 0xA0 and <= 0xA5) or 0x5B or 0x5C;
+
         private async Task WaitForHotkeyReleaseAsync(CancellationToken token)
         {
             var hotkey = InputHookManager.LastTriggerHotkey;
             InputHookManager.LastTriggerHotkey = null;
 
             if (string.IsNullOrEmpty(hotkey))
+                return;
+
+            // A HOTSTRING fire has no physical hotkey to wait for. The hook writes
+            // "HOTSTRING::<profile name>" here, and splitting that on '+' read the profile's own name
+            // as keys: a profile named "Notes+Enter" waited up to 2 s on the Enter that had just
+            // ended the hotstring, on every fire.
+            if (hotkey.StartsWith("HOTSTRING::", StringComparison.Ordinal))
                 return;
 
             var vkCodes = new List<int>();
@@ -5088,6 +5041,11 @@ namespace TrueReplayer.Services
         {
             dx = 0;
             dy = 0;
+            // The flag describes THIS call's refusal. Reset up front, so the not-found and no-rect
+            // exits below cannot leave a stale "minimised" from an earlier call nobody consumed (a
+            // probe under a non-Halt policy never reports) — which then told the user to restore a
+            // window that no longer existed.
+            _lastRelativeFailureWasMinimised = false;
             if (!_useRelativeCoordinates) return true;
             if (_windowTarget == null) return true;
             var hwnd = FindTargetWindow();
@@ -5185,11 +5143,12 @@ namespace TrueReplayer.Services
         /// </summary>
         private void WarnRelativeGeometryDrift(IntPtr hwnd, in NativeMethods.RECT rect)
         {
-            _relGeometryDriftWarned = true;   // latch FIRST — this must never fire twice
-
             int liveW = rect.Right - rect.Left;
             int liveH = rect.Bottom - rect.Top;
-            if (liveW <= 0 || liveH <= 0) return;   // degenerate rect mid-teardown, not drift
+            // A degenerate rect (a window mid-teardown) is not drift, and must not spend the latch:
+            // latched first, it silenced the one warning a real drift later in the run was owed.
+            if (liveW <= 0 || liveH <= 0) return;
+            _relGeometryDriftWarned = true;   // latch before anything else — this must never fire twice
 
             var name = _windowTarget?.ProcessName ?? "target";
             uint dpi = NativeMethods.GetDpiForWindowSafe(hwnd);
@@ -7166,6 +7125,19 @@ namespace TrueReplayer.Services
         // Pauses replay, raises the Ask-Input modal on the host, and awaits the answer. Returns the
         // entered/selected string, or null if the user cancelled (or replay was stopped mid-prompt).
         // Mirrors ExecutePause's TCS-park-on-dispatcher shape but returns a value.
+        // Set when the Ask-Input modal actually opened and waited on the user; consumed by the
+        // deadline scheduler after each row, If arm and While guard. Type and row say nothing about
+        // it — any token-bearing field can ask ({input:} in a SetVariable value, a Keystroke key,
+        // an If operand) — so the wait itself says so.
+        private volatile bool _waitedOnUser;
+
+        private bool ConsumeWaitedOnUser()
+        {
+            bool waited = _waitedOnUser;
+            _waitedOnUser = false;
+            return waited;
+        }
+
         private async Task<string?> RequestInputAsync(string label, string[]? menu, CancellationToken token)
         {
             var requestId = Guid.NewGuid().ToString("N")[..8];
@@ -7177,6 +7149,7 @@ namespace TrueReplayer.Services
             // (Notepad/Chrome) instead of typing into TrueReplayer itself.
             IntPtr prevForeground = NativeMethods.GetForegroundWindow();
             dispatcherQueue.TryEnqueue(() => OnInputRequested?.Invoke(requestId, label, menu));
+            _waitedOnUser = true;
             using var timeoutCts = new CancellationTokenSource(InputTimeoutMs);
             try
             {
@@ -7253,8 +7226,11 @@ namespace TrueReplayer.Services
             {
                 if (string.IsNullOrEmpty(name))
                 {
-                    lock (_runStateLock) _clipSlots.Clear();
-                    _nextHotkeySlot = 1;
+                    lock (_runStateLock)
+                    {
+                        _clipSlots.Clear();
+                        _nextHotkeySlot = 1;   // under the lock — see CaptureSelectionToNextSlotAsync
+                    }
                 }
                 else if (VariableNameRegex.IsMatch(name))
                 {
@@ -7317,8 +7293,14 @@ namespace TrueReplayer.Services
                 // A physically held hotkey modifier (e.g. the Shift of Ctrl+Shift+9) would turn
                 // the injected Ctrl+C into Ctrl+Shift+C for the target — release first, same as
                 // replay start does before its first synthetic input.
+                // A modifier the MACRO holds (a KeyDown whose KeyUp has not run) is released by the
+                // same sweep and has to come back after the copy — released for good, a Shift held for
+                // a multi-selection turned every later click into a plain one. Releasing it first is
+                // still right: held, it would make the copy Ctrl+Shift+C.
+                var macroHeld = ModifiersHeldByEngine();
                 ReleasePhysicallyHeldModifiers();
                 SimulateKeystroke("Ctrl+C", token);
+                foreach (var m in macroHeld) SimulateKey(m, true);
                 for (int i = 0; i < 15; i++) // up to ~750 ms — slow targets render the copy late
                 {
                     await Task.Delay(50, token);
@@ -7339,14 +7321,22 @@ namespace TrueReplayer.Services
         // name and the captured text (null = nothing copied; the cursor does not advance then).
         public async Task<(string Slot, string? Value)> CaptureSelectionToNextSlotAsync()
         {
-            var slot = _nextHotkeySlot.ToString();
+            // The slot is chosen AFTER the capture, under the lock the slots live under. Read before
+            // the await (the copy polls for up to ~750 ms), a Copy to Slot "clear all" landing in
+            // between was undone: the capture refilled a slot just cleared and moved the cursor
+            // past the reset to 1.
             var captured = await CaptureSelectionTextAsync(CancellationToken.None);
-            if (captured != null)
+            string slot;
+            lock (_runStateLock)
             {
-                lock (_runStateLock) _clipSlots[slot] = captured;
-                _nextHotkeySlot = _nextHotkeySlot >= 9 ? 1 : _nextHotkeySlot + 1;
-                PushVariablesSnapshot(force: true);
+                slot = _nextHotkeySlot.ToString();
+                if (captured != null)
+                {
+                    _clipSlots[slot] = captured;
+                    _nextHotkeySlot = _nextHotkeySlot >= 9 ? 1 : _nextHotkeySlot + 1;
+                }
             }
+            if (captured != null) PushVariablesSnapshot(force: true);
             return (slot, captured);
         }
 
@@ -8478,7 +8468,7 @@ namespace TrueReplayer.Services
 
         private void RestoreOriginalClipboard((string? Text, string? Html) originalClipboard)
         {
-            dispatcherQueue.TryEnqueue(() =>
+            bool queued = dispatcherQueue.TryEnqueue(() =>
             {
                 try
                 {
@@ -8505,6 +8495,10 @@ namespace TrueReplayer.Services
                     DiagnosticLog.Error("Failed to restore original clipboard", ex);
                 }
             });
+            // The queue refuses work once the window is closing (the app shut down with a paste in
+            // flight). The restore then never runs; say so, as the catch above does for a failed one.
+            if (!queued)
+                DiagnosticLog.Warn("Original clipboard not restored: the UI queue is shut down (app closing)");
         }
 
         private async Task ExecuteWaitImage(ActionItem action, CancellationToken token)
@@ -10070,11 +10064,11 @@ namespace TrueReplayer.Services
                     if (!string.IsNullOrEmpty(html))
                         dataPackage.SetHtmlFormat(Windows.ApplicationModel.DataTransfer.HtmlFormatHelper.CreateHtmlFormat(html));
                     Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dataPackage);
-                    tcs.SetResult(true);
+                    tcs.TrySetResult(true);   // Try: a Stop may already have resolved it (below)
                 }
                 catch
                 {
-                    tcs.SetResult(false);
+                    tcs.TrySetResult(false);
                 }
             }))
             {
@@ -10082,7 +10076,12 @@ namespace TrueReplayer.Services
                 tcs.TrySetResult(false);
             }
 
-            if (!await tcs.Task || token.IsCancellationRequested) return;
+            // Stop reaches this wait too. A busy or wedged UI thread used to hold the run here, past
+            // Stop, for as long as it took to get to the queued write.
+            bool written;
+            using (token.Register(() => tcs.TrySetResult(false)))
+                written = await tcs.Task;
+            if (!written || token.IsCancellationRequested) return;
 
             await Task.Delay(50, token);
 
@@ -10149,20 +10148,36 @@ namespace TrueReplayer.Services
         private void SimulateKeystroke(string keystroke, CancellationToken token = default)
         {
             if (string.IsNullOrWhiteSpace(keystroke)) return;
-            var parts = keystroke.Split('+');
-            if (parts.Length == 0) return;
+            // KeyUtils.SplitCombo, not Split('+'): "Ctrl++" is Ctrl with the + key, and a plain split
+            // read it as Ctrl with an EMPTY key — Ctrl went down and up and the + never came.
+            var (prefix, target) = Helpers.KeyUtils.SplitCombo(keystroke);
+            if (target.Length == 0) return;
 
             // The LAST part is the target key; everything before it is a modifier.
             // Order matters at replay time, but for the modifier set we don't need to
             // preserve incoming order (Ctrl+Shift and Shift+Ctrl are semantically the
             // same modifier set; we always emit in our canonical order: Win, Ctrl, Shift, Alt).
+            // Matched ignoring case and written canonically: a hand-typed "ctrl+a" lost its Ctrl
+            // here (an exact == compare) and pressed a bare A, while the same row converted to
+            // paired — whose expansion compares ignoring case — pressed Ctrl+A.
             var modifiers = new System.Collections.Generic.List<string>();
-            string target = parts[^1].Trim();
-            for (int i = 0; i < parts.Length - 1; i++)
+            foreach (var p in prefix)
             {
-                var m = parts[i].Trim();
-                if (m == "Win" || m == "Ctrl" || m == "Shift" || m == "Alt") modifiers.Add(m);
+                foreach (var canonical in new[] { "Win", "Ctrl", "Shift", "Alt" })
+                    if (string.Equals(p, canonical, StringComparison.OrdinalIgnoreCase) && !modifiers.Contains(canonical))
+                        modifiers.Add(canonical);
                 // Silently skip unknown modifiers — keystroke replay is best-effort.
+            }
+
+            // A modifier a KeyDown row of the macro already holds belongs to THAT row. This combo
+            // presses it again (nothing new for the target) but must not let go of it: the finally
+            // below released it anyway, and the Ctrl of "KeyDown Ctrl, Ctrl+C, click, KeyUp Ctrl"
+            // was up before the click that was meant to be a Ctrl+click.
+            var heldByMacro = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            lock (_simInputLock)
+            {
+                foreach (var m in modifiers)
+                    if (_simulatedKeysDown.Contains(m)) heldByMacro.Add(m);
             }
 
             // Modifiers down. Win goes first because shell shortcuts (Win+D, Win+E, Win+R)
@@ -10192,7 +10207,7 @@ namespace TrueReplayer.Services
                 // physically presses + releases the same modifier themselves. In a finally so a
                 // cancelled combo (or a throw in the tap) never leaves a modifier stuck down.
                 foreach (var m in new[] { "Alt", "Shift", "Ctrl", "Win" })
-                    if (modifiers.Contains(m)) SimulateKey(m, false);
+                    if (modifiers.Contains(m) && !heldByMacro.Contains(m)) SimulateKey(m, false);
             }
         }
 

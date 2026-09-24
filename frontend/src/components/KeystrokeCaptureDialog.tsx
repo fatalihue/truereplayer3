@@ -4,6 +4,7 @@ import { NumberInput } from './common/NumberInput';
 import { DialogShell, DialogFooter  } from './common/DialogShell';
 import { SegmentedControl } from './common/SegmentedControl';
 import { KeyCaps } from './common/KeyCaps';
+import { splitCombo } from './common/KbdTag';
 import { compactKey } from '../utils/keyNames';
 import { CheckboxBox } from './Checkbox';
 import { DurationChips, DURATION_PRESETS } from './common/DurationChips';
@@ -256,18 +257,24 @@ export function KeystrokeCaptureDialog({
   const clampHold = (v: number) => Math.max(MIN_HOLD_MS, Math.min(MAX_HOLD_MS, Math.floor(v)));
 
   // Derived values used by the renderer + commit.
-  const hasModifiers = captured?.includes('+') ?? false;
+  // Parsed with splitCombo, the rule the keycaps already use: a trailing empty segment IS the + key.
+  // A plain split('+') read "Ctrl++" (Ctrl with the + key, what the capture produces on layouts where
+  // + has a key of its own) as Ctrl with an EMPTY key — Hold saved Key = "" and the row did nothing
+  // at replay, with Add still enabled — and counted a lone "+" as a combo with modifiers.
+  const comboParts = captured ? splitCombo(captured.trim()) : [];
+  const hasModifiers = comboParts.length > 1;
   // For Hold mode, only the last part of the combo gets used on commit — that's
   // the actual key the OS will keep pressed. Modifiers in the captured string
   // would confuse SimulateKey (no virtual-key code for "Ctrl+S"), so we strip
   // them at save time and warn in the UI.
-  const heldKey = captured ? captured.split('+').pop() ?? captured : '';
+  const heldKey = comboParts.length > 0 ? comboParts[comboParts.length - 1] : '';
 
   const handleConfirm = () => {
     // Trim on commit: manual entry can produce whitespace-only or trailing-space
     // values the capture hook never could — a whitespace key would silently no-op
     // at replay with zero diagnostics.
     if (!captured?.trim()) return;
+    if (mode === 'hold' && !heldKey.trim()) return;
     if (mode === 'hold') {
       onConfirm({
         actionType: 'HoldKey',
@@ -308,7 +315,7 @@ export function KeystrokeCaptureDialog({
         : captured
           ? 'Press another combo to replace'
           : ''}
-      footer={<DialogFooter secondary={{ label: 'Cancel', onClick: onClose }} primary={{ label: isEditing ? 'Save' : 'Add', onClick: handleConfirm, disabled: !captured?.trim() }} />}
+      footer={<DialogFooter secondary={{ label: 'Cancel', onClick: onClose }} primary={{ label: isEditing ? 'Save' : 'Add', onClick: handleConfirm, disabled: !captured?.trim() || (mode === 'hold' && !heldKey.trim()) }} />}
       onCardKeyDown={(e) => {
         // Enter confirms ONLY when a numeric input is focused — in that state the
         // backend capture is paused (handleFocusIn in the capture effect) so the
