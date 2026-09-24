@@ -2225,7 +2225,9 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                               : action.windowVerb === 'minimize' ? 'Minimize · '
                               : action.windowVerb === 'close' ? 'Close · ' : '';
                             const nth = action.windowMatchIndex && action.windowMatchIndex > 1 ? ` #${action.windowMatchIndex}` : '';
-                            if (matcher) return verbPrefix ? `${verbPrefix}${matcher}${nth}` : (action.launchPath ? `${matcher}${nth} — launch` : `${matcher}${nth}`);
+                            // Maximize launches on a miss too; only Minimize and Close never do.
+                            const launches = !!action.launchPath?.trim() && action.windowVerb !== 'minimize' && action.windowVerb !== 'close';
+                            if (matcher) return `${verbPrefix}${matcher}${nth}${launches ? ' — launch' : ''}`;
                             return action.launchPath ? `run: ${action.launchPath}` : '';
                           })()
                       : action.actionType === 'Keystroke'

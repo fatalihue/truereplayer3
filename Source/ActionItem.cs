@@ -858,7 +858,8 @@ namespace TrueReplayer.Models
                         hasProc ? WindowProcessName! :
                         hasTitle ? WindowTitle! : "";
                     // Phase-3: verb prefix (non-activate) + nth-match suffix.
-                    string verbPrefix = (WindowVerb?.ToLowerInvariant()) switch
+                    string verb = WindowVerb?.ToLowerInvariant() ?? "";
+                    string verbPrefix = verb switch
                     {
                         "maximize" => "Maximize · ",
                         "minimize" => "Minimize · ",
@@ -866,9 +867,11 @@ namespace TrueReplayer.Models
                         _ => "",
                     };
                     string nth = (WindowMatchIndex is int mi && mi > 1) ? $" #{mi}" : "";
+                    // "— launch" wherever a miss really launches: Maximize launches too
+                    // (ExecuteActivateWindow); only Minimize and Close never do.
+                    bool launches = hasLaunch && verb != "minimize" && verb != "close";
                     if (matcher.Length > 0)
-                        return verbPrefix.Length > 0 ? $"{verbPrefix}{matcher}{nth}"
-                             : hasLaunch ? $"{matcher}{nth} — launch" : $"{matcher}{nth}";
+                        return $"{verbPrefix}{matcher}{nth}{(launches ? " — launch" : "")}";
                     if (hasLaunch)
                     {
                         var path = LaunchPath!.Trim();
@@ -880,7 +883,6 @@ namespace TrueReplayer.Models
                 if (string.IsNullOrEmpty(Key)) return "";
 
                 if (ActionType == "SendText") return Key;
-                if (ActionType == "WaitImage") return $"{Timeout / 1000.0:0.##}s";
                 if (ActionType == "BrowserNavigate") return Key;
                 if (ActionType == "RunProfile") return RepeatCount > 1 ? $"{Key} ×{RepeatCount}" : Key;
                 if (ActionType == "BrowserClick" || ActionType == "BrowserRightClick" || ActionType == "BrowserType" || ActionType == "BrowserWaitElement" || ActionType == "BrowserAssert")

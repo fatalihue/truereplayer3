@@ -167,11 +167,50 @@ namespace TrueReplayer.Services
             public bool GameMove { get; set; }
         }
 
-        public static void Save(AppSettings settings)
+        // The settings as they should be on disk while the last write FAILED; null when the disk is
+        // current. Load() answers from it, because callers treat Load() as the truth: every profile
+        // activation re-stamps the hotkeys from it (ApplyGlobalSettings), and SaveGlobalSettings
+        // rebuilds the next write from those stamped values. A hotkey change whose write lost to a
+        // OneDrive lock therefore reverted in memory at the next activation — the old hotkey armed,
+        // the panel still showing the new one — and the next unrelated settings change wrote the
+        // old one back for good.
+        private static readonly object _writeLock = new();
+        private static string? _unwrittenJson;
+
+        /// <summary>True while a failed write is pending (see <see cref="Save"/>).</summary>
+        public static bool HasUnwrittenSettings { get { lock (_writeLock) return _unwrittenJson != null; } }
+
+        /// <summary>
+        /// Persists <paramref name="settings"/>. False when the write failed: the values are then
+        /// kept in memory — Load() returns them — and the next Save (or RetryUnwritten on exit)
+        /// tries again.
+        /// </summary>
+        public static bool Save(AppSettings settings)
+        {
+            string json;
+            try { json = JsonSerializer.Serialize(settings, AppSettingsJsonContext.Default.AppSettings); }
+            catch (Exception ex)
+            {
+                TrueReplayer.Services.DiagnosticLog.Error("Failed to serialize appsettings.json", ex);
+                return false;
+            }
+            lock (_writeLock) return WriteLocked(json);
+        }
+
+        /// <summary>Retries a pending failed write. Exit paths call it; a no-op when nothing is pending.</summary>
+        public static void RetryUnwritten()
+        {
+            lock (_writeLock)
+            {
+                if (_unwrittenJson != null) WriteLocked(_unwrittenJson);
+            }
+        }
+
+        // Caller holds _writeLock.
+        private static bool WriteLocked(string json)
         {
             try
             {
-                var json = JsonSerializer.Serialize(settings, AppSettingsJsonContext.Default.AppSettings);
                 string path = GetPath();
                 // GetPath used to CreateDirectory on every call, which is what guaranteed the write
                 // below had somewhere to land even if the folder was removed mid-session. The path
@@ -179,15 +218,27 @@ namespace TrueReplayer.Services
                 // it, instead of being paid by every read.
                 Directory.CreateDirectory(Path.GetDirectoryName(path)!);
                 FileHelper.WriteAllTextAtomic(path, json);
+                _unwrittenJson = null;
+                return true;
             }
             catch (Exception ex)
             {
-                TrueReplayer.Services.DiagnosticLog.Error("Failed to save appsettings.json", ex);
+                _unwrittenJson = json;
+                TrueReplayer.Services.DiagnosticLog.Error("Failed to save appsettings.json — the new values are kept in memory and the next save retries", ex);
+                return false;
             }
         }
 
         public static AppSettings Load()
         {
+            string? unwritten;
+            lock (_writeLock) unwritten = _unwrittenJson;
+            if (unwritten != null)
+            {
+                try { return JsonSerializer.Deserialize(unwritten, AppSettingsJsonContext.Default.AppSettings) ?? new AppSettings(); }
+                catch { /* cannot happen for JSON this class serialized; fall through to the disk */ }
+            }
+
             string path = GetPath();
 
             if (!File.Exists(path))

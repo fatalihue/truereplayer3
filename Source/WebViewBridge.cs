@@ -8594,15 +8594,17 @@ namespace TrueReplayer
                 return;
             }
 
+            bool moved = false;
             try
             {
-                // The watcher reports this move too; HandleExternalProfileRename skips its echo. A
-                // case-only rename is never reported as a rename of the NAME, so nothing to skip.
-                if (!string.Equals(entry.FilePath, newFilePath, StringComparison.OrdinalIgnoreCase))
-                    _selfRenamedPaths.Add(newFilePath);
+                // The watcher reports this move too — a case-only one included, since the watcher
+                // now treats a new spelling as a rename — and HandleExternalProfileRename skips
+                // its echo.
+                _selfRenamedPaths.Add(newFilePath);
                 File.Move(entry.FilePath, newFilePath);
+                moved = true;
                 var actualNewName = Path.GetFileNameWithoutExtension(newFileName);
-                ImageStorageService.RenameProfileDirectory(oldName, actualNewName);
+                bool imagesCarried = ImageStorageService.RenameProfileDirectory(oldName, actualNewName);
                 if (CurrentProfileName == oldName)
                 {
                     CurrentProfileName = actualNewName;
@@ -8653,6 +8655,8 @@ namespace TrueReplayer
                     string plural = refsUpdated == 1 ? "reference" : "references";
                     SendMessage("alert:show", new { message = $"Renamed to '{actualNewName}' and updated {refsUpdated} RunProfile {plural}." });
                 }
+                if (!imagesCarried)
+                    SendMessage("alert:show", new { message = ImagesLeftBehindMessage(actualNewName) });
             }
             catch (Exception ex)
             {
@@ -8661,9 +8665,15 @@ namespace TrueReplayer
                 // defect HandleProfileToggleDisable already names.
                 Services.DiagnosticLog.Error($"Rename '{oldName}' -> '{newName}' failed", ex);
                 SendMessage("alert:show", new { message = $"Could not rename \"{oldName}\": {ex.Message}" });
-                if (!File.Exists(newFilePath)) _selfRenamedPaths.Remove(newFilePath);
+                // Whether the file moved, not whether the new path exists: after a case-only rename
+                // that failed, the new spelling "exists" as the untouched old file.
+                if (!moved) _selfRenamedPaths.Remove(newFilePath);
             }
         }
+
+        // Both renames say the same thing when RenameProfileDirectory could not carry every image.
+        private static string ImagesLeftBehindMessage(string newName) =>
+            $"Renamed to \"{newName}\", but some reference images were in use and stayed under the old name. Its image steps may miss them until the next start, which moves them over.";
 
         // Paths this app just renamed a profile TO. The folder watcher reports those moves like any
         // other; the entry lets HandleExternalProfileRename tell its own echo from a real outside
@@ -8684,7 +8694,8 @@ namespace TrueReplayer
         {
             if (_selfRenamedPaths.Remove(newPath)) return;
 
-            ImageStorageService.RenameProfileDirectory(oldName, newName);
+            if (!ImageStorageService.RenameProfileDirectory(oldName, newName))
+                SendMessage("alert:show", new { message = ImagesLeftBehindMessage(newName) });
             TriggerService.Instance?.RenameStats(oldName, newName);
             RunCursorService.RenameProfile(oldName, newName);
             // The profile on screen: without this its next Save wrote the OLD file back next to the
@@ -8821,8 +8832,7 @@ namespace TrueReplayer
                                     if (!string.Equals(act.Key, targetName, StringComparison.OrdinalIgnoreCase)) continue;
                                     act.Key = rewriteTo;
                                 }
-                                await profileController.SaveProfileByNameAsync(CurrentProfileName, onDisk);
-                                persisted = true;
+                                persisted = await profileController.SaveProfileByNameAsync(CurrentProfileName, onDisk);
                             }
                         }
                         catch (Exception ex)
@@ -9014,7 +9024,9 @@ namespace TrueReplayer
                 {
                     profile.CustomHotkey = hotkey;
                     if (newMode.HasValue) profile.TriggerMode = newMode.Value;
-                    await profileController.SaveProfileByNameAsync(name, profile);
+                    // Nothing written (the profile left the list meanwhile — the save said so):
+                    // mirroring the hotkey into memory would arm a binding the file never got.
+                    if (!await profileController.SaveProfileByNameAsync(name, profile)) return;
                     if (CurrentProfileName == name)
                     {
                         UserProfile.Current.CustomHotkey = hotkey;
@@ -9052,7 +9064,7 @@ namespace TrueReplayer
                 if (profile != null)
                 {
                     profile.CustomHotkey = null;
-                    await profileController.SaveProfileByNameAsync(name, profile);
+                    if (!await profileController.SaveProfileByNameAsync(name, profile)) return;
                     if (CurrentProfileName == name)
                         UserProfile.Current.CustomHotkey = null;
                     await profileController.RefreshProfileListAsync(true);
@@ -9098,7 +9110,7 @@ namespace TrueReplayer
                 if (profile != null)
                 {
                     profile.CustomHotstring = new Models.HotstringConfig { Sequence = sequence, Instant = instant };
-                    await profileController.SaveProfileByNameAsync(name, profile);
+                    if (!await profileController.SaveProfileByNameAsync(name, profile)) return;
                     if (CurrentProfileName == name)
                         UserProfile.Current.CustomHotstring = profile.CustomHotstring;
                     await profileController.RefreshProfileListAsync(true);
@@ -9125,7 +9137,7 @@ namespace TrueReplayer
                 if (profile != null)
                 {
                     profile.CustomHotstring = null;
-                    await profileController.SaveProfileByNameAsync(name, profile);
+                    if (!await profileController.SaveProfileByNameAsync(name, profile)) return;
                     if (CurrentProfileName == name)
                         UserProfile.Current.CustomHotstring = null;
                     await profileController.RefreshProfileListAsync(true);
@@ -9360,7 +9372,7 @@ namespace TrueReplayer
                     profile.WindowWidth = UserProfile.Current.WindowWidth;
                     profile.WindowHeight = UserProfile.Current.WindowHeight;
                 }
-                await profileController.SaveProfileByNameAsync(name, profile);
+                if (!await profileController.SaveProfileByNameAsync(name, profile)) return;
                 if (CurrentProfileName == name && !keepInheritedTarget)
                 {
                     UserProfile.Current.TargetWindow = profile.TargetWindow;
@@ -9445,7 +9457,7 @@ namespace TrueReplayer
                 profile.WindowY = 0;
                 profile.WindowWidth = 0;
                 profile.WindowHeight = 0;
-                await profileController.SaveProfileByNameAsync(name, profile);
+                if (!await profileController.SaveProfileByNameAsync(name, profile)) return;
                 if (CurrentProfileName == name)
                     ResetCurrentProfileWindowContext();
                 await profileController.RefreshProfileListAsync(true);
@@ -11052,7 +11064,9 @@ namespace TrueReplayer
             // Selected names: which profiles from the envelope to actually import. Frontend
             // omits incompatible ones (AppMinVersion > running) automatically — we trust
             // it but double-check below as a safety net.
-            var selectedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            // Ordinal: two envelope entries that differ only in case are two rows in the preview,
+            // and a case-insensitive set folded the one the user ticked into the one they didn't.
+            var selectedNames = new HashSet<string>(StringComparer.Ordinal);
             int unsafeDropped = 0;
             if (payload.TryGetProperty("selectedNames", out var namesProp) && namesProp.ValueKind == JsonValueKind.Array)
             {
@@ -11357,7 +11371,7 @@ namespace TrueReplayer
             if (hasIconEmoji)
                 profile.IconEmoji = string.IsNullOrEmpty(iconEmojiValue) ? null : iconEmojiValue;
 
-            await profileController.SaveProfileByNameAsync(name, profile);
+            if (!await profileController.SaveProfileByNameAsync(name, profile)) return;
             // `profile` came from disk, so it is NOT the object the grid saves through. Mirror the
             // three fields onto Current when this is the profile the user has open, or
             // CreateProfileFromState — which carries them from Current — would write the pre-edit
@@ -11382,7 +11396,7 @@ namespace TrueReplayer
             // Defensively guard against overflow on absurd values. Wraps at int.MaxValue,
             // which no human will ever reach but better than crashing.
             profile.ProfileVersion = profile.ProfileVersion < int.MaxValue ? profile.ProfileVersion + 1 : 1;
-            await profileController.SaveProfileByNameAsync(name, profile);
+            if (!await profileController.SaveProfileByNameAsync(name, profile)) return;
             // Same mirror as HandleProfileSetMetadata, for the same reason: without it the next
             // grid Save carries the stale number from Current and un-bumps the version.
             if (name == CurrentProfileName) UserProfile.Current.ProfileVersion = profile.ProfileVersion;
@@ -11757,7 +11771,11 @@ namespace TrueReplayer
                 // re-armed itself after the user had ticked "Don't show again".
                 HasAcknowledgedImportWarning = disk.HasAcknowledgedImportWarning,
             };
-            AppSettingsManager.Save(s);
+            // A failed write keeps the values in memory (Load() answers from them) and every later
+            // save retries it; said once per failure streak, not on every settings change.
+            bool wasUnwritten = AppSettingsManager.HasUnwrittenSettings;
+            if (!AppSettingsManager.Save(s) && !wasUnwritten)
+                SendMessage("alert:show", new { message = "Couldn't save your settings to disk. They're kept for this session and will be retried on the next change and on exit." });
             return s;
         }
 
@@ -11939,8 +11957,11 @@ namespace TrueReplayer
             // Process compatibility: empty on either side is a wildcard.
             string aProc = (a.ProcessName ?? "").Trim();
             string bProc = (b.ProcessName ?? "").Trim();
+            // "chrome" and "chrome.exe" name the same windows (WindowMatcher.ProcessNameMatches),
+            // so they overlap — the list-level collision signature agrees.
             bool processCompatible = aProc.Length == 0 || bProc.Length == 0
-                || aProc.Equals(bProc, StringComparison.OrdinalIgnoreCase);
+                || TrueReplayer.Helpers.WindowMatcher.ProcessNameMatches(aProc, bProc)
+                || TrueReplayer.Helpers.WindowMatcher.ProcessNameMatches(bProc, aProc);
             if (!processCompatible) return false;
 
             // Title compatibility: empty on either side is a wildcard.

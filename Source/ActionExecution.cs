@@ -4552,6 +4552,25 @@ namespace TrueReplayer.Services
                 return "profile is disabled";
             }
 
+            // The folder half of the sub's context, read here — before anything is pushed — and
+            // guarded like the profile lookup above. It used to be read unguarded further down, so a
+            // throw there escaped HandleRunProfile and, with On row error off, killed the WHOLE run
+            // with a bare .NET message. Refusing the step is the honest outcome; running the sub
+            // against the caller's window instead would be the silent wrong one.
+            Controllers.ProfileController.FolderInheritedContext? inherited = null;
+            if (!TrueReplayer.Helpers.WindowMatcher.IsUsable(subProfile.TargetWindow))
+            {
+                try
+                {
+                    inherited = _folderInheritedContextLookup?.Invoke(targetName);
+                }
+                catch (Exception ex)
+                {
+                    DiagnosticLog.Info($"[Chain] Folder context lookup threw for '{targetName}': {ex.Message}");
+                    return $"could not read its folder's window target ({ex.Message})";
+                }
+            }
+
             // Push and update chain status BEFORE applying sub context so the user sees the
             // chain even during the focus/lock setup phase.
             _callStack.Add(targetName);
@@ -4605,7 +4624,7 @@ namespace TrueReplayer.Services
                 }
                 else
                 {
-                    var inherited = _folderInheritedContextLookup?.Invoke(targetName);
+                    // Read above, before the push.
                     if (inherited.HasValue)
                     {
                         subTarget = inherited.Value.Target;

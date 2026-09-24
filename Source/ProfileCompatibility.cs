@@ -590,11 +590,13 @@ namespace TrueReplayer.Services
             // KeyHtml property and pastes the plain Key — content preserved, formatting silently
             // lost. That is a mild divergence (never literal markup), but formatting can be
             // load-bearing (a bolded warning, a numbered procedure), so gate it like the other
-            // property-level pins. Predicate is on the FIELD, not the ActionType, so existing
-            // plain SendText profiles keep their old floor. Introduced in 2.8.1; bumped from the
+            // property-level pins. Predicate is on the FIELD, so existing plain SendText profiles
+            // keep their old floor — and on the ActionType that reads it, because switching a row
+            // away from SendText clears neither field. Introduced in 2.8.1; bumped from the
             // 2.8.0 dev placeholder at release, in lockstep with the ActivateWindow placement pin
             // and the version files.
-            (p => p.Actions.Any(a => !string.IsNullOrEmpty(a.KeyHtml) || !string.IsNullOrEmpty(a.KeyMarkdown)),
+            (p => p.Actions.Any(a => string.Equals(a.ActionType, "SendText", StringComparison.OrdinalIgnoreCase)
+                && (!string.IsNullOrEmpty(a.KeyHtml) || !string.IsNullOrEmpty(a.KeyMarkdown))),
                 new Version(2, 8, 1), "Rich text (SendText)"),
 
             // SendText typed delivery (SendMethod non-null — the payload is typed key by key via
@@ -611,8 +613,8 @@ namespace TrueReplayer.Services
             // understands "type" and would silently paste anything else. Also gated on the
             // ActionType that reads it — actions:edit "actionType" does not clear the SendText
             // fields, so an inert flag on a row switched away from SendText must not raise that
-            // profile's floor (the field-only rich pin above over-pins exactly that way; do not
-            // copy it). SendCharDelay needs no row of its own: it only means anything when
+            // profile's floor (the rich pin above over-pinned exactly that way until it was gated
+            // the same). SendCharDelay needs no row of its own: it only means anything when
             // SendMethod is set, and ComputeMinVersion takes the MAX. Introduced in 2.33.0.
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "SendText", StringComparison.OrdinalIgnoreCase)
                 && !string.IsNullOrEmpty(a.SendMethod)),
@@ -755,21 +757,44 @@ namespace TrueReplayer.Services
             { "SendText", "Keystroke", "KeyDown", "KeyUp", "HoldKey" };
         private static readonly HashSet<string> BrowserTextResolvingActionTypes = new(StringComparer.OrdinalIgnoreCase)
             { "BrowserType", "BrowserSelectOption" };
+        // The rows that evaluate a condition (EvaluateConditionWithTimeout's three callers).
+        private static readonly HashSet<string> ConditionActionTypes = new(StringComparer.OrdinalIgnoreCase)
+            { "If", "ElseIf", "While", "Assert" };
+
+        /// <summary>
+        /// Does <paramref name="contains"/> hold for a field the runtime token resolver actually
+        /// reads on THIS row? Every token detector asks through here, so the gate lives once.
+        ///
+        /// Key and BrowserText were always gated by type; the other seven were scanned on every
+        /// row. But switching a row's type (actions:edit "actionType") clears none of them, so a
+        /// {pick:} left in the rich text of what is now a Wait row, or a {winclip} in the launch
+        /// path of what is now a Keystroke, pinned the profile — and an older build that runs it
+        /// identically refused the import. Readers, per ActionExecution: rich text and Markdown on
+        /// SendText; the value on SetVariable; the operand on a Variable condition and the path on
+        /// a FileExists condition; launch path and arguments on ActivateWindow.
+        /// </summary>
+        private static bool AnyTokenField(ActionItem a, Func<string?, bool> contains)
+        {
+            var type = a.ActionType;
+            if (KeyResolvingActionTypes.Contains(type) && contains(a.Key)) return true;
+            if (string.Equals(type, "SendText", StringComparison.OrdinalIgnoreCase)
+                && (contains(a.KeyHtml) || contains(a.KeyMarkdown))) return true;
+            if (BrowserTextResolvingActionTypes.Contains(type) && contains(a.BrowserText)) return true;
+            if (string.Equals(type, "SetVariable", StringComparison.OrdinalIgnoreCase) && contains(a.VariableValue)) return true;
+            if (ConditionActionTypes.Contains(type))
+            {
+                if (string.Equals(a.ConditionType, "Variable", StringComparison.OrdinalIgnoreCase) && contains(a.ConditionOperand)) return true;
+                if (string.Equals(a.ConditionType, "FileExists", StringComparison.OrdinalIgnoreCase) && contains(a.FilePath)) return true;
+            }
+            return string.Equals(type, "ActivateWindow", StringComparison.OrdinalIgnoreCase)
+                && (contains(a.LaunchPath) || contains(a.LaunchArgs));
+        }
 
         // Every string field the runtime token resolver touches — the fields where a
         // {row:column:mods} token can actually take effect (SendText/Keystroke Key + rich
         // flavors, browser text, Set Variable value, If-Variable operand, If-File path,
         // ActivateWindow launch path/args).
-        private static bool UsesModifiedRowToken(ActionItem a) =>
-            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsModifiedRowToken(a.Key)) ||
-            ContainsModifiedRowToken(a.KeyHtml) ||
-            ContainsModifiedRowToken(a.KeyMarkdown) ||
-            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsModifiedRowToken(a.BrowserText)) ||
-            ContainsModifiedRowToken(a.VariableValue) ||
-            ContainsModifiedRowToken(a.ConditionOperand) ||
-            ContainsModifiedRowToken(a.FilePath) ||
-            ContainsModifiedRowToken(a.LaunchPath) ||
-            ContainsModifiedRowToken(a.LaunchArgs);
+        private static bool UsesModifiedRowToken(ActionItem a) => AnyTokenField(a, ContainsModifiedRowToken);
 
         private static bool ContainsModifiedRowToken(string? text) =>
             !string.IsNullOrEmpty(text) && text.Contains("{row", StringComparison.OrdinalIgnoreCase)
@@ -782,20 +807,15 @@ namespace TrueReplayer.Services
         // {winclip:2:trim} matched nothing here, so a profile using it kept the right
         // AppMinVersion only because the newer 2.20.0 pin happens to dominate — and the Info
         // tab's "Required by" list quietly stopped naming the history token at all.
+        // The chain may not START with a digit — the engine's own guard, copied: without it the
+        // optional index backtracks away and "{winclip:2-4}" / "{winclip:2:}" match here as a
+        // chain, though the engine leaves them literal on every build. That pinned 2.9.3 on a
+        // profile an older build runs identically, and refused its import there.
         private static readonly Regex WinClipTokenRegex = new(
-            @"\{winclip(?::\d+)?(?::[^}]+)?\}",
+            @"\{winclip(?::\d+)?(?::(?![0-9])[^}]+)?\}",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        private static bool UsesWinClipToken(ActionItem a) =>
-            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsWinClipToken(a.Key)) ||
-            ContainsWinClipToken(a.KeyHtml) ||
-            ContainsWinClipToken(a.KeyMarkdown) ||
-            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsWinClipToken(a.BrowserText)) ||
-            ContainsWinClipToken(a.VariableValue) ||
-            ContainsWinClipToken(a.ConditionOperand) ||
-            ContainsWinClipToken(a.FilePath) ||
-            ContainsWinClipToken(a.LaunchPath) ||
-            ContainsWinClipToken(a.LaunchArgs);
+        private static bool UsesWinClipToken(ActionItem a) => AnyTokenField(a, ContainsWinClipToken);
 
         private static bool ContainsWinClipToken(string? text) =>
             !string.IsNullOrEmpty(text) && text.Contains("{winclip", StringComparison.OrdinalIgnoreCase)
@@ -807,16 +827,7 @@ namespace TrueReplayer.Services
             @"\{rownext:[^:}]+(?::[^}]+)?\}",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        private static bool UsesRowNextToken(ActionItem a) =>
-            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsRowNextToken(a.Key)) ||
-            ContainsRowNextToken(a.KeyHtml) ||
-            ContainsRowNextToken(a.KeyMarkdown) ||
-            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsRowNextToken(a.BrowserText)) ||
-            ContainsRowNextToken(a.VariableValue) ||
-            ContainsRowNextToken(a.ConditionOperand) ||
-            ContainsRowNextToken(a.FilePath) ||
-            ContainsRowNextToken(a.LaunchPath) ||
-            ContainsRowNextToken(a.LaunchArgs);
+        private static bool UsesRowNextToken(ActionItem a) => AnyTokenField(a, ContainsRowNextToken);
 
         private static bool ContainsRowNextToken(string? text) =>
             !string.IsNullOrEmpty(text) && text.Contains("{rownext", StringComparison.OrdinalIgnoreCase)
@@ -833,16 +844,7 @@ namespace TrueReplayer.Services
             @"\{clipboard(?::([^}]*))?\}",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        private static bool UsesClipNextToken(ActionItem a) =>
-            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsClipNextToken(a.Key)) ||
-            ContainsClipNextToken(a.KeyHtml) ||
-            ContainsClipNextToken(a.KeyMarkdown) ||
-            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsClipNextToken(a.BrowserText)) ||
-            ContainsClipNextToken(a.VariableValue) ||
-            ContainsClipNextToken(a.ConditionOperand) ||
-            ContainsClipNextToken(a.FilePath) ||
-            ContainsClipNextToken(a.LaunchPath) ||
-            ContainsClipNextToken(a.LaunchArgs);
+        private static bool UsesClipNextToken(ActionItem a) => AnyTokenField(a, ContainsClipNextToken);
 
         private static bool ContainsClipNextToken(string? text)
         {
@@ -863,8 +865,9 @@ namespace TrueReplayer.Services
         // unknown name) and {env:name}; at most one is set per match. Each joined the list when its
         // head gained a chain — a pin that only knew the first two would miss "{clip:pedido:line:@i}"
         // entirely, and one that stopped at four would miss "{counter:line:@i}".
+        // The winclip head carries the engine's no-leading-digit guard (see WinClipTokenRegex).
         private static readonly Regex ModifierChainHeadRegex = new(
-            @"\{(?:clipboard(?::([^}]*))?|(?:row|rownext):[^:}]+(?::([^}]*))?|(?:var|clip):[A-Za-z0-9_]+(?::([^}]*))?|winclip(?::\d+)?(?::([^}]*))?|(?:counter|loop|datarow)(?::([^}]*))?|(?:uuid|timestamp)(?::([^}]*))?|env:[A-Za-z0-9_()]+(?::([^}]*))?)\}",
+            @"\{(?:clipboard(?::([^}]*))?|(?:row|rownext):[^:}]+(?::([^}]*))?|(?:var|clip):[A-Za-z0-9_]+(?::([^}]*))?|winclip(?::\d+)?(?::((?![0-9])[^}]+))?|(?:counter|loop|datarow)(?::([^}]*))?|(?:uuid|timestamp)(?::([^}]*))?|env:[A-Za-z0-9_()]+(?::([^}]*))?)\}",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         // The chain of every chain-bearing token in `text`, so each detector below states WHICH
@@ -882,16 +885,7 @@ namespace TrueReplayer.Services
             }
         }
 
-        private static bool UsesTokenArgument(ActionItem a) =>
-            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsTokenArgument(a.Key)) ||
-            ContainsTokenArgument(a.KeyHtml) ||
-            ContainsTokenArgument(a.KeyMarkdown) ||
-            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsTokenArgument(a.BrowserText)) ||
-            ContainsTokenArgument(a.VariableValue) ||
-            ContainsTokenArgument(a.ConditionOperand) ||
-            ContainsTokenArgument(a.FilePath) ||
-            ContainsTokenArgument(a.LaunchPath) ||
-            ContainsTokenArgument(a.LaunchArgs);
+        private static bool UsesTokenArgument(ActionItem a) => AnyTokenField(a, ContainsTokenArgument);
 
         private static bool ContainsTokenArgument(string? text)
         {
@@ -907,16 +901,7 @@ namespace TrueReplayer.Services
         }
 
         // ── Text-slice modifiers (words / before / after / *last, and open-ended spans) ──────
-        private static bool UsesSliceModifier(ActionItem a) =>
-            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsSliceModifier(a.Key)) ||
-            ContainsSliceModifier(a.KeyHtml) ||
-            ContainsSliceModifier(a.KeyMarkdown) ||
-            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsSliceModifier(a.BrowserText)) ||
-            ContainsSliceModifier(a.VariableValue) ||
-            ContainsSliceModifier(a.ConditionOperand) ||
-            ContainsSliceModifier(a.FilePath) ||
-            ContainsSliceModifier(a.LaunchPath) ||
-            ContainsSliceModifier(a.LaunchArgs);
+        private static bool UsesSliceModifier(ActionItem a) => AnyTokenField(a, ContainsSliceModifier);
 
         private static bool ContainsSliceModifier(string? text)
         {
@@ -927,16 +912,7 @@ namespace TrueReplayer.Services
         }
 
         // ── The `dropnum` modifier — strip a leading digit run + suffix ─────────────────────
-        private static bool UsesDropNumModifier(ActionItem a) =>
-            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsDropNumModifier(a.Key)) ||
-            ContainsDropNumModifier(a.KeyHtml) ||
-            ContainsDropNumModifier(a.KeyMarkdown) ||
-            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsDropNumModifier(a.BrowserText)) ||
-            ContainsDropNumModifier(a.VariableValue) ||
-            ContainsDropNumModifier(a.ConditionOperand) ||
-            ContainsDropNumModifier(a.FilePath) ||
-            ContainsDropNumModifier(a.LaunchPath) ||
-            ContainsDropNumModifier(a.LaunchArgs);
+        private static bool UsesDropNumModifier(ActionItem a) => AnyTokenField(a, ContainsDropNumModifier);
 
         private static bool ContainsDropNumModifier(string? text)
         {
@@ -947,16 +923,7 @@ namespace TrueReplayer.Services
         }
 
         // ── The text-filter modifiers — noaccents / digits ──────────────────────────────────
-        private static bool UsesTextFilterModifier(ActionItem a) =>
-            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsTextFilterModifier(a.Key)) ||
-            ContainsTextFilterModifier(a.KeyHtml) ||
-            ContainsTextFilterModifier(a.KeyMarkdown) ||
-            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsTextFilterModifier(a.BrowserText)) ||
-            ContainsTextFilterModifier(a.VariableValue) ||
-            ContainsTextFilterModifier(a.ConditionOperand) ||
-            ContainsTextFilterModifier(a.FilePath) ||
-            ContainsTextFilterModifier(a.LaunchPath) ||
-            ContainsTextFilterModifier(a.LaunchArgs);
+        private static bool UsesTextFilterModifier(ActionItem a) => AnyTokenField(a, ContainsTextFilterModifier);
 
         private static bool ContainsTextFilterModifier(string? text)
         {
@@ -972,16 +939,7 @@ namespace TrueReplayer.Services
             @"\{pick:[^}]+\}",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        private static bool UsesPickToken(ActionItem a) =>
-            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsPickToken(a.Key)) ||
-            ContainsPickToken(a.KeyHtml) ||
-            ContainsPickToken(a.KeyMarkdown) ||
-            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsPickToken(a.BrowserText)) ||
-            ContainsPickToken(a.VariableValue) ||
-            ContainsPickToken(a.ConditionOperand) ||
-            ContainsPickToken(a.FilePath) ||
-            ContainsPickToken(a.LaunchPath) ||
-            ContainsPickToken(a.LaunchArgs);
+        private static bool UsesPickToken(ActionItem a) => AnyTokenField(a, ContainsPickToken);
 
         private static bool ContainsPickToken(string? text) =>
             !string.IsNullOrEmpty(text) && text.Contains("{pick", StringComparison.OrdinalIgnoreCase)
@@ -995,16 +953,7 @@ namespace TrueReplayer.Services
             @"\{input:[^}|]+(?:\|menu:[^}]*)?\}",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        private static bool UsesInputToken(ActionItem a) =>
-            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsInputToken(a.Key)) ||
-            ContainsInputToken(a.KeyHtml) ||
-            ContainsInputToken(a.KeyMarkdown) ||
-            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsInputToken(a.BrowserText)) ||
-            ContainsInputToken(a.VariableValue) ||
-            ContainsInputToken(a.ConditionOperand) ||
-            ContainsInputToken(a.FilePath) ||
-            ContainsInputToken(a.LaunchPath) ||
-            ContainsInputToken(a.LaunchArgs);
+        private static bool UsesInputToken(ActionItem a) => AnyTokenField(a, ContainsInputToken);
 
         private static bool ContainsInputToken(string? text) =>
             !string.IsNullOrEmpty(text) && text.Contains("{input", StringComparison.OrdinalIgnoreCase)
@@ -1017,16 +966,7 @@ namespace TrueReplayer.Services
             @"\{clip:[A-Za-z0-9_]+(?::[^}]+)?\}",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        private static bool UsesClipSlotToken(ActionItem a) =>
-            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsClipSlotToken(a.Key)) ||
-            ContainsClipSlotToken(a.KeyHtml) ||
-            ContainsClipSlotToken(a.KeyMarkdown) ||
-            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsClipSlotToken(a.BrowserText)) ||
-            ContainsClipSlotToken(a.VariableValue) ||
-            ContainsClipSlotToken(a.ConditionOperand) ||
-            ContainsClipSlotToken(a.FilePath) ||
-            ContainsClipSlotToken(a.LaunchPath) ||
-            ContainsClipSlotToken(a.LaunchArgs);
+        private static bool UsesClipSlotToken(ActionItem a) => AnyTokenField(a, ContainsClipSlotToken);
 
         private static bool ContainsClipSlotToken(string? text) =>
             !string.IsNullOrEmpty(text) && text.Contains("{clip:", StringComparison.OrdinalIgnoreCase)
@@ -1039,16 +979,7 @@ namespace TrueReplayer.Services
             @"\{random:\d+-\d+\}",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        private static bool UsesRandomToken(ActionItem a) =>
-            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsRandomToken(a.Key)) ||
-            ContainsRandomToken(a.KeyHtml) ||
-            ContainsRandomToken(a.KeyMarkdown) ||
-            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsRandomToken(a.BrowserText)) ||
-            ContainsRandomToken(a.VariableValue) ||
-            ContainsRandomToken(a.ConditionOperand) ||
-            ContainsRandomToken(a.FilePath) ||
-            ContainsRandomToken(a.LaunchPath) ||
-            ContainsRandomToken(a.LaunchArgs);
+        private static bool UsesRandomToken(ActionItem a) => AnyTokenField(a, ContainsRandomToken);
 
         private static bool ContainsRandomToken(string? text) =>
             !string.IsNullOrEmpty(text) && text.Contains("{random", StringComparison.OrdinalIgnoreCase)
@@ -1066,16 +997,7 @@ namespace TrueReplayer.Services
             @"\{var:[A-Za-z0-9_]+(?::[^}]+)?\}",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        private static bool UsesRunStateToken(ActionItem a) =>
-            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsRunStateToken(a.Key)) ||
-            ContainsRunStateToken(a.KeyHtml) ||
-            ContainsRunStateToken(a.KeyMarkdown) ||
-            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsRunStateToken(a.BrowserText)) ||
-            ContainsRunStateToken(a.VariableValue) ||
-            ContainsRunStateToken(a.ConditionOperand) ||
-            ContainsRunStateToken(a.FilePath) ||
-            ContainsRunStateToken(a.LaunchPath) ||
-            ContainsRunStateToken(a.LaunchArgs);
+        private static bool UsesRunStateToken(ActionItem a) => AnyTokenField(a, ContainsRunStateToken);
 
         private static bool ContainsRunStateToken(string? text) =>
             !string.IsNullOrEmpty(text)
@@ -1089,16 +1011,7 @@ namespace TrueReplayer.Services
         // through UsesCounterChainToken, not here — the same 2.37.0 today, but a different entry.
         // The references ride a modifier chain and delegate to the engine walk (ChainUsesLoopRef)
         // for the reason every other chain pin does.
-        private static bool UsesLoopToken(ActionItem a) =>
-            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsLoopToken(a.Key)) ||
-            ContainsLoopToken(a.KeyHtml) ||
-            ContainsLoopToken(a.KeyMarkdown) ||
-            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsLoopToken(a.BrowserText)) ||
-            ContainsLoopToken(a.VariableValue) ||
-            ContainsLoopToken(a.ConditionOperand) ||
-            ContainsLoopToken(a.FilePath) ||
-            ContainsLoopToken(a.LaunchPath) ||
-            ContainsLoopToken(a.LaunchArgs);
+        private static bool UsesLoopToken(ActionItem a) => AnyTokenField(a, ContainsLoopToken);
 
         private static bool ContainsLoopToken(string? text)
         {
@@ -1118,16 +1031,7 @@ namespace TrueReplayer.Services
         // frontend gate's DATE_PROBE (tokenNormalize.ts).
         private static readonly DateTime DateProbe = new(2026, 1, 31, 13, 45, 30);
 
-        private static bool UsesDateFormatToken(ActionItem a) =>
-            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsDateFormatToken(a.Key)) ||
-            ContainsDateFormatToken(a.KeyHtml) ||
-            ContainsDateFormatToken(a.KeyMarkdown) ||
-            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsDateFormatToken(a.BrowserText)) ||
-            ContainsDateFormatToken(a.VariableValue) ||
-            ContainsDateFormatToken(a.ConditionOperand) ||
-            ContainsDateFormatToken(a.FilePath) ||
-            ContainsDateFormatToken(a.LaunchPath) ||
-            ContainsDateFormatToken(a.LaunchArgs);
+        private static bool UsesDateFormatToken(ActionItem a) => AnyTokenField(a, ContainsDateFormatToken);
 
         // Pins only when the ENGINE actually resolves the token. A regex that merely sees an
         // argument also caught "{date:x}", "{time:5}" and "{date:+999999y}", which .NET rejects
@@ -1160,16 +1064,7 @@ namespace TrueReplayer.Services
         }
 
         // ── The value-shaping modifiers — replace / count / pad / default ────────────────────
-        private static bool UsesShapeModifier(ActionItem a) =>
-            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsShapeModifier(a.Key)) ||
-            ContainsShapeModifier(a.KeyHtml) ||
-            ContainsShapeModifier(a.KeyMarkdown) ||
-            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsShapeModifier(a.BrowserText)) ||
-            ContainsShapeModifier(a.VariableValue) ||
-            ContainsShapeModifier(a.ConditionOperand) ||
-            ContainsShapeModifier(a.FilePath) ||
-            ContainsShapeModifier(a.LaunchPath) ||
-            ContainsShapeModifier(a.LaunchArgs);
+        private static bool UsesShapeModifier(ActionItem a) => AnyTokenField(a, ContainsShapeModifier);
 
         private static bool ContainsShapeModifier(string? text)
         {
@@ -1186,16 +1081,7 @@ namespace TrueReplayer.Services
             @"\{(?:counter|loop|datarow):[^}]+\}",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        private static bool UsesCounterChainToken(ActionItem a) =>
-            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsCounterChainToken(a.Key)) ||
-            ContainsCounterChainToken(a.KeyHtml) ||
-            ContainsCounterChainToken(a.KeyMarkdown) ||
-            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsCounterChainToken(a.BrowserText)) ||
-            ContainsCounterChainToken(a.VariableValue) ||
-            ContainsCounterChainToken(a.ConditionOperand) ||
-            ContainsCounterChainToken(a.FilePath) ||
-            ContainsCounterChainToken(a.LaunchPath) ||
-            ContainsCounterChainToken(a.LaunchArgs);
+        private static bool UsesCounterChainToken(ActionItem a) => AnyTokenField(a, ContainsCounterChainToken);
 
         private static bool ContainsCounterChainToken(string? text) =>
             !string.IsNullOrEmpty(text) && text.IndexOf('{') >= 0 && CounterChainTokenRegex.IsMatch(text);
@@ -1207,16 +1093,7 @@ namespace TrueReplayer.Services
             @"\{(?:uuid|timestamp)(?::[^}]+)?\}|\{env:[A-Za-z0-9_()]+(?::[^}]+)?\}",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        private static bool UsesMachineValueToken(ActionItem a) =>
-            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsMachineValueToken(a.Key)) ||
-            ContainsMachineValueToken(a.KeyHtml) ||
-            ContainsMachineValueToken(a.KeyMarkdown) ||
-            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsMachineValueToken(a.BrowserText)) ||
-            ContainsMachineValueToken(a.VariableValue) ||
-            ContainsMachineValueToken(a.ConditionOperand) ||
-            ContainsMachineValueToken(a.FilePath) ||
-            ContainsMachineValueToken(a.LaunchPath) ||
-            ContainsMachineValueToken(a.LaunchArgs);
+        private static bool UsesMachineValueToken(ActionItem a) => AnyTokenField(a, ContainsMachineValueToken);
 
         private static bool ContainsMachineValueToken(string? text) =>
             !string.IsNullOrEmpty(text) && text.IndexOf('{') >= 0 && MachineValueTokenRegex.IsMatch(text);
@@ -1242,32 +1119,14 @@ namespace TrueReplayer.Services
             @"\{(?:row|rownext):(?=[^:}]*[^A-Za-z0-9_:}])[^:}]+(?::[^}]+)?\}",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        private static bool UsesWideColumnName(ActionItem a) =>
-            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsWideColumnToken(a.Key)) ||
-            ContainsWideColumnToken(a.KeyHtml) ||
-            ContainsWideColumnToken(a.KeyMarkdown) ||
-            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsWideColumnToken(a.BrowserText)) ||
-            ContainsWideColumnToken(a.VariableValue) ||
-            ContainsWideColumnToken(a.ConditionOperand) ||
-            ContainsWideColumnToken(a.FilePath) ||
-            ContainsWideColumnToken(a.LaunchPath) ||
-            ContainsWideColumnToken(a.LaunchArgs);
+        private static bool UsesWideColumnName(ActionItem a) => AnyTokenField(a, ContainsWideColumnToken);
 
         private static bool ContainsWideColumnToken(string? text) =>
             !string.IsNullOrEmpty(text) && text.Contains("{row", StringComparison.OrdinalIgnoreCase)
                 && WideColumnTokenRegex.IsMatch(text);
 
         // ── A colon INSIDE a split delimiter, written "::" ──────────────────────────────────
-        private static bool UsesEscapedColonDelimiter(ActionItem a) =>
-            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsEscapedColonDelimiter(a.Key)) ||
-            ContainsEscapedColonDelimiter(a.KeyHtml) ||
-            ContainsEscapedColonDelimiter(a.KeyMarkdown) ||
-            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsEscapedColonDelimiter(a.BrowserText)) ||
-            ContainsEscapedColonDelimiter(a.VariableValue) ||
-            ContainsEscapedColonDelimiter(a.ConditionOperand) ||
-            ContainsEscapedColonDelimiter(a.FilePath) ||
-            ContainsEscapedColonDelimiter(a.LaunchPath) ||
-            ContainsEscapedColonDelimiter(a.LaunchArgs);
+        private static bool UsesEscapedColonDelimiter(ActionItem a) => AnyTokenField(a, ContainsEscapedColonDelimiter);
 
         private static bool ContainsEscapedColonDelimiter(string? text)
         {
@@ -1278,16 +1137,7 @@ namespace TrueReplayer.Services
         }
 
         // ── The list modifiers, which shipped in 2.8.0 and were never pinned ────────────────
-        private static bool UsesListModifier(ActionItem a) =>
-            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsListModifier(a.Key)) ||
-            ContainsListModifier(a.KeyHtml) ||
-            ContainsListModifier(a.KeyMarkdown) ||
-            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsListModifier(a.BrowserText)) ||
-            ContainsListModifier(a.VariableValue) ||
-            ContainsListModifier(a.ConditionOperand) ||
-            ContainsListModifier(a.FilePath) ||
-            ContainsListModifier(a.LaunchPath) ||
-            ContainsListModifier(a.LaunchArgs);
+        private static bool UsesListModifier(ActionItem a) => AnyTokenField(a, ContainsListModifier);
 
         private static bool ContainsListModifier(string? text)
         {
@@ -1305,21 +1155,14 @@ namespace TrueReplayer.Services
         //
         // The winclip half is spelled as two alternatives on purpose: "\{winclip(?::\d+)?:[^}]+\}"
         // backtracks the optional index away and matches a plain {winclip:2}, which carries no
-        // chain at all and must not pin.
+        // chain at all and must not pin. Both carry the engine's rule that a chain never STARTS
+        // with a digit (see WinClipTokenRegex): "{winclip:2-4}" and "{winclip:2:5}" stay literal
+        // on every build, so they are no chain either.
         private static readonly Regex ChainOnNameTokenRegex = new(
-            @"\{(?:var|clip):[A-Za-z0-9_]+:[^}]+\}|\{winclip:\d+:[^}]+\}|\{winclip:(?!\d+\})[^}]+\}",
+            @"\{(?:var|clip):[A-Za-z0-9_]+:[^}]+\}|\{winclip:\d+:(?![0-9])[^}]+\}|\{winclip:(?![0-9])[^}]+\}",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        private static bool UsesChainOnNameToken(ActionItem a) =>
-            (KeyResolvingActionTypes.Contains(a.ActionType) && ContainsChainOnNameToken(a.Key)) ||
-            ContainsChainOnNameToken(a.KeyHtml) ||
-            ContainsChainOnNameToken(a.KeyMarkdown) ||
-            (BrowserTextResolvingActionTypes.Contains(a.ActionType) && ContainsChainOnNameToken(a.BrowserText)) ||
-            ContainsChainOnNameToken(a.VariableValue) ||
-            ContainsChainOnNameToken(a.ConditionOperand) ||
-            ContainsChainOnNameToken(a.FilePath) ||
-            ContainsChainOnNameToken(a.LaunchPath) ||
-            ContainsChainOnNameToken(a.LaunchArgs);
+        private static bool UsesChainOnNameToken(ActionItem a) => AnyTokenField(a, ContainsChainOnNameToken);
 
         private static bool ContainsChainOnNameToken(string? text) =>
             !string.IsNullOrEmpty(text) && text.IndexOf('{') >= 0 && ChainOnNameTokenRegex.IsMatch(text);

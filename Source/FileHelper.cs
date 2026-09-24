@@ -24,6 +24,9 @@ namespace TrueReplayer.Services
         private const int MoveRetryAttempts = 8;
         private const int MoveRetryInitialDelayMs = 30;
 
+        // Far past the whole retry ladder above (~3.8 s) plus the write before it.
+        private static readonly TimeSpan OrphanTempMinAge = TimeSpan.FromMinutes(1);
+
         /// <summary>
         /// True for the File.Move failures no amount of waiting can fix, so the backoff loop below
         /// must let them through on the FIRST attempt.
@@ -151,6 +154,12 @@ namespace TrueReplayer.Services
         /// — so real .json profiles, .png reference images, etc. are untouched.
         ///
         /// Safe to call at startup. Logs deletions to DiagnosticLog but never throws.
+        ///
+        /// Only temps older than <see cref="OrphanTempMinAge"/>. It is not called only at startup —
+        /// every profile-list reload runs it — and a LIVE temp has exactly the same shape: another
+        /// save still inside MoveWithRetry's ~3.8 s backoff. A reload in that window (the watcher
+        /// reacting to an unrelated save) deleted it, and that save then failed on its own vanished
+        /// temp. An orphan waits for the next reload instead; a minute costs nothing.
         /// </summary>
         public static void CleanupOrphanTemps(string directory)
         {
@@ -178,6 +187,7 @@ namespace TrueReplayer.Services
                     if (!looksLikeRandom) continue;
                     try
                     {
+                        if (DateTime.UtcNow - File.GetLastWriteTimeUtc(path) < OrphanTempMinAge) continue;
                         File.Delete(path);
                         DiagnosticLog.Info($"[FileHelper] Cleaned orphan temp file: {path}");
                     }

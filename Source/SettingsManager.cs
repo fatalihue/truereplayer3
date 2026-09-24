@@ -24,8 +24,25 @@ namespace TrueReplayer.Services
             // migration shims (e.g. ActionItem.sendPlainOnly → SendMode) bind, matches the
             // import path, and tolerates a hand-edited profile with off-case keys.
             PropertyNameCaseInsensitive = true,
-            TypeInfoResolver = new DefaultJsonTypeInfoResolver()
+            TypeInfoResolver = new DefaultJsonTypeInfoResolver { Modifiers = { ForgetConstructedActionId } }
         };
+
+        // ActionItem's constructor draws a fresh Guid for Id — right for a row created in the app,
+        // wrong for a FILE load: "no Id in the JSON" came out as a new random Id on every read,
+        // which MigrateActionIds could not even see (it fills only an EMPTY Id). Cleared before the
+        // properties are read, so an Id the file carries overwrites it and a missing one stays
+        // empty for the deterministic backfill. Profile file loads only: a row pasted from the
+        // frontend or an import envelope still gets its fresh Guid.
+        private static void ForgetConstructedActionId(JsonTypeInfo info)
+        {
+            if (info.Type != typeof(ActionItem)) return;
+            var prior = info.OnDeserializing;
+            info.OnDeserializing = obj =>
+            {
+                prior?.Invoke(obj);
+                ((ActionItem)obj).Id = string.Empty;
+            };
+        }
 
         private static readonly JsonSerializerOptions SaveOptions = new()
         {
@@ -189,17 +206,35 @@ namespace TrueReplayer.Services
 
         /// <summary>
         /// Backfill ActionItem.Id for profiles created before the stable-id schema landed.
-        /// Old actions deserialize with Id = empty string (no field in JSON); we assign a
-        /// fresh GUID per action. Idempotent — actions already carrying an Id are left alone,
-        /// so re-saving doesn't churn IDs and break frontend React keys across sessions.
+        /// Old actions deserialize with Id = empty string (no field in JSON). Idempotent —
+        /// actions already carrying an Id are left alone, so re-saving doesn't churn IDs and
+        /// break frontend React keys across sessions.
+        ///
+        /// The backfilled Id is DERIVED, not drawn. Nothing writes it back to the file, so a random
+        /// one (a Guid.NewGuid() here — or, in practice, the one ActionItem's constructor draws,
+        /// see ForgetConstructedActionId) gave a file never re-saved by the editor a different Id
+        /// on every read, and a hotkey or automation re-reads the file on every fire. The
+        /// SetVariable cycle cursor is keyed "profile|Id": it never matched, every press took item
+        /// 1, and run-cursors.json gained one dead key per fire. Position plus the row's type and
+        /// key is stable across reads of the same file, unique within the profile, and moves only
+        /// when the row itself is edited by hand.
         /// </summary>
         public static void MigrateActionIds(UserProfile profile)
         {
-            foreach (var action in profile.Actions)
+            if (profile.Actions == null) return;
+            for (int i = 0; i < profile.Actions.Count; i++)
             {
-                if (string.IsNullOrEmpty(action.Id))
-                    action.Id = Guid.NewGuid().ToString("N");
+                var action = profile.Actions[i];
+                if (action != null && string.IsNullOrEmpty(action.Id))
+                    action.Id = DeriveBackfilledActionId(i, action);
             }
+        }
+
+        private static string DeriveBackfilledActionId(int index, ActionItem action)
+        {
+            var seed = System.Text.Encoding.UTF8.GetBytes($"backfilled-row|{index}|{action.ActionType}|{action.Key}");
+            var hash = System.Security.Cryptography.SHA256.HashData(seed);
+            return new Guid(hash.AsSpan(0, 16)).ToString("N");
         }
 
         public static async Task<UserProfile?> LoadProfileAsync(string? filePath = null)

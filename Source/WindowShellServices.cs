@@ -34,6 +34,9 @@ namespace TrueReplayer.Services
         {
             Guard("run-cursor flush", RunCursorService.Flush);
             Guard("automation stats flush", () => TriggerService.Instance?.Flush());
+            // A settings write that failed earlier lives only in memory until a later save lands;
+            // this is its last chance before the process takes it away.
+            Guard("settings retry", AppSettingsManager.RetryUnwritten);
         }
 
         /// <summary>

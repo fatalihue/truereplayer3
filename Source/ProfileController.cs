@@ -83,6 +83,16 @@ namespace TrueReplayer.Controllers
         public Action<string, string, string>? OnProfileRenamedExternally { get; set; }
 
         private Dictionary<string, WindowTarget> _cachedWindowTargets = new();
+        // Profile name → file, republished WHOLE at every list swap. LoadProfileByNameAsync is also
+        // the replay engine's RunProfile lookup, which runs on the replay's pool thread; reading
+        // ProfileEntries there — cleared and refilled in place on the UI thread — could find the
+        // list empty (the sub-profile "not found") or throw "Collection was modified", and either
+        // one silently skipped a healthy sub-profile. A reference swap is atomic: the old list or
+        // the new one, never a half-built one.
+        private volatile IReadOnlyDictionary<string, string> _profilePathsByName = new Dictionary<string, string>(StringComparer.Ordinal);
+        // The same freeze for the folder half of GetFolderInheritedContext, the engine's other
+        // RunProfile lookup. See PublishFolderContexts.
+        private volatile IReadOnlyDictionary<string, FolderInheritedContext> _folderContexts = new Dictionary<string, FolderInheritedContext>(StringComparer.Ordinal);
         // Built during LoadProfileListAsync — maps sanitized profile folder name → set of
         // ImagePath filenames referenced by WaitImage actions. Used by ImageStorageService
         // .CleanupOrphanImages at startup to delete unreferenced PNGs.
@@ -187,14 +197,20 @@ namespace TrueReplayer.Controllers
             }
 
             var tcs = new TaskCompletionSource<string?>();
+            // A dialog that THROWS (a broken shell extension, an unusable InitialDirectory, a COM
+            // failure) still resolves to null — every caller already handles null — but it used to
+            // be indistinguishable from the user pressing Cancel: nothing logged, nothing shown, the
+            // picker just never appeared. Written before SetResult, which publishes it.
+            Exception? failure = null;
             var thread = new Thread(() =>
             {
                 try
                 {
                     tcs.SetResult(dialog.ShowDialog() == WinForms.DialogResult.OK ? dialog.FileName : null);
                 }
-                catch
+                catch (Exception ex)
                 {
+                    failure = ex;
                     tcs.SetResult(null);
                 }
                 finally
@@ -208,7 +224,13 @@ namespace TrueReplayer.Controllers
             thread.SetApartmentState(ApartmentState.STA);
             thread.IsBackground = true;
             thread.Start();
-            return await tcs.Task;
+            var picked = await tcs.Task;
+            if (failure != null)
+            {
+                DiagnosticLog.Error($"File dialog ({what}) failed", failure);
+                OnAlert?.Invoke($"The file dialog couldn't open ({failure.Message}).");
+            }
+            return picked;
         }
 
         /// <summary>
@@ -546,29 +568,33 @@ namespace TrueReplayer.Controllers
 
         public async Task<UserProfile?> LoadProfileByNameAsync(string profileName)
         {
+            // DiagnosticLog, not Debug.WriteLine: the latter is compiled out of Release, so a lookup
+            // that failed in the field — a file gone between two calls, an unreadable JSON — left
+            // no line saying which of the four reasons it was.
             if (string.IsNullOrEmpty(profileName))
             {
-                System.Diagnostics.Debug.WriteLine("profileName está vazio ou nulo em LoadProfileByNameAsync.");
+                DiagnosticLog.Warn("[Profiles] LoadProfileByName called with an empty name.");
                 return null;
             }
 
-            var entry = ProfileEntries.FirstOrDefault(p => p.Name == profileName);
-            if (entry == null)
+            // The published snapshot, not ProfileEntries: this also runs on the replay's pool
+            // thread (see _profilePathsByName).
+            if (!_profilePathsByName.TryGetValue(profileName, out var filePath))
             {
-                System.Diagnostics.Debug.WriteLine($"Perfil '{profileName}' não encontrado em LoadProfileByNameAsync.");
+                DiagnosticLog.Info($"[Profiles] LoadProfileByName: '{profileName}' is not in the profile list.");
                 return null;
             }
 
-            if (!File.Exists(entry.FilePath))
+            if (!File.Exists(filePath))
             {
-                System.Diagnostics.Debug.WriteLine($"Arquivo do perfil '{entry.FilePath}' não existe.");
+                DiagnosticLog.Warn($"[Profiles] LoadProfileByName: the file of '{profileName}' is gone ({filePath}).");
                 return null;
             }
 
-            var profile = await SettingsManager.LoadProfileAsync(entry.FilePath);
+            var profile = await SettingsManager.LoadProfileAsync(filePath);
             if (profile == null)
             {
-                System.Diagnostics.Debug.WriteLine($"Falha ao carregar o perfil '{profileName}' do arquivo '{entry.FilePath}'.");
+                DiagnosticLog.Error($"[Profiles] LoadProfileByName: '{profileName}' could not be read from {filePath}.");
                 return null;
             }
 
@@ -577,13 +603,34 @@ namespace TrueReplayer.Controllers
             // RunProfile target that's hand-edited with an unbalanced block gets repaired
             // before the engine's BuildBlockMap runs over it.
             var blockFix = ConditionalBlockValidator.ValidateAndRepairBlocks(profile.Actions);
-            if (blockFix.HadFixups)
+            if (blockFix.HadFixups && FirstBlockFixNotice(filePath))
             {
                 DiagnosticLog.Info($"[ConditionalBlocks] Auto-repaired '{profileName}': removed {blockFix.OrphansRemoved} orphan(s), appended {blockFix.EndIfsAppended} synthetic ENDIF(s)");
                 OnAlert?.Invoke(FormatBlockFixupToast(profileName, blockFix));
             }
 
             return profile;
+        }
+
+        // File path → the write stamp its auto-repair was last announced for. The repair lives only
+        // in the loaded copy — nothing writes it back — so every read of an unsaved broken file
+        // repairs it again, and a RunProfile inside a loop, or an automation firing for hours,
+        // re-toasted the same "Auto-repaired" once per call. The engine still gets the repaired list
+        // every time; the user is told once per version of the file. Locked: the RunProfile lookup
+        // runs on the replay's thread.
+        private readonly Dictionary<string, DateTime> _blockFixAnnounced = new(StringComparer.OrdinalIgnoreCase);
+
+        private bool FirstBlockFixNotice(string filePath)
+        {
+            DateTime stamp;
+            try { stamp = File.GetLastWriteTimeUtc(filePath); }
+            catch { return true; }
+            lock (_blockFixAnnounced)
+            {
+                if (_blockFixAnnounced.TryGetValue(filePath, out var announced) && announced == stamp) return false;
+                _blockFixAnnounced[filePath] = stamp;
+                return true;
+            }
         }
 
         /// <summary>
@@ -604,21 +651,32 @@ namespace TrueReplayer.Controllers
             return $"Auto-repaired conditional blocks in '{profileName}': {string.Join(", ", parts)}";
         }
 
-        public async Task SaveProfileByNameAsync(string profileName, UserProfile profile)
+        /// <summary>
+        /// Writes <paramref name="profile"/> over the named profile's file. False — and a toast — when
+        /// the name is no longer in the list: renamed or deleted outside the app between the caller's
+        /// load and this save. That used to return as if it had written, so a hotkey assigned in that
+        /// window was mirrored into memory, then vanished on the next list read with nothing said.
+        /// </summary>
+        public async Task<bool> SaveProfileByNameAsync(string profileName, UserProfile profile)
         {
             var entry = ProfileEntries.FirstOrDefault(p => p.Name == profileName);
-            if (entry != null)
+            if (entry == null)
             {
-                // Stamp UpdatedAt on every save so the Info tab + Import Preview show a
-                // meaningful "last modified" date. CreatedAt is only set if missing, so
-                // pre-existing profiles get a CreatedAt the first time they're saved after
-                // this feature lands (best we can do without inventing past dates).
-                var nowUtc = DateTime.UtcNow;
-                profile.UpdatedAt = nowUtc;
-                if (profile.CreatedAt == null) profile.CreatedAt = nowUtc;
-                await SettingsManager.SaveProfileAsync(entry.FilePath, profile);
-                MirrorSavedWindowFlags(profileName, profile);
+                DiagnosticLog.Warn($"[Profiles] Save of '{profileName}' skipped: it is no longer in the profile list.");
+                OnAlert?.Invoke($"Couldn't save \"{profileName}\": it's no longer in the profile list (renamed or deleted outside the app?).");
+                return false;
             }
+
+            // Stamp UpdatedAt on every save so the Info tab + Import Preview show a
+            // meaningful "last modified" date. CreatedAt is only set if missing, so
+            // pre-existing profiles get a CreatedAt the first time they're saved after
+            // this feature lands (best we can do without inventing past dates).
+            var nowUtc = DateTime.UtcNow;
+            profile.UpdatedAt = nowUtc;
+            if (profile.CreatedAt == null) profile.CreatedAt = nowUtc;
+            await SettingsManager.SaveProfileAsync(entry.FilePath, profile);
+            MirrorSavedWindowFlags(profileName, profile);
+            return true;
         }
 
         /// <summary>
@@ -726,7 +784,10 @@ namespace TrueReplayer.Controllers
             // and the last Add().
             var loadedEntries = new List<ProfileEntry>();
             var loadedTargets = new Dictionary<string, WindowTarget>();
-            var loadedImages = new Dictionary<string, HashSet<string>>();
+            // Keyed by image FOLDER, which NTFS matches without regard to case — so this map must
+            // too, or a case-only rename ("farm" → "Farm", whose folder keeps its spelling) left the
+            // startup sweep unable to find the folder's owner and it erased every PNG in it.
+            var loadedImages = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
             var loadedFailures = new List<string>();
 
             // Read and deserialize every profile OFF the dispatcher, several files at a time.
@@ -794,9 +855,13 @@ namespace TrueReplayer.Controllers
                 loadedEntries.Add(result.Entry);
                 if (result.Target != null) loadedTargets[result.Name] = result.Target;
                 // Sanitized here rather than inside the worker so the parallel pass calls into no
-                // other service and cannot be broken by one becoming thread-unsafe.
-                loadedImages[ImageStorageService.GetSanitizedProfileFolder(result.Name)] =
-                    result.ImageRefs ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                // other service and cannot be broken by one becoming thread-unsafe. MERGED, not
+                // assigned: two names that share a folder (they differ only in case, or sanitize
+                // alike) share its PNGs, and last-wins would hand the first one's images to the sweep.
+                var folderKey = ImageStorageService.GetSanitizedProfileFolder(result.Name);
+                if (!loadedImages.TryGetValue(folderKey, out var folderRefs))
+                    loadedImages[folderKey] = folderRefs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                if (result.ImageRefs != null) folderRefs.UnionWith(result.ImageRefs);
             }
 
             // The swap. No await from here to the last Add(), so the pump never sees a
@@ -804,6 +869,9 @@ namespace TrueReplayer.Controllers
             // instance is reused rather than replaced.
             ProfileEntries.Clear();
             foreach (var e in loadedEntries) ProfileEntries.Add(e);
+            var paths = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var e in loadedEntries) paths.TryAdd(e.Name, e.FilePath); // first wins, as FirstOrDefault did
+            _profilePathsByName = paths;
             _cachedWindowTargets = loadedTargets;
             _referencedImagesByProfile = loadedImages;
             _loadFailures.Clear();
@@ -1178,7 +1246,12 @@ namespace TrueReplayer.Controllers
                 string oldName = Path.GetFileNameWithoutExtension(r.OldFullPath);
                 string newName = Path.GetFileNameWithoutExtension(r.FullPath);
                 string newPath = r.FullPath;
-                if (!string.Equals(oldName, newName, StringComparison.OrdinalIgnoreCase))
+                // Ordinal: a case-only rename ("farm" → "Farm") IS a rename here. The list re-reads
+                // under the new spelling, and whatever still holds the old one by exact name — the
+                // profile on screen, whose next save then missed its own entry, and the data and
+                // cycle cursors — must be told, or they fall silent. The app's own case-only renames
+                // mark their echo like any other (HandleProfileRename).
+                if (!string.Equals(oldName, newName, StringComparison.Ordinal))
                     window.DispatcherQueue.TryEnqueue(() => OnProfileRenamedExternally?.Invoke(oldName, newName, newPath));
             }
 
@@ -1407,10 +1480,17 @@ namespace TrueReplayer.Controllers
         private static string GetEffectiveTargetSignature(ProfileEntry e)
         {
             if (!e.HasEffectiveTarget) return "";
-            var proc = e.EffectiveTargetProcessName ?? "";
+            // Two targets that the matcher treats as one window must give one signature, or two
+            // profiles sharing a hotkey there collide at runtime with no badge and no toast. The
+            // matcher ignores case in a contains-title and in the process name, and reads "chrome"
+            // as "chrome.exe" (WindowMatcher.ProcessNameMatches). A REGEX title keeps its case:
+            // lowering a pattern changes what it means (\D is not \d).
+            var proc = (e.EffectiveTargetProcessName ?? "").Trim().ToLowerInvariant();
+            if (proc.EndsWith(".exe", StringComparison.Ordinal)) proc = proc[..^4];
+            bool regex = string.Equals(e.EffectiveTargetTitleMatchMode, "regex", StringComparison.OrdinalIgnoreCase);
             var title = e.EffectiveTargetWindowTitle ?? "";
-            var mode = e.EffectiveTargetTitleMatchMode ?? "contains";
-            return $"{proc.ToLowerInvariant()}|{title}|{mode}";
+            if (!regex) title = title.ToLowerInvariant();
+            return $"{proc}|{title}|{(regex ? "regex" : "contains")}";
         }
 
         public Dictionary<string, TriggerMode> GetProfileTriggerModes()
@@ -1642,26 +1722,62 @@ namespace TrueReplayer.Controllers
         public FolderInheritedContext? GetFolderInheritedContext(string profileName)
         {
             // Profile has own target → no folder inheritance applies. Caller uses the profile's
-            // disk-loaded values directly.
+            // disk-loaded values directly. (_cachedWindowTargets is only ever replaced whole.)
             if (_cachedWindowTargets.ContainsKey(profileName)) return null;
-            var folder = _profileOrder.Folders.FirstOrDefault(f => f.Items.Contains(profileName));
-            if (!TrueReplayer.Helpers.WindowMatcher.IsUsable(folder?.TargetWindow)) return null;
-            // Same rect rule as GetEffectiveGeometry, and the same consequence: with nothing ever
-            // captured there is no rect to restore, so the Restore flags must be dropped too. A
-            // chained sub-profile that kept them would run applyPos against (0,0) — the direct fire
-            // paths suppress exactly this, and the two must not disagree about the same profile.
-            var rect = TrueReplayer.Helpers.WindowMatcher.CapturedRect(
-                folder!.WindowX, folder.WindowY, folder.WindowWidth, folder.WindowHeight);
-            return new FolderInheritedContext(
-                folder.TargetWindow!,
-                folder.UseRelativeCoordinates,
-                folder.BringToFocus,
-                rect is not null && folder.RestorePosition,
-                rect is not null && folder.RestoreSize,
-                rect?.X ?? 0,
-                rect?.Y ?? 0,
-                rect?.Width ?? 0,
-                rect?.Height ?? 0);
+            // The frozen copy, not _profileOrder: this is the replay engine's RunProfile lookup and
+            // runs on the replay's pool thread (see PublishFolderContexts).
+            return _folderContexts.TryGetValue(profileName, out var ctx) ? ctx : null;
+        }
+
+        /// <summary>
+        /// Freezes, for every profile that sits in a folder with a usable target, the context
+        /// GetFolderInheritedContext hands the engine — and swaps it in by reference.
+        ///
+        /// That lookup runs on the replay's pool thread while every folder edit mutates
+        /// _profileOrder in place on the UI thread. A chained RunProfile that landed mid-edit either
+        /// threw "Collection was modified" out of the whole run, or — between MoveToFolderAsync's
+        /// remove and its add — found the profile in no folder and ran it against the CALLER's
+        /// window with nothing said. Called on the UI thread after every change: each edit ends in
+        /// SaveProfileOrderAsync, which publishes before it writes, and every load ends here.
+        /// </summary>
+        private void PublishFolderContexts()
+        {
+            var contexts = new Dictionary<string, FolderInheritedContext>(StringComparer.Ordinal);
+            // The first folder that lists a profile owns it — the FirstOrDefault rule every
+            // resolver in this file uses — even when that folder has no usable target.
+            var claimed = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var folder in _profileOrder.Folders)
+            {
+                if (folder?.Items == null) continue;
+                bool usable = TrueReplayer.Helpers.WindowMatcher.IsUsable(folder.TargetWindow);
+                FolderInheritedContext? ctx = null;
+                if (usable)
+                {
+                    // Same rect rule as GetEffectiveGeometry, and the same consequence: with nothing
+                    // ever captured there is no rect to restore, so the Restore flags must be dropped
+                    // too. A chained sub-profile that kept them would run applyPos against (0,0) — the
+                    // direct fire paths suppress exactly this, and the two must not disagree about the
+                    // same profile.
+                    var rect = TrueReplayer.Helpers.WindowMatcher.CapturedRect(
+                        folder.WindowX, folder.WindowY, folder.WindowWidth, folder.WindowHeight);
+                    ctx = new FolderInheritedContext(
+                        folder.TargetWindow!,
+                        folder.UseRelativeCoordinates,
+                        folder.BringToFocus,
+                        rect is not null && folder.RestorePosition,
+                        rect is not null && folder.RestoreSize,
+                        rect?.X ?? 0,
+                        rect?.Y ?? 0,
+                        rect?.Width ?? 0,
+                        rect?.Height ?? 0);
+                }
+                foreach (var name in folder.Items)
+                {
+                    if (name == null || !claimed.Add(name)) continue;
+                    if (ctx.HasValue) contexts[name] = ctx.Value;
+                }
+            }
+            _folderContexts = contexts;
         }
 
         public async Task SetFolderWindowTargetAsync(
@@ -2112,7 +2228,12 @@ namespace TrueReplayer.Controllers
             // Only iterate the entries the user actually selected. Maintains source order so
             // multi-profile imports feel deterministic. Declared up here because RecordImageFailure
             // (below) reads its Count to decide whether to profile-label a failure.
-            var toImport = envelope.Profiles.Where(p => selectedNames.Contains(p.Name)).ToList();
+            //
+            // EXACT names: the preview lists every envelope entry as its own row, so an envelope
+            // carrying "Farm" and "farm" shows two checkboxes, and ticking one must not import both.
+            // Case-insensitive matching is for conflicts with profiles already on disk, below.
+            var chosen = new HashSet<string>(selectedNames, StringComparer.Ordinal);
+            var toImport = envelope.Profiles.Where(p => chosen.Contains(p.Name)).ToList();
 
             // Names of reference PNGs that didn't restore (present-but-rejected OR absent-from-envelope),
             // deduped so two rows sharing one missing path count once. The bridge names them in the
@@ -2670,61 +2791,107 @@ namespace TrueReplayer.Controllers
 
         private async Task LoadProfileOrderAsync()
         {
-            try
+            // Built in a LOCAL and published once whole. Deserializing straight into _profileOrder
+            // made the half-pruned object the live one while the prune below still ran.
+            ProfileOrderData order;
+            bool retryWrite = false;
+            if (_profileOrderUnwritten)
             {
-                if (File.Exists(ProfileOrderPath))
-                {
-                    var json = await File.ReadAllTextAsync(ProfileOrderPath);
-                    _profileOrder = JsonSerializer.Deserialize<ProfileOrderData>(json, OrderJsonOptions) ?? new ProfileOrderData();
-                }
-                else
-                {
-                    _profileOrder = new ProfileOrderData();
-                }
+                // Memory is ahead of the file (the last write failed — see _profileOrderUnwritten):
+                // re-reading it would undo the unsaved change. Keep memory, normalise it like a
+                // fresh read, and retry the write at the end.
+                order = _profileOrder;
+                retryWrite = true;
+                DiagnosticLog.Info("[Profiles] profile-order.json is behind memory (its last write failed); keeping the in-memory layout and retrying the write.");
             }
-            catch (Exception ex)
+            else
             {
-                // The order file exists but won't parse. Resetting to an empty order and letting a
-                // later save run would PERMANENTLY wipe the user's folders/pins/colours — UNLESS the
-                // original bytes are preserved first. So: copy the unreadable file to .bak (the
-                // recovery point) and alert the user, THEN reset to an empty order. A subsequent save
-                // may overwrite the corrupt original, but the .bak keeps a faithful copy to restore
-                // from, and not blocking saves means the user's first layout edit still persists.
-                System.Diagnostics.Debug.WriteLine($"[ProfileController] LoadProfileOrder parse failed: {ex.Message}");
                 try
                 {
-                    string backupPath = ProfileOrderPath + ".bak";
-                    File.Copy(ProfileOrderPath, backupPath, overwrite: true);
-                    OnAlert?.Invoke($"Couldn't read your profile organisation (folders/pins). The unreadable file was backed up to {Path.GetFileName(backupPath)}; your layout was reset.");
+                    if (File.Exists(ProfileOrderPath))
+                    {
+                        var json = await File.ReadAllTextAsync(ProfileOrderPath);
+                        order = JsonSerializer.Deserialize<ProfileOrderData>(json, OrderJsonOptions) ?? new ProfileOrderData();
+                    }
+                    else
+                    {
+                        order = new ProfileOrderData();
+                    }
                 }
-                catch (Exception backupEx)
+                catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[ProfileController] LoadProfileOrder backup failed: {backupEx.Message}");
-                    OnAlert?.Invoke("Couldn't read your profile organisation (folders/pins); your layout was reset.");
+                    // The order file exists but won't parse. Resetting to an empty order and letting a
+                    // later save run would PERMANENTLY wipe the user's folders/pins/colours — UNLESS the
+                    // original bytes are preserved first. So: copy the unreadable file to .bak (the
+                    // recovery point) and alert the user, THEN reset to an empty order. A subsequent save
+                    // may overwrite the corrupt original, but the .bak keeps a faithful copy to restore
+                    // from, and not blocking saves means the user's first layout edit still persists.
+                    DiagnosticLog.Error("LoadProfileOrder parse failed", ex);
+                    try
+                    {
+                        string backupPath = ProfileOrderPath + ".bak";
+                        File.Copy(ProfileOrderPath, backupPath, overwrite: true);
+                        OnAlert?.Invoke($"Couldn't read your profile organisation (folders/pins). The unreadable file was backed up to {Path.GetFileName(backupPath)}; your layout was reset.");
+                    }
+                    catch (Exception backupEx)
+                    {
+                        DiagnosticLog.Error("LoadProfileOrder backup failed", backupEx);
+                        OnAlert?.Invoke("Couldn't read your profile organisation (folders/pins); your layout was reset.");
+                    }
+                    order = new ProfileOrderData();
                 }
-                _profileOrder = new ProfileOrderData();
             }
 
-            // Clean stale references (profiles that no longer exist on disk)
-            var existingNames = ProfileEntries.Select(p => p.Name).ToHashSet();
-            _profileOrder.Pinned.RemoveAll(n => !existingNames.Contains(n));
-            foreach (var folder in _profileOrder.Folders)
-                folder.Items.RemoveAll(n => !existingNames.Contains(n));
-            _profileOrder.Folders.RemoveAll(f => f.Items.Count == 0 && string.IsNullOrEmpty(f.Name));
-            _profileOrder.UngroupedOrder.RemoveAll(n => !existingNames.Contains(n));
+            // An explicit JSON null overrides the = new() initializers, and every line below would
+            // throw on it — taking the whole profile list reload down with it.
+            order.Pinned ??= new List<string>();
+            order.Folders ??= new List<ProfileFolder>();
+            order.UngroupedOrder ??= new List<string>();
+            order.Folders.RemoveAll(f => f == null);
+            foreach (var folder in order.Folders)
+                folder.Items ??= new List<string>();
+
+            // Keep only names that still exist, respelled the way the disk spells them NOW.
+            //
+            // AllKnownProfileNames, not just ProfileEntries: a profile whose JSON failed to parse
+            // this pass (AV/OneDrive holding the file, a half-flushed save) is still on disk and
+            // usually readable next pass, but is absent from ProfileEntries. Pruning against
+            // ProfileEntries alone strips it from Pinned/Folders/UngroupedOrder in memory, and the
+            // next unrelated SaveProfileOrderAsync (pin, folder, move, rename) persists that loss —
+            // silently dropping the pin and folder-inherited window target.
+            //
+            // Case-insensitive, like the file system that decides what a profile is: a profile
+            // renamed only in case — in Explorer, or by an Overwrite import writing "Foo" over
+            // "foo.json" — kept its old spelling in here, an exact-match prune dropped it, and it
+            // fell out of its pin and folder (and so off its folder's window target) into Ungrouped.
+            var current = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var n in AllKnownProfileNames) current.TryAdd(n, n);
+            List<string> Keep(List<string> names)
+            {
+                var kept = new List<string>(names.Count);
+                var seen = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var n in names)
+                    if (n != null && current.TryGetValue(n, out var spelled) && seen.Add(spelled)) kept.Add(spelled);
+                return kept;
+            }
+            order.Pinned = Keep(order.Pinned);
+            foreach (var folder in order.Folders)
+                folder.Items = Keep(folder.Items);
+            order.Folders.RemoveAll(f => f.Items.Count == 0 && string.IsNullOrEmpty(f.Name));
+            order.UngroupedOrder = Keep(order.UngroupedOrder);
 
             // Add any profiles not mentioned in order data to ungrouped
-            var allReferenced = new HashSet<string>(_profileOrder.Pinned);
-            foreach (var folder in _profileOrder.Folders)
+            var allReferenced = new HashSet<string>(order.Pinned);
+            foreach (var folder in order.Folders)
                 foreach (var item in folder.Items)
                     allReferenced.Add(item);
-            foreach (var item in _profileOrder.UngroupedOrder)
+            foreach (var item in order.UngroupedOrder)
                 allReferenced.Add(item);
 
             foreach (var entry in ProfileEntries)
             {
                 if (!allReferenced.Contains(entry.Name))
-                    _profileOrder.UngroupedOrder.Add(entry.Name);
+                    order.UngroupedOrder.Add(entry.Name);
             }
 
             // Heal duplicate folder names (case-insensitive) that may have slipped in before the
@@ -2734,7 +2901,7 @@ namespace TrueReplayer.Controllers
             // when something actually changed; deterministic, so it re-heals on every load anyway.
             var seenFolderNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             bool folderNamesChanged = false;
-            foreach (var folder in _profileOrder.Folders)
+            foreach (var folder in order.Folders)
             {
                 var baseName = (folder.Name ?? string.Empty).Trim();
                 if (string.IsNullOrEmpty(baseName)) baseName = "Folder";
@@ -2748,22 +2915,40 @@ namespace TrueReplayer.Controllers
                 }
                 seenFolderNames.Add(unique);
             }
-            if (folderNamesChanged) await SaveProfileOrderAsync();
+
+            _profileOrder = order;
+            PublishFolderContexts();
+            if (folderNamesChanged || retryWrite) await SaveProfileOrderAsync();
         }
+
+        // True while the layout in memory is AHEAD of profile-order.json: the last write failed.
+        // LoadProfileOrderAsync then keeps memory instead of re-reading the stale file — every list
+        // reload (any profile saved, the watcher, an import) used to replace the layout with the
+        // disk copy, silently undoing a move into a folder. That is not cosmetic: the folder is
+        // where an inheriting profile gets its window target and coordinate space from.
+        private bool _profileOrderUnwritten;
 
         public async Task SaveProfileOrderAsync()
         {
+            // Every layout edit ends here, synchronously after the mutation — so this is where the
+            // engine's frozen copy catches up, before the first await.
+            PublishFolderContexts();
             await _profileOrderLock.WaitAsync();
             try
             {
                 var json = JsonSerializer.Serialize(_profileOrder, OrderJsonOptions);
                 await Services.FileHelper.WriteAllTextAtomicAsync(ProfileOrderPath, json);
+                _profileOrderUnwritten = false;
             }
             catch (Exception ex)
             {
-                // Non-fatal: a failed order write loses only pin/folder layout, not profile data.
-                // Log to DiagnosticLog (not Debug-only) so the silent failure is diagnosable.
+                // Non-fatal for the profiles themselves, but NOT "only the layout": folders carry
+                // window targets. Kept in memory and retried by the next reload; said once per
+                // failure streak, not per retry.
                 DiagnosticLog.Error("SaveProfileOrder write failed", ex);
+                if (!_profileOrderUnwritten)
+                    OnAlert?.Invoke($"Couldn't save your profile organisation (folders/pins): {ex.Message}. The change is kept for this session and will be retried.");
+                _profileOrderUnwritten = true;
             }
             finally
             {
@@ -2951,23 +3136,23 @@ namespace TrueReplayer.Controllers
 
         public async Task MoveToFolderAsync(string profileName, string? folderName)
         {
+            // Resolved BEFORE the profile is detached. A folder that no longer exists — deleted or
+            // renamed between the drag starting and the drop — used to leave the profile removed
+            // from everywhere and added nowhere, and that orphaned layout was saved: the profile
+            // vanished from the sidebar until the next full reload. It lands in Ungrouped instead.
+            var targetFolder = folderName == null ? null : _profileOrder.Folders.FirstOrDefault(f => f.Name == folderName);
+            if (folderName != null && targetFolder == null)
+                DiagnosticLog.Warn($"[Profiles] Move of '{profileName}' to folder '{folderName}': no such folder any more — moved to Ungrouped.");
+
             // Remove from current folder or ungrouped
             foreach (var folder in _profileOrder.Folders)
                 folder.Items.Remove(profileName);
             _profileOrder.UngroupedOrder.Remove(profileName);
 
-            if (folderName != null)
-            {
-                var targetFolder = _profileOrder.Folders.FirstOrDefault(f => f.Name == folderName);
-                if (targetFolder != null && !targetFolder.Items.Contains(profileName))
-                    targetFolder.Items.Add(profileName);
-            }
+            if (targetFolder != null)
+                targetFolder.Items.Add(profileName);
             else
-            {
-                // Move to ungrouped
-                if (!_profileOrder.UngroupedOrder.Contains(profileName))
-                    _profileOrder.UngroupedOrder.Add(profileName);
-            }
+                _profileOrder.UngroupedOrder.Add(profileName);
 
             await SaveProfileOrderAsync();
         }
@@ -2979,7 +3164,10 @@ namespace TrueReplayer.Controllers
             // onDisk gate in MergeImportedOrganizationAsync — otherwise a stale or malformed payload
             // could inject names for profiles that don't exist or silently drop real ones into a
             // garbage order file. Unknown names are filtered; duplicates are collapsed (first wins).
-            var onDisk = ProfileEntries.Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
+            // AllKnownProfileNames, the set LoadProfileOrderAsync keeps: the layout now holds a
+            // profile that failed to load this pass, and the frontend sends folders back with their
+            // raw items — gating on the loaded ones alone dropped it on the next folder drag.
+            var onDisk = AllKnownProfileNames.ToHashSet(StringComparer.Ordinal);
             List<string> Sanitize(List<string> names)
             {
                 var result = new List<string>(names.Count);

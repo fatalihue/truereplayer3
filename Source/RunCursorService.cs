@@ -51,8 +51,11 @@ namespace TrueReplayer.Services
         }
 
         private static readonly object _lock = new();
-        private static readonly Dictionary<string, int> _row = new(StringComparer.Ordinal);
-        private static readonly Dictionary<string, int> _cycle = new(StringComparer.Ordinal);
+        // Case-INSENSITIVE, like TriggerService's stats and like the file system that names a
+        // profile: "farm.json" renamed to "Farm.json" is the same profile. Ordinal keys lost the
+        // position the moment the list re-read the new spelling, and the next boot's prune erased it.
+        private static readonly Dictionary<string, int> _row = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly Dictionary<string, int> _cycle = new(StringComparer.OrdinalIgnoreCase);
         private static Timer? _saveTimer;
         private static bool _dirty;
         private static bool _loaded;
@@ -155,7 +158,7 @@ namespace TrueReplayer.Services
                 {
                     int sep = kv.Key.IndexOf('|');
                     if (sep <= 0) continue;
-                    if (!string.Equals(kv.Key[..sep], oldName, StringComparison.Ordinal)) continue;
+                    if (!string.Equals(kv.Key[..sep], oldName, StringComparison.OrdinalIgnoreCase)) continue;
                     moves.Add((kv.Key, newName + kv.Key[sep..], kv.Value));
                 }
                 foreach (var (oldKey, newKey, value) in moves)
@@ -184,7 +187,7 @@ namespace TrueReplayer.Services
                 foreach (var key in new List<string>(_cycle.Keys))
                 {
                     int sep = key.IndexOf('|');
-                    if (sep > 0 && string.Equals(key[..sep], name, StringComparison.Ordinal))
+                    if (sep > 0 && string.Equals(key[..sep], name, StringComparison.OrdinalIgnoreCase))
                     {
                         _cycle.Remove(key);
                         changed = true;
@@ -208,7 +211,7 @@ namespace TrueReplayer.Services
             if (knownProfiles == null || knownProfiles.Count == 0) return;
             lock (_lock)
             {
-                var known = new HashSet<string>(knownProfiles, StringComparer.Ordinal)
+                var known = new HashSet<string>(knownProfiles, StringComparer.OrdinalIgnoreCase)
                 {
                     // The No-Profile scratch buffer keys as "default" and belongs to no file.
                     "default",

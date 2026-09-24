@@ -265,20 +265,82 @@ namespace TrueReplayer.Services
         }
 
         /// <summary>
-        /// Renames a profile's image directory. No-op if the old directory doesn't exist
-        /// or the new directory already exists.
+        /// Carries a profile's image directory over to its new name. Returns false when some
+        /// file had to stay behind under the old name (each one is logged); CleanupOrphanImages
+        /// re-homes those at the next start instead of deleting them, so false means "not yet",
+        /// not "lost".
+        ///
+        /// This used to give up in three cases, all silently, and the startup sweep then read the
+        /// old folder as a deleted profile's and erased every PNG in it:
+        ///   • a case-only rename ("farm" → "Farm"), which NTFS calls the same folder — the
+        ///     folder simply kept the old spelling;
+        ///   • a new-name folder that already existed (a leftover of a deleted profile, or an
+        ///     import that created it);
+        ///   • a Directory.Move that threw (a file held open by the indexer, antivirus or an
+        ///     Explorer preview).
         /// </summary>
-        public static void RenameProfileDirectory(string oldProfileName, string newProfileName)
+        public static bool RenameProfileDirectory(string oldProfileName, string newProfileName)
         {
             string oldDir = GetImageDirectory(oldProfileName);
             string newDir = GetImageDirectory(newProfileName);
 
-            if (string.Equals(oldDir, newDir, StringComparison.OrdinalIgnoreCase)) return;
-            if (!Directory.Exists(oldDir)) return;
-            if (Directory.Exists(newDir)) return;
+            if (string.Equals(oldDir, newDir, StringComparison.Ordinal)) return true;
+            if (!Directory.Exists(oldDir)) return true;
 
-            try { Directory.Move(oldDir, newDir); }
-            catch { /* best effort */ }
+            // Same folder to NTFS, so nothing is at stake but the spelling: every lookup (and
+            // CleanupOrphanImages' own matching) ignores case. Re-spelled for tidiness; a failure
+            // here costs nothing.
+            if (string.Equals(oldDir, newDir, StringComparison.OrdinalIgnoreCase))
+            {
+                try { Directory.Move(oldDir, newDir); }
+                catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+                {
+                    try { DiagnosticLog.Info($"[Images] Case-only re-spelling of '{oldDir}' failed ({ex.Message}); the folder keeps its old spelling, which every lookup ignores."); } catch { }
+                }
+                return true;
+            }
+
+            if (!Directory.Exists(newDir))
+            {
+                try { Directory.Move(oldDir, newDir); return true; }
+                catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+                {
+                    try { DiagnosticLog.Info($"[Images] Moving '{oldDir}' to '{newDir}' failed ({ex.Message}); carrying the files one by one."); } catch { }
+                }
+            }
+
+            // The folder could not move whole (the new one exists, or the move threw): carry file
+            // by file. Move only, never copy — a rename is atomic, so a file is either complete
+            // under the new name or still complete under the old one, never half-written.
+            int left = 0;
+            try
+            {
+                Directory.CreateDirectory(newDir);
+                foreach (var file in Directory.EnumerateFiles(oldDir))
+                {
+                    string dest = Path.Combine(newDir, Path.GetFileName(file));
+                    try
+                    {
+                        // Already there under the new name (GUID file names: the same image). Never
+                        // overwritten; the stale copy is the startup sweep's to reap.
+                        if (File.Exists(dest)) continue;
+                        File.Move(file, dest);
+                    }
+                    catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+                    {
+                        left++;
+                        try { DiagnosticLog.Info($"[Images] Could not carry '{file}' to '{newDir}': {ex.Message}. Re-homed at the next start."); } catch { }
+                    }
+                }
+                if (left == 0)
+                    try { Directory.Delete(oldDir); } catch { /* a stale duplicate, or held open — the sweep reaps it */ }
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+            {
+                try { DiagnosticLog.Info($"[Images] Carrying images from '{oldDir}' to '{newDir}' failed: {ex.Message}. Re-homed at the next start."); } catch { }
+                return false;
+            }
+            return left == 0;
         }
 
         /// <summary>
@@ -296,7 +358,8 @@ namespace TrueReplayer.Services
         /// referenced by any action across all profiles. Runs before any user-driven undo can
         /// happen so we never delete a file the in-memory undo stack still expects.
         /// referencedByProfile maps profileName → set of ImagePath filenames that should be kept.
-        /// Profiles without an entry have all their PNGs deleted (and the dir if it ends up empty).
+        /// Profiles without an entry have all their PNGs deleted (and the dir if it ends up empty),
+        /// except a PNG another profile references and lacks, which is moved to that profile.
         /// </summary>
         public static int CleanupOrphanImages(IReadOnlyDictionary<string, HashSet<string>> referencedByProfile, IReadOnlySet<string>? keepEntirelyFolders = null)
         {
@@ -304,6 +367,28 @@ namespace TrueReplayer.Services
             string baseDir = GetBaseDirectory();
             if (!Directory.Exists(baseDir)) return 0;
 
+            // Re-keyed case-INSENSITIVELY whatever comparer the caller built with, because the
+            // folder names below come from the disk and NTFS ignores case. An ordinal map missed
+            // "farm" on disk against "Farm" in the profile list — a case-only rename, which keeps
+            // the folder's spelling — and the whole folder was swept as a deleted profile's.
+            var byFolder = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+            // Reference image → the folder(s) whose profile uses it. File names are GUIDs
+            // ("wait-<guid>.png"), so a name found in a folder other than its owner's is that
+            // owner's image, left behind under an old folder name.
+            var ownersOf = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in referencedByProfile)
+            {
+                if (!byFolder.TryGetValue(kv.Key, out var set))
+                    byFolder[kv.Key] = set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                set.UnionWith(kv.Value);
+                foreach (var image in kv.Value)
+                {
+                    if (!ownersOf.TryGetValue(image, out var owners)) ownersOf[image] = owners = new List<string>();
+                    owners.Add(kv.Key);
+                }
+            }
+
+            int rehomed = 0;
             foreach (var profileDir in Directory.EnumerateDirectories(baseDir))
             {
                 string profileFolder = Path.GetFileName(profileDir);
@@ -314,7 +399,7 @@ namespace TrueReplayer.Services
                 // entire image folder would be treated as orphaned and deleted, losing the user's
                 // reference PNGs on a recoverable error. Keep such folders untouched.
                 if (keepEntirelyFolders?.Contains(profileFolder) == true) continue;
-                referencedByProfile.TryGetValue(profileFolder, out var referenced);
+                byFolder.TryGetValue(profileFolder, out var referenced);
                 referenced ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
                 try
@@ -322,15 +407,26 @@ namespace TrueReplayer.Services
                     foreach (var file in Directory.EnumerateFiles(profileDir, "*.png"))
                     {
                         string name = Path.GetFileName(file);
-                        if (!referenced.Contains(name))
+                        if (referenced.Contains(name)) continue;
+
+                        // Before deleting, give it back to a profile that references it and lacks
+                        // it: a rename whose folder could not be carried (RenameProfileDirectory),
+                        // or a profile renamed in Explorer while the app was closed — nothing sees
+                        // that one happen, so its images sat under the old name and this sweep
+                        // used to erase them. A re-home that fails leaves the file where it is.
+                        if (TryRehome(baseDir, file, name, profileFolder, ownersOf, out bool keep))
                         {
-                            try { File.Delete(file); deleted++; }
-                            catch { /* best effort */ }
+                            rehomed++;
+                            continue;
                         }
+                        if (keep) continue;
+
+                        try { File.Delete(file); deleted++; }
+                        catch { /* best effort */ }
                     }
                     // Remove empty profile directories left behind by deleted profiles whose
                     // referencedByProfile entry was missing entirely.
-                    if (!referencedByProfile.ContainsKey(profileFolder)
+                    if (!byFolder.ContainsKey(profileFolder)
                         && !Directory.EnumerateFileSystemEntries(profileDir).Any())
                     {
                         try { Directory.Delete(profileDir); }
@@ -339,7 +435,40 @@ namespace TrueReplayer.Services
                 }
                 catch { /* best effort */ }
             }
+            if (rehomed > 0)
+                try { DiagnosticLog.Info($"[Images] Re-homed {rehomed} reference image(s) left under an old profile folder name."); } catch { }
             return deleted;
+        }
+
+        // Moves an image referenced by another profile into that profile's folder when the folder
+        // lacks it. True when moved. `keep` is true when the file must stay put: an owner lacks it
+        // but the move failed — deleting would destroy the only copy.
+        private static bool TryRehome(string baseDir, string file, string name, string currentFolder,
+            Dictionary<string, List<string>> ownersOf, out bool keep)
+        {
+            keep = false;
+            if (!ownersOf.TryGetValue(name, out var owners)) return false;
+            foreach (var owner in owners)
+            {
+                if (string.Equals(owner, currentFolder, StringComparison.OrdinalIgnoreCase)) continue;
+                string ownerDir = Path.Combine(baseDir, owner);
+                string dest = Path.Combine(ownerDir, name);
+                if (File.Exists(dest)) continue;
+                try
+                {
+                    Directory.CreateDirectory(ownerDir);
+                    File.Move(file, dest);
+                    try { DiagnosticLog.Info($"[Images] Re-homed '{name}' from '{currentFolder}' to '{owner}'."); } catch { }
+                    return true;
+                }
+                catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+                {
+                    keep = true;
+                    try { DiagnosticLog.Info($"[Images] Could not re-home '{name}' from '{currentFolder}' to '{owner}': {ex.Message}. Left in place."); } catch { }
+                    return false;
+                }
+            }
+            return false;
         }
 
         /// <summary>
