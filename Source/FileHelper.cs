@@ -224,5 +224,66 @@ namespace TrueReplayer.Services
                 throw;
             }
         }
+
+        private const int SharedReadAttempts = 4;
+        private const int SharedReadDelayMs = 50;
+
+        /// <summary>
+        /// Reads a whole text file that other processes may be holding: FileShare.ReadWrite |
+        /// FileShare.Delete, where File.ReadAllText asks for FileShare.Read and so fails against any
+        /// handle open for WRITING (a sync agent, a scanner that opened it read-write), plus a short
+        /// retry for the exclusive opens that remain. False = the file could not be read, and
+        /// <paramref name="error"/> says why. A caller must treat that as UNKNOWN, never as empty:
+        /// the settings, the run cursors and the profile order each used to fall back to "nothing
+        /// saved" on a lock and then write that nothing over the good file. Same contract as
+        /// RemapService.TryReadText, the first reader that learned it.
+        /// </summary>
+        public static bool TryReadAllTextShared(string path, out string text, out Exception? error)
+        {
+            text = "";
+            error = null;
+            for (int attempt = 0; attempt < SharedReadAttempts; attempt++)
+            {
+                try
+                {
+                    using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+                        FileShare.ReadWrite | FileShare.Delete);
+                    using var reader = new StreamReader(stream, detectEncodingFromByteOrderMarks: true);
+                    text = reader.ReadToEnd();
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    error = ex;
+                    // Nothing to outlast: the path is impossible, or the file is gone.
+                    if (IsPermanentPathFailure(ex) || ex is FileNotFoundException) return false;
+                    if (attempt < SharedReadAttempts - 1) Thread.Sleep(SharedReadDelayMs);
+                }
+            }
+            return false;
+        }
+
+        /// <summary>Async twin of <see cref="TryReadAllTextShared"/> — same contract.</summary>
+        public static async Task<(bool Ok, string Text, Exception? Error)> TryReadAllTextSharedAsync(string path)
+        {
+            Exception? error = null;
+            for (int attempt = 0; attempt < SharedReadAttempts; attempt++)
+            {
+                try
+                {
+                    using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+                        FileShare.ReadWrite | FileShare.Delete, bufferSize: 4096, useAsync: true);
+                    using var reader = new StreamReader(stream, detectEncodingFromByteOrderMarks: true);
+                    return (true, await reader.ReadToEndAsync(), null);
+                }
+                catch (Exception ex)
+                {
+                    error = ex;
+                    if (IsPermanentPathFailure(ex) || ex is FileNotFoundException) break;
+                    if (attempt < SharedReadAttempts - 1) await Task.Delay(SharedReadDelayMs);
+                }
+            }
+            return (false, "", error);
+        }
     }
 }

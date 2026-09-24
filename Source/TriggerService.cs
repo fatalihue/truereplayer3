@@ -75,6 +75,9 @@ namespace TrueReplayer.Services
         /// <summary>Raised (on the calling thread) whenever status meaningfully changed — arm,
         /// fire, skip, condition flip. The bridge coalesces + pushes automation:state.</summary>
         public Action? OnStateChanged { get; set; }
+        /// <summary>A notice for the user's eyes (a watcher that stopped itself) — raised on the
+        /// UI thread; MainWindow hands it to the bridge, which holds it until the window is seen.</summary>
+        public Action<string>? OnNotice { get; set; }
 
         public bool GlobalEnabled => _globalEnabled;
 
@@ -428,18 +431,27 @@ namespace TrueReplayer.Services
             // threads interleaving that can leave the flag standing — and then every unrelated tray
             // refresh re-pops the same balloon for the rest of the session, which is the one
             // outcome here that does not heal itself. OnStateChanged already routes this way.
+            //
+            // The balloon is not enough on its own: on Windows 11 it was seen not to render at all
+            // (Shell_NotifyIcon succeeds, but a legacy balloon from an app with no registered AUMID
+            // is dropped — the data-list notice found this), so this "only" signal could be no
+            // signal. A chime (and a taskbar flash when there is a button to
+            // flash) reaches the user in another app; the notice puts the same words in the window,
+            // held until it is on screen. Each step is best-effort on its own.
             dispatcherQueue?.TryEnqueue(() =>
             {
+                string detail = $"{reason} The automation is still armed, but it is not watching for anything.";
                 try
                 {
-                    TrayIconService.ShowBalloon(
-                        $"Automation stopped: {name}",
-                        $"{reason} The automation is still armed, but it is not watching for anything.");
+                    TrayIconService.ShowBalloon($"Automation stopped: {name}", detail);
                 }
                 catch (Exception ex)
                 {
                     DiagnosticLog.Warn($"Tray balloon for stopped watcher '{name}' failed: {ex.Message}");
                 }
+                TrayIconService.CueOutOfView();
+                try { OnNotice?.Invoke($"Automation stopped: {name}. {detail}"); }
+                catch (Exception ex) { DiagnosticLog.Warn($"In-app notice for stopped watcher '{name}' failed: {ex.Message}"); }
             });
         }
 
@@ -594,6 +606,26 @@ namespace TrueReplayer.Services
                     await Task.Delay(remaining > TimeSpan.FromSeconds(60) ? TimeSpan.FromSeconds(60) : remaining, ct);
                 }
                 if (ct.IsCancellationRequested) break;
+
+                // Staleness bound, the schedule loop's (ScheduleStaleAfter). The sleep above breaks
+                // out as soon as `remaining <= 0`, and across a suspend or a forward clock jump that
+                // is deeply negative: the tick then fired the instant the machine woke — mouse and
+                // keyboard injected at someone who had just opened the lid, or at a lock screen that
+                // takes none of it. The cold-start path above keeps an app RESTART from doing that;
+                // a wake in the middle of a session is the same moment and was not covered. An
+                // interval means "this often while the machine is in use" (see the active-hours
+                // skip below), so the tick the sleep withheld is skipped and the cadence restarts
+                // from now. Normal ticks wake within milliseconds of `next`; only a machine that was
+                // not running gets anywhere near the bound.
+                var lateness = DateTime.Now - next;
+                if (lateness > ScheduleStaleAfter)
+                {
+                    SetLastResult(stats, $"skipped — {(int)lateness.TotalMinutes} min late (machine asleep or clock changed)");
+                    DiagnosticLog.Warn($"Automation '{name}': interval tick due {next:t} skipped, {(int)lateness.TotalMinutes} min stale");
+                    NotifyStateChanged();
+                    next = DateTime.Now + period;
+                    continue;
+                }
 
                 // A busy tick used to be DROPPED outright ("the next tick catches up"), which is
                 // only true when the interval is short. On a 30-minute interval that reasoning
@@ -1288,7 +1320,7 @@ namespace TrueReplayer.Services
                 // cannot tell apart from "the text does not match".
                 if (isNewCopy && !string.IsNullOrEmpty(cfg.ClipboardPattern))
                 {
-                    string? text = await ActionReplayer.ReadClipboardTextAsync(dispatcherQueue);
+                    string? text = await ActionReplayer.ReadClipboardTextAsync(dispatcherQueue, ct);
                     if (text == null || !text.Contains(cfg.ClipboardPattern, StringComparison.OrdinalIgnoreCase))
                     {
                         // The content cannot change while the sequence number does not, so a

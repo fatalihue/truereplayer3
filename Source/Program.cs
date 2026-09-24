@@ -344,26 +344,54 @@ namespace TrueReplayer
                 """;
                 File.WriteAllText(manifestPath, manifest);
 
-                // Register in Chrome's NativeMessagingHosts registry
-                using var key = Registry.CurrentUser.CreateSubKey(
-                    @"Software\Google\Chrome\NativeMessagingHosts\com.truereplayer.native");
-                key?.SetValue("", manifestPath);
-
-                // Also register for Edge (same Chromium base)
-                using var edgeKey = Registry.CurrentUser.CreateSubKey(
-                    @"Software\Microsoft\Edge\NativeMessagingHosts\com.truereplayer.native");
-                edgeKey?.SetValue("", manifestPath);
-
-                // Also register for Brave
-                using var braveKey = Registry.CurrentUser.CreateSubKey(
-                    @"Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\com.truereplayer.native");
-                braveKey?.SetValue("", manifestPath);
+                // Chrome, Edge and Brave (same Chromium base) each keep their own registration.
+                //
+                // An INSTALLED copy always registers itself: it is the canonical host. A dev or
+                // portable copy only fills a registration that is missing or dangling. Every boot of
+                // a debug build used to repoint all three keys at its bin\ folder, so the installed
+                // app's extension then launched a host from a folder the next rebuild or cleanup
+                // removed — failing silently until the installed build ran again. That is the Run-key
+                // hazard SetRunOnStartup guards with IsInstalledLocation, which never reached here.
+                // Not a plain "installed only" guard: a portable copy with nothing else registered
+                // would then have no extension at all. The host is a relay, so a copy running from
+                // elsewhere is served just as well by the installed one's.
+                bool installed = TrueReplayer.Services.TrayIconService.IsInstalledLocation();
+                foreach (var subKey in new[]
+                {
+                    @"Software\Google\Chrome\NativeMessagingHosts\com.truereplayer.native",
+                    @"Software\Microsoft\Edge\NativeMessagingHosts\com.truereplayer.native",
+                    @"Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\com.truereplayer.native",
+                })
+                {
+                    if (!installed && PointsAtWorkingHost(subKey)) continue;
+                    using var key = Registry.CurrentUser.CreateSubKey(subKey);
+                    key?.SetValue("", manifestPath);
+                }
             }
             catch (Exception ex)
             {
                 // Visible in release via the session log — a silent failure here means the browser
                 // extension can't reach the app and the user has no clue why.
                 TrueReplayer.Services.DiagnosticLog.Warn($"[NativeHost] Registry registration failed: {ex.Message}");
+            }
+        }
+
+        // True when the key names a manifest that exists and whose "path" is a host exe that
+        // exists — a registration a browser can actually use, whoever wrote it.
+        private static bool PointsAtWorkingHost(string subKey)
+        {
+            try
+            {
+                using var key = Registry.CurrentUser.OpenSubKey(subKey);
+                if (key?.GetValue("") is not string manifest || !File.Exists(manifest)) return false;
+                using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(manifest));
+                return doc.RootElement.TryGetProperty("path", out var path)
+                    && path.ValueKind == System.Text.Json.JsonValueKind.String
+                    && File.Exists(path.GetString());
+            }
+            catch
+            {
+                return false; // unreadable manifest = not a registration anything can use
             }
         }
     }

@@ -226,6 +226,40 @@ namespace TrueReplayer.Services
         }
 
         /// <summary>
+        /// A chime — plus a taskbar flash when there is a taskbar button to flash — for a notice
+        /// raised while the user is looking at ANOTHER app: the toast it goes with lands in a window
+        /// that is behind, or hidden in the tray, and the balloon alone was seen not to render on
+        /// Windows 11 (no AUMID is registered). Silent when TrueReplayer is the foreground window: the toast is
+        /// in view then. Not gated on RunEndFlash/RunEndSound — those govern the cue after EVERY run,
+        /// which is why people switch them off, while these notices are rare and each one means
+        /// something did NOT happen. MessageBeep follows the Windows sound scheme, "No Sounds"
+        /// included. Best-effort; UI thread.
+        /// </summary>
+        public static void CueOutOfView()
+        {
+            try
+            {
+                if (hwnd == IntPtr.Zero || NativeMethods.GetForegroundWindow() == hwnd) return;
+                if (NativeMethods.IsWindowVisible(hwnd))
+                {
+                    var fw = new NativeMethods.FLASHWINFO
+                    {
+                        cbSize = (uint)Marshal.SizeOf<NativeMethods.FLASHWINFO>(),
+                        hwnd = hwnd,
+                        // Until the window comes to the foreground — the NotifyRunEnded flash.
+                        dwFlags = NativeMethods.FLASHW_TRAY | NativeMethods.FLASHW_TIMERNOFG,
+                    };
+                    NativeMethods.FlashWindowEx(ref fw);
+                }
+                NativeMethods.MessageBeep(NativeMethods.MB_ICONERROR_BEEP);
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Warn($"Out-of-view cue failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Explorer restarted (TaskbarCreated) and took every tray icon with it. Nothing re-added
         /// this one: every later NIM_MODIFY aimed at an icon that no longer existed, so the tooltip
         /// refreshes and — the one that matters — the "Automation stopped" balloon failed with only
@@ -388,7 +422,8 @@ namespace TrueReplayer.Services
 
         // True only when running from the Velopack install location
         // (%LocalAppData%\TrueReplayer\...). Dev (bin\) and portable copies return false.
-        private static bool IsInstalledLocation()
+        // Also read by Program.RegisterNativeMessagingHost, the other HKCU writer with this hazard.
+        internal static bool IsInstalledLocation()
         {
             var p = Environment.ProcessPath;
             if (string.IsNullOrEmpty(p)) return false;
@@ -651,6 +686,11 @@ namespace TrueReplayer.Services
         /// Set from MainWindow after bridge is initialized.
         public Func<Task<bool>>? OnCloseRequested { get; set; }
 
+        /// Raised (inside the window procedure) when the window has just become visible — from the
+        /// tray, or after an autostart hid it at boot. MainWindow uses it to deliver the notices
+        /// held while nobody could see them.
+        public Action? OnShown { get; set; }
+
         private const int WM_USER = 0x0400;
         private const int WM_LBUTTONDBLCLK = 0x0203;
         private const int WM_RBUTTONUP = 0x0205;
@@ -658,6 +698,8 @@ namespace TrueReplayer.Services
         private const int WM_DISPLAYCHANGE = 0x007E;
         private const int WM_QUERYENDSESSION = 0x0011;
         private const int WM_INPUTLANGCHANGE = 0x0051;
+        private const int WM_WINDOWPOSCHANGED = 0x0047;
+        private const uint SWP_SHOWWINDOW = 0x0040;
         private const int WM_SIZING = 0x0214;
         private const int WM_ENTERSIZEMOVE = 0x0231;
         private const int WM_EXITSIZEMOVE = 0x0232;
@@ -897,6 +939,14 @@ namespace TrueReplayer.Services
             else if (WM_TASKBARCREATED != 0 && (uint)msg == WM_TASKBARCREATED)
             {
                 TrayIconService.RecreateAfterShellRestart();
+            }
+            else if (msg == WM_WINDOWPOSCHANGED && OnShown != null)
+            {
+                // Every way of showing the window ends here with SWP_SHOWWINDOW — ShowWindow from the
+                // tray, AppWindow.Show, SetWindowPos. WM_SHOWWINDOW would not do: it is skipped for
+                // SW_SHOWNORMAL. WINDOWPOS.flags sits after two handles and four ints.
+                uint flags = (uint)Marshal.ReadInt32(lParam, 2 * IntPtr.Size + 16);
+                if ((flags & SWP_SHOWWINDOW) != 0) OnShown();
             }
             return HwndHookManager.CallOriginalWndProc(hwnd, msg, wParam, lParam);
         }

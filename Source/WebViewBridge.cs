@@ -505,10 +505,13 @@ namespace TrueReplayer
             // only signal is in diagnostics.log which most users won't open).
             // Marshal to the UI thread because the validator may run inside an
             // async load chain on a worker thread.
+            // Through the held-notices path: some of these are raised by the startup list load (an
+            // unreadable profile order, an auto-repaired block), before the UI is up or while an
+            // autostart has the window hidden. After that it is an immediate toast, as before.
             this.profileController.OnAlert = message =>
             {
                 if (_disposed) return;
-                dispatcherQueue.TryEnqueue(() => SendMessage("alert:show", new { message }));
+                dispatcherQueue.TryEnqueue(() => ShowNoticeWhenSeen(message));
             };
             // Both already arrive on the UI thread (the watcher enqueues them).
             this.profileController.OnListChangedExternally = () =>
@@ -842,7 +845,11 @@ namespace TrueReplayer
                 // CursorClickHoldMs and CursorClickPositionJitter are NOT copied — nothing in the
                 // legacy profile maps to them — so they keep their AppSettings field defaults
                 // (10 ms / 1 px). Neither takes effect until its companion switch is turned ON.
-                AppSettingsManager.Save(saved);
+                // Never persisted from a file that could not be READ: `saved` is then class
+                // defaults, whose -1 is exactly this sentinel, and this save was the write that
+                // replaced the user's hotkeys, presets and RunAsAdmin with them in the same boot.
+                if (!AppSettingsManager.IsUnreadableThisSession)
+                    AppSettingsManager.Save(saved);
             }
             // Clamped on the way IN, not just on the way out. appsettings.json is hand-editable
             // and never passes through HandleSettingsChange, so this is the only place an
@@ -1196,6 +1203,8 @@ namespace TrueReplayer
                 // push must not be handed the previous run's (see _liveHighlightIndex).
                 _liveHighlightIndex = null;
                 _liveLoopProgress = null;
+                _liveChainStack = null;
+                _liveChainStep = null;
             }
             if (status == "ready" && _lastRunStatus == "replaying"
                 // …and a macro run really did open a report in between. Without this, a Clicker
@@ -3665,12 +3674,44 @@ namespace TrueReplayer
             // does not repeat it.
             if (_pendingHotkeyConflict != null)
             {
-                SendMessage("alert:show", new { message = _pendingHotkeyConflict });
+                ShowNoticeWhenSeen(_pendingHotkeyConflict);
                 _pendingHotkeyConflict = null;
             }
 
+            // The UI is up: whatever was held for it goes out now, if the window is on screen.
+            _uiInitialized = true;
+            FlushPendingNotices();
+
             // Check for updates in the background after UI is ready
             _ = CheckForUpdateAsync();
+        }
+
+        // Notices that must reach a PERSON, not just the log: a profile that would not load, a
+        // hotkey collision, a settings file that could not be read, an automation that stopped
+        // watching. Toasts — but only once the UI is up (state:init went out) AND the window is
+        // on screen. At an autostart boot (--startup with Start minimized) the window is hidden
+        // before any of them is raised, and each one rendered in a WebView nobody could see and
+        // expired in seconds, with no history to find it in. Held here, they appear when the
+        // window is shown. Dispatcher thread only.
+        private readonly List<string> _pendingNotices = new();
+        private bool _uiInitialized;
+
+        public void ShowNoticeWhenSeen(string message)
+        {
+            _pendingNotices.Add(message);
+            FlushPendingNotices();
+        }
+
+        /// <summary>
+        /// Sends the held notices when the UI is up and the window is on screen; otherwise keeps
+        /// them. MainWindow calls it again each time the window is shown.
+        /// </summary>
+        public void FlushPendingNotices()
+        {
+            if (_pendingNotices.Count == 0 || !_uiInitialized || !window.IsOnScreen) return;
+            foreach (var message in _pendingNotices)
+                SendMessage("alert:show", new { message });
+            _pendingNotices.Clear();
         }
 
         // Master switch for silent auto-update.
@@ -5486,6 +5527,8 @@ namespace TrueReplayer
         /// </summary>
         public void PushReplayChainUpdate(List<string> stack)
         {
+            _liveChainStack = stack.Count > 0 ? new List<string>(stack) : null;
+            if (_liveChainStack == null) _liveChainStep = null;
             SendMessage("replay:chain", new { stack });
         }
 
@@ -5498,6 +5541,7 @@ namespace TrueReplayer
         /// </summary>
         public void PushReplayChainStep(int current, int total)
         {
+            _liveChainStep = (current, total);
             SendMessage("replay:chainStep", new { current, total });
         }
 
@@ -5514,6 +5558,10 @@ namespace TrueReplayer
         // which on a slow data loop can be minutes.
         private int? _liveHighlightIndex;
         private (int Current, int Total)? _liveLoopProgress;
+        // And the sub-profile chain ("Running A → B (4/11)"): pushed on each push/pop of the call
+        // stack, so a UI reloaded inside a long sub-profile showed the run as flat until it returned.
+        private List<string>? _liveChainStack;
+        private (int Current, int Total)? _liveChainStep;
 
         public void PushReplayPaused(string hotkey, int timeoutMs)
         {
@@ -5552,7 +5600,15 @@ namespace TrueReplayer
                 _liveInputRequests.Clear();
                 _liveHighlightIndex = null;
                 _liveLoopProgress = null;
+                _liveChainStack = null;
+                _liveChainStep = null;
                 return;
+            }
+            if (_liveChainStack is { } chain)
+            {
+                SendMessage("replay:chain", new { stack = chain });
+                if (_liveChainStep is { } step)
+                    SendMessage("replay:chainStep", new { current = step.Current, total = step.Total });
             }
             if (_liveLoopProgress is { } loop)
                 SendMessage("macro:loopProgress", new { current = loop.Current, total = loop.Total });
@@ -8858,6 +8914,11 @@ namespace TrueReplayer
                     // loop edit. Re-stamp the edit's owner name instead of clearing it, or the
                     // name check in HasUnsavedLoopChange would silently drop the user's value.
                     RetargetLoopEdit(actualNewName);
+                    // The controller's own copy of the active name, as HandleExternalProfileRename
+                    // updates it. Left on the old name, a "Save As New" right after the rename looked
+                    // for the reference images in the folder RenameProfileDirectory had just
+                    // emptied, and the new profile was saved without any of them.
+                    profileController.UpdateProfileColors(actualNewName);
                 }
                 // Migrate the automation fire-stats BEFORE the refresh re-arms under the new
                 // name — otherwise cooldown/fire history restarts from zero on every rename.
@@ -11931,7 +11992,9 @@ namespace TrueReplayer
 
             // From here on out, no more payload access — safe to await.
             var profile = await profileController.LoadProfileByNameAsync(name);
-            if (profile == null) return;
+            // Said, not dropped: the Info dialog closes on Save without waiting, so a profile that
+            // vanished while it was open took the user's edits with it and nothing said so.
+            if (profile == null) { ReportProfileGone(name); return; }
 
             if (hasDescription)
                 profile.Description = string.IsNullOrEmpty(descriptionValue) ? null : descriptionValue;
@@ -12256,90 +12319,83 @@ namespace TrueReplayer
         // PushSettingsLoaded and skip that method's disk re-read (same handler only).
         private AppSettingsManager.AppSettings SaveGlobalSettings()
         {
-            // ONE read for the three disk-owned fields below (RunOnStartup / RunAsAdmin /
-            // HasAcknowledgedImportWarning — the bridge holds no field for any of them).
-            // AppSettingsManager.Load() is not cached, so calling it once per field meant three
-            // full read+parse cycles per save, and this method runs on every settings:change.
-            var disk = AppSettingsManager.Load();
-            var s = new AppSettingsManager.AppSettings
-            {
-                AlwaysOnTop = UserProfile.Current.AlwaysOnTop,
-                MinimizeToTray = UserProfile.Current.MinimizeToTray,
-                // Persist the user's intent, not the registry state. On dev/portable builds
-                // SetRunOnStartup is a no-op (WindowShellServices guards on IsInstalledLocation),
-                // so sourcing this from the registry would keep resetting the toggle to off.
-                RunOnStartup = disk.RunOnStartup,
-                StartMinimized = UserProfile.Current.StartMinimized,
-                RunEndFlash = UserProfile.Current.RunEndFlash,
-                RunEndSound = UserProfile.Current.RunEndSound,
-                UseCustomDelay = UseCustomDelay,
-                CustomDelay = int.TryParse(CustomDelay, out var d) ? d : 100,
-                UseDelayVariation = UseDelayVariation,
-                DelayVariation = int.TryParse(DelayVariation, out var dv) ? dv : 1,
-                // The mirrors are the "No Profile" fallback and nothing else — a loaded profile's
-                // value never reaches them (HandleProfileLoopSettingChange writes the profile
-                // object instead), so persisting them here cannot leak a profile value into the
-                // global. Fallback is 1, not 0: 0 is no longer an authorable macro loop count.
-                EnableLoop = EnableLoop,
-                LoopCount = int.TryParse(LoopCount, out var c) ? UserProfile.NormalizeLoopCount(c) : UserProfile.MinLoopCount,
-                LoopIntervalEnabled = LoopIntervalEnabled,
-                LoopInterval = int.TryParse(LoopInterval, out var li) ? li : 200,
-                SmoothMovement = ActionReplayer.SmoothMovement,
-                MoveStepPx = ActionReplayer.MoveStepPx,
-                MoveStepDelayMs = ActionReplayer.MoveStepDelayMs,
-                MoveClickDelayMs = ActionReplayer.MoveClickDelayMs,
-                FastApproach = ActionReplayer.FastApproach,
-                SettleDistancePx = ActionReplayer.SettleDistancePx,
-                UseCursorClick = UseCursorClick,
-                CursorClickButton = CursorClickButton,
-                CursorClickStartHotkey = CursorClickStartHotkey,
-                CursorClickPauseHotkey = CursorClickPauseHotkey,
-                // Clicker v2 — persist the dedicated Clicker settings alongside the legacy ones.
-                CursorClickDelayMs = int.TryParse(CursorClickDelay, out var ccd) ? ccd : 100,
-                CursorClickDelayJitterPct = int.TryParse(CursorClickDelayJitter, out var ccdj) ? ccdj : 1,
-                CursorClickUseJitter = CursorClickUseJitter,
-                CursorClickHoldMs = int.TryParse(CursorClickHold, out var cch) ? cch : 10,
-                CursorClickPositionJitter = int.TryParse(CursorClickPositionJitter, out var ccpj) ? ccpj : 1,
-                CursorClickUsePositionJitter = CursorClickUsePositionJitter,
-                CursorClickUseArea = CursorClickUseArea,
-                // On-disk schema stays 5 fields for forward-compat. When the rect is null,
-                // we write zeros — Load above treats W=H=0 as "no rect" and projects back to null.
-                CursorClickAreaX = CursorClickArea?.X ?? 0,
-                CursorClickAreaY = CursorClickArea?.Y ?? 0,
-                CursorClickAreaW = CursorClickArea?.W ?? 0,
-                CursorClickAreaH = CursorClickArea?.H ?? 0,
-                CursorClickUseFixed = CursorClickUseFixed,
-                CursorClickFixedPointSet = CursorClickFixedPoint is not null,
-                CursorClickFixedX = CursorClickFixedPoint?.X ?? 0,
-                CursorClickFixedY = CursorClickFixedPoint?.Y ?? 0,
-                CursorClickLoops = int.TryParse(CursorClickLoops, out var ccl) ? ccl : 0,
-                CursorClickUseLoops = CursorClickUseLoops,
-                CursorClickIntervalMs = int.TryParse(CursorClickInterval, out var cci) ? cci : 0,
-                CursorClickUseInterval = CursorClickUseInterval,
-                CursorClickMaxDurationMs = int.TryParse(CursorClickMaxDuration, out var mdSave) ? mdSave : 60000,
-                CursorClickUseMaxDuration = CursorClickUseMaxDuration,
-                CursorClickGameMove = CursorClickGameMove,
-                ClickerPresets = ClickerPresets,
-                RecordMouse = RecordMouse,
-                RecordScroll = RecordScroll,
-                RecordKeyboard = RecordKeyboard,
-                RecordCombinedInput = RecordCombinedInput,
-                RecordingHotkey = UserProfile.Current.RecordingHotkey,
-                ReplayHotkey = UserProfile.Current.ReplayHotkey,
-                ProfileKeyToggleHotkey = UserProfile.Current.ProfileKeyToggleHotkey,
-                ForegroundHotkey = UserProfile.Current.ForegroundHotkey,
-                ModeToggleHotkey = UserProfile.Current.ModeToggleHotkey,
-                CaptureSlotHotkey = UserProfile.Current.CaptureSlotHotkey,
-                ProfileKeyEnabled = ProfileKeyEnabled,
-                BrowserSelectorEnabled = BrowserSelectorEnabled,
-                RunAsAdmin = disk.RunAsAdmin,
-                AutomationEnabled = UserProfile.Current.AutomationEnabled,
-                // Disk-owned, like RunOnStartup/RunAsAdmin above: the bridge holds no field for it,
-                // so leaving it out of this initializer wrote the class default (false) back on every
-                // save — and this method runs on EVERY settings:change. The import security warning
-                // re-armed itself after the user had ticked "Don't show again".
-                HasAcknowledgedImportWarning = disk.HasAcknowledgedImportWarning,
-            };
+            // Starts FROM the file and overwrites only what the bridge owns. It used to build a
+            // fresh AppSettings field by field, so every field the bridge holds no copy of — the
+            // disk-owned ones: RunOnStartup (the user's intent, not the registry state, which is a
+            // no-op on dev/portable builds), RunAsAdmin, HasAcknowledgedImportWarning, and then
+            // WindowBackground — was written back as the class default on EVERY settings:change.
+            // Each of the first three was patched into the list after it bit; the fourth erased the
+            // saved window colour at the next unrelated setting. A field this method does not
+            // assign now keeps whatever is on disk, so a new one cannot repeat it.
+            // AppSettingsManager.Load() is not cached (one read+parse per call), and this is the
+            // only read here.
+            var s = AppSettingsManager.Load();
+            s.AlwaysOnTop = UserProfile.Current.AlwaysOnTop;
+            s.MinimizeToTray = UserProfile.Current.MinimizeToTray;
+            s.StartMinimized = UserProfile.Current.StartMinimized;
+            s.RunEndFlash = UserProfile.Current.RunEndFlash;
+            s.RunEndSound = UserProfile.Current.RunEndSound;
+            s.UseCustomDelay = UseCustomDelay;
+            s.CustomDelay = int.TryParse(CustomDelay, out var d) ? d : 100;
+            s.UseDelayVariation = UseDelayVariation;
+            s.DelayVariation = int.TryParse(DelayVariation, out var dv) ? dv : 1;
+            // The mirrors are the "No Profile" fallback and nothing else — a loaded profile's
+            // value never reaches them (HandleProfileLoopSettingChange writes the profile
+            // object instead), so persisting them here cannot leak a profile value into the
+            // global. Fallback is 1, not 0: 0 is no longer an authorable macro loop count.
+            s.EnableLoop = EnableLoop;
+            s.LoopCount = int.TryParse(LoopCount, out var c) ? UserProfile.NormalizeLoopCount(c) : UserProfile.MinLoopCount;
+            s.LoopIntervalEnabled = LoopIntervalEnabled;
+            s.LoopInterval = int.TryParse(LoopInterval, out var li) ? li : 200;
+            s.SmoothMovement = ActionReplayer.SmoothMovement;
+            s.MoveStepPx = ActionReplayer.MoveStepPx;
+            s.MoveStepDelayMs = ActionReplayer.MoveStepDelayMs;
+            s.MoveClickDelayMs = ActionReplayer.MoveClickDelayMs;
+            s.FastApproach = ActionReplayer.FastApproach;
+            s.SettleDistancePx = ActionReplayer.SettleDistancePx;
+            s.UseCursorClick = UseCursorClick;
+            s.CursorClickButton = CursorClickButton;
+            s.CursorClickStartHotkey = CursorClickStartHotkey;
+            s.CursorClickPauseHotkey = CursorClickPauseHotkey;
+            // Clicker v2 — persist the dedicated Clicker settings alongside the legacy ones.
+            s.CursorClickDelayMs = int.TryParse(CursorClickDelay, out var ccd) ? ccd : 100;
+            s.CursorClickDelayJitterPct = int.TryParse(CursorClickDelayJitter, out var ccdj) ? ccdj : 1;
+            s.CursorClickUseJitter = CursorClickUseJitter;
+            s.CursorClickHoldMs = int.TryParse(CursorClickHold, out var cch) ? cch : 10;
+            s.CursorClickPositionJitter = int.TryParse(CursorClickPositionJitter, out var ccpj) ? ccpj : 1;
+            s.CursorClickUsePositionJitter = CursorClickUsePositionJitter;
+            s.CursorClickUseArea = CursorClickUseArea;
+            // On-disk schema stays 5 fields for forward-compat. When the rect is null,
+            // we write zeros — Load above treats W=H=0 as "no rect" and projects back to null.
+            s.CursorClickAreaX = CursorClickArea?.X ?? 0;
+            s.CursorClickAreaY = CursorClickArea?.Y ?? 0;
+            s.CursorClickAreaW = CursorClickArea?.W ?? 0;
+            s.CursorClickAreaH = CursorClickArea?.H ?? 0;
+            s.CursorClickUseFixed = CursorClickUseFixed;
+            s.CursorClickFixedPointSet = CursorClickFixedPoint is not null;
+            s.CursorClickFixedX = CursorClickFixedPoint?.X ?? 0;
+            s.CursorClickFixedY = CursorClickFixedPoint?.Y ?? 0;
+            s.CursorClickLoops = int.TryParse(CursorClickLoops, out var ccl) ? ccl : 0;
+            s.CursorClickUseLoops = CursorClickUseLoops;
+            s.CursorClickIntervalMs = int.TryParse(CursorClickInterval, out var cci) ? cci : 0;
+            s.CursorClickUseInterval = CursorClickUseInterval;
+            s.CursorClickMaxDurationMs = int.TryParse(CursorClickMaxDuration, out var mdSave) ? mdSave : 60000;
+            s.CursorClickUseMaxDuration = CursorClickUseMaxDuration;
+            s.CursorClickGameMove = CursorClickGameMove;
+            s.ClickerPresets = ClickerPresets;
+            s.RecordMouse = RecordMouse;
+            s.RecordScroll = RecordScroll;
+            s.RecordKeyboard = RecordKeyboard;
+            s.RecordCombinedInput = RecordCombinedInput;
+            s.RecordingHotkey = UserProfile.Current.RecordingHotkey;
+            s.ReplayHotkey = UserProfile.Current.ReplayHotkey;
+            s.ProfileKeyToggleHotkey = UserProfile.Current.ProfileKeyToggleHotkey;
+            s.ForegroundHotkey = UserProfile.Current.ForegroundHotkey;
+            s.ModeToggleHotkey = UserProfile.Current.ModeToggleHotkey;
+            s.CaptureSlotHotkey = UserProfile.Current.CaptureSlotHotkey;
+            s.ProfileKeyEnabled = ProfileKeyEnabled;
+            s.BrowserSelectorEnabled = BrowserSelectorEnabled;
+            s.AutomationEnabled = UserProfile.Current.AutomationEnabled;
             // A failed write keeps the values in memory (Load() answers from them) and every later
             // save retries it; said once per failure streak, not on every settings change.
             bool wasUnwritten = AppSettingsManager.HasUnwrittenSettings;

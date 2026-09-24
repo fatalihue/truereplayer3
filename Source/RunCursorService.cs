@@ -73,24 +73,71 @@ namespace TrueReplayer.Services
         {
             lock (_lock)
             {
-                _loaded = true;
                 try
                 {
                     var path = GetPath();
-                    if (!File.Exists(path)) return;
-                    var parsed = JsonSerializer.Deserialize<CursorFile>(File.ReadAllText(path), ReadOptions);
-                    if (parsed == null) return;
-                    foreach (var kv in parsed.Row) if (kv.Value >= 0) _row[kv.Key] = kv.Value;
-                    foreach (var kv in parsed.Cycle) if (kv.Value >= 0) _cycle[kv.Key] = kv.Value;
+                    if (!File.Exists(path)) { _loaded = true; return; }
+                    // UNREADABLE is not CORRUPT. _loaded used to be set before this read, so a lock
+                    // at boot (a scanner, OneDrive) emptied the cursors like a corrupt file — and
+                    // the first "Run once per data row" afterwards wrote that emptiness over the
+                    // good file, erasing every other profile's saved position. Now _loaded stays
+                    // false: SaveLocked will not write a file this session has not read, and reads
+                    // it again first (TryLateLoadLocked).
+                    if (!FileHelper.TryReadAllTextShared(path, out var json, out var readError))
+                    {
+                        DiagnosticLog.Error("run-cursors.json could not be read — cursors start from the top until it can be, and it is not written before then",
+                            readError ?? new IOException("unknown read failure"));
+                        return;
+                    }
+                    _loaded = true;
+                    ApplyFileLocked(json, keepExisting: false);
                 }
                 catch (Exception ex)
                 {
                     // A corrupt sidecar must never block startup — worst case every list restarts
                     // at item 1, which is exactly the old behaviour.
+                    _loaded = true;
                     DiagnosticLog.Error("run-cursors.json load failed — cursors start from the top", ex);
                     _row.Clear();
                     _cycle.Clear();
                 }
+            }
+        }
+
+        // Caller holds _lock. keepExisting: positions already in memory win — they are this
+        // session's, set while the file could not be read.
+        private static void ApplyFileLocked(string json, bool keepExisting)
+        {
+            var parsed = JsonSerializer.Deserialize<CursorFile>(json, ReadOptions);
+            if (parsed == null) return;
+            foreach (var kv in parsed.Row)
+                if (kv.Value >= 0 && !(keepExisting && _row.ContainsKey(kv.Key))) _row[kv.Key] = kv.Value;
+            foreach (var kv in parsed.Cycle)
+                if (kv.Value >= 0 && !(keepExisting && _cycle.ContainsKey(kv.Key))) _cycle[kv.Key] = kv.Value;
+        }
+
+        // Caller holds _lock. The boot read failed on a lock: before the first write, read again and
+        // fold the file's positions in under the ones this session set. False = still unreadable,
+        // so no write (the change stays dirty and the next flush tries again).
+        private static bool TryLateLoadLocked()
+        {
+            try
+            {
+                var path = GetPath();
+                if (!File.Exists(path)) { _loaded = true; return true; }
+                if (!FileHelper.TryReadAllTextShared(path, out var json, out _)) return false;
+                _loaded = true;
+                ApplyFileLocked(json, keepExisting: true);
+                DiagnosticLog.Info("run-cursors.json readable again — its positions merged under this session's");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                // Parses no better now than a corrupt file at boot, and ends the same way: this
+                // session's positions replace it.
+                _loaded = true;
+                DiagnosticLog.Error("run-cursors.json does not parse — this session's positions replace it", ex);
+                return true;
             }
         }
 
@@ -248,7 +295,9 @@ namespace TrueReplayer.Services
         // and write.
         private static void SaveLocked()
         {
-            if (!_loaded) return; // never write before a load — that would clobber the file with {}
+            // Never write a file this session has not read — that would clobber it with {} or with
+            // only this session's positions. After a boot read that failed, read it now.
+            if (!_loaded && !TryLateLoadLocked()) return;
             try
             {
                 var payload = new CursorFile

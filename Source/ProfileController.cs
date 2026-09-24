@@ -2861,41 +2861,65 @@ namespace TrueReplayer.Controllers
                 retryWrite = true;
                 DiagnosticLog.Info("[Profiles] profile-order.json is behind memory (its last write failed); keeping the in-memory layout and retrying the write.");
             }
+            else if (!File.Exists(ProfileOrderPath))
+            {
+                order = new ProfileOrderData();
+                _profileOrderUnreadable = false;
+                _profileOrderKnown = true;
+            }
             else
             {
-                try
+                var read = await Services.FileHelper.TryReadAllTextSharedAsync(ProfileOrderPath);
+                if (!read.Ok)
                 {
-                    if (File.Exists(ProfileOrderPath))
+                    // UNREADABLE is not CORRUPT. A lock that outlived the retries (a scanner, OneDrive,
+                    // the indexer at boot) used to land in the parse catch below: a backup that failed
+                    // on the same lock, then a reset to an empty layout — whose next save, any pin or
+                    // folder move, wrote that emptiness over a file that was never broken. Memory is
+                    // kept instead. After a successful read this session it IS the layout (every edit
+                    // writes through), and the next reload reads the file again. Before one — at boot —
+                    // it is an empty stand-in, and _profileOrderUnreadable keeps SaveProfileOrderAsync
+                    // from writing it until a read succeeds.
+                    order = _profileOrder;
+                    DiagnosticLog.Error("LoadProfileOrder: profile-order.json could not be read — the layout in memory is kept and the file is not written until it can be read",
+                        read.Error ?? new IOException("unknown read failure"));
+                    if (!_profileOrderKnown)
                     {
-                        var json = await File.ReadAllTextAsync(ProfileOrderPath);
-                        order = JsonSerializer.Deserialize<ProfileOrderData>(json, OrderJsonOptions) ?? new ProfileOrderData();
-                    }
-                    else
-                    {
-                        order = new ProfileOrderData();
+                        if (!_profileOrderUnreadable)
+                            OnAlert?.Invoke("Couldn't read your profile organisation (folders/pins) — another program is holding the file. Profiles are shown ungrouped until it can be read; the file was not changed.");
+                        _profileOrderUnreadable = true;
                     }
                 }
-                catch (Exception ex)
+                else
                 {
-                    // The order file exists but won't parse. Resetting to an empty order and letting a
-                    // later save run would PERMANENTLY wipe the user's folders/pins/colours — UNLESS the
-                    // original bytes are preserved first. So: copy the unreadable file to .bak (the
-                    // recovery point) and alert the user, THEN reset to an empty order. A subsequent save
-                    // may overwrite the corrupt original, but the .bak keeps a faithful copy to restore
-                    // from, and not blocking saves means the user's first layout edit still persists.
-                    DiagnosticLog.Error("LoadProfileOrder parse failed", ex);
+                    _profileOrderUnreadable = false;
+                    _profileOrderKnown = true;
                     try
                     {
-                        string backupPath = ProfileOrderPath + ".bak";
-                        File.Copy(ProfileOrderPath, backupPath, overwrite: true);
-                        OnAlert?.Invoke($"Couldn't read your profile organisation (folders/pins). The unreadable file was backed up to {Path.GetFileName(backupPath)}; your layout was reset.");
+                        order = JsonSerializer.Deserialize<ProfileOrderData>(read.Text, OrderJsonOptions) ?? new ProfileOrderData();
                     }
-                    catch (Exception backupEx)
+                    catch (Exception ex)
                     {
-                        DiagnosticLog.Error("LoadProfileOrder backup failed", backupEx);
-                        OnAlert?.Invoke("Couldn't read your profile organisation (folders/pins); your layout was reset.");
+                        // The order file exists but won't parse. Resetting to an empty order and letting a
+                        // later save run would PERMANENTLY wipe the user's folders/pins/colours — UNLESS the
+                        // original bytes are preserved first. So: copy the unreadable file to .bak (the
+                        // recovery point) and alert the user, THEN reset to an empty order. A subsequent save
+                        // may overwrite the corrupt original, but the .bak keeps a faithful copy to restore
+                        // from, and not blocking saves means the user's first layout edit still persists.
+                        DiagnosticLog.Error("LoadProfileOrder parse failed", ex);
+                        try
+                        {
+                            string backupPath = ProfileOrderPath + ".bak";
+                            File.Copy(ProfileOrderPath, backupPath, overwrite: true);
+                            OnAlert?.Invoke($"Couldn't read your profile organisation (folders/pins). The unreadable file was backed up to {Path.GetFileName(backupPath)}; your layout was reset.");
+                        }
+                        catch (Exception backupEx)
+                        {
+                            DiagnosticLog.Error("LoadProfileOrder backup failed", backupEx);
+                            OnAlert?.Invoke("Couldn't read your profile organisation (folders/pins); your layout was reset.");
+                        }
+                        order = new ProfileOrderData();
                     }
-                    order = new ProfileOrderData();
                 }
             }
 
@@ -2975,7 +2999,9 @@ namespace TrueReplayer.Controllers
 
             _profileOrder = order;
             PublishFolderContexts();
-            if (folderNamesChanged || retryWrite) await SaveProfileOrderAsync();
+            // Never while the file is unreadable: that save would be refused and would come back
+            // here to read again (see SaveProfileOrderAsync).
+            if ((folderNamesChanged || retryWrite) && !_profileOrderUnreadable) await SaveProfileOrderAsync();
         }
 
         // True while the layout in memory is AHEAD of profile-order.json: the last write failed.
@@ -2985,17 +3011,40 @@ namespace TrueReplayer.Controllers
         // where an inheriting profile gets its window target and coordinate space from.
         private bool _profileOrderUnwritten;
 
+        // True once memory reflects profile-order.json this session: a read succeeded, the file
+        // was absent, or a write went through. Until then, a read that fails leaves memory as a
+        // stand-in rather than the layout.
+        private bool _profileOrderKnown;
+
+        // True while profile-order.json EXISTS but could not be read and memory has never been
+        // the layout this session (see _profileOrderKnown): SaveProfileOrderAsync then refuses to
+        // write the stand-in over the real file. Cleared by the next read that succeeds.
+        private bool _profileOrderUnreadable;
+
         public async Task SaveProfileOrderAsync()
         {
             // Every layout edit ends here, synchronously after the mutation — so this is where the
             // engine's frozen copy catches up, before the first await.
             PublishFolderContexts();
+            if (_profileOrderUnreadable)
+            {
+                // Memory holds the stand-in for a file that could not be read, plus the change just
+                // made to it; written, the stand-in would replace the real folders and pins. Read the
+                // file again instead. If it reads now, its layout takes over and the change is lost
+                // — said so; if not, the change stays unsaved, and so does the file.
+                await LoadProfileOrderAsync();
+                OnAlert?.Invoke(_profileOrderUnreadable
+                    ? "Your profile organisation (folders/pins) still can't be read, so that change wasn't saved. The file was not changed."
+                    : "Your folders and pins hadn't loaded yet — they're back now, but that change wasn't applied. Please repeat it.");
+                return;
+            }
             await _profileOrderLock.WaitAsync();
             try
             {
                 var json = JsonSerializer.Serialize(_profileOrder, OrderJsonOptions);
                 await Services.FileHelper.WriteAllTextAtomicAsync(ProfileOrderPath, json);
                 _profileOrderUnwritten = false;
+                _profileOrderKnown = true;
             }
             catch (Exception ex)
             {

@@ -730,11 +730,12 @@ export function applyTransformPreview(raw: string, s: TransformState): string {
   if (s.pad && !isArgRef(s.padRef)) r = s.padN > MAX_PAD_WIDTH ? '' : r.padStart(Math.max(0, s.padN), '0');
   // Simple case-mapping, like the engine's ToUpperInvariant/ToLowerInvariant: one code point in,
   // one out. JS toUpperCase() is FULL case — it turns 'ß' into 'SS' and 'ﬁ' into 'FI' — so the
-  // preview printed letters the run never types.
+  // preview printed letters the run never types. Sentence and title go through the same helper:
+  // the engine capitalizes them with char.ToUpperInvariant, one char at a time.
   if (s.case === 'upper') r = upperInvariant(r);
   else if (s.case === 'lower') r = lowerInvariant(r);
-  else if (s.case === 'sentence') r = r.length > 0 ? r[0].toUpperCase() + r.slice(1) : r;
-  else if (s.case === 'title') r = r.replace(/(^|\s)(\S)/g, (_, ws, ch) => ws + ch.toUpperCase());
+  else if (s.case === 'sentence') r = r.length > 0 ? upperInvariant(r[0]) + r.slice(1) : r;
+  else if (s.case === 'title') r = r.replace(/(^|\s)(\S)/g, (_, ws, ch) => ws + upperInvariant(ch));
   // The fallback sees the FINAL value — an empty one, and only an empty one.
   if (s.defaultText.length > 0 && r === '') r = s.defaultText;
   return r;

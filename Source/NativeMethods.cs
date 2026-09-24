@@ -353,6 +353,9 @@ namespace TrueReplayer.Interop
         public const uint SWP_NOSIZE = 0x0001;
         public const uint SWP_NOMOVE = 0x0002;
         public const uint SWP_NOZORDER = 0x0004;
+        // Posts the request to the window's own thread instead of waiting for it to process
+        // WM_WINDOWPOSCHANGING/CHANGED — a busy or frozen target cannot block the caller.
+        public const uint SWP_ASYNCWINDOWPOS = 0x4000;
 
         [DllImport("user32.dll")]
         public static extern IntPtr GetKeyboardLayout(uint idThread);
@@ -402,6 +405,10 @@ namespace TrueReplayer.Interop
 
         [DllImport("user32.dll")]
         public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        // ShowWindow for a window of ANOTHER thread without waiting for that thread to process it.
+        [DllImport("user32.dll")]
+        public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
 
         [DllImport("user32.dll")]
         public static extern bool PostMessage(IntPtr hWnd, int Msg, IntPtr wParam, IntPtr lParam);

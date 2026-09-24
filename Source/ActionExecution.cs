@@ -1140,7 +1140,11 @@ namespace TrueReplayer.Services
         private readonly HashSet<string> _pressedKeys = new();
         private int? insertIndex;
         private bool _isRecording;
-        private DateTime? _lastActionTime;
+        // Environment.TickCount64 of the last recorded action. Monotonic on purpose: DateTime.Now
+        // jumps with an NTP correction after a resume or a DST change, and a forward jump between
+        // two clicks was recorded as the Delay itself — an hour of wait between two clicks made
+        // 300 ms apart. The replay side already measures its waits with the tick count.
+        private long? _lastActionTicks;
 
         public bool RecordMouse { get; set; } = true;
         public bool RecordScroll { get; set; } = true;
@@ -1209,7 +1213,7 @@ namespace TrueReplayer.Services
         {
             _isRecording = true;
             _capturedThisSession = 0;
-            _lastActionTime = null;
+            _lastActionTicks = null;
             // A click from a previous session must never pair with the first click of
             // this one — the wall-clock gap check would usually reject it anyway, but a
             // quick stop/start inside the double-click window shouldn't merge across.
@@ -1225,7 +1229,7 @@ namespace TrueReplayer.Services
             _sessionMods.Clear();
             _sessionUsed = false;
             insertIndex = null;
-            _lastActionTime = null;
+            _lastActionTicks = null;
             _lastCombinedLeftClick = null;
             _lastAdded = null;
             foreach (var action in _actions) action.IsInsertionPoint = false;
@@ -1241,18 +1245,17 @@ namespace TrueReplayer.Services
             }
             else
             {
-                DateTime now = DateTime.Now;
+                long now = Environment.TickCount64;
                 int delay;
-                if (_lastActionTime.HasValue)
+                if (_lastActionTicks.HasValue)
                 {
-                    delay = (int)(now - _lastActionTime.Value).TotalMilliseconds;
-                    if (delay < 0) delay = 0;
+                    delay = (int)Math.Min(int.MaxValue, Math.Max(0, now - _lastActionTicks.Value));
                 }
                 else
                 {
                     delay = 0;
                 }
-                _lastActionTime = now;
+                _lastActionTicks = now;
                 return delay;
             }
         }
@@ -2421,76 +2424,19 @@ namespace TrueReplayer.Services
                 // will send a duplicate keyup which is harmless.
                 ReleasePhysicallyHeldModifiers();
 
-                // Bring target window to focus if enabled. Full activation stack
-                // (restore-if-minimized, NULL-foreground-guarded AttachThreadInput,
-                // foreground-lock bypass, verified) — see WindowActivation. Best-effort:
-                // a refused switch doesn't block the run, matching the old behavior.
-                IntPtr focusedHwnd = IntPtr.Zero;
-                if (_bringToFocus && _windowTarget != null)
-                {
-                    var targetHwnd = FindTargetWindow();
-                    if (targetHwnd != IntPtr.Zero)
-                    {
-                        await TrueReplayer.Helpers.WindowActivation.ActivateAsync(
-                            targetHwnd, _windowTarget, _windowTargetTitleRegex, token);
-                        await Task.Delay(300, token); // Wait for window to restore and gain focus
-                        focusedHwnd = targetHwnd;
-                    }
-                    else
-                    {
-                        // A missing target used to be a total no-op — no log, no step in the run
-                        // report — and with ABSOLUTE coordinates there is no rescue afterwards
-                        // (TryResolveRelativeOffset returns true immediately for non-relative), so
-                        // the clicks land at those screen positions and SendText types into
-                        // whatever happens to be in front. An automation then reports "fired".
-                        // Costs nothing: FindTargetWindow has already run.
-                        DiagnosticLog.Warn(
-                            $"BringToFocus: target window not found ({_windowTarget.ProcessName ?? "any process"}" +
-                            $"{(string.IsNullOrEmpty(_windowTarget.WindowTitle) ? "" : $" / {_windowTarget.WindowTitle}")}) — " +
-                            "the run continues against whatever is in the foreground");
-                    }
-                }
-
-                // Restore Position / Restore Size: reposition/resize target window before replay.
-                // Independent from Relative Coordinates — the user can restore geometry even with
-                // absolute coordinates (e.g., they just want the window consistently placed).
-                // hasSize gates the SIZE only. Position must NOT be gated on it: "Convert coords →
-                // Absolute" zeroes WindowWidth/Height while deliberately keeping the captured X/Y
-                // (WebViewBridge.ExecuteConvertCoordinatesWithRect), and that position-only restore
-                // is precisely what keeps absolute coordinates valid — the window has to go back
-                // where they were measured. Gating applyPos on width/height turned it into a silent
-                // no-op for every profile that ever went through that conversion.
-                bool hasSize = _lockWidth > 0 && _lockHeight > 0;
-                bool applySize = _restoreSize && hasSize;   // gating explícito + sanity-check
-                bool applyPos = _restorePosition;
-                if (_windowTarget != null && (applySize || applyPos))
-                {
-                    // The window just brought forward, not a second lookup — the rule
-                    // ExecuteActivateWindow already follows. With two windows that match (a process
-                    // name alone, a loose title regex), a fresh FindTargetWindow walks the Z-order
-                    // again and, after a refused or superseded activation, moves and sizes the OTHER
-                    // one.
-                    var sizeHwnd = focusedHwnd != IntPtr.Zero ? focusedHwnd : FindTargetWindow();
-                    if (sizeHwnd != IntPtr.Zero && !NativeMethods.IsIconic(sizeHwnd))
-                    {
-                        // Chrome fix: SetWindowPos resize é silenciosamente ignorado em janelas
-                        // maximizadas (chrome customizado/DWM). Un-maximize antes de aplicar tamanho.
-                        if (applySize && NativeMethods.IsZoomed(sizeHwnd))
-                        {
-                            NativeMethods.ShowWindow(sizeHwnd, NativeMethods.SW_RESTORE);
-                            await Task.Delay(80, token);
-                        }
-                        uint flags = NativeMethods.SWP_NOZORDER;
-                        if (!applyPos) flags |= NativeMethods.SWP_NOMOVE;
-                        if (!applySize) flags |= NativeMethods.SWP_NOSIZE;
-                        int posX = applyPos ? _lockX : 0;
-                        int posY = applyPos ? _lockY : 0;
-                        int sizeW = applySize ? _lockWidth : 0;
-                        int sizeH = applySize ? _lockHeight : 0;
-                        NativeMethods.SetWindowPos(sizeHwnd, IntPtr.Zero, posX, posY, sizeW, sizeH, flags);
-                        await Task.Delay(100, token); // Wait for reposition/resize
-                    }
-                }
+                // Bring to Focus + Restore Position / Restore Size, through the same code a
+                // sub-profile entry uses (ApplyWindowContextAsync — full activation stack,
+                // best-effort: a refused switch doesn't block the run), on a POOL thread. This
+                // point still runs on the thread that called StartAsync, the UI thread, which is
+                // also the one pumping the low-level keyboard/mouse hooks; the activation and the
+                // move wait on the target's own thread, and against a busy or frozen target that
+                // froze the hooks with them — every key and click on the machine queued behind
+                // LowLevelHooksTimeout, and the Stop hotkey, which arrives through that hook,
+                // could not stop the run it was stuck in. This copy also used to be a hand-kept
+                // twin of ApplyWindowContextAsync, and the root run had fallen behind it: no
+                // off-screen clamp on the restored position. Settle 300 ms after the activation,
+                // as the top of a run always waited.
+                await Task.Run(() => ApplyWindowContextAsync(token, settleMs: 300), token);
 
                 // Reset the call stack at the start of every replay run (in case a previous
                 // run was canceled mid-sub-profile, leaving stack residue). Push the ROOT
@@ -3031,7 +2977,7 @@ namespace TrueReplayer.Services
             // It used to read: the recorder MERGES two physical clicks into a DoubleClick row, so
             // the real double-click's duration was already inside the gap recorded after it, and
             // resyncing would pay that time twice. The recorder does not work that way. The delay
-            // of the NEXT row is computed by GetDelayForNewAction from _lastActionTime, which is
+            // of the NEXT row is computed by GetDelayForNewAction from _lastActionTicks, which is
             // stamped on the SECOND physical click — the merge reuses the first click's row and
             // its already-computed delay, and never rewrites it. So the interval between the two
             // clicks was never in that gap: resyncing after a recorded DoubleClick is MORE
@@ -4356,34 +4302,72 @@ namespace TrueReplayer.Services
         }
 
         /// <summary>
-        /// Runs the focus + lock-position + lock-size setup that StartAsync does at the top,
-        /// but extracted so a sub-profile entry can apply its own target window the same way.
+        /// The focus + lock-position + lock-size setup, applied at the top of a run (StartAsync,
+        /// settle 300 ms) and at a sub-profile entry (settle 200 ms), so both apply a target window
+        /// the same way. Runs on a pool thread in both cases — see StartAsync on why never the UI's.
         /// </summary>
-        private async Task ApplyWindowContextAsync(CancellationToken token)
+        private async Task ApplyWindowContextAsync(CancellationToken token, int settleMs = 200)
         {
             IntPtr focusedHwnd = IntPtr.Zero;
             if (_bringToFocus && _windowTarget != null)
             {
                 var targetHwnd = FindTargetWindow();
-                if (targetHwnd != IntPtr.Zero)
+                if (targetHwnd == IntPtr.Zero)
+                {
+                    // A missing target used to be a total no-op — no log, no step in the run
+                    // report — and with ABSOLUTE coordinates there is no rescue afterwards
+                    // (TryResolveRelativeOffset returns true immediately for non-relative), so
+                    // the clicks land at those screen positions and SendText types into
+                    // whatever happens to be in front. An automation then reports "fired".
+                    // Costs nothing: FindTargetWindow has already run.
+                    DiagnosticLog.Warn(
+                        $"BringToFocus: target window not found ({DescribeWindowTarget(_windowTarget)}) — " +
+                        "the run continues against whatever is in the foreground");
+                }
+                else if (NativeMethods.IsHungAppWindow(targetHwnd))
+                {
+                    // A frozen owner does not answer the restore/raise that the activation sends it,
+                    // and the call waits on it with no timeout of its own. Same best-effort policy
+                    // as a refused switch: the run goes on, and the log says why nothing came forward.
+                    DiagnosticLog.Warn(
+                        $"BringToFocus: target window is not responding ({DescribeWindowTarget(_windowTarget)}) — " +
+                        "activation skipped; the run continues against whatever is in the foreground");
+                }
+                else
                 {
                     // Full activation stack, best-effort (see WindowActivation).
                     await TrueReplayer.Helpers.WindowActivation.ActivateAsync(
                         targetHwnd, _windowTarget, _windowTargetTitleRegex, token);
-                    await Task.Delay(200, token);
+                    await Task.Delay(settleMs, token); // Wait for window to restore and gain focus
                     focusedHwnd = targetHwnd;
                 }
             }
 
-            // Size gated, position not — see the note in StartAsync on why. The geometry goes to the
-            // window just activated, not to a second lookup (see StartAsync's sizeHwnd).
+            // Restore Position / Restore Size: reposition/resize target window before replay.
+            // Independent from Relative Coordinates — the user can restore geometry even with
+            // absolute coordinates (e.g., they just want the window consistently placed).
+            // hasSize gates the SIZE only. Position must NOT be gated on it: "Convert coords →
+            // Absolute" zeroes WindowWidth/Height while deliberately keeping the captured X/Y
+            // (WebViewBridge.ExecuteConvertCoordinatesWithRect), and that position-only restore
+            // is precisely what keeps absolute coordinates valid — the window has to go back
+            // where they were measured. Gating applyPos on width/height turned it into a silent
+            // no-op for every profile that ever went through that conversion.
             bool hasSize = _lockWidth > 0 && _lockHeight > 0;
             bool applySize = _restoreSize && hasSize;
             bool applyPos = _restorePosition;
+            // The window just brought forward, not a second lookup — the rule
+            // ExecuteActivateWindow already follows. With two windows that match (a process
+            // name alone, a loose title regex), a fresh FindTargetWindow walks the Z-order
+            // again and, after a refused or superseded activation, moves and sizes the OTHER
+            // one.
             if (_windowTarget != null && (applySize || applyPos))
                 await ApplyWindowGeometryAsync(focusedHwnd != IntPtr.Zero ? focusedHwnd : FindTargetWindow(),
                     _lockX, _lockY, _lockWidth, _lockHeight, applyPos, applySize, token);
         }
+
+        private static string DescribeWindowTarget(Models.WindowTarget target)
+            => $"{target.ProcessName ?? "any process"}" +
+               $"{(string.IsNullOrEmpty(target.WindowTitle) ? "" : $" / {target.WindowTitle}")}";
 
         /// <summary>
         /// Moves and/or resizes a window to a saved rect. Shared by the profile/folder
@@ -4397,13 +4381,37 @@ namespace TrueReplayer.Services
         {
             if (hwnd == IntPtr.Zero || (!applyPos && !applySize)) return;
             if (NativeMethods.IsIconic(hwnd)) return;
+            // Both calls below are ASYNC variants: the synchronous ones wait for the window's own
+            // thread to process the move, with no timeout, so a frozen target used to hold this
+            // thread until it recovered — or forever. A hung window is skipped outright: nothing
+            // posted to it can land while it is hung, and the log says why it did not move.
+            if (NativeMethods.IsHungAppWindow(hwnd))
+            {
+                DiagnosticLog.Warn("Window placement skipped: the target window is not responding.");
+                return;
+            }
             if (applySize && NativeMethods.IsZoomed(hwnd))
             {
-                NativeMethods.ShowWindow(hwnd, NativeMethods.SW_RESTORE);
-                await Task.Delay(80, token);
+                NativeMethods.ShowWindowAsync(hwnd, NativeMethods.SW_RESTORE);
+                // A zoomed window ignores the resize, so wait until it has actually left the
+                // maximized state rather than a fixed 80 ms: a busy app processes the restore late,
+                // and the resize then went through against a window still maximized — accepted,
+                // no error, no effect, and every click of the run measured against a size the
+                // window never took. Past the ceiling the placement is skipped and logged.
+                var unzoom = System.Diagnostics.Stopwatch.StartNew();
+                while (NativeMethods.IsZoomed(hwnd) && unzoom.ElapsedMilliseconds < UnzoomTimeoutMs)
+                    await Task.Delay(20, token);
+                if (NativeMethods.IsZoomed(hwnd))
+                {
+                    DiagnosticLog.Warn(
+                        $"Window placement skipped: the target window is still maximized {UnzoomTimeoutMs} ms " +
+                        $"after the restore, so the {width}x{height} size cannot take effect.");
+                    return;
+                }
+                await Task.Delay(80, token); // the restore's own relayout (the Chrome case)
             }
             if (applyPos) (x, y) = ClampOnScreen(hwnd, x, y, width, height, applySize);
-            uint flags = NativeMethods.SWP_NOZORDER;
+            uint flags = NativeMethods.SWP_NOZORDER | NativeMethods.SWP_ASYNCWINDOWPOS;
             if (!applyPos) flags |= NativeMethods.SWP_NOMOVE;
             if (!applySize) flags |= NativeMethods.SWP_NOSIZE;
             NativeMethods.SetWindowPos(hwnd, IntPtr.Zero,
@@ -4411,6 +4419,10 @@ namespace TrueReplayer.Services
                 applySize ? width : 0, applySize ? height : 0, flags);
             await Task.Delay(80, token);
         }
+
+        // How long a zoomed window gets to leave the maximized state before a size placement is
+        // given up. A responsive window does it in one frame; this only bounds a busy one.
+        private const int UnzoomTimeoutMs = 1500;
 
         // How much of the window has to stay reachable after a placement: enough title bar to
         // grab with the mouse. Windows' own snap/restore logic uses a comparable margin.
@@ -4465,7 +4477,7 @@ namespace TrueReplayer.Services
             if (cx != x || cy != y)
             {
                 DiagnosticLog.Warn(
-                    $"Activate Window: placement ({x},{y}) is off the current desktop " +
+                    $"Window placement: ({x},{y}) is off the current desktop " +
                     $"({vw}x{vh} at {vx},{vy}) for a {w}x{h} window — clamped to ({cx},{cy}). " +
                     "The stored position probably came from a monitor that is no longer connected.");
             }
@@ -7314,7 +7326,15 @@ namespace TrueReplayer.Services
                 Services.DiagnosticLog.Info("Capture to Slot: a capture is already in flight — ignored");
                 return null;
             }
-            var original = await ReadClipboardSnapshotAsync(dispatcherQueue, includeHtml: true);
+            (string? Text, string? Html) original;
+            try { original = await ReadClipboardSnapshotAsync(dispatcherQueue, includeHtml: true, token); }
+            catch
+            {
+                // A Stop during the read: nothing was cleared yet, so there is nothing to restore —
+                // but the in-flight flag has to come down, or every later capture bails as "busy".
+                System.Threading.Interlocked.Exchange(ref _captureBusy, 0);
+                throw;
+            }
             // Text-bearing clipboards get the clear-then-poll change detector (and a faithful
             // restore at the end). A NON-text clipboard (files, image — the snapshot can't
             // carry those) is left untouched instead: any text APPEARING is the copy, and
@@ -7343,7 +7363,7 @@ namespace TrueReplayer.Services
                 for (int i = 0; i < 15; i++) // up to ~750 ms — slow targets render the copy late
                 {
                     await Task.Delay(50, token);
-                    var text = await ReadClipboardTextAsync(dispatcherQueue);
+                    var text = await ReadClipboardTextAsync(dispatcherQueue, token);
                     if (!string.IsNullOrEmpty(text)) return text;
                 }
                 return null;
@@ -7427,7 +7447,13 @@ namespace TrueReplayer.Services
         /// absent or unreadable; both null = clipboard held something else entirely (image,
         /// files) — restore then clears, same as the old text-only behavior.
         /// </summary>
-        internal static async Task<(string? Text, string? Html)> ReadClipboardSnapshotAsync(DispatcherQueue dispatcherQueue, bool includeHtml = true)
+        // The read runs on the UI thread and waits on the clipboard's OWNER, which renders a
+        // delayed format on request (Excel does) — a busy or hung owner holds it. The caller's
+        // token lets a Stop abandon that wait: it used to be uncancellable, so the run sat on it
+        // past the Stop. Deliberately NO timeout: a read given up early reads as an empty
+        // clipboard, which types an empty {clipboard} and, for the SendText backup, turns the
+        // restore into a Clear() of what the user had copied.
+        internal static async Task<(string? Text, string? Html)> ReadClipboardSnapshotAsync(DispatcherQueue dispatcherQueue, bool includeHtml = true, CancellationToken token = default)
         {
             var tcsSnap = new TaskCompletionSource<(string?, string?)>();
             if (!dispatcherQueue.TryEnqueue(async () =>
@@ -7453,10 +7479,14 @@ namespace TrueReplayer.Services
             {
                 tcsSnap.TrySetResult((null, null));
             }
-            return await tcsSnap.Task;
+            using (token.Register(() => tcsSnap.TrySetCanceled(token)))
+                return await tcsSnap.Task;
         }
 
-        internal static async Task<string?> ReadClipboardTextAsync(DispatcherQueue dispatcherQueue)
+        // Same wait as ReadClipboardSnapshotAsync, same token and no-timeout rule. Every
+        // completion is a Try*: after a Stop has cancelled the TCS, the read finishing late on
+        // the UI thread must not throw there.
+        internal static async Task<string?> ReadClipboardTextAsync(DispatcherQueue dispatcherQueue, CancellationToken token = default)
         {
             var tcsClip = new TaskCompletionSource<string?>();
             if (!dispatcherQueue.TryEnqueue(async () =>
@@ -7467,17 +7497,18 @@ namespace TrueReplayer.Services
                     if (content.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.Text))
                     {
                         var clipText = await content.GetTextAsync();
-                        tcsClip.SetResult(clipText);
+                        tcsClip.TrySetResult(clipText);
                     }
-                    else tcsClip.SetResult(null);
+                    else tcsClip.TrySetResult(null);
                 }
-                catch { tcsClip.SetResult(null); }
+                catch { tcsClip.TrySetResult(null); }
             }))
             {
                 // Queue shut down (app closing) — unblock the awaiter with "no clipboard".
                 tcsClip.TrySetResult(null);
             }
-            return await tcsClip.Task;
+            using (token.Register(() => tcsClip.TrySetCanceled(token)))
+                return await tcsClip.Task;
         }
 
         // Reads the Windows clipboard HISTORY (Win+V) as a recency-ordered list of text values —
@@ -8446,7 +8477,7 @@ namespace TrueReplayer.Services
             // Typed delivery still READS: originalClipboard.Text feeds token resolution below, so
             // {clipboard[:mods]} resolves identically. It just never WRITES and never restores —
             // includeHtml is already false there, because ResolveSendTextDelivery nulled html.
-            var originalClipboard = await ReadClipboardSnapshotAsync(dispatcherQueue, includeHtml: !string.IsNullOrEmpty(html));
+            var originalClipboard = await ReadClipboardSnapshotAsync(dispatcherQueue, includeHtml: !string.IsNullOrEmpty(html), token);
 
             // Resolve {clipboard[:mods]} + {datetime}/{date}/{time} in one pass via the unified
             // resolver, using the saved clipboard content so subsequent clipboard writes (for
@@ -8535,7 +8566,13 @@ namespace TrueReplayer.Services
                 // branch is a Clipboard.Clear() when the snapshot held neither flavor (an image, a
                 // file list). "Restoring" here would let the one mode that promises never to touch
                 // your clipboard WIPE what you copied while the macro ran.
-                if (!typeMode) RestoreOriginalClipboard(originalClipboard);
+                // The settle is not cut short by a Stop: a Ctrl+V already injected still reads the
+                // clipboard whenever the target gets to it, and what it must find there is ours.
+                if (!typeMode)
+                {
+                    await WaitPasteSettleAsync(CancellationToken.None);
+                    RestoreOriginalClipboard(originalClipboard);
+                }
             }
         }
 
@@ -9137,7 +9174,7 @@ namespace TrueReplayer.Services
                 bool rawResult;
                 if (isClipboard)
                 {
-                    var clip = await ReadClipboardTextAsync(dispatcherQueue) ?? string.Empty;
+                    var clip = await ReadClipboardTextAsync(dispatcherQueue, token) ?? string.Empty;
                     rawResult = EvaluateClipboardPattern(clip, action);
                 }
                 else if (isVariable)
@@ -10122,6 +10159,8 @@ namespace TrueReplayer.Services
             // never routes through here, so LF-tolerant consumers are unaffected.
             // The HTML flavor is deliberately NOT normalized — markup needs no CRLF.
             text = text.Replace("\r\n", "\n").Replace("\n", "\r\n");
+            // The previous segment's Ctrl+V may not have been read yet — see PasteSettleMs.
+            await WaitPasteSettleAsync(token);
             var tcs = new TaskCompletionSource<bool>();
             if (!dispatcherQueue.TryEnqueue(() =>
             {
@@ -10171,7 +10210,29 @@ namespace TrueReplayer.Services
             };
 
             NativeMethods.SendInput((uint)inputs.Length, inputs, NativeMethods.InputSize);
+            _lastPasteTicks = Environment.TickCount64;
             await Task.Delay(50, token);
+        }
+
+        // How long the text we pasted stays on the clipboard after its Ctrl+V before anything of
+        // ours replaces it — the next segment's paste, or the restore of the user's own clipboard.
+        // Nothing tells us the target has READ it: the Ctrl+V is only queued input, and a busy
+        // Electron app, a browser whose page is working, or an RDP/VM window forwarding the paste
+        // reads the clipboard whenever it gets to it. The restore used to follow the Ctrl+V after
+        // 50 ms, and a target that read later pasted the user's OLD clipboard — whatever they had
+        // copied before the run, a password included — reported as a successful SendText. The
+        // clipboard sequence number is no such signal either (it counts writes, and a read is not
+        // one). So a fixed floor, the order of what text expanders ship as their restore delay:
+        // ~250 ms more per paste-mode SendText, against a leak of the user's clipboard.
+        private const int PasteSettleMs = 300;
+        // Environment.TickCount64 of the last injected Ctrl+V. 0 never waits: the tick count is
+        // milliseconds since boot.
+        private long _lastPasteTicks;
+
+        private async Task WaitPasteSettleAsync(CancellationToken token)
+        {
+            long wait = PasteSettleMs - (Environment.TickCount64 - _lastPasteTicks);
+            if (wait > 0) await Task.Delay((int)wait, token);
         }
 
         // Replay handler for the Keystroke action type. Parses a "+"-joined combo like

@@ -137,8 +137,6 @@ export interface DialogShellProps {
   /** Left-anchored tertiary action in the footer (Remove, Reset ▾). Replaces the hint text
    *  when present — the two share the left edge and never both appear. */
   footerStart?: ReactNode;
-  /** @deprecated Escape hatch kept for the odd case; prefer `size` + `cardClassName`. */
-  widthClass?: string;
   /** Tailwind max-width clamp for the card. Default preserves the historical 90vw
    *  clamp; space-hungry dialogs (Insert Text) pass a tighter-gutter clamp like
    *  'max-w-[calc(100vw-24px)]' to use the whole window at the minimum app size. */
@@ -183,7 +181,6 @@ export function DialogShell({
   cardClassName = '',
   zClass = 'z-50',
   footerStart,
-  widthClass,
   maxWidthClass,
   onClose,
   canClose,
@@ -199,9 +196,9 @@ export function DialogShell({
   // This shell's id for the layers its content floats over it — see dialogLayer.ts.
   const layerId = useId();
   const [leaving, setLeaving] = useState(false);
-  // Width: the size step, or the legacy widthClass when a caller still passes one. The full
-  // panel size must not be clawed back by the default 90vw clamp (see PANEL_MAX_WIDTH).
-  const widthClasses = widthClass ?? SIZE_CLASSES[size];
+  // Width: the size step. The full panel size must not be clawed back by the default 90vw
+  // clamp (see PANEL_MAX_WIDTH).
+  const widthClasses = SIZE_CLASSES[size];
   const maxWidthClasses = maxWidthClass ?? (size === 'full' ? PANEL_MAX_WIDTH : 'max-w-[calc(100vw-24px)]');
   // Where the last mousedown landed — a drag that merely ENDS on the scrim
   // (text selection pulled outside the card) must not count as a backdrop click.

@@ -268,6 +268,9 @@ namespace TrueReplayer
                     TrayIconService.UpdateTrayIcon();   // "N automations armed" tooltip line
                 }
             });
+            // A watcher that took itself out of service. Already on the dispatcher (the daemon
+            // marshals it); held like the boot notices, since it can happen at an autostart boot.
+            triggerService.OnNotice = message => bridge?.ShowNoticeWhenSeen(message);
             // The ctor's ApplyGlobalSettings (line above) ran before this instance existed —
             // seed the master switch now so a disabled-on-disk setting is honored before the
             // first profile-list load can arm anything.
@@ -551,6 +554,9 @@ namespace TrueReplayer
 
             // Wire up unsaved changes guard for window close and tray exit
             windowEventManager.OnCloseRequested = HandleCloseGuardAsync;
+            // The notices held while the window was hidden go out once it is on screen. Enqueued:
+            // this runs inside the window procedure, before the show has finished.
+            windowEventManager.OnShown = () => DispatcherQueue.TryEnqueue(() => bridge?.FlushPendingNotices());
             TrayIconService.OnTrayExitRequested = HandleCloseGuardAsync;
             TrayIconService.OnTraySettingChanged = () =>
             {
@@ -805,8 +811,17 @@ namespace TrueReplayer
                     var msg = failures.Count <= 5
                         ? $"{failures.Count} profile(s) couldn't load: {names}"
                         : $"{failures.Count} profiles couldn't load (first 5: {names}, …)";
-                    bridge.SendMessage("alert:show", new { message = msg });
+                    // Held until the window is on screen — an autostart boot hides it first
+                    // (see WebViewBridge.ShowNoticeWhenSeen). Same for every notice below.
+                    bridge.ShowNoticeWhenSeen(msg);
                 }
+
+                // appsettings.json was present but locked for the whole read — this session runs
+                // on defaults and will not write the file (AppSettingsManager.WriteLocked).
+                if (AppSettingsManager.IsUnreadableThisSession)
+                    bridge.ShowNoticeWhenSeen(
+                        "Your settings file couldn't be read (another program was holding it), so this session " +
+                        "runs on default settings and won't save changes to them. Restart TrueReplayer to load your settings.");
 
                 // Hotkeys and trigger modes are deliberately NOT re-registered here.
                 // LoadProfileListAsync arms both as the last thing it does, off the same
@@ -822,13 +837,13 @@ namespace TrueReplayer
                 // fires, and which one depends on Dictionary iteration order).
                 foreach (var msg in profileController.GetAndClearHotkeyCollisions())
                 {
-                    bridge.SendMessage("alert:show", new { message = msg });
+                    bridge.ShowNoticeWhenSeen(msg);
                 }
                 }
                 catch (Exception ex)
                 {
                     Services.DiagnosticLog.Error("Initial-data load failed", ex);
-                    try { bridge.SendMessage("alert:show", new { message = "Startup data couldn't load fully. Some profiles or hotkeys may be unavailable." }); }
+                    try { bridge.ShowNoticeWhenSeen("Startup data couldn't load fully. Some profiles or hotkeys may be unavailable."); }
                     catch { /* toast is best-effort — never let the failure handler throw */ }
                 }
                 finally
@@ -1087,6 +1102,10 @@ namespace TrueReplayer
                     {
                         message = $"Profile '{profileName}' hotkey ignored — '{procName}' isn't running"
                     });
+                    // The toast alone is in the wrong place: a profile hotkey (or its hotstring) is
+                    // pressed while the user is in ANOTHER app, which is exactly when this window is
+                    // not in front — so "my hotkey did nothing" came with no signal they could notice.
+                    TrayIconService.CueOutOfView();
                 });
             };
 
@@ -1375,7 +1394,21 @@ namespace TrueReplayer
                         // always be false and silently swallow every Toggle start.
                         bool isWhilePressedHold = prefix == "PROFILE_HOLD::";
 
-                        await RunProfileTriggerAsync(profileName, forceInfiniteLoop, isWhilePressedHold, key, startOnly: false);
+                        // async-void dispatcher lambda, and the profile load inside is real I/O. The
+                        // automation dispatch of this same function has always had this catch; the
+                        // hotkey path had none, so a locked or unreadable profile.json ended in the
+                        // app-wide UnhandledException net, which keeps the process alive and says
+                        // nothing — the key simply did nothing, every time it was pressed.
+                        try
+                        {
+                            await RunProfileTriggerAsync(profileName, forceInfiniteLoop, isWhilePressedHold, key, startOnly: false);
+                        }
+                        catch (Exception ex)
+                        {
+                            Services.DiagnosticLog.Error($"Profile hotkey '{profileName}' failed", ex);
+                            bridge?.SendMessage("alert:show", new { message = $"Could not start \"{profileName}\": {ex.Message}", type = "error" });
+                            TrayIconService.CueOutOfView();
+                        }
                     }
                 });
             };
@@ -1709,6 +1742,9 @@ namespace TrueReplayer
             if (!enqueued) tcs.TrySetResult(TriggerFireResult.Failed);
             return tcs.Task;
         }
+
+        /// <summary>True while the window is shown (not hidden to the tray). Minimized still counts.</summary>
+        public bool IsOnScreen => hwnd != IntPtr.Zero && NativeMethods.IsWindowVisible(hwnd);
 
         public void CancelUIWatchdog()
         {

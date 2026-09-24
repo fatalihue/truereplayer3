@@ -9,6 +9,7 @@ import { compactKey } from '../utils/keyNames';
 import { useBridge } from '../bridge/BridgeContext';
 import { useAppState } from '../state/AppStateContext';
 import { useTt } from '../state/LanguageContext';
+import { useToast } from '../state/ToastContext';
 import type { ProfileMetadataPayload, TagListEntry } from '../bridge/messageTypes';
 import { formatDateLong } from '../utils/dateFormat';
 
@@ -72,6 +73,10 @@ export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogPro
   const { send, subscribe } = useBridge();
   const { profiles, profileOrder } = useAppState();
   const tt = useTt();
+  const { showToast } = useToast();
+  // Read by the metadata subscriber, which subscribes once per profile name.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   const [loaded, setLoaded] = useState(false);
   const [original, setOriginal] = useState<ProfileMetadataPayload | null>(null);
@@ -115,6 +120,14 @@ export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogPro
     return subscribe((msg) => {
       if (msg.type === 'profile:metadata' && msg.payload.name === profileName) {
         const m = msg.payload;
+        // found:false = the file is gone (renamed or deleted since the menu opened) or unreadable.
+        // It used to load as an EMPTY profile — a form whose Save the backend then dropped.
+        if (!m.found) {
+          showToast(tt(`"${profileName}" no longer exists or can't be read — nothing to edit.`,
+            `"${profileName}" não existe mais ou não pôde ser lido — nada para editar.`), 'error');
+          onCloseRef.current();
+          return;
+        }
         setOriginal(m);
         setDescription(m.description ?? '');
         setTags(m.tags ?? []);
@@ -140,7 +153,7 @@ export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogPro
       // profile:versionBumped intentionally not consumed in 2.2.0 — the bump UI was removed.
       // Re-add the handler when the share-via-link / marketplace path resurfaces the bump button.
     });
-  }, [subscribe, profileName]);
+  }, [subscribe, profileName, showToast, tt]);
 
   // Autocomplete candidates: filter local-known tags by the current draft, exclude
   // already-selected ones. Cap at 8 suggestions so the dropdown stays compact.

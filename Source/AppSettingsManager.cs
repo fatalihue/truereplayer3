@@ -181,8 +181,30 @@ namespace TrueReplayer.Services
         private static readonly object _writeLock = new();
         private static string? _unwrittenJson;
 
+        // The last file text this session read AND parsed. A later read that fails on a lock
+        // answers from it instead of from class defaults: every settings write here is a
+        // read-modify-write (SaveGlobalSettings, the theme colour, the tray toggles), and a
+        // defaults answer turned one unrelated change into a write of defaults over everything.
+        private static string? _lastGoodJson;
+
+        // The file was PRESENT but could not be read, before any read of it had succeeded: what
+        // the app then built from Load() is class defaults, not the user's settings. For the rest
+        // of the session nothing is written over the file — see WriteLocked. Not cleared by a later
+        // successful read: the state seeded from defaults at boot stays in memory regardless.
+        private static bool _unreadableThisSession;
+
+        // The corrupt file is copied aside once per session, before anything can overwrite it.
+        private static bool _corruptBackedUp;
+
         /// <summary>True while a failed write is pending (see <see cref="Save"/>).</summary>
         public static bool HasUnwrittenSettings { get { lock (_writeLock) return _unwrittenJson != null; } }
+
+        /// <summary>
+        /// True when appsettings.json existed but could not be read before any successful read this
+        /// session — the app is running on defaults and will not write the file (see WriteLocked).
+        /// The boot sequence reports it; the WebViewBridge ctor skips its migration save on it.
+        /// </summary>
+        public static bool IsUnreadableThisSession { get { lock (_writeLock) return _unreadableThisSession; } }
 
         /// <summary>
         /// Persists <paramref name="settings"/>. False when the write failed: the values are then
@@ -213,6 +235,17 @@ namespace TrueReplayer.Services
         // Caller holds _writeLock.
         private static bool WriteLocked(string json)
         {
+            if (_unreadableThisSession)
+            {
+                // Kept in memory like a failed write — Load() answers from it, so the session stays
+                // consistent with its own changes — but never put on disk: it was built on defaults,
+                // and writing it would replace the user's real settings with them.
+                _unwrittenJson = json;
+                TrueReplayer.Services.DiagnosticLog.Warn(
+                    "appsettings.json NOT written: it could not be read when this session started, so these values " +
+                    "were built on defaults. Restart TrueReplayer to load the file.");
+                return false;
+            }
             try
             {
                 string path = GetPath();
@@ -223,6 +256,7 @@ namespace TrueReplayer.Services
                 Directory.CreateDirectory(Path.GetDirectoryName(path)!);
                 FileHelper.WriteAllTextAtomic(path, json);
                 _unwrittenJson = null;
+                _lastGoodJson = json;   // what is on disk now — a later locked read answers with THIS
                 return true;
             }
             catch (Exception ex)
@@ -248,18 +282,66 @@ namespace TrueReplayer.Services
             if (!File.Exists(path))
                 return new AppSettings();
 
+            // UNREADABLE and CORRUPT are different answers. A lock (a scanner, OneDrive, the indexer
+            // at boot) used to land in the same catch as bad JSON and come back as class defaults —
+            // and the WebViewBridge ctor saves on a default it recognises (CursorClickDelayMs = -1),
+            // so the user's hotkeys, presets and RunAsAdmin were replaced within the same boot.
+            if (!TrueReplayer.Services.FileHelper.TryReadAllTextShared(path, out var json, out var readError))
+            {
+                string? lastGood;
+                lock (_writeLock)
+                {
+                    lastGood = _lastGoodJson;
+                    if (lastGood == null) _unreadableThisSession = true;
+                }
+                if (lastGood != null)
+                {
+                    TrueReplayer.Services.DiagnosticLog.Warn(
+                        $"appsettings.json could not be read ({readError?.Message}) — answering with the values last read this session");
+                    try { return JsonSerializer.Deserialize(lastGood, AppSettingsJsonContext.Default.AppSettings) ?? new AppSettings(); }
+                    catch { return new AppSettings(); } // cannot happen: it parsed when it was cached
+                }
+                TrueReplayer.Services.DiagnosticLog.Error(
+                    "appsettings.json exists but could not be read — running on defaults this session, and the file " +
+                    "will NOT be written until TrueReplayer is restarted", readError ?? new IOException("unknown read failure"));
+                return new AppSettings();
+            }
+
             try
             {
-                var json = File.ReadAllText(path);
-                return JsonSerializer.Deserialize(json, AppSettingsJsonContext.Default.AppSettings) ?? new AppSettings();
+                var parsed = JsonSerializer.Deserialize(json, AppSettingsJsonContext.Default.AppSettings) ?? new AppSettings();
+                lock (_writeLock) _lastGoodJson = json;
+                return parsed;
             }
             catch (Exception ex)
             {
-                // Corrupt appsettings.json → silent fallback to defaults resets hotkeys, RunAsAdmin,
-                // ProfileKeyEnabled, etc. Make that durable in the session log, not just the debugger.
+                // Corrupt appsettings.json → fallback to defaults resets hotkeys, RunAsAdmin,
+                // ProfileKeyEnabled, etc. Make that durable in the session log, not just the debugger,
+                // and copy the file aside first: it is hand-editable, the next save replaces it, and a
+                // typo should not cost the rest of what was in it.
                 TrueReplayer.Services.DiagnosticLog.Error(
                     "Failed to load appsettings.json — falling back to defaults (hotkeys / RunAsAdmin / ProfileKeyEnabled reset)", ex);
+                BackupCorrupt(path);
                 return new AppSettings();
+            }
+        }
+
+        private static void BackupCorrupt(string path)
+        {
+            lock (_writeLock)
+            {
+                if (_corruptBackedUp) return;
+                _corruptBackedUp = true;
+            }
+            string backup = path + ".corrupt";
+            try
+            {
+                File.Copy(path, backup, overwrite: true);
+                TrueReplayer.Services.DiagnosticLog.Warn($"The unreadable appsettings.json was copied to {backup}");
+            }
+            catch (Exception ex)
+            {
+                TrueReplayer.Services.DiagnosticLog.Error($"Could not copy the corrupt appsettings.json to {backup}", ex);
             }
         }
 
