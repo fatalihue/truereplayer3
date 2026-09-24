@@ -59,8 +59,13 @@ interface TargetConfigDialogProps {
   // conversion when the user toggles Relative Coordinates. Triggers the inline hint that
   // suggests running "Convert to Relative/Absolute" so existing actions stay anchored to
   // the right window position. Folder scope (where actions don't live on the folder itself)
-  // leaves this undefined → no hint.
+  // leaves this undefined → no hint; it gets inheritingMemberCount's warning instead.
   convertibleActionCount?: number;
+  // Folder-only — how many member profiles read their X/Y in the space this folder sets (the ones
+  // with no target of their own). A Relative Coordinates flip reinterprets every point they hold,
+  // and a folder has no actions of its own to convert, so the dialog says so and holds Set Target
+  // until it has been read. 0/undefined → no warning.
+  inheritingMemberCount?: number;
 }
 
 export function TargetConfigDialog({
@@ -75,6 +80,7 @@ export function TargetConfigDialog({
   onUpdateGeometry,
   onConvertCoordinates,
   convertibleActionCount = 0,
+  inheritingMemberCount = 0,
 }: TargetConfigDialogProps) {
   const { send, subscribe } = useBridge();
   const tt = useTt();
@@ -88,9 +94,19 @@ export function TargetConfigDialog({
   // convert or explicitly dismisses, so re-toggling doesn't keep nagging within one session.
   const [convertHint, setConvertHint] = useState<'toRelative' | 'toAbsolute' | null>(null);
   const [convertHintDismissed, setConvertHintDismissed] = useState(false);
+  // The folder twin of the hint (see inheritingMemberCount). Nothing can be converted from here —
+  // the actions live on the members — so it is a note with one answer, raised on the same
+  // divergence-from-saved rule and muted once read. Saving the flip used to reinterpret every
+  // inheriting member's clicks in silence: absolute points read as window-relative, off by the
+  // window's origin, with nothing on screen to say why.
+  const [memberSpaceWarn, setMemberSpaceWarn] = useState(false);
+  const [memberSpaceWarnRead, setMemberSpaceWarnRead] = useState(false);
 
   const handleToggleRelativeCoordinates = (next: boolean) => {
     setRelativeCoordinates(next);
+    if (scope === 'folder' && inheritingMemberCount > 0 && !memberSpaceWarnRead) {
+      setMemberSpaceWarn(next !== initial.relativeCoordinates);
+    }
     if (convertHintDismissed) return;
     if (convertibleActionCount === 0) return;
     if (!onConvertCoordinates) return;
@@ -312,7 +328,11 @@ export function TargetConfigDialog({
       // toast physically covered the buttons to force a Convert-or-Skip choice; in the shell the
       // footer is a sibling the toast can't cover, so the gate is explicit. Saving a flipped
       // Relative-Coordinates flag without converting silently reinterprets every stored X/Y.
-      footer={<DialogFooter secondary={{ label: 'Cancel', onClick: handleCancel }} primary={{ label: 'Set Target', onClick: () => handleSubmit(), disabled: submitDisabled || convertHint !== null, tip: convertHint ? tt('Resolve the conversion prompt first', 'Resolva o aviso de conversão primeiro') : undefined }} />}
+      // The folder's member-space note gates it the same way, for the same reason.
+      footer={<DialogFooter secondary={{ label: 'Cancel', onClick: handleCancel }} primary={{ label: 'Set Target', onClick: () => handleSubmit(), disabled: submitDisabled || convertHint !== null || memberSpaceWarn,
+        tip: convertHint ? tt('Resolve the conversion prompt first', 'Resolva o aviso de conversão primeiro')
+          : memberSpaceWarn ? tt("Read the note about this folder's profiles first", 'Leia o aviso sobre os perfis desta pasta primeiro')
+            : undefined }} />}
     >
       {/* `relative` replaces the old card's positioning context — the convert-hint toast
           below pins itself to this wrapper's bottom edge (just above the shell footer). */}
@@ -470,6 +490,23 @@ export function TargetConfigDialog({
                   Skip
                 </button>
               </div>
+            </div>
+          )}
+          {memberSpaceWarn && (
+            // Same floating card as the hint above (the two never meet: the hint needs
+            // onConvertCoordinates, which only the profile scope passes).
+            <div className="absolute bottom-3 left-4 right-4 flex items-start gap-2 px-3 py-2 text-[11px] text-warning-ink bg-bg-card border border-warning-ink/35 rounded-lg shadow-overlay z-20">
+              <span className="flex-1 leading-snug">
+                {inheritingMemberCount} profile{inheritingMemberCount === 1 ? '' : 's'} in this folder use{inheritingMemberCount === 1 ? 's' : ''} its target, with X/Y set for {initial.relativeCoordinates ? 'relative' : 'absolute'} coords.
+                They are not converted — if a profile's clicks land in the wrong place, load it and run
+                "Convert Coordinates to {initial.relativeCoordinates ? 'Absolute' : 'Relative'}" (Ctrl+K).
+              </span>
+              <button
+                onClick={() => { setMemberSpaceWarn(false); setMemberSpaceWarnRead(true); }}
+                className="shrink-0 px-2 py-0.5 text-[10px] font-medium text-text-primary bg-accent-solid/30 hover:bg-accent-solid/50 rounded transition-colors"
+              >
+                Got it
+              </button>
             </div>
           )}
           <div className="flex items-center justify-between">

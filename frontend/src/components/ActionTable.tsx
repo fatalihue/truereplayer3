@@ -23,7 +23,7 @@ import { useToast } from '../state/ToastContext';
 // only thing that can let a claim lapse under a dialog the user is still filling in.
 const ROW_DIALOG_CLAIM_RENEW_MS = 60_000;
 import { getDisplayKey, getDisplayX, getDisplayY, getActionTypeColors, formatKeyCombo, formatMs, isCombinedClick, isClickHold, isCoordinateClick, isFocusClickEligible, CLICK_FAMILY_TYPES, clickFormOf } from '../utils/displayUtils';
-import { snapIndicesToBlocks, carriesConditionProbe, hasConditionFields, skippedRowMask, isStructuralRow, armBodyEnd } from '../utils/conditionalBlocks';
+import { snapIndicesToBlocks, hasConditionFields, skippedRowMask, isStructuralRow, armBodyEnd } from '../utils/conditionalBlocks';
 import { uiZoom } from '../utils/zoomSpace';
 // Deferred: already rendered conditionally, but a static import pulls the whole Lexical editor
 // stack and emoji-picker-react (~300 KB minified) into the startup chunk for a dialog most sessions
@@ -150,9 +150,12 @@ export function ActionIcon({ actionType, size = 12 }: { actionType: string; size
 
 interface EditingCell {
   index: number;
-  // 'coords' edits the merged "x, y" pair in the Details column — committed as
-  // two separate actions:edit messages (field x, field y) so the backend
-  // contract stays untouched.
+  // The row's Id when the editor opened. Every editor commit sends it next to the index, and
+  // the backend refuses the write when the index now holds a different row. '' when the row has
+  // none (ActionItem.id is optional) — the backend then skips the check.
+  id: string;
+  // 'coords' edits the merged "x, y" pair in the Details column — committed as ONE
+  // actions:editMany (field x, field y), so it is one undo entry.
   field: 'delay' | 'comment' | 'coords' | 'key';
 }
 
@@ -255,14 +258,118 @@ function actionPillLabel(action: ActionItem): string {
   }
 }
 
-// Whether a row is an image/pixel PROBE — the standalone Wait actions or an If/While
-// whose condition uses one of those probes. These share a unified Details payload
-// (ProbeDetails) so an image probe looks the same whether it's a Wait, an If or a loop guard.
+// Whether a row is an image/pixel PROBE — the standalone Wait actions or a condition row
+// (If/Else If/While/Assert) whose condition uses one of those probes. These share a unified
+// Details payload (ProbeDetails) so an image probe looks the same whether it's a Wait, an If, a
+// loop guard or an Assert. hasConditionFields, not carriesConditionProbe: an Assert on an image
+// fell through BOTH Details branches (isConditionAction does not list the probe types either)
+// and showed the bare file key instead of the thumbnail. The insert door refuses an image/pixel
+// Assert today, but a hand-edited or imported profile can carry one.
 function isProbeAction(action: ActionItem): boolean {
   return action.actionType === 'WaitImage'
     || action.actionType === 'WaitPixelColor'
-    || (carriesConditionProbe(action.actionType)
+    || (hasConditionFields(action.actionType)
       && (action.conditionType === 'ImageFound' || action.conditionType === 'PixelColorMatch'));
+}
+
+// The Details text of a row — ONE derivation for the grid row and the drag ghost. The ghost used
+// to build its own, poorer one (coordinates for clicks, else the raw key), so every type whose
+// payload does not live in `key` — Pause, Activate Window, If/While/Each Row, Set Variable —
+// dragged as a bare pill, with nothing to tell two of them apart. `dataRows` is the live data
+// table's row count (Each Row reads it).
+function rowDisplayKey(action: ActionItem, dataRows: number): string {
+  return action.actionType === 'WaitImage'
+    ? ''
+    : action.actionType === 'WaitPixelColor'
+      // Standalone pixel-color wait mirrors the "if pixel" row: the hex
+      // is the text, the swatch + coords render alongside it in the row.
+      ? (action.pixelColor || '')
+    : action.actionType === 'RunProfile'
+      // ×N moved to the Action pill (see the pill render in the row) so the
+      // Key column shows only the profile name and long names no longer
+      // truncate the repeat-count badge out of view.
+      ? action.key
+      : action.actionType === 'Pause'
+        ? (() => {
+            // Timeout is stored in ms — show it as ms here (was seconds).
+            const hasHotkey = !!action.key;
+            const ms = action.timeout ?? 0;
+            const hasTimeout = ms > 0;
+            if (hasHotkey && hasTimeout) return `${action.key} / ${ms} ms`;
+            if (hasHotkey) return action.key;
+            if (hasTimeout) return `${ms} ms`;
+            return '—';
+          })()
+        : (action.actionType === 'If' || action.actionType === 'ElseIf' || action.actionType === 'Assert')
+          // If/Assert share the condition-identifier summary (Assert used to
+          // fall through to getDisplayKey(key) and leak the raw selector).
+          ? conditionSummary(action)
+        : action.actionType === 'While'
+          ? (() => {
+              // Same condition summary as If, plus the iteration ceiling when
+              // one is set — "the loop's shape" reads from the grid.
+              const base = conditionSummary(action);
+              const cap = action.loopMaxIterations && action.loopMaxIterations > 0
+                ? `≤${action.loopMaxIterations}×` : '';
+              return base && cap ? `${base} · ${cap}` : (base || cap);
+            })()
+        : action.actionType === 'ForEachRow'
+          // LIVE row count — the Data panel edits while you look, and a stale
+          // number here would misstate what the block will do.
+          ? `${dataRows} row${dataRows === 1 ? '' : 's'}`
+          : action.actionType === 'HoldKey'
+            // Hold Key reads like Pause: "<key> / <ms> ms" as plain text in the
+            // cell (no separate duration chip) so the two duration-bearing actions
+            // share one format. Click-to-edit is handled by the <td> onClick below.
+            ? `${getDisplayKey(action.key)} / ${action.holdDurationMs && action.holdDurationMs > 0 ? action.holdDurationMs : 1000} ms`
+          : isClickHold(action.actionType)
+            // Same "<n> ms" payload as Hold Key, WITHOUT a key prefix — a click
+            // hold's subject is its point, and the point already has two columns
+            // of its own. renderMsDetail styles the number below.
+            ? `${action.holdDurationMs && action.holdDurationMs > 0 ? action.holdDurationMs : 1000} ms`
+          : action.actionType === 'SetVariable'
+            // "name = value" reads like the assignment it is; a fresh row
+            // (no name yet) stays blank like an unconfigured WaitImage.
+            // Cycle mode reads "name ⟳ N items" — the value is a list, not
+            // one assignment, so showing line 1 would misrepresent it.
+            ? (!action.key ? ''
+              : action.variableMode === 'cycle'
+                ? (() => {
+                    const n = (action.variableValue ?? '').split('\n').filter(l => l.trim()).length;
+                    return `${action.key} ⟳ ${n} item${n === 1 ? '' : 's'}`;
+                  })()
+              // Add mode reads "name += step" — the assignment it is NOT is "=".
+              : action.variableMode === 'add'
+                ? `${action.key} += ${action.variableValue ?? ''}`
+                : `${action.key} = ${action.variableValue ?? ''}`)
+          : action.actionType === 'CopyToSlot'
+            // Show the read-back token — the one thing the user needs to reuse
+            // the capture. Fresh row (no slot yet) stays blank like SetVariable.
+            // Clear rows read "clear {clip:x}" / "clear all slots".
+            ? (action.slotMode === 'clear'
+                ? (!action.key ? 'clear all slots' : `clear {clip:${action.key.toLowerCase()}}`)
+                : (!action.key ? '' : `selection → {clip:${action.key.toLowerCase()}}`))
+          : action.actionType === 'ActivateWindow'
+            // Matcher summary "proc · title" (— launch marks launch-capable
+            // rows); pure-run rows read "run: <path>". Phase-3 verb prefix +
+            // nth-match suffix. Mirrors C# DisplayKey.
+            ? (() => {
+                const matcher = [action.windowProcessName, action.windowTitle].filter(s => s && s.trim()).join(' · ');
+                const verbPrefix = action.windowVerb === 'maximize' ? 'Maximize · '
+                  : action.windowVerb === 'minimize' ? 'Minimize · '
+                  : action.windowVerb === 'close' ? 'Close · ' : '';
+                const nth = action.windowMatchIndex && action.windowMatchIndex > 1 ? ` #${action.windowMatchIndex}` : '';
+                // Maximize launches on a miss too; only Minimize and Close never do.
+                const launches = !!action.launchPath?.trim() && action.windowVerb !== 'minimize' && action.windowVerb !== 'close';
+                if (matcher) return `${verbPrefix}${matcher}${nth}${launches ? ' — launch' : ''}`;
+                return action.launchPath ? `run: ${action.launchPath}` : '';
+              })()
+          : action.actionType === 'Keystroke'
+            // Combined keystrokes read as spaced combos ("Ctrl + Alt + F"),
+            // matching the ProfilePanel hotkey chips. Single keys are
+            // unchanged (no separator to space).
+            ? formatKeyCombo(action.key)
+          : getDisplayKey(action.key);
 }
 
 // The While iteration ceiling as a quiet suffix beside whatever Details payload the row
@@ -346,9 +453,10 @@ function renderMsDetail(text: string, language: Language): ReactNode {
 // modifier and the image confidence % live elsewhere — the Action pill and the
 // Sheet panel respectively — to keep this cell to just "what is matched".)
 function ProbeDetails({ action }: { action: ActionItem }) {
-  // While guards carry the same probe payload as If and get the same type tag (their
-  // pill is the generic "while", so the tag says WHAT the guard watches).
-  const isIf = carriesConditionProbe(action.actionType);
+  // While guards and Asserts carry the same probe payload as If and get the same type tag
+  // (their pills are the generic "while" / "assert", so the tag says WHAT the row watches).
+  // The same family isProbeAction admits — narrower here, an image Assert rendered as a pixel.
+  const isIf = hasConditionFields(action.actionType);
   const isImage = action.actionType === 'WaitImage'
     || (isIf && action.conditionType === 'ImageFound');
 
@@ -574,19 +682,20 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
   const prevActionsLength = useRef(actions.length);
   const prevProfileRef = useRef(activeProfile);
   const wasRecording = useRef(false);
-  const [sendTextEdit, setSendTextEdit] = useState<{ index: number; text: string; html?: string | null; mode?: SendMode; method?: SendMethod; charDelayMs?: number | null } | null>(null);
-  const [runProfileEdit, setRunProfileEdit] = useState<{ index: number; profileName: string; repeatCount: number; runOverData: boolean } | null>(null);
+  // Every row editor below carries its row's Id beside the index — see EditingCell.id.
+  const [sendTextEdit, setSendTextEdit] = useState<{ index: number; id: string; text: string; html?: string | null; mode?: SendMode; method?: SendMethod; charDelayMs?: number | null } | null>(null);
+  const [runProfileEdit, setRunProfileEdit] = useState<{ index: number; id: string; profileName: string; repeatCount: number; runOverData: boolean } | null>(null);
   // Editing a Keystroke OR HoldKey row reopens the unified KeystrokeCaptureDialog —
   // these two ActionTypes share the same edit surface now that Press/Hold is a mode
   // toggle inside the dialog. `index` is all we need; the dialog reads the row's
   // ActionType + key + duration / repeat fields directly from the action item to
   // pick the starting mode.
-  const [keystrokeEdit, setKeystrokeEdit] = useState<{ index: number } | null>(null);
+  const [keystrokeEdit, setKeystrokeEdit] = useState<{ index: number; id: string } | null>(null);
   // Editing a Pause row reopens the PauseDialog (the same config-first window used
   // to insert one) instead of the generic Sheet — the capture pad + timeout presets
   // are a far better fit than the Sheet's flat field list. `index` is all we need;
   // the dialog seeds its pad/timeout from the row's key + timeout.
-  const [pauseEdit, setPauseEdit] = useState<{ index: number } | null>(null);
+  const [pauseEdit, setPauseEdit] = useState<{ index: number; id: string } | null>(null);
   const [dragIndices, setDragIndices] = useState<number[] | null>(null);
   // Derived Set for O(1) membership checks inside the per-row render. The dragIndices
   // array stays as-is so the rest of the file (drag-preview chip, count display, payload
@@ -837,7 +946,12 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
   // released the only thing standing between a due automation and a profile swap under an open
   // dialog. SendText and RunProfile never had even that: neither file calls send() at all, and
   // SendText is the longest edit session in the app.
-  const rowDialogOpen = !!(sendTextEdit || keystrokeEdit || pauseEdit || runProfileEdit || runProfileInsert);
+  //
+  // The one-field inline editor rides the same claim. It was the third editor and the only one
+  // with no claim at all: a due automation swapped the profile under a half-typed Delay, and the
+  // Enter that followed wrote it into the new profile's row. One owner covers all of them because
+  // they all live here and the claim is one boolean — any of them open.
+  const rowDialogOpen = !!(sendTextEdit || keystrokeEdit || pauseEdit || runProfileEdit || runProfileInsert || editingCell);
   useEffect(() => {
     send({ type: 'editor:pendingEdits', payload: { pending: rowDialogOpen, owner: 'row-dialog' } });
   }, [rowDialogOpen, send]);
@@ -970,6 +1084,37 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
     }
     prevProfileRef.current = activeProfile;
   }, [activeProfile]);
+
+  // A profile switch replaces the list wholesale, and everything here that points INTO it by
+  // index points at the new profile's rows afterwards. The selection survived it: it stayed lit
+  // on rows nobody picked, the bridge kept its insert index — so the next recording by hotkey
+  // landed in the middle of the new profile — and the Settings delay chip wrote those rows. The
+  // row editors and the row menu survived it too, and their commit wrote the new profile's
+  // same-index row. A switch arrives by global hotkey or automation, so it can land with any of
+  // them open: the selection clears (the sync effect pushes selection:changed) and every
+  // index-addressed surface closes, saying so when it held an editor. The Ids the editors send
+  // are the backstop — a duplicated profile repeats its source's Ids, so they cannot be the
+  // whole answer.
+  const profileForEditorsRef = useRef(activeProfile);
+  useEffect(() => {
+    if (activeProfile === profileForEditorsRef.current) return;
+    profileForEditorsRef.current = activeProfile;
+    setSelectedIndices(prev => (prev.size === 0 ? prev : new Set()));
+    lastClickedIndex.current = null;
+    kbCursorRef.current = null;
+    setContextMenu(null);
+    const hadEditor = !!(editingCell || sendTextEdit || runProfileEdit || keystrokeEdit || pauseEdit || runProfileInsert);
+    if (!hadEditor) return;
+    setEditingCell(null);
+    setEditInvalid(false);
+    setSendTextEdit(null);
+    setRunProfileEdit(null);
+    setKeystrokeEdit(null);
+    setPauseEdit(null);
+    setRunProfileInsert(null);
+    showToast(tt('The profile changed — the open row editor closed without saving.',
+                 'O perfil mudou — o editor de linha aberto fechou sem salvar.'), 'info');
+  }, [activeProfile, editingCell, sendTextEdit, runProfileEdit, keystrokeEdit, pauseEdit, runProfileInsert, showToast, tt]);
 
   // Focus edit input when entering edit mode. No auto-select — the user asked
   // for the caret to land at the end of the existing value instead of the whole
@@ -1144,6 +1289,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
       // real choice (the failure WebViewBridge's projection comment warns about).
       setSendTextEdit({
         index: idx,
+        id: rowAction.id ?? '',
         text: rowAction.key,
         html: rowAction.keyHtml,
         mode: rowAction.sendMode ?? 'rich',
@@ -1153,6 +1299,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
     } else if (rowAction.actionType === 'RunProfile') {
       setRunProfileEdit({
         index: idx,
+        id: rowAction.id ?? '',
         profileName: rowAction.key,
         repeatCount: rowAction.repeatCount ?? 1,
         runOverData: rowAction.runOverData ?? false,
@@ -1160,10 +1307,10 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
     } else if (rowAction.actionType === 'Keystroke' || rowAction.actionType === 'HoldKey') {
       // Both share the unified Send Keystroke dialog — it seeds Press / Hold
       // mode from the row's ActionType.
-      setKeystrokeEdit({ index: idx });
+      setKeystrokeEdit({ index: idx, id: rowAction.id ?? '' });
     } else if (rowAction.actionType === 'Pause') {
       // Pause reopens its own capture-pad dialog, not the Sheet.
-      setPauseEdit({ index: idx });
+      setPauseEdit({ index: idx, id: rowAction.id ?? '' });
     } else {
       onOpenSheet?.(idx);
     }
@@ -1287,11 +1434,11 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                    'A lista de ações está travada enquanto um run está ativo.'), 'error');
       return;
     }
-    setEditingCell({ index, field });
+    setEditingCell({ index, field, id: actions[index]?.id ?? '' });
     setEditValue(currentValue);
     editOriginRef.current = currentValue;
     setEditInvalid(false);
-  }, [buttonStates.recordingActive, buttonStates.replayActive, showToast, tt]);
+  }, [actions, buttonStates.recordingActive, buttonStates.replayActive, showToast, tt]);
 
   // Invalid-input flag for the coords editor — drives the red border below.
   // Cleared on every keystroke and on every startEdit.
@@ -1334,6 +1481,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
           type: 'actions:editMany',
           payload: {
             index: editingCell.index,
+            id: editingCell.id,
             edits: [{ field: 'x', value: m[1] }, { field: 'y', value: m[2] }],
           },
         });
@@ -1347,7 +1495,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
     }
     send({
       type: 'actions:edit',
-      payload: { index: editingCell.index, field: editingCell.field, value: editValue },
+      payload: { index: editingCell.index, id: editingCell.id, field: editingCell.field, value: editValue },
     });
     setEditingCell(null);
   }, [editingCell, editValue, send, buttonStates.recordingActive, buttonStates.replayActive, showToast, tt]);
@@ -1522,7 +1670,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
     if (editingCell) {
       send({
         type: 'actions:edit',
-        payload: { index: editingCell.index, field: editingCell.field, value: keyName },
+        payload: { index: editingCell.index, id: editingCell.id, field: editingCell.field, value: keyName },
       });
       setEditingCell(null);
     }
@@ -1577,9 +1725,11 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
     });
   }, [actions]);
 
-  // Shared row-measurement: maps a cursor Y to an insertion index (0..N) across the action
-  // rows, skipping injected "Add Else" ghost rows. Used by both row-reorder and the
-  // profile→Run Profile drag-drop so both land on the same index for a given cursor Y.
+  // Row measurement: maps a cursor Y to an insertion index (0..N) across the action rows,
+  // skipping injected "Add Else" ghost rows. Used by the profile→Run Profile drag-drop only.
+  // It was shared with the row reorder before that moved to dnd-kit: the reorder's target
+  // comes from dnd-kit's collision detection and sortableIds (handleDragEnd), so a fix to a
+  // reorder landing spot does not belong here.
   const computeInsertIndexFromY = useCallback((clientY: number): number | null => {
     if (!tbodyRef.current) return null;
     // Skip injected non-action rows: "+ Add Else" ghosts AND the animated
@@ -2150,98 +2300,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
               // per-action re-render path. ReplayRowMarker writes data-replay="running" |
               // "paused" on the one row that needs it and index.css does the rest.
               const isSelected = selectedIndices.has(idx);
-              const displayKey = action.actionType === 'WaitImage'
-                ? ''
-                : action.actionType === 'WaitPixelColor'
-                  // Standalone pixel-color wait mirrors the "if pixel" row: the hex
-                  // is the text, the swatch + coords render alongside (below).
-                  ? (action.pixelColor || '')
-                : action.actionType === 'RunProfile'
-                  // ×N moved to the Action pill (see the pill render below) so the
-                  // Key column shows only the profile name and long names no longer
-                  // truncate the repeat-count badge out of view.
-                  ? action.key
-                  : action.actionType === 'Pause'
-                    ? (() => {
-                        // Timeout is stored in ms — show it as ms here (was seconds).
-                        const hasHotkey = !!action.key;
-                        const ms = action.timeout ?? 0;
-                        const hasTimeout = ms > 0;
-                        if (hasHotkey && hasTimeout) return `${action.key} / ${ms} ms`;
-                        if (hasHotkey) return action.key;
-                        if (hasTimeout) return `${ms} ms`;
-                        return '—';
-                      })()
-                    : (action.actionType === 'If' || action.actionType === 'ElseIf' || action.actionType === 'Assert')
-                      // If/Assert share the condition-identifier summary (Assert used to
-                      // fall through to getDisplayKey(key) and leak the raw selector).
-                      ? conditionSummary(action)
-                    : action.actionType === 'While'
-                      ? (() => {
-                          // Same condition summary as If, plus the iteration ceiling when
-                          // one is set — "the loop's shape" reads from the grid.
-                          const base = conditionSummary(action);
-                          const cap = action.loopMaxIterations && action.loopMaxIterations > 0
-                            ? `≤${action.loopMaxIterations}×` : '';
-                          return base && cap ? `${base} · ${cap}` : (base || cap);
-                        })()
-                    : action.actionType === 'ForEachRow'
-                      // LIVE row count — the Data panel edits while you look, and a stale
-                      // number here would misstate what the block will do.
-                      ? `${dataTable.rows.length} row${dataTable.rows.length === 1 ? '' : 's'}`
-                      : action.actionType === 'HoldKey'
-                        // Hold Key reads like Pause: "<key> / <ms> ms" as plain text in the
-                        // cell (no separate duration chip) so the two duration-bearing actions
-                        // share one format. Click-to-edit is handled by the <td> onClick below.
-                        ? `${getDisplayKey(action.key)} / ${action.holdDurationMs && action.holdDurationMs > 0 ? action.holdDurationMs : 1000} ms`
-                      : isClickHold(action.actionType)
-                        // Same "<n> ms" payload as Hold Key, WITHOUT a key prefix — a click
-                        // hold's subject is its point, and the point already has two columns
-                        // of its own. renderMsDetail styles the number below.
-                        ? `${action.holdDurationMs && action.holdDurationMs > 0 ? action.holdDurationMs : 1000} ms`
-                      : action.actionType === 'SetVariable'
-                        // "name = value" reads like the assignment it is; a fresh row
-                        // (no name yet) stays blank like an unconfigured WaitImage.
-                        // Cycle mode reads "name ⟳ N items" — the value is a list, not
-                        // one assignment, so showing line 1 would misrepresent it.
-                        ? (!action.key ? ''
-                          : action.variableMode === 'cycle'
-                            ? (() => {
-                                const n = (action.variableValue ?? '').split('\n').filter(l => l.trim()).length;
-                                return `${action.key} ⟳ ${n} item${n === 1 ? '' : 's'}`;
-                              })()
-                          // Add mode reads "name += step" — the assignment it is NOT is "=".
-                          : action.variableMode === 'add'
-                            ? `${action.key} += ${action.variableValue ?? ''}`
-                            : `${action.key} = ${action.variableValue ?? ''}`)
-                      : action.actionType === 'CopyToSlot'
-                        // Show the read-back token — the one thing the user needs to reuse
-                        // the capture. Fresh row (no slot yet) stays blank like SetVariable.
-                        // Clear rows read "clear {clip:x}" / "clear all slots".
-                        ? (action.slotMode === 'clear'
-                            ? (!action.key ? 'clear all slots' : `clear {clip:${action.key.toLowerCase()}}`)
-                            : (!action.key ? '' : `selection → {clip:${action.key.toLowerCase()}}`))
-                      : action.actionType === 'ActivateWindow'
-                        // Matcher summary "proc · title" (— launch marks launch-capable
-                        // rows); pure-run rows read "run: <path>". Phase-3 verb prefix +
-                        // nth-match suffix. Mirrors C# DisplayKey.
-                        ? (() => {
-                            const matcher = [action.windowProcessName, action.windowTitle].filter(s => s && s.trim()).join(' · ');
-                            const verbPrefix = action.windowVerb === 'maximize' ? 'Maximize · '
-                              : action.windowVerb === 'minimize' ? 'Minimize · '
-                              : action.windowVerb === 'close' ? 'Close · ' : '';
-                            const nth = action.windowMatchIndex && action.windowMatchIndex > 1 ? ` #${action.windowMatchIndex}` : '';
-                            // Maximize launches on a miss too; only Minimize and Close never do.
-                            const launches = !!action.launchPath?.trim() && action.windowVerb !== 'minimize' && action.windowVerb !== 'close';
-                            if (matcher) return `${verbPrefix}${matcher}${nth}${launches ? ' — launch' : ''}`;
-                            return action.launchPath ? `run: ${action.launchPath}` : '';
-                          })()
-                      : action.actionType === 'Keystroke'
-                        // Combined keystrokes read as spaced combos ("Ctrl + Alt + F"),
-                        // matching the ProfilePanel hotkey chips. Single keys are
-                        // unchanged (no separator to space).
-                        ? formatKeyCombo(action.key)
-                      : getDisplayKey(action.key);
+              const displayKey = rowDisplayKey(action, dataTable.rows.length);
               const displayX = getDisplayX(action);
               const displayY = getDisplayY(action);
 
@@ -3036,9 +3095,11 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
           const primary = actions[sortableIds.indexOf(activeDragId)];
           if (!primary) return null;
           const ghostColors = getActionTypeColors(primary.actionType);
+          // The row's own Details text (rowDisplayKey); clicks keep their point, which is what
+          // tells two of them apart.
           const ghostDetail = (isMouseAction(primary.actionType) && !primary.actionType.startsWith('Browser'))
             ? `${primary.x}, ${primary.y}`
-            : getDisplayKey(primary.key);
+            : rowDisplayKey(primary, dataTable.rows.length);
           return (
             <div className="pointer-events-none" style={{ transform: 'rotate(1.5deg)' }}>
               <div
@@ -3089,6 +3150,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                 type: 'actions:editSendText',
                 payload: {
                   index: sendTextEdit.index,
+                  id: sendTextEdit.id,
                   text: r.text,
                   html: r.html ?? undefined,
                   markdown: r.markdown ?? undefined,
@@ -3145,7 +3207,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
               } else if (result.holdDurationMs !== curDuration) {
                 edits.push({ field: 'holdDurationMs', value: String(result.holdDurationMs) });
               }
-              if (edits.length > 0) send({ type: 'actions:editMany', payload: { index: idx, edits } });
+              if (edits.length > 0) send({ type: 'actions:editMany', payload: { index: idx, id: keystrokeEdit.id, edits } });
               setKeystrokeEdit(null);
             }}
             onClose={() => setKeystrokeEdit(null)}
@@ -3169,7 +3231,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
               const edits: { field: string; value: string }[] = [];
               if (key !== (editing?.key ?? '')) edits.push({ field: 'key', value: key });
               if (timeoutMs !== (editing?.timeout ?? 0)) edits.push({ field: 'timeout', value: String(Math.round(timeoutMs)) });
-              if (edits.length > 0) send({ type: 'actions:editMany', payload: { index: idx, edits } });
+              if (edits.length > 0) send({ type: 'actions:editMany', payload: { index: idx, id: pauseEdit.id, edits } });
               setPauseEdit(null);
             }}
             onClose={() => setPauseEdit(null)}
@@ -3184,7 +3246,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
           excludeProfileName={activeProfile ?? undefined}
           onConfirm={(profileName, repeatCount, runOverData) => {
             if (refuseDuringRun()) return;
-            send({ type: 'actions:editRunProfile', payload: { index: runProfileEdit.index, profileName, repeatCount, runOverData } });
+            send({ type: 'actions:editRunProfile', payload: { index: runProfileEdit.index, id: runProfileEdit.id, profileName, repeatCount, runOverData } });
             setRunProfileEdit(null);
           }}
           onClose={() => setRunProfileEdit(null)}
@@ -3280,6 +3342,10 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
             showToast(tt(`Set delay to ${delay} ms for ${targets.length} action(s)`, `Atraso definido para ${delay} ms em ${targets.length} ação(ões)`), 'success');
           }}
           onSetCoord={(axis, value) => {
+            // No toast here, unlike the three siblings — on purpose. HandleBulkUpdateCoord
+            // confirms it itself ("Set X = 500 for N action(s)") because only it knows N: rows that
+            // are not coordinate clicks, and at-cursor clicks, are skipped, so a count taken here
+            // would overstate it, and a second toast would stack on the backend's.
             send({ type: 'actions:bulkUpdateCoord', payload: { indices: selSorted, axis, value } });
           }}
           onSetComment={(comment) => {

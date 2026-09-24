@@ -102,8 +102,9 @@ namespace TrueReplayer.Services
         /// editor is a moment of contention like an open dialog, so it reports as SkippedModal:
         /// retriable, with a reason the panel can show.
         ///
-        /// One stamp PER OWNER. There are two editors — the SheetPanel and the ActionTable's row
-        /// dialogs (SendText, Keystroke, Pause, RunProfile) — and this used to be a single stamp:
+        /// One stamp PER OWNER. There are two owners — the SheetPanel and the ActionTable, whose
+        /// row dialogs (SendText, Keystroke, Pause, RunProfile) and one-field inline cell editor all
+        /// ride its single 'row-dialog' claim — and this used to be a single stamp:
         /// whichever wrote last won, so closing a row dialog wrote "not busy" over a Sheet still
         /// holding unsaved fields, and until the Sheet's next minute-long renewal an automation fire
         /// could swap the profile out from under it.

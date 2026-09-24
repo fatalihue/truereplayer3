@@ -42,6 +42,9 @@ import { Slider } from './sheet/Slider';
 interface SheetPanelProps {
   actionIndex: number | null;
   onClose: () => void;
+  /** The row being edited moved to another index (a delete or paste above it, an undo, a
+   *  reorder): App moves the panel with it — no leave guard, it is the same row. */
+  onReanchor?: (index: number) => void;
   /** Exit choreography (owned by App): while true the panel plays its slide-out,
    *  then calls onExited so the parent can finally null the index. */
   leaving?: boolean;
@@ -59,14 +62,15 @@ interface SheetPanelProps {
 }
 
 /**
- * What App may ask the sheet before moving it to another row. `tryLeave` returns true when the
- * move may go ahead — the editor is clean, or the user already saw the warning and repeated the
- * gesture within the guard window (that repeat is the discard, and it toasts) — and false when
- * it just armed the footer warning instead. Mirrors the Esc guard exactly, so every way out of
- * a dirty editor takes the same two steps.
+ * What App may ask the sheet before moving it to another row — or before a door outside it
+ * changes the action list, which re-seeds every field (`'list'`, see SheetGuardContext).
+ * `tryLeave` returns true when the move may go ahead — the editor is clean, or the user already
+ * saw the warning and repeated the gesture within the guard window (that repeat is the discard,
+ * and it toasts) — and false when it just armed the footer warning instead. Mirrors the Esc
+ * guard exactly, so every way out of a dirty editor takes the same two steps.
  */
 export interface SheetPanelHandle {
-  tryLeave: (kind: 'switch') => boolean;
+  tryLeave: (kind: 'switch' | 'list') => boolean;
   /**
    * Close now, but say so if there was anything to lose. For the one exit that cannot be a
    * two-step guard: switching to Clicker takes the grid away, so the sheet has to go whether or
@@ -153,6 +157,13 @@ const DEFAULT_CLICK_POS_JITTER_PX = 3;   // seeded when the user turns POSITION 
                                          // keeps the burst inside any real target; the cap is 500
                                          // (MAX_POSITION_PX, the Clicker's own position ceiling)
 const clampRepeatCount = (v: number) => Math.max(1, Math.min(999, Math.floor(v)));
+// The ONE canonical spelling of a stored pixel colour ("#RRGGBB" upper-case), used on both legs of
+// the dirty check — the seed and the save. The seed used to copy the stored text raw, so a colour
+// saved as "ff0000" (a hand edit, an import) opened the editor dirty and a reflex Save rewrote it.
+const normalizeHexColor = (v: string | null | undefined) => {
+  const raw = (v ?? '').trim();
+  return raw === '' ? '' : (raw.startsWith('#') ? raw.toUpperCase() : '#' + raw.toUpperCase());
+};
 const clampRepeatGap = (v: number) => Math.max(0, Math.min(5000, Math.floor(v)));
 const clampRepeatJitter = (v: number) => Math.max(1, Math.min(100, Math.floor(v)));
 const clampRepeatPosJitter = (v: number) => Math.max(1, Math.min(500, Math.floor(v)));
@@ -223,12 +234,17 @@ function isBrowserSelectorAction(actionType: string, conditionType?: string | nu
     || (carriesConditionProbe(actionType) && conditionType === 'BrowserElementState');
 }
 
-function parseTextSelector(value: string): { mode: TextMode | null; raw: string } {
+// A regex selector keeps its FLAGS through the round trip. The input shows only the pattern, and
+// the rebuild used to append a fixed "/i": a stored `text/Foo/` (no flags — case-SENSITIVE in
+// content.js) reopened dirty and came back from any Save as `text/Foo/i`, matching "foo" and "FOO"
+// it never matched before, for an edit that only touched the Delay. `flags` is undefined for the
+// other modes; a regex typed fresh in the editor still gets the "i" it always got.
+function parseTextSelector(value: string): { mode: TextMode | null; raw: string; flags?: string } {
   if (!value) return { mode: null, raw: '' };
   if (value.startsWith('text/')) {
     // Strip leading text/ and the regex closing /flags so the input shows just the pattern
     const last = value.lastIndexOf('/');
-    if (last > 4) return { mode: 'regex', raw: value.slice(5, last) };
+    if (last > 4) return { mode: 'regex', raw: value.slice(5, last), flags: value.slice(last + 1) };
   }
   if (value.startsWith('text*=')) return { mode: 'contains', raw: value.slice(6) };
   if (value.startsWith('text~=')) return { mode: 'icontains', raw: value.slice(6) };
@@ -236,11 +252,20 @@ function parseTextSelector(value: string): { mode: TextMode | null; raw: string 
   return { mode: null, raw: '' };
 }
 
-function buildTextSelector(mode: TextMode, raw: string): string {
+function buildTextSelector(mode: TextMode, raw: string, flags?: string | null): string {
   if (!raw) return '';
-  if (mode === 'regex') return `text/${raw}/i`;
+  if (mode === 'regex') return `text/${raw}/${flags ?? 'i'}`;
   const prefix = TEXT_MODES.find(m => m.value === mode)?.prefix ?? 'text=';
   return prefix + raw;
+}
+
+// The wait the ENGINE applies when a row's Timeout is 0 or absent (ActionExecution: WaitImage 30 s,
+// ActivateWindow 10 s, the rest 5 s). The editor seeds and compares against the same number: it
+// used to show 5000 for every type, so a WaitImage that really waits 30 s read as waiting 5.
+function defaultTimeoutMs(actionType: string): number {
+  if (actionType === 'WaitImage') return 30000;
+  if (actionType === 'ActivateWindow') return 10000;
+  return 5000;
 }
 
 // #2 — Estimate a selector's stability tier from its text alone, no DOM lookup. The only copy: the
@@ -267,7 +292,7 @@ const TIER_META: Record<'S' | 'A' | 'B' | 'C', { color: string; label: string; l
 };
 
 
-export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, seedCoords, onSeedConsumed, ref }: SheetPanelProps) {
+export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, onExited, seedCoords, onSeedConsumed, ref }: SheetPanelProps) {
   const { actions, profiles, activeProfile, buttonStates } = useAppState();
   const { send, subscribe } = useBridge();
   const tt = useTt();
@@ -376,6 +401,16 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   const [seedNonce, setSeedNonce] = useState(0);
   const [textMatch, setTextMatch] = useState('');
   const [textMode, setTextMode] = useState<TextMode>('exact');
+  // The flags of the regex selector the row was opened with (see parseTextSelector); null =
+  // none recorded, which builds with the editor's default "i".
+  const [textFlags, setTextFlags] = useState<string | null>(null);
+  // THE selector this editor stands for — typed text + mode (+ flags) when a text match is set,
+  // else the raw Key. Save, the dirty check, the stability tier, Test and Test condition all ask
+  // it; they used to spell the formula out five times, each one a place to forget the next rule.
+  const effectiveSelector = useMemo(
+    () => (textMatch.trim() ? buildTextSelector(textMode, textMatch.trim(), textFlags) : key),
+    [textMatch, textMode, textFlags, key],
+  );
   const [newTab, setNewTab] = useState(false);
   const [isPicking, setIsPicking] = useState(false);
 
@@ -502,6 +537,16 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     }
   }, []);
   useEffect(() => () => clearTestMatchTimeout(), [clearTestMatchTimeout]);
+  // Same safety net for the pixel Test match, the one sibling that had none: a reply lost in
+  // transit left it waiting forever, no card and no error.
+  const testPixelTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearTestPixelTimeout = useCallback(() => {
+    if (testPixelTimeoutRef.current) {
+      clearTimeout(testPixelTimeoutRef.current);
+      testPixelTimeoutRef.current = null;
+    }
+  }, []);
+  useEffect(() => () => clearTestPixelTimeout(), [clearTestPixelTimeout]);
 
   // #2 — picker alternatives popover
   const [alternatives, setAlternatives] = useState<SelectorAlternative[]>([]);
@@ -747,6 +792,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       } else if (msg.type === 'pixel:testMatchResult') {
         const r = msg.payload as { requestId: string; matches: boolean; sampledHex?: string | null; error?: string };
         if (testPixelRequestIdRef.current && r.requestId === testPixelRequestIdRef.current) {
+          clearTestPixelTimeout();
           setTestPixelResult({ matches: r.matches, sampledHex: r.sampledHex, error: r.error });
           setTestPixelRequestId(null);
         }
@@ -779,7 +825,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
         }
       }
     });
-  }, [subscribe, clearTestTimeout, clearTestMatchTimeout, clearCondTimeout]);
+  }, [subscribe, clearTestTimeout, clearTestMatchTimeout, clearCondTimeout, clearTestPixelTimeout]);
 
   // Sync local state from action. This is intentionally an effect-driven seed: keeping
   // local state lets the user edit freely before saving, while the dependency on `action`
@@ -807,10 +853,12 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
         setKey('');
         setTextMatch(parsed.raw);
         setTextMode(parsed.mode);
+        setTextFlags(parsed.flags ?? null);
       } else {
         setKey(action.key);
         setTextMatch('');
         setTextMode('exact');
+        setTextFlags(null);
       }
       // `?? ''` (not `|| ''`) so an explicit coordinate of 0 seeds as "0" rather than
       // collapsing to empty — empty means "no override" (skipped on save), 0 is a real value.
@@ -821,7 +869,9 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       // Combined-click × N — seed Times/Gap/Jitter from the action (defaults when absent).
       // Jitter's on/off tracks whether a positive % is stored; the % input keeps the last
       // value (or the 20 % seed) so a toggle-off/on round-trips it.
-      setRepeatCount(action.repeatCount ?? 1);
+      // Clamped like the save reads it: a stored 0 (outside 1..999 — a hand edit, an older file)
+      // shows as the 1 the engine runs, and does not open the editor dirty.
+      setRepeatCount(clampRepeatCount(action.repeatCount ?? 1));
       setRepeatGapMs(action.repeatDelayMs ?? clickDefaultGap(action.actionType));
       setJitterOn((action.repeatDelayJitterPct ?? 0) > 0);
       setJitterPct(action.repeatDelayJitterPct && action.repeatDelayJitterPct > 0 ? action.repeatDelayJitterPct : DEFAULT_CLICK_JITTER_PCT);
@@ -830,10 +880,10 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       setAtCursor(action.atCursor || false);
       setHoldMs(action.holdDurationMs && action.holdDurationMs > 0 ? action.holdDurationMs : DEFAULT_HOLD_MS);
       // Timeout edited in milliseconds (matches the grid + dialogs). Pause defaults
-      // to 0 (infinite); other actions default to 5000ms.
+      // to 0 (infinite); other actions to the engine's own fallback (defaultTimeoutMs).
       setTimeout_(action.actionType === 'Pause'
         ? String(action.timeout ?? 0)
-        : String(action.timeout || 5000));
+        : String(action.timeout || defaultTimeoutMs(action.actionType)));
       setConfidence(String(Math.round((action.confidence || 0.8) * 100)));
       setBrowserText(action.browserText || '');
       setVariableValue(action.variableValue ?? '');
@@ -886,7 +936,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       // that isn't explicit "Continue" down to "StopReplay" to match the dropdown options.
       setPixelX(action.pixelX != null ? String(action.pixelX) : '');
       setPixelY(action.pixelY != null ? String(action.pixelY) : '');
-      setPixelColor(action.pixelColor ?? '');
+      setPixelColor(normalizeHexColor(action.pixelColor));
       setPixelTolerance(String(action.pixelTolerance ?? 0));
       setPixelOnTimeout(action.pixelOnTimeout === 'Continue' ? 'Continue' : 'StopReplay');
       setPixelInvert(action.pixelInvert || false);
@@ -1022,7 +1072,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       edit('actionType', actionType);
     }
     // #1 — Build effective key from textMatch + mode if textMatch is set, else use raw selector
-    const effectiveKey = textMatch.trim() ? buildTextSelector(textMode, textMatch.trim()) : key;
+    const effectiveKey = effectiveSelector;
     if (effectiveKey !== action.key) {
       edit('key', effectiveKey);
     }
@@ -1070,7 +1120,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     // 0 as null (schema-clean), matching a pre-feature single click byte-for-byte.
     if (COMBINED_CLICKS.has(actionType)) {
       const effRepeat = clampRepeatCount(repeatCount);
-      if (effRepeat !== (action.repeatCount ?? 1)) {
+      if (effRepeat !== clampRepeatCount(action.repeatCount ?? 1)) {
         edit('repeat', String(effRepeat));
       }
       const effGap = clampRepeatGap(repeatGapMs);
@@ -1116,8 +1166,8 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     // waitImageClickOnMatch) are gated inside so they don't leak into IF rows.
     if (actionType === 'WaitImage' || _isIfImage) {
       if (actionType === 'WaitImage') {
-        const newTimeoutMs = Math.max(1000, parseFloat(timeout) || 5000);
-        if (newTimeoutMs !== (action.timeout || 5000)) {
+        const newTimeoutMs = Math.max(1000, parseFloat(timeout) || defaultTimeoutMs('WaitImage'));
+        if (newTimeoutMs !== (action.timeout || defaultTimeoutMs('WaitImage'))) {
           edit('timeout', String(Math.round(newTimeoutMs)));
         }
       }
@@ -1183,11 +1233,8 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       // Backend stores exactly what we send; keeping it canonical here avoids "#fc5" vs
       // "FC5" vs "fc5" diffs in the saved JSON and keeps the swatch in the editor
       // stable across save+reload cycles.
-      const rawColor = pixelColor.trim();
-      const normalisedColor = rawColor === ''
-        ? ''
-        : (rawColor.startsWith('#') ? rawColor.toUpperCase() : '#' + rawColor.toUpperCase());
-      if (normalisedColor !== (action.pixelColor ?? '')) {
+      const normalisedColor = normalizeHexColor(pixelColor);
+      if (normalisedColor !== normalizeHexColor(action.pixelColor)) {
         edit('pixelColor', normalisedColor);
       }
       const newTol = Math.max(0, Math.min(255, parseInt(pixelTolerance, 10) || 0));
@@ -1485,8 +1532,8 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
           edit(geoField, String(next));
         }
       }
-      const newAwTimeout = Math.max(1000, Math.round(parseFloat(timeout) || 10000));
-      if (newAwTimeout !== (action.timeout || 5000)) {
+      const newAwTimeout = Math.max(1000, Math.round(parseFloat(timeout) || defaultTimeoutMs('ActivateWindow')));
+      if (newAwTimeout !== (action.timeout || defaultTimeoutMs('ActivateWindow'))) {
         edit('timeout', String(newAwTimeout));
       }
       // Phase 3 verb + nth-match (parity-mirrored in hasUnsavedChanges). Default 'Activate' persists
@@ -1547,10 +1594,12 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     }
 
     // One message, one undo entry — whether it carries fields, a form change, or both.
+    // `id` is the row's identity: the index alone would land these edits on whatever row slid
+    // under it since the panel opened, so the backend refuses a mismatch out loud.
     if (pendingEdits.length > 0 || convert) {
       send({
         type: 'actions:editMany',
-        payload: { index: actionIndex, edits: pendingEdits, ...(convert ? { convert } : {}) },
+        payload: { index: actionIndex, id: action.id, edits: pendingEdits, ...(convert ? { convert } : {}) },
       });
     }
 
@@ -1559,7 +1608,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     // from actionType + action.conditionType which are already in the array, so the
     // callback rebinds whenever those change. Listing the derived flags would also
     // be a forward-reference error (they're declared further down the component body).
-  }, [actionIndex, action, actionType, formDraft, initialForm, key, textMatch, textMode, x, y, delay, comment, repeatCount, repeatGapMs, jitterOn, jitterPct, posJitterOn, posJitterPx, atCursor, holdMs, timeout, confidence, browserText, variableValue, variableMode, slotMode, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, waitImageOnTimeout, waitImageInvert, waitImageClickOnMatch, waitImageSearchRegion, pixelX, pixelY, pixelColor, pixelTolerance, pixelOnTimeout, pixelInvert, pixelClickOnMatch, conditionNegate, ifOnProbeError, conditionTimeout, loopMaxIterations, windowProcessName, windowTitle, windowTitleMatchMode, windowMatchForegroundOnly, clipboardPatternType, clipboardPattern, randomPercent, conditionOperator, conditionOperand, filePath, timeStart, timeEnd, daysOfWeek, launchPath, launchArgs, activateOnTimeout, restorePosition, restoreSize, windowX, windowY, windowWidth, windowHeight, windowVerb, matchIndex, assertOnFail, alternatives, pickedThisSession, send, onClose,
+  }, [actionIndex, action, actionType, formDraft, initialForm, effectiveSelector, x, y, delay, comment, repeatCount, repeatGapMs, jitterOn, jitterPct, posJitterOn, posJitterPx, atCursor, holdMs, timeout, confidence, browserText, variableValue, variableMode, slotMode, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, waitImageOnTimeout, waitImageInvert, waitImageClickOnMatch, waitImageSearchRegion, pixelX, pixelY, pixelColor, pixelTolerance, pixelOnTimeout, pixelInvert, pixelClickOnMatch, conditionNegate, ifOnProbeError, conditionTimeout, loopMaxIterations, windowProcessName, windowTitle, windowTitleMatchMode, windowMatchForegroundOnly, clipboardPatternType, clipboardPattern, randomPercent, conditionOperator, conditionOperand, filePath, timeStart, timeEnd, daysOfWeek, launchPath, launchArgs, activateOnTimeout, restorePosition, restoreSize, windowX, windowY, windowWidth, windowHeight, windowVerb, matchIndex, assertOnFail, alternatives, pickedThisSession, send, onClose,
     // The two booleans, never the buttonStates object: it is republished on unrelated events
     // and this callback already rebuilds on every keystroke.
     refuseDuringRun]);
@@ -1583,7 +1632,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     const _isIfPixel = _hasCondition && action.conditionType === 'PixelColorMatch';
 
     if (actionType !== action.actionType) return true;
-    const effectiveKey = textMatch.trim() ? buildTextSelector(textMode, textMatch.trim()) : key;
+    const effectiveKey = effectiveSelector;
     if (effectiveKey !== action.key) return true;
 
     const isBrowserElementAction = isBrowserSelectorAction(actionType, action.conditionType);
@@ -1606,7 +1655,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     // reflexive Esc arms the dirty warning instead of silently dropping a Times/Gap/Jitter edit.
     if (COMBINED_CLICKS.has(actionType)) {
       const effRepeat = clampRepeatCount(repeatCount);
-      if (effRepeat !== (action.repeatCount ?? 1)) return true;
+      if (effRepeat !== clampRepeatCount(action.repeatCount ?? 1)) return true;
       const effGap = clampRepeatGap(repeatGapMs);
       if (effGap !== (action.repeatDelayMs ?? clickDefaultGap(actionType))) return true;
       const effJitter = jitterOn && effRepeat > 1 ? clampRepeatJitter(jitterPct) : 0;
@@ -1628,8 +1677,8 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
 
     if (actionType === 'WaitImage' || _isIfImage) {
       if (actionType === 'WaitImage') {
-        const newTimeoutMs = Math.max(1000, parseFloat(timeout) || 5000);
-        if (newTimeoutMs !== (action.timeout || 5000)) return true;
+        const newTimeoutMs = Math.max(1000, parseFloat(timeout) || defaultTimeoutMs('WaitImage'));
+        if (newTimeoutMs !== (action.timeout || defaultTimeoutMs('WaitImage'))) return true;
       }
       const newConfidence = Math.min(100, Math.max(10, parseInt(confidence, 10) || 80)) / 100;
       if (Math.abs(newConfidence - (action.confidence || 0.8)) > 0.005) return true;
@@ -1660,11 +1709,8 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       const parsedY = trimmedY === '' ? null : parseInt(trimmedY, 10);
       if ((parsedX ?? null) !== (action.pixelX ?? null)) return true;
       if ((parsedY ?? null) !== (action.pixelY ?? null)) return true;
-      const rawColor = pixelColor.trim();
-      const normalisedColor = rawColor === ''
-        ? ''
-        : (rawColor.startsWith('#') ? rawColor.toUpperCase() : '#' + rawColor.toUpperCase());
-      if (normalisedColor !== (action.pixelColor ?? '')) return true;
+      const normalisedColor = normalizeHexColor(pixelColor);
+      if (normalisedColor !== normalizeHexColor(action.pixelColor)) return true;
       const newTol = Math.max(0, Math.min(255, parseInt(pixelTolerance, 10) || 0));
       if (newTol !== (action.pixelTolerance ?? 0)) return true;
       if (actionType === 'WaitPixelColor') {
@@ -1810,8 +1856,8 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
       if ((parseInt(windowY, 10) || 0) !== (action.windowY ?? 0)) return true;
       if (Math.max(0, parseInt(windowWidth, 10) || 0) !== (action.windowWidth ?? 0)) return true;
       if (Math.max(0, parseInt(windowHeight, 10) || 0) !== (action.windowHeight ?? 0)) return true;
-      const newAwTimeout = Math.max(1000, Math.round(parseFloat(timeout) || 10000));
-      if (newAwTimeout !== (action.timeout || 5000)) return true;
+      const newAwTimeout = Math.max(1000, Math.round(parseFloat(timeout) || defaultTimeoutMs('ActivateWindow')));
+      if (newAwTimeout !== (action.timeout || defaultTimeoutMs('ActivateWindow'))) return true;
       // Verb + nth-match — parity with handleSave (incl. the 'activate'-literal normalization).
       const persistedVerb = windowVerb === 'Activate' ? '' : windowVerb.toLowerCase();
       const currentVerb = (action.windowVerb ?? '').toLowerCase() === 'activate' ? '' : (action.windowVerb ?? '').toLowerCase();
@@ -1830,7 +1876,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     }
 
     return false;
-  }, [actionIndex, action, actionType, key, textMatch, textMode, x, y, delay, comment, repeatCount, repeatGapMs, jitterOn, jitterPct, posJitterOn, posJitterPx, atCursor, holdMs, timeout, confidence, browserText, variableValue, variableMode, slotMode, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, waitImageOnTimeout, waitImageInvert, waitImageClickOnMatch, waitImageSearchRegion, pixelX, pixelY, pixelColor, pixelTolerance, pixelOnTimeout, pixelInvert, pixelClickOnMatch, conditionNegate, ifOnProbeError, conditionTimeout, loopMaxIterations, windowProcessName, windowTitle, windowTitleMatchMode, windowMatchForegroundOnly, clipboardPatternType, clipboardPattern, randomPercent, conditionOperator, conditionOperand, filePath, timeStart, timeEnd, daysOfWeek, launchPath, launchArgs, activateOnTimeout, restorePosition, restoreSize, windowX, windowY, windowWidth, windowHeight, windowVerb, matchIndex, assertOnFail, alternatives, pickedThisSession]);
+  }, [actionIndex, action, actionType, effectiveSelector, x, y, delay, comment, repeatCount, repeatGapMs, jitterOn, jitterPct, posJitterOn, posJitterPx, atCursor, holdMs, timeout, confidence, browserText, variableValue, variableMode, slotMode, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, waitImageOnTimeout, waitImageInvert, waitImageClickOnMatch, waitImageSearchRegion, pixelX, pixelY, pixelColor, pixelTolerance, pixelOnTimeout, pixelInvert, pixelClickOnMatch, conditionNegate, ifOnProbeError, conditionTimeout, loopMaxIterations, windowProcessName, windowTitle, windowTitleMatchMode, windowMatchForegroundOnly, clipboardPatternType, clipboardPattern, randomPercent, conditionOperator, conditionOperand, filePath, timeStart, timeEnd, daysOfWeek, launchPath, launchArgs, activateOnTimeout, restorePosition, restoreSize, windowX, windowY, windowWidth, windowHeight, windowVerb, matchIndex, assertOnFail, alternatives, pickedThisSession]);
 
   // Powers the dirty-aware Esc guard (a reflexive Esc arms a warning instead of discarding). The
   // form is a draft like any other field, so it has to reach the dirty check — otherwise Save
@@ -1931,7 +1977,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   // counting as the repeat. The refs let the document listener and App's tryLeave read the
   // latest values without re-attaching on every keystroke. Cancel / Back stay the EXPLICIT
   // one-click discard (no arm): they just say so on their labels while there is something to lose.
-  type ArmedBy = 'esc' | 'switch' | null;
+  type ArmedBy = 'esc' | 'switch' | 'list' | null;
   const [armedBy, setArmedBy] = useState<ArmedBy>(null);
   const armedByRef = useRef<ArmedBy>(null);
   const escArmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2071,17 +2117,44 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     return () => clearInterval(id);
   }, [pendingEdits, send]);
 
-  // The row this editor edits stopped existing — an Undo that shortened the list, a delete from
-  // the grid, a profile switch. The panel went on painting a row that is gone: every field still
-  // showed its values, and Save Changes was a silent no-op against an index past the end. Closing
-  // is the honest answer; the toast is conditional because a panel the user had not touched
-  // vanishing with an explanation reads as an error where nothing was lost.
+  // The row this editor edits, by IDENTITY — its Id and the profile it belongs to — not just by
+  // index. The panel addresses its row by index, and the list can change under it: a delete or a
+  // paste above it, an undo, a reorder, a profile switch. It used to check only that the index was
+  // still in range, so a delete ABOVE the row slid the NEXT action under the same index and the
+  // editor silently re-seeded every field from it — and Save wrote the user's edits there.
+  //   • Same row, still at the index → nothing to do.
+  //   • Same row, moved → the panel follows it (onReanchor), as if it had never left.
+  //   • Row gone (deleted, or the profile changed) → close; the toast only when something was
+  //     typed, since a panel the user had not touched vanishing with an explanation reads as an
+  //     error where nothing was lost.
+  // A row without an Id (ActionItem.id is optional) can only be tracked by index — the old check —
+  // and is never re-anchored, since an empty Id would match the first other Id-less row.
+  const openedRowRef = useRef<{ index: number; id: string; profile: string | null } | null>(null);
   useEffect(() => {
-    if (actionIndex == null || leaving) return;
-    if (actionIndex < actions.length) return;
-    if (editorTouched) showToast(tt('That action no longer exists', 'Essa ação não existe mais'), 'info');
+    if (actionIndex == null) { openedRowRef.current = null; return; }
+    if (leaving) return;
+    const current = actions[actionIndex];
+    const opened = openedRowRef.current;
+    if (!opened || opened.index !== actionIndex) {
+      // A fresh open, a row switch or this panel's own re-anchor: this is the row now.
+      if (current) { openedRowRef.current = { index: actionIndex, id: current.id ?? '', profile: activeProfile }; return; }
+    } else if (current && (current.id ?? '') === opened.id && activeProfile === opened.profile) {
+      return;
+    } else if (opened.id && activeProfile === opened.profile && onReanchor) {
+      const moved = actions.findIndex((a) => a.id === opened.id);
+      if (moved >= 0) {
+        openedRowRef.current = { ...opened, index: moved };
+        onReanchor(moved);
+        return;
+      }
+    }
+    if (editorTouched) {
+      showToast(opened && activeProfile !== opened.profile
+        ? tt('The profile changed — the editor closed without saving.', 'O perfil mudou — o editor fechou sem salvar.')
+        : tt('That action no longer exists', 'Essa ação não existe mais'), 'info');
+    }
     onClose();
-  }, [actionIndex, actions.length, leaving, editorTouched, onClose, showToast, tt]);
+  }, [actionIndex, actions, activeProfile, leaving, editorTouched, onClose, onReanchor, showToast, tt]);
 
   // Esc-to-close — global listener that closes the panel when the user presses Escape
   // outside of any capture mode. Key capture handlers (KeyDown/KeyUp Key field, Pause
@@ -2171,6 +2244,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     setTestRequestId(null);
     setTestResult(null);
     setPickColorRequestId(null);
+    clearTestPixelTimeout();
     setTestPixelRequestId(null);
     setTestPixelResult(null);
     // Browser element pick — drop the in-flight pick when the action changes (mirrors the
@@ -2194,7 +2268,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     browseLaunchReqRef.current = null;
     captureGeoReqRef.current = null;
     searchRegionRequestIdRef.current = null;
-  }, [actionIndex, disarmKeyCaptureTimer, clearTestTimeout, send]);
+  }, [actionIndex, disarmKeyCaptureTimer, clearTestTimeout, clearTestPixelTimeout, send]);
 
   // Unmount cleanup — any pending timers must be torn down so they don't fire against
   // refs to gone DOM nodes (would warn in React strict-mode dev, harmless in prod but
@@ -2238,10 +2312,10 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   // MUST live here, above the `if (actionIndex == null) return null` early return below, so the
   // hook is called unconditionally on every render (Rules of Hooks).
   const { selectorForTier, tier, tierMeta } = useMemo(() => {
-    const sel = textMatch.trim() ? buildTextSelector(textMode, textMatch.trim()) : key;
+    const sel = effectiveSelector;
     const t = estimateTier(sel);
     return { selectorForTier: sel, tier: t, tierMeta: TIER_META[t] };
-  }, [textMatch, textMode, key]);
+  }, [effectiveSelector]);
 
   // #3 — Run the current action against the live page
   const handleTestAction = useCallback(() => {
@@ -2254,7 +2328,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     const requestId = Math.random().toString(36).slice(2, 10);
     setTestRequestId(requestId);
     setTestResult(null);
-    const effectiveKey = textMatch.trim() ? buildTextSelector(textMode, textMatch.trim()) : key;
+    const effectiveKey = effectiveSelector;
     const timeoutMs = Math.max(1000, parseFloat(timeout) || 5000);
     const tdParsed = typeDelay.trim() === '' ? null : parseInt(typeDelay, 10);
 
@@ -2319,7 +2393,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
         alternatives: alternatives.length > 0 ? alternatives : null,
       },
     });
-  }, [actionIndex, action, actionType, key, textMatch, textMode, timeout, browserText, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, alternatives, send, clearTestTimeout, refuseDuringRun]);
+  }, [actionIndex, action, actionType, effectiveSelector, timeout, browserText, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, alternatives, send, clearTestTimeout, refuseDuringRun]);
 
   // If-Browser-Element — "is this condition true right now?". Uses the same instant probe the
   // replay's If uses (timeout=0, single evaluation, no wait loop), against the ACTIVE tab.
@@ -2331,7 +2405,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     const askedNegate = conditionNegate;
     setCondRequestId(requestId);
     setCondResult(null);
-    const effectiveKey = textMatch.trim() ? buildTextSelector(textMode, textMatch.trim()) : key;
+    const effectiveKey = effectiveSelector;
 
     clearCondTimeout();
     condTimeoutRef.current = setTimeout(() => {
@@ -2354,7 +2428,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
         alternatives: alternatives.length > 0 ? alternatives : null,
       },
     });
-  }, [key, textMatch, textMode, waitMode, browserText, conditionNegate, alternatives, send, clearCondTimeout]);
+  }, [effectiveSelector, waitMode, browserText, conditionNegate, alternatives, send, clearCondTimeout]);
 
   // ActivateWindow — exists-anywhere probe: "would this action find the window right
   // now?". Same matcher semantics the replay uses (".exe" auto-append, self-excluded).
@@ -2363,11 +2437,20 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     const requestId = Math.random().toString(36).slice(2, 10);
     setWindowProbeRequestId(requestId);
     setWindowProbeResult(null);
+    // The two fields that change what the replay looks for: an If-Window with "foreground only"
+    // asks the window in FRONT, an ActivateWindow with Match # N wants the N-th match. Without
+    // them the probe said "Found" where the condition reads false, or where the action finds no
+    // window and runs its Launch path.
+    const isActivate = actionType === 'ActivateWindow';
     send({
       type: 'window:testProbe',
-      payload: { requestId, processName: windowProcessName, windowTitle, titleMatchMode: windowTitleMatchMode },
+      payload: {
+        requestId, processName: windowProcessName, windowTitle, titleMatchMode: windowTitleMatchMode,
+        foregroundOnly: !isActivate && windowMatchForegroundOnly,
+        matchIndex: isActivate ? Math.max(1, parseInt(matchIndex, 10) || 1) : 1,
+      },
     });
-  }, [windowProcessName, windowTitle, windowTitleMatchMode, send]);
+  }, [actionType, windowProcessName, windowTitle, windowTitleMatchMode, windowMatchForegroundOnly, matchIndex, send]);
 
   // ActivateWindow Launch "Browse…" — opens a native file picker; the chosen full path lands in
   // launchPath via the dialog:pickFileResult subscription above.
@@ -2494,6 +2577,15 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
     const requestId = Math.random().toString(36).slice(2, 10);
     setTestPixelRequestId(requestId);
     setTestPixelResult(null);
+    clearTestPixelTimeout();
+    testPixelTimeoutRef.current = setTimeout(() => {
+      testPixelTimeoutRef.current = null;
+      setTestPixelRequestId(prev => {
+        if (prev !== requestId) return prev;
+        setTestPixelResult({ matches: false, error: 'No response from backend.' });
+        return null;
+      });
+    }, 5000);
     const hex = trimmedColor.startsWith('#') ? trimmedColor : '#' + trimmedColor;
     send({
       type: 'pixel:testMatch',
@@ -2505,7 +2597,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
         tolerance: parseInt(pixelTolerance, 10) || 0,
       },
     });
-  }, [pixelX, pixelY, pixelColor, pixelTolerance, send]);
+  }, [pixelX, pixelY, pixelColor, pixelTolerance, send, clearTestPixelTimeout]);
 
   // Copy/Paste X,Y — supports the common workflow of picking a position on one click half
   // (e.g. LeftClickDown) and reusing it on the matching half (LeftClickUp) without picking
@@ -2589,6 +2681,11 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
   const isIfImage = hasCondition && action?.conditionType === 'ImageFound';
   const isIfPixel = hasCondition && action?.conditionType === 'PixelColorMatch';
   const isIfWindow = hasCondition && action?.conditionType === 'WindowOpen';
+  // What flips the image / pixel Test verdict the way the replay flips the result: Invert on the
+  // Wait rows ("wait until it is GONE"), Negate on the condition rows. The cards painted the raw
+  // match green — "found" while the Invert wait keeps waiting — the opposite of what the run does.
+  const imageVerdictFlipped = isIfImage ? conditionNegate : waitImageInvert;
+  const pixelVerdictFlipped = isIfPixel ? conditionNegate : pixelInvert;
   const isIfClipboard = hasCondition && action?.conditionType === 'ClipboardMatch';
   const isIfBrowser = carriesConditionProbe(actionType) && action?.conditionType === 'BrowserElementState';
   const isIfRandom = hasCondition && action?.conditionType === 'Random';
@@ -3434,7 +3531,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
               <div className="flex gap-1.5">
                 <input
                   type="text"
-                  value={textMatch.trim() ? buildTextSelector(textMode, textMatch.trim()) : key}
+                  value={effectiveSelector}
                   onChange={(e) => { setKey(e.target.value); setTextMatch(''); invalidatePickedAlternatives(); }}
                   placeholder=".btn-save"
                   spellCheck={false}
@@ -3687,7 +3784,7 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
               {testMatchResult && !testMatchRequestId && (
                 <div
                   className={`mt-2 ${RESULT_CARD}`}
-                  style={resultCardStyle(!!testMatchResult.found && !testMatchResult.error)}
+                  style={resultCardStyle((!!testMatchResult.found !== imageVerdictFlipped) && !testMatchResult.error)}
                 >
                   {testMatchResult.error ? (
                     <div className="flex items-center gap-1.5 font-medium">
@@ -3697,13 +3794,20 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                   ) : (
                     <>
                       <div className="flex items-center gap-1.5 font-medium">
-                        {testMatchResult.found ? <Check size={11} className="shrink-0" /> : <X size={11} className="shrink-0" />}
+                        {(!!testMatchResult.found !== imageVerdictFlipped) ? <Check size={11} className="shrink-0" /> : <X size={11} className="shrink-0" />}
                         <span>
                           Best match{' '}
                           <span className="font-mono">{Math.round(testMatchResult.score * 100)}% at ({testMatchResult.x}, {testMatchResult.y})</span>
                           {testMatchResult.found ? '' : ' — below tolerance'}
                         </span>
                       </div>
+                      {imageVerdictFlipped && (
+                        <div className="mt-1 text-[10px] opacity-80">
+                          {isIfImage
+                            ? (testMatchResult.found ? 'Negated: the condition reads false right now.' : 'Negated: the condition reads true right now.')
+                            : (testMatchResult.found ? 'Still on screen: the wait for it to disappear goes on.' : 'Not on screen: the wait for it to disappear ends now.')}
+                        </div>
+                      )}
                       {testMatchResult.found && (
                         <div className="mt-1 text-[10px] opacity-80">
                           {'Search region set around this match.'}
@@ -3917,10 +4021,10 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
               {testPixelResult && (
                 <div
                   className={`mt-2 ${RESULT_CARD}`}
-                  style={resultCardStyle(!!testPixelResult.matches && !testPixelResult.error)}
+                  style={resultCardStyle((!!testPixelResult.matches !== pixelVerdictFlipped) && !testPixelResult.error)}
                 >
                   <div className="flex items-center gap-1.5 font-medium">
-                    {(!!testPixelResult.matches && !testPixelResult.error)
+                    {((!!testPixelResult.matches !== pixelVerdictFlipped) && !testPixelResult.error)
                       ? <Check size={11} className="shrink-0" />
                       : <X size={11} className="shrink-0" />}
                     <span>
@@ -3935,6 +4039,13 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
                       )}
                     </span>
                   </div>
+                  {pixelVerdictFlipped && !testPixelResult.error && (
+                    <div className="mt-1 text-[10px] opacity-80">
+                      {isIfPixel
+                        ? (testPixelResult.matches ? 'Negated: the condition reads false right now.' : 'Negated: the condition reads true right now.')
+                        : (testPixelResult.matches ? 'Colour still there: the wait for it to change goes on.' : 'Colour gone: the wait for it to change ends now.')}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -5319,16 +5430,20 @@ export function SheetPanel({ actionIndex, onClose, leaving = false, onExited, se
         {/* Footer */}
         <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-border-subtle shrink-0">
           {/* Dirty state, in the span the footer already reserves (~111 px beside the two 84 px
-              buttons; opacity toggle, never reflows). Three readings, two channels each (text +
+              buttons; opacity toggle, never reflows). Four readings, two channels each (text +
               ink): at rest with edits pending, "Unsaved changes" in tertiary; armed by Esc,
               "Esc again discards" in warning ink; armed by a click on another row, "Click again
-              to discard". Every string is measured to fit the span unwrapped — the buttons stay
-              shrink-0 / nowrap so "Save" never wraps. */}
+              to discard"; armed by a list change from outside (paste, reorder, undo, a palette
+              rewrite), "Repeat to discard". Every string is measured to fit the span unwrapped —
+              the buttons stay shrink-0 / nowrap so "Save" never wraps. */}
           <span
             className={`flex-1 min-w-0 truncate text-[11px] transition-opacity duration-150 pointer-events-none ${armedBy ? 'text-warning-ink' : 'text-text-tertiary'}`}
             style={{ opacity: armedBy || hasUnsavedChanges ? 1 : 0 }}
           >
-            {armedBy === 'esc' ? 'Esc again discards' : armedBy === 'switch' ? 'Click again to discard' : 'Unsaved changes'}
+            {armedBy === 'esc' ? 'Esc again discards'
+              : armedBy === 'switch' ? 'Click again to discard'
+                : armedBy === 'list' ? 'Repeat to discard'
+                  : 'Unsaved changes'}
           </span>
           <div className="flex items-center gap-2 shrink-0">
             {/* Cancel is the explicit one-click discard; while there is something to lose its label

@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction, MutableRefObject } from 'react';
 import { BridgeProvider, useBridge } from './bridge/BridgeContext';
 import { AppStateProvider, useAppState } from './state/AppStateContext';
 import { SelectionProvider } from './state/SelectionContext';
+import { SheetGuardProvider, useSheetGuard } from './state/SheetGuardContext';
 import { ThemeProvider, useTheme } from './state/ThemeContext';
 import { ToastProvider } from './state/ToastContext';
 import { LanguageProvider } from './state/LanguageContext';
@@ -301,6 +302,20 @@ function AppShell() {
     setSheetLeaving(false);
     setSheetActionIndex(index);
   }, []);
+  // The row the sheet edits moved under it (a delete or a paste above it, an undo, a reorder):
+  // the sheet follows it. Straight to the state, NOT through handleOpenSheet — it is the same row,
+  // so there is nothing to leave and no guard to ask.
+  const handleSheetReanchor = useCallback((index: number) => setSheetActionIndex(index), []);
+  // The list-change guard (see SheetGuardContext): the row switch's tryLeave, under its own kind
+  // so the footer names the gesture. A sheet that is already closing has nothing left to protect.
+  const sheetGuard = useSheetGuard();
+  useEffect(() => {
+    sheetGuard.install(() => {
+      if (sheetIndexRef.current === null || sheetLeavingRef.current || !sheetRef.current) return true;
+      return sheetRef.current.tryLeave('list');
+    });
+    return () => sheetGuard.install(null);
+  }, [sheetGuard]);
 
   // Context-menu "Pick from screen": pick FIRST, sheet after. The round-trip is owned
   // here — not by SheetPanel — because the sheet's own pick correlation is deliberately
@@ -454,6 +469,7 @@ function AppShell() {
         ref={sheetRef}
         actionIndex={sheetActionIndex}
         onClose={closeSheet}
+        onReanchor={handleSheetReanchor}
         leaving={sheetLeaving}
         onExited={() => {
           setSheetActionIndex(null);
@@ -489,13 +505,15 @@ export default function App() {
         <BridgeProvider>
           <AppStateProvider>
             <SelectionProvider>
-              <ToastProvider>
-                <LanguageProvider>
-                  <ErrorBoundary>
-                    <AppShell />
-                  </ErrorBoundary>
-                </LanguageProvider>
-              </ToastProvider>
+              <SheetGuardProvider>
+                <ToastProvider>
+                  <LanguageProvider>
+                    <ErrorBoundary>
+                      <AppShell />
+                    </ErrorBoundary>
+                  </LanguageProvider>
+                </ToastProvider>
+              </SheetGuardProvider>
             </SelectionProvider>
           </AppStateProvider>
         </BridgeProvider>

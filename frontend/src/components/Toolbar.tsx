@@ -3,6 +3,7 @@ import { Trash2, Undo2, Redo2, Type, Mouse, MoreHorizontal, ScanSearch, Pipette,
 import { useAppState } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
 import { useSelectionRef } from '../state/SelectionContext';
+import { useSheetGuard } from '../state/SheetGuardContext';
 import { useTt } from '../state/LanguageContext';
 import { useToast } from '../state/ToastContext';
 // Deferred — see the note on the same import in ActionTable: the Lexical stack plus
@@ -277,6 +278,8 @@ export function Toolbar(_props: ToolbarProps) {
   useEffect(() => { if (!showMoreMenu) setClearArmed(false); }, [showMoreMenu]);
 
   const selectionRef = useSelectionRef();
+  // The open Sheet's say over the list changes below (see SheetGuardContext).
+  const sheetGuard = useSheetGuard();
   const [showSendTextDialog, setShowSendTextDialog] = useState(false);
   const [showBrowserMenu, setShowBrowserMenu] = useState(false);
   // Conditional logic dropdown — opens a picker with the supported probe families
@@ -431,8 +434,10 @@ export function Toolbar(_props: ToolbarProps) {
       }
       send({ type: 'profile:save', payload: {} });
     };
-    const onUndo = () => { if (!insertsDisabledRef.current) send({ type: 'actions:undo', payload: {} }); };
-    const onRedo = () => { if (!insertsDisabledRef.current) send({ type: 'actions:redo', payload: {} }); };
+    // An undo re-seeds an open Sheet from the store like any other list change, so it asks the
+    // sheet first — App's Ctrl+Z/Y only skips text fields, and the sheet is mostly buttons.
+    const onUndo = () => { if (!insertsDisabledRef.current && sheetGuard.allowListChange()) send({ type: 'actions:undo', payload: {} }); };
+    const onRedo = () => { if (!insertsDisabledRef.current && sheetGuard.allowListChange()) send({ type: 'actions:redo', payload: {} }); };
     window.addEventListener('cmd:save', onSave);
     window.addEventListener('cmd:undo', onUndo);
     window.addEventListener('cmd:redo', onRedo);
@@ -441,7 +446,7 @@ export function Toolbar(_props: ToolbarProps) {
       window.removeEventListener('cmd:undo', onUndo);
       window.removeEventListener('cmd:redo', onRedo);
     };
-  }, [send, showToast, tt]);
+  }, [send, showToast, tt, sheetGuard]);
 
   // Outside-press + Escape dismissal for the five insert dropdowns. One CALL per
   // menu, not one call for all of them: each keeps its own pair of listeners, bound
@@ -532,8 +537,13 @@ export function Toolbar(_props: ToolbarProps) {
       // could silently reshape the invisible macro list). Ctrl+C above is
       // read-only, so it stays allowed (it returns before reaching here).
       if (insertsDisabledRef.current) return;
+      // Both below act on the GRID's selection, and the Sheet sits over the grid without clearing
+      // it: with focus on one of the sheet's own buttons (not a text field, so the skip above lets
+      // the key through) Ctrl+V or Alt+arrow reshaped the list under a dirty editor. They ask the
+      // sheet first, at the point where they would actually send.
       if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
         e.preventDefault();
+        if (!sheetGuard.allowListChange()) return;
         const sel = selectionRef.current;
         const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
         send({ type: 'actions:paste', payload: { insertIndex } });
@@ -554,6 +564,7 @@ export function Toolbar(_props: ToolbarProps) {
         if (e.key === 'ArrowUp') {
           const minIdx = indices[0];
           if (minIdx <= 0) return;
+          if (!sheetGuard.allowListChange()) return;
           send({ type: 'actions:reorder', payload: { indices, targetIndex: minIdx - 1 } });
           // Backend reinserts the rows CONTIGUOUSLY at the adjusted target, so they land at
           // [minIdx-1 .. minIdx-1+count-1]. A per-index i-1 map mis-highlights non-contiguous
@@ -562,6 +573,7 @@ export function Toolbar(_props: ToolbarProps) {
         } else {
           const maxIdx = indices[indices.length - 1];
           if (maxIdx >= actions.length - 1) return;
+          if (!sheetGuard.allowListChange()) return;
           send({ type: 'actions:reorder', payload: { indices, targetIndex: maxIdx + 2 } });
           // adjustedTarget = maxIdx + 2 - count → rows land at [maxIdx+2-count .. maxIdx+1].
           const count = indices.length;
@@ -574,7 +586,7 @@ export function Toolbar(_props: ToolbarProps) {
     // selectionRef is a useRef result — stable identity across renders, so listing it
     // doesn't cause extra subscribes. Adding it just silences exhaustive-deps without
     // changing behaviour (handler always reads .current at the time it fires).
-  }, [send, actions, selectionRef, buttonStates.recordingActive, buttonStates.replayActive]);
+  }, [send, actions, selectionRef, sheetGuard, buttonStates.recordingActive, buttonStates.replayActive]);
 
   return (
     <>

@@ -973,7 +973,12 @@ export type IncomingMessage =
   // collision, in which case the alert path fires and this event does NOT). Frontend uses this
   // to show the success-with-Undo toast — without it, an optimistic toast would appear even
   // when the removal was blocked, contradicting the alert.
-  | { type: 'profile:windowTargetRemoved'; payload: { name: string } };
+  // The rect rides along because the Undo has to put it back and the profile list does not carry
+  // geometry: resending the target alone left Restore Position/Size on over a zeroed rect.
+  | { type: 'profile:windowTargetRemoved'; payload: { name: string; windowX: number; windowY: number; windowWidth: number; windowHeight: number } }
+  // The folder twin: sent only when the removal went through, with EVERYTHING it wiped, so the
+  // toast's Undo puts back the flags and the rect too, not just the target.
+  | { type: 'profile:folderWindowTargetRemoved'; payload: { folderName: string; hadTarget: boolean; processName: string; windowTitle: string; titleMatchMode: string; relativeCoordinates: boolean; bringToFocus: boolean; restorePosition: boolean; restoreSize: boolean; windowX: number; windowY: number; windowWidth: number; windowHeight: number } };
 
 // ── Messages JS → C# ──
 
@@ -1015,7 +1020,9 @@ export type OutgoingMessage =
   | { type: 'actions:copy'; payload: Record<string, never> }
   | { type: 'actions:copyInternal'; payload: { indices: number[] } }
   | { type: 'actions:paste'; payload: { insertIndex: number } }
-  | { type: 'actions:edit'; payload: { index: number; field: string; value: string } }
+  // `id` (optional) is the row the editor OPENED: when present the backend refuses — out loud —
+  // an edit whose index now holds a different row (the list or the profile changed under it).
+  | { type: 'actions:edit'; payload: { index: number; id?: string; field: string; value: string } }
   // Several field edits on ONE row, applied in order under ONE undo entry. An editor's Save is one
   // edit the user made that happens to touch N fields; sending it as N messages made each one its
   // own undo state, so a single Ctrl+Z landed on a snapshot taken BETWEEN two of them — X moved
@@ -1024,7 +1031,7 @@ export type OutgoingMessage =
   // `convert` rides ALONG so a Sheet Save that both edits fields and switches the row's form is
   // one message and therefore one undo entry. The backend applies the edits first and the
   // conversion last, because a split changes the row count and `index` addresses the edits.
-  | { type: 'actions:editMany'; payload: { index: number; edits: { field: string; value: string }[]; convert?: { direction: 'toPaired' | 'toCombined'; indices: number[] } } }
+  | { type: 'actions:editMany'; payload: { index: number; id?: string; edits: { field: string; value: string }[]; convert?: { direction: 'toPaired' | 'toCombined'; indices: number[] } } }
   | { type: 'actions:delete'; payload: { indices: number[] } }
   | { type: 'profile:click'; payload: { name: string } }
   | { type: 'profile:create'; payload: { name: string; folder?: string } }
@@ -1041,7 +1048,10 @@ export type OutgoingMessage =
       // completes. Used by the Window Target dialog's "Apply target & convert"
       // path so save + conversion land atomically (no race with a separate
       // convertCoordinates message dispatched alongside this one).
-      convertDirection?: 'toRelative' | 'toAbsolute' } }
+      convertDirection?: 'toRelative' | 'toAbsolute';
+      // The captured rect, all four or none — only an Undo sends it, to put back what the
+      // removal zeroed (profile:windowTargetRemoved carries it).
+      windowX?: number; windowY?: number; windowWidth?: number; windowHeight?: number } }
   | { type: 'profile:convertCoordinates'; payload: { direction: 'toRelative' | 'toAbsolute' } }
   | { type: 'profile:updateWindowSize'; payload: { name?: string; folderName?: string; processName?: string; windowTitle?: string; titleMatchMode?: string } }
   // The four target flags (relativeCoordinates / bringToFocus / restorePosition / restoreSize)
@@ -1049,13 +1059,16 @@ export type OutgoingMessage =
   // setWindowTarget and profile:assignHotkey now, which is what makes them atomic with the
   // thing they qualify — nothing has sent the singles since, so they are gone.
   | { type: 'profile:removeWindowTarget'; payload: { name: string } }
-  | { type: 'profile:setFolderWindowTarget'; payload: { folderName: string; processName: string; windowTitle: string; titleMatchMode: string; relativeCoordinates?: boolean; bringToFocus?: boolean; restorePosition?: boolean; restoreSize?: boolean } }
+  // The rect is the Undo's, as on profile:setWindowTarget (profile:folderWindowTargetRemoved).
+  | { type: 'profile:setFolderWindowTarget'; payload: { folderName: string; processName: string; windowTitle: string; titleMatchMode: string; relativeCoordinates?: boolean; bringToFocus?: boolean; restorePosition?: boolean; restoreSize?: boolean; windowX?: number; windowY?: number; windowWidth?: number; windowHeight?: number } }
   | { type: 'profile:removeFolderWindowTarget'; payload: { folderName: string } }
   | { type: 'profile:detectWindow'; payload: Record<string, never> }
   | { type: 'profile:testWindowMatch'; payload: { processName: string; windowTitle: string; titleMatchMode: string } }
-  // Exists-anywhere probe for the ActivateWindow editor — same matcher semantics the
-  // action uses at replay (".exe" auto-append, self-excluded), NOT foreground-only.
-  | { type: 'window:testProbe'; payload: { requestId: string; processName: string; windowTitle: string; titleMatchMode: string } }
+  // Window probe for the ActivateWindow editor and the If/Wait-window rows — same matcher the
+  // replay uses (".exe" auto-append, self-excluded). `matchIndex` picks the Nth match the way
+  // ActivateWindow does; `foregroundOnly` asks what a foreground-only condition asks, so the
+  // verdict is the one the run will reach.
+  | { type: 'window:testProbe'; payload: { requestId: string; processName: string; windowTitle: string; titleMatchMode: string; foregroundOnly?: boolean; matchIndex?: number } }
   | { type: 'dialog:pickFile'; payload: { requestId: string; kind: string } }
   | { type: 'window:captureGeometry'; payload: { requestId: string; processName: string; windowTitle: string; titleMatchMode: string } }
   | { type: 'process:list'; payload: Record<string, never> }
@@ -1086,7 +1099,7 @@ export type OutgoingMessage =
   // undo state per row — see HandleBulkUpdateType.
   | { type: 'actions:bulkUpdateType'; payload: { indices: number[]; actionType: string } }
   | { type: 'actions:addSendText'; payload: { text: string; html?: string; markdown?: string; mode?: string; method?: string; charDelayMs?: number | null; insertIndex?: number } }
-  | { type: 'actions:editSendText'; payload: { index: number; text: string; html?: string; markdown?: string; mode?: string; method?: string; charDelayMs?: number | null } }
+  | { type: 'actions:editSendText'; payload: { index: number; id?: string; text: string; html?: string; markdown?: string; mode?: string; method?: string; charDelayMs?: number | null } }
   | { type: 'actions:bulkUpdateDelay'; payload: { indices: number[]; delay: number } }
   | { type: 'actions:bulkUpdateCoord'; payload: { indices: number[]; axis: 'x' | 'y'; value: string } }
   | { type: 'actions:bulkUpdateComment'; payload: { indices: number[]; comment: string } }
@@ -1195,7 +1208,7 @@ export type OutgoingMessage =
   // in at startIndex after removing `count` existing rows.
   | { type: 'actions:replaceRange'; payload: { startIndex: number; count: number; replacement: Partial<ActionItem>[] } }
   | { type: 'actions:addRunProfile'; payload: { profileName: string; repeatCount: number; runOverData?: boolean; insertIndex?: number } }
-  | { type: 'actions:editRunProfile'; payload: { index: number; profileName: string; repeatCount: number; runOverData?: boolean } }
+  | { type: 'actions:editRunProfile'; payload: { index: number; id?: string; profileName: string; repeatCount: number; runOverData?: boolean } }
   | { type: 'waitimage:recapture'; payload: { index: number } }
   // `anchor` (as tres abaixo): a janela a que um vigia de automacao ancora suas coordenadas.
   // Presente => o backend subtrai a origem dela ao GRAVAR e a soma ao exibir/testar, para que o

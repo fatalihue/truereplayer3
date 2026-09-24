@@ -723,6 +723,12 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
         type: 'profile:assignHotstring',
         payload: { name: showHotstringDialog, sequence: seq, instant: hotstringInstant }
       });
+      // Closed optimistically, like confirmHotkey and for its reason: waiting on profiles:updated
+      // alone left the dialog — and the global hotkey suppression it holds — stuck open on the
+      // paths that never push it. Every refusal on the backend speaks through alert:show (a
+      // collision, a profile that was renamed or deleted meanwhile), so a closed dialog still
+      // says why the sequence did not take.
+      setShowHotstringDialog(null);
     }
   };
 
@@ -731,30 +737,50 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
     setShowWindowTargetDialog(name);
   };
 
-  // Folder-target remove with Undo. Mirrors handleRemoveWindowTarget; the undo
-  // re-sends profile:setFolderWindowTarget with the captured fields. profileOrder.folders
-  // is the source of truth for folder metadata in this scope.
-  const handleRemoveFolderWindowTarget = (folderName: string) => {
-    const folder = profileOrder?.folders?.find(f => f.name === folderName);
-    const prevProcess = folder?.windowTargetProcessName ?? '';
-    const prevTitle = folder?.windowTargetWindowTitle ?? '';
-    const prevMode = folder?.windowTargetTitleMatchMode ?? 'contains';
-    const hadTarget = folder?.hasWindowTarget;
-    send({ type: 'profile:removeFolderWindowTarget', payload: { folderName } });
-    if (hadTarget) {
-      const label = prevProcess || prevTitle || 'target';
-      showToast(tt(`Removed folder target (${label}) from "${folderName}"`, `Alvo da pasta (${label}) removido de "${folderName}"`), {
+  // Folder-target remove with Undo — the same round-trip as handleRemoveWindowTarget below. The
+  // toast used to fire the moment the message went out, so a removal the backend REFUSED (a
+  // member's hotkey that would collide once the target is gone) still read "Removed" with an Undo,
+  // next to the alert saying it was not. And its Undo resent the target alone: the setter reads
+  // missing flags as false, so a folder recorded in relative coordinates came back absolute and
+  // its members' clicks landed off by the window origin, under a toast that said "restored". Now
+  // the toast waits for profile:folderWindowTargetRemoved, which carries EVERYTHING the removal
+  // wiped — the flags and the captured rect — and the Undo puts all of it back.
+  const pendingFolderRemovalsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    return subscribe((msg) => {
+      if (msg.type !== 'profile:folderWindowTargetRemoved') return;
+      const r = msg.payload;
+      if (!pendingFolderRemovalsRef.current.delete(r.folderName) || !r.hadTarget) return;
+      const label = r.processName || r.windowTitle || 'target';
+      showToast(tt(`Removed folder target (${label}) from "${r.folderName}"`, `Alvo da pasta (${label}) removido de "${r.folderName}"`), {
         type: 'success',
         duration: 10000,
         action: {
           label: 'Undo',
           onClick: () => send({
             type: 'profile:setFolderWindowTarget',
-            payload: { folderName, processName: prevProcess, windowTitle: prevTitle, titleMatchMode: prevMode },
+            payload: {
+              folderName: r.folderName,
+              processName: r.processName,
+              windowTitle: r.windowTitle,
+              titleMatchMode: r.titleMatchMode,
+              relativeCoordinates: r.relativeCoordinates,
+              bringToFocus: r.bringToFocus,
+              restorePosition: r.restorePosition,
+              restoreSize: r.restoreSize,
+              windowX: r.windowX,
+              windowY: r.windowY,
+              windowWidth: r.windowWidth,
+              windowHeight: r.windowHeight,
+            },
           }),
         },
       });
-    }
+    });
+  }, [subscribe, send, showToast, tt]);
+  const handleRemoveFolderWindowTarget = (folderName: string) => {
+    pendingFolderRemovalsRef.current.add(folderName);
+    send({ type: 'profile:removeFolderWindowTarget', payload: { folderName } });
   };
 
   // Pending window-target removals: stash the prev values keyed by name. When the backend
@@ -776,7 +802,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
   useEffect(() => {
     return subscribe((msg) => {
       if (msg.type !== 'profile:windowTargetRemoved') return;
-      const name = msg.payload.name;
+      const { name, windowX, windowY, windowWidth, windowHeight } = msg.payload;
       const prev = pendingRemovalsRef.current.get(name);
       if (!prev) return;  // Not ours, or already handled (defensive)
       pendingRemovalsRef.current.delete(name);
@@ -796,6 +822,10 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               bringToFocus: prev.bringToFocus,
               restorePosition: prev.restorePosition,
               restoreSize: prev.restoreSize,
+              // The captured rect the removal zeroed, from the confirmation (the profile list does
+              // not carry geometry). Without it a profile that was not the active one came back
+              // with Restore Position/Size on over 0,0,0,0 — switches that did nothing.
+              windowX, windowY, windowWidth, windowHeight,
             },
           }),
         },
@@ -1053,6 +1083,9 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
   // re-subscribing window listeners on every render — without the memoisation the
   // identity would change on every parent re-render and the effect would re-mount
   // its mousemove/up listeners constantly during a drag.
+  // Also the rail tooltip's folder NAME (the expanded list shows it as the section header, and
+  // the tooltip is the rail's only detail read). That was a second, byte-identical copy of this
+  // function under another name — one rule about which folder owns a profile, written twice.
   const getProfileFolder = useCallback((name: string): string | null => {
     for (const f of profileOrder?.folders ?? []) {
       if (f.items.includes(name)) return f.name;
@@ -1075,14 +1108,6 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
   const getProfileFolderColor = useCallback((name: string): string | null => {
     for (const f of profileOrder?.folders ?? []) {
       if (f.items.includes(name)) return f.color;
-    }
-    return null;
-  }, [profileOrder?.folders]);
-  // Folder NAME for the rail tooltip — the expanded list shows it as the section header, and
-  // the tooltip is the rail's only detail read, so it should say what the row says.
-  const getProfileFolderName = useCallback((name: string): string | null => {
-    for (const f of profileOrder?.folders ?? []) {
-      if (f.items.includes(name)) return f.name;
     }
     return null;
   }, [profileOrder?.folders]);
@@ -1539,7 +1564,12 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
       }
       document.body.style.cursor = '';
       folderDragStartPos.current = null;
-      folderDragActive.current = false;
+      // Deferred past the synthesized click, exactly as the profile drag above does and for its
+      // reason: mouseup → click fire back-to-back, and the header's onClick guard
+      // (`if (!folderDragActive.current)`) read the flag already cleared — a drag released over
+      // its own header toggled the folder open or shut. The autoscroll loop that also reads the
+      // flag is cancelled just below, and the next mousedown resets it anyway.
+      setTimeout(() => { folderDragActive.current = false; }, 0);
       setDragFolder(null);
       setDropFolderIndex(null);
       setDragCursorPos(null);
@@ -1967,7 +1997,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                             p.name,
                             p.hotkey ? railHotkey(p.hotkey) : null,
                             p.hotstring ? `${p.hotstringInstant ? '⚡' : '↵'}${p.hotstring}` : null,
-                            getProfileFolderName(p.name),
+                            getProfileFolder(p.name),
                             p.hasEffectiveTarget ? targetLabel(p.effectiveTargetProcessName, p.effectiveTargetWindowTitle) : null,
                             p.isDisabled ? tt('disabled', 'desativado') : null,
                             descTip(p.description) || null,
@@ -2192,10 +2222,12 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               {/* Folder Sections */}
               {folderSections.map((folder, folderIdx) => {
                 const hasVisibleProfiles = folder.profiles.length > 0;
-                // No create button while a search is running: `folder.profiles` is the FILTERED
-                // list there, so a folder with no match looks empty without being empty — and
-                // searching is a find mode, not an authoring one.
-                const showFolderAdd = !trimmedQuery;
+                // No create button while a search is running — and no guard needed for it here:
+                // this map only runs when NOT searching (a search renders the flat list above
+                // instead). It carried one anyway, `!trimmedQuery`, which could never be false on
+                // this branch. The rule still holds for its reason: during a search the folders
+                // would be FILTERED, so one with no match would look empty without being empty,
+                // and searching is a find mode, not an authoring one.
                 const isDragOver = dropTarget === folder.name && dragProfile !== null;
                 const isFolderDragging = dragFolder === folder.name && folderDragActive.current;
                 // Visually mark the folder as disabled when every profile inside is disabled,
@@ -2366,44 +2398,42 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                           </RemovableChip>
                         )}
                       </div>
-                      {!folder.collapsed && (hasVisibleProfiles || showFolderAdd) && (
+                      {!folder.collapsed && (
                         // The card border is the containment now, so the old coloured left
                         // rail is gone — two nested separators for one group read as noise.
                         <div className="px-0.5 pb-0.5 pt-px">
                           {folder.profiles.map(renderProfileRow)}
-                          {showFolderAdd && (
-                            // The folder's own create button, and the only place that says out
-                            // loud where a new profile lands.
-                            //
-                            // ITS HEIGHT IS ALWAYS RESERVED, its ink is not: the row exists in the
-                            // layout whenever the folder is open, and only fades in on hover. A row
-                            // that mounted on hover would shove every folder below it down 24 px
-                            // the moment the pointer crossed one — with ~90 profiles the list would
-                            // twitch under the cursor all the way down. At rest the reserved strip
-                            // reads as the folder's bottom padding.
-                            //
-                            // Empty folder: `hasVisibleProfiles` is false, so this row IS the body —
-                            // and it stays inked (group-hover would leave a blank rectangle, which
-                            // is exactly what an empty folder used to be). It also gives the folder
-                            // a body to render at all, which it never had before.
-                            //
-                            // Safe against the drag layer without doing anything: profile drops
-                            // hit-test the WHOLE folder rect (folderRefs), so this adds no new drop
-                            // target, and reordering walks [data-drag-item^="profile:"], which this
-                            // row deliberately does not carry.
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); handleCreate(folder.name); }}
-                              aria-label={`New profile in ${folder.name}`}
-                              className={`w-full mx-0.5 h-6 px-1.5 flex items-center gap-1.5 rounded text-[11px] text-left
-                                text-text-tertiary hover:text-text-secondary hover:bg-bg-elevated
-                                transition-[opacity,color,background-color] duration-150
-                                ${hasVisibleProfiles ? 'opacity-0 group-hover/folder:opacity-100 focus-visible:opacity-100' : 'opacity-100'}`}
-                            >
-                              <Plus size={12} style={{ color: folder.color, opacity: 0.85 }} className="shrink-0" />
-                              New profile
-                            </button>
-                          )}
+                          {/* The folder's own create button, and the only place that says out
+                              loud where a new profile lands.
+
+                              ITS HEIGHT IS ALWAYS RESERVED, its ink is not: the row exists in the
+                              layout whenever the folder is open, and only fades in on hover. A row
+                              that mounted on hover would shove every folder below it down 24 px
+                              the moment the pointer crossed one — with ~90 profiles the list would
+                              twitch under the cursor all the way down. At rest the reserved strip
+                              reads as the folder's bottom padding.
+
+                              Empty folder: `hasVisibleProfiles` is false, so this row IS the body —
+                              and it stays inked (group-hover would leave a blank rectangle, which
+                              is exactly what an empty folder used to be). It also gives the folder
+                              a body to render at all, which it never had before.
+
+                              Safe against the drag layer without doing anything: profile drops
+                              hit-test the WHOLE folder rect (folderRefs), so this adds no new drop
+                              target, and reordering walks [data-drag-item^="profile:"], which this
+                              row deliberately does not carry. */}
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); handleCreate(folder.name); }}
+                            aria-label={`New profile in ${folder.name}`}
+                            className={`w-full mx-0.5 h-6 px-1.5 flex items-center gap-1.5 rounded text-[11px] text-left
+                              text-text-tertiary hover:text-text-secondary hover:bg-bg-elevated
+                              transition-[opacity,color,background-color] duration-150
+                              ${hasVisibleProfiles ? 'opacity-0 group-hover/folder:opacity-100 focus-visible:opacity-100' : 'opacity-100'}`}
+                          >
+                            <Plus size={12} style={{ color: folder.color, opacity: 0.85 }} className="shrink-0" />
+                            New profile
+                          </button>
                         </div>
                       )}
                     </div>
@@ -3036,16 +3066,17 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             </span>
           );
         };
+        // The sections follow the panel's: Pinned lists EVERY pinned profile, a folder lists all of
+        // its members, and a pinned folder member sits in both (one checkbox state, since it is
+        // keyed by name). Pinned used to leave out any profile that was also in a folder — the
+        // opposite of the panel, whose Pinned section leads with it and whose rail puts it first.
         const folders = (profileOrder?.folders ?? []).filter(f => f.items.some(matchesExport));
         const ungrouped = profiles.filter(p => {
           const inFolder = (profileOrder?.folders ?? []).some(f => f.items.includes(p.name));
-          const isPinned = (profileOrder?.pinned ?? []).includes(p.name) && !inFolder;
+          const isPinned = (profileOrder?.pinned ?? []).includes(p.name);
           return !inFolder && !isPinned && matchesExport(p.name);
         });
-        const pinned = (profileOrder?.pinned ?? []).filter(n => {
-          const inFolder = (profileOrder?.folders ?? []).some(f => f.items.includes(n));
-          return !inFolder && matchesExport(n);
-        });
+        const pinned = (profileOrder?.pinned ?? []).filter(n => profileByName.has(n) && matchesExport(n));
         // Select-All / per-folder counts scope to the search-visible rows (that's what the
         // control toggles). The FOOTER total, by contrast, spans every checked profile —
         // including ones the filter currently hides — because that's the set confirmExport ships.
@@ -3161,7 +3192,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                   )}
                 </div>
               )}
-              {/* Pinned (not in folders) */}
+              {/* Pinned — every pinned profile, folder member or not (see above) */}
               {pinned.length > 0 && (
                 <div className="mb-1">
                   <div className="px-2 py-1 label-micro text-text-tertiary">Pinned</div>
@@ -3455,12 +3486,17 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
           restorePosition: folder?.restorePosition ?? false,
           restoreSize: folder?.restoreSize ?? false,
         };
+        // Members that read their X/Y in the space this folder sets — the ones with no target of
+        // their own. The dialog warns before a Relative Coordinates flip reinterprets them.
+        const inheritingMemberCount = (folder?.items ?? [])
+          .filter(n => { const p = profileMap.get(n); return !!p && !p.hasWindowTarget; }).length;
         return (
           <TargetConfigDialog
             scope="folder"
             targetLabel={folderName}
             hasOwnTarget={hasOwnTarget}
             initial={initial}
+            inheritingMemberCount={inheritingMemberCount}
             onSubmit={(payload) => {
               send({
                 type: 'profile:setFolderWindowTarget',

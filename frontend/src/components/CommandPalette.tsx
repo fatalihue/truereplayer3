@@ -8,6 +8,9 @@ import {
 import { useAppState } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
 import { useSelectionRef } from '../state/SelectionContext';
+import { useSheetGuard } from '../state/SheetGuardContext';
+import { useToast } from '../state/ToastContext';
+import { useTt } from '../state/LanguageContext';
 
 interface CommandPaletteProps {
   isOpen: boolean;
@@ -63,6 +66,19 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     const sel = selectionRef.current;
     return sel.size > 0 ? Math.min(...sel) : actions.length;
   }, [actions.length, selectionRef]);
+  // The open Sheet's say over the list rewrites below (see SheetGuardContext): Ctrl+K opens the
+  // palette from inside the sheet — even mid-typing — and a paste or a convert re-seeded the
+  // editor under it. The palette floats over the sheet's footer warning, so a refusal also says
+  // so here, and the palette stays open: choosing the command again is the repeat that discards.
+  const sheetGuard = useSheetGuard();
+  const { showToast } = useToast();
+  const tt = useTt();
+  const sheetAllows = useCallback(() => {
+    if (sheetGuard.allowListChange()) return true;
+    showToast(tt('The open action has unsaved changes — choose the command again to discard them.',
+                 'A ação aberta tem alterações não salvas — escolha o comando de novo para descartá-las.'), 'info');
+    return false;
+  }, [sheetGuard, showToast, tt]);
   const [focusedIndex, setFocusedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -117,21 +133,21 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             id: 'pasteactions', label: 'Paste Actions',
             ...gate(isClicker, runActive),
             icon: <ClipboardPaste size={14} className="text-text-secondary" />,
-            onAction: () => { send({ type: 'actions:paste', payload: { insertIndex: computeInsertIndex() } }); onClose(); },
+            onAction: () => { if (!sheetAllows()) return; send({ type: 'actions:paste', payload: { insertIndex: computeInsertIndex() } }); onClose(); },
           },
           {
             id: 'convertrelative', label: 'Convert Coordinates to Relative',
             ...gate(isClicker, runActive),
             keywords: ['window relative', 'rebase', 'coordinates'],
             icon: <Replace size={14} className="text-text-secondary" />,
-            onAction: () => { send({ type: 'profile:convertCoordinates', payload: { direction: 'toRelative' } }); onClose(); },
+            onAction: () => { if (!sheetAllows()) return; send({ type: 'profile:convertCoordinates', payload: { direction: 'toRelative' } }); onClose(); },
           },
           {
             id: 'convertabsolute', label: 'Convert Coordinates to Absolute',
             ...gate(isClicker, runActive),
             keywords: ['screen coordinates', 'rebase'],
             icon: <Replace size={14} className="text-text-secondary" />,
-            onAction: () => { send({ type: 'profile:convertCoordinates', payload: { direction: 'toAbsolute' } }); onClose(); },
+            onAction: () => { if (!sheetAllows()) return; send({ type: 'profile:convertCoordinates', payload: { direction: 'toAbsolute' } }); onClose(); },
           },
           {
             // Convert the whole profile between paired (Down/Up) and combined (Keystroke/Click)
@@ -140,14 +156,14 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             ...gate(isClicker, runActive),
             keywords: ['merge', 'keystroke', 'click'],
             icon: <Combine size={14} className="text-text-secondary" />,
-            onAction: () => { send({ type: 'actions:convertMode', payload: { direction: 'toCombined' } }); onClose(); },
+            onAction: () => { if (!sheetAllows()) return; send({ type: 'actions:convertMode', payload: { direction: 'toCombined' } }); onClose(); },
           },
           {
             id: 'converttopaired', label: 'Convert Actions to Paired',
             ...gate(isClicker, runActive),
             keywords: ['split', 'down up', 'separate'],
             icon: <Split size={14} className="text-text-secondary" />,
-            onAction: () => { send({ type: 'actions:convertMode', payload: { direction: 'toPaired' } }); onClose(); },
+            onAction: () => { if (!sheetAllows()) return; send({ type: 'actions:convertMode', payload: { direction: 'toPaired' } }); onClose(); },
           },
         ],
       },
@@ -175,7 +191,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             disabled: runActive, disabledHint: runHint,
             keywords: ['clear', 'start over', 'blank'],
             icon: <RotateCcw size={14} className="text-text-secondary" />,
-            onAction: () => { send({ type: 'profile:reset', payload: {} }); onClose(); },
+            onAction: () => { if (!sheetAllows()) return; send({ type: 'profile:reset', payload: {} }); onClose(); },
           },
           {
             // Right-click-menu-only otherwise, so it stays searchable by name.
@@ -264,7 +280,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     // Narrow deps to the exact settings field read above so unrelated settings changes
     // (hotkeys, loop config, movement knobs) don't rebuild every command group.
   }, [
-    activeProfile, send, onClose, computeInsertIndex,
+    activeProfile, send, onClose, computeInsertIndex, sheetAllows,
     settings.useCursorClick,
     // The two BOOLEAN fields, never the buttonStates object: it is republished on several
     // unrelated events, and depending on the object would rebuild every group each time.

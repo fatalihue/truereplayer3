@@ -4355,6 +4355,26 @@ namespace TrueReplayer
             PushActionsUpdate();
         }
 
+        /// <summary>
+        /// The row an editor opened, named by the Id it sends (optional). Editors address their row
+        /// BY INDEX, and the list can change under an open one — a profile switch by hotkey or
+        /// automation, a delete, a paste, an undo — so by commit time the index may name a different
+        /// row, or a row of a different profile. The edit was applied anyway: a delay, a coordinate
+        /// or a key written into a row nobody was editing. With an Id that no longer matches,
+        /// nothing is written and the user is told. This is the backstop, not the whole answer: a
+        /// duplicated profile repeats its source's Ids, so the editors ALSO close themselves on a
+        /// profile switch (ActionTable, SheetPanel).
+        /// </summary>
+        private bool RowStillMatches(JsonElement payload, int index, string door)
+        {
+            if (!payload.TryGetProperty("id", out var idEl) || idEl.ValueKind != JsonValueKind.String) return true;
+            var id = idEl.GetString();
+            if (string.IsNullOrEmpty(id) || string.Equals(actions[index].Id, id, StringComparison.Ordinal)) return true;
+            DiagnosticLog.Warn($"{door} refused: row {index} is no longer the row the editor opened (the list changed under it).");
+            SendMessage("alert:show", new { message = "Not saved: that row changed while it was being edited (the list or the profile changed underneath)." });
+            return false;
+        }
+
         private void HandleActionsEdit(JsonElement payload)
         {
             // Defensive payload reads — GetProperty throws on missing fields and the outer
@@ -4369,6 +4389,7 @@ namespace TrueReplayer
             string value = valueEl.GetString() ?? "";
 
             if (index < 0 || index >= actions.Count) return;
+            if (!RowStillMatches(payload, index, "actions:edit")) return;
 
             // Reject an unknown actionType before snapshotting — an arbitrary string would set a
             // row no execution branch handles (silent no-op at replay) and is rejected here for
@@ -4408,6 +4429,7 @@ namespace TrueReplayer
 
             int index = indexEl.GetInt32();
             if (index < 0 || index >= actions.Count) return;
+            if (!RowStillMatches(payload, index, "actions:editMany")) return;
 
             var pending = new List<(string Field, string Value)>();
             foreach (var e in editsEl.EnumerateArray())
@@ -5220,6 +5242,7 @@ namespace TrueReplayer
             string text = payload.GetProperty("text").GetString() ?? "";
 
             if (index < 0 || index >= actions.Count) return;
+            if (!RowStillMatches(payload, index, "actions:editSendText")) return;
             if (actions[index].ActionType != "SendText") return;
 
             // Snapshot after the bounds + type guards so a stale/mismatched edit is a clean no-op.
@@ -5318,6 +5341,7 @@ namespace TrueReplayer
         {
             int index = payload.GetProperty("index").GetInt32();
             if (index < 0 || index >= actions.Count) return;
+            if (!RowStillMatches(payload, index, "actions:editRunProfile")) return;
             if (actions[index].ActionType != "RunProfile") return;
 
             // Snapshot after the bounds + type guards so a stale/mismatched edit is a clean no-op.
@@ -9104,7 +9128,8 @@ namespace TrueReplayer
             try
             {
                 var profile = await profileController.LoadProfileByNameAsync(name);
-                if (profile != null)
+                if (profile == null) ReportProfileGone(name);
+                else
                 {
                     profile.CustomHotkey = hotkey;
                     if (newMode.HasValue) profile.TriggerMode = newMode.Value;
@@ -9145,7 +9170,8 @@ namespace TrueReplayer
             try
             {
                 var profile = await profileController.LoadProfileByNameAsync(name);
-                if (profile != null)
+                if (profile == null) ReportProfileGone(name);
+                else
                 {
                     profile.CustomHotkey = null;
                     if (!await profileController.SaveProfileByNameAsync(name, profile)) return;
@@ -9191,7 +9217,8 @@ namespace TrueReplayer
             try
             {
                 var profile = await profileController.LoadProfileByNameAsync(name);
-                if (profile != null)
+                if (profile == null) ReportProfileGone(name);
+                else
                 {
                     profile.CustomHotstring = new Models.HotstringConfig { Sequence = sequence, Instant = instant };
                     if (!await profileController.SaveProfileByNameAsync(name, profile)) return;
@@ -9218,7 +9245,8 @@ namespace TrueReplayer
             try
             {
                 var profile = await profileController.LoadProfileByNameAsync(name);
-                if (profile != null)
+                if (profile == null) ReportProfileGone(name);
+                else
                 {
                     profile.CustomHotstring = null;
                     if (!await profileController.SaveProfileByNameAsync(name, profile)) return;
@@ -9313,6 +9341,25 @@ namespace TrueReplayer
             return WindowRectStatus.Ok;
         }
 
+        // The window rect a payload carries (all four numbers present), or null.
+        private static (int X, int Y, int Width, int Height)? ReadGeometry(JsonElement payload)
+        {
+            static bool Num(JsonElement p, string field, out int v)
+            {
+                v = 0;
+                return p.TryGetProperty(field, out var e) && e.ValueKind == JsonValueKind.Number && e.TryGetInt32(out v);
+            }
+            return Num(payload, "windowX", out int x) && Num(payload, "windowY", out int y)
+                && Num(payload, "windowWidth", out int w) && Num(payload, "windowHeight", out int h)
+                ? (x, y, w, h) : null;
+        }
+
+        // A handler asked for a profile by name and it is gone — renamed or deleted since the UI
+        // sent the message, typically an Undo clicked inside its 10 s window. That used to end the
+        // handler in silence: no change, no toast, a button that did nothing.
+        private void ReportProfileGone(string name) =>
+            SendMessage("alert:show", new { message = $"\"{name}\" no longer exists — it was renamed or deleted. Nothing was changed." });
+
         private async void HandleProfileSetWindowTarget(JsonElement payload)
         {
             string name = payload.GetProperty("name").GetString() ?? "";
@@ -9341,6 +9388,11 @@ namespace TrueReplayer
                 var raw = cdProp.GetString();
                 if (raw == "toRelative" || raw == "toAbsolute") convertDirection = raw;
             }
+            // The captured window rect, sent only by the remove-toast's Undo: the removal zeroes it,
+            // and for a profile that is not the loaded one nothing else can put it back — the copy
+            // from UserProfile.Current below applies to the loaded profile alone. Without it the
+            // Undo restored Restore Position/Size ON over a zero rect, which the replay drops.
+            var explicitGeometry = ReadGeometry(payload);
             if (string.IsNullOrEmpty(name)) return;
 
             // "Apply target & convert" only means anything for the LOADED profile: the conversion
@@ -9424,7 +9476,8 @@ namespace TrueReplayer
             }
 
             var profile = await profileController.LoadProfileByNameAsync(name);
-            if (profile != null)
+            if (profile == null) ReportProfileGone(name);
+            else
             {
                 // When keepInheritedTarget is true the profile has no target of its own and the
                 // user is just toggling flags on top of the folder-inherited target. Persisting
@@ -9449,7 +9502,21 @@ namespace TrueReplayer
                 // If this is the active profile, the in-memory UserProfile.Current may hold
                 // fresher WindowX/Y/Width/Height (captured via "Update Window Size & Position"
                 // button since last save). Copy those across so Set Target doesn't overwrite them.
-                if (CurrentProfileName == name)
+                if (explicitGeometry is { } geo)
+                {
+                    profile.WindowX = geo.X;
+                    profile.WindowY = geo.Y;
+                    profile.WindowWidth = geo.Width;
+                    profile.WindowHeight = geo.Height;
+                    if (CurrentProfileName == name)
+                    {
+                        UserProfile.Current.WindowX = geo.X;
+                        UserProfile.Current.WindowY = geo.Y;
+                        UserProfile.Current.WindowWidth = geo.Width;
+                        UserProfile.Current.WindowHeight = geo.Height;
+                    }
+                }
+                else if (CurrentProfileName == name)
                 {
                     profile.WindowX = UserProfile.Current.WindowX;
                     profile.WindowY = UserProfile.Current.WindowY;
@@ -9532,6 +9599,12 @@ namespace TrueReplayer
             var profile = await profileController.LoadProfileByNameAsync(name);
             if (profile != null)
             {
+                // What the Undo needs to put back and the UI cannot know: the captured rect (the
+                // profile list does not carry geometry). The loaded profile's live rect is the
+                // fresher one — "Update Window Size & Position" writes it before any save.
+                var removedGeometry = CurrentProfileName == name
+                    ? (X: UserProfile.Current.WindowX, Y: UserProfile.Current.WindowY, Width: UserProfile.Current.WindowWidth, Height: UserProfile.Current.WindowHeight)
+                    : (X: profile.WindowX, Y: profile.WindowY, Width: profile.WindowWidth, Height: profile.WindowHeight);
                 profile.TargetWindow = null;
                 profile.UseRelativeCoordinates = false;
                 profile.BringToFocus = false;
@@ -9551,8 +9624,16 @@ namespace TrueReplayer
                 // signal the frontend can't tell "blocked by hotkey conflict" (we return
                 // early above with an alert) from "removed successfully" — and was firing
                 // an optimistic "Removed target" toast either way.
-                SendMessage("profile:windowTargetRemoved", new { name });
+                SendMessage("profile:windowTargetRemoved", new
+                {
+                    name,
+                    windowX = removedGeometry.X,
+                    windowY = removedGeometry.Y,
+                    windowWidth = removedGeometry.Width,
+                    windowHeight = removedGeometry.Height,
+                });
             }
+            else ReportProfileGone(name);
         }
 
         private void HandleConvertCoordinates(JsonElement payload)
@@ -9926,12 +10007,23 @@ namespace TrueReplayer
             bool bringToFocus = payload.TryGetProperty("bringToFocus", out var btfProp) && btfProp.GetBoolean();
             bool restorePosition = payload.TryGetProperty("restorePosition", out var rpProp) && rpProp.GetBoolean();
             bool restoreSize = payload.TryGetProperty("restoreSize", out var rsProp) && rsProp.GetBoolean();
+            // Sent only by the remove-toast's Undo (see HandleRemoveFolderWindowTarget), which has to
+            // put back the rect the removal zeroed.
+            var explicitGeometry = ReadGeometry(payload);
 
             if (string.IsNullOrEmpty(folderName)) return;
 
             if (string.IsNullOrWhiteSpace(processName) && string.IsNullOrWhiteSpace(windowTitle))
             {
                 SendMessage("alert:show", new { message = "Please specify at least a process name or window title." });
+                return;
+            }
+
+            // SetFolderWindowTargetAsync no-ops on a name it cannot find — a folder renamed or deleted
+            // since the message left, typically before an Undo. Say so instead.
+            if (!profileController.GetProfileOrder().Folders.Any(f => f.Name == folderName))
+            {
+                SendMessage("alert:show", new { message = $"The folder \"{folderName}\" no longer exists — it was renamed or deleted. Nothing was changed." });
                 return;
             }
 
@@ -9947,6 +10039,8 @@ namespace TrueReplayer
                 WindowTitle = string.IsNullOrWhiteSpace(windowTitle) ? null : windowTitle.Trim(),
                 TitleMatchMode = titleMatchMode
             }, relativeCoordinates, bringToFocus, restorePosition, restoreSize);
+            if (explicitGeometry is { } geo)
+                await profileController.SetFolderGeometryAsync(folderName, geo.X, geo.Y, geo.Width, geo.Height);
             InputHookManager.RegisterProfileWindowTargets(profileController.GetProfileWindowTargets(), profileController.GetBringToFocusProfiles());
             PushProfilesUpdate();
         }
@@ -9990,6 +10084,32 @@ namespace TrueReplayer
                 }
             }
 
+            if (folder == null)
+            {
+                SendMessage("alert:show", new { message = $"The folder \"{folderName}\" no longer exists — it was renamed or deleted. Nothing was changed." });
+                return;
+            }
+            // Everything the removal wipes, for the confirmation below: the toast's Undo has to put
+            // ALL of it back. It used to resend the target alone, and the setter read the missing
+            // flags as false — a folder recorded in relative coordinates came back absolute, and its
+            // members' clicks landed off by the window origin, under a toast that said "restored".
+            var removed = new
+            {
+                folderName,
+                hadTarget = folder.TargetWindow != null,
+                processName = folder.TargetWindow?.ProcessName ?? "",
+                windowTitle = folder.TargetWindow?.WindowTitle ?? "",
+                titleMatchMode = folder.TargetWindow?.TitleMatchMode ?? "contains",
+                relativeCoordinates = folder.UseRelativeCoordinates,
+                bringToFocus = folder.BringToFocus,
+                restorePosition = folder.RestorePosition,
+                restoreSize = folder.RestoreSize,
+                windowX = folder.WindowX,
+                windowY = folder.WindowY,
+                windowWidth = folder.WindowWidth,
+                windowHeight = folder.WindowHeight,
+            };
+
             await profileController.RemoveFolderWindowTargetAsync(folderName);
             // Reset effective values on active profile if it was inheriting from this folder
             if (folder != null && CurrentProfileName != "No Profile" && folder.Items.Contains(CurrentProfileName))
@@ -10003,6 +10123,9 @@ namespace TrueReplayer
             }
             InputHookManager.RegisterProfileWindowTargets(profileController.GetProfileWindowTargets(), profileController.GetBringToFocusProfiles());
             PushProfilesUpdate();
+            // The folder twin of profile:windowTargetRemoved: the toast waits for this, so a removal
+            // refused above (a hotkey that would collide) no longer shows "Removed" with an Undo.
+            SendMessage("profile:folderWindowTargetRemoved", removed);
         }
 
         // Window detection state
@@ -10336,14 +10459,37 @@ namespace TrueReplayer
                 return;
             }
 
-            IntPtr hwnd = TrueReplayer.Services.ActionReplayer.FindWindowExcludingSelf(target, regex);
+            // The two row fields that change what the replay looks for, which this probe used to
+            // ignore — so it answered "Found" where the replay's condition reads false, or where the
+            // ActivateWindow finds no window and runs its Launch path instead.
+            bool foregroundOnly = payload.TryGetProperty("foregroundOnly", out var fgProp)
+                && fgProp.ValueKind == JsonValueKind.True;
+            int matchIndex = payload.TryGetProperty("matchIndex", out var miProp)
+                && miProp.ValueKind == JsonValueKind.Number && miProp.TryGetInt32(out var mi) && mi > 1 ? mi : 1;
+
+            IntPtr hwnd = TrueReplayer.Services.ActionReplayer.FindWindowExcludingSelf(target, regex, matchIndex);
+            string? notice = null;
+            if (hwnd == IntPtr.Zero && matchIndex > 1
+                && TrueReplayer.Services.ActionReplayer.FindWindowExcludingSelf(target, regex) != IntPtr.Zero)
+            {
+                notice = $"Matching windows exist, but not #{matchIndex} — right now the action finds none (and runs its Launch path, if it has one).";
+            }
+            else if (hwnd != IntPtr.Zero && foregroundOnly
+                && !TrueReplayer.Helpers.WindowMatcher.Matches(NativeMethods.GetForegroundWindow(), target, regex))
+            {
+                // With "foreground only" the replay asks the window in FRONT — which, while this
+                // button is being clicked, is TrueReplayer itself.
+                hwnd = IntPtr.Zero;
+                notice = "A matching window exists, but it is not in the foreground — with “Foreground only” the condition reads false until it is.";
+            }
             if (hwnd == IntPtr.Zero)
             {
                 SendMessage("window:testProbeResult", new {
                     requestId,
                     found = false,
                     matchProcess = "",
-                    matchTitle = ""
+                    matchTitle = "",
+                    error = notice,
                 });
                 return;
             }
@@ -10709,9 +10855,26 @@ namespace TrueReplayer
                 ? fnProp.GetString()
                 : null;
             if (string.IsNullOrEmpty(profileName)) return;
+            // A profile without its own target takes its coordinate SPACE from its folder, so moving
+            // it can flip how its recorded X/Y are read — relative to the folder's window, or as
+            // screen positions — with nothing converted. That used to happen in silence: every click
+            // of the profile off by the window origin at its next run.
+            bool inherits = !profileController.HasOwnWindowTarget(profileName);
+            bool relativeBefore = profileController.GetEffectiveRelativeCoordinates(profileName);
             await profileController.MoveToFolderAsync(profileName, folderName);
             InputHookManager.RegisterProfileWindowTargets(profileController.GetProfileWindowTargets(), profileController.GetBringToFocusProfiles());
             PushProfilesUpdate();
+            bool relativeAfter = profileController.GetEffectiveRelativeCoordinates(profileName);
+            if (inherits && relativeAfter != relativeBefore)
+            {
+                SendMessage("alert:show", new
+                {
+                    message = relativeAfter
+                        ? $"\"{profileName}\" now reads its recorded X/Y relative to the folder's window. They were not converted — if its clicks land in the wrong place, load it and run \"Convert Coordinates to Relative\" (Ctrl+K)."
+                        : $"\"{profileName}\" now reads its recorded X/Y as screen positions. They were not converted — if its clicks land in the wrong place, load it and run \"Convert Coordinates to Absolute\" (Ctrl+K).",
+                    type = "info"
+                });
+            }
         }
 
         private async void HandleProfileReorder(JsonElement payload)
