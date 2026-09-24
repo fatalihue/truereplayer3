@@ -1088,6 +1088,10 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
   const handleRowClick = useCallback((idx: number, e: React.MouseEvent) => {
     if (editingCell) return;
     if (dragOccurred.current) { dragOccurred.current = false; return; }
+    // Mutating the selection mid-run is blocked at App level for body focus; mirror
+    // that here, same as handleGridKeyDown — a click during a run must not reshape
+    // the selection that the bulk bar/Delete gate reads the instant the run ends.
+    if (buttonStates.recordingActive || buttonStates.replayActive) return;
 
     // Mouse clicks reposition the keyboard cursor so a follow-up Arrow/Space
     // continues from the clicked row (kbCursorRef is declared with the keyboard
@@ -1120,7 +1124,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
       lastClickedIndex.current = idx;
       return new Set([idx]);
     });
-  }, [editingCell]);
+  }, [editingCell, buttonStates.recordingActive, buttonStates.replayActive]);
 
   // ── Keyboard row navigation (UI Wave 3) ──
   // The scroll container is the focus target (tabIndex=0); keys act on a cursor
