@@ -6,8 +6,8 @@ import { SelectionProvider } from './state/SelectionContext';
 import { SheetGuardProvider, useSheetGuard } from './state/SheetGuardContext';
 import { isModalDialogOpen } from './utils/modalDialog';
 import { ThemeProvider, useTheme } from './state/ThemeContext';
-import { ToastProvider } from './state/ToastContext';
-import { LanguageProvider } from './state/LanguageContext';
+import { ToastProvider, useToast } from './state/ToastContext';
+import { LanguageProvider, useTt } from './state/LanguageContext';
 import { TitleBar } from './components/TitleBar';
 import { ProfilePanel } from './components/ProfilePanel';
 import { Toolbar, defaultColumnVisibility } from './components/Toolbar';
@@ -134,6 +134,8 @@ function AutoCollapseOnZoom({ setSidebarCollapsed, setSettingsCollapsed, autoCol
 function AppShell() {
   const { settings, buttonStates } = useAppState();
   const { send, subscribe } = useBridge();
+  const { showToast } = useToast();
+  const tt = useTt();
   const isClicker = settings.useCursorClick;
 
   // Read by the global keydown handler through a ref so the handler can stay
@@ -189,11 +191,25 @@ function AppShell() {
   // "Automations…" item, which arrives as a backend push. It OPENS rather than
   // toggles — a tray click asking for the panel must never be the click that
   // closes it.
+  //
+  // And it does not open over a modal dialog, which the tray — outside the page, past any scrim —
+  // could do. Over Insert Pause or Send Keystroke, which hold the keyboard hook in capture, the
+  // panel's keys never reached it (capture swallows every key while the app is in front) and went
+  // to the hidden dialog instead: the Esc meant to close the panel became the Pause's resume key.
+  // Ctrl+K stands down on the same check. Already open is not a refusal — it is simply open.
+  const showAutomationRef = useRef(showAutomation);
+  showAutomationRef.current = showAutomation;
   useEffect(() => {
     return subscribe((msg) => {
-      if (msg.type === 'automation:open') setShowAutomation(true);
+      if (msg.type !== 'automation:open' || showAutomationRef.current) return;
+      if (isModalDialogOpen()) {
+        showToast(tt('Close the open dialog first, then open Automations again.',
+          'Feche o diálogo aberto primeiro e abra as Automações de novo.'), 'info');
+        return;
+      }
+      setShowAutomation(true);
     });
-  }, [subscribe, setShowAutomation]);
+  }, [subscribe, setShowAutomation, showToast, tt]);
 
   // Global keyboard handler: Ctrl+K for command palette, Ctrl+S to save profile,
   // Ctrl+Z/Y for undo/redo + block UI interaction keys.

@@ -854,8 +854,10 @@ export type IncomingMessage =
   | { type: 'toolbar:updated'; payload: { profileName: string } }
   | { type: 'statusbar:updated'; payload: { directory: string; profileName: string | null; actionCount: number } }
   | { type: 'alert:show'; payload: { message: string; type?: 'success' | 'error' | 'info'; duration?: number } }
-  | { type: 'windowTarget:detected'; payload: { processName: string; windowTitle: string } }
-  | { type: 'windowTarget:detectState'; payload: { detecting: boolean } }
+  // Both carry the requestId of the profile:detectWindow they answer — two WindowTargetFields can
+  // be mounted at once, and each applies only its own.
+  | { type: 'windowTarget:detected'; payload: { requestId: string; processName: string; windowTitle: string } }
+  | { type: 'windowTarget:detectState'; payload: { requestId: string; detecting: boolean } }
   | { type: 'windowTarget:testResult'; payload: { matches: boolean; foregroundProcess: string; foregroundTitle: string; error?: string } }
   // Exists-ANYWHERE window probe reply for the ActivateWindow Sheet editor's Test button.
   // Carries the requestId back so the Sheet can pair replies (unlike the legacy
@@ -863,12 +865,13 @@ export type IncomingMessage =
   | { type: 'window:testProbeResult'; payload: { requestId: string; found: boolean; matchProcess: string; matchTitle: string; error?: string } }
   | { type: 'dialog:pickFileResult'; payload: { requestId: string; path?: string | null } }
   | { type: 'window:captureGeometryResult'; payload: { requestId: string; found: boolean; x: number; y: number; width: number; height: number; error?: string } }
-  // Backend signal that the combined "Apply target & convert" path on profile:setWindowTarget
-  // completed successfully (target saved AND coords migrated). The dialog listens to dismiss
-  // the migration hint and reset its `edited` flag so a second click can't re-trigger the
-  // already-applied conversion. Pre-flight failures don't emit this — they alert via the
-  // standard `alert:show` toast.
-  | { type: 'windowTarget:applyConvertCompleted'; payload: Record<string, never> }
+  // The Target dialog's answer for both of its convert buttons: the combined "Apply target &
+  // convert" on profile:setWindowTarget and the named profile:convertCoordinates. ok:true = the
+  // coords were migrated (and, for the combined path, the target saved); the dialog dismisses the
+  // migration hint and, after an apply, resets its `edited` flag so a second click can't
+  // re-trigger the conversion. ok:false = refused or failed — the reason already went out as an
+  // alert:show — and the dialog just lifts its in-flight lock, keeping the hint.
+  | { type: 'windowTarget:applyConvertCompleted'; payload: { ok: boolean } }
   | { type: 'process:list'; payload: { processes: { name: string; title: string }[] } }
   | { type: 'clipboard:content'; payload: { text: string } }
   | { type: 'replay:chain'; payload: { stack: string[] } }
@@ -1055,7 +1058,9 @@ export type OutgoingMessage =
       // The captured rect, all four or none — only an Undo sends it, to put back what the
       // removal zeroed (profile:windowTargetRemoved carries it).
       windowX?: number; windowY?: number; windowWidth?: number; windowHeight?: number } }
-  | { type: 'profile:convertCoordinates'; payload: { direction: 'toRelative' | 'toAbsolute' } }
+  // name: the Target dialog's profile — refused unless it is still the loaded one, and answered
+  // with windowTarget:applyConvertCompleted. The palette omits it and acts on the loaded profile.
+  | { type: 'profile:convertCoordinates'; payload: { direction: 'toRelative' | 'toAbsolute'; name?: string } }
   | { type: 'profile:updateWindowSize'; payload: { name?: string; folderName?: string; processName?: string; windowTitle?: string; titleMatchMode?: string } }
   // The four target flags (relativeCoordinates / bringToFocus / restorePosition / restoreSize)
   // and the trigger mode each used to have a message of their own. They ride profile:
@@ -1065,7 +1070,9 @@ export type OutgoingMessage =
   // The rect is the Undo's, as on profile:setWindowTarget (profile:folderWindowTargetRemoved).
   | { type: 'profile:setFolderWindowTarget'; payload: { folderName: string; processName: string; windowTitle: string; titleMatchMode: string; relativeCoordinates?: boolean; bringToFocus?: boolean; restorePosition?: boolean; restoreSize?: boolean; windowX?: number; windowY?: number; windowWidth?: number; windowHeight?: number } }
   | { type: 'profile:removeFolderWindowTarget'; payload: { folderName: string } }
-  | { type: 'profile:detectWindow'; payload: Record<string, never> }
+  // Explicit start/stop, not a toggle: a stop only ends the detection its requestId started, and a
+  // start while another instance's detection is armed takes it over (that one gets detecting:false).
+  | { type: 'profile:detectWindow'; payload: { requestId: string; enabled: boolean } }
   | { type: 'profile:testWindowMatch'; payload: { processName: string; windowTitle: string; titleMatchMode: string } }
   // Window probe for the ActivateWindow editor and the If/Wait-window rows — same matcher the
   // replay uses (".exe" auto-append, self-excluded). `matchIndex` picks the Nth match the way

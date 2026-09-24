@@ -49,6 +49,10 @@ export interface NumberInputProps {
   // attribute is unreliable across portals. Forwards to the inner <input>; ignored on
   // re-renders, only the first mount focuses (so toggling it back to false won't blur).
   autoFocus?: boolean;
+  // Whole numbers only. A typed fraction reaches onChange truncated toward zero at once — so a
+  // parent that previews the value sees the number it will store — and the text snaps to it on
+  // blur. For fields whose wire format is an int (a click point: the backend reads X/Y as int).
+  integer?: boolean;
 }
 
 // Compact number box, Windows 11 NumberBox style: the value owns the whole field, and the
@@ -81,6 +85,7 @@ export function NumberInput({
   thousands = false,
   suffixInside = false,
   ghostSuffix,
+  integer = false,
 }: NumberInputProps) {
   const { language } = useLanguage();
   // Text-mode (type=text + digit-strip) is needed for both locale grouping and an inside unit,
@@ -119,10 +124,11 @@ export function NumberInput({
   }, [value]);
 
   const clamp = useCallback((n: number) => {
+    if (integer) n = Math.trunc(n);
     if (min !== undefined && n < min) return min;
     if (max !== undefined && n > max) return max;
     return n;
-  }, [min, max]);
+  }, [min, max, integer]);
 
   const commit = useCallback((n: number) => {
     const clamped = clamp(n);

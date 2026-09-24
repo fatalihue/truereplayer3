@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppWindow } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
+import { useAppState } from '../state/AppStateContext';
 import { useTt } from '../state/LanguageContext';
 import { Toggle } from './common/Toggle';
 import { DialogShell, DialogFooter  } from './common/DialogShell';
@@ -8,6 +9,9 @@ import { Button } from './common/Button';
 import { WindowTargetFields, type WindowTargetFieldsHandle } from './WindowTargetFields';
 
 type Scope = 'profile' | 'folder';
+
+// Covers the OS double-click interval (Windows' default GetDoubleClickTime) — see raiseClickShield.
+const CLICK_SHIELD_MS = 500;
 
 export type TargetSubmitPayload = {
   processName: string;
@@ -84,6 +88,11 @@ export function TargetConfigDialog({
 }: TargetConfigDialogProps) {
   const { send, subscribe } = useBridge();
   const tt = useTt();
+  const { buttonStates } = useAppState();
+  // Convert rewrites X/Y in place on the actions a live run is replaying, and the replayer froze
+  // the coordinate space when it started — the rest of the run clicks in the wrong space. The
+  // palette's Convert items were gated on this; this dialog's were not. The backend refuses too.
+  const runActive = buttonStates.recordingActive || buttonStates.replayActive;
 
   const [processName, setProcessName] = useState(initial.processName);
   const [windowTitle, setWindowTitle] = useState(initial.windowTitle);
@@ -162,7 +171,40 @@ export function TargetConfigDialog({
     return () => window.clearTimeout(t);
   }, [testResult]);
 
-  const markEdited = () => { setEdited(true); setTestResult(null); setTestInFlight(false); };
+  // Which Test click a result may answer. windowTarget:testResult carries no id (this dialog is its
+  // only consumer), and a result could land AFTER the user had already corrected the fields:
+  // markEdited cleared the chip, then the deferred apply below put the old verdict back over the
+  // new fields — "✗ No match" on a config that matches. An edit bumps the sequence; a result that
+  // arrives, or would be applied, under a newer sequence than its click is dropped.
+  const testSeqRef = useRef(0);
+  const awaitedTestSeqRef = useRef(-1);
+
+  const markEdited = () => { testSeqRef.current += 1; setEdited(true); setTestResult(null); setTestInFlight(false); };
+
+  // In flight between a convert click and the backend's answer (windowTarget:applyConvertCompleted,
+  // ok or not — every exit answers). The button stayed live before, and "Apply target & convert"
+  // crosses three awaits before converting: a double click converted twice, doubling the window
+  // offset on every action under a success toast. The backend drops a duplicate as well.
+  const [applying, setApplying] = useState(false);
+  const applyingKindRef = useRef<'apply' | 'convert' | null>(null);
+
+  // The two floating cards below sit OVER Restore Position/Size and "Update Window Size &
+  // Position", and every way out of them removed the card at once — so the second click of a
+  // double click (a trackpad habit) landed on whatever the card had covered: a toggle flipped
+  // unseen, or an immediate profile:updateWindowSize overwrote the saved geometry. For one
+  // double-click interval after a card goes, an invisible pad in its place takes that click.
+  const floatingCardRef = useRef<HTMLDivElement>(null);
+  const [clickShield, setClickShield] = useState<{ top: number; height: number } | null>(null);
+  const shieldTimerRef = useRef<number | undefined>(undefined);
+  const raiseClickShield = useCallback(() => {
+    const el = floatingCardRef.current;
+    if (!el) return;
+    // offsetTop/offsetHeight are layout units, the same space the pad's style is written in.
+    setClickShield({ top: el.offsetTop, height: el.offsetHeight });
+    window.clearTimeout(shieldTimerRef.current);
+    shieldTimerRef.current = window.setTimeout(() => setClickShield(null), CLICK_SHIELD_MS);
+  }, []);
+  useEffect(() => () => window.clearTimeout(shieldTimerRef.current), []);
   // Lets handleSubmit cancel an in-flight detection on the keep-open convert path (see below).
   const wtfRef = useRef<WindowTargetFieldsHandle>(null);
 
@@ -191,6 +233,8 @@ export function TargetConfigDialog({
         // a clean state transition (colored → neutral testing → new colored) instead of
         // a single-frame re-render that visually looks like nothing happened.
         const result = msg.payload as TestResult;
+        const seq = awaitedTestSeqRef.current;
+        if (seq !== testSeqRef.current) return;
         const elapsed = Date.now() - testInFlightStartRef.current;
         const remaining = MIN_TEST_INFLIGHT_MS - elapsed;
         if (remaining <= 0) {
@@ -198,23 +242,31 @@ export function TargetConfigDialog({
           setTestResult(result);
         } else {
           window.setTimeout(() => {
+            if (seq !== testSeqRef.current) return;
             setTestInFlight(false);
             setTestResult(result);
           }, remaining);
         }
       } else if (msg.type === 'windowTarget:applyConvertCompleted') {
-        // Backend confirms the combined save + convert succeeded. Dismiss the hint so a
-        // second click on the same button doesn't double-translate the already-converted
-        // actions, and reset `edited` so the dialog reflects that the typed fields are
-        // now the persisted state. The toast (alert:show) is sent separately by the
-        // backend so the user sees the confirmation regardless of whether the dialog
-        // stayed open or not.
+        const { ok } = msg.payload as { ok: boolean };
+        const kind = applyingKindRef.current;
+        applyingKindRef.current = null;
+        setApplying(false);
+        // A refusal already alerted; the hint stays so the conversion can still be done.
+        if (!ok) return;
+        // Dismiss the hint so a second click on the same button doesn't double-translate the
+        // already-converted actions. After an APPLY, reset `edited` too: the typed fields are
+        // now the persisted state. The toast (alert:show) is sent separately by the backend so
+        // the user sees the confirmation regardless of whether the dialog stayed open or not.
+        // The answer can beat the second click of a double click (the plain Convert answers in
+        // milliseconds), so the card leaves behind the same pad as a Skip.
+        raiseClickShield();
         setConvertHint(null);
         setConvertHintDismissed(true);
-        setEdited(false);
+        if (kind === 'apply') setEdited(false);
       }
     });
-  }, [subscribe]);
+  }, [subscribe, raiseClickShield]);
 
   // Detection lifecycle (the click-capture and its Esc-to-cancel) + the process picker now live
   // inside WindowTargetFields, which stops any active detection on unmount — so closing the dialog
@@ -231,18 +283,19 @@ export function TargetConfigDialog({
   // same save round-trip — without it, the conversion would either race a separate
   // message or run against the stale (pre-save) profile target. Default {} keeps every
   // other caller (Set Target button, Enter key) on the existing semantics.
-  const handleSubmit = (extras: { convertDirection?: 'toRelative' | 'toAbsolute' } = {}) => {
+  // True when the payload went out — the convert button's in-flight lock waits for an answer only then.
+  const handleSubmit = (extras: { convertDirection?: 'toRelative' | 'toAbsolute' } = {}): boolean => {
     // Stop any in-flight window detection on submit. Matters for the keep-open "Apply target &
     // convert" path, which does NOT unmount the component (so the unmount cleanup can't fire); the
     // ordinary close paths self-heal via unmount. No-op when nothing is detecting.
     wtfRef.current?.stopDetection();
     // Defense in depth — submitDisabled already covers this, but a stray Enter press could
     // bypass the click handler's disabled check on some browsers.
-    if (regexError !== null) return;
+    if (regexError !== null) return false;
     const keepInheritedTarget = scope === 'profile' && inheritedFromFolder && !edited;
     const targetEmpty = !processName.trim() && !windowTitle.trim();
     // Guard: when not keeping inheritance, target fields must have something.
-    if (!keepInheritedTarget && targetEmpty) return;
+    if (!keepInheritedTarget && targetEmpty) return false;
 
     const payload: TargetSubmitPayload = {
       processName: processName.trim(),
@@ -266,6 +319,7 @@ export function TargetConfigDialog({
     // the hint, resetting `edited`) runs when the backend emits
     // `windowTarget:applyConvertCompleted` — see the subscribe handler.
     onSubmit(payload, extras.convertDirection ? { keepOpen: true } : undefined);
+    return true;
   };
 
   const submitDisabled = (!processName.trim() && !windowTitle.trim()) || regexError !== null;
@@ -295,6 +349,13 @@ export function TargetConfigDialog({
   // currently-saved target via onConvertCoordinates — no apply step needed. When edited
   // is false the saved target hasn't changed, so a plain convert is enough.
   const convertAlsoApplies = edited && hasTargetInFields;
+  // The count is the LOADED profile's, and zero whenever this dialog's profile is not the loaded
+  // one. A hint raised while it was loaded outlives that — an automation or a profile hotkey can
+  // swap the loaded profile under an open dialog — and its Convert then rewrote whoever was
+  // loaded NOW. The hint stays (Set Target is still gated on it: the flag flip still needs an
+  // answer) but only Skip is offered until the profile is loaded again. The backend refuses a
+  // name that is not the loaded profile as well.
+  const hintCanConvert = convertibleActionCount > 0;
   const isProfile = scope === 'profile';
   // Named after the menu item that opens it. It used to say "Target Configuration" while the
   // item said "Window target…" and the removal confirmations said "window target" — three names
@@ -367,6 +428,8 @@ export function TargetConfigDialog({
             // Stamp the start time BEFORE setting state so the response handler can compute
             // an accurate elapsed and decide whether to defer the apply (see the
             // windowTarget:testResult branch in the subscribe useEffect).
+            testSeqRef.current += 1;
+            awaitedTestSeqRef.current = testSeqRef.current;
             testInFlightStartRef.current = Date.now();
             setTestResult(null);
             setTestInFlight(true);
@@ -451,12 +514,21 @@ export function TargetConfigDialog({
             // the dialog — the inline hint used to push every row down and resize the
             // box). Opaque card + shadow so it reads as a layer on top. No timeout —
             // stays until the user converts or skips, same actions as the old hint.
-            <div className="absolute bottom-3 left-4 right-4 flex items-start gap-2 px-3 py-2 text-[11px] text-warning-ink bg-bg-card border border-warning-ink/35 rounded-lg shadow-overlay z-20">
+            <div ref={floatingCardRef} className="absolute bottom-3 left-4 right-4 flex items-start gap-2 px-3 py-2 text-[11px] text-warning-ink bg-bg-card border border-warning-ink/35 rounded-lg shadow-overlay z-20">
               <span className="flex-1 leading-snug">
-                {convertibleActionCount} action{convertibleActionCount === 1 ? '' : 's'} captured in {convertHint === 'toRelative' ? 'absolute' : 'relative'} coords.{' '}
-                {convertHint === 'toRelative'
-                  ? 'Convert to relative so they follow this window when it moves.'
-                  : 'Convert to absolute so they keep their current screen positions.'}
+                {hintCanConvert ? (
+                  <>
+                    {convertibleActionCount} action{convertibleActionCount === 1 ? '' : 's'} captured in {convertHint === 'toRelative' ? 'absolute' : 'relative'} coords.{' '}
+                    {convertHint === 'toRelative'
+                      ? 'Convert to relative so they follow this window when it moves.'
+                      : 'Convert to absolute so they keep their current screen positions.'}
+                  </>
+                ) : (
+                  <>
+                    '{targetLabel}' is no longer the loaded profile, so its actions can't be converted from here.
+                    Load it to convert, or Skip to save the setting without converting.
+                  </>
+                )}
               </span>
               <div className="flex gap-1 shrink-0">
                 {/* Two effective modes for this button:
@@ -469,22 +541,27 @@ export function TargetConfigDialog({
                     - else: target already saved (or fields empty and only the flag
                       changed) → keep the legacy in-place convert via onConvertCoordinates
                       so the dialog stays open for further tweaks. */}
+                {/* Both kinds now wait for the backend's windowTarget:applyConvertCompleted before the
+                    hint goes: the plain Convert used to dismiss on SEND, so a refusal (window not
+                    found, profile swapped out) took the hint away with nothing converted. */}
                 <button
                   onClick={() => {
-                    if (convertAlsoApplies) {
-                      handleSubmit({ convertDirection: convertHint });
-                    } else {
-                      onConvertCoordinates?.(convertHint);
-                      setConvertHint(null);
-                      setConvertHintDismissed(true);
-                    }
+                    if (applying || !onConvertCoordinates) return;
+                    applyingKindRef.current = convertAlsoApplies ? 'apply' : 'convert';
+                    setApplying(true);
+                    let sent = true;
+                    if (convertAlsoApplies) sent = handleSubmit({ convertDirection: convertHint });
+                    else onConvertCoordinates(convertHint);
+                    if (!sent) { applyingKindRef.current = null; setApplying(false); }
                   }}
-                  className="px-2 py-0.5 text-[10px] font-medium text-text-primary bg-accent-solid/30 hover:bg-accent-solid/50 rounded transition-colors"
+                  disabled={applying || runActive || !hintCanConvert}
+                  data-tip={runActive ? tt('Not while a run is active', 'Não durante uma execução') : undefined}
+                  className="px-2 py-0.5 text-[10px] font-medium text-text-primary bg-accent-solid/30 hover:bg-accent-solid/50 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {convertAlsoApplies ? 'Apply target & convert' : 'Convert'}
                 </button>
                 <button
-                  onClick={() => { setConvertHint(null); setConvertHintDismissed(true); }}
+                  onClick={() => { raiseClickShield(); setConvertHint(null); setConvertHintDismissed(true); }}
                   className="px-1.5 py-0.5 text-[10px] text-text-tertiary hover:text-text-primary transition-colors"
                 >
                   Skip
@@ -495,19 +572,22 @@ export function TargetConfigDialog({
           {memberSpaceWarn && (
             // Same floating card as the hint above (the two never meet: the hint needs
             // onConvertCoordinates, which only the profile scope passes).
-            <div className="absolute bottom-3 left-4 right-4 flex items-start gap-2 px-3 py-2 text-[11px] text-warning-ink bg-bg-card border border-warning-ink/35 rounded-lg shadow-overlay z-20">
+            <div ref={floatingCardRef} className="absolute bottom-3 left-4 right-4 flex items-start gap-2 px-3 py-2 text-[11px] text-warning-ink bg-bg-card border border-warning-ink/35 rounded-lg shadow-overlay z-20">
               <span className="flex-1 leading-snug">
                 {inheritingMemberCount} profile{inheritingMemberCount === 1 ? '' : 's'} in this folder use{inheritingMemberCount === 1 ? 's' : ''} its target, with X/Y set for {initial.relativeCoordinates ? 'relative' : 'absolute'} coords.
                 They are not converted — if a profile's clicks land in the wrong place, load it and run
                 "Convert Coordinates to {initial.relativeCoordinates ? 'Absolute' : 'Relative'}" (Ctrl+K).
               </span>
               <button
-                onClick={() => { setMemberSpaceWarn(false); setMemberSpaceWarnRead(true); }}
+                onClick={() => { raiseClickShield(); setMemberSpaceWarn(false); setMemberSpaceWarnRead(true); }}
                 className="shrink-0 px-2 py-0.5 text-[10px] font-medium text-text-primary bg-accent-solid/30 hover:bg-accent-solid/50 rounded transition-colors"
               >
                 Got it
               </button>
             </div>
+          )}
+          {clickShield && (
+            <div aria-hidden className="absolute left-4 right-4 z-20" style={{ top: clickShield.top, height: clickShield.height }} />
           )}
           <div className="flex items-center justify-between">
             <span className="text-xs text-text-secondary">Bring to Focus</span>

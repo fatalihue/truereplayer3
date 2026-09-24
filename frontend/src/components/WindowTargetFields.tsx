@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { X, ChevronDown } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
 import { useTt } from '../state/LanguageContext';
@@ -37,8 +37,8 @@ export type WindowTargetFieldsHandle = {
 export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
   value: WindowTargetValue;
   onChange: (patch: Partial<WindowTargetValue>) => void;
-  /** Called on any user edit (typing, picker pick, detect). Hosts use it to mark the form dirty
-   *  and clear a stale test result. */
+  /** Called on any user edit (typing, picker pick, a detected window — not the Detect click
+   *  itself). Hosts use it to mark the form dirty and clear a stale test result. */
   onEdit?: () => void;
   showDetect?: boolean;
   /** Optional error rendered under the Title input (e.g. the dialog's live regex validation). */
@@ -94,35 +94,56 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
   onEditRef.current = onEdit;
   const edit = (patch: Partial<WindowTargetValue>) => { onChangeRef.current(patch); onEditRef.current?.(); };
 
+  // Which detection is ours. Two instances can be mounted at once — a Sheet row editor under the
+  // Automations panel the tray opens on top of it — and the backend's replies used to be a bare
+  // broadcast: the detected window was written into BOTH drafts, and one Esc reached both
+  // instances and sent two TOGGLES that disarmed the hook and re-armed it. Every send names this
+  // id now, every reply is checked against it, and start/stop are explicit.
+  // Lazy-initialized: useRef's argument is evaluated on every render (see SettingsPanel's HotkeyInput).
+  const requestIdRef = useRef<string | undefined>(undefined);
+  if (requestIdRef.current === undefined) requestIdRef.current = `window-detect-${crypto.randomUUID()}`;
+
   // Detection is a global click-capture on the backend — if the host (a modal, or the sheet) closes
-  // while we're still waiting for the target click, unmount toggles it back off so it doesn't leak.
-  // Guarded on a ref so we never send the toggle when detection wasn't active (that would turn it ON).
-  const isDetectingRef = useRef(false);
-  isDetectingRef.current = isDetecting;
+  // while we're still waiting for the target click, unmount stops it so it doesn't leak. Set on
+  // the START, not on the backend's answer: a host that closes in between still owes the stop.
+  const armedRef = useRef(false);
   const sendRef = useRef(send);
   sendRef.current = send;
 
-  // Cancel an active detection NOW. Clears the ref synchronously (before the setState re-render) so
-  // the unmount cleanup below can't fire a second toggle — a double toggle would re-arm detection.
-  const stopDetection = () => {
-    if (!isDetectingRef.current) return;
-    isDetectingRef.current = false;
+  const startDetection = useCallback(() => {
+    armedRef.current = true;
+    sendRef.current({ type: 'profile:detectWindow', payload: { requestId: requestIdRef.current!, enabled: true } });
+  }, []);
+  // Cancel our detection NOW. A stop naming another instance's request is ignored by the backend,
+  // so this can never end a detection someone else started.
+  const stopDetection = useCallback(() => {
+    if (!armedRef.current) return;
+    armedRef.current = false;
     setIsDetecting(false);
-    sendRef.current({ type: 'profile:detectWindow', payload: {} });
-  };
-  useImperativeHandle(ref, () => ({ stopDetection }), []);
+    sendRef.current({ type: 'profile:detectWindow', payload: { requestId: requestIdRef.current!, enabled: false } });
+  }, []);
+  useImperativeHandle(ref, () => ({ stopDetection }), [stopDetection]);
 
   useEffect(() => () => {
-    if (isDetectingRef.current) sendRef.current({ type: 'profile:detectWindow', payload: {} });
+    if (armedRef.current) {
+      sendRef.current({ type: 'profile:detectWindow', payload: { requestId: requestIdRef.current!, enabled: false } });
+    }
   }, []);
 
   useEffect(() => subscribe((msg) => {
     if (msg.type === 'windowTarget:detected') {
-      const p = msg.payload as { processName: string; windowTitle: string };
+      const p = msg.payload as { requestId?: string; processName: string; windowTitle: string };
+      if (p.requestId !== requestIdRef.current) return;
+      armedRef.current = false;
       edit({ processName: p.processName, windowTitle: p.windowTitle });
       setIsDetecting(false);
     } else if (msg.type === 'windowTarget:detectState') {
-      setIsDetecting((msg.payload as { detecting: boolean }).detecting);
+      const p = msg.payload as { requestId?: string; detecting: boolean };
+      if (p.requestId !== requestIdRef.current) return;
+      // A refusal (a run in progress, a hook Windows would not give) and a takeover by another
+      // instance both arrive here as detecting:false — the session is over either way.
+      if (!p.detecting) armedRef.current = false;
+      setIsDetecting(p.detecting);
     } else if (msg.type === 'process:list') {
       setProcessList((msg.payload as { processes: { name: string; title: string }[] }).processes);
     }
@@ -130,7 +151,8 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
 
   // Esc priority (most specific first): close the picker → cancel detection. Capture phase so we
   // win before a host modal's own Esc tears the whole thing down; when neither overlay is active we
-  // leave the event alone so it falls through to the host.
+  // leave the event alone so it falls through to the host. Only the instance that owns the
+  // detection shows isDetecting, so only it answers the Esc.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
@@ -139,13 +161,12 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
         setShowPicker(false);
       } else if (isDetecting) {
         e.stopPropagation();
-        send({ type: 'profile:detectWindow', payload: {} }); // backend toggles detection off
-        setIsDetecting(false);
+        stopDetection();
       }
     };
     window.addEventListener('keydown', handler, true);
     return () => window.removeEventListener('keydown', handler, true);
-  }, [showPicker, isDetecting, send]);
+  }, [showPicker, isDetecting, stopDetection]);
 
   const inputCls = 'w-full h-8 px-2 text-ui font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid';
 
@@ -279,7 +300,14 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
       {showDetect && (
         <button
           type="button"
-          onClick={() => { onEditRef.current?.(); send({ type: 'profile:detectWindow', payload: {} }); }}
+          // Not an edit: nothing changes until a window is actually detected, and that reply goes
+          // through edit() above. Marking the form edited on the click alone detached a profile
+          // from its folder's target when the user merely opened detection and cancelled it.
+          onClick={() => { if (isDetecting) stopDetection(); else startDetection(); }}
+          data-tip={isDetecting
+            ? tt('Click the window to target. Click here or press Esc to cancel.',
+              'Clique na janela-alvo. Clique aqui ou aperte Esc para cancelar.')
+            : undefined}
           className={`w-full h-8 text-xs border rounded transition-colors ${
             isDetecting
               ? 'text-recording border-recording/40 bg-recording/10 hover:bg-recording/20'

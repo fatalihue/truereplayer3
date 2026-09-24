@@ -102,6 +102,9 @@ export function PauseDialog({ initialKey, initialTimeoutMs, onConfirm, onClose }
 
     const unsub = subscribe((msg) => {
       if (msg.type !== 'hotkey:captured') return;
+      // Addressed to the most recently registered capture owner — another consumer that armed
+      // after this dialog gets the key, not this one (RemapSection filters the same way).
+      if (msg.payload.owner && msg.payload.owner !== ownerId) return;
       const combo = msg.payload.combo;
       // Don't clobber an already-captured combo with a bare modifier press — the
       // user is likely holding modifiers while reaching for the next real key.

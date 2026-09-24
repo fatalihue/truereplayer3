@@ -230,6 +230,28 @@ export function RemapSection({ draft }: {
   // Leaving the section (panel collapse/unmount) must release the global capture.
   useEffect(() => () => stopCapture(), []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // So must going ELSEWHERE while it stays mounted. The capture is global — the hook takes every
+  // key while the app is in front — and this chip is the app's one non-modal consumer, so nothing
+  // stood between an abandoned "press…" and the next field the user typed in: the key vanished
+  // into this form instead (and a combo, refused, kept the chip armed for the next one). A press
+  // or a focus landing outside the section now lets go, exactly as closing the section does.
+  const sectionRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!capturing) return;
+    const onOutside = (e: Event) => {
+      if (sectionRef.current?.contains(e.target as Node)) return;
+      stopCapture();
+    };
+    document.addEventListener('mousedown', onOutside, true);
+    document.addEventListener('focusin', onOutside, true);
+    return () => {
+      document.removeEventListener('mousedown', onOutside, true);
+      document.removeEventListener('focusin', onOutside, true);
+    };
+    // stopCapture reads refs, the stable send and a state setter — current from any render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [capturing]);
+
   // Hand the form to SettingsPanel on the way out, and take the slot back on the way in (the
   // initializers above already read it). Only a form with something in it is worth keeping.
   const formRef = useRef<RemapDraft | null>(null);
@@ -470,7 +492,7 @@ export function RemapSection({ draft }: {
   return (
     // px-2.5 = the SettingRow content inset, so the chip borders (and the add-flow /
     // empty-state text) line up with the rows above them.
-    <div className="flex flex-col gap-1.5 px-2.5 py-1">
+    <div ref={sectionRef} className="flex flex-col gap-1.5 px-2.5 py-1">
       {/* Sidecar quarantine (RemapService.LoadFailed). The service protects the file; this is
           the door out it never had — until now the only word of it was a tray balloon, and the
           only way past it was to restart once the file opened again. */}

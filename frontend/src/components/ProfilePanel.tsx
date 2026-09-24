@@ -3450,9 +3450,12 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                 titleMatchMode: fields.titleMatchMode,
               },
             })}
+            /* The name makes the backend refuse when this dialog's profile is no longer the loaded
+               one (an automation or a profile hotkey swapped it while the dialog was open) — it
+               would otherwise convert whoever is loaded now — and answer the dialog either way. */
             onConvertCoordinates={(direction) => send({
               type: 'profile:convertCoordinates',
-              payload: { direction },
+              payload: { direction, name },
             })}
             /* convertibleActionCount is derived from the LOADED profile's actions, and the backend
                convert rewrites the loaded profile — but this dialog opens for ANY right-clicked

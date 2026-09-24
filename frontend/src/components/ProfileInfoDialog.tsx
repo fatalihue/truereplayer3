@@ -239,10 +239,26 @@ export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogPro
   const handleSave = () => {
     // A tag typed but never confirmed is still work the user did — committing it here is why
     // `dirty` can ignore the draft. Computed locally because setTags would not have flushed.
+    // A draft the tag rules would REFUSE stops the save instead: it used to be dropped in silence
+    // and the dialog closed as if everything was kept — "#urgente" typed, Save clicked, gone. It
+    // gets the message Enter/Tab/comma give it, and the dialog stays open on the field. A
+    // duplicate is not refused: the tag it names is already on the profile, so nothing is lost.
     const pending = normalizeTag(tagDraft);
-    const finalTags = pending && TAG_REGEX.test(pending) && !tags.includes(pending) && tags.length < MAX_TAGS
-      ? [...tags, pending]
-      : tags;
+    const isNew = pending !== '' && !tags.includes(pending);
+    if (tagDraft.trim() !== '') {
+      // addTag's rules, minus the duplicate: "---" normalizes to nothing and is as invalid here.
+      const reject: TagReject | null = !pending || !TAG_REGEX.test(pending) ? 'invalid'
+        : isNew && tags.length >= MAX_TAGS ? 'full'
+          : null;
+      if (reject) {
+        setTagError(reject);
+        // The discard prompt's Save lands here too, after unmounting itself — the focus would
+        // otherwise be left on <body>.
+        requestAnimationFrame(() => tagInputRef.current?.focus());
+        return;
+      }
+    }
+    const finalTags = isNew ? [...tags, pending] : tags;
 
     // Only send fields that actually changed — keeps the diff minimal and avoids
     // touching UpdatedAt when the user just opened the dialog and closed it.

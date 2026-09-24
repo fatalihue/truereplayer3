@@ -42,6 +42,10 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
   // Default selection: every compatible profile checked. The user opts out per item
   // rather than opting in — matches the "I'm importing this file because I want it all"
   // mental model and matches Stream Deck / VS Code profile import UX.
+  // Keyed by name, which is a row id only because the backend makes it one: a file listing two
+  // profiles under the same name has the repeats numbered before the preview is built
+  // (DisambiguateDuplicateEntryNames). Two rows sharing a key shared a checkbox, and the confirm
+  // — which picks by name — wrote both from a dialog that counted one.
   const initialSelection = useMemo(() => {
     const map: Record<string, boolean> = {};
     preview.profiles.forEach(p => { map[p.name] = p.compatible; });

@@ -312,6 +312,11 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
           <NumberInput
             value={x}
             onChange={setX}
+            // integer: the drag verdict and the "at X, Y" line below read these values, and the
+            // backend compares the STORED ints. A typed 100.9 used to preview as 100.9 and store
+            // as 100, so near the 2 px tolerance the dialog could call it a drag and the Sheet
+            // then merge the pair as a click.
+            integer
             // Clearing is what makes "unset" reachable from the keyboard: blur an empty field and
             // the axis goes back to null, which for the release point means "same point".
             onClear={() => setX(null)}
@@ -324,6 +329,7 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
           <NumberInput
             value={y}
             onChange={setY}
+            integer
             onClear={() => setY(null)}
             placeholder="—"
             disabled={inert}

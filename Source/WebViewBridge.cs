@@ -1028,7 +1028,7 @@ namespace TrueReplayer
                     case "profile:removeWindowTarget": HandleProfileRemoveWindowTarget(payload); break;
                     case "profile:setFolderWindowTarget": HandleSetFolderWindowTarget(payload); break;
                     case "profile:removeFolderWindowTarget": HandleRemoveFolderWindowTarget(payload); break;
-                    case "profile:detectWindow": HandleProfileDetectWindow(); break;
+                    case "profile:detectWindow": HandleProfileDetectWindow(payload); break;
                     case "profile:testWindowMatch": HandleTestWindowMatch(payload); break;
                     case "window:testProbe": HandleWindowTestProbe(payload); break;
                     case "window:captureGeometry": HandleWindowCaptureGeometry(payload); break;
@@ -3130,6 +3130,18 @@ namespace TrueReplayer
         {
             SendMessage("button:states", ProjectButtonStates());
 
+            // A run that starts while window detection is armed ends the detection. The refusal
+            // in HandleProfileDetectWindow is a gate on ARMING, and a run begins from the Record
+            // or Replay button — clicks on our own window, which the hook lets through — while it
+            // is armed. Left armed, the user's next click in the target app was swallowed: a
+            // recording kept only its UP, an orphan LeftClickUp that releases a button nobody
+            // pressed on replay.
+            if (_isDetectingWindow && (recordingService.IsRecording || replayService.IsReplaying))
+            {
+                if (dispatcherQueue.HasThreadAccess) StopWindowDetection();
+                else dispatcherQueue.TryEnqueue(() => { if (_isDetectingWindow) StopWindowDetection(); });
+            }
+
             // Recording/replay start+stop both land here, which makes this the cheapest honest
             // signal that a run has ENDED — and the end of a run is when an update the run
             // refused becomes applicable again. Returns immediately unless one is parked.
@@ -3427,6 +3439,10 @@ namespace TrueReplayer
             // this is the cheap half of the leak protection (AutomationGuard's TTL is the backstop
             // for the case where ui:ready itself never comes).
             Services.AutomationGuard.ClearEditorClaims();
+            // Same reasoning for a detection the old tree armed: the instance that would stop it
+            // is gone, and its scope would keep every hotkey suppressed until some stray click
+            // outside the app answered it.
+            if (_isDetectingWindow) StopWindowDetection();
 
             // React sends ui:ready the instant it mounts, which on a cold start beats the startup
             // profile load. state:init REPLACES the frontend store wholesale (AppStateContext
@@ -7351,7 +7367,7 @@ namespace TrueReplayer
         /// overlay path appears, it asks this first, before the EditScope and before the window
         /// dance: a refusal must cost nothing.
         /// </remarks>
-        private bool RefuseCaptureDuringRun(string what)
+        private bool RefuseCaptureDuringRun(string what, string? why = null)
         {
             bool replaying = mainController.IsReplayInProgress();
             if (!replaying && !recordingService.IsRecording) return false;
@@ -7359,7 +7375,7 @@ namespace TrueReplayer
             DiagnosticLog.Warn($"{what} refused: run in progress (replay={replaying})");
             SendMessage("alert:show", new
             {
-                message = $"{subject} — stop it first. A full-screen picker would cover the run and swallow the Stop key.",
+                message = $"{subject} — stop it first. {why ?? "A full-screen picker would cover the run and swallow the Stop key."}",
                 type = "error",
             });
             return true;
@@ -9474,8 +9490,23 @@ namespace TrueReplayer
             if (convertDirection != null && CurrentProfileName != name)
             {
                 SendMessage("alert:show", new { message = $"Open \"{name}\" first — converting coordinates rewrites the actions of the profile that is currently loaded." });
+                SendMessage("windowTarget:applyConvertCompleted", new { ok = false });
                 return;
             }
+            if (convertDirection != null && RefuseConvertDuringRun())
+            {
+                SendMessage("windowTarget:applyConvertCompleted", new { ok = false });
+                return;
+            }
+            // One combined op per profile at a time. This handler is async void, dispatched without
+            // an await, and crosses three awaits before converting — so the second click of a double
+            // click ran a second, concurrent conversion and doubled the window offset on every
+            // action, under a success toast. The duplicate is dropped; the first one answers.
+            if (convertDirection != null && !_applyConvertInFlight.Add(name)) return;
+            // Every exit from here on answers the dialog: success sends ok:true below, and the
+            // claim's Dispose sends ok:false for any other way out, so the dialog's in-flight
+            // lock always lifts. `using` disposes after the awaits, at the method's real end.
+            using var applyConvertClaim = convertDirection != null ? new ApplyConvertClaim(this, name) : null;
 
             // Pre-flight for the "Apply target & convert" path: resolve the target window NOW,
             // before any save runs, so an unreachable target aborts the entire combined op
@@ -9616,16 +9647,43 @@ namespace TrueReplayer
                 // of letting ExecuteConvertCoordinates re-resolve the target) makes the whole
                 // combined op atomic — the window can close between save and conversion and we
                 // still apply the correct translation, because the geometry is already cached.
-                if (CurrentProfileName == name && convertDirection != null && preflightRect.HasValue)
+                // A conversion that refused (it alerts) leaves the hint up: the claim answers
+                // ok:false, and the dialog keeps offering it instead of claiming it happened.
+                if (CurrentProfileName == name && convertDirection != null && preflightRect.HasValue
+                    && ExecuteConvertCoordinatesWithRect(convertDirection, preflightRect.Value))
                 {
-                    ExecuteConvertCoordinatesWithRect(convertDirection, preflightRect.Value);
                     // Tell the dialog the combined op landed cleanly so it can dismiss the
                     // migration hint and clear its `edited` flag. Without this the dialog
                     // would stay open (per opts.keepOpen) but still showing the hint —
                     // clicking "Apply target & convert" a second time would re-translate
                     // the already-relative coords, doubling the offset.
-                    SendMessage("windowTarget:applyConvertCompleted", new { });
+                    applyConvertClaim?.Succeeded();
+                    SendMessage("windowTarget:applyConvertCompleted", new { ok = true });
                 }
+            }
+        }
+
+        // Profiles with an "Apply target & convert" between its refusal checks and its answer.
+        // UI thread only: the handler runs on the dispatcher and so do its continuations.
+        private readonly HashSet<string> _applyConvertInFlight = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Holds a profile's slot in <see cref="_applyConvertInFlight"/> for one combined op and
+        /// answers the dialog on the way out when the op did not succeed — the pre-flight refusals,
+        /// a failed save, a profile swapped out during the awaits. They all alert already; this is
+        /// the signal that re-enables the dialog's button.
+        /// </summary>
+        private sealed class ApplyConvertClaim : IDisposable
+        {
+            private readonly WebViewBridge _bridge;
+            private readonly string _name;
+            private bool _succeeded;
+            public ApplyConvertClaim(WebViewBridge bridge, string name) { _bridge = bridge; _name = name; }
+            public void Succeeded() => _succeeded = true;
+            public void Dispose()
+            {
+                _bridge._applyConvertInFlight.Remove(_name);
+                if (!_succeeded) _bridge.SendMessage("windowTarget:applyConvertCompleted", new { ok = false });
             }
         }
 
@@ -9706,7 +9764,46 @@ namespace TrueReplayer
         private void HandleConvertCoordinates(JsonElement payload)
         {
             string direction = payload.GetProperty("direction").GetString() ?? "toRelative";
-            ExecuteConvertCoordinates(direction);
+            // The Target dialog names the profile it was opened for; the palette acts on the loaded
+            // one and sends no name. The dialog holds no claim, so an automation or a profile hotkey
+            // can swap the loaded profile while it is open — and this resolves everything from
+            // CurrentProfileName, so its Convert rewrote the OTHER profile's actions and flag. Same
+            // refusal as the combined "Apply target & convert" in HandleProfileSetWindowTarget.
+            string? name = payload.TryGetProperty("name", out var nameEl) && nameEl.ValueKind == JsonValueKind.String
+                ? nameEl.GetString() ?? ""
+                : null;
+            bool ok = false;
+            if (name != null && name != CurrentProfileName)
+                SendMessage("alert:show", new { message = $"Open \"{name}\" first — converting coordinates rewrites the actions of the profile that is currently loaded." });
+            else if (!RefuseConvertDuringRun())
+                ok = ExecuteConvertCoordinates(direction);
+            // The dialog used to dismiss its hint the moment it SENT, so a refusal (window not
+            // found, the profile swapped out) took the hint away with nothing converted. It waits
+            // for this now, same as its "Apply target & convert". The palette sends no name and
+            // has nothing to dismiss.
+            if (name != null) SendMessage("windowTarget:applyConvertCompleted", new { ok });
+        }
+
+        /// <summary>
+        /// A conversion rewrites X/Y IN PLACE on the ActionItems a live run is replaying — its
+        /// snapshot is a shallow copy of the same objects — while the replayer froze the coordinate
+        /// space when the run started. Every click still to come then lands in the other space:
+        /// relative numbers read as absolute click near the screen's corner, and the report says
+        /// success. The palette gated this in the UI only; the Target dialog's hint did not at all.
+        /// Asked before anything is resolved or saved, so a refusal costs nothing.
+        /// </summary>
+        private bool RefuseConvertDuringRun()
+        {
+            bool replaying = replayService.IsReplaying;
+            if (!replaying && !recordingService.IsRecording) return false;
+            SendMessage("alert:show", new
+            {
+                message = replaying
+                    ? "A replay is running — stop it first. Converting rewrites the coordinates of actions the run is still going to play."
+                    : "A recording is running — stop it first. Converting now would leave this profile's actions in two coordinate spaces.",
+                type = "error",
+            });
+            return true;
         }
 
         /// <summary>
@@ -9717,7 +9814,8 @@ namespace TrueReplayer
         /// <see cref="ExecuteConvertCoordinatesWithRect"/> with a pre-flighted rect so
         /// it doesn't re-do the FindWindow that the caller already performed.
         /// </summary>
-        private void ExecuteConvertCoordinates(string direction)
+        /// <returns>True when the actions were converted; every false has already alerted.</returns>
+        private bool ExecuteConvertCoordinates(string direction)
         {
             // Use effective target (profile's own > folder-inherited)
             var target = CurrentProfileName != "No Profile"
@@ -9726,7 +9824,7 @@ namespace TrueReplayer
             if (target == null || (string.IsNullOrEmpty(target.ProcessName) && string.IsNullOrEmpty(target.WindowTitle)))
             {
                 SendMessage("alert:show", new { message = "Set a Window Target first (profile or folder)." });
-                return;
+                return false;
             }
 
             // Minimised is refused rather than degraded because the loop in
@@ -9746,10 +9844,10 @@ namespace TrueReplayer
                         _ => "Could not get window position.",
                     }
                 });
-                return;
+                return false;
             }
 
-            ExecuteConvertCoordinatesWithRect(direction, rect);
+            return ExecuteConvertCoordinatesWithRect(direction, rect);
         }
 
         /// <summary>
@@ -9762,12 +9860,13 @@ namespace TrueReplayer
         ///    window closing in the tiny window between save and conversion doesn't leave the
         ///    profile with mismatched flag + action coords.
         /// </summary>
-        private void ExecuteConvertCoordinatesWithRect(string direction, NativeMethods.RECT rect)
+        /// <returns>True when the actions were converted; every false has already alerted.</returns>
+        private bool ExecuteConvertCoordinatesWithRect(string direction, NativeMethods.RECT rect)
         {
             if (actions.Count == 0)
             {
                 SendMessage("alert:show", new { message = "No actions to convert." });
-                return;
+                return false;
             }
 
             // Resolved once — the geometry write at the bottom of this method reuses it.
@@ -9806,7 +9905,7 @@ namespace TrueReplayer
                 && profileController.GetEffectiveRelativeCoordinates(CurrentProfileName) != (direction == "toRelative"))
             {
                 SendMessage("alert:show", new { message = $"\"{CurrentProfileName}\" inherits its window target from the folder \"{ownerFolder}\", so it inherits the coordinate space too — this conversion would be discarded at the next replay and leave the coordinates in the wrong space. Give this profile its own target first: edit the process name or window title in its Window Target dialog, then use \"Apply target & convert\"." });
-                return;
+                return false;
             }
 
             // The flag and the rect below change WITH the coordinates, so the undo entry carries
@@ -9912,6 +10011,7 @@ namespace TrueReplayer
             HasUnsavedChanges = true;
             PushActionsUpdate();
             SendMessage("alert:show", new { message = $"Converted {converted} action(s) to {(direction == "toRelative" ? "relative" : "absolute")} coordinates." });
+            return true;
         }
 
         private async void HandleUpdateWindowSize(JsonElement payload)
@@ -10198,14 +10298,57 @@ namespace TrueReplayer
         // Window detection state
         private IntPtr _detectMouseHook = IntPtr.Zero;
         private NativeMethods.LowLevelMouseProc? _detectMouseProc;
-        private bool _isDetectingWindow = false;
+        // Volatile: the scope's keep-alive probe reads it from the sweep's timer thread.
+        private volatile bool _isDetectingWindow = false;
+        // Which WindowTargetFields asked. Two can be mounted at once — a Sheet row editor under the
+        // Automations panel the tray opens on top — and the replies used to be a bare broadcast:
+        // the detected window was written into BOTH drafts, and the message was a TOGGLE, so one
+        // Esc reaching both instances disarmed the hook and re-armed it. Now every reply names the
+        // request and a stop only stops its own.
+        private string _detectRequestId = "";
+        // Detection takes the next click outside the app, like a picker overlay takes the next
+        // click on the screen, so it holds a scope the same way: while it is armed an automation
+        // fire or a profile hotkey is refused instead of starting a run whose first injected click
+        // the hook would swallow.
+        private IDisposable? _detectScope;
 
-        private void HandleProfileDetectWindow()
+        private void HandleProfileDetectWindow(JsonElement payload)
         {
+            string requestId = payload.ValueKind == JsonValueKind.Object
+                && payload.TryGetProperty("requestId", out var ridEl) && ridEl.ValueKind == JsonValueKind.String
+                ? (ridEl.GetString() ?? "") : "";
+            // Explicit start/stop. The old toggle is what let two instances' Esc cancel each other.
+            bool enable = !(payload.ValueKind == JsonValueKind.Object
+                && payload.TryGetProperty("enabled", out var enEl) && enEl.ValueKind == JsonValueKind.False);
+
+            if (!enable)
+            {
+                // A stop from an instance that no longer owns the session (another one took it
+                // over, or a click already answered it) must not end someone else's detection.
+                if (_isDetectingWindow && requestId == _detectRequestId) StopWindowDetection();
+                return;
+            }
+
             if (_isDetectingWindow)
             {
-                // Already detecting — stop
-                StopWindowDetection();
+                // Already armed for another instance: the newest request wins, and the old one is
+                // told it lost, so it stops showing "Click the target window…" for a click that
+                // will now be answered elsewhere.
+                string previous = _detectRequestId;
+                _detectRequestId = requestId;
+                if (previous != requestId)
+                    SendMessage("windowTarget:detectState", new { requestId = previous, detecting = false });
+                SendMessage("windowTarget:detectState", new { requestId, detecting = true });
+                return;
+            }
+
+            // A run's clicks are injected, and the hook below ignores them now, but the user's own
+            // next click would still be taken as the target — and a recording would keep the UP of
+            // the click the hook swallowed, an orphan LeftClickUp. Refused like the pickers.
+            if (RefuseCaptureDuringRun("Window detection",
+                    "Window detection takes the next click you make, and the run is using the mouse."))
+            {
+                SendMessage("windowTarget:detectState", new { requestId, detecting = false });
                 return;
             }
 
@@ -10219,12 +10362,14 @@ namespace TrueReplayer
                 int err = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
                 _detectMouseProc = null;
                 Services.DiagnosticLog.Warn($"Window detection: SetMouseHook failed (Win32 error {err})");
-                SendMessage("windowTarget:detectState", new { detecting = false });
+                SendMessage("windowTarget:detectState", new { requestId, detecting = false });
                 SendMessage("alert:show", new { message = "Could not start window detection — Windows refused the mouse hook. Type the process name or window title instead." });
                 return;
             }
             _isDetectingWindow = true;
-            SendMessage("windowTarget:detectState", new { detecting = true });
+            _detectRequestId = requestId;
+            _detectScope = Services.InteractionScope.Enter("window detection", () => _isDetectingWindow);
+            SendMessage("windowTarget:detectState", new { requestId, detecting = true });
         }
 
         private IntPtr DetectMouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
@@ -10232,6 +10377,13 @@ namespace TrueReplayer
             if (nCode >= 0 && wParam == (IntPtr)NativeMethods.WM_LBUTTONDOWN)
             {
                 var hookStruct = System.Runtime.InteropServices.Marshal.PtrToStructure<NativeMethods.MSLLHOOKSTRUCT>(lParam);
+
+                // An injected click is not the user choosing a window (LLMHF_INJECTED, bit 0 — the
+                // gate every consumer of this struct in InputHookManager applies). Taken as one, a
+                // run's click was swallowed before reaching its target and its window written into
+                // the form the user was filling in.
+                if ((hookStruct.flags & 0x1) != 0)
+                    return NativeMethods.CallNextHookEx(_detectMouseHook, nCode, wParam, lParam);
 
                 // Get the top-level window at the click point
                 IntPtr childHwnd = NativeMethods.WindowFromPoint(hookStruct.pt);
@@ -10281,12 +10433,14 @@ namespace TrueReplayer
                         }
                     }
 
-                    // Stop detection and send result
+                    // Stop detection and send result — to the instance that asked, read before the
+                    // stop clears it.
+                    string requestId = _detectRequestId;
                     StopWindowDetection();
 
                     dispatcherQueue.TryEnqueue(() =>
                     {
-                        SendMessage("windowTarget:detected", new { processName, windowTitle });
+                        SendMessage("windowTarget:detected", new { requestId, processName, windowTitle });
                     });
 
                     // Swallow the click so the target app doesn't receive it
@@ -10299,17 +10453,21 @@ namespace TrueReplayer
 
         private void StopWindowDetection()
         {
+            string requestId = _detectRequestId;
             _isDetectingWindow = false;
+            _detectRequestId = "";
             if (_detectMouseHook != IntPtr.Zero)
             {
                 NativeMethods.UnhookWindowsHookEx(_detectMouseHook);
                 _detectMouseHook = IntPtr.Zero;
             }
             _detectMouseProc = null;
+            _detectScope?.Dispose();
+            _detectScope = null;
 
             dispatcherQueue.TryEnqueue(() =>
             {
-                SendMessage("windowTarget:detectState", new { detecting = false });
+                SendMessage("windowTarget:detectState", new { requestId, detecting = false });
             });
         }
 
@@ -11265,6 +11423,9 @@ namespace TrueReplayer
         /// </summary>
         private void SendImportPreview(ProfileExportEnvelope envelope, string fileName)
         {
+            // Before anything reads a name: the preview, its selection and its conflict answers are
+            // all keyed by name, and so is ConfirmImportAsync's pick of what to write.
+            int renamedDuplicates = DisambiguateDuplicateEntryNames(envelope);
             _pendingImportEnvelope = envelope;
             _pendingImportFileName = fileName;
 
@@ -11352,6 +11513,44 @@ namespace TrueReplayer
                 requiresAcknowledgement = !AppSettingsManager.Load().HasAcknowledgedImportWarning,
                 profiles = previewProfiles
             });
+            if (renamedDuplicates > 0)
+            {
+                SendMessage("alert:show", new
+                {
+                    message = $"This file lists {renamedDuplicates} profile(s) under a name another profile in it already uses. The copies are shown with a number, e.g. \"Farm (2)\".",
+                    type = "info",
+                });
+            }
+        }
+
+        /// <summary>
+        /// Gives every envelope entry a distinct name by numbering the repeats ("Farm", "Farm (2)").
+        /// A file never exports two profiles under one name, but a hand-edited or corrupted one can,
+        /// and everything downstream is keyed by name: the preview's two "Farm" rows shared ONE
+        /// checkbox and ONE conflict answer, its count said "1 of 2", and the confirm's pick by name
+        /// then wrote BOTH — two profiles from a dialog that announced one. Renaming at the source
+        /// makes the preview and the write agree. The first entry keeps the name (and with it any
+        /// folder placement and RunProfile reference); only EXACT repeats count — entries that
+        /// differ in case are already separate rows. Empty names are left for the confirm's
+        /// unsafe-name guard.
+        /// </summary>
+        private static int DisambiguateDuplicateEntryNames(ProfileExportEnvelope envelope)
+        {
+            var taken = new HashSet<string>(envelope.Profiles.Select(p => p.Name), StringComparer.Ordinal);
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            int renamed = 0;
+            foreach (var entry in envelope.Profiles)
+            {
+                if (string.IsNullOrWhiteSpace(entry.Name) || seen.Add(entry.Name)) continue;
+                int n = 2;
+                string candidate;
+                do candidate = $"{entry.Name} ({n++})"; while (taken.Contains(candidate));
+                taken.Add(candidate);
+                seen.Add(candidate);
+                entry.Name = candidate;
+                renamed++;
+            }
+            return renamed;
         }
 
         /// <summary>
