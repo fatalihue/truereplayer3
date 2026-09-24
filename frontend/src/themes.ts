@@ -1285,7 +1285,7 @@ let colorProbe: CanvasRenderingContext2D | null | undefined;
  * painted into a 1×1 canvas and read back, which is the engine's own answer; without a document it
  * is unreadable. Cached, because applyThemeConfig reads the same few dozen strings on every change.
  */
-export function parseCssColor(c: unknown): Rgba | null {
+function parseCssColor(c: unknown): Rgba | null {
   if (typeof c !== 'string') return null;
   const s = c.trim();
   if (!s) return null;
