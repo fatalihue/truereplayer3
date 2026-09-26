@@ -55,6 +55,10 @@ namespace TrueReplayer.Controllers
         private readonly object _debounceLock = new();
         private bool _disposed;
         private DateTime suppressWatcherUntil = DateTime.MinValue;
+        // The profile folder as the suppressing refresh found it (see RefreshProfileListAsync). The
+        // window swallows only the ECHO of the app's own writes: a reload inside it is skipped when
+        // the folder still matches this, and runs when anything changed after it.
+        private string? _suppressedFolderState;
 
         public ObservableCollection<ProfileEntry> ProfileEntries { get; } = new();
 
@@ -1218,7 +1222,13 @@ namespace TrueReplayer.Controllers
         public async Task RefreshProfileListAsync(bool suppressWatcher = false)
         {
             if (suppressWatcher)
+            {
+                // Read BEFORE the load: every write that finished before this refresh — the
+                // caller's own, whose echo the window exists to swallow — is part of it, and
+                // anything that lands after it is not.
+                _suppressedFolderState = ProfileFolderState();
                 suppressWatcherUntil = DateTime.UtcNow.AddSeconds(2);
+            }
 
             await LoadProfileListAsync();
 
@@ -1294,7 +1304,14 @@ namespace TrueReplayer.Controllers
                 {
                     window.DispatcherQueue.TryEnqueue(async () =>
                     {
-                        if (DateTime.UtcNow < suppressWatcherUntil)
+                        // Inside the window, skip only a pure echo: the folder exactly as the
+                        // suppressing refresh read it. It used to skip EVERYTHING — a profile
+                        // written from outside within 2 s of any in-app refresh (a Save, a create)
+                        // stayed out of the list until the next change to the folder happened to
+                        // reload it. A file created, deleted, renamed or rewritten after that
+                        // refresh began is news no load has read, whoever wrote it.
+                        if (DateTime.UtcNow < suppressWatcherUntil
+                            && string.Equals(ProfileFolderState(), _suppressedFolderState, StringComparison.Ordinal))
                             return;
                         try
                         {
@@ -1313,6 +1330,36 @@ namespace TrueReplayer.Controllers
             // concurrent supersede/Dispose() between the snapshot and the await. Both are benign.
             catch (TaskCanceledException) { }
             catch (ObjectDisposedException) { }
+        }
+
+        // What the watcher's echo test compares: every profile file (the watcher's own *.json
+        // filter, minus profile-order.json, which it ignores) with its size and last write, in
+        // ordinal name order so a case-only rename counts as a change. The atomic save's temp names
+        // (Path.GetRandomFileName: 8.3, never .json) stay out of it. A folder that cannot be read
+        // yields a token that matches nothing, so the reload runs — the answer the old window
+        // could never give.
+        private static string ProfileFolderState()
+        {
+            string profileDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                "TrueReplayer", "Profiles"
+            );
+            try
+            {
+                var state = new System.Text.StringBuilder();
+                foreach (var file in new DirectoryInfo(profileDir).EnumerateFiles("*.json")
+                             .Where(f => !string.Equals(f.Name, "profile-order.json", StringComparison.OrdinalIgnoreCase))
+                             .OrderBy(f => f.Name, StringComparer.Ordinal))
+                {
+                    state.Append(file.Name).Append('|').Append(file.Length).Append('|')
+                         .Append(file.LastWriteTimeUtc.Ticks).Append('\n');
+                }
+                return state.ToString();
+            }
+            catch (Exception)
+            {
+                return "unreadable:" + Guid.NewGuid().ToString("N");
+            }
         }
 
         #endregion // Profile List Management

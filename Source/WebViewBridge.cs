@@ -63,6 +63,13 @@ namespace TrueReplayer
         private readonly Stack<UndoEntry> _undoStack = new();
         private readonly Stack<UndoEntry> _redoStack = new();
         private const int MaxHistory = 50;
+        // A recording session is ONE undo step (Begin/EndRecordingUndoStep): the list as it stood
+        // when the recording started, null while none is open.
+        private string? _recordingUndoBase;
+        // Bumped by ClearEditHistory. A recording that outlives its list (another profile applied)
+        // must not push the old list's snapshot into the new list's history.
+        private int _editHistoryEpoch;
+        private int _recordingUndoEpoch;
 
         // Base64 cache for WaitImage / IF-Image reference PNGs, keyed by "profileName\0imagePath".
         // PushActionsUpdate and the cold-start state:init projection were re-reading + re-encoding
@@ -1157,6 +1164,38 @@ namespace TrueReplayer
         // separates "a new run ended" from "the same report came around again".
         private int _runSeqAtReplayStart;
 
+        // ── A recording session is ONE undo step ──
+        // The recorder writes straight into this list (ActionRecorder.AddAction), which never went
+        // through PushUndoState, so a recording left no history entry at all. Ctrl+Z right after one
+        // restored the snapshot of the edit BEFORE it: the recorded rows went with it and came back
+        // only through Redo, until the next edit cleared Redo and they were gone; on an empty
+        // history Ctrl+Z could not undo the recording at all. The list is snapshotted on the way in
+        // and pushed on the way out, so Ctrl+Z after a recording takes back exactly what it captured.
+        // Both edges arrive here: RecordingService reports "recording" and "ready" synchronously on
+        // every start and stop — the button, the hotkey, and a replay or Clicker start that ends
+        // the recording first. Nothing else edits the list while a recording runs (the grid's
+        // editing surfaces and the toolbar's Undo are all disabled then), so the entry lands right
+        // on top of the history that preceded the recording.
+        private void BeginRecordingUndoStep()
+        {
+            if (_recordingUndoBase != null || !recordingService.IsRecording) return;
+            _recordingUndoBase = JsonSerializer.Serialize(actions, JsonOptions);
+            _recordingUndoEpoch = _editHistoryEpoch;
+        }
+
+        private void EndRecordingUndoStep()
+        {
+            string? baseline = _recordingUndoBase;
+            if (baseline == null || recordingService.IsRecording) return;
+            _recordingUndoBase = null;
+            if (_recordingUndoEpoch != _editHistoryEpoch) return;
+            // Only when the session changed the list: a start and stop that captured nothing must
+            // not leave an empty step behind, nor clear Redo — PushUndoSnapshot does that, as every
+            // new edit must.
+            if (JsonSerializer.Serialize(actions, JsonOptions) == baseline) return;
+            PushUndoSnapshot(baseline);
+        }
+
         public void PushStatusChange(string status)
         {
             bool wasError = status.StartsWith("error:");
@@ -1171,6 +1210,9 @@ namespace TrueReplayer
             // not "something finished in the background".
             bool userStopped = status == "ready:stopped";
             if (userStopped) status = "ready";
+
+            if (status == "recording") BeginRecordingUndoStep();
+            else EndRecordingUndoStep();
 
             // Out-of-window run-end cue: when a replay finishes on its own (or any
             // run errors) the TrueReplayer window is usually BEHIND the game — the
@@ -1823,11 +1865,13 @@ namespace TrueReplayer
         /// running — arming, deleting a trigger, disabling the profile that owns one.
         ///
         /// It exists as one method because the disable handlers did not do this at all, and the
-        /// only thing that eventually resynced them was the profile-list file watcher — whose
-        /// callback is DROPPED without rescheduling inside the 2 s suppression window that some
-        /// twenty call sites arm (ProfileController's refresh). Land a disable just after a
-        /// rename, a save or an import and the watcher for a profile the sidebar draws as disabled
-        /// kept running for the rest of the session, injecting mouse and keyboard.
+        /// only thing that eventually resynced them was the profile-list file watcher — a
+        /// debounced safety net that, until it learned to tell the app's own echo from a real
+        /// change, DROPPED its callback inside the 2 s suppression window that some twenty call
+        /// sites arm (ProfileController's refresh). Land a disable just after a rename, a save or
+        /// an import and the watcher for a profile the sidebar draws as disabled kept running for
+        /// the rest of the session, injecting mouse and keyboard. Resyncing here, at the edit,
+        /// is what makes it immediate rather than a debounce later.
         ///
         /// AllKnownProfileNames rather than ProfileEntries — see that property's remarks.
         /// </summary>
@@ -2277,6 +2321,7 @@ namespace TrueReplayer
         {
             _undoStack.Clear();
             _redoStack.Clear();
+            _editHistoryEpoch++;
         }
 
         /// <param name="space">The window context as it stands BEFORE the edit, for the one edit
@@ -8792,9 +8837,10 @@ namespace TrueReplayer
 
                 // Fix up the copy BEFORE the profile-list refresh sees it: the refresh's tail
                 // re-arms the trigger daemon from the on-disk configs, so an armed source
-                // profile would put a LIVE armed watcher on the copy — and the disarming save
-                // below would land inside the refresh's watcher-suppression window and never
-                // be picked up (daemon + UI armed, disk disarmed, firing until restart).
+                // profile would put a LIVE armed watcher on the copy — firing until a disarming
+                // save below reached the daemon, which it did only through the folder watcher's
+                // debounced reload (and, while that reload was dropped inside the refresh's
+                // suppression window, never: daemon + UI armed, disk disarmed, until restart).
                 //
                 // File.Copy also duplicated a JSON that still points at the SOURCE profile's
                 // per-profile PNGs — clone each referenced image (WaitImage / IF-Image rows +
@@ -8943,9 +8989,9 @@ namespace TrueReplayer
                 // dialog's "+N referenced sub-profiles included" disclosure describes a chain that
                 // no longer exists (it resolves refs against this payload, while the export itself
                 // re-reads from disk), and a renamed sub-profile would ship undisclosed. The
-                // watcher can't heal it: RefreshProfileListAsync(true) suppresses it for 2 s, which
-                // is exactly when these writes land. Guarded so the common no-references rename
-                // still costs a single list load.
+                // watcher would re-read only after its debounce, when the push below has already
+                // gone out. Guarded so the common no-references rename still costs a single list
+                // load.
                 if (refsUpdated > 0)
                     await profileController.RefreshProfileListAsync(true);
 
