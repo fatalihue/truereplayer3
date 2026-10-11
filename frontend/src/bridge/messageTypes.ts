@@ -664,6 +664,13 @@ export interface ProfileLoopState {
   dirty: boolean;
   /** false = no profile loaded, so the Settings rows edit the app-level fallback instead. */
   scoped: boolean;
+  /**
+   * The loaded profile's OWN Game Mode (WebViewBridge.ResolveGameMode); null = it follows the
+   * app default (`settings.smoothMovement`), and always null when `scoped` is false. Rides this
+   * slice because it has the loop's lifecycle exactly — see ProjectProfileLoop. The effective
+   * value is `gameMode ?? settings.smoothMovement`.
+   */
+  gameMode: boolean | null;
 }
 
 export interface AppState {

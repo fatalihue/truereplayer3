@@ -337,15 +337,19 @@ namespace TrueReplayer.Services
             replayer.SetChainChangedCallback(callback);
         }
 
-        public void ToggleReplay(bool loopEnabled, string loopCountText, bool intervalEnabled, string intervalText, bool useDelayVariation = false, int delayVariationPercent = 20, bool useRelativeCoords = false, Models.WindowTarget? windowTarget = null, bool bringToFocus = false, int lockWidth = 0, int lockHeight = 0, int lockX = 0, int lockY = 0, bool restorePosition = false, bool restoreSize = false, bool forceInfiniteLoop = false)
+        // gameMode: the profile's own Game Mode (WebViewBridge.ResolveGameMode), null = follows the
+        // app-wide switch. REQUIRED, not defaulted like its neighbours, so that every entry point
+        // has to answer it — a defaulted null would let a new caller run every profile on the
+        // global value without anything noticing.
+        public void ToggleReplay(bool loopEnabled, string loopCountText, bool intervalEnabled, string intervalText, bool? gameMode, bool useDelayVariation = false, int delayVariationPercent = 20, bool useRelativeCoords = false, Models.WindowTarget? windowTarget = null, bool bringToFocus = false, int lockWidth = 0, int lockHeight = 0, int lockX = 0, int lockY = 0, bool restorePosition = false, bool restoreSize = false, bool forceInfiniteLoop = false)
         {
             if (!IsReplaying && actions.Count > 0)
-                StartReplay(loopEnabled, loopCountText, intervalEnabled, intervalText, useDelayVariation, delayVariationPercent, useRelativeCoords, windowTarget, bringToFocus, lockWidth, lockHeight, lockX, lockY, restorePosition, restoreSize, forceInfiniteLoop);
+                StartReplay(loopEnabled, loopCountText, intervalEnabled, intervalText, gameMode, useDelayVariation, delayVariationPercent, useRelativeCoords, windowTarget, bringToFocus, lockWidth, lockHeight, lockX, lockY, restorePosition, restoreSize, forceInfiniteLoop);
             else if (IsReplaying)
                 StopReplay();
         }
 
-        private void StartReplay(bool loopEnabled, string loopCountText, bool intervalEnabled, string intervalText, bool useDelayVariation, int delayVariationPercent, bool useRelativeCoords, Models.WindowTarget? windowTarget, bool bringToFocus, int lockWidth, int lockHeight, int lockX, int lockY, bool restorePosition, bool restoreSize, bool forceInfiniteLoop)
+        private void StartReplay(bool loopEnabled, string loopCountText, bool intervalEnabled, string intervalText, bool? gameMode, bool useDelayVariation, int delayVariationPercent, bool useRelativeCoords, Models.WindowTarget? windowTarget, bool bringToFocus, int lockWidth, int lockHeight, int lockX, int lockY, bool restorePosition, bool restoreSize, bool forceInfiniteLoop)
         {
             // Data-loop (Model A): the active profile's table. Read BEFORE flipping IsReplaying
             // so the empty-table guard can bail cleanly without a state to unwind. Data is
@@ -384,6 +388,7 @@ namespace TrueReplayer.Services
             replayer.SetRelativeCoordinates(useRelativeCoords, windowTarget, lockWidth, lockHeight, lockX, lockY, restorePosition, restoreSize);
             replayer.SetBringToFocus(bringToFocus);
             replayer.SetForceInfiniteLoop(forceInfiniteLoop);
+            replayer.SetGameMode(gameMode);
 
             // Start banner — the single highest-value diagnostic line: records action count,
             // loop config, the resolved window target, relative-coords, and the movement strategy
@@ -395,7 +400,9 @@ namespace TrueReplayer.Services
                 $"relativeCoords={useRelativeCoords}, " +
                 $"target=[{(windowTarget == null ? "none" : $"{windowTarget.ProcessName} {windowTarget.WindowTitle}".Trim())}], " +
                 $"bringToFocus={bringToFocus}, forceInfinite={forceInfiniteLoop}, " +
-                $"smoothMovement={ActionReplayer.SmoothMovement} (step {ActionReplayer.MoveStepPx}px/{ActionReplayer.MoveStepDelayMs}ms, clickGap {ActionReplayer.MoveClickDelayMs}ms), " +
+                // Effective value AND where it came from: "my Roblox macro didn't walk" is
+                // answered by this field, and "default" vs "profile" is half of that answer.
+                $"gameMode={gameMode ?? ActionReplayer.SmoothMovement} ({(gameMode.HasValue ? "profile" : "default")}) (step {ActionReplayer.MoveStepPx}px/{ActionReplayer.MoveStepDelayMs}ms, clickGap {ActionReplayer.MoveClickDelayMs}ms), " +
                 $"fastApproach={ActionReplayer.FastApproach} (settle {ActionReplayer.SettleDistancePx}px)");
 
             onStatusChanged?.Invoke("replaying");
@@ -1557,6 +1564,15 @@ namespace TrueReplayer.Services
         // the UI edits them through the settings:change keys smoothMovement / moveStepPx /
         // moveStepDelay / moveClickDelay.
         public static bool SmoothMovement = true;
+        // The RUN's own Game Mode — the loaded profile's explicit choice, or null when it never
+        // set one. Effective = this ?? SmoothMovement, read per move, so a profile that follows
+        // still sees the global flipped mid-run exactly as before. Per run, not a static:
+        // ApplyGlobalSettings re-stamps the statics from disk on every hotkey and automation fire,
+        // and a profile value parked there would be overwritten (or leak into the next profile).
+        // One engine, one replay at a time, run body single-threaded — a field is enough. A
+        // sub-profile with its own value swaps it for its call (SaveWindowContext carries it).
+        private bool? _runGameMode;
+        public void SetGameMode(bool? gameMode) => _runGameMode = gameMode;
         public static int MoveStepPx = 20;
         // Fallback step for a FORCED walk (Clicker "Game move") when MoveStepPx is 0 — legal for
         // macro, meaningless for a walk. Mirrors the shipped MoveStepPx default.
@@ -4272,10 +4288,15 @@ namespace TrueReplayer.Services
             public bool RestorePosition;
             public bool RestoreSize;
             public bool BringToFocus;
+            // Not a window setting, but it rides the same save/restore for the same reason: a
+            // sub-profile with its own Game Mode applies it for its call and the caller's comes
+            // back on return, however the call ends.
+            public bool? GameMode;
         }
 
         private WindowContextSnapshot SaveWindowContext() => new()
         {
+            GameMode = _runGameMode,
             UseRelativeCoordinates = _useRelativeCoordinates,
             WindowTarget = _windowTarget,
             LockWidth = _lockWidth,
@@ -4299,6 +4320,7 @@ namespace TrueReplayer.Services
             _restorePosition = snap.RestorePosition;
             _restoreSize = snap.RestoreSize;
             _bringToFocus = snap.BringToFocus;
+            _runGameMode = snap.GameMode;
         }
 
         /// <summary>
@@ -4672,6 +4694,15 @@ namespace TrueReplayer.Services
                     _lockX = subX;
                     _lockY = subY;
                     await ApplyWindowContextAsync(token);
+                }
+
+                // Game Mode: the sub's own choice wins for its call; a sub that never set one
+                // keeps the caller's EFFECTIVE value (the run field is left alone, so a caller
+                // that follows the global keeps following it). Restored in the finally below.
+                if (subProfile.GameMode is bool subGameMode)
+                {
+                    _runGameMode = subGameMode;
+                    DiagnosticLog.Info($"[Chain] '{targetName}' Game Mode {(subGameMode ? "on" : "off")} (its own)");
                 }
 
                 // Clamp 1..999 to match Keystroke (the canonical RepeatCount range) — without
@@ -5820,7 +5851,7 @@ namespace TrueReplayer.Services
             // SimulateMouse is KEPT on both halves so press→release retains a small, realistic
             // dwell (some games / anti-cheat reject a zero-dwell synthetic click).
             int stepPx = MoveStepPx;
-            bool smooth = SmoothMovement || forceSmooth;
+            bool smooth = (_runGameMode ?? SmoothMovement) || forceSmooth;
             // MoveStepPx is a macro tuning value and 0 is a legal setting there (PathStepZeroNote
             // exists for it). A forced walk with no step size would divide the path into nothing,
             // so fall back to the shipped default rather than silently degrade to a jump.

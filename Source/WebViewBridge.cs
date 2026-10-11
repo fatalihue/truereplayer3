@@ -2960,6 +2960,22 @@ namespace TrueReplayer
         }
 
         /// <summary>
+        /// The ONE place a macro run's Game Mode is resolved: the profile's own explicit choice, or
+        /// null = follow the app-wide switch (ActionReplayer.SmoothMovement, read live per move).
+        /// Same shape and same `profile` contract as BuildLoopConfig — the hotkey/automation path
+        /// passes the instance it just loaded; null means "whatever is loaded now".
+        ///
+        /// The "No Profile" check is not decoration: deselecting a profile does NOT reset
+        /// UserProfile.Current, so without it the last profile's choice would ride along into runs
+        /// that have no profile at all.
+        /// </summary>
+        public bool? ResolveGameMode(UserProfile? profile = null)
+        {
+            if (profile == null && CurrentProfileName == "No Profile") return null;
+            return (profile ?? UserProfile.Current).GameMode;
+        }
+
+        /// <summary>
         /// Narrow push for the active profile's loop settings. Deliberately NOT PushSettingsLoaded:
         /// that message replaces the whole React `settings` slice by merging over the DEFAULTS and
         /// has ~19 emitters (tray, ScrollLock, Pause, remaps, the automation master, every Clicker
@@ -2990,6 +3006,12 @@ namespace TrueReplayer
                 dirty = HasUnsavedLoopChange,
                 // false = the Settings rows are editing the app-level "No Profile" fallback.
                 scoped = CurrentProfileName != "No Profile",
+                // The profile's OWN Game Mode (null = follows the app default). Rides this
+                // payload rather than a message of its own: it is a per-profile run setting with
+                // exactly the loop's lifecycle — pushed on every activation, cleared to the
+                // profile's value on every switch — and a second message would need its own copy
+                // of the twelve push sites and fourteen clears.
+                gameMode = ResolveGameMode(),
             };
         }
 
@@ -3434,6 +3456,9 @@ namespace TrueReplayer
                 LoopCount = UserProfile.Current.LoopCount,
                 LoopIntervalEnabled = UserProfile.Current.LoopIntervalEnabled,
                 LoopInterval = UserProfile.Current.LoopInterval,
+                // Per-profile Game Mode, under the same rule: left out here, a Save would write
+                // nothing and the profile's choice would quietly revert to "follow the default".
+                GameMode = UserProfile.Current.GameMode,
                 // Data-loop table travels with the profile so a normal Save preserves it
                 // (data:save also persists immediately, but the main Save must not null it).
                 Data = UserProfile.Current.Data,
@@ -4331,7 +4356,7 @@ namespace TrueReplayer
                 }
             }
 
-            mainController.ToggleReplay(loopEnabled, loopCount, intervalEnabled, intervalText, useVariation, variationPercent, effRelCoords, effTarget, effBringFocus, effW, effH, effGX, effGY, effRestorePos, effRestoreSz);
+            mainController.ToggleReplay(loopEnabled, loopCount, intervalEnabled, intervalText, ResolveGameMode(), useVariation, variationPercent, effRelCoords, effTarget, effBringFocus, effW, effH, effGX, effGY, effRestorePos, effRestoreSz);
         }
 
         private void HandleActionsClear()
@@ -12567,7 +12592,10 @@ namespace TrueReplayer
 
         private static readonly HashSet<string> ProfileLoopSettingKeys = new()
         {
-            "profileLoopCount", "profileEnableLoop", "profileLoopInterval", "profileLoopIntervalEnabled"
+            "profileLoopCount", "profileEnableLoop", "profileLoopInterval", "profileLoopIntervalEnabled",
+            // The Game Mode header switch, scoped the same way: the loaded profile's own value, or
+            // under "No Profile" the app-wide switch (the smoothMovement global).
+            "profileGameMode"
         };
 
         /// <summary>
@@ -12616,6 +12644,27 @@ namespace TrueReplayer
                     if (scoped) { changed = p.LoopIntervalEnabled != on; p.LoopIntervalEnabled = on; } else LoopIntervalEnabled = on;
                     break;
                 }
+                case "profileGameMode":
+                {
+                    // Explicit once touched: flipping the switch on a profile that FOLLOWED writes
+                    // its own value, even one equal to the default — the user just said what this
+                    // macro needs, and it must not move when the default does. Under No Profile it
+                    // IS the default: the global, persisted by the SaveGlobalSettings below.
+                    //
+                    // null is the header's ↺: the profile drops its own value and FOLLOWS again
+                    // (the app default for its own runs, the caller's value as a sub-profile). The
+                    // key leaves the file on the next save, and the version pin with it. Without
+                    // a profile there is nothing to stop following — the default cannot be null.
+                    bool? next = value.ValueKind switch
+                    {
+                        JsonValueKind.True => true,
+                        JsonValueKind.False => false,
+                        _ => null,
+                    };
+                    if (scoped) { changed = p.GameMode != next; p.GameMode = next; }
+                    else if (next is bool on) ActionReplayer.SmoothMovement = on;
+                    break;
+                }
             }
 
             if (scoped)
@@ -12629,7 +12678,10 @@ namespace TrueReplayer
             else
             {
                 // No profile loaded → the mirrors ARE the global, so write them straight through.
-                SaveGlobalSettings();
+                var saved = SaveGlobalSettings();
+                // The Game Mode default is also the React `settings.smoothMovement` (the rail dot
+                // and the knob gates read it), which only settings:loaded refreshes.
+                if (key == "profileGameMode") PushSettingsLoaded(saved);
             }
 
             PushProfileLoop();

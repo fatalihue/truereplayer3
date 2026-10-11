@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useContext, createContext } from 'react';
-import { Timer, TimerReset, Mic, Zap, Monitor, ChevronDown, ChevronRight, ChevronsLeft, ChevronsRight, MousePointerClick, Palette, Gamepad2, AlertTriangle, Power, BellRing, X, ArrowLeftRight, Crosshair, Hourglass, SlidersHorizontal } from 'lucide-react';
+import { Timer, TimerReset, Mic, Zap, Monitor, ChevronDown, ChevronRight, ChevronsLeft, ChevronsRight, MousePointerClick, Palette, Gamepad2, AlertTriangle, Power, BellRing, X, ArrowLeftRight, Crosshair, Hourglass, SlidersHorizontal, RotateCcw } from 'lucide-react';
 import { APP_VERSION } from '../appVersion';
 import { RemapSection, type RemapDraft } from './RemapSection';
 import { useLanguage, useTt } from '../state/LanguageContext';
@@ -1186,6 +1186,11 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
   // app. `scoped` is what tells the tooltip whether it's describing a profile value or the
   // no-profile fallback.
   const { settings, settingsResetEpoch, status, profileLoop, profiles, buttonStates, activeProfile } = useAppState();
+  // Game Mode as a run of the LOADED profile will see it: its own choice, else the app default.
+  // Everything that shows "is Game Mode on" — the header switch, the knob gates, the rail dot —
+  // reads this, never settings.smoothMovement directly, or a profile set to Off would show the
+  // default's On (and its knobs) while its runs jump.
+  const gameModeOn = profileLoop.scoped ? (profileLoop.gameMode ?? settings.smoothMovement) : settings.smoothMovement;
   const { showToast } = useToast();
   // Clicker Rate unit — lifted out of ClickerSection so it survives that component's
   // remounts. settingsResetEpoch still bounces it back to the default, which was its only
@@ -1357,7 +1362,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
           // Game Mode ON = accent-tinted icon + dot: the same "hue is the mode cue"
           // rule the clicker purple follows, but only while the mode is live.
           { tab: 'profile', title: 'Game Mode', icon: Gamepad2,
-            ...(settings.smoothMovement ? { color: 'var(--color-accent)', dot: 'var(--color-accent)', tip: `Game Mode · ${tt('on', 'ligado')}` } : {}) },
+            ...(gameModeOn ? { color: 'var(--color-accent)', dot: 'var(--color-accent)', tip: `Game Mode · ${tt('on', 'ligado')}` } : {}) },
           { tab: 'profile', title: 'Recording', icon: Mic },
         ];
   const railKeys: RailEntry[] = [
@@ -1595,29 +1600,66 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
             </Section>
 
             {/* Game Mode — interpolated cursor path so games (e.g. Roblox) that ignore a single
-                large jump follow the cursor. The header switch IS `smoothMovement`, not a second
-                flag on top of it: with it off SimulateMouse takes the single-jump branch and every
+                large jump follow the cursor. The header switch IS the walk's master (the profile's
+                own value, else `smoothMovement`), not a second flag on top of it: with it off
+                SimulateMouse takes the single-jump branch and every
                 control below is inert, so the section collapses to its header instead of showing
                 knobs that change nothing. (A separate gameModeEnabled that didn't also gate that
                 single jump would be a pure synonym for this switch; one that did would fold the
                 move into the click INPUT and break hover/dwell hit-testing in Win32 menus and WinUI
                 flyouts, to save two syscalls.) Tuning is deliberately NOT inside the gate — see its
-                own comment. */}
+                own comment.
+                Scoped like Loops: with a profile loaded the switch is THAT PROFILE's Game Mode
+                (profileGameMode — kept in memory, saved with Ctrl+S); with none, it is the app
+                default every profile without its own follows. Only the master is per profile —
+                the Tuning knobs below stay app-wide (the Clicker reads them too). */}
             <Section
               title="Game Mode"
               action={
-                // The Section header carries no data-tip of its own, so the switch brings its own
-                // wrapper — without it the only text explaining what this control does is gone.
+                <span className="flex items-center gap-1.5">
+                {/* Where the profile's value comes from — only with a profile loaded. A fixed-width
+                    slot, so the switch never moves when the state flips: a muted "Default" while
+                    the profile follows; while it holds its own value, ↺ hands it back (null —
+                    follows again; unsaved until Ctrl+S, like the switch). The ↺ wears the switch's
+                    own footprint (28×16, a pill) so the two read as a pair of header controls. */}
+                {profileLoop.scoped && (
+                  <span className="w-10 flex items-center justify-end">
+                    {profileLoop.gameMode === null ? (
+                      <span className="text-[10px] leading-none text-text-disabled">Default</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => changeSetting('profileGameMode', null)}
+                        aria-label="Follow the app default again"
+                        data-tip={tt('Follow the app default again', 'Voltar a seguir o padrão do app')}
+                        data-tip-pos="left"
+                        className="w-7 h-4 rounded-full flex items-center justify-center border border-border-default text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+                      >
+                        <RotateCcw size={10} strokeWidth={2.25} />
+                      </button>
+                    )}
+                  </span>
+                )}
+                {/* The Section header carries no data-tip of its own, so the switch brings its own
+                    wrapper — without it the only text explaining what this control does is gone. */}
                 <span
                   className="flex items-center"
-                  data-tip={tt('Cursor walks a path so games accept the move. Off = instant jump, for normal apps.', 'O cursor percorre um caminho para jogos aceitarem o movimento. Off = salto instantâneo, para apps normais.')}
+                  data-tip={!profileLoop.scoped
+                    ? tt('Cursor walks a path so games accept the move. Default for profiles without their own; off = instant jump.',
+                         'O cursor percorre um caminho para jogos aceitarem o movimento. Padrão dos perfis sem o seu; off = salto instantâneo.')
+                    : profileLoop.gameMode === null
+                      ? tt('Cursor walks a path so games accept the move. This profile follows the default until you flip it; off = instant jump.',
+                           'O cursor percorre um caminho para jogos aceitarem o movimento. Este perfil segue o padrão até você mudar; off = salto instantâneo.')
+                      : tt('Cursor walks a path so games accept the move. Saved with this profile; off = instant jump.',
+                           'O cursor percorre um caminho para jogos aceitarem o movimento. Salvo com este perfil; off = salto instantâneo.')}
                   data-tip-pos="left"
                 >
-                  <CompactToggle isOn={settings.smoothMovement} onChange={(v) => changeSetting('smoothMovement', v)} />
+                  <CompactToggle isOn={gameModeOn} onChange={(v) => changeSetting('profileGameMode', v)} />
+                </span>
                 </span>
               }
             >
-              {settings.smoothMovement && (
+              {gameModeOn && (
                 <SettingRow label="Fast approach" tooltip={tt('Teleports long moves, walks only the last stretch. Turn off if a game misclicks.', 'Teletransporta movimentos longos, anda só o trecho final. Desligue se um jogo errar o clique.')}>
                   <CompactToggle isOn={settings.fastApproach} onChange={(v) => changeSetting('fastApproach', v)} />
                 </SettingRow>
@@ -1633,7 +1675,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                 <SettingRow label="Click delay" tooltip={tt('Pause before each button event. Applies with Game Mode off too.', 'Pausa antes de cada evento de botão. Vale também com Game Mode desligado.')}>
                   <ValueField value={settings.moveClickDelay} unit="ms" onCommitValue={(v) => changeSetting('moveClickDelay', v)} />
                 </SettingRow>
-                {settings.smoothMovement && (
+                {gameModeOn && (
                   <>
                     <SettingRow label="Path step" tooltip={tt('Max px per step. Lower = smoother, slower. ~20 for Roblox.', 'Máx. px por passo. Menor = mais suave, mais lento. ~20 para Roblox.')}>
                       <ValueField value={settings.moveStepPx} unit="px" onCommitValue={(v) => changeSetting('moveStepPx', v)} />

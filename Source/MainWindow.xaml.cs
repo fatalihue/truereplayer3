@@ -1359,6 +1359,8 @@ namespace TrueReplayer
                                 globalLoop.Count,
                                 globalLoop.IntervalEnabled,
                                 globalLoop.Interval,
+                                // Same resolver as the loop, same "whatever is loaded now".
+                                bridge?.ResolveGameMode(),
                                 bridge?.UseDelayVariation ?? false,
                                 int.TryParse(bridge?.DelayVariation ?? "20", out var hvp) ? hvp : 20,
                                 effRelCoords,
@@ -1619,6 +1621,8 @@ namespace TrueReplayer
                 loop.Count,
                 loop.IntervalEnabled,
                 loop.Interval,
+                // The FIRED instance, like the loop: its Game Mode, not whatever was loaded.
+                bridge.ResolveGameMode(profile),
                 bridge.UseDelayVariation,
                 int.TryParse(bridge.DelayVariation, out var pvp) ? pvp : 20,
                 effectiveRelCoords,

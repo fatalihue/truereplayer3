@@ -113,6 +113,19 @@ namespace TrueReplayer.Models
         /// </summary>
         public static int NormalizeLoopCount(int n) => Math.Clamp(n, MinLoopCount, MaxLoopCount);
 
+        // ── Per-profile Game Mode (serialized, optional) ──
+        // The macro Game Mode master (ActionReplayer.SmoothMovement) is app-wide, so a Roblox
+        // macro and a Notepad macro had to share one answer. This is the profile's own answer:
+        // null = it never set one and FOLLOWS — the app default for a run it starts, the caller's
+        // effective value when it runs as a sub-profile (RunProfile). Only the master moves here;
+        // the Tuning knobs stay global (the Clicker reads them too).
+        //
+        // bool?, never an enum: an unknown enum string THROWS in an older build's converter and
+        // the whole profile fails to load. Written only when set, so a profile that never touched
+        // it stays byte-identical on disk (the serializer has no ignore-null policy of its own).
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? GameMode { get; set; }
+
         [JsonIgnore]
         public bool AlwaysOnTop { get; set; } = false;
 
@@ -474,6 +487,10 @@ namespace TrueReplayer.Models
         public int LoopCount { get; set; } = 1;
         public bool LoopIntervalEnabled { get; set; } = false;
         public int LoopInterval { get; set; } = 200;
+        // Per-profile Game Mode — mirrors UserProfile.GameMode, same field-by-field reason as the
+        // loop fields above. null = follows; omitted when null so a plain export is unchanged.
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? GameMode { get; set; }
         public ObservableCollection<ActionItem> Actions { get; set; } = new();
         /// <summary>
         /// Embedded WaitImage reference images: filename → base64 PNG data.

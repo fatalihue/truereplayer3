@@ -87,7 +87,7 @@ const initialState: AppState = {
   settings: defaultSettings,
   // Mirrors WebViewBridge's "No Profile" fallback so there's no wrong-value flash before the
   // first profile:loop / state:init lands. count '1', never '0' — 0 means forever to the engine.
-  profileLoop: { count: '1', enabled: false, interval: '200', intervalEnabled: false, dirty: false, scoped: false },
+  profileLoop: { count: '1', enabled: false, interval: '200', intervalEnabled: false, dirty: false, scoped: false, gameMode: null },
   toolbar: { profileName: 'No Profile' },
   statusBar: { directory: 'Profiles', profileName: null, actionCount: 0 },
   buttonStates: {
@@ -128,7 +128,9 @@ function appStateReducer(state: AppState, message: IncomingMessage): AppState {
         automation: message.payload.automation ?? initialState.automation,
         // Same guard as settings/profileOrder: a version-skewed payload that omits the slice
         // must not make profileLoop.count undefined and blank the ActionBar chip.
-        profileLoop: message.payload.profileLoop ?? initialState.profileLoop,
+        profileLoop: message.payload.profileLoop
+          ? { ...message.payload.profileLoop, gameMode: message.payload.profileLoop.gameMode ?? null }
+          : initialState.profileLoop,
       };
     case 'status:changed':
       // The Clicker counter / loop-progress resets that used to live here moved to
@@ -158,7 +160,9 @@ function appStateReducer(state: AppState, message: IncomingMessage): AppState {
     case 'profile:loop':
       // Whole-slice replace: the C# bridge is the sole owner of these values (it resolves
       // profile-vs-global and does the 1..999 clamp), so there is no local state to preserve.
-      return { ...state, profileLoop: message.payload };
+      // gameMode is pinned to null when absent: undefined would read as "follows" anyway, but
+      // `!== null` checks downstream must not see a third value.
+      return { ...state, profileLoop: { ...message.payload, gameMode: message.payload.gameMode ?? null } };
     case 'button:states':
       return { ...state, buttonStates: message.payload };
     case 'toolbar:updated':

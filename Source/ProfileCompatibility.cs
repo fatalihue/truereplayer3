@@ -725,6 +725,17 @@ namespace TrueReplayer.Services
             (p => p.EnableLoop && p.LoopCount > 1,
                 new Version(2, 11, 0), "Per-profile loop count"),
 
+            // Per-profile Game Mode. Same destroy-on-round-trip mechanism as the loop count just
+            // above: an older build has no GameMode on UserProfile and no [JsonExtensionData], so
+            // it drops the key and its own next save rewrites the file without it — the Roblox
+            // macro set to walk its cursor goes back to whatever the app-wide switch says, with
+            // nothing on screen saying so. Gated on USE for free: the field is written only when
+            // set (null = follows), so a profile that never touched it carries no key and no pin.
+            // Accepted by the owner on 2026-10-10 — see intencionais/parte-4.md.
+            // Introduced after 2.45.1 — bump at release if the release number differs.
+            (p => p.GameMode.HasValue,
+                new Version(2, 46, 0), "Per-profile Game Mode"),
+
             // Restore Size split from Restore Position; older builds only honour Position. Same
             // correction as the UseRelativeCoordinates pin above — the 2.0.5 this used to name
             // was never a real release (the 2.x line runs 2.0.0 then 2.1.0), so it is now 2.1.0.
