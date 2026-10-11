@@ -133,11 +133,11 @@ export function ActionIcon({ actionType, size = 12 }: { actionType: string; size
   if (actionType === 'ElseIf') return <Split size={size} />;
   if (actionType === 'Else') return <ArrowRightLeft size={size} />;
   if (actionType === 'EndIf') return <ChevronDown size={size} />;
-  // Flow leaves — same glyphs as the Assert ▾ menu entries that insert them, per the
+  // Flow leaves — same glyphs as the More ▸ Assert entries that insert them, per the
   // "chip reads the same as the entry that inserts it" rule above.
   if (actionType === 'Stop') return <CircleStop size={size} />;
   if (actionType === 'Return') return <CornerDownLeft size={size} />;
-  // Loop family — IterationCw matches the Loop ▾ trigger; EndLoop closes upward (the
+  // Loop family — IterationCw matches the More ▸ Loop entry; EndLoop closes upward (the
   // back edge), Break exits rightward, Next skips forward, ForEachRow is the table.
   if (actionType === 'While') return <IterationCw size={size} />;
   if (actionType === 'EndLoop') return <ChevronUp size={size} />;

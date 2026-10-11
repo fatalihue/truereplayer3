@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, lazy, Suspense } from 'react';
-import { Trash2, Undo2, Redo2, Type, Mouse, MoreHorizontal, ScanSearch, Pipette, Keyboard, Globe, Repeat2, Hourglass, X, GitBranch, ScanEye, Braces, AppWindow, Clipboard, ClipboardCopy, ChevronDown, Dice5, Cpu, FileCheck, Clock, Table2, ShieldCheck, CircleStop, CornerDownLeft, IterationCw, ArrowRightFromLine, SkipForward } from 'lucide-react';
+import { Trash2, Undo2, Redo2, Type, Mouse, MoreHorizontal, ScanSearch, Pipette, Keyboard, Globe, Repeat2, Hourglass, X, GitBranch, ScanEye, Braces, AppWindow, Clipboard, ClipboardCopy, ChevronDown, ChevronRight, Dice5, Cpu, FileCheck, Clock, Table2, ShieldCheck, CircleStop, CornerDownLeft, IterationCw, ArrowRightFromLine, SkipForward } from 'lucide-react';
 import { useAppState } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
 import { useSelectionRef } from '../state/SelectionContext';
@@ -110,11 +110,14 @@ function ResponsiveProfileName({ name }: { name: string }) {
   );
 }
 
-// ── Overflow: the tail of the row collapses into a More ▾ menu when it runs out of room ──
+// ── Overflow: the tail of the row folds into the More ▾ menu when it runs out of room ──
 // Four candidates, collapsed tail-first: Clear All, Data Loop, Activate Window, Run Profile.
-// Four is not a taste call — at the narrowest layout the app still allows (minimum window with
-// BOTH rails re-expanded by hand, centre column 473 px) three was measured short by 34 px, and
-// a menu that leaves one button clipped has not done its job.
+// Since the slimmer row of 2026-10-11 (Set Variable, Copy to Slot, Loop and Assert moved into
+// More for good) the row needs 510 px, and the narrowest layout the app still allows — minimum
+// window with BOTH rails re-expanded by hand — offers 531, so on the default theme nothing folds
+// anywhere. The four stay because a button's width follows the theme's font size and row height
+// (the unit is measured, see fit): a larger UI can still run out of room, and a menu that leaves
+// one button clipped has not done its job.
 //
 // The order below is the SOURCE, and both sides derive from it. They used to be eight
 // hand-written literals — `overflowCount < 4` in the row against `overflowCount >= 3` in the
@@ -174,11 +177,19 @@ export function Toolbar(_props: ToolbarProps) {
   // Latest fit(), so the listeners below can be wired ONCE and still call the current closure.
   const fitRef = useRef<(() => void) | null>(null);
   const [overflowCount, setOverflowCount] = useState(0);
+  // What each fold candidate gives back when it leaves the row — its box, the divider that leaves
+  // with it, their margins and row gaps — measured by fit while the candidate is still in the row
+  // and remembered, so the restore side knows what a folded control will cost when it returns.
+  const foldWidthRef = useRef<Partial<Record<OverflowKey, number>>>({});
   // A control is in the MENU exactly when it has left the row. One predicate, both uses — the
   // menu is the complement of the row by construction, not by two numbers that have to agree.
   const collapsed = (k: OverflowKey) => isCollapsed(overflowCount, k);
   const inRow = (k: OverflowKey) => !collapsed(k);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  // Loop and Assert live as side submenus of More ▾ (2026-10-11: none of the owner's 122 profiles
+  // used either, and the row did not fit the minimum window). One flag for both — only one side
+  // flyout is ever open — and it closes with the menu (the effect that also disarms Clear All).
+  const [moreSubmenu, setMoreSubmenu] = useState<'loop' | 'assert' | null>(null);
   // Second step of Clear All while it lives in the menu. Reset whenever the menu closes, so
   // reopening never lands on a primed destructive button the user does not remember arming.
   const [clearArmed, setClearArmed] = useState(false);
@@ -199,7 +210,7 @@ export function Toolbar(_props: ToolbarProps) {
       const available = bar.clientWidth - pad - parseFloat(cs.columnGap || '0');
       // offsetWidth, NOT scrollWidth: on an element with visible overflow scrollWidth adds the
       // right-hand spill of ABSOLUTE descendants, and every popover in this row (Browser,
-      // Conditional, Wait, Assert, Loop, the Clear All confirm, the More panel itself) is
+      // Conditional, Wait, the Clear All confirm, the More panel and its submenus) is
       // absolutely positioned inside a relative wrapper that IS a child of this row. So the
       // instant one opened, `needed` grew by the menu's own overhang and this effect — which runs
       // on every render, including the one that opened it — collapsed buttons to make room for a
@@ -211,7 +222,8 @@ export function Toolbar(_props: ToolbarProps) {
       //
       // offsetWidth is the width the row NEEDS, not a width already squeezed: the row is shrink-0
       // next to a flex-1 min-w-0 sibling, so it is never compressed — it overflows the bar first.
-      // Measured constant at 611 px while `available` swept 620..1131 and while a popover was open.
+      // Measured constant (the 17-control row of 2026-09: 611 px) while `available` swept
+      // 620..1131 and while a popover was open.
       // NOT getBoundingClientRect().width: under --ui-zoom that returns VISUAL px (550 vs 611 for
       // the same row) and `available` comes from clientWidth, which is layout px.
       const needed = row.offsetWidth;
@@ -219,40 +231,43 @@ export function Toolbar(_props: ToolbarProps) {
       // theme settings, so a pixel constant would be right at one preset and wrong at the rest.
       const unit = row.querySelector<HTMLElement>('[data-tb-unit]')?.offsetWidth ?? 0;
       if (unit <= 0 || available <= 0) return;
+      // The fold arithmetic runs on what each candidate ACTUALLY frees, not on the unit: Clear All
+      // and Run Profile take their divider with them, so folding either gives back 41 px against a
+      // 28 px unit. Counting in units folded two controls where one sufficed (476 px available:
+      // 510 → 439 instead of 469) and then sat on the surplus, because the restore demanded two
+      // spare units. Measured here while each candidate is in the row (tagged data-tb-fold, the
+      // divider included), remembered for when it is not; unit * 2 stands in until it is seen.
+      const gap = parseFloat(getComputedStyle(row).columnGap || '0');
+      for (const k of OVERFLOW_ORDER) {
+        const els = row.querySelectorAll<HTMLElement>(`[data-tb-fold="${k}"]`);
+        if (els.length === 0) continue;
+        let w = 0;
+        els.forEach(el => {
+          const s = getComputedStyle(el);
+          w += el.offsetWidth + parseFloat(s.marginLeft || '0') + parseFloat(s.marginRight || '0') + gap;
+        });
+        foldWidthRef.current[k] = w;
+      }
+      const cost = (k: OverflowKey) => foldWidthRef.current[k] || unit * 2;
       if (needed > available) {
-        // Collapse as many as the deficit calls for in one step: a half-measure would leave a
-        // clipped button painted for a frame before the next pass caught it.
-        //
-        // …but the FIRST step does not free space, it COSTS it. Collapsing the tail also MOUNTS
-        // the More button, and More (icon + chevron + padding, ~41 px) is wider than the single
-        // control it hides (28 px) plus that control's divider and gaps. Measured on the running
-        // app, `needed` by overflowCount is [611, 613, 583, 542, 512]: count 1 is strictly
-        // DOMINATED by count 0 — wider AND showing one control less. So no deficit, however
-        // small, was ever covered by one step, and stepping to 1 guaranteed the next pass saw a
-        // deficit 2 px LARGER than the original and took a second control anyway. A window 1 px
-        // too narrow lost two controls and settled with 27 px of idle slack.
-        //
-        // Two is the floor, not a tuning constant: it is "pay for More, then free something".
+        // Fold as many as the deficit calls for in one step — a half-measure would leave a clipped
+        // button painted for a frame before the next pass caught it — and not one more.
+        // Since 2026-10-11 More is permanent (it is the home of the rare inserts), so every fold
+        // frees space; the old floor of two, which existed only because More used to MOUNT with the
+        // first fold and was wider than what it hid, went with it.
         setOverflowCount(c => {
-          const next = c + Math.ceil((needed - available) / unit);
-          return Math.min(OVERFLOW_CANDIDATES, c === 0 ? Math.max(2, next) : next);
+          let next = c;
+          let freed = 0;
+          while (next < OVERFLOW_CANDIDATES && needed - freed > available) freed += cost(OVERFLOW_ORDER[next++]);
+          return next;
         });
-      } else if (available - needed >= unit * 2) {
-        // Restore ONE per pass, and only with a whole spare button of slack beyond the one being
-        // put back. Restoring greedily — or on exactly its own width — puts a button into a space
-        // that then spills, which collapses it again on the next pass: a flicker that never
-        // settles. The effect re-runs on overflowCount, so climbing back one at a time still
-        // reaches the top in a few frames.
-        //
-        // Except into 1, which is the dominated state the collapse side skips for the same reason:
-        // it is WIDER than 0 while showing less, so stopping there would park the row ~30 px wider
-        // than it needs to be with a control still hidden. From 2 the only sane destination is 0,
-        // and the slack test above makes that safe — it already demands a whole spare unit beyond
-        // the one being restored, and 2→0 costs exactly one unit of width (583→611).
-        setOverflowCount(c => {
-          const next = c - 1;
-          return Math.max(0, next === 1 ? 0 : next);
-        });
+      } else {
+        // Restore ONE per pass, and only when the control coming back fits with a few px to
+        // spare. Restoring on exactly its own width — or on a guess — puts a button into a space
+        // that then spills, which folds it again on the next pass: a flicker that never settles.
+        // The 4 px absorbs offsetWidth's integer rounding; the effect re-runs on overflowCount, so
+        // climbing back one at a time still reaches the top in a few frames.
+        setOverflowCount(c => (c > 0 && available - needed >= cost(OVERFLOW_ORDER[c - 1]) + 4 ? c - 1 : c));
       }
     };
     fitRef.current = fit;
@@ -277,18 +292,19 @@ export function Toolbar(_props: ToolbarProps) {
   }, []);
   const moreFlyout = useFlyoutFlip(showMoreMenu, 'below');
   useDismissOnOutside(showMoreMenu, moreMenuRef, setShowMoreMenu);
-  useEffect(() => { if (!showMoreMenu) setClearArmed(false); }, [showMoreMenu]);
+  useEffect(() => { if (!showMoreMenu) { setClearArmed(false); setMoreSubmenu(null); } }, [showMoreMenu]);
+  // Loop and Assert submenus anchor to their row inside the More panel and open to the side,
+  // flipping left near the window's right edge — where More always sits.
+  const loopSubFlyout = useFlyoutFlip(moreSubmenu === 'loop', 'side');
+  const assertSubFlyout = useFlyoutFlip(moreSubmenu === 'assert', 'side');
 
   const selectionRef = useSelectionRef();
   // The open Sheet's say over the list changes below (see SheetGuardContext).
   const sheetGuard = useSheetGuard();
   const [showSendTextDialog, setShowSendTextDialog] = useState(false);
   const [showBrowserMenu, setShowBrowserMenu] = useState(false);
-  // Conditional logic dropdown — opens a picker with the supported probe families
-  // (ImageFound / PixelColorMatch). Window-based probes were prototyped here under a
-  // "soon" tag but removed before v2.3.0 release to avoid shipping disabled UI for
-  // unbuilt features — they'll come back wired up when the engine gains the
-  // ProbeWindowExists / ProbeWindowFocused helpers. Mirrors the Browser dropdown's
+  // Conditional ▾ — every If family: Image and Pixel go through the capture overlays, the state
+  // families insert the If/EndIf pair and open the Sheet. Mirrors the Browser dropdown's
   // open/close lifecycle so the outside-click handler can dismiss it the same way.
   const [showConditionalMenu, setShowConditionalMenu] = useState(false);
   const conditionalMenuRef = useRef<HTMLDivElement>(null);
@@ -299,14 +315,6 @@ export function Toolbar(_props: ToolbarProps) {
   // toolbar menus; separate state so the menus close independently of each other.
   const [showWaitMenu, setShowWaitMenu] = useState(false);
   const waitMenuRef = useRef<HTMLDivElement>(null);
-  // Assert ▾ — the Assert section extracted from Conditional ▾ (which was at 17 rows and
-  // climbing) plus the run-ending leaves; the menu is the "things that end the run" family.
-  const [showAssertMenu, setShowAssertMenu] = useState(false);
-  const assertMenuRef = useRef<HTMLDivElement>(null);
-  // Loop ▾ — the repetition family: While guards, For Each Data Row, and the two
-  // in-loop jumps (Break / Next), which grey out when the insert point is outside a loop.
-  const [showLoopMenu, setShowLoopMenu] = useState(false);
-  const loopMenuRef = useRef<HTMLDivElement>(null);
   const [showNavigateDialog, setShowNavigateDialog] = useState(false);
   const [showRunProfileDialog, setShowRunProfileDialog] = useState(false);
   // Pause modal (Pattern B normalization) — was an insert-then-Sheet flow before;
@@ -327,8 +335,6 @@ export function Toolbar(_props: ToolbarProps) {
   // viewport bottom/right edge so it isn't clipped. Measured on open by useFlyoutFlip.
   const waitFlyout = useFlyoutFlip(showWaitMenu, 'below');
   const conditionalFlyout = useFlyoutFlip(showConditionalMenu, 'below');
-  const assertFlyout = useFlyoutFlip(showAssertMenu, 'below');
-  const loopFlyout = useFlyoutFlip(showLoopMenu, 'below');
   const browserFlyout = useFlyoutFlip(showBrowserMenu, 'below');
   // Clear All confirm popover — the only destructive toolbar action gets a
   // two-step confirm, anchored/dismissed exactly like the sibling flyouts.
@@ -342,7 +348,10 @@ export function Toolbar(_props: ToolbarProps) {
   // handler cannot save it either: its ref is null while the trigger is gone, so the guard that
   // closes on an outside click can never be true.
   useEffect(() => { if (isCollapsed(overflowCount, 'clearAll')) setShowClearConfirm(false); }, [overflowCount]);
-  useEffect(() => { if (!isCollapsed(overflowCount, 'clearAll')) setShowMoreMenu(false); }, [overflowCount]);
+  // More ▾ is permanent, so its menu no longer has to close when the tail comes back. What must not
+  // survive a width change is an ARMED in-menu Clear All: folded out of the menu and later back in,
+  // it would greet the user with a primed destructive button they do not remember arming.
+  useEffect(() => { setClearArmed(false); }, [overflowCount]);
 
   // The five cmd:* listeners below are decoupled extension points, NOT dead code — the same
   // pattern and the same reasoning as cmd:togglesidebar in App.tsx, and worth saying here because
@@ -488,19 +497,15 @@ export function Toolbar(_props: ToolbarProps) {
     };
   }, [send, showToast, tt, sheetGuard]);
 
-  // Outside-press + Escape dismissal for the five insert dropdowns. One CALL per
-  // menu, not one call for all of them: each keeps its own pair of listeners, bound
-  // only while that menu is open, which is what makes them close independently
-  // (clicking inside Browser doesn't close Conditional, and vice versa). The
-  // mousedown-not-click and capture-phase-Escape choices, and why they matter, are
-  // documented on the hook. The columns + add-actions dropdowns that used to share
-  // this handler are gone (columns moved to the grid header, individual inserts are
-  // now direct toolbar buttons).
+  // Outside-press + Escape dismissal for the three insert dropdowns in the row (More has its own
+  // call above; its Loop/Assert submenus live inside its panel, so a click in them is not
+  // outside). One CALL per menu, not one call for all of them: each keeps its own pair of
+  // listeners, bound only while that menu is open, which is what makes them close independently
+  // (clicking inside Browser doesn't close Conditional, and vice versa). The mousedown-not-click
+  // and capture-phase-Escape choices, and why they matter, are documented on the hook.
   useDismissOnOutside(showBrowserMenu, browserMenuRef, setShowBrowserMenu);
   useDismissOnOutside(showConditionalMenu, conditionalMenuRef, setShowConditionalMenu);
   useDismissOnOutside(showWaitMenu, waitMenuRef, setShowWaitMenu);
-  useDismissOnOutside(showAssertMenu, assertMenuRef, setShowAssertMenu);
-  useDismissOnOutside(showLoopMenu, loopMenuRef, setShowLoopMenu);
 
   // Belt to the braces of `&& !insertsDisabled` on each menu's render: that guard is what actually
   // CLOSES the race, because a render-phase condition lands in the DOM during the mutation phase,
@@ -524,10 +529,8 @@ export function Toolbar(_props: ToolbarProps) {
     setShowBrowserMenu(false);
     setShowConditionalMenu(false);
     setShowWaitMenu(false);
-    setShowAssertMenu(false);
-    setShowLoopMenu(false);
     setShowClearConfirm(false);
-    // The More menu belongs in this list for the same reason as its five siblings: it holds
+    // The More menu belongs in this list for the same reason as its siblings: it holds
     // nothing the user typed. It was the one overlay left out, and the only one that can hold an
     // ARMED destructive step. Its panel is render-gated on !insertsDisabled, which HIDES it
     // without closing it — so a Clear All armed in the menu survived a ScrLk to Clicker or a run
@@ -718,7 +721,10 @@ export function Toolbar(_props: ToolbarProps) {
               groups the same Image/Pixel probe family. Move Up / Move Down moved
               to the BulkActionBar (only useful with a selection); click x3 /
               scroll inserts removed long ago because Recording does them
-              better. */}
+              better. Set Variable, Copy to Slot, Loop and Assert left the row on
+              2026-10-11 for the More ▾ menu at its end: the owner's 122 profiles
+              used them in 2, 1, 0 and 0 profiles, and the row did not fit the
+              minimum window. */}
 
           {/* Send Keystroke — unified keyboard insert (Press 1×, Press N×, or
               Hold for X ms; mode toggle lives inside the dialog). */}
@@ -762,40 +768,6 @@ export function Toolbar(_props: ToolbarProps) {
             <Type size={16} />
           </button>
 
-          {/* Set Variable — writes a name/value into the replay run's variable store,
-              read back with {var:name} in Send Text / Type Text. Pattern A: inserts an
-              empty row and auto-opens the Sheet (the backend sends sheet:openIndex). */}
-          <button
-            tabIndex={-1}
-            onClick={() => {
-              const sel = selectionRef.current;
-              const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
-              send({ type: 'actions:insertAction', payload: { actionType: 'SetVariable', insertIndex } });
-            }}
-            disabled={insertsDisabled}
-            className={iconButtonClass('md')}
-            data-tip={clickerTip('Set Variable', 'Definir variável')}
-          >
-            <Braces size={16} />
-          </button>
-
-          {/* Copy to Slot — captures the focused app's selection (synthetic Ctrl+C) into a
-              named clipboard slot, read back with {clip:name}. Same Pattern-A flow as
-              Set Variable — they're sibling run-state writers, hence adjacent. */}
-          <button
-            tabIndex={-1}
-            onClick={() => {
-              const sel = selectionRef.current;
-              const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
-              send({ type: 'actions:insertAction', payload: { actionType: 'CopyToSlot', insertIndex } });
-            }}
-            disabled={insertsDisabled}
-            className={iconButtonClass('md')}
-            data-tip={clickerTip('Copy to Slot', 'Copiar para slot')}
-          >
-            <ClipboardCopy size={16} />
-          </button>
-
           {/* Pause — wait for a hotkey or a timeout before continuing replay. Now
               opens a config-first dialog (Pattern B) instead of the old "insert empty
               then auto-open Sheet" flow — Cancel here means no row is created at all. */}
@@ -809,10 +781,11 @@ export function Toolbar(_props: ToolbarProps) {
             <Hourglass size={16} />
           </button>
 
-          {/* Direct inserts | menu-based inserts divider. The five buttons after
-              this line open flyout menus (Wait / Conditional / Loop / Assert /
-              Browser) — the chevron each one carries is the "this opens a menu"
-              affordance that separates them from the one-click inserts to the left. */}
+          {/* Direct inserts | menu-based inserts divider. The three buttons after
+              this line open flyout menus (Wait / Conditional / Browser) — the chevron
+              each one carries is the "this opens a menu" affordance that separates
+              them from the one-click inserts to the left. More ▾, at the end of the
+              row, carries the same chevron for the same reason. */}
           <div className="w-px h-4 bg-border-subtle mx-1" />
 
           {/* Wait — sub-picker for the two blocking-probe variants. Replaces the
@@ -1013,173 +986,6 @@ export function Toolbar(_props: ToolbarProps) {
             )}
           </div>
 
-          {/* Loop ▾ — the repetition family. While reuses the If condition machinery
-              (Image/Pixel route through the SAME capture overlays; state families insert
-              directly and open the Sheet) minus Random: a coin-flip loop guard has no
-              stable ending, and offering it would be an infinite-loop trap. For Each Data
-              Row is the configuration-free block (always enabled — the label carries the
-              live row count as its own hint). Break/Next grey out when the insert point
-              is outside a loop (loopDepthAt) — greyed, never hidden, so the feature stays
-              discoverable. */}
-          <div className="relative" ref={loopMenuRef}>
-            <button
-              tabIndex={-1}
-              onClick={() => setShowLoopMenu(!showLoopMenu)}
-              disabled={insertsDisabled}
-              className={iconButtonClass('md', { active: showLoopMenu })}
-              data-tip={clickerTip('Loop', 'Loop')}
-            >
-              <IterationCw size={16} />
-              <ChevronDown size={10} className="opacity-80" />
-            </button>
-            {showLoopMenu && !insertsDisabled && (() => {
-              // Selection is stable while the menu is open (clicking a row dismisses it),
-              // so the insert point — and the Break/Next gate — is computed once per open.
-              const loopSel = selectionRef.current;
-              const loopInsertAt = loopSel.size > 0 ? Math.min(...loopSel) : actions.length;
-              const loopDepth = loopDepthAt(actions, loopInsertAt);
-              const rowsN = dataTable.rows.length;
-              return (
-              <div ref={loopFlyout.ref} className={`absolute w-60 menu-surface z-50 py-1 ${loopFlyout.flipX ? 'right-0' : 'left-0'} ${loopFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
-                <div className="px-3 py-1 label-micro text-text-tertiary">
-                  Insert While — repeats while true
-                </div>
-                {([
-                  { ct: 'ImageFound', Icon: ScanSearch, label: 'Image Found' },
-                  { ct: 'PixelColorMatch', Icon: Pipette, label: 'Pixel Color Match' },
-                  { ct: 'WindowOpen', Icon: AppWindow, label: 'Window Open' },
-                  { ct: 'ClipboardMatch', Icon: Clipboard, label: 'Clipboard' },
-                  { ct: 'BrowserElementState', Icon: Globe, label: 'Browser Element' },
-                  { ct: 'Variable', Icon: Braces, label: 'Variable' },
-                  { ct: 'ProcessRunning', Icon: Cpu, label: 'Process Running' },
-                  { ct: 'FileExists', Icon: FileCheck, label: 'File Exists' },
-                  { ct: 'TimeWindow', Icon: Clock, label: 'Time' },
-                ] as const).map(({ ct, Icon, label }) => (
-                  <button
-                    key={`loop-${ct}`}
-                    className="menu-item text-text-primary"
-                    onClick={() => {
-                      send({ type: 'actions:insertLoop', payload: { conditionType: ct, insertIndex: loopInsertAt } });
-                      setShowLoopMenu(false);
-                    }}
-                  >
-                    <Icon size={12} style={{ color: 'var(--color-action-loop-fg, var(--color-action-if-fg))' }} />
-                    {label}
-                  </button>
-                ))}
-                <div className="my-1 border-t border-border-subtle" />
-                <button
-                  className="menu-item text-text-primary"
-                  onClick={() => {
-                    send({ type: 'actions:insertLoop', payload: { kind: 'ForEachRow', insertIndex: loopInsertAt } });
-                    setShowLoopMenu(false);
-                  }}
-                >
-                  <Table2 size={12} style={{ color: 'var(--color-action-loop-fg, var(--color-action-if-fg))' }} />
-                  For Each Data Row
-                  <span className="ml-auto text-[10px] text-text-tertiary">{rowsN} row{rowsN === 1 ? '' : 's'}</span>
-                </button>
-                <div className="my-1 border-t border-border-subtle" />
-                <div className="px-3 py-1 label-micro text-text-tertiary">
-                  Loop control
-                </div>
-                {([
-                  { at: 'BreakLoop', Icon: ArrowRightFromLine, label: 'Break loop' },
-                  { at: 'ContinueLoop', Icon: SkipForward, label: 'Next iteration' },
-                ] as const).map(({ at, Icon, label }) => (
-                  <button
-                    key={`loopctl-${at}`}
-                    disabled={loopDepth === 0}
-                    data-tip={loopDepth === 0
-                      ? tt('Only inside a loop', 'Só dentro de um loop')
-                      : undefined}
-                    className="menu-item text-text-primary"
-                    onClick={() => {
-                      send({ type: 'actions:insertAction', payload: { actionType: at, insertIndex: loopInsertAt } });
-                      setShowLoopMenu(false);
-                    }}
-                  >
-                    <Icon size={12} style={{ color: loopDepth === 0 ? undefined : 'var(--color-action-loop-fg, var(--color-action-if-fg))' }} />
-                    {label}
-                  </button>
-                ))}
-              </div>
-              );
-            })()}
-          </div>
-
-          {/* Assert ▾ — the "things that end the run" family. The six state asserts moved
-              here verbatim from Conditional ▾ (which was at 17 rows and climbing; an If
-              BRANCHES on the answer, an Assert REQUIRES it — different intents, different
-              menus). Below them, the flow leaves: Stop ends the whole run as a normal
-              finish, Return ends only the current pass. Image/pixel asserts stay out on
-              purpose (Wait Image / Wait Pixel Color already abort on timeout), and a page
-              element has its own Assert Element under Browser Actions. */}
-          <div className="relative" ref={assertMenuRef}>
-            <button
-              tabIndex={-1}
-              onClick={() => setShowAssertMenu(!showAssertMenu)}
-              disabled={insertsDisabled}
-              className={iconButtonClass('md', { active: showAssertMenu })}
-              data-tip={clickerTip('Assert / end the run', 'Assert / encerrar a execução')}
-            >
-              <ShieldCheck size={16} />
-              <ChevronDown size={10} className="opacity-80" />
-            </button>
-            {showAssertMenu && !insertsDisabled && (
-              <div ref={assertFlyout.ref} className={`absolute w-56 menu-surface z-50 py-1 ${assertFlyout.flipX ? 'right-0' : 'left-0'} ${assertFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
-                <div className="px-3 py-1 label-micro text-text-tertiary">
-                  Insert Assert — must be true
-                </div>
-                {([
-                  { ct: 'WindowOpen', Icon: AppWindow, label: 'Window Open' },
-                  { ct: 'ProcessRunning', Icon: Cpu, label: 'Process Running' },
-                  { ct: 'ClipboardMatch', Icon: Clipboard, label: 'Clipboard' },
-                  { ct: 'Variable', Icon: Braces, label: 'Variable' },
-                  { ct: 'FileExists', Icon: FileCheck, label: 'File Exists' },
-                  { ct: 'TimeWindow', Icon: Clock, label: 'Time' },
-                ] as const).map(({ ct, Icon, label }) => (
-                  <button
-                    key={`assert-${ct}`}
-                    className="menu-item text-text-primary"
-                    onClick={() => {
-                      const sel = selectionRef.current;
-                      const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
-                      send({ type: 'actions:insertAssert', payload: { conditionType: ct, insertIndex } });
-                      setShowAssertMenu(false);
-                    }}
-                  >
-                    <Icon size={12} style={{ color: 'var(--color-action-if-fg)' }} />
-                    {label}
-                  </button>
-                ))}
-                <div className="my-1 border-t border-border-subtle" />
-                <div className="px-3 py-1 label-micro text-text-tertiary">
-                  End the run
-                </div>
-                {([
-                  { at: 'Stop', Icon: CircleStop, label: 'Stop', tip: 'ends the whole run — success' },
-                  { at: 'Return', Icon: CornerDownLeft, label: 'Return', tip: 'ends this pass only' },
-                ] as const).map(({ at, Icon, label, tip }) => (
-                  <button
-                    key={`flow-${at}`}
-                    className="menu-item text-text-primary"
-                    onClick={() => {
-                      const sel = selectionRef.current;
-                      const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
-                      send({ type: 'actions:insertAction', payload: { actionType: at, insertIndex } });
-                      setShowAssertMenu(false);
-                    }}
-                  >
-                    <Icon size={12} style={{ color: 'var(--color-action-flow-fg, var(--color-action-pause-fg))' }} />
-                    {label}
-                    <span className="ml-auto text-[10px] text-text-tertiary">{tip}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
           {/* Browser Actions */}
           <div className="relative" ref={browserMenuRef}>
             <button
@@ -1234,18 +1040,17 @@ export function Toolbar(_props: ToolbarProps) {
             )}
           </div>
 
-          {/* Everything above inserts a row that DECIDES or WAITS; everything below reaches
-              for another surface — a second profile, another app's window, the data table.
-              Eleven buttons ran together without this, which is a long stretch to scan for
-              one icon. It also happens to mark where the row starts giving way: the three
-              that follow, plus Clear All, are exactly the ones the More menu absorbs.
-              Once all three have gone into the menu it divides nothing — the More button is
-              itself the boundary by then — so it steps aside and gives the row back its 9 px,
-              which at the narrowest layout is the difference between fitting and not. */}
+          {/* Everything above inserts a row that DECIDES, WAITS or drives the browser; everything
+              below reaches for another surface — a second profile, another app's window, the
+              data table. It also marks where the row gives way: the three that follow, plus
+              Clear All, are the ones that fold into More ▾ when the row runs out of room (a
+              larger UI; the default theme fits even the minimum window). Once all three have
+              folded it divides nothing — More is itself the boundary by then — so it steps
+              aside and gives the row back its 9 px. */}
           {/* Keyed on Run Profile, the LAST of the three to fold (OVERFLOW_ORDER): keyed on Activate
               Window it vanished one step early, at the width where Activate Window had folded and
               Run Profile had not, leaving Run Profile against the Browser menu with no rule. */}
-          {inRow('runProfile') && <div className="w-px h-4 bg-border-subtle mx-1" />}
+          {inRow('runProfile') && <div data-tb-fold="runProfile" className="w-px h-4 bg-border-subtle mx-1" />}
 
           {/* Run Profile — sub-macro call (picker dialog). Sits next to Browser
               because both delegate work elsewhere (a profile / a browser tab). */}
@@ -1256,6 +1061,7 @@ export function Toolbar(_props: ToolbarProps) {
             disabled={insertsDisabled}
             className={iconButtonClass('md')}
             data-tip={clickerTip('Run Profile', 'Executar perfil')}
+            data-tb-fold="runProfile"
           >
             <Repeat2 size={16} />
           </button>
@@ -1275,6 +1081,7 @@ export function Toolbar(_props: ToolbarProps) {
             disabled={insertsDisabled}
             className={iconButtonClass('md')}
             data-tip={clickerTip('Activate Window', 'Ativar janela')}
+            data-tb-fold="activateWindow"
           >
             <AppWindow size={16} />
           </button>
@@ -1299,6 +1106,7 @@ export function Toolbar(_props: ToolbarProps) {
             disabled={insertsDisabled}
             className={iconButtonClass('md')}
             data-tip={clickerTip('Data Loop', 'Data Loop')}
+            data-tb-fold="dataLoop"
           >
             <Table2 size={16} />
           </button>
@@ -1306,7 +1114,7 @@ export function Toolbar(_props: ToolbarProps) {
 
           {/* When the tail has collapsed, the More button IS the divider — a separator beside
               it would read as two gaps in a row. */}
-          {inRow('clearAll') && <div className="w-px h-4 bg-border-subtle mx-1" />}
+          {inRow('clearAll') && <div data-tb-fold="clearAll" className="w-px h-4 bg-border-subtle mx-1" />}
 
           {/* Clear All — destructive hover (red text + faint red bg) mirrors
               BulkActionBar's Delete. Two-step confirm popover + the same
@@ -1316,7 +1124,7 @@ export function Toolbar(_props: ToolbarProps) {
               from the toolbar (redundant with the Ctrl+C / Ctrl+V hotkeys and
               the BulkActionBar's buttons when a selection exists). */}
           {inRow('clearAll') && (
-          <div className="relative" ref={clearMenuRef}>
+          <div className="relative" ref={clearMenuRef} data-tb-fold="clearAll">
             <button
               tabIndex={-1}
               onClick={() => setShowClearConfirm(prev => !prev)}
@@ -1371,35 +1179,246 @@ export function Toolbar(_props: ToolbarProps) {
           </div>
           )}
 
-          {/* More ▾ — the tail the row could not fit. It is NOT a permanent home:
-              overflowCount is measured, so at any width where the buttons fit they stay
-              buttons, and this menu does not exist at all. What it buys beyond room is
-              NAMES: every control in this row is icon-only, and the insert commands were
-              deliberately cut from the command palette, so until now "Run Profile" was a
-              word you could only reach by hovering the right icon. Items are listed
-              row-order (Run Profile → Clear All), never collapse-order, or the menu would
-              reshuffle itself as the window resized.
-              Clear All opens its own confirm popover, which cannot be nested inside a menu
-              that closes on click — so here it sends the user back to the button by
-              widening the window, and stays disabled-looking rather than lying about a
-              one-click destroy. */}
-          {collapsed('clearAll') && (
-            <div className="relative" ref={moreMenuRef}>
-              <button
-                tabIndex={-1}
-                onClick={() => setShowMoreMenu(!showMoreMenu)}
-                disabled={insertsDisabled}
-                className={iconButtonClass('md', { active: showMoreMenu })}
-                data-tip={clickerTip('More', 'Mais')}
-              >
-                <MoreHorizontal size={16} />
-                <ChevronDown size={10} className="opacity-80" />
-              </button>
-              {showMoreMenu && !insertsDisabled && (
+          {/* More ▾ — permanent since 2026-10-11, with two jobs in one menu so there is never a
+              second button that hides things:
+                1. the HOME of the inserts the owner's profiles barely use — Set Variable (2 of
+                   122 profiles), Copy to Slot (1), Loop (0), Assert (0): named, one click deeper,
+                   never gone. Loop and Assert keep their whole former menus as side submenus
+                   (the row context menu's pattern: hover opens, useFlyoutFlip 'side', a 4 px
+                   bridge so the pointer can cross).
+                2. the TAIL the row could not fit (overflowCount, measured). On the default theme
+                   the row fits even the minimum window, so this half only shows for a larger UI.
+                   Listed row-order (Run Profile → Clear All), never collapse-order, or the menu
+                   would reshuffle itself as the window resized.
+              What it buys beyond room is NAMES: every control in the row is icon-only, and the
+              insert commands were deliberately cut from the command palette.
+              Clear All opens its own confirm popover, which cannot be nested inside a menu that
+              closes on click — so in here it confirms inside the menu instead (below). */}
+          <div className="relative" ref={moreMenuRef}>
+            <button
+              tabIndex={-1}
+              onClick={() => setShowMoreMenu(!showMoreMenu)}
+              disabled={insertsDisabled}
+              className={iconButtonClass('md', { active: showMoreMenu })}
+              data-tip={clickerTip('More actions', 'Mais ações')}
+            >
+              <MoreHorizontal size={16} />
+              <ChevronDown size={10} className="opacity-80" />
+            </button>
+            {showMoreMenu && !insertsDisabled && (
                 <div ref={moreFlyout.ref} className={`absolute w-56 menu-surface z-50 py-1 ${moreFlyout.flipX ? 'right-0' : 'left-0'} ${moreFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                   <div className="px-3 py-1 label-micro text-text-tertiary">
                     More actions
                   </div>
+                  {/* Set Variable — writes a name/value into the replay run's variable store, read
+                      back with {var:name} in Send Text / Type Text. Pattern A: inserts an empty row
+                      and auto-opens the Sheet (the backend sends sheet:openIndex). */}
+                  <button
+                    className="menu-item text-text-primary"
+                    onClick={() => {
+                      const sel = selectionRef.current;
+                      const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
+                      send({ type: 'actions:insertAction', payload: { actionType: 'SetVariable', insertIndex } });
+                      setShowMoreMenu(false);
+                    }}
+                  >
+                    <Braces size={13} className="text-text-tertiary" />
+                    Set Variable
+                  </button>
+                  {/* Copy to Slot — captures the focused app's selection (synthetic Ctrl+C) into a
+                      named clipboard slot, read back with {clip:name}. Same Pattern-A flow as Set
+                      Variable — they're sibling run-state writers, hence adjacent. */}
+                  <button
+                    className="menu-item text-text-primary"
+                    onClick={() => {
+                      const sel = selectionRef.current;
+                      const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
+                      send({ type: 'actions:insertAction', payload: { actionType: 'CopyToSlot', insertIndex } });
+                      setShowMoreMenu(false);
+                    }}
+                  >
+                    <ClipboardCopy size={13} className="text-text-tertiary" />
+                    Copy to Slot
+                  </button>
+                  {/* Loop ▸ — the repetition family. While reuses the If condition machinery
+                      (Image/Pixel route through the SAME capture overlays; state families insert
+                      directly and open the Sheet) minus Random: a coin-flip loop guard has no
+                      stable ending, and offering it would be an infinite-loop trap. For Each Data
+                      Row is the configuration-free block (always enabled — the label carries the
+                      live row count as its own hint). Break/Next grey out when the insert point is
+                      outside a loop (loopDepthAt) — greyed, never hidden, so the feature stays
+                      discoverable. */}
+                  <div
+                    className="relative"
+                    onMouseEnter={() => setMoreSubmenu('loop')}
+                    onMouseLeave={() => setMoreSubmenu(null)}
+                  >
+                    <button
+                      className="menu-item justify-between text-text-primary"
+                      onClick={() => setMoreSubmenu('loop')}
+                    >
+                      <span className="flex items-center gap-2.5">
+                        <IterationCw size={13} className="text-text-tertiary" />
+                        Loop
+                      </span>
+                      <ChevronRight size={12} className="text-text-disabled" />
+                    </button>
+                    {moreSubmenu === 'loop' && (() => {
+                      // Selection is stable while the menu is open (clicking a row dismisses it),
+                      // so the insert point — and the Break/Next gate — is computed once per open.
+                      const loopSel = selectionRef.current;
+                      const loopInsertAt = loopSel.size > 0 ? Math.min(...loopSel) : actions.length;
+                      const loopDepth = loopDepthAt(actions, loopInsertAt);
+                      const rowsN = dataTable.rows.length;
+                      return (
+                        <div ref={loopSubFlyout.ref} className={`absolute bg-transparent ${loopSubFlyout.flipX ? 'right-full' : 'left-full'} ${loopSubFlyout.flipY ? 'bottom-0' : 'top-0'}`} style={loopSubFlyout.flipX ? { paddingRight: '4px' } : { paddingLeft: '4px' }}>
+                          <div className="w-60 py-1 menu-surface z-[60]">
+                            <div className="px-3 py-1 label-micro text-text-tertiary">
+                              Insert While — repeats while true
+                            </div>
+                            {([
+                              { ct: 'ImageFound', Icon: ScanSearch, label: 'Image Found' },
+                              { ct: 'PixelColorMatch', Icon: Pipette, label: 'Pixel Color Match' },
+                              { ct: 'WindowOpen', Icon: AppWindow, label: 'Window Open' },
+                              { ct: 'ClipboardMatch', Icon: Clipboard, label: 'Clipboard' },
+                              { ct: 'BrowserElementState', Icon: Globe, label: 'Browser Element' },
+                              { ct: 'Variable', Icon: Braces, label: 'Variable' },
+                              { ct: 'ProcessRunning', Icon: Cpu, label: 'Process Running' },
+                              { ct: 'FileExists', Icon: FileCheck, label: 'File Exists' },
+                              { ct: 'TimeWindow', Icon: Clock, label: 'Time' },
+                            ] as const).map(({ ct, Icon, label }) => (
+                              <button
+                                key={`loop-${ct}`}
+                                className="menu-item text-text-primary"
+                                onClick={() => {
+                                  send({ type: 'actions:insertLoop', payload: { conditionType: ct, insertIndex: loopInsertAt } });
+                                  setShowMoreMenu(false);
+                                }}
+                              >
+                                <Icon size={12} style={{ color: 'var(--color-action-loop-fg, var(--color-action-if-fg))' }} />
+                                {label}
+                              </button>
+                            ))}
+                            <div className="my-1 border-t border-border-subtle" />
+                            <button
+                              className="menu-item text-text-primary"
+                              onClick={() => {
+                                send({ type: 'actions:insertLoop', payload: { kind: 'ForEachRow', insertIndex: loopInsertAt } });
+                                setShowMoreMenu(false);
+                              }}
+                            >
+                              <Table2 size={12} style={{ color: 'var(--color-action-loop-fg, var(--color-action-if-fg))' }} />
+                              For Each Data Row
+                              <span className="ml-auto text-[10px] text-text-tertiary">{rowsN} row{rowsN === 1 ? '' : 's'}</span>
+                            </button>
+                            <div className="my-1 border-t border-border-subtle" />
+                            <div className="px-3 py-1 label-micro text-text-tertiary">
+                              Loop control
+                            </div>
+                            {([
+                              { at: 'BreakLoop', Icon: ArrowRightFromLine, label: 'Break loop' },
+                              { at: 'ContinueLoop', Icon: SkipForward, label: 'Next iteration' },
+                            ] as const).map(({ at, Icon, label }) => (
+                              <button
+                                key={`loopctl-${at}`}
+                                disabled={loopDepth === 0}
+                                data-tip={loopDepth === 0
+                                  ? tt('Only inside a loop', 'Só dentro de um loop')
+                                  : undefined}
+                                className="menu-item text-text-primary"
+                                onClick={() => {
+                                  send({ type: 'actions:insertAction', payload: { actionType: at, insertIndex: loopInsertAt } });
+                                  setShowMoreMenu(false);
+                                }}
+                              >
+                                <Icon size={12} style={{ color: loopDepth === 0 ? undefined : 'var(--color-action-loop-fg, var(--color-action-if-fg))' }} />
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  {/* Assert ▸ — the "things that end the run" family. The six state asserts (an If
+                      BRANCHES on the answer, an Assert REQUIRES it — different intents, different
+                      menus), then the flow leaves: Stop ends the whole run as a normal finish,
+                      Return ends only the current pass. Image/pixel asserts stay out on purpose
+                      (Wait Image / Wait Pixel Color already abort on timeout), and a page element
+                      has its own Assert Element under Browser Actions. */}
+                  <div
+                    className="relative"
+                    onMouseEnter={() => setMoreSubmenu('assert')}
+                    onMouseLeave={() => setMoreSubmenu(null)}
+                  >
+                    <button
+                      className="menu-item justify-between text-text-primary"
+                      onClick={() => setMoreSubmenu('assert')}
+                    >
+                      <span className="flex items-center gap-2.5">
+                        <ShieldCheck size={13} className="text-text-tertiary" />
+                        Assert
+                      </span>
+                      <ChevronRight size={12} className="text-text-disabled" />
+                    </button>
+                    {moreSubmenu === 'assert' && (
+                      <div ref={assertSubFlyout.ref} className={`absolute bg-transparent ${assertSubFlyout.flipX ? 'right-full' : 'left-full'} ${assertSubFlyout.flipY ? 'bottom-0' : 'top-0'}`} style={assertSubFlyout.flipX ? { paddingRight: '4px' } : { paddingLeft: '4px' }}>
+                        <div className="w-56 py-1 menu-surface z-[60]">
+                          <div className="px-3 py-1 label-micro text-text-tertiary">
+                            Insert Assert — must be true
+                          </div>
+                          {([
+                            { ct: 'WindowOpen', Icon: AppWindow, label: 'Window Open' },
+                            { ct: 'ProcessRunning', Icon: Cpu, label: 'Process Running' },
+                            { ct: 'ClipboardMatch', Icon: Clipboard, label: 'Clipboard' },
+                            { ct: 'Variable', Icon: Braces, label: 'Variable' },
+                            { ct: 'FileExists', Icon: FileCheck, label: 'File Exists' },
+                            { ct: 'TimeWindow', Icon: Clock, label: 'Time' },
+                          ] as const).map(({ ct, Icon, label }) => (
+                            <button
+                              key={`assert-${ct}`}
+                              className="menu-item text-text-primary"
+                              onClick={() => {
+                                const sel = selectionRef.current;
+                                const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
+                                send({ type: 'actions:insertAssert', payload: { conditionType: ct, insertIndex } });
+                                setShowMoreMenu(false);
+                              }}
+                            >
+                              <Icon size={12} style={{ color: 'var(--color-action-if-fg)' }} />
+                              {label}
+                            </button>
+                          ))}
+                          <div className="my-1 border-t border-border-subtle" />
+                          <div className="px-3 py-1 label-micro text-text-tertiary">
+                            End the run
+                          </div>
+                          {([
+                            { at: 'Stop', Icon: CircleStop, label: 'Stop', tip: 'ends the whole run — success' },
+                            { at: 'Return', Icon: CornerDownLeft, label: 'Return', tip: 'ends this pass only' },
+                          ] as const).map(({ at, Icon, label, tip }) => (
+                            <button
+                              key={`flow-${at}`}
+                              className="menu-item text-text-primary"
+                              onClick={() => {
+                                const sel = selectionRef.current;
+                                const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
+                                send({ type: 'actions:insertAction', payload: { actionType: at, insertIndex } });
+                                setShowMoreMenu(false);
+                              }}
+                            >
+                              <Icon size={12} style={{ color: 'var(--color-action-flow-fg, var(--color-action-pause-fg))' }} />
+                              {label}
+                              <span className="ml-auto text-[10px] text-text-tertiary">{tip}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {/* The folded tail, only when the row ran out of room. Clear All is the first to
+                      fold (OVERFLOW_ORDER), so "anything folded" is exactly "Clear All folded". */}
+                  {collapsed('clearAll') && <div className="my-1 border-t border-border-subtle" />}
                   {collapsed('runProfile') && (
                     <button
                       className="menu-item text-text-primary"
@@ -1432,13 +1451,15 @@ export function Toolbar(_props: ToolbarProps) {
                       Data Loop
                     </button>
                   )}
-                  <div className="my-1 border-t border-border-subtle" />
+                  {/* Data Loop folds second, so it is present exactly when a tail insert sits above
+                      the destructive one — the only case where a rule between them divides anything. */}
+                  {collapsed('dataLoop') && <div className="my-1 border-t border-border-subtle" />}
                   {/* Clear All keeps its two steps in here rather than borrowing the button's
                       confirm popover: that popover is anchored to a trigger that does not exist
                       at this width. So the confirmation happens INSIDE the menu, which stays open
                       because clicks within it are not outside clicks. Same two decisions as the
                       popover — it names the count, and it says Ctrl+Z undoes it. */}
-                  {clearArmed ? (
+                  {collapsed('clearAll') && (clearArmed ? (
                     <div className="px-3 py-2">
                       <div className="text-xs font-semibold text-text-primary">
                         Clear all {actions.length} action{actions.length === 1 ? '' : 's'}?
@@ -1480,11 +1501,10 @@ export function Toolbar(_props: ToolbarProps) {
                       <Trash2 size={13} className="text-recording" />
                       Clear All…
                     </button>
-                  )}
+                  ))}
                 </div>
-              )}
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
