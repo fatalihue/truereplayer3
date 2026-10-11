@@ -30,6 +30,8 @@ import type { LexicalEditorHandle } from './lexical/LexicalTokenEditor';
 import { getDisplayKey, isClickHold, CLICK_FAMILY_TYPES, clickFormOf, NO_COORD_TYPES } from '../utils/displayUtils';
 import { MIN_HOLD_MS, MAX_HOLD_MS, DEFAULT_HOLD_MS, DEFAULT_CLICK_GAP_MS, CLICK_COORD_TOLERANCE_PX, clickDefaultGap, rowDwellMs } from '../utils/actionCost';
 import { useEditorClaim } from '../hooks/useEditorClaim';
+import { useSingleKeyCapture } from '../hooks/useSingleKeyCapture';
+import { parseCoordPair } from '../utils/coordPair';
 import { Field, Section } from './sheet/Field';
 import { WindowTargetFields } from './WindowTargetFields';
 import { Slider } from './sheet/Slider';
@@ -1886,19 +1888,17 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
   // stays disabled on a form-only change, and Esc discards it without the guard.
   const hasUnsavedChanges = hasFieldEdits || (actionIndex != null && action != null && formDraft !== initialForm);
 
-  // Key capture handler — focusing the field switches it to capture mode (empty + "New
-  // key..." + pulse), the next non-modifier key is stored, and the input auto-blurs so
-  // the user sees the resolved value immediately. Esc is intentionally NOT a cancel key
-  // any more — the user might legitimately want to assign Escape as a hotkey. Cancelling
-  // is done by clicking away or letting the idle timer fire (see armKeyCaptureTimer).
+  // KeyDown/KeyUp Key field — armed by a click (or Enter/Space), never by bare focus: an armed
+  // capture swallows the next key, so a Tab-through must not arm it. Armed = empty + "New key..."
+  // + pulse; the first key lands and the field blurs so the resolved value shows. Esc is NOT a
+  // cancel key — a KeyDown Esc is legitimate. Cancelling is a click away or the idle timer.
   const [keyFieldFocused, setKeyFieldFocused] = useState(false);
   const keyFieldRef = useRef<HTMLInputElement>(null);
   const keyCaptureTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Stable refcount slot for hotkey:capture — only ONE surface in Sheet uses the
-  // backend low-level hook (the Pause-resume hotkey field, which has to capture
-  // Win+letter combos the WebView2 JS layer never sees). The Keystroke / KeyDown /
-  // KeyUp inline editors use plain React keydown handlers (see handleKeyCapture)
-  // and do NOT touch this slot. See InputHookManager.RegisterCapture.
+  // Stable refcount slot for the Pause-resume hotkey field's hotkey:capture (it has to capture
+  // Win+letter combos the WebView2 JS layer never sees). The KeyDown/KeyUp field captures
+  // through the hook too, but under useSingleKeyCapture's own owner — not this slot.
+  // See InputHookManager.RegisterCapture.
   const captureOwnerIdRef = useRef(`sheet-panel-${crypto.randomUUID()}`);
   const KEY_CAPTURE_TIMEOUT_MS = 4000;
   const armKeyCaptureTimer = useCallback(() => {
@@ -1946,30 +1946,15 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
     });
   }, [pauseHotkeyFocused, subscribe, armKeyCaptureTimer, disarmKeyCaptureTimer]);
 
-  const handleKeyCapture = useCallback((e: React.KeyboardEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    // Push out the idle-cancel timer on every keypress — even modifiers — so an actively
-    // engaged user is never surprised by a sudden cancel mid-combo.
-    armKeyCaptureTimer();
-
-    const modifierKeys = new Set(['Control', 'Alt', 'Shift', 'Meta']);
-    if (modifierKeys.has(e.key)) return;
-
-    let mainKey = e.key;
-    if (mainKey === ' ') mainKey = 'Space';
-    else if (mainKey.length === 1) mainKey = mainKey.toUpperCase();
-    else if (mainKey === 'ArrowUp') mainKey = 'Up';
-    else if (mainKey === 'ArrowDown') mainKey = 'Down';
-    else if (mainKey === 'ArrowLeft') mainKey = 'Left';
-    else if (mainKey === 'ArrowRight') mainKey = 'Right';
-
-    setKey(mainKey);
-    disarmKeyCaptureTimer();
-    // Drop focus so the user sees the captured value rendered instead of staying in
-    // capture mode.
-    (e.target as HTMLInputElement).blur();
-  }, [armKeyCaptureTimer, disarmKeyCaptureTimer]);
+  // The KeyDown/KeyUp key comes from the hook — the grid's inline key editor's capture, so the
+  // two spell a key the way recording does (a modifier alone included: a KeyDown Ctrl is
+  // legitimate). The browser-keydown capture this replaces ignored modifiers, stored "!" for
+  // Shift+1 and "Dead" for an accent key. Blurring is what disarms it (keyFieldFocused).
+  useSingleKeyCapture(
+    keyFieldFocused,
+    (captured) => { setKey(captured); keyFieldRef.current?.blur(); },
+    () => keyFieldRef.current?.blur(),
+  );
 
   // Dirty-aware exits: a reflexive Esc — or a click on another row's pencil — must not silently
   // discard unsaved edits (the panel batches edits into local state and only persists them on
@@ -2629,12 +2614,12 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
     };
     try {
       const text = await navigator.clipboard.readText();
-      // Accept "x,y", "x, y", or whitespace-separated "x y" so users can also paste from
-      // a manual note. Reject anything that doesn't yield two integers.
-      const match = text.trim().match(/^(-?\d+)\s*[,\s]\s*(-?\d+)$/);
-      if (!match) { showError(); return; }
-      setX(match[1]);
-      setY(match[2]);
+      // "x,y", "x, y", "x;y" or "x y" so users can also paste from a manual note — the grid's
+      // inline coords editor reads the same shapes (one helper). Two Int32s or nothing.
+      const pair = parseCoordPair(text);
+      if (!pair) { showError(); return; }
+      setX(String(pair.x));
+      setY(String(pair.y));
     } catch {
       showError();
     }
@@ -4704,7 +4689,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
             {isKeyAction ? (
               // Capture-mode visual matches the grid's Key column edit, the SettingsPanel
               // global hotkey inputs, and the ProfilePanel Assign Hotkey dialog. While
-              // focused: empty value + "New key..." placeholder + accent border + animate-
+              // armed: empty value + "New key..." placeholder + accent border + animate-
               // pulse, so it's unmistakeable that the next key press lands here. On blur,
               // restores the human-readable value (via getDisplayKey).
               <input
@@ -4712,9 +4697,17 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 type="text"
                 readOnly
                 value={keyFieldFocused ? '' : getDisplayKey(key)}
-                onFocus={() => { setKeyFieldFocused(true); armKeyCaptureTimer(); }}
-                onBlur={() => { setKeyFieldFocused(false); disarmKeyCaptureTimer(); }}
-                onKeyDown={handleKeyCapture}
+                // Arm on click or Enter/Space, never bare focus (see keyFieldFocused).
+                onClick={() => { if (!keyFieldFocused) setKeyFieldFocused(true); }}
+                onKeyDown={(e) => {
+                  // Armed: the hook owns the keyboard; a key that reaches the page anyway (the
+                  // hook stands down when the app is not in front) must not act here.
+                  if (keyFieldFocused) { e.preventDefault(); e.stopPropagation(); return; }
+                  if (e.key !== 'Enter' && e.key !== ' ') return;
+                  e.preventDefault();
+                  setKeyFieldFocused(true);
+                }}
+                onBlur={() => setKeyFieldFocused(false)}
                 placeholder="Click to capture…"
                 className={`w-full h-8 px-2 text-ui font-mono bg-bg-input border rounded outline-none cursor-pointer placeholder:text-accent-light/50 ${
                   keyFieldFocused

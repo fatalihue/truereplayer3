@@ -22,6 +22,8 @@ import { getDisplayKey, getDisplayX, getDisplayY, getActionTypeColors, formatKey
 import { snapIndicesToBlocks, hasConditionFields, skippedRowMask, isStructuralRow, armBodyEnd } from '../utils/conditionalBlocks';
 import { uiZoom } from '../utils/zoomSpace';
 import { tryParseInt32 } from '../utils/int32';
+import { parseCoordPair } from '../utils/coordPair';
+import { useSingleKeyCapture } from '../hooks/useSingleKeyCapture';
 // Deferred: already rendered conditionally, but a static import pulls the whole Lexical editor
 // stack and emoji-picker-react (~300 KB minified) into the startup chunk for a dialog most sessions
 // never open. Splitting at the DIALOG boundary and not on emoji-picker-react itself is deliberate —
@@ -654,27 +656,10 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [editValue, setEditValue] = useState('');
   const editInputRef = useRef<HTMLInputElement>(null);
-  // Idle-cancel timer for the Key column capture. Without an explicit "Esc cancels" rule
-  // (so the user CAN actually assign Escape as a hotkey), the only way out is to click
-  // away or let the field time out. Reset on every keypress so an active user is never
-  // surprised by a sudden cancel mid-press.
-  const keyCaptureTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const KEY_CAPTURE_TIMEOUT_MS = 4000;
-  const armKeyCaptureTimer = useCallback(() => {
-    if (keyCaptureTimerRef.current) clearTimeout(keyCaptureTimerRef.current);
-    keyCaptureTimerRef.current = setTimeout(() => {
-      editInputRef.current?.blur();
-    }, KEY_CAPTURE_TIMEOUT_MS);
-  }, []);
-  const disarmKeyCaptureTimer = useCallback(() => {
-    if (keyCaptureTimerRef.current) {
-      clearTimeout(keyCaptureTimerRef.current);
-      keyCaptureTimerRef.current = null;
-    }
-  }, []);
-  // Unmount cleanup so the idle-cancel timer can't fire against a stale editInputRef
-  // (e.g. profile switch wipes the rows while a Key cell is being edited).
-  useEffect(() => disarmKeyCaptureTimer, [disarmKeyCaptureTimer]);
+  // When the pointer went down on an editable Details span (coords / KeyDown-KeyUp key). A press
+  // held past LONG_PRESS_MS without moving was someone about to drag who changed their mind —
+  // the release must not then open an editor under them.
+  const spanPressAtRef = useRef(0);
   const lastClickedIndex = useRef<number | null>(null);
   const prevActionsLength = useRef(actions.length);
   const prevProfileRef = useRef(activeProfile);
@@ -1442,6 +1427,21 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
     setEditInvalid(false);
   }, [actions, buttonStates.recordingActive, buttonStates.replayActive, showToast, tt]);
 
+  // A single click on the TEXT of a click's "x, y" or a KeyDown/KeyUp's key opens its inline
+  // editor — the Delay/Notes guard chain: an editor already open, the click a drop leaves
+  // behind, and Ctrl/Shift (a selection gesture) all fall through to the row and select. So
+  // does a press held past LONG_PRESS_MS without moving: that was a drag that never started.
+  const LONG_PRESS_MS = 400;
+  const markSpanPress = useCallback(() => { spanPressAtRef.current = performance.now(); }, []);
+  const openSpanEditor = useCallback((e: React.MouseEvent, index: number, field: 'coords' | 'key', value: string) => {
+    if (editingCell) return;
+    if (dragOccurred.current) return;
+    if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if (performance.now() - spanPressAtRef.current > LONG_PRESS_MS) return;
+    e.stopPropagation();
+    startEdit(index, field, value);
+  }, [editingCell, startEdit]);
+
   // Invalid-input flag for the coords editor — drives the red border below.
   // Cleared on every keystroke and on every startEdit.
   const [editInvalid, setEditInvalid] = useState(false);
@@ -1471,11 +1471,11 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
       return;
     }
     if (editingCell.field === 'coords') {
-      // Merged "x, y" editor — accepts "123,456", "123, 456" or "123 456"
-      // (same forgiving formats as the Sheet panel's Paste-coords button).
-      // Both numbers are required so a typo can't half-update one axis.
-      const m = editValue.trim().match(/^(-?\d+)\s*[,;\s]\s*(-?\d+)$/);
-      if (m) {
+      // Merged "x, y" editor — the Sheet's Paste coordinates reads the same shapes (one helper).
+      // Both numbers are required so a typo can't half-update one axis, and both must fit an
+      // Int32 — past it the backend refuses the whole edit.
+      const pair = parseCoordPair(editValue);
+      if (pair) {
         // ONE message, so ONE undo entry. As two actions:edit this was two snapshots, and a single
         // Ctrl+Z left the row at the NEW x with the OLD y — a point that existed at no moment of
         // the edit, which the next replay would click. Same rule the Sheet's Save follows.
@@ -1484,7 +1484,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
           payload: {
             index: editingCell.index,
             id: editingCell.id,
-            edits: [{ field: 'x', value: m[1] }, { field: 'y', value: m[2] }],
+            edits: [{ field: 'x', value: String(pair.x) }, { field: 'y', value: String(pair.y) }],
           },
         });
       } else if (source === 'key') {
@@ -1590,104 +1590,34 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
     }
   }, [commitEdit, cancelEdit]);
 
-  // Key capture for editing the Key column — captures the pressed key name (like recording).
-  // Esc is intentionally allowed through as a capturable key; cancelling the capture is done
-  // by clicking away or letting the idle timer fire (see armKeyCaptureTimer above).
-  const handleKeyCaptureKeyDown = useCallback((e: React.KeyboardEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    // Any keypress (even a modifier on the way) means the user is still engaged — push
-    // the idle-cancel timeout further out.
-    armKeyCaptureTimer();
-
-    // Map the pressed key to the internal key name used by C# KeyUtils
-    let keyName: string;
-    const numpadMap: Record<string, string> = {
-      Numpad0: 'Num0', Numpad1: 'Num1', Numpad2: 'Num2', Numpad3: 'Num3',
-      Numpad4: 'Num4', Numpad5: 'Num5', Numpad6: 'Num6', Numpad7: 'Num7',
-      Numpad8: 'Num8', Numpad9: 'Num9',
-      NumpadMultiply: 'NumMultiply', NumpadDivide: 'NumDivide',
-      NumpadAdd: 'NumAdd', NumpadSubtract: 'NumSubtract',
-      NumpadDecimal: 'NumDecimal',
-    };
-    // NumpadEnter excluded — shares VK 0x0D with regular Enter, indistinguishable
-    // at the hook layer, so falls through to the 'Enter' branch.
-
-    // Canonical names matching KeyUtils.NormalizeKeyName in the C# backend. Earlier
-    // versions of this map used WinForms Keys-enum names ("Return", "Back", "Prior",
-    // "Next", "Capital", numeric codes for modifiers) which don't appear in
-    // KeyUtils.VirtualKeyMap and aren't valid ConsoleKey members — so a value
-    // entered via this capture path resolved to "key not found" at replay time and
-    // the action silently no-op'd. Fixed to use the same names recording produces.
-    if (e.code.startsWith('Numpad') && e.code !== 'NumpadEnter') {
-      keyName = numpadMap[e.code] ?? e.code;
-    } else if (e.key === ' ') keyName = 'Space';
-    else if (e.key === 'Enter') keyName = 'Enter';
-    else if (e.key === 'Backspace') keyName = 'Backspace';
-    else if (e.key === 'ArrowUp') keyName = 'Up';
-    else if (e.key === 'ArrowDown') keyName = 'Down';
-    else if (e.key === 'ArrowLeft') keyName = 'Left';
-    else if (e.key === 'ArrowRight') keyName = 'Right';
-    else if (e.key === 'Control') keyName = 'Ctrl';
-    else if (e.key === 'Shift') keyName = 'Shift';
-    // AltGraph (AltGr on ABNT2/AZERTY/etc.) is Ctrl+Alt internally; tag it as Alt
-    // here — recording produces a Ctrl+Alt pair, this single Alt is the closer
-    // approximation for a manual insert.
-    else if (e.key === 'Alt' || e.key === 'AltGraph') keyName = 'Alt';
-    else if (e.key === 'Tab') keyName = 'Tab';
-    else if (e.key === 'CapsLock') keyName = 'CapsLock';
-    else if (e.key === 'NumLock') keyName = 'NumLock';
-    else if (e.key === 'ScrollLock') keyName = 'ScrollLock';
-    else if (e.key === 'Pause') keyName = 'Pause';
-    else if (e.key === 'PrintScreen') keyName = 'PrintScreen'; // ⚠ Chrome/Firefox usually only fire keyup for PrtScn — capture here is best-effort
-    else if (e.key === 'ContextMenu') keyName = 'VK_93'; // Menu key (VK_APPS) — recording produces "VK_93" via the SafeConsoleKeyName fallback
-    else if (e.key === 'Delete') keyName = 'Delete';
-    else if (e.key === 'Insert') keyName = 'Insert';
-    else if (e.key === 'Home') keyName = 'Home';
-    else if (e.key === 'End') keyName = 'End';
-    else if (e.key === 'PageUp') keyName = 'PageUp';
-    else if (e.key === 'PageDown') keyName = 'PageDown';
-    else if (e.key === 'Escape') keyName = 'Escape';
-    else if (e.key === 'F1') keyName = 'F1';
-    else if (e.key.startsWith('F') && e.key.length <= 3 && !isNaN(Number(e.key.slice(1)))) keyName = e.key;
-    else if (e.key === 'Meta') return; // Ignore Win key
-    // Dead keys (´`^~¨ on ABNT2/AZERTY/QWERTZ) — browser fires e.key === 'Dead'
-    // because it's waiting to compose with the next char ('+a → á). Recover the
-    // intended char from e.code (layout-independent physical position).
-    else if (e.key === 'Dead') {
-      const deadCodeMap: Record<string, string> = {
-        Backquote: '`', Quote: "'", BracketLeft: '[', BracketRight: ']',
-        Minus: '-', Equal: '=', Digit6: '^',
-      };
-      keyName = deadCodeMap[e.code];
-      if (!keyName) return;
+  // KeyDown / KeyUp: the key arrives from the low-level hook (useSingleKeyCapture), named the
+  // way recording names it. The first key commits — through the same run lock as commitEdit,
+  // which the old browser-keydown capture skipped — and the same key writes nothing.
+  const commitKeyCapture = useCallback((key: string) => {
+    if (!editingCell || editingCell.field !== 'key') return;
+    if (buttonStates.recordingActive || buttonStates.replayActive) {
+      showToast(tt('Not saved — the action list is locked while a run is active.',
+                   'Não salvo — a lista de ações está travada enquanto um run está ativo.'), 'error');
+      setEditingCell(null);
+      return;
     }
-    // Digit / letter keys via e.code (physical position, shift-immune). If we used
-    // e.key here, capturing Shift+1 would store "!" — fine for display, but the row
-    // edit usually happens because the user wants to PAIR this with a Shift KeyDown
-    // earlier in the macro, and "!" doesn't resolve to a VK on its own at replay.
-    else if (/^Digit[0-9]$/.test(e.code)) keyName = e.code.slice(5);
-    else if (/^Key[A-Z]$/.test(e.code)) keyName = e.code.slice(3);
-    else if (e.key.length === 1) {
-      // Symbols / punctuation — emit literal char (KeyUtils.VkKeyScanEx resolves
-      // against the current keyboard layout, so this is layout-portable).
-      keyName = e.key;
-    } else {
-      return; // Unknown key, ignore
-    }
-
-    setEditValue(keyName);
-    // Auto-commit after capture; also tear down the idle-cancel timer since the field is
-    // about to unmount.
-    disarmKeyCaptureTimer();
-    if (editingCell) {
+    if (key !== editOriginRef.current) {
       send({
         type: 'actions:edit',
-        payload: { index: editingCell.index, id: editingCell.id, field: editingCell.field, value: keyName },
+        payload: { index: editingCell.index, id: editingCell.id, field: 'key', value: key },
       });
+    }
+    setEditingCell(null);
+  }, [editingCell, send, buttonStates.recordingActive, buttonStates.replayActive, showToast, tt]);
+  // Armed exactly while the key editor is open; closing it by ANY route releases the hook.
+  useSingleKeyCapture(editingCell?.field === 'key', commitKeyCapture, cancelEdit);
+  // A run that starts under an armed capture (an automation, a hotkey from another window)
+  // would leave the hook swallowing every key, the Stop hotkey included — close it.
+  useEffect(() => {
+    if ((buttonStates.recordingActive || buttonStates.replayActive) && editingCell?.field === 'key') {
       setEditingCell(null);
     }
-  }, [armKeyCaptureTimer, disarmKeyCaptureTimer, editingCell, send]);
+  }, [buttonStates.recordingActive, buttonStates.replayActive, editingCell]);
 
   // Drag & drop via dnd-kit (sortable preset): neighbours slide live while the
   // row is dragged, the ghost rides in a DragOverlay, and the drop commits the
@@ -2316,6 +2246,9 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
               const displayKey = rowDisplayKey(action, dataTable.rows.length);
               const displayX = getDisplayX(action);
               const displayY = getDisplayY(action);
+              // The two Details texts a single click edits in place (see openSpanEditor).
+              const isKeyHalf = action.actionType === 'KeyDown' || action.actionType === 'KeyUp';
+              const coordsEditable = isCoordinateClick(action.actionType) && !action.atCursor;
 
               const isDragged = dragIndexSet?.has(idx) ?? false;
               // Skip propagation: when an opener row (If / While / ForEachRow) carries
@@ -2809,13 +2742,13 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                   {columnVisibility.details && (() => {
                     return (
                   <td
-                    // No onClick: clicking Details no longer opens an editor (owner
-                    // decision — the hover pencil / Enter / context-menu are the
-                    // single edit path now). A plain click bubbles to the row's
-                    // handler and selects the row like any other cell. The inline
-                    // coords/key editor branches below stay wired to editingCell
-                    // (still reachable via the Delay/Notes cells' own startEdit),
-                    // but nothing in THIS cell sets those fields anymore.
+                    // No onClick on the CELL: a click on Details selects the row like any
+                    // other cell (owner decision, 07-03 — the hover pencil / Enter / context
+                    // menu are the editor). The narrow exception is the TEXT of two fields,
+                    // which edits in place on a single click: a click's "x, y" and a
+                    // KeyDown/KeyUp's key (the spans below, via openSpanEditor). Everything
+                    // else in the cell, padding included, still selects; press-and-drag from
+                    // the text still reorders (the sensor needs 8 px of movement first).
                     // `relative` anchors the hover-edit pencil to THIS cell's right
                     // edge (moved here from Notes so it sits nearer the middle).
                     className="pl-1 relative"
@@ -2848,9 +2781,12 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                         value=""
                         readOnly
                         placeholder="New key..."
-                        onFocus={armKeyCaptureTimer}
-                        onKeyDown={handleKeyCaptureKeyDown}
-                        onBlur={() => { disarmKeyCaptureTimer(); cancelEdit(); }}
+                        // The key arrives from the hook (useSingleKeyCapture), which swallows the
+                        // keyboard while armed — this field only holds focus, so a click anywhere
+                        // else cancels. preventDefault is for a key that reaches the page anyway
+                        // (the hook stands down when the app is not in front).
+                        onKeyDown={(e) => e.preventDefault()}
+                        onBlur={cancelEdit}
                         className="w-[220px] h-6 px-1 text-xs font-mono text-accent-light bg-bg-input border border-accent-solid rounded outline-none placeholder:text-accent-light/50 animate-pulse"
                       />
                     ) : isProbeAction(action) ? (
@@ -2862,10 +2798,14 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                     ) : (<>
                     {displayKey ? (
                       <span
-                        // No edit-affordance cursor/hover: the Details cell is display
-                        // only now (editing is the hover pencil). data-tip still
-                        // surfaces the full string for truncated content.
-                        className="inline-flex items-center translate-y-[-2px] text-xs font-mono text-text-primary max-w-[220px] truncate"
+                        // A KeyDown/KeyUp's key edits in place on a single click (captured
+                        // through the hook — see commitKeyCapture). Every other type's text
+                        // is display only (editing is the hover pencil); Keystroke and
+                        // HoldKey keep their dialog. data-tip still surfaces the full string
+                        // for truncated content.
+                        className={`inline-flex items-center translate-y-[-2px] text-xs font-mono text-text-primary max-w-[220px] truncate ${isKeyHalf ? 'cursor-text' : ''}`}
+                        onPointerDown={isKeyHalf ? markSpanPress : undefined}
+                        onClick={isKeyHalf ? (e) => openSpanEditor(e, idx, 'key', action.key) : undefined}
                         // Tighten the " + " separators of a combined keystroke ("Ctrl + Alt + A")
                         // WITHOUT gluing the keys together, matching the ProfilePanel hotkey chips.
                         // wordSpacing is the only lever that works here: this cell is font-mono, so
@@ -2942,14 +2882,16 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                             <td> onClick (HoldKey → setKeystrokeEdit). */}
                       </span>
                     ) : null}
-                    {/* Coordinate pair — mouse actions show (and inline-edit) their
-                        "x, y" here; If-pixel rows append the probe point after the
-                        hex chip (read-only — the probe is edited via the Sheet).
-                        Click handling lives on the parent <td> so the whole cell is
-                        one edit target. */}
+                    {/* Coordinate pair — a click row's "x, y", edited in place by a single
+                        click on the TEXT (one editMany, one undo). Only coordinate clicks
+                        with a point of their own: an at-cursor click shows no pair, and a
+                        pixel probe's pair is pixelX/Y (edited in the Sheet), which this
+                        editor — it writes x/y — must never be offered. */}
                     {displayX !== '' && (
                       <span
-                        className={`text-xs font-mono text-text-secondary tabular-nums ${displayKey ? 'ml-1.5' : ''}`}
+                        className={`text-xs font-mono text-text-secondary tabular-nums ${displayKey ? 'ml-1.5' : ''} ${coordsEditable ? 'cursor-text hover:text-text-primary' : ''}`}
+                        onPointerDown={coordsEditable ? markSpanPress : undefined}
+                        onClick={coordsEditable ? (e) => openSpanEditor(e, idx, 'coords', `${action.x}, ${action.y}`) : undefined}
                       >
                         {displayX}, {displayY}
                       </span>
