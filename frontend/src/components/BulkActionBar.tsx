@@ -1,11 +1,17 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTt } from '../state/LanguageContext';
-import { Clock, Trash2, X, Crosshair, MessageSquare, Eye, EyeOff, ArrowUpToLine, ArrowDownToLine } from 'lucide-react';
+import { Clock, Trash2, X, Crosshair, MessageSquare, Eye, EyeOff, ArrowUpToLine, ArrowDownToLine, Eraser } from 'lucide-react';
 import { iconButtonClass } from './common/IconButton';
+import { SegmentedControl } from './common/SegmentedControl';
+
+export type BulkEditMode = 'set' | 'add';
 
 interface BulkActionBarProps {
   selectedCount: number;
   allSelectedSkipped: boolean;
+  // How many selected rows carry a note (any non-empty text, spaces included). Disables the
+  // Notes editor's Clear when there is nothing to clear — same honesty as canMoveUp/Down.
+  notedCount: number;
   // True when no selection can move further in that direction (first row selected
   // for Up, last row selected for Down). Disables the corresponding button rather
   // than no-op'ing the click — keeps the bar's affordance honest.
@@ -15,34 +21,38 @@ interface BulkActionBarProps {
   onDelete: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
-  onSetDelay: (delay: number) => void;
-  onSetCoord: (axis: 'x' | 'y', value: string) => void;
+  onSetDelay: (mode: BulkEditMode, delay: number) => void;
+  onSetCoord: (axis: 'x' | 'y', mode: BulkEditMode, value: number) => void;
   onSetComment: (comment: string) => void;
+  onClearNotes: () => void;
   onToggleSkip: () => void;
 }
 
-// Range of the C# `int` that HandleBulkUpdateCoord parses into. Overflow is not a rounding
-// concern here — int.TryParse REJECTS an out-of-range number, and that rejection is what used
-// to fall through to 0, so the bound is part of the accepted grammar rather than a nicety.
+// Range of the C# `int` the backend reads the value into. The bound is part of the accepted
+// grammar rather than a nicety: past it, there is no number to send.
 const INT32_MIN = -2147483648;
 const INT32_MAX = 2147483647;
 
-// Line-by-line port of the backend's accepted shape, not a restatement of its intent: a leading
-// ASCII +/- marks an offset (matched with StartsWith there), and the whole string then goes
-// through int.TryParse, whose NumberStyles.Integer allows a sign and digits only — no decimal
-// point, no thousands separator. Anything else parses to 0 on the far side.
-const isValidCoordValue = (v: string) =>
-  /^[+-]?\d+$/.test(v) && Number(v) >= INT32_MIN && Number(v) <= INT32_MAX;
+// The MODE says what the number does, never its sign. The sign used to be the operator — a
+// leading +/- meant "offset" — so "-10" moved every selected click 10 px left and there was no
+// way to SET a negative coordinate (a monitor left of the primary) from here at all. Now Set
+// takes a signed number as the value and refuses a leading "+" (it can only mean "add", which is
+// the other segment); Add takes either sign, and no sign adds.
+const coordPattern = (mode: BulkEditMode) => (mode === 'set' ? /^-?\d+$/ : /^[+-]?\d+$/);
+const isValidCoordValue = (v: string, mode: BulkEditMode) =>
+  coordPattern(mode).test(v) && Number(v) >= INT32_MIN && Number(v) <= INT32_MAX;
 
-// The Delay's grammar, held to the same standard: digits only (a delay is never signed, and an
-// offset means nothing here), up to the C# int it becomes. parseInt read a PREFIX — "5oo" set every
-// selected row to 5 ms with no red border — and had no ceiling, so a long number crashed the
-// backend's GetInt32 after it had already pushed an undo step.
-const isValidDelayValue = (v: string) => /^\d+$/.test(v) && Number(v) <= INT32_MAX;
+// The Delay, under the same two modes. Set takes digits only — a delay is never negative, so a
+// sign has nothing to mean there — up to the C# int it becomes (parseInt used to read a PREFIX:
+// "5oo" set every row to 5 ms). Add takes either sign; a sum below 0 stops at 0 on the far side,
+// and says how many rows it stopped.
+const isValidDelayValue = (v: string, mode: BulkEditMode) =>
+  (mode === 'set' ? /^\d+$/ : /^[+-]?\d+$/).test(v) && Number(v) >= INT32_MIN && Number(v) <= INT32_MAX;
 
 export function BulkActionBar({
   selectedCount,
   allSelectedSkipped,
+  notedCount,
   canMoveUp,
   canMoveDown,
   onClearSelection,
@@ -52,11 +62,19 @@ export function BulkActionBar({
   onSetDelay,
   onSetCoord,
   onSetComment,
+  onClearNotes,
   onToggleSkip,
 }: BulkActionBarProps) {
   const tt = useTt();
   const [activeInput, setActiveInput] = useState<'delay' | 'x' | 'y' | 'notes' | null>(null);
   const [inputValue, setInputValue] = useState('');
+  // Set | Add for the Delay and X/Y editors. Opens on Set every time (openInput) — never
+  // remembered from the last edit, so the same keystrokes always mean the same thing.
+  const [mode, setMode] = useState<BulkEditMode>('set');
+  // An OK/Enter refused on an invalid value: the red border alone said "no" without saying why.
+  // Cleared on the next keystroke and on a mode switch, like the grid editor's hint.
+  const [refused, setRefused] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   if (selectedCount === 0) return null;
 
@@ -68,48 +86,89 @@ export function BulkActionBar({
   const delayInvalid =
     activeInput === 'delay' &&
     inputValue.trim() !== '' &&
-    !isValidDelayValue(inputValue.trim());
+    !isValidDelayValue(inputValue.trim(), mode);
 
   // X/Y had NO validation at all — the field accepted any text and handed it straight to the
   // bridge, where a failed int.TryParse falls through to 0. A typo like "5oo" therefore drove
   // every selected click to X=0 across the whole selection, with no red border here and a
   // success toast there. Same contract as delayInvalid: empty stays valid so OK/Enter on a
   // blank field is still a clean cancel.
+  const isCoord = activeInput === 'x' || activeInput === 'y';
   const coordInvalid =
-    (activeInput === 'x' || activeInput === 'y') &&
+    isCoord &&
     inputValue.trim() !== '' &&
-    !isValidCoordValue(inputValue.trim());
+    !isValidCoordValue(inputValue.trim(), mode);
+
+  // The invalid shapes with a specific answer, so they speak as soon as they are typed instead of
+  // waiting for the refused OK: "+10" under Set is someone who wants Add, and so is "-20" for a
+  // delay (a delay can't BE negative, so the minus can only mean "subtract").
+  const hasModes = isCoord || activeInput === 'delay';
+  const plusUnderSet = hasModes && mode === 'set' && inputValue.trim().startsWith('+');
+  const minusDelayUnderSet = activeInput === 'delay' && mode === 'set' && inputValue.trim().startsWith('-');
 
   const inputInvalid = delayInvalid || coordInvalid;
 
+  // Above the field, not below: the bar sits on the window's bottom edge. Inline text rather than
+  // a data-tip for the grid editor's reason — the pointer is on OK or nowhere when Enter is refused.
+  const hint = plusUnderSet ? '+ adds — pick Add, or drop the + to set'
+    : minusDelayUnderSet ? "A delay can't be negative — pick Add to subtract"
+    : !refused ? null
+    : delayInvalid ? (mode === 'set' ? 'Use a whole number of ms — 0 or more' : 'Use a whole number — e.g. +50 or -20')
+    : coordInvalid ? (mode === 'set' ? 'Use a whole number — e.g. 500 or -10' : 'Use a whole number — e.g. +10 or -5')
+    : null;
+
+  const closeInput = () => {
+    setActiveInput(null);
+    setInputValue('');
+    setRefused(false);
+  };
+
   const handleConfirm = () => {
     if (!activeInput) return;
+    // EMPTY CANCELS, in all four editors. Notes was the exception — an OK on a blank Notes field
+    // wiped the notes off every selected row, the one bar edit where "I typed nothing" destroyed
+    // something. Clearing is the Clear button's job now, and says so.
+    if (inputValue.trim() === '') { closeInput(); return; }
     if (activeInput === 'delay') {
       // Keep the field open + invalid-styled instead of discarding silently.
-      if (delayInvalid) return;
-      if (inputValue.trim() !== '') onSetDelay(Number(inputValue.trim()));
+      if (delayInvalid) { setRefused(true); return; }
+      onSetDelay(mode, Number(inputValue.trim()));
     } else if (activeInput === 'x' || activeInput === 'y') {
-      // Same treatment: hold the field open rather than send a value the backend would
-      // silently coerce to 0.
-      if (coordInvalid) return;
-      if (inputValue.trim()) onSetCoord(activeInput, inputValue.trim());
+      // Same treatment: hold the field open rather than send a value the backend would refuse.
+      if (coordInvalid) { setRefused(true); return; }
+      onSetCoord(activeInput, mode, Number(inputValue.trim()));
     } else if (activeInput === 'notes') {
       onSetComment(inputValue);
     }
-    setActiveInput(null);
-    setInputValue('');
+    closeInput();
   };
 
   const openInput = (type: 'delay' | 'x' | 'y' | 'notes') => {
     setActiveInput(type);
     setInputValue('');
+    setMode('set');
+    setRefused(false);
   };
 
-  const inputPlaceholder = activeInput === 'delay' ? 'ms'
-    : activeInput === 'x' || activeInput === 'y' ? '+10, -5, or 500'
+  const inputPlaceholder = activeInput === 'delay' ? (mode === 'set' ? 'ms' : '+50 or -20')
+    : isCoord ? (mode === 'set' ? '500 or -10' : '+10 or -5')
     : 'Note text';
 
+  // The segment tips name what the number does to THIS editor's field.
+  const modeOptions = activeInput === 'delay'
+    ? [
+        { value: 'set' as const, label: 'Set', tip: tt('Every selected action gets this delay', 'Toda ação selecionada recebe este atraso') },
+        { value: 'add' as const, label: 'Add', tip: tt("Added to each action's delay. Negative subtracts, stopping at 0.", 'Somado ao atraso de cada ação. Negativo subtrai, parando em 0.') },
+      ]
+    : [
+        { value: 'set' as const, label: 'Set', tip: tt('Every selected click gets this value', 'Todo clique selecionado recebe este valor') },
+        { value: 'add' as const, label: 'Add', tip: tt("Added to each click's current value. Negative subtracts.", 'Somado ao valor atual de cada clique. Negativo subtrai.') },
+      ];
+
   const inputWidth = activeInput === 'notes' ? 'w-40' : 'w-24';
+
+  // Ghost recipe of the bar's own buttons, with the Move Up/Down disabled treatment.
+  const ghostButton = 'flex items-center gap-1.5 h-7 px-2 rounded text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-text-secondary';
 
   // bulk-bar-enter: small slide-up on appear (the old floating-bar bulk-bar-in
   // keyframe was orphaned when the bar became docked); gated on the Animations
@@ -135,18 +194,52 @@ export function BulkActionBar({
         {/* Inline Input (shared for all bulk edit types) */}
         {activeInput ? (
           <div className="flex items-center gap-1">
+            {/* Clear sits on the LEFT, behind the bar's own divider: the [OK] [×] tail stays where
+                it is in all four editors, Clear is nowhere near OK, and it does not land under
+                the spot where the Notes button was (a double-click on Notes must not clear). */}
+            {activeInput === 'notes' && (
+              <>
+                <button
+                  onClick={() => { onClearNotes(); closeInput(); }}
+                  disabled={notedCount === 0}
+                  data-tip={tt('Remove the notes from the selected actions', 'Remove as notas das ações selecionadas')}
+                  className={ghostButton}
+                >
+                  <Eraser size={14} />
+                  Clear
+                </button>
+                <div className="w-px h-4 bg-border-default mx-1" />
+              </>
+            )}
             <span className="text-[10px] text-text-disabled uppercase">{activeInput === 'notes' ? 'Notes' : activeInput}</span>
-            <input
-              type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleConfirm(); if (e.key === 'Escape') setActiveInput(null); }}
-              autoFocus
-              placeholder={inputPlaceholder}
-              className={`${inputWidth} h-7 px-2 text-xs font-mono bg-bg-input border rounded text-center text-text-primary outline-none ${
-                inputInvalid ? 'border-recording/60 focus:border-recording' : 'border-border-default focus:border-accent-solid'
-              }`}
-            />
+            {hasModes && (
+              <SegmentedControl<BulkEditMode>
+                ariaLabel="Set or add"
+                dense
+                value={mode}
+                onChange={(m) => { setMode(m); setRefused(false); inputRef.current?.focus(); }}
+                options={modeOptions}
+              />
+            )}
+            <span className="relative inline-flex">
+              <input
+                ref={inputRef}
+                type="text"
+                value={inputValue}
+                onChange={(e) => { setInputValue(e.target.value); setRefused(false); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleConfirm(); if (e.key === 'Escape') closeInput(); }}
+                autoFocus
+                placeholder={inputPlaceholder}
+                className={`${inputWidth} h-7 px-2 text-xs font-mono bg-bg-input border rounded text-center text-text-primary outline-none ${
+                  inputInvalid ? 'border-recording/60 focus:border-recording' : 'border-border-default focus:border-accent-solid'
+                }`}
+              />
+              {hint && (
+                <span className="absolute right-0 bottom-full mb-1.5 z-20 px-2 py-1 rounded text-[10px] whitespace-nowrap bg-bg-card border border-recording/40 text-recording pointer-events-none">
+                  {hint}
+                </span>
+              )}
+            </span>
             <button
               onClick={handleConfirm}
               className="h-7 px-2.5 rounded text-xs font-medium bg-accent-solid text-[color:var(--color-accent-ink)] hover:bg-accent-solid/80 transition-colors"
@@ -154,7 +247,7 @@ export function BulkActionBar({
               OK
             </button>
             <button
-              onClick={() => setActiveInput(null)}
+              onClick={closeInput}
               className={iconButtonClass('md')}
             >
               <X size={10} />

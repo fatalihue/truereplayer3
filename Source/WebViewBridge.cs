@@ -4551,6 +4551,32 @@ namespace TrueReplayer
             return false;
         }
 
+        /// <summary>
+        /// The three numbers the editors take as free text — Delay, X and Y, typed into the grid's
+        /// inline editors and the Sheet — refused OUT LOUD, before anything is touched, by both edit
+        /// doors. ApplyActionEdit drops a number it cannot parse (anything past Int32 included)
+        /// without a word, and floored a negative delay to 0: "-50" in the grid's Delay cell saved
+        /// as 0 under no message at all.
+        /// </summary>
+        private bool RefusedFreeTextNumber(string door, int index, string field, string value)
+        {
+            if (field is not ("delay" or "x" or "y")) return false;
+            string name = field == "delay" ? "delay" : field.ToUpperInvariant();
+            if (!int.TryParse(value, out int n))
+            {
+                DiagnosticLog.Warn($"{door} rejected non-numeric {field} '{value}' at index {index}");
+                SendMessage("alert:show", new { message = $"\"{value}\" is not a valid {name}. Use a whole number. Nothing was changed." });
+                return true;
+            }
+            if (field == "delay" && n < 0)
+            {
+                DiagnosticLog.Warn($"{door} rejected negative delay '{value}' at index {index}");
+                SendMessage("alert:show", new { message = $"A delay can't be negative ({value} ms). Use 0 or more. Nothing was changed." });
+                return true;
+            }
+            return false;
+        }
+
         private void HandleActionsEdit(JsonElement payload)
         {
             // Defensive payload reads — GetProperty throws on missing fields and the outer
@@ -4577,14 +4603,7 @@ namespace TrueReplayer
                 return;
             }
 
-            // A number that does not parse is refused OUT LOUD for the three fields the grid's
-            // inline editor sends as free text — before anything is touched.
-            if ((field == "delay" || field == "x" || field == "y") && !int.TryParse(value, out _))
-            {
-                DiagnosticLog.Warn($"actions:edit rejected non-numeric {field} '{value}' at index {index}");
-                SendMessage("alert:show", new { message = $"\"{value}\" is not a valid {(field == "delay" ? "delay" : field.ToUpperInvariant())}. Use a whole number." });
-                return;
-            }
+            if (RefusedFreeTextNumber("actions:edit", index, field, value)) return;
 
             // Snapshot first, DECIDE after. ApplyActionEdit drops a value it cannot use without a
             // word — a number that does not parse in any of its twenty-odd numeric fields, a value
@@ -4655,6 +4674,11 @@ namespace TrueReplayer
                     DiagnosticLog.Warn($"actions:editMany rejected unknown actionType '{value}' at index {index}");
                     return;
                 }
+                // The same door as the single-field edit, and here it is what keeps the batch whole:
+                // ApplyActionEdit drops an X past Int32 without a word, so the grid's "x, y" editor
+                // and the Sheet's Save landed the Y and kept the old X under a Save that said it had
+                // worked — the half-applied row this method exists to prevent.
+                if (RefusedFreeTextNumber("actions:editMany", index, field, value)) return;
                 pending.Add((field, value));
             }
             if (pending.Count == 0) return;
@@ -5104,6 +5128,18 @@ namespace TrueReplayer
 
         private void HandleBulkUpdateDelay(JsonElement payload)
         {
+            // Set | Add, the same contract as HandleBulkUpdateCoord: the MODE says what the number
+            // does, and a message without one is refused rather than guessed.
+            string? mode = payload.TryGetProperty("mode", out var modeEl) && modeEl.ValueKind == JsonValueKind.String
+                ? modeEl.GetString() : null;
+            if (mode is not ("set" or "add"))
+            {
+                DiagnosticLog.Warn($"actions:bulkUpdateDelay refused: mode '{mode ?? "(none)"}' is neither set nor add");
+                SendMessage("alert:show", new { message = "The delay was not changed: the edit did not say whether to Set or Add.", type = "error" });
+                return;
+            }
+            bool add = mode == "add";
+
             // Read and check the number BEFORE PushUndoState, as HandleBulkUpdateCoord does: a
             // rejection must touch neither the undo nor the redo stack. GetInt32 used to run after
             // the push and throw on anything past Int32 — HandleMessage's catch only writes to
@@ -5117,30 +5153,71 @@ namespace TrueReplayer
                 SendMessage("alert:show", new { message = $"{shown} is not a valid delay. Use a whole number of milliseconds." });
                 return;
             }
-            delay = Math.Max(0, delay);
-            PushUndoState();
-            var indices = payload.GetProperty("indices").EnumerateArray()
-                .Select(e => e.GetInt32())
-                .ToList();
-
-            foreach (var idx in indices)
+            // A Set to a negative delay is refused, not floored: the old Math.Max(0, …) turned it
+            // into 0 in silence. Only an ADD may land below zero, and that one stops at 0 (below).
+            if (!add && delay < 0)
             {
-                if (idx < 0 || idx >= actions.Count) continue;
+                SendMessage("alert:show", new { message = $"A delay can't be negative ({delay} ms). Use 0 or more, or Add to subtract. Nothing was changed." });
+                return;
+            }
+            var targets = payload.GetProperty("indices").EnumerateArray()
+                .Select(e => e.GetInt32())
+                .Where(idx => idx >= 0 && idx < actions.Count)
+                .Select(idx => actions[idx])
                 // Pure jump markers carry no replay delay — never bulk-set theirs. The opening
                 // IF and WHILE DO carry one (the pre-probe "settle" knob; per iteration on a
                 // While), so they're bulk-set like any normal action. ForEachRow joins the
                 // marker set: it has no probe, and the validator zeroes it at load anyway.
-                var t = actions[idx].ActionType;
-                if (string.Equals(t, "Else", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(t, "EndIf", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(t, "EndLoop", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(t, "BreakLoop", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(t, "ContinueLoop", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(t, "ForEachRow", StringComparison.OrdinalIgnoreCase))
-                    continue;
-                actions[idx].Delay = delay;
+                .Where(a => !(string.Equals(a.ActionType, "Else", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(a.ActionType, "EndIf", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(a.ActionType, "EndLoop", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(a.ActionType, "BreakLoop", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(a.ActionType, "ContinueLoop", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(a.ActionType, "ForEachRow", StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+
+            if (targets.Count == 0)
+            {
+                SendMessage("alert:show", new { message = "The selected rows have no delay to change (block markers carry none)." });
+                return;
             }
 
+            // The two ends of an Add. Past Int32 is refused, like the coordinate sum — there is no
+            // delay to write there. Below 0 STOPS at 0 instead: "take 50 ms off everything" over a
+            // selection that holds a 20 ms row has an obvious answer, and refusing it would make the
+            // user hunt that row down. Stopping is said in the toast, with the count, never silent.
+            if (add && targets.Any(a => (long)a.Delay + delay > int.MaxValue))
+            {
+                SendMessage("alert:show", new { message = $"Adding {delay} ms would push some of the selected rows past the longest possible delay. Nothing was changed." });
+                return;
+            }
+            int NewDelay(ActionItem a) => add ? (int)Math.Max(0, (long)a.Delay + delay) : delay;
+            int floored = add ? targets.Count(a => (long)a.Delay + delay < 0) : 0;
+
+            // Decided before the snapshot, like the coord and comment edits: a delay every target
+            // already has changes nothing, and PushUndoState would still have cleared the redo
+            // stack and marked the profile unsaved over it. Said out loud, as for X/Y.
+            if (targets.All(a => a.Delay == NewDelay(a)))
+            {
+                SendMessage("alert:show", new
+                {
+                    message = !add ? $"Nothing changed: the delay is already {delay} ms on the selected actions."
+                        : delay == 0 ? "Nothing changed: adding 0 ms leaves the delay where it was."
+                        : "Nothing changed: the selected actions are already at 0 ms.",
+                    type = "info",
+                });
+                return;
+            }
+
+            PushUndoState();
+            foreach (var a in targets) a.Delay = NewDelay(a);
+
+            SendMessage("alert:show", new
+            {
+                message = add
+                    ? $"Added {delay} ms to the delay on {targets.Count} action(s)" + (floored > 0 ? $" — {floored} stopped at 0 ms" : "")
+                    : $"Set delay to {delay} ms on {targets.Count} action(s)",
+            });
             HasUnsavedChanges = true;
             PushActionsUpdate();
         }
@@ -5150,21 +5227,34 @@ namespace TrueReplayer
             var indices = payload.GetProperty("indices").EnumerateArray()
                 .Select(e => e.GetInt32()).ToList();
             string axis = payload.GetProperty("axis").GetString() ?? "x"; // "x" or "y"
-            string valueStr = (payload.GetProperty("value").GetString() ?? "").Trim();
-            bool isOffset = valueStr.StartsWith("+") || valueStr.StartsWith("-");
 
-            // A FAILED int.TryParse used to fall through to 0 — and 0 is a legal coordinate, so a
-            // typo ("5oo", "500.5", anything past int range) silently drove every selected click
-            // to X=0 in the absolute form, indistinguishable from a deliberate "set them all to
-            // zero", and the toast below confirmed success either way. The frontend now rejects
-            // the same shapes, but this is the enforcing side: the bridge dispatches by string
-            // name, so a stale frontend build or any other caller arrives here directly.
+            // The MODE says what the number does — never its sign. The sign used to be the
+            // operator (a leading +/- meant "offset"), so "-10" moved every selected click 10 px
+            // left and a negative coordinate could not be SET from the bar at all. A message
+            // without a mode is refused rather than guessed: guessing from the sign is the bug.
+            string? mode = payload.TryGetProperty("mode", out var modeEl) && modeEl.ValueKind == JsonValueKind.String
+                ? modeEl.GetString() : null;
+            if (mode is not ("set" or "add"))
+            {
+                DiagnosticLog.Warn($"actions:bulkUpdateCoord refused: mode '{mode ?? "(none)"}' is neither set nor add");
+                SendMessage("alert:show", new { message = $"{axis.ToUpper()} was not changed: the edit did not say whether to Set or Add.", type = "error" });
+                return;
+            }
+            bool add = mode == "add";
+
+            // A FAILED parse used to fall through to 0 — and 0 is a legal coordinate, so a typo
+            // silently drove every selected click to X=0, indistinguishable from a deliberate "set
+            // them all to zero". The frontend rejects the same shapes, but this is the enforcing
+            // side: the bridge dispatches by string name, so any caller arrives here directly.
             //
             // Placed BEFORE PushUndoState so a rejection touches neither the undo nor the redo
             // stack, the same reason the empty-target guard below is resolved before the push.
-            if (!int.TryParse(valueStr, out var val))
+            if (!payload.TryGetProperty("value", out var valueEl)
+                || valueEl.ValueKind != JsonValueKind.Number
+                || !valueEl.TryGetInt32(out int val))
             {
-                SendMessage("alert:show", new { message = $"\"{valueStr}\" is not a valid {axis.ToUpper()} value. Use a whole number to set (500), or a signed one to offset (+10, -5)." });
+                string shown = payload.TryGetProperty("value", out var raw) ? raw.GetRawText() : "(none)";
+                SendMessage("alert:show", new { message = $"{shown} is not a valid {axis.ToUpper()} value. Use a whole number." });
                 return;
             }
 
@@ -5200,13 +5290,28 @@ namespace TrueReplayer
                 return;
             }
 
-            // The parse above bounds what was TYPED; an offset lands on each row's current value,
-            // and that sum was never checked. X near int.MaxValue plus "+10" wrapped to a large
+            // The parse above bounds what was TYPED; an Add lands on each row's current value,
+            // and that sum was never checked. X near int.MaxValue plus 10 wrapped to a large
             // negative coordinate, written in silence under the success toast. Refused before the
             // undo push, like the other rejections here, so nothing changes.
-            if (isOffset && targets.Any(a => (long)(axis == "x" ? a.X : a.Y) + val is > int.MaxValue or < int.MinValue))
+            if (add && targets.Any(a => (long)(axis == "x" ? a.X : a.Y) + val is > int.MaxValue or < int.MinValue))
             {
-                SendMessage("alert:show", new { message = $"{axis.ToUpper()} {valueStr} would push some of the selected rows past the largest possible coordinate. Nothing was changed." });
+                SendMessage("alert:show", new { message = $"Adding {val} to {axis.ToUpper()} would push some of the selected rows past the largest possible coordinate. Nothing was changed." });
+                return;
+            }
+
+            // A no-op must not reach PushUndoState either (it CLEARS the redo stack, and marks the
+            // profile unsaved, which parks every armed automation): Add 0, or Set to the value every
+            // target already holds. Said out loud, so the closed editor does not read as "done".
+            if (add ? val == 0 : targets.All(a => (axis == "x" ? a.X : a.Y) == val))
+            {
+                SendMessage("alert:show", new
+                {
+                    message = add
+                        ? $"Nothing changed: adding 0 leaves {axis.ToUpper()} where it was."
+                        : $"Nothing changed: {axis.ToUpper()} is already {val} on the selected clicks.",
+                    type = "info",
+                });
                 return;
             }
 
@@ -5215,29 +5320,39 @@ namespace TrueReplayer
             foreach (var a in targets)
             {
                 if (axis == "x")
-                    a.X = isOffset ? a.X + val : val;
+                    a.X = add ? a.X + val : val;
                 else
-                    a.Y = isOffset ? a.Y + val : val;
+                    a.Y = add ? a.Y + val : val;
             }
 
-            var label = isOffset ? valueStr : $"= {val}";
-            SendMessage("alert:show", new { message = $"Set {axis.ToUpper()} {label} for {targets.Count} action(s)" });
+            SendMessage("alert:show", new
+            {
+                message = add
+                    ? $"Added {val} to {axis.ToUpper()} on {targets.Count} action(s)"
+                    : $"Set {axis.ToUpper()} to {val} on {targets.Count} action(s)",
+            });
             HasUnsavedChanges = true;
             PushActionsUpdate();
         }
 
         private void HandleBulkUpdateComment(JsonElement payload)
         {
-            PushUndoState();
-            var indices = payload.GetProperty("indices").EnumerateArray()
-                .Select(e => e.GetInt32()).ToList();
+            // An empty comment is still a valid message — it is how the Notes editor's Clear
+            // removes notes. "Blank cancels" is the bar FIELD's rule, enforced there.
             string comment = payload.GetProperty("comment").GetString() ?? "";
+            var targets = payload.GetProperty("indices").EnumerateArray()
+                .Select(e => e.GetInt32())
+                .Where(idx => idx >= 0 && idx < actions.Count)
+                .Select(idx => actions[idx])
+                .Where(a => !string.Equals(a.Comment ?? "", comment, StringComparison.Ordinal))
+                .ToList();
 
-            foreach (var idx in indices)
-            {
-                if (idx >= 0 && idx < actions.Count)
-                    actions[idx].Comment = comment;
-            }
+            // Snapshot only when a row will actually change — the push clears the redo stack and
+            // marks the profile unsaved, and a note every row already carries is neither.
+            if (targets.Count == 0) return;
+
+            PushUndoState();
+            foreach (var a in targets) a.Comment = comment;
             HasUnsavedChanges = true;
             PushActionsUpdate();
         }

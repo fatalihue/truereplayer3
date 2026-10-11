@@ -1110,8 +1110,12 @@ export type OutgoingMessage =
   | { type: 'actions:bulkUpdateType'; payload: { indices: number[]; actionType: string } }
   | { type: 'actions:addSendText'; payload: { text: string; html?: string; markdown?: string; mode?: string; method?: string; charDelayMs?: number | null; insertIndex?: number } }
   | { type: 'actions:editSendText'; payload: { index: number; id?: string; text: string; html?: string; markdown?: string; mode?: string; method?: string; charDelayMs?: number | null } }
-  | { type: 'actions:bulkUpdateDelay'; payload: { indices: number[]; delay: number } }
-  | { type: 'actions:bulkUpdateCoord'; payload: { indices: number[]; axis: 'x' | 'y'; value: string } }
+  // Same Set | Add contract as bulkUpdateCoord: `mode` is required, Add takes a signed delta and
+  // the sum stops at 0 ms.
+  | { type: 'actions:bulkUpdateDelay'; payload: { indices: number[]; mode: 'set' | 'add'; delay: number } }
+  // `mode` says what the number does — the sign no longer does (Set -10 sets -10). Required:
+  // the backend refuses a message without it rather than guess.
+  | { type: 'actions:bulkUpdateCoord'; payload: { indices: number[]; axis: 'x' | 'y'; mode: 'set' | 'add'; value: number } }
   | { type: 'actions:bulkUpdateComment'; payload: { indices: number[]; comment: string } }
   | { type: 'actions:toggleSkip'; payload: { indices: number[] } }
   | { type: 'actions:toggleFocusClick'; payload: { indices: number[] } }

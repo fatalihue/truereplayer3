@@ -21,6 +21,7 @@ import { useEditorClaim } from '../hooks/useEditorClaim';
 import { getDisplayKey, getDisplayX, getDisplayY, getActionTypeColors, formatKeyCombo, formatMs, isCombinedClick, isClickHold, isCoordinateClick, isFocusClickEligible, CLICK_FAMILY_TYPES, clickFormOf } from '../utils/displayUtils';
 import { snapIndicesToBlocks, hasConditionFields, skippedRowMask, isStructuralRow, armBodyEnd } from '../utils/conditionalBlocks';
 import { uiZoom } from '../utils/zoomSpace';
+import { tryParseInt32 } from '../utils/int32';
 // Deferred: already rendered conditionally, but a static import pulls the whole Lexical editor
 // stack and emoji-picker-react (~300 KB minified) into the startup chunk for a dialog most sessions
 // never open. Splitting at the DIALOG boundary and not on emoji-picker-react itself is deliberate —
@@ -1494,11 +1495,22 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
       setEditInvalid(false);
       return;
     }
+    // A delay is a whole number of ms, 0 or more. "-50" used to save as 0 in silence (the
+    // backend floored it); now Enter holds the editor open with the red border, and a blur
+    // sends it on so the backend's refusal says why nothing changed.
+    if (editingCell.field === 'delay' && source === 'key') {
+      const n = tryParseInt32(editValue);
+      if (n == null || n < 0) {
+        setEditInvalid(true);
+        return;
+      }
+    }
     send({
       type: 'actions:edit',
       payload: { index: editingCell.index, id: editingCell.id, field: editingCell.field, value: editValue },
     });
     setEditingCell(null);
+    setEditInvalid(false);
   }, [editingCell, editValue, send, buttonStates.recordingActive, buttonStates.replayActive, showToast, tt]);
 
   // Cancel the edit
@@ -2990,15 +3002,23 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                   >
                     {NO_DELAY_TYPES.has(action.actionType) ? null
                       : editingCell?.index === idx && editingCell.field === 'delay' ? (
-                      <input
-                        ref={editInputRef}
-                        type="text"
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        onKeyDown={handleEditKeyDown}
-                        onBlur={() => commitEdit('blur')}
-                        className="w-16 h-6 px-1 text-xs font-mono text-right text-text-primary bg-bg-input border border-accent-solid rounded outline-none"
-                      />
+                      <span className="relative inline-block">
+                        <input
+                          ref={editInputRef}
+                          type="text"
+                          value={editValue}
+                          onChange={(e) => { setEditValue(e.target.value); setEditInvalid(false); }}
+                          onKeyDown={handleEditKeyDown}
+                          onBlur={() => commitEdit('blur')}
+                          className={`w-16 h-6 px-1 text-xs font-mono text-right text-text-primary bg-bg-input border rounded outline-none ${editInvalid ? 'border-recording' : 'border-accent-solid'}`}
+                        />
+                        {/* Same inline hint as the coords editor, for the same reason. */}
+                        {editInvalid && (
+                          <span className="absolute right-0 top-full mt-1 z-20 px-2 py-1 rounded text-[10px] whitespace-nowrap bg-bg-card border border-recording/40 text-recording pointer-events-none">
+                            {'Use a whole number of ms — 0 or more'}
+                          </span>
+                        )}
+                      </span>
                     ) : (
                       // Right-aligned + tabular-nums so a column of delays reads as
                       // one number ladder; the quiet "ms" suffix answers the unit
@@ -3288,11 +3308,14 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
         const moveSet = snapSelectionToBlocks(selSorted);
         const canMoveUp = moveSet.length > 0 && moveSet[0] > 0;
         const canMoveDown = moveSet.length > 0 && moveSet[moveSet.length - 1] < actions.length - 1;
+        // "Has a note" = any non-empty text, a note of only spaces included — Clear takes those too.
+        const notedSorted = selSorted.filter(i => (actions[i]?.comment ?? '') !== '');
         return (
         <div className="absolute inset-x-0 bottom-0 z-20">
         <BulkActionBar
           selectedCount={selectedIndices.size}
           allSelectedSkipped={selSorted.every(i => actions[i]?.isSkipped)}
+          notedCount={notedSorted.length}
           canMoveUp={canMoveUp}
           canMoveDown={canMoveDown}
           onClearSelection={() => setSelectedIndices(new Set())}
@@ -3334,24 +3357,33 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
               detail: moveSet.map((_, i) => maxIdx + 2 - count + i),
             }));
           }}
-          onSetDelay={(delay) => {
+          onSetDelay={(mode, delay) => {
             // ELSE/ENDIF carry no delay — exclude them from the bulk set (their cell is blank). The
             // IF keeps its delay (pre-probe wait), so it's included like any normal action.
             const targets = selSorted.filter(i => !NO_DELAY_TYPES.has(actions[i]?.actionType ?? ''));
             if (targets.length === 0) return;
-            send({ type: 'actions:bulkUpdateDelay', payload: { indices: targets, delay } });
-            showToast(tt(`Set delay to ${delay} ms for ${targets.length} action(s)`, `Atraso definido para ${delay} ms em ${targets.length} ação(ões)`), 'success');
+            // No toast here — HandleBulkUpdateDelay confirms it, as HandleBulkUpdateCoord does for
+            // X/Y: only it knows how many rows an Add stopped at 0 ms, and whether anything changed.
+            send({ type: 'actions:bulkUpdateDelay', payload: { indices: targets, mode, delay } });
           }}
-          onSetCoord={(axis, value) => {
+          onSetCoord={(axis, mode, value) => {
             // No toast here, unlike the three siblings — on purpose. HandleBulkUpdateCoord
-            // confirms it itself ("Set X = 500 for N action(s)") because only it knows N: rows that
+            // confirms it itself ("Set X to 500 on N action(s)") because only it knows N: rows that
             // are not coordinate clicks, and at-cursor clicks, are skipped, so a count taken here
             // would overstate it, and a second toast would stack on the backend's.
-            send({ type: 'actions:bulkUpdateCoord', payload: { indices: selSorted, axis, value } });
+            send({ type: 'actions:bulkUpdateCoord', payload: { indices: selSorted, axis, mode, value } });
           }}
           onSetComment={(comment) => {
             send({ type: 'actions:bulkUpdateComment', payload: { indices: selSorted, comment } });
             showToast(tt(`Set notes for ${selectedIndices.size} action(s)`, `Notas definidas para ${selectedIndices.size} ação(ões)`), 'success');
+          }}
+          onClearNotes={() => {
+            // The existing message with an empty comment — the backend still takes '' (blank
+            // CANCELS is the field's rule, not the message's). Only the rows that had a note are
+            // sent, so N in the toast is the rows that actually changed.
+            if (notedSorted.length === 0) return;
+            send({ type: 'actions:bulkUpdateComment', payload: { indices: notedSorted, comment: '' } });
+            showToast(tt(`Cleared notes on ${notedSorted.length} action(s)`, `Notas removidas de ${notedSorted.length} ação(ões)`), 'success');
           }}
           onToggleSkip={() => {
             const allSkipped = selSorted.every(i => actions[i]?.isSkipped);

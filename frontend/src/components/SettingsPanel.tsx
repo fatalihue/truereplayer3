@@ -1539,7 +1539,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                     // Refused at the send, not on a control: this path has no button to disable —
                     // it is reached by Enter inside the chip. See refuseGridWrite above.
                     if (indices.size > 0 && !refuseGridWrite()) {
-                      send({ type: 'actions:bulkUpdateDelay', payload: { indices: [...indices], delay } });
+                      send({ type: 'actions:bulkUpdateDelay', payload: { indices: [...indices], mode: 'set', delay } });
                     }
                   }}
                 />
