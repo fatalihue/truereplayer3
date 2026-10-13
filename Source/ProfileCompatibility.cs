@@ -732,7 +732,7 @@ namespace TrueReplayer.Services
             // nothing on screen saying so. Gated on USE for free: the field is written only when
             // set (null = follows), so a profile that never touched it carries no key and no pin.
             // Accepted by the owner on 2026-10-10 — see intencionais/parte-4.md.
-            // Introduced after 2.45.1 — bump at release if the release number differs.
+            // Released in 2.46.0.
             (p => p.GameMode.HasValue,
                 new Version(2, 46, 0), "Per-profile Game Mode"),
 
@@ -742,17 +742,17 @@ namespace TrueReplayer.Services
             // InstantProbe's unknown-ConditionType branch → false → always the Else; Set Variable in
             // "screen" mode falls through to Set and stores VariableValue (usually empty → deletes
             // the variable). The automation watcher is the loud one (DescribeUnfireable stops it),
-            // pinned anyway so the import names it. Introduced after 2.46.0 — bump at release if
-            // the release number differs.
+            // pinned anyway so the import names it. Released in 2.46.0, together with per-profile
+            // Game Mode (one release after 2.45.1).
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "WaitText", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 47, 0), "Wait for Text"),
+                new Version(2, 46, 0), "Wait for Text"),
             (p => p.Actions.Any(a => string.Equals(a.ConditionType, "ScreenText", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 47, 0), "Screen text condition"),
+                new Version(2, 46, 0), "Screen text condition"),
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "SetVariable", StringComparison.OrdinalIgnoreCase)
                 && string.Equals(a.VariableMode, "screen", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 47, 0), "Read screen text into a variable"),
+                new Version(2, 46, 0), "Read screen text into a variable"),
             (p => p.Triggers != null && string.Equals(p.Triggers.ConditionType, "ScreenText", StringComparison.OrdinalIgnoreCase),
-                new Version(2, 47, 0), "Automation screen text"),
+                new Version(2, 46, 0), "Automation screen text"),
 
             // Restore Size split from Restore Position; older builds only honour Position. Same
             // correction as the UseRelativeCoordinates pin above — the 2.0.5 this used to name
