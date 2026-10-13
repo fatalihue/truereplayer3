@@ -25,7 +25,7 @@ function CompactToggle(props: { isOn: boolean; onChange: (v: boolean) => void; d
 }
 
 // A per-profile run setting that FOLLOWS the app default until the profile picks its own — Game
-// Mode's header switch and Execution's "Return cursor" row. One component so the two never drift.
+// Mode's header switch and Return cursor's. One component so the two never drift.
 // `own` is the profile's value (null = follows); `effective` is what its runs will see. With a
 // profile loaded, a fixed-width slot sits left of the switch so the switch never moves when the
 // state flips: a muted "Default" while it follows; while it holds its own value, ↺ sends null

@@ -739,7 +739,7 @@ namespace TrueReplayer.Services
             // Per-profile cursor return. Same destroy-on-round-trip mechanism as Game Mode: an
             // older build drops the key, and the macro set to put the cursor back stops doing it
             // with nothing on screen saying why. Gated on USE the same way (written only when set).
-            // Introduced after 2.46.0 — bump at release if the release number differs.
+            // Released in 2.47.0.
             (p => p.RestoreCursor.HasValue,
                 new Version(2, 47, 0), "Per-profile cursor return"),
 

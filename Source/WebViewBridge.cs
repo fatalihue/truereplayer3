@@ -13028,7 +13028,7 @@ namespace TrueReplayer
             // The Game Mode header switch, scoped the same way: the loaded profile's own value, or
             // under "No Profile" the app-wide switch (the smoothMovement global).
             "profileGameMode",
-            // Execution's "Return cursor" row — same scoping; the global is RestoreCursorDefault.
+            // The "Return cursor" header switch — same scoping; the global is RestoreCursorDefault.
             "profileRestoreCursor"
         };
 
@@ -13102,7 +13102,7 @@ namespace TrueReplayer
                 case "profileRestoreCursor":
                 {
                     // Same three-valued contract as profileGameMode: true/false = the profile's own
-                    // explicit value (or the default under No Profile), null = the row's ↺, back
+                    // explicit value (or the default under No Profile), null = the header's ↺, back
                     // to following. A sub-profile's value is never read in a chain — only the root's.
                     bool? next = value.ValueKind switch
                     {
