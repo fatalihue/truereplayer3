@@ -3777,6 +3777,16 @@ namespace TrueReplayer
                 ShowNoticeWhenSeen(_pendingHotkeyConflict);
                 _pendingHotkeyConflict = null;
             }
+            // App hotkey against a PROFILE hotkey: the hook matches the app's own hotkeys first, so
+            // the profile on the same combo never fires. The edit paths refuse the pairing both
+            // ways, but a new default (Copy Screen Text = Win+F12) reaches users whose profiles
+            // already bind it without passing through either. Once per process, like the above.
+            if (!_appVsProfileHotkeyChecked)
+            {
+                _appVsProfileHotkeyChecked = true;
+                var clash = DescribeAppVsProfileHotkeyConflict();
+                if (clash != null) ShowNoticeWhenSeen(clash);
+            }
 
             // The UI is up: whatever was held for it goes out now, if the window is on screen.
             _uiInitialized = true;
@@ -5270,7 +5280,10 @@ namespace TrueReplayer
                 return;
             }
             int NewDelay(ActionItem a) => add ? (int)Math.Max(0, (long)a.Delay + delay) : delay;
-            int floored = add ? targets.Count(a => (long)a.Delay + delay < 0) : 0;
+            // Counted over the rows that MOVE: one already at 0 under a negative Add neither changed
+            // nor "stopped" — it was counted as both, so 100/100/0/0/30 - 50 read "5 actions, 3 stopped".
+            int floored = add ? targets.Count(a => a.Delay > 0 && (long)a.Delay + delay < 0) : 0;
+            int moved = targets.Count(a => a.Delay != NewDelay(a));
 
             // Decided before the snapshot, like the coord and comment edits: a delay every target
             // already has changes nothing, and PushUndoState would still have cleared the redo
@@ -5293,7 +5306,7 @@ namespace TrueReplayer
             SendMessage("alert:show", new
             {
                 message = add
-                    ? $"Added {delay} ms to the delay on {targets.Count} action(s)" + (floored > 0 ? $" — {floored} stopped at 0 ms" : "")
+                    ? $"Added {delay} ms to the delay on {moved} action(s)" + (floored > 0 ? $" — {floored} stopped at 0 ms" : "")
                     : $"Set delay to {delay} ms on {targets.Count} action(s)",
             });
             HasUnsavedChanges = true;
@@ -5946,8 +5959,18 @@ namespace TrueReplayer
             // The array is empty on the overwhelmingly common path (nothing to redo) and this
             // runs once per Insert click, so the allocation is not worth engineering around.
             //
-            // The WaitImage branch keeps this push — it's its only undo step, since its async
-            // insert path doesn't push one of its own.
+            // The two capture-first inserts leave BEFORE this push: their async paths snapshot on
+            // their own, at the moment the row really lands (HandleInsertWaitImageAsync and
+            // HandleInsertScreenTextAsync both call PushUndoState in the enqueued insert). Pushing
+            // here as well left two identical snapshots — the second Ctrl+Z did nothing — and an
+            // Esc on the overlay left a no-op entry behind after it had already cleared the redo stack.
+            if (actionType == "WaitImage" || actionType == "WaitText")
+            {
+                insertIndex = Math.Max(0, Math.Min(insertIndex, actions.Count));
+                if (actionType == "WaitImage") _ = HandleInsertWaitImageAsync(insertIndex);
+                else _ = HandleInsertScreenTextAsync(insertIndex, "WaitText");
+                return;
+            }
             var discardedRedo = _redoStack.ToArray();
             PushUndoState();
 
@@ -5982,20 +6005,6 @@ namespace TrueReplayer
                 return;
             }
 
-            // WaitImage: capture screen region
-            if (actionType == "WaitImage")
-            {
-                _ = HandleInsertWaitImageAsync(insertIndex);
-                return;
-            }
-
-            // WaitText: the same capture-first flow — drag a region, OCR the frozen crop, and the
-            // row is born with that region and the first line it read as its text.
-            if (actionType == "WaitText")
-            {
-                _ = HandleInsertScreenTextAsync(insertIndex, "WaitText");
-                return;
-            }
 
             // WaitPixelColor is handled by the dedicated actions:insertWaitPixelColor
             // message (captures coords + colour through the screen overlay before the
@@ -7213,8 +7222,12 @@ namespace TrueReplayer
                 string? readError = null;
                 try
                 {
-                    var read = await OcrService.ReadBitmapAsync(selection.CroppedImage,
-                        new System.Drawing.Point(selection.ScreenX, selection.ScreenY), new OcrOptions(), null, CancellationToken.None);
+                    // Off the UI thread, like Test read and the hotkey: the upscale, the stretch pass and
+                    // the SoftwareBitmap copy of a large drag freeze the window (and hold back the
+                    // SW_RESTORE queued above) for as long as they run.
+                    var crop = selection.CroppedImage;
+                    var origin = new System.Drawing.Point(selection.ScreenX, selection.ScreenY);
+                    var read = await Task.Run(() => OcrService.ReadBitmapAsync(crop, origin, new OcrOptions(), null, CancellationToken.None));
                     firstLine = read.Lines.FirstOrDefault()?.Text.Trim() ?? "";
                     if (firstLine.Length > 60) firstLine = firstLine[..60];
                 }
@@ -13095,6 +13108,36 @@ namespace TrueReplayer
 
         // A collision found at load, waiting for a UI to tell. Null once said.
         private string? _pendingHotkeyConflict;
+        private bool _appVsProfileHotkeyChecked;
+
+        /// <summary>
+        /// The first app hotkey that a profile also binds, as a notice; null when none does. Reads
+        /// the live values (by ui:ready both the settings and the profile list are loaded).
+        /// </summary>
+        private string? DescribeAppVsProfileHotkeyConflict()
+        {
+            var p = UserProfile.Current;
+            var app = new (string Key, string? Value)[]
+            {
+                ("recordingHotkey", p.RecordingHotkey),
+                ("replayHotkey", p.ReplayHotkey),
+                ("profileKeyToggleHotkey", p.ProfileKeyToggleHotkey),
+                ("foregroundHotkey", p.ForegroundHotkey),
+                ("modeToggleHotkey", p.ModeToggleHotkey),
+                ("captureSlotHotkey", p.CaptureSlotHotkey),
+                ("copyScreenTextHotkey", p.CopyScreenTextHotkey),
+            };
+            foreach (var (key, value) in app)
+            {
+                if (string.IsNullOrEmpty(value)) continue;
+                var owner = profileController.ProfileEntries
+                    .FirstOrDefault(e => string.Equals(e.Hotkey, value, StringComparison.OrdinalIgnoreCase));
+                if (owner == null) continue;
+                DiagnosticLog.Info($"Hotkey conflict: \"{value}\" is {HotkeyDisplayNames[key]} and the hotkey of profile \"{owner.Name}\".");
+                return $"\"{value}\" is used by {HotkeyDisplayNames[key]}, so the profile \"{owner.Name}\" on the same keys won't fire. Change one of them (Settings → Keys, or the profile's hotkey).";
+            }
+            return null;
+        }
 
         /// <summary>
         /// The message for a Clicker hotkey that already matches a mode-agnostic utility in the

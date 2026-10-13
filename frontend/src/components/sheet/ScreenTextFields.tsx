@@ -7,7 +7,7 @@ import { NumberInput } from '../common/NumberInput';
 import { FieldError } from '../common/FieldError';
 import { calloutStyle } from '../common/Callout';
 import { Field } from './Field';
-import { parsesAsNumber } from '../../utils/screenText';
+import { parsesAsNumber, regexProblem } from '../../utils/screenText';
 
 // The screen-text (OCR) editor block shared by the three Sheet editors that read the screen:
 // Wait for Text, the Screen Text condition (If / Else If / While) and Set Variable's Screen mode.
@@ -104,7 +104,10 @@ export function ScreenTextFields(p: ScreenTextFieldsProps) {
   const operandError = showMatcher
     ? (number
       ? (p.operand.trim() === '' ? 'Enter a number to compare with' : (!hasToken && !parsesAsNumber(p.operand) ? 'Not a number' : null))
-      : (p.operand === '' ? 'Enter the text to look for' : null))
+      // Contains/Equals compare normalised text, where spaces alone are nothing; a regex is raw.
+      : p.textOp === 'regex'
+        ? (p.operand === '' ? 'Enter the pattern to look for' : regexProblem(p.operand))
+        : (p.operand.trim() === '' ? 'Enter the text to look for' : null))
     : null;
 
   const runTest = () => {
@@ -121,7 +124,8 @@ export function ScreenTextFields(p: ScreenTextFieldsProps) {
         operand: p.operand,
         match: showMatcher && p.operand !== '',
         textColor: validHex(p.textColor) ? withHash(p.textColor) : null,
-        tolerance: Number.parseInt(p.tolerance, 10) || 70,
+        // 0 is a real tolerance (exact colour only) and the save keeps it; || 70 tested it as 70.
+        tolerance: (() => { const t = Number.parseInt(p.tolerance, 10); return Number.isFinite(t) ? Math.min(255, Math.max(0, t)) : 70; })(),
       },
     });
     if (timerRef.current) window.clearTimeout(timerRef.current);

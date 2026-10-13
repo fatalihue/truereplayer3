@@ -37,13 +37,38 @@ export function readsScreenText(a: Pick<ActionItem, 'actionType' | 'conditionTyp
     || (a.actionType === 'SetVariable' && a.variableMode === 'screen');
 }
 
+/**
+ * Why a Regex operand will not compile, or null. The pattern runs in .NET, so JS is only a proxy:
+ * syntax .NET accepts and JS rejects — inline options "(?i)", atomic "(?>", conditionals "(?(",
+ * balancing groups "(?<a-b>", the \A \Z \z \G anchors — is let through rather than flagged
+ * falsely; anything else JS refuses, .NET refuses too ("Level (\d+" with an unclosed group).
+ * A pattern with a {token} is resolved at run time and is not judged here.
+ */
+export function regexProblem(pattern: string): string | null {
+  // A token opens with a letter ({var:x}); a quantifier with a digit (\d{2}) is still judged.
+  if (!pattern || /\{[A-Za-z]/.test(pattern)) return null;
+  if (/\(\?[imnsx-]*[:)]|\(\?>|\(\?\(|\(\?<\w+-\w*>|\\[AZzG]/.test(pattern)) return null;
+  try { new RegExp(pattern, 'i'); return null; }
+  catch { return 'This pattern does not compile'; }
+}
+
 /** Number parse with the same separator rule as the C# matcher (used to validate the Value field). */
 export function parsesAsNumber(input: string): boolean {
   let s = input.trim().replace(/ /g, '');
   if (s.startsWith('-') || s.startsWith('+')) s = s.slice(1);
   if (!s || !/^[\d.,]+$/.test(s)) return false;
+  // C# decimal holds ~28 significant digits; past that TryParse fails there, so it fails here.
+  if ((s.match(/\d/g) ?? []).length > 28) return false;
   const lastDot = s.lastIndexOf('.'), lastComma = s.lastIndexOf(',');
-  if (lastDot >= 0 && lastComma >= 0) return /\d/.test(s);
+  if (lastDot >= 0 && lastComma >= 0) {
+    // Both separators: the LAST is the decimal point, every copy of the other is grouping — then
+    // what is left must be one plain decimal, exactly as C# TryParseNumber leaves it. "1.2,3.4"
+    // and "1,2.3,4" used to pass here and throw at run time.
+    const dec = lastDot > lastComma ? '.' : ',';
+    const grp = dec === '.' ? ',' : '.';
+    const normalized = s.split(grp).join('').replace(dec, '.');
+    return /^\d*\.?\d*$/.test(normalized) && /\d/.test(normalized);
+  }
   if (lastDot < 0 && lastComma < 0) return true;
   const sep = lastDot >= 0 ? '.' : ',';
   const parts = s.split(sep);

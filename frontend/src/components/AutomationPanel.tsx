@@ -17,7 +17,7 @@ import { ImageCropper } from './ImageCropper';
 import { rangeParts, phaseLockRisk } from '../utils/activeHours';
 import { useEditorClaim } from '../hooks/useEditorClaim';
 import type { AutomationEntry, TriggerConfig } from '../bridge/messageTypes';
-import { effectiveOperator, parsesAsNumber } from '../utils/screenText';
+import { effectiveOperator, parsesAsNumber, regexProblem } from '../utils/screenText';
 
 // Day-pill order matches the backend bitmask convention (Sun = 1<<0, the If-Time one).
 const DAY_PILLS = [
@@ -104,7 +104,28 @@ function canonicalShape(v: unknown): unknown {
   }
   return out;
 }
-const triggerShape = (t: TriggerConfig) => JSON.stringify(canonicalShape({ ...t, imageBase64: null, armed: false }));
+// The ScreenText fields as WebViewBridge.ParseTriggerConfig stores them: kept only for that type,
+// the operator resolved for the mode, an empty operand as absent, the colour as #RRGGBB (an
+// invalid one dropped), the tolerance clamped. Compared raw, the draft never matched its own
+// save echo — an untouched Match ("contains" once stored), a lowercase colour, or fields left over
+// from a type the automation used to be — and a saved automation stayed "unsaved" for good.
+function storedScreenTextShape(t: TriggerConfig): TriggerConfig {
+  if (t.conditionType !== 'ScreenText') {
+    return { ...t, conditionOperator: null, conditionOperand: null, ocrReadAs: null, ocrTextColor: null, ocrColorTolerance: null };
+  }
+  const number = t.ocrReadAs === 'number';
+  const hex = (t.ocrTextColor ?? '').trim();
+  const tol = t.ocrColorTolerance;
+  return {
+    ...t,
+    ocrReadAs: number ? 'number' : null,
+    conditionOperator: t.conditionOperator == null ? t.conditionOperator : effectiveOperator(t.conditionOperator, number),
+    conditionOperand: t.conditionOperand ? t.conditionOperand : null,
+    ocrTextColor: /^#?[0-9A-Fa-f]{6}$/.test(hex) ? ('#' + hex.replace(/^#/, '')).toUpperCase() : null,
+    ocrColorTolerance: typeof tol === 'number' && Number.isFinite(tol) ? Math.min(255, Math.max(0, Math.trunc(tol))) : null,
+  };
+}
+const triggerShape = (t: TriggerConfig) => JSON.stringify(canonicalShape({ ...storedScreenTextShape(t), imageBase64: null, armed: false }));
 
 // Default poll cadence per condition type — mirrors TriggerService.PollCadenceMs so the
 // placeholder shown when the field is left at 0 is the number the daemon will actually use.
@@ -172,8 +193,18 @@ function whyCannotFire(t: TriggerConfig): string | null {
       if (!t.searchRegion) return 'Set a search region — reading the whole screen every check is too slow.';
       const number = t.ocrReadAs === 'number';
       const operand = t.conditionOperand ?? '';
+      // A colour the backend cannot parse is DROPPED on save, and the watcher then reads every
+      // colour — said here instead of saving something other than what is on screen.
+      const color = (t.ocrTextColor ?? '').trim();
+      if (color && !/^#?[0-9A-Fa-f]{6}$/.test(color)) return 'Text color must be 6 hex digits (RRGGBB) — use Pick, or clear it.';
       if (number) return parsesAsNumber(operand) ? null : 'Enter a number to compare with.';
-      return operand ? null : 'Enter the text to watch for.';
+      if (effectiveOperator(t.conditionOperator, false) === 'regex') {
+        if (!operand) return 'Enter the pattern to watch for.';
+        const bad = regexProblem(operand);
+        return bad ? `${bad}.` : null;
+      }
+      // Contains/Equals compare normalised text: spaces alone are nothing (the daemon agrees).
+      return operand.trim() ? null : 'Enter the text to watch for.';
     }
     case 'PixelColorMatch':
       // Mirrors PixelColorService.ParseHex: six hex digits, optional leading #. The default
@@ -555,6 +586,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
   // follow the user to the next one — a clipboard watcher included, which has no coordinates.
   useEffect(() => {
     setTestMatchResult(null);
+    setTestReadResult(null);
     setTestFireResult(null);
     setConfirmDelete(false);
     setPendingSave(null);
@@ -568,6 +600,8 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
     pickReqRef.current = null;
     regionReqRef.current = null;
     captureReqRef.current = null;
+    testReadReqRef.current = null;
+    textColorReqRef.current = null;
   }, [selected]);
 
   // The echo landed (or the entry existed all along) — the save is no longer in flight.

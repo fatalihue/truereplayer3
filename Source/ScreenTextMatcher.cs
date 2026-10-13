@@ -19,9 +19,10 @@ namespace TrueReplayer.Services
     ///   joined by "\n"), IgnoreCase, 50 ms timeout — a bad pattern throws, into the probe-error policy.
     /// Number mode — operator eq (default) | neq | gt | lt against the FIRST number in reading order:
     ///   letters the engine confuses with digits are mapped only INSIDE a token that already holds a
-    ///   digit (O/o/D/Q/e→0, I/l/|→1, S/s→5, B→8; a leading S/s/$ is a currency sign), spaces between
-    ///   a digit and a separator are dropped, and a separator followed by exactly three digits groups
-    ///   thousands ("1,234" = 1234, "1,5" = 1.5). No number on screen = false, not an error; an operand
+    ///   digit (O/o/D/Q/e→0, I/l/|→1, S/s→5, B→8; a leading S/s/$ is a currency sign) and never where
+    ///   they can be part of a word ("Lvl10" = 10, "5s" = 5, "1st" = 1), a split "1 , 234" is glued
+    ///   back, a hyphen inside a word is not a minus, and a separator followed by exactly three digits
+    ///   groups thousands ("1,234" = 1234, "1,5" = 1.5). No number on screen = false, not an error; an operand
     ///   that is not a number IS an error.
     /// </summary>
     public static class ScreenTextMatcher
@@ -47,7 +48,7 @@ namespace TrueReplayer.Services
             {
                 if (!TryParseNumber(operand, out var target))
                     throw new FormatException($"Value is not a number: '{operand}'");
-                if (!TryExtractNumber(words, out var value, out var span)) return new Result(false, null, null);
+                if (!TryExtractNumber(read, out var value, out var span)) return new Result(false, null, null);
                 bool ok = effective switch
                 {
                     "neq" => value != target,
@@ -61,7 +62,7 @@ namespace TrueReplayer.Services
             if (effective == "regex")
             {
                 if (string.IsNullOrEmpty(operand)) return new Result(false, null, null);
-                var raw = BuildRaw(words);
+                var raw = BuildRaw(read);
                 var m = Regex.Match(raw.Text, operand, RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(50));
                 if (!m.Success) return new Result(false, null, null);
                 var hit = new HashSet<int>();
@@ -89,8 +90,7 @@ namespace TrueReplayer.Services
         public static string ValueForVariable(OcrRead read, bool number)
         {
             if (!number) return read.Text.Trim();
-            var words = Flatten(read);
-            return TryExtractNumber(words, out var v, out _) ? v.ToString("0.############################", CultureInfo.InvariantCulture) : "";
+            return TryExtractNumber(read, out var v, out _) ? v.ToString("0.############################", CultureInfo.InvariantCulture) : "";
         }
 
         /// <summary>Grid / run-report summary: `has "Victory"`, `= "Ready"`, `regex ^Lv`, `&lt; 30`.</summary>
@@ -127,15 +127,23 @@ namespace TrueReplayer.Services
         private static List<OcrWord> Flatten(OcrRead read) =>
             read.Lines.SelectMany(l => l.Words).ToList();
 
-        private static (string Text, List<int> Word) BuildRaw(List<OcrWord> words)
+        private static (string Text, List<int> Word) BuildRaw(OcrRead read)
         {
-            // Rebuilt from the words so every char maps back to one; lines are not tracked separately
-            // because OcrLine.Text is exactly its words joined with a space.
+            // Rebuilt from the words so every char maps back to one (its index in Flatten order), in
+            // the SAME shape as OcrRead.Text — words joined by " ", lines by "\n" — so a regex written
+            // against what the Test read card shows ("Gold\n\d+") matches here too, and a number
+            // never spans two lines.
             var map = new CharMap();
-            for (int i = 0; i < words.Count; i++)
+            int w = 0;
+            for (int li = 0; li < read.Lines.Count; li++)
             {
-                if (i > 0) map.Add(' ', -1);
-                foreach (var c in words[i].Text) map.Add(c, i);
+                if (li > 0) map.Add('\n', -1);
+                var words = read.Lines[li].Words;
+                for (int i = 0; i < words.Count; i++, w++)
+                {
+                    if (i > 0) map.Add(' ', -1);
+                    foreach (var c in words[i].Text) map.Add(c, w);
+                }
             }
             return (map.Text, map.Word);
         }
@@ -182,26 +190,34 @@ namespace TrueReplayer.Services
         private static bool IsNumChar(char c) => char.IsDigit(c) || c == '.' || c == ',' || Confusables.ContainsKey(c);
 
         /// <summary>First number in reading order. <paramref name="wordSpan"/> = the words it came from.</summary>
-        private static bool TryExtractNumber(List<OcrWord> words, out decimal value, out HashSet<int> wordSpan)
+        private static bool TryExtractNumber(OcrRead read, out decimal value, out HashSet<int> wordSpan)
         {
             value = 0;
             wordSpan = new HashSet<int>();
-            var raw = BuildRaw(words);
+            var raw = BuildRaw(read);
             var text = raw.Text;
-            // Drop spaces sitting between a digit and a separator (either side): "1 , 234" → "1,234".
+            // The engine splits a number around its separator: "1 , 234". A space between a digit and
+            // the separator after it is dropped; the space AFTER a separator only when one before it
+            // was dropped too. Gluing every "sep space digit" made "Wave 3, 250 enemies" read 3250 and
+            // "10, 20" read 10.2.
             var map = new CharMap();
+            bool droppedBeforeSep = false, sepGluesAfter = false;
             for (int i = 0; i < text.Length; i++)
             {
-                if (text[i] == ' ')
+                char ch = text[i];
+                if (ch == ' ')
                 {
                     int p = map.Sb.Length - 1;
                     char prev = p >= 0 ? map.Sb[p] : '\0';
                     int n = i + 1; while (n < text.Length && text[n] == ' ') n++;
                     char next = n < text.Length ? text[n] : '\0';
-                    bool glue = (char.IsDigit(prev) && (next == '.' || next == ',')) || ((prev == '.' || prev == ',') && char.IsDigit(next));
-                    if (glue) continue;
+                    if (char.IsDigit(prev) && (next == '.' || next == ',')) { droppedBeforeSep = true; continue; }
+                    if ((prev == '.' || prev == ',') && sepGluesAfter && char.IsDigit(next)) continue;
                 }
-                map.Add(text[i], raw.Word[i]);
+                else if (ch == '.' || ch == ',') sepGluesAfter = droppedBeforeSep;
+                else sepGluesAfter = false;
+                droppedBeforeSep = false;
+                map.Add(ch, raw.Word[i]);
             }
             var s = map.Text;
 
@@ -212,22 +228,35 @@ namespace TrueReplayer.Services
                 int start = idx;
                 while (idx < s.Length && (IsNumChar(s[idx]) || s[idx] == '$')) idx++;
                 var token = s.Substring(start, idx - start);
-                if (!token.Any(char.IsDigit)) continue;
+                int fd = -1, ld = -1;
+                for (int k = 0; k < token.Length; k++)
+                    if (char.IsDigit(token[k])) { if (fd < 0) fd = k; ld = k; }
+                if (fd < 0) continue;
+                char before = start > 0 ? s[start - 1] : '\0';
+                char after = idx < s.Length ? s[idx] : '\0';
 
-                int offset = 0;
-                // Leading currency: "$12", "S12" — a sign, not a 5.
-                while (token.Length - offset > 1 && (token[offset] == '$' || token[offset] == 'S' || token[offset] == 's')
-                       && char.IsDigit(token[offset + 1])) offset++;
+                // Lookalike letters are digits only where they cannot be part of a word.
+                // Leading run: a currency sign right before the digits ("$12", "S12") is a sign, not a
+                // 5; the rest converts ("O5") unless the token is glued to a word on its left —
+                // "Lvl10", "Level10" — where those letters belong to the word.
+                var lead = token[..fd];
+                while (lead.Length > 0 && (lead[^1] == '$' || lead[^1] == 'S' || lead[^1] == 's')) lead = lead[..^1];
+                if (char.IsLetter(before)) lead = "";
+                // Trailing run: kept only when it is followed by no letter and holds no lowercase letter
+                // — "1O" is a misread 10, but "5s" is five seconds and "1st" is first.
+                var trail = token[(ld + 1)..];
+                if (char.IsLetter(after) || trail.Any(char.IsLower)) trail = "";
+
                 var sb = new StringBuilder();
-                for (int i = offset; i < token.Length; i++)
+                foreach (char c in lead + token[fd..(ld + 1)] + trail)
                 {
-                    char c = token[i];
                     if (c == '$') continue;
                     sb.Append(Confusables.TryGetValue(c, out var d) ? d : c);
                 }
                 var cleaned = sb.ToString().Trim('.', ',');
                 if (!cleaned.Any(char.IsDigit) || !TryParseNumber(cleaned, out var v)) continue;
-                bool negative = start > 0 && s[start - 1] == '-';
+                // A minus sign stands alone: the hyphen of "Floor-3" or "Lv-5" is not one.
+                bool negative = before == '-' && (start < 2 || !char.IsLetterOrDigit(s[start - 2]));
                 value = negative ? -v : v;
                 for (int i = start; i < idx; i++) if (map.Word[i] >= 0) wordSpan.Add(map.Word[i]);
                 return true;

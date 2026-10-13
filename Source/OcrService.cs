@@ -206,6 +206,11 @@ namespace TrueReplayer.Services
                     variants.Add(("2× stretch", 2, true, false));
                 }
 
+                // With no caller predicate, a read is good when it read something — and in Number mode
+                // when that something holds a digit. Without the second half a ladder that read "HP"
+                // and dropped the lone "7" stopped right there and never reached the booster that
+                // exists for exactly that (Test read with no operand, a Changes wait on a number).
+                Func<OcrRead, bool> isGood = accept ?? (r => r.Text.Length > 0 && (!options.Number || r.Text.Any(char.IsDigit)));
                 OcrRead? best = null;
                 Bitmap? bestImage = null;
                 try
@@ -213,10 +218,19 @@ namespace TrueReplayer.Services
                     foreach (var v in variants)
                     {
                         ct.ThrowIfCancellationRequested();
-                        int scale = FitScale(source.Width, source.Height, v.scale);
+                        double scale = FitScale(source.Width, source.Height, v.scale);
                         var prepared = Prepare(source, scale, v.stretch, v.key ? options.TextColor : null, options.ColorTolerance);
-                        var read = await RecognizeAsync(engine, prepared, scale, 0, originAbs, v.name, tag);
-                        bool good = accept?.Invoke(read) ?? read.Text.Length > 0;
+                        OcrRead read;
+                        bool good;
+                        // The prepared image is owned here until it is kept or finished; a throw from the
+                        // engine or from the predicate (a regex timeout, a non-number operand) must not
+                        // leave a 2-3x bitmap to the finalizer on every watcher tick.
+                        try
+                        {
+                            read = await RecognizeAsync(engine, prepared, scale, 0, originAbs, v.name, tag);
+                            good = isGood(read);
+                        }
+                        catch { prepared.Dispose(); throw; }
                         if (good)
                         {
                             bestImage?.Dispose();
@@ -238,14 +252,20 @@ namespace TrueReplayer.Services
                     {
                         ct.ThrowIfCancellationRequested();
                         var v = variants[0];
-                        int scale = FitScale(source.Width + source.Height * 4, source.Height, v.scale);
+                        double scale = FitScale(source.Width + source.Height * 4, source.Height, v.scale);
                         using var keyed = Prepare(source, 1, v.stretch, v.key ? options.TextColor : null, options.ColorTolerance);
                         var (composed, labelWidth) = ComposeWithLabel(keyed);
                         using (composed)
                         {
                             var scaled = Prepare(composed, scale, false, null, 0);
-                            var read = await RecognizeAsync(engine, scaled, scale, labelWidth, originAbs, v.name + " + label", tag);
-                            bool good = accept?.Invoke(read) ?? read.Text.Length > 0;
+                            OcrRead read;
+                            bool good;
+                            try
+                            {
+                                read = await RecognizeAsync(engine, scaled, scale, labelWidth, originAbs, v.name + " + label", tag);
+                                good = isGood(read);
+                            }
+                            catch { scaled.Dispose(); throw; }
                             if (good || read.Text.Length > (best?.Text.Length ?? 0))
                             {
                                 bestImage?.Dispose();
@@ -287,16 +307,20 @@ namespace TrueReplayer.Services
             finally { prepared.Dispose(); }
         }
 
-        private static int FitScale(int w, int h, int wanted)
+        // Whole numbers while the image fits (2×, then 1×); below 1× only when even the source is over
+        // the engine's limit — a whole-screen read on a virtual desktop wider than ~10000 px (three 4K
+        // monitors), which RecognizeAsync would otherwise reject.
+        private static double FitScale(int w, int h, int wanted)
         {
             int max = 10000;
             try { max = (int)OcrEngine.MaxImageDimension; } catch { }
             int s = wanted;
-            while (s > 1 && (w * s > max || h * s > max)) s--;
-            return s;
+            while (s > 1 && ((long)w * s > max || (long)h * s > max)) s--;
+            if (w <= max && h <= max) return s;
+            return Math.Min((double)max / w, (double)max / h) * 0.999;
         }
 
-        private static async Task<OcrRead> RecognizeAsync(OcrEngine engine, Bitmap image, int scale, int labelWidthSrc, Point originAbs, string variant, string tag)
+        private static async Task<OcrRead> RecognizeAsync(OcrEngine engine, Bitmap image, double scale, int labelWidthSrc, Point originAbs, string variant, string tag)
         {
             using var soft = ToSoftwareBitmap(image);
             var result = await engine.RecognizeAsync(soft);
@@ -328,9 +352,9 @@ namespace TrueReplayer.Services
         /// Scales (bicubic), optionally stretches luminance, optionally keys on a colour. The result is
         /// always a fresh Format32bppArgb bitmap the caller owns.
         /// </summary>
-        private static Bitmap Prepare(Bitmap src, int scale, bool stretch, Color? key, int tolerance)
+        private static Bitmap Prepare(Bitmap src, double scale, bool stretch, Color? key, int tolerance)
         {
-            var dst = new Bitmap(src.Width * scale, src.Height * scale, PixelFormat.Format32bppArgb);
+            var dst = new Bitmap(Math.Max(1, (int)(src.Width * scale)), Math.Max(1, (int)(src.Height * scale)), PixelFormat.Format32bppArgb);
             using (var g = Graphics.FromImage(dst))
             {
                 g.InterpolationMode = scale == 1 ? InterpolationMode.NearestNeighbor : InterpolationMode.HighQualityBicubic;

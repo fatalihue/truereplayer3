@@ -2115,10 +2115,10 @@ namespace TrueReplayer.Services
                 case "SetVariable":
                 case "CopyToSlot":
                     return Clip(a.Key, 30);
-                case "RunProfile":
-                case "ActivateWindow":
                 case "WaitText":
                     return Clip(a.Comment) ?? Clip(string.Equals(a.WaitMode, "changes", StringComparison.OrdinalIgnoreCase) ? "changes" : ScreenTextMatcher.Summary(a));
+                case "RunProfile":
+                case "ActivateWindow":
                 case "WaitImage":
                 case "WaitPixelColor":
                 // "If" is NOT here: IF rows never reach this switch — they are recorded from the
@@ -3042,7 +3042,11 @@ namespace TrueReplayer.Services
             || string.Equals(action.ActionType, "DoubleClick", StringComparison.OrdinalIgnoreCase)
             || string.Equals(action.ActionType, "TripleClick", StringComparison.OrdinalIgnoreCase)
             || (action.ConditionTimeout > 0
-                && string.Equals(action.ActionType, "Assert", StringComparison.OrdinalIgnoreCase));
+                && string.Equals(action.ActionType, "Assert", StringComparison.OrdinalIgnoreCase))
+            // Set Variable's Screen mode is an OCR read (tens of ms on a region, ~0.45 s on the whole
+            // screen) and, with "Wait up to", a wait — whatever it spends was never in the next gap.
+            || (string.Equals(action.ActionType, "SetVariable", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(action.VariableMode, "screen", StringComparison.OrdinalIgnoreCase));
 
         // An authored delay with the run's jitter applied, never negative. The ONE copy: the action
         // delay, the If/ElseIf arm and the While guard each carried their own, byte for byte.
@@ -8834,6 +8838,16 @@ namespace TrueReplayer.Services
                         token);
                 }
                 catch (OperationCanceledException) when (token.IsCancellationRequested) { return; }
+                // Setup errors — a Value that resolves to no number, a pattern that does not compile
+                // or times out, no OCR language — take the row's On Timeout policy like Wait Image's
+                // missing reference and Wait Pixel's bad colour do, instead of escaping to the
+                // step's generic handler and stopping a run the user marked Continue.
+                catch (Exception ex) when (ex is FormatException or ArgumentException
+                                           or System.Text.RegularExpressions.RegexMatchTimeoutException or OcrUnavailableException)
+                {
+                    HandleWaitTextTimeout(action, lastRead, $"Wait Text: {ex.Message}");
+                    return;
+                }
                 lastRead = read.Text;
 
                 bool done;
@@ -8887,12 +8901,17 @@ namespace TrueReplayer.Services
 
         // Same policy as HandleWaitImageTimeout (Continue = expected miss, no screenshot); the message
         // carries what was read last, which is the first thing anyone asks about an OCR miss.
-        private void HandleWaitTextTimeout(ActionItem action, string lastRead)
+        private void HandleWaitTextTimeout(ActionItem action, string lastRead, string? setupError = null)
         {
-            if (action.WaitImageOnTimeout == "Continue") return;
-            var read = Clip40(lastRead);
-            string reason = $"Wait Text timed out — last read: \"{read}\"";
-            SaveTimeoutScreenshot(action);
+            if (action.WaitImageOnTimeout == "Continue")
+            {
+                // Continue swallows the outcome, but a SETUP error is not a miss the user expected:
+                // leave it in the log so "it never matched" has an answer.
+                if (setupError != null) DiagnosticLog.Warn(setupError);
+                return;
+            }
+            string reason = setupError ?? $"Wait Text timed out — last read: \"{Clip40(lastRead)}\"";
+            if (setupError == null) SaveTimeoutScreenshot(action);
             FailCurrentStep(reason);
             if (SkipRowOnErrorActive)
             {
@@ -9428,6 +9447,14 @@ namespace TrueReplayer.Services
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
                 throw; // genuine user stop always propagates — same rule as InstantProbe
+            }
+            catch (OcrUnavailableException)
+            {
+                // No OCR language on this PC is a property of the MACHINE, not a miss on screen:
+                // under Treat-as-false every Screen Text If would take its Else and every While exit
+                // at once, with nothing to say why (a profile shared to a PC without the pack).
+                // The other OCR paths are loud — Wait for Text, Set Variable, the watcher — so is this.
+                throw;
             }
             catch (Exception ex)
             {

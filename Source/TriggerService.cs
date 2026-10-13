@@ -1543,7 +1543,9 @@ namespace TrueReplayer.Services
                     var operand = cfg.ConditionOperand ?? "";
                     if (number && !ScreenTextMatcher.TryParseNumber(operand, out _))
                         return "the value to compare with is not a number — this can never match";
-                    if (!number && operand.Length == 0)
+                    // Contains/Equals compare the NORMALISED text, where a lone space is nothing at all;
+                    // a regex is used raw, so only an empty one is empty.
+                    if (!number && (op == "regex" ? operand.Length == 0 : ScreenTextMatcher.Normalize(operand).Length == 0))
                         return "no text to watch for — this can never match";
                     if (!number && op == "regex")
                     {

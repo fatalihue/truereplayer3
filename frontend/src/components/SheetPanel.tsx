@@ -37,7 +37,7 @@ import { WindowTargetFields } from './WindowTargetFields';
 import { Slider } from './sheet/Slider';
 import { ScreenTextFields } from './sheet/ScreenTextFields';
 import { collectOcrEdits, OCR_DEFAULT_TOLERANCE } from './sheet/screenTextEdits';
-import { effectiveOperator } from '../utils/screenText';
+import { effectiveOperator, regexProblem } from '../utils/screenText';
 
 interface SheetPanelProps {
   actionIndex: number | null;
@@ -2934,7 +2934,11 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
   // The comment on the Ctrl+S branch says "same gate as the Save button", so it has to BE the same
   // gate — it was only the regex half, which let the keyboard through two refusals the button
   // states out loud.
-  saveBlockedRef.current = !!regexError || runActive || mergeConflict;
+  // The OCR Regex is checked for the same reason as the window-title one: a pattern that does not
+  // compile saves cleanly and then fails the Wait (or reads false in an If) on every run.
+  const ocrRegexError = (isWaitText || isIfScreenText) && ocrReadAs !== 'number' && ocrTextOp === 'regex'
+    && !(isWaitText && waitMode === 'changes') ? regexProblem(conditionOperand) : null;
+  saveBlockedRef.current = !!regexError || !!ocrRegexError || runActive || mergeConflict;
   // The same three reasons the Save button's tooltip gives, in the same order, so the keyboard
   // and the button never disagree about WHY.
   saveBlockedReasonRef.current = runActive
@@ -2949,7 +2953,10 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
       : regexError
         ? tt('Not saved — fix the window-title pattern first.',
              'Não salvo — corrija o padrão do título da janela primeiro.')
-        : null;
+        : ocrRegexError
+          ? tt('Not saved — fix the text pattern (Regex) first.',
+               'Não salvo — corrija o padrão de texto (Regex) primeiro.')
+          : null;
 
   return createPortal(
     <>
@@ -3746,7 +3753,11 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
               (sheet/ScreenTextFields); the wait adds the WaitImage knobs below it. */}
           {(isWaitText || isIfScreenText) && (
             <>
+              {/* Keyed on the ROW: the Sheet stays mounted across rows, and without a key this block
+                  kept the previous row's Test read card ("Use this text" copied ITS read) and a
+                  late reply could snap a region onto the new row. */}
               <ScreenTextFields
+                key={`ocr:${action?.id ?? actionIndex}`}
                 variant="match"
                 hideMatcher={isWaitText && waitMode === 'changes'}
                 region={waitImageSearchRegion}
@@ -4926,6 +4937,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
               {variableMode === 'screen' ? (
                 <>
                   <ScreenTextFields
+                    key={`ocr:${action?.id ?? actionIndex}`}
                     variant="read"
                     region={waitImageSearchRegion}
                 onConfigureRegion={handleConfigureSearchRegion}
@@ -5590,7 +5602,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
               {hasUnsavedChanges ? 'Discard' : 'Cancel'}
             </Button>
             <Button variant="primary" size="md" className="min-w-[84px]" onClick={handleSave}
-              disabled={!!regexError || runActive || mergeConflict}
+              disabled={!!regexError || !!ocrRegexError || runActive || mergeConflict}
               // A disabled control still shows its tip (index.css restores pointer-events on
               // [data-tip][disabled]) precisely so it can say WHY it is off. Announcing a shortcut
               // that is currently refused, without the reason, is the one thing it must not do.
@@ -5602,7 +5614,9 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                          'A fusão é conferida contra a outra metade, que este Save não toca — salve a troca de botão ou de ponto sozinha primeiro')
                     : tt('The merge keeps the Down half, so the edits on this Up half would be lost — save them on their own first',
                          'A fusão mantém a metade Down, então as edições desta metade Up se perderiam — salve-as sozinhas primeiro'))
-                  : tt('Save · Ctrl+S', 'Salvar · Ctrl+S')}>
+                  : ocrRegexError
+                    ? tt('Fix the text pattern (Regex) first', 'Corrija o padrão de texto (Regex) primeiro')
+                    : tt('Save · Ctrl+S', 'Salvar · Ctrl+S')}>
               <Check size={14} />
               Save
             </Button>
