@@ -6,7 +6,7 @@ import type { CollisionDetection, DragStartEvent, DragEndEvent } from '@dnd-kit/
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { CSS } from '@dnd-kit/utilities';
-import { Mouse, MousePointerClick, MousePointer2, Keyboard, ArrowUp, ArrowDown, Zap, Type, Trash2, ChevronRight, ChevronDown, ChevronsDownUp, ChevronsUpDown, Plus, Pencil, ScanSearch, Pipette, Globe, CheckCheck, Check, Code2, Files, Hourglass, Repeat2, ExternalLink, Crosshair, Link, GripVertical, Timer, GitBranch, ArrowRightLeft, Combine, Split, Brackets, MoreHorizontal, Focus, Braces, AppWindow, Clipboard, ClipboardCopy, ClipboardPaste, Eye, EyeOff, RotateCcw, Dice5, Cpu, FileCheck, Clock, ShieldCheck, CircleStop, CornerDownLeft, IterationCw, ChevronUp, ArrowRightFromLine, SkipForward, Table2 } from 'lucide-react';
+import { Mouse, MousePointerClick, MousePointer2, Keyboard, ArrowUp, ArrowDown, Zap, Type, Trash2, ChevronRight, ChevronDown, ChevronsDownUp, ChevronsUpDown, Plus, Pencil, ScanSearch, Pipette, Globe, CheckCheck, Check, Code2, Files, Hourglass, Repeat2, ExternalLink, Crosshair, Link, GripVertical, Timer, GitBranch, ArrowRightLeft, Combine, Split, Brackets, MoreHorizontal, Focus, Braces, AppWindow, Clipboard, ClipboardCopy, ClipboardPaste, Eye, EyeOff, RotateCcw, Dice5, Cpu, FileCheck, Clock, ShieldCheck, CircleStop, CornerDownLeft, IterationCw, ChevronUp, ArrowRightFromLine, SkipForward, Table2, ScanText } from 'lucide-react';
 import { canCollapse, canExpand, expandKeystroke } from '../utils/keyRepeat';
 import type { ActionItem, OutgoingMessage } from '../bridge/messageTypes';
 import { useAppState } from '../state/AppStateContext';
@@ -23,6 +23,7 @@ import { snapIndicesToBlocks, hasConditionFields, skippedRowMask, isStructuralRo
 import { uiZoom } from '../utils/zoomSpace';
 import { tryParseInt32 } from '../utils/int32';
 import { parseCoordPair } from '../utils/coordPair';
+import { screenTextSummary } from '../utils/screenText';
 import { useSingleKeyCapture } from '../hooks/useSingleKeyCapture';
 // Deferred: already rendered conditionally, but a static import pulls the whole Lexical editor
 // stack and emoji-picker-react (~300 KB minified) into the startup chunk for a dialog most sessions
@@ -59,6 +60,7 @@ const NO_DELAY_TYPES = new Set(['Else', 'EndIf', 'EndLoop', 'BreakLoop', 'Contin
 const BRANCH_CONDITION_FAMILIES = [
   { ct: 'ImageFound', Icon: ScanSearch, label: 'Image Found' },
   { ct: 'PixelColorMatch', Icon: Pipette, label: 'Pixel Color Match' },
+  { ct: 'ScreenText', Icon: ScanText, label: 'Screen Text' },
   { ct: 'WindowOpen', Icon: AppWindow, label: 'Window Open' },
   { ct: 'ClipboardMatch', Icon: Clipboard, label: 'Clipboard' },
   { ct: 'BrowserElementState', Icon: Globe, label: 'Browser Element' },
@@ -116,6 +118,8 @@ export function ActionIcon({ actionType, size = 12 }: { actionType: string; size
   if (actionType === 'CopyToSlot') return <ClipboardCopy size={size} />;
   if (actionType === 'WaitImage') return <ScanSearch size={size} />;
   if (actionType === 'WaitPixelColor') return <Pipette size={size} />;
+  // ScanText — reading text off the screen (OCR); the Conditional ▾ Screen Text glyph too.
+  if (actionType === 'WaitText') return <ScanText size={size} />;
   // Match the toolbar's redesigned icons so the chip in the table reads the same
   // as the entry that inserts the action: Hourglass (not Pause-glyph) for the
   // delay action, Repeat2 (not Workflow) for sub-macro calls.
@@ -206,6 +210,7 @@ function actionPillLabel(action: ActionItem): string {
   switch (action.actionType) {
     case 'WaitImage': return 'Wait Image';
     case 'WaitPixelColor': return 'Pixel Color';
+    case 'WaitText': return 'Wait Text';
     // Browser labels carry "Element"/"Text" so they never read as the
     // desktop LeftClick/SendText pills — ambiguity fix (P2).
     case 'BrowserClick': return 'Click Element';
@@ -279,6 +284,9 @@ function isProbeAction(action: ActionItem): boolean {
 function rowDisplayKey(action: ActionItem, dataRows: number): string {
   return action.actionType === 'WaitImage'
     ? ''
+    // Wait for Text reads like its condition: `has "Victory"`, `< 30`, or "changes".
+    : action.actionType === 'WaitText'
+      ? (action.waitMode === 'changes' ? 'changes' : screenTextSummary(action))
     : action.actionType === 'WaitPixelColor'
       // Standalone pixel-color wait mirrors the "if pixel" row: the hex
       // is the text, the swatch + coords render alongside it in the row.
@@ -340,6 +348,9 @@ function rowDisplayKey(action: ActionItem, dataRows: number): string {
               // Add mode reads "name += step" — the assignment it is NOT is "=".
               : action.variableMode === 'add'
                 ? `${action.key} += ${action.variableValue ?? ''}`
+              // Screen mode reads the region at run time — "name ← screen" (# in Number mode).
+              : action.variableMode === 'screen'
+                ? `${action.key} ← screen${action.ocrReadAs === 'number' ? ' #' : ''}`
                 : `${action.key} = ${action.variableValue ?? ''}`)
           : action.actionType === 'CopyToSlot'
             // Show the read-back token — the one thing the user needs to reuse
@@ -400,6 +411,7 @@ function conditionSummary(action: ActionItem): string {
   }
   if (action.conditionType === 'ClipboardMatch') return action.clipboardPattern || '';
   if (action.conditionType === 'BrowserElementState') return action.key || '';
+  if (action.conditionType === 'ScreenText') return screenTextSummary(action);
   return '';
 }
 
@@ -517,7 +529,8 @@ function isConditionAction(action: ActionItem): boolean {
       || action.conditionType === 'Variable'
       || action.conditionType === 'ProcessRunning'
       || action.conditionType === 'FileExists'
-      || action.conditionType === 'TimeWindow');
+      || action.conditionType === 'TimeWindow'
+      || action.conditionType === 'ScreenText');
 }
 
 // "Select Similar" (More ▸ in the row context menu) groups every row whose actionType AND
@@ -548,6 +561,10 @@ function similarActionKey(action: ActionItem): string {
   }
   if (conditionType === 'ClipboardMatch') {
     return `clipboard:${action.clipboardPattern ?? ''}`;
+  }
+  // Screen text rows: what is read (region) and what is looked for (mode + operator + operand).
+  if (action.actionType === 'WaitText' || conditionType === 'ScreenText') {
+    return `text:${action.waitImageSearchX ?? ''},${action.waitImageSearchY ?? ''},${action.waitImageSearchW ?? ''},${action.waitImageSearchH ?? ''}:${action.ocrReadAs ?? ''}:${action.conditionOperator ?? ''}:${action.conditionOperand ?? ''}`;
   }
   // Every other action type — combined clicks, keys, SendText, RunProfile, etc. — is still
   // identified by key/x/y, exactly as before this fix.
@@ -601,6 +618,8 @@ function ConditionDetails({ action }: { action: ActionItem }) {
         ? { Icon: FileCheck, label: 'file', value: action.filePath || '' }
       : action.conditionType === 'TimeWindow'
         ? { Icon: Clock, label: 'time', value: formatTimeWindow(action) }
+      : action.conditionType === 'ScreenText'
+        ? { Icon: ScanText, label: 'text', value: screenTextSummary(action) }
         : { Icon: Globe, label: 'element', value: action.key || '' };
   const { Icon, label, value } = meta;
   return (

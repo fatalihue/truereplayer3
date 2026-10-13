@@ -30,7 +30,7 @@ const DISPLAY_KEY_MAP: Record<string, string> = {
  * on the C# side is the remaining mirror and cannot be shared across the language boundary — a
  * type added here belongs there in the same commit, and WaitPixelColor is the one that proved it.
  */
-export const NO_COORD_TYPES = new Set(['Assert', 'KeyDown', 'KeyUp', 'Keystroke', 'HoldKey', 'ScrollUp', 'ScrollDown', 'SendText', 'SetVariable', 'CopyToSlot', 'ActivateWindow', 'WaitImage', 'WaitPixelColor', 'BrowserClick', 'BrowserRightClick', 'BrowserType', 'BrowserWaitElement', 'BrowserNavigate', 'BrowserSelectOption', 'BrowserAssert', 'RunProfile', 'Pause', 'If', 'ElseIf', 'Else', 'EndIf', 'Stop', 'Return', 'While', 'EndLoop', 'BreakLoop', 'ContinueLoop', 'ForEachRow']);
+export const NO_COORD_TYPES = new Set(['Assert', 'KeyDown', 'KeyUp', 'Keystroke', 'HoldKey', 'ScrollUp', 'ScrollDown', 'SendText', 'SetVariable', 'CopyToSlot', 'ActivateWindow', 'WaitImage', 'WaitPixelColor', 'WaitText', 'BrowserClick', 'BrowserRightClick', 'BrowserType', 'BrowserWaitElement', 'BrowserNavigate', 'BrowserSelectOption', 'BrowserAssert', 'RunProfile', 'Pause', 'If', 'ElseIf', 'Else', 'EndIf', 'Stop', 'Return', 'While', 'EndLoop', 'BreakLoop', 'ContinueLoop', 'ForEachRow']);
 
 export function getDisplayKey(key: string): string {
   if (!key) return '';
@@ -238,10 +238,12 @@ function computeActionTypeColors(actionType: string): { bg: string; fg: string }
   // and a dedicated theme token for a niche action would bloat all 40+ themes.
   if (actionType === 'SetVariable' || actionType === 'CopyToSlot')
     return { bg: 'var(--color-action-setvariable-bg)', fg: 'var(--color-action-setvariable-fg)' };
-  if (actionType === 'WaitImage')
+  // Wait family — Wait Image, Wait Pixel Color, Wait Text — is ONE hue, like the If, Loop and
+  // Browser families: the grid reads the group, the glyph tells the three apart. The waitimage
+  // token IS the family token (the Theme Editor labels it "Wait"); the old pixelcolor token is
+  // still defined by the themes but no longer read.
+  if (actionType === 'WaitImage' || actionType === 'WaitPixelColor' || actionType === 'WaitText')
     return { bg: 'var(--color-action-waitimage-bg)', fg: 'var(--color-action-waitimage-fg)' };
-  if (actionType === 'WaitPixelColor')
-    return { bg: 'var(--color-action-pixelcolor-bg)', fg: 'var(--color-action-pixelcolor-fg)' };
   if (actionType === 'RunProfile')
     return { bg: 'var(--color-action-runprofile-bg)', fg: 'var(--color-action-runprofile-fg)' };
   // ActivateWindow: dedicated tokens with a runprofile fallback so all 48 themes work

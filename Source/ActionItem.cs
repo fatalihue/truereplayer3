@@ -191,6 +191,23 @@ namespace TrueReplayer.Models
         [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
         public string? ConditionOperand { get; set; }
 
+        // ── Screen text / OCR (WaitText, ConditionType == "ScreenText", SetVariable mode "screen") ──
+        // Region = the WaitImageSearch* fields (same picker, same relative/absolute conversion).
+        // The matcher reuses ConditionOperator/ConditionOperand: Text mode uses contains|eq|regex,
+        // Number mode uses eq|neq|gt|lt against the FIRST number read (see ScreenTextMatcher).
+        // OcrReadAs: null = text | "number".
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        public string? OcrReadAs { get; set; }
+
+        // Optional "#RRGGBB": only pixels near this colour are read (the lever for game HUDs over
+        // a busy scene). null = read everything.
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        public string? OcrTextColor { get; set; }
+
+        // Per-channel tolerance for OcrTextColor (0..255). null = OcrService.DefaultColorTolerance.
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        public int? OcrColorTolerance { get; set; }
+
         // ── If File exists (ConditionType == "FileExists") ──
         // TRUE when the resolved path exists as a file OR directory. Accepts tokens
         // ({var}/{date}/{clipboard}). Empty path = false. Pairs with flag-file control.
@@ -655,7 +672,7 @@ namespace TrueReplayer.Models
             // both frontend lists and missing from this one, so a standalone WaitPixelColor row
             // exported a phantom 0,0 in Copy-as-Table while the grid beside it showed nothing —
             // the exact drift the warning below predicts.
-            "WaitImage", "WaitPixelColor",
+            "WaitImage", "WaitPixelColor", "WaitText",
             "BrowserClick", "BrowserRightClick", "BrowserType", "BrowserWaitElement", "BrowserNavigate",
             "BrowserSelectOption", "BrowserAssert",
             "RunProfile", "Pause", "SetVariable", "CopyToSlot", "ActivateWindow",
@@ -837,7 +854,28 @@ namespace TrueReplayer.Models
                         var time = hasTime ? $"{TimeStart}–{TimeEnd}" : "";
                         return string.Join(" ", new[] { days, time }.Where(s => s.Length > 0));
                     }
+                    if (string.Equals(ConditionType, "ScreenText", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return TrueReplayer.Services.ScreenTextMatcher.Summary(this);
+                    }
                     return "";
+                }
+
+                // Wait for Text — the matcher summary, or "changes" for the wait-for-change mode.
+                if (string.Equals(ActionType, "WaitText", StringComparison.OrdinalIgnoreCase))
+                {
+                    return string.Equals(WaitMode, "changes", StringComparison.OrdinalIgnoreCase)
+                        ? "changes"
+                        : TrueReplayer.Services.ScreenTextMatcher.Summary(this);
+                }
+
+                // Set Variable reading the screen — "name ← screen" (a trailing # in Number mode).
+                if (string.Equals(ActionType, "SetVariable", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(VariableMode, "screen", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (string.IsNullOrWhiteSpace(Key)) return "";
+                    return string.Equals(OcrReadAs, "number", StringComparison.OrdinalIgnoreCase)
+                        ? $"{Key} ← screen #" : $"{Key} ← screen";
                 }
 
                 // Else / EndIf rows carry no Key data.
@@ -951,6 +989,9 @@ namespace TrueReplayer.Models
             RandomPercent = RandomPercent,
             ConditionOperator = ConditionOperator,
             ConditionOperand = ConditionOperand,
+            OcrReadAs = OcrReadAs,
+            OcrTextColor = OcrTextColor,
+            OcrColorTolerance = OcrColorTolerance,
             FilePath = FilePath,
             TimeStart = TimeStart,
             TimeEnd = TimeEnd,

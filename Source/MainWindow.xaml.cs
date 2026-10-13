@@ -1205,6 +1205,22 @@ namespace TrueReplayer
                         return;
                     }
 
+                    // Copy screen text: OCR a region (dragged now, or the saved fixed one) onto the
+                    // clipboard. Refused during a replay or recording for the Capture Slot reason —
+                    // the run owns the clipboard for its own pastes.
+                    if (!string.IsNullOrEmpty(UserProfile.Current.CopyScreenTextHotkey)
+                        && key == UserProfile.Current.CopyScreenTextHotkey)
+                    {
+                        if (mainController.IsReplayInProgress() || mainController.IsRecording())
+                        {
+                            Services.DiagnosticLog.Info("Copy screen text: ignored — a replay or recording is running");
+                            return;
+                        }
+                        try { if (bridge != null) await bridge.RunCopyScreenTextAsync(); }
+                        catch (Exception ex) { Services.DiagnosticLog.Error("Copy screen text failed", ex); }
+                        return;
+                    }
+
                     if (key == UserProfile.Current.ModeToggleHotkey)
                     {
                         // Same code path as the UI mode toggle — flip + cancel any running

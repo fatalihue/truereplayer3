@@ -45,6 +45,10 @@ namespace TrueReplayer.Models
         public const string Foreground = "Insert";
         public const string ModeToggle = "ScrollLock";
         public const string CaptureSlot = "Win+Ctrl+C";
+        // Copy screen text (OCR → clipboard). A Win combo for the same reason as Capture Slot: the
+        // shell binds nothing to Win+F12 out of the box (PowerToys Text Extractor sits on
+        // Win+Shift+T, so not that one). Empty still means disabled if the user clears it.
+        public const string CopyScreenText = "Win+F12";
     }
 
     public class UserProfile
@@ -75,6 +79,15 @@ namespace TrueReplayer.Models
         // the shipped default is Win+Ctrl+C — see AppSettings.CaptureSlotHotkey.
         [JsonIgnore]
         public string CaptureSlotHotkey { get; set; } = HotkeyDefaults.CaptureSlot;
+
+        // Copy screen text: hotkey → OCR → clipboard. Region "" = ask (drag each time), or
+        // "x,y,w,h" absolute = always read that region. App settings mirrored here like the
+        // other global hotkeys — never written into a profile file.
+        [JsonIgnore]
+        public string CopyScreenTextHotkey { get; set; } = HotkeyDefaults.CopyScreenText;
+
+        [JsonIgnore]
+        public string CopyScreenTextRegion { get; set; } = "";
 
         [JsonIgnore]
         public bool RecordMouse { get; set; } = true;
@@ -319,6 +332,21 @@ namespace TrueReplayer.Models
         public int? SearchRegionW { get; set; }
         public int? SearchRegionH { get; set; }
         public string? ClipboardPattern { get; set; }       // contains-filter; empty = any clipboard change
+
+        // ScreenText (OCR): reads the search region above — REQUIRED for this type, a whole-screen
+        // read every tick costs ~0.45 s — and compares like the ScreenText If condition (same
+        // names as ActionItem: ConditionOperator/ConditionOperand, OcrReadAs, OcrTextColor/Tolerance;
+        // see ScreenTextMatcher). Written only when set, so other trigger types stay byte-identical.
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        public string? ConditionOperator { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        public string? ConditionOperand { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        public string? OcrReadAs { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        public string? OcrTextColor { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        public int? OcrColorTolerance { get; set; }
 
         // Firing policy (condition kind): CooldownSeconds <= 0 = the PER-CONDITION default, which
         // is 5 s for ClipboardChanged and 30 s for every other type. Reading "default 30 s" here is

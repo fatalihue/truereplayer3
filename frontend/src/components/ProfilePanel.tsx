@@ -127,8 +127,10 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
     // and IF Image rows with a set search region, and both WaitPixelColor and IF
     // Pixel rows with set coords. Without these branches the dialog under-reports
     // how many rows will actually be converted when the profile uses conditionals.
-    const isImageProbe = a.actionType === 'WaitImage'
-      || (carriesConditionProbe(a.actionType) && a.conditionType === 'ImageFound');
+    // The screen-text family keeps its region in the same four fields, so it converts too.
+    const isImageProbe = a.actionType === 'WaitImage' || a.actionType === 'WaitText'
+      || (a.actionType === 'SetVariable' && a.variableMode === 'screen')
+      || (carriesConditionProbe(a.actionType) && (a.conditionType === 'ImageFound' || a.conditionType === 'ScreenText'));
     if (isImageProbe
       && typeof a.waitImageSearchW === 'number' && a.waitImageSearchW > 0
       && typeof a.waitImageSearchH === 'number' && a.waitImageSearchH > 0) return n + 1;

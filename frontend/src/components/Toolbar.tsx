@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, lazy, Suspense } from 'react';
-import { Trash2, Undo2, Redo2, Type, Mouse, MoreHorizontal, ScanSearch, Pipette, Keyboard, Globe, Repeat2, Hourglass, X, GitBranch, ScanEye, Braces, AppWindow, Clipboard, ClipboardCopy, ChevronDown, ChevronRight, Dice5, Cpu, FileCheck, Clock, Table2, ShieldCheck, CircleStop, CornerDownLeft, IterationCw, ArrowRightFromLine, SkipForward } from 'lucide-react';
+import { Trash2, Undo2, Redo2, Type, Mouse, MoreHorizontal, ScanSearch, Pipette, Keyboard, Globe, Repeat2, Hourglass, X, GitBranch, ScanEye, Braces, AppWindow, Clipboard, ClipboardCopy, ChevronDown, ChevronRight, Dice5, ScanText, Cpu, FileCheck, Clock, Table2, ShieldCheck, CircleStop, CornerDownLeft, IterationCw, ArrowRightFromLine, SkipForward } from 'lucide-react';
 import { useAppState } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
 import { useSelectionRef } from '../state/SelectionContext';
@@ -111,11 +111,11 @@ function ResponsiveProfileName({ name }: { name: string }) {
 }
 
 // ── Overflow: the tail of the row folds into the More ▾ menu when it runs out of room ──
-// Four candidates, collapsed tail-first: Clear All, Data Loop, Activate Window, Run Profile.
-// Since the slimmer row of 2026-10-11 (Set Variable, Copy to Slot, Loop and Assert moved into
-// More for good) the row needs 510 px, and the narrowest layout the app still allows — minimum
-// window with BOTH rails re-expanded by hand — offers 531, so on the default theme nothing folds
-// anywhere. The four stay because a button's width follows the theme's font size and row height
+// Three candidates, collapsed tail-first: Clear All, Data Loop, Activate Window.
+// Since the slimmer row of 2026-10-11 (Copy to Slot, Loop and Assert in More for good; on
+// 2026-10-12 Set Variable came back to the row and Run Profile took its place in More) the row
+// fits the narrowest layout the app still allows — minimum window with BOTH rails re-expanded by
+// hand — so on the default theme nothing folds anywhere. The three stay because a button's width follows the theme's font size and row height
 // (the unit is measured, see fit): a larger UI can still run out of room, and a menu that leaves
 // one button clipped has not done its job.
 //
@@ -127,7 +127,7 @@ function ResponsiveProfileName({ name }: { name: string }) {
 // normal window reaches. `OVERFLOW_CANDIDATES` was no help: it was read by the clamp below and
 // by nothing else, so the number and the gates could disagree forever without a compile error.
 // Adding a fifth candidate, or reordering the tail, now rewrites both sides at once.
-const OVERFLOW_ORDER = ['clearAll', 'dataLoop', 'activateWindow', 'runProfile'] as const;
+const OVERFLOW_ORDER = ['clearAll', 'dataLoop', 'activateWindow'] as const;
 type OverflowKey = (typeof OVERFLOW_ORDER)[number];
 const OVERFLOW_CANDIDATES = OVERFLOW_ORDER.length;
 // PURE, and at module scope on purpose: the two reset effects inside the component read it, and
@@ -232,7 +232,7 @@ export function Toolbar(_props: ToolbarProps) {
       const unit = row.querySelector<HTMLElement>('[data-tb-unit]')?.offsetWidth ?? 0;
       if (unit <= 0 || available <= 0) return;
       // The fold arithmetic runs on what each candidate ACTUALLY frees, not on the unit: Clear All
-      // and Run Profile take their divider with them, so folding either gives back 41 px against a
+      // and Activate Window take their divider with them, so folding either gives back 41 px against a
       // 28 px unit. Counting in units folded two controls where one sufficed (476 px available:
       // 510 → 439 instead of 469) and then sat on the surplus, because the restore demanded two
       // spare units. Measured here while each candidate is in the row (tagged data-tb-fold, the
@@ -721,10 +721,11 @@ export function Toolbar(_props: ToolbarProps) {
               groups the same Image/Pixel probe family. Move Up / Move Down moved
               to the BulkActionBar (only useful with a selection); click x3 /
               scroll inserts removed long ago because Recording does them
-              better. Set Variable, Copy to Slot, Loop and Assert left the row on
-              2026-10-11 for the More ▾ menu at its end: the owner's 122 profiles
-              used them in 2, 1, 0 and 0 profiles, and the row did not fit the
-              minimum window. */}
+              better. Copy to Slot, Loop and Assert left the row on 2026-10-11
+              for the More ▾ menu at its end (the owner's 122 profiles used them
+              in 1, 0 and 0 profiles). On 2026-10-12 Set Variable came back, next
+              to Conditional — it is the half of the Set Variable + If Variable
+              pair — and Run Profile went into More in its place. */}
 
           {/* Send Keystroke — unified keyboard insert (Press 1×, Press N×, or
               Hold for X ms; mode toggle lives inside the dialog). */}
@@ -802,7 +803,7 @@ export function Toolbar(_props: ToolbarProps) {
               onClick={() => setShowWaitMenu(!showWaitMenu)}
               disabled={insertsDisabled}
               className={iconButtonClass('md', { active: showWaitMenu })}
-              data-tip={clickerTip('Wait (image, pixel, condition)', 'Aguardar (imagem, pixel, condição)')}
+              data-tip={clickerTip('Wait (image, text, pixel, condition)', 'Aguardar (imagem, texto, pixel, condição)')}
             >
               <ScanEye size={16} />
               <ChevronDown size={10} className="opacity-80" />
@@ -835,6 +836,20 @@ export function Toolbar(_props: ToolbarProps) {
                 >
                   <Pipette size={12} className="text-accent-light" />
                   Wait for Pixel Color
+                </button>
+                {/* Wait for Text — the OCR twin of Wait for Image: the same capture-first insert
+                    (drag a region; the row is born with what it read there). */}
+                <button
+                  className="menu-item text-text-primary"
+                  onClick={() => {
+                    const sel = selectionRef.current;
+                    const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
+                    send({ type: 'actions:insertAction', payload: { actionType: 'WaitText', insertIndex } });
+                    setShowWaitMenu(false);
+                  }}
+                >
+                  <ScanText size={12} className="text-accent-light" />
+                  Wait for Text
                 </button>
                 {/* Wait-for-condition presets (D4): a pre-armed Assert — 10 s poll budget +
                     the quiet-stop policy — so "wait until the window opens, and if it never
@@ -922,6 +937,20 @@ export function Toolbar(_props: ToolbarProps) {
                   <Pipette size={12} style={{ color: 'var(--color-action-if-fg)' }} />
                   Pixel Color Match
                 </button>
+                {/* Screen Text — read a region with OCR; capture-first like Image and Pixel, so the
+                    visual trio sits together. */}
+                <button
+                  className="menu-item text-text-primary"
+                  onClick={() => {
+                    const sel = selectionRef.current;
+                    const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
+                    send({ type: 'actions:insertConditional', payload: { conditionType: 'ScreenText', insertIndex } });
+                    setShowConditionalMenu(false);
+                  }}
+                >
+                  <ScanText size={12} style={{ color: 'var(--color-action-if-fg)' }} />
+                  Screen Text
+                </button>
                 {/* Capture-less conditions — insert the If/EndIf pair immediately and
                     auto-open the Sheet (backend sends sheet:openIndex); no screen overlay. */}
                 <button
@@ -986,6 +1015,24 @@ export function Toolbar(_props: ToolbarProps) {
             )}
           </div>
 
+          {/* Set Variable — writes a name/value into the replay run's variable store, read back
+              with {var:name}. Beside Conditional because the two make the Set Variable + If
+              Variable pair. Pattern A: inserts an empty row and auto-opens the Sheet (the backend
+              sends sheet:openIndex). */}
+          <button
+            tabIndex={-1}
+            onClick={() => {
+              const sel = selectionRef.current;
+              const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
+              send({ type: 'actions:insertAction', payload: { actionType: 'SetVariable', insertIndex } });
+            }}
+            disabled={insertsDisabled}
+            className={iconButtonClass('md')}
+            data-tip={clickerTip('Set Variable', 'Definir variável')}
+          >
+            <Braces size={16} />
+          </button>
+
           {/* Browser Actions */}
           <div className="relative" ref={browserMenuRef}>
             <button
@@ -1042,33 +1089,17 @@ export function Toolbar(_props: ToolbarProps) {
 
           {/* Everything above inserts a row that DECIDES, WAITS or drives the browser; everything
               below reaches for another surface — a second profile, another app's window, the
-              data table. It also marks where the row gives way: the three that follow, plus
+              data table. It also marks where the row gives way: the two that follow, plus
               Clear All, are the ones that fold into More ▾ when the row runs out of room (a
-              larger UI; the default theme fits even the minimum window). Once all three have
-              folded it divides nothing — More is itself the boundary by then — so it steps
-              aside and gives the row back its 9 px. */}
-          {/* Keyed on Run Profile, the LAST of the three to fold (OVERFLOW_ORDER): keyed on Activate
-              Window it vanished one step early, at the width where Activate Window had folded and
-              Run Profile had not, leaving Run Profile against the Browser menu with no rule. */}
-          {inRow('runProfile') && <div data-tb-fold="runProfile" className="w-px h-4 bg-border-subtle mx-1" />}
-
-          {/* Run Profile — sub-macro call (picker dialog). Sits next to Browser
-              because both delegate work elsewhere (a profile / a browser tab). */}
-          {inRow('runProfile') && (
-          <button
-            tabIndex={-1}
-            onClick={() => setShowRunProfileDialog(true)}
-            disabled={insertsDisabled}
-            className={iconButtonClass('md')}
-            data-tip={clickerTip('Run Profile', 'Executar perfil')}
-            data-tb-fold="runProfile"
-          >
-            <Repeat2 size={16} />
-          </button>
-          )}
+              larger UI; the default theme fits even the minimum window). Once both have folded
+              it divides nothing — More is itself the boundary by then — so it steps aside and
+              gives the row back its 9 px. Keyed on Activate Window, the LAST to fold
+              (OVERFLOW_ORDER): keyed on an earlier one it would vanish while Activate Window
+              still sat against the Browser menu with no rule. */}
+          {inRow('activateWindow') && <div data-tb-fold="activateWindow" className="w-px h-4 bg-border-subtle mx-1" />}
 
           {/* Activate Window — focus (and optionally launch) another app mid-macro.
-              Sits with Run Profile: both are orchestration rows. Pattern A: inserts
+              Pattern A: inserts
               an empty row and auto-opens the Sheet (backend sends sheet:openIndex). */}
           {inRow('activateWindow') && (
           <button
@@ -1181,14 +1212,14 @@ export function Toolbar(_props: ToolbarProps) {
 
           {/* More ▾ — permanent since 2026-10-11, with two jobs in one menu so there is never a
               second button that hides things:
-                1. the HOME of the inserts the owner's profiles barely use — Set Variable (2 of
-                   122 profiles), Copy to Slot (1), Loop (0), Assert (0): named, one click deeper,
-                   never gone. Loop and Assert keep their whole former menus as side submenus
+                1. the HOME of the inserts used least — Run Profile (moved here 2026-10-12, when
+                   Set Variable went back to the row), Copy to Slot (1 of the owner's 122
+                   profiles), Loop (0), Assert (0): named, one click deeper, never gone. Loop and Assert keep their whole former menus as side submenus
                    (the row context menu's pattern: hover opens, useFlyoutFlip 'side', a 4 px
                    bridge so the pointer can cross).
                 2. the TAIL the row could not fit (overflowCount, measured). On the default theme
                    the row fits even the minimum window, so this half only shows for a larger UI.
-                   Listed row-order (Run Profile → Clear All), never collapse-order, or the menu
+                   Listed row-order (Activate Window → Clear All), never collapse-order, or the menu
                    would reshuffle itself as the window resized.
               What it buys beyond room is NAMES: every control in the row is icon-only, and the
               insert commands were deliberately cut from the command palette.
@@ -1210,24 +1241,17 @@ export function Toolbar(_props: ToolbarProps) {
                   <div className="px-3 py-1 label-micro text-text-tertiary">
                     More actions
                   </div>
-                  {/* Set Variable — writes a name/value into the replay run's variable store, read
-                      back with {var:name} in Send Text / Type Text. Pattern A: inserts an empty row
-                      and auto-opens the Sheet (the backend sends sheet:openIndex). */}
+                  {/* Run Profile — sub-macro call (picker dialog). */}
                   <button
                     className="menu-item text-text-primary"
-                    onClick={() => {
-                      const sel = selectionRef.current;
-                      const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
-                      send({ type: 'actions:insertAction', payload: { actionType: 'SetVariable', insertIndex } });
-                      setShowMoreMenu(false);
-                    }}
+                    onClick={() => { setShowRunProfileDialog(true); setShowMoreMenu(false); }}
                   >
-                    <Braces size={13} className="text-text-tertiary" />
-                    Set Variable
+                    <Repeat2 size={13} className="text-text-tertiary" />
+                    Run Profile
                   </button>
                   {/* Copy to Slot — captures the focused app's selection (synthetic Ctrl+C) into a
-                      named clipboard slot, read back with {clip:name}. Same Pattern-A flow as Set
-                      Variable — they're sibling run-state writers, hence adjacent. */}
+                      named clipboard slot, read back with {clip:name}. Pattern A: inserts an empty
+                      row and auto-opens the Sheet (the backend sends sheet:openIndex). */}
                   <button
                     className="menu-item text-text-primary"
                     onClick={() => {
@@ -1279,6 +1303,7 @@ export function Toolbar(_props: ToolbarProps) {
                             {([
                               { ct: 'ImageFound', Icon: ScanSearch, label: 'Image Found' },
                               { ct: 'PixelColorMatch', Icon: Pipette, label: 'Pixel Color Match' },
+                              { ct: 'ScreenText', Icon: ScanText, label: 'Screen Text' },
                               { ct: 'WindowOpen', Icon: AppWindow, label: 'Window Open' },
                               { ct: 'ClipboardMatch', Icon: Clipboard, label: 'Clipboard' },
                               { ct: 'BrowserElementState', Icon: Globe, label: 'Browser Element' },
@@ -1419,15 +1444,6 @@ export function Toolbar(_props: ToolbarProps) {
                   {/* The folded tail, only when the row ran out of room. Clear All is the first to
                       fold (OVERFLOW_ORDER), so "anything folded" is exactly "Clear All folded". */}
                   {collapsed('clearAll') && <div className="my-1 border-t border-border-subtle" />}
-                  {collapsed('runProfile') && (
-                    <button
-                      className="menu-item text-text-primary"
-                      onClick={() => { setShowRunProfileDialog(true); setShowMoreMenu(false); }}
-                    >
-                      <Repeat2 size={13} className="text-text-tertiary" />
-                      Run Profile
-                    </button>
-                  )}
                   {collapsed('activateWindow') && (
                     <button
                       className="menu-item text-text-primary"

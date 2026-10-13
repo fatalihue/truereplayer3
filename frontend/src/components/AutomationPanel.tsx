@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { TriangleAlert, Zap, Plus, Trash2, Pipette, Camera, Frame, X, ScanSearch, Check, Play, Power, Crosshair } from 'lucide-react';
+import { TriangleAlert, Zap, Plus, Trash2, Pipette, Camera, Frame, X, ScanSearch, ScanText, Check, Play, Power, Crosshair } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
 import { useAppState } from '../state/AppStateContext';
 import { useTt } from '../state/LanguageContext';
@@ -17,6 +17,7 @@ import { ImageCropper } from './ImageCropper';
 import { rangeParts, phaseLockRisk } from '../utils/activeHours';
 import { useEditorClaim } from '../hooks/useEditorClaim';
 import type { AutomationEntry, TriggerConfig } from '../bridge/messageTypes';
+import { effectiveOperator, parsesAsNumber } from '../utils/screenText';
 
 // Day-pill order matches the backend bitmask convention (Sun = 1<<0, the If-Time one).
 const DAY_PILLS = [
@@ -35,6 +36,7 @@ const CONDITION_TYPES = [
   { value: 'FileExists', label: 'File exists' },
   { value: 'PixelColorMatch', label: 'Pixel color' },
   { value: 'ImageFound', label: 'Image on screen' },
+  { value: 'ScreenText', label: 'Text on screen' },
   { value: 'ClipboardChanged', label: 'Clipboard changed' },
 ];
 
@@ -143,7 +145,7 @@ function whyCannotFire(t: TriggerConfig): string | null {
   // procura uma janela sem critério, não acha, e a condição fica falsa em todo tick para sempre.
   // Espelha o mesmo teste no TriggerService.DescribeUnfireable, e fica ANTES do switch porque
   // vale para os dois tipos que têm coordenada.
-  if (t.useRelativeCoordinates && (t.conditionType === 'PixelColorMatch' || t.conditionType === 'ImageFound')
+  if (t.useRelativeCoordinates && (t.conditionType === 'PixelColorMatch' || t.conditionType === 'ImageFound' || t.conditionType === 'ScreenText')
     && !(t.windowProcessName ?? '').trim() && !(t.windowTitle ?? '').trim()) {
     return 'The coordinates are anchored to a window — fill in a process name or a window title.';
   }
@@ -164,6 +166,15 @@ function whyCannotFire(t: TriggerConfig): string | null {
       return t.imagePath
         ? null
         : 'Capture a reference image.';
+    case 'ScreenText': {
+      // Mirrors TriggerService.DescribeUnfireable. The region is REQUIRED here (not just advised):
+      // a whole-screen read every check costs ~0.45 s of CPU.
+      if (!t.searchRegion) return 'Set a search region — reading the whole screen every check is too slow.';
+      const number = t.ocrReadAs === 'number';
+      const operand = t.conditionOperand ?? '';
+      if (number) return parsesAsNumber(operand) ? null : 'Enter a number to compare with.';
+      return operand ? null : 'Enter the text to watch for.';
+    }
     case 'PixelColorMatch':
       // Mirrors PixelColorService.ParseHex: six hex digits, optional leading #. The default
       // (#FFFFFF) and the eyedropper both produce that, so this only catches a hand-typed value —
@@ -240,6 +251,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
   const [dirty, setDirty] = useState(false);
   const [cropperOpen, setCropperOpen] = useState(false); // ImageFound: re-crop the reference PNG
   const [testMatchResult, setTestMatchResult] = useState<{ found: boolean; score: number; error?: string } | null>(null);
+  const [testReadResult, setTestReadResult] = useState<{ ok: boolean; text: string; error?: string } | null>(null);
   // A not-yet-saved automation for a profile that has none. Only one at a time.
   const [newDraftProfile, setNewDraftProfile] = useState<string | null>(null);
   // Por que a coordenada foi limpa ao virar o interruptor de âncora. Some na próxima captura,
@@ -463,6 +475,8 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
   const captureReqRef = useRef<string | null>(null);
   const regionReqRef = useRef<string | null>(null);
   const testMatchReqRef = useRef<string | null>(null);
+  const textColorReqRef = useRef<string | null>(null);
+  const testReadReqRef = useRef<string | null>(null);
 
   // Remembers the last non-empty half of the active-hours pair, so clearing one input does not
   // destroy the other and the sibling never has to invent 00:00 / 23:59.
@@ -513,6 +527,19 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
           // left of / above the primary; the backend MatchOnce clamps the ROI to the bitmap itself.
           const m = 80;
           patch({ searchRegion: { x: r.x - m, y: r.y - m, w: r.w + m * 2, h: r.h + m * 2 } });
+        }
+      }
+      if (msg.type === 'pixel:colorPicked' && msg.payload.requestId === textColorReqRef.current) {
+        textColorReqRef.current = null;
+        if (!msg.payload.cancelled && msg.payload.hex) patch({ ocrTextColor: msg.payload.hex });
+      }
+      // Test read (Text on screen). Same snap as Test match: a hit with no region yet sets one.
+      if (msg.type === 'ocr:testReadResult' && msg.payload.requestId === testReadReqRef.current) {
+        testReadReqRef.current = null;
+        const r = msg.payload;
+        if (r.error) { setTestReadResult({ ok: false, text: '', error: r.error }); }
+        else {
+          setTestReadResult({ ok: !!r.matched, text: r.text ?? '' });
         }
       }
       if (msg.type === 'automation:testFireResult' && msg.payload.requestId === testFireReqRef.current) {
@@ -598,7 +625,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
   // name the window AFTER picking — which re-reads the number in a space it was never in.
   const anchorPayload = () =>
     draft?.useRelativeCoordinates
-      && (draft.conditionType === 'PixelColorMatch' || draft.conditionType === 'ImageFound')
+      && (draft.conditionType === 'PixelColorMatch' || draft.conditionType === 'ImageFound' || draft.conditionType === 'ScreenText')
       ? {
         anchor: {
           processName: draft.windowProcessName ?? '',
@@ -647,6 +674,29 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
     // virtual-screen (the backend skips the rel-coords round-trip and reports absolute).
     const r = draft.searchRegion;
     send({ type: 'image:testMatch', payload: { requestId: id, absolute: true, ...anchorPayload(), profile: selected, imagePath: draft.imagePath, confidence: draft.imageConfidence || 0.8, ...(r ? { searchRegion: r } : {}) } });
+  };
+
+  const pickTextColor = () => {
+    const id = `autotextcolor-${Date.now()}`;
+    textColorReqRef.current = id;
+    send({ type: 'pixel:pickColor', payload: { requestId: id } });
+  };
+  const testRead = () => {
+    if (!draft) return;
+    const id = `autoread-${Date.now()}`;
+    testReadReqRef.current = id;
+    setTestReadResult(null);
+    const number = draft.ocrReadAs === 'number';
+    const r = draft.searchRegion;
+    send({ type: 'ocr:testRead', payload: {
+      requestId: id, absolute: true, ...anchorPayload(), ...(r ? { searchRegion: r } : {}),
+      readAs: number ? 'number' : null,
+      operator: effectiveOperator(draft.conditionOperator, number),
+      operand: draft.conditionOperand ?? '',
+      match: true,
+      textColor: /^#?[0-9A-Fa-f]{6}$/.test((draft.ocrTextColor ?? '').trim()) ? draft.ocrTextColor : null,
+      tolerance: draft.ocrColorTolerance ?? 70,
+    } });
   };
 
   const selectedEntry = selected ? entryByProfile.get(selected) : undefined;
@@ -1217,7 +1267,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                       o proprio interruptor: com ele desligado a coordenada segue absoluta, que e
                       o que toda automacao existente faz. Os campos de janela sao os MESMOS que o
                       WindowOpen usa; aqui eles respondem 'onde fica', nao 'esta aberta'. */}
-                  {(draft.conditionType === 'PixelColorMatch' || draft.conditionType === 'ImageFound') && (
+                  {(draft.conditionType === 'PixelColorMatch' || draft.conditionType === 'ImageFound' || draft.conditionType === 'ScreenText') && (
                     <>
                       <div className="flex items-center gap-2">
                         <Toggle size="sm" isOn={draft.useRelativeCoordinates}
@@ -1280,7 +1330,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                       coordenada de tela não precisa de legenda, uma ancorada precisa muito, porque
                       40,60 é idêntico nos dois casos. Mesma regra e quase a mesma frase da Sheet. */}
                   {draft.useRelativeCoordinates
-                    && (draft.conditionType === 'PixelColorMatch' || draft.conditionType === 'ImageFound')
+                    && (draft.conditionType === 'PixelColorMatch' || draft.conditionType === 'ImageFound' || draft.conditionType === 'ScreenText')
                     && (
                       <div className="text-[11px] text-text-tertiary flex items-center gap-1.5 flex-wrap">
                         <Crosshair size={11} className="shrink-0 opacity-70" />
@@ -1349,6 +1399,111 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                     </>
                   )}
 
+                  {draft.conditionType === 'ScreenText' && (() => {
+                    const number = draft.ocrReadAs === 'number';
+                    const op = effectiveOperator(draft.conditionOperator, number);
+                    return (
+                    <>
+                      <Field label="Search region" hint={draft.searchRegion ? undefined : 'Required — reading the whole screen every check is too slow.'}>
+                        <div className="flex items-center gap-2">
+                          <div className={`${inputCls} flex-1 flex items-center ${draft.searchRegion ? 'font-mono text-[11px]' : 'text-text-disabled italic'}`}>
+                            {draft.searchRegion
+                              ? `${draft.searchRegion.x}, ${draft.searchRegion.y}  ·  ${draft.searchRegion.w} × ${draft.searchRegion.h}`
+                              : 'Not set'}
+                          </div>
+                          <Button variant="secondary" size="sm" onClick={configureRegion}>
+                            <Frame size={12} /> {'Configure'}
+                          </Button>
+                          {draft.searchRegion && (
+                            <button type="button" onClick={() => patch({ searchRegion: null })}
+                              className="h-7 w-7 shrink-0 flex items-center justify-center rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors">
+                              <X size={13} />
+                            </button>
+                          )}
+                        </div>
+                      </Field>
+                      <Field label="Read as">
+                        <SegmentedControl<'text' | 'number'>
+                          ariaLabel="Read as"
+                          value={number ? 'number' : 'text'}
+                          onChange={(v) => patch({ ocrReadAs: v === 'number' ? 'number' : null, conditionOperator: v === 'number' ? 'eq' : 'contains' })}
+                          options={[
+                            { value: 'text', label: 'Text' },
+                            { value: 'number', label: 'Number', tip: tt('The first number in the region', 'O primeiro número da região') },
+                          ]}
+                        />
+                      </Field>
+                      {number ? (
+                        <Field label="Compare">
+                          <div className="flex items-center gap-2">
+                            <SegmentedControl<'eq' | 'neq' | 'gt' | 'lt'>
+                              ariaLabel="Compare"
+                              value={op as 'eq' | 'neq' | 'gt' | 'lt'}
+                              onChange={(v) => patch({ conditionOperator: v })}
+                              options={[
+                                { value: 'eq', label: '=' },
+                                { value: 'neq', label: '≠' },
+                                { value: 'gt', label: '>' },
+                                { value: 'lt', label: '<' },
+                              ]}
+                            />
+                            <input className={`${inputCls} font-mono`} value={draft.conditionOperand ?? ''} placeholder="30"
+                              onChange={(e) => patch({ conditionOperand: e.target.value })} />
+                          </div>
+                        </Field>
+                      ) : (
+                        <>
+                          <Field label="Match">
+                            <SegmentedControl<'contains' | 'eq' | 'regex'>
+                              ariaLabel="Match"
+                              value={op as 'contains' | 'eq' | 'regex'}
+                              onChange={(v) => patch({ conditionOperator: v })}
+                              options={[
+                                { value: 'contains', label: 'Contains' },
+                                { value: 'eq', label: 'Equals' },
+                                { value: 'regex', label: 'Regex' },
+                              ]}
+                            />
+                          </Field>
+                          <Field label="Text" hint="Ignores case, spaces and accents.">
+                            <input className={`${inputCls} font-mono`} value={draft.conditionOperand ?? ''} placeholder="Victory"
+                              onChange={(e) => patch({ conditionOperand: e.target.value })} />
+                          </Field>
+                        </>
+                      )}
+                      <Field label="Text color" hint={draft.ocrTextColor ? undefined : 'Any. Pick the text color to read game HUDs.'}>
+                        <div className="flex items-center gap-2">
+                          <input className={`${inputCls} font-mono`} value={draft.ocrTextColor ?? ''} placeholder="Any"
+                            onChange={(e) => patch({ ocrTextColor: e.target.value || null })} />
+                          <Button variant="secondary" size="sm" onClick={pickTextColor}>
+                            <Pipette size={12} /> Pick
+                          </Button>
+                          {draft.ocrTextColor && (
+                            <button type="button" onClick={() => patch({ ocrTextColor: null })}
+                              className="h-7 w-7 shrink-0 flex items-center justify-center rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors">
+                              <X size={13} />
+                            </button>
+                          )}
+                        </div>
+                      </Field>
+                      <div className="flex gap-2">
+                        <Button variant="secondary" size="sm" onClick={testRead}>
+                          <ScanText size={12} /> Test read
+                        </Button>
+                      </div>
+                      {testReadResult && (
+                        <div className={`flex items-start gap-1.5 text-[11px] ${testReadResult.ok ? 'text-accent-light' : 'text-text-tertiary'}`}>
+                          {testReadResult.ok ? <Check size={12} className="shrink-0 mt-px" /> : <X size={12} className="shrink-0 mt-px" />}
+                          <span className="break-words">
+                            {testReadResult.error
+                              ? testReadResult.error
+                              : `${testReadResult.ok ? 'Match' : 'No match'} — read: "${testReadResult.text || 'nothing'}"`}
+                          </span>
+                        </div>
+                      )}
+                    </>
+                    );
+                  })()}
                   {draft.conditionType === 'ImageFound' && (
                     <>
                       <Field label="Reference image">

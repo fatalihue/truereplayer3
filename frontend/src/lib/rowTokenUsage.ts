@@ -78,7 +78,9 @@ function tokenFields(action: unknown): unknown[] {
     const condition = String(a.conditionType ?? '').toLowerCase();
     if (condition === 'variable') out.push(a.conditionOperand);
     if (condition === 'fileexists') out.push(a.filePath);
+    if (condition === 'screentext') out.push(a.conditionOperand);
   }
+  if (type === 'waittext') out.push(a.conditionOperand);
   if (type === 'activatewindow') out.push(a.launchPath, a.launchArgs);
   return out;
 }

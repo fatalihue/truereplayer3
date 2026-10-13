@@ -35,6 +35,9 @@ import { parseCoordPair } from '../utils/coordPair';
 import { Field, Section } from './sheet/Field';
 import { WindowTargetFields } from './WindowTargetFields';
 import { Slider } from './sheet/Slider';
+import { ScreenTextFields } from './sheet/ScreenTextFields';
+import { collectOcrEdits, OCR_DEFAULT_TOLERANCE } from './sheet/screenTextEdits';
+import { effectiveOperator } from '../utils/screenText';
 
 interface SheetPanelProps {
   actionIndex: number | null;
@@ -268,7 +271,7 @@ function buildTextSelector(mode: TextMode, raw: string, flags?: string | null): 
 // ActivateWindow 10 s, the rest 5 s). The editor seeds and compares against the same number: it
 // used to show 5000 for every type, so a WaitImage that really waits 30 s read as waiting 5.
 function defaultTimeoutMs(actionType: string): number {
-  if (actionType === 'WaitImage') return 30000;
+  if (actionType === 'WaitImage' || actionType === 'WaitText') return 30000;
   if (actionType === 'ActivateWindow') return 10000;
   return 5000;
 }
@@ -383,7 +386,8 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
   const [variableValue, setVariableValue] = useState('');
   // SetVariable mode: 'set' (default) | 'cycle' (value = list, next line per execution) |
   // 'add' (value = a number added to the current one — the While counter).
-  const [variableMode, setVariableMode] = useState<'set' | 'cycle' | 'add'>('set');
+  // 'screen' = read the text (or number) of a screen region with OCR.
+  const [variableMode, setVariableMode] = useState<'set' | 'cycle' | 'add' | 'screen'>('set');
   // CopyToSlot mode: 'capture' (default) | 'clear' (empty the slot / all slots).
   const [slotMode, setSlotMode] = useState<'capture' | 'clear'>('capture');
   // Imperative handle to the Lexical-based BrowserType editor — used by the chip
@@ -505,6 +509,14 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
   // While iteration ceiling — string for clearability, non-negative int on persist.
   // 0 = the engine's 1000-iteration safety default.
   const [loopMaxIterations, setLoopMaxIterations] = useState('0');
+  // Screen text (OCR) — Wait for Text, the Screen Text condition and Set Variable's Screen mode.
+  // Region reuses waitImageSearchRegion, the operand reuses conditionOperand, the wait knobs reuse
+  // the WaitImage ones; these hold what is the family's own. Persisted by collectOcrEdits.
+  const [ocrReadAs, setOcrReadAs] = useState<'text' | 'number'>('text');
+  const [ocrTextOp, setOcrTextOp] = useState<'contains' | 'eq' | 'regex'>('contains');
+  const [ocrNumberOp, setOcrNumberOp] = useState<'eq' | 'neq' | 'gt' | 'lt'>('eq');
+  const [ocrTextColor, setOcrTextColor] = useState('');
+  const [ocrColorTolerance, setOcrColorTolerance] = useState(String(OCR_DEFAULT_TOLERANCE));
 
   // Eyedropper / live-test request tracking — mirrors the WaitImage testMatch /
   // mouse:pickPosition pattern. Single in-flight request at a time; the requestId
@@ -892,7 +904,16 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
       setConfidence(String(Math.round((action.confidence || 0.8) * 100)));
       setBrowserText(action.browserText || '');
       setVariableValue(action.variableValue ?? '');
-      setVariableMode(action.variableMode === 'cycle' || action.variableMode === 'add' ? action.variableMode : 'set');
+      setVariableMode(action.variableMode === 'cycle' || action.variableMode === 'add' || action.variableMode === 'screen' ? action.variableMode : 'set');
+      {
+        const number = action.ocrReadAs === 'number';
+        const op = effectiveOperator(action.conditionOperator, number);
+        setOcrReadAs(number ? 'number' : 'text');
+        setOcrTextOp(number ? 'contains' : (op as 'contains' | 'eq' | 'regex'));
+        setOcrNumberOp(number ? (op as 'eq' | 'neq' | 'gt' | 'lt') : 'eq');
+        setOcrTextColor(action.ocrTextColor ?? '');
+        setOcrColorTolerance(String(action.ocrColorTolerance ?? OCR_DEFAULT_TOLERANCE));
+      }
       setSlotMode(action.slotMode === 'clear' ? 'clear' : 'capture');
       setNewTab(action.newTab || false);
       setWaitMode(action.waitMode || 'appears');
@@ -1038,6 +1059,15 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
   /* eslint-enable react-hooks/set-state-in-effect */
 
 
+  // Everything the screen-text family persists, in the shape collectOcrEdits reads. Declared
+  // above handleSave and hasFieldEdits so both close over the same object (no forward reference).
+  const ocrEditState = useMemo(() => ({
+    actionType, variableMode, region: waitImageSearchRegion, readAs: ocrReadAs, textOp: ocrTextOp, numberOp: ocrNumberOp,
+    operand: conditionOperand, textColor: ocrTextColor, tolerance: ocrColorTolerance, timeout,
+    defaultTimeoutMs: defaultTimeoutMs(actionType), onTimeout: waitImageOnTimeout, clickOnMatch: waitImageClickOnMatch,
+    waitMode, conditionTimeout,
+  }), [actionType, variableMode, waitImageSearchRegion, ocrReadAs, ocrTextOp, ocrNumberOp, conditionOperand, ocrTextColor, ocrColorTolerance, timeout, waitImageOnTimeout, waitImageClickOnMatch, waitMode, conditionTimeout]);
+
   const handleSave = useCallback(() => {
     if (actionIndex == null || !action) return;
 
@@ -1169,6 +1199,9 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
     // WaitImage-specific fields — also runs for IF Image rows (_isIfImage), but
     // the polling-only knobs (timeout, waitImageOnTimeout, waitImageInvert,
     // waitImageClickOnMatch) are gated inside so they don't leak into IF rows.
+    // Screen text (OCR) rows — one pure function shared with hasFieldEdits (parity by construction).
+    for (const e of collectOcrEdits(action, ocrEditState)) edit(e.field, e.value);
+
     if (actionType === 'WaitImage' || _isIfImage) {
       if (actionType === 'WaitImage') {
         const newTimeoutMs = Math.max(1000, parseFloat(timeout) || defaultTimeoutMs('WaitImage'));
@@ -1479,7 +1512,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
       if (variableValue !== (action.variableValue ?? '')) {
         edit('variableValue', variableValue);
       }
-      const currentVarMode = action.variableMode === 'cycle' || action.variableMode === 'add' ? action.variableMode : 'set';
+      const currentVarMode = action.variableMode === 'cycle' || action.variableMode === 'add' || action.variableMode === 'screen' ? action.variableMode : 'set';
       if (variableMode !== currentVarMode) {
         // Backend persists only the non-default modes ('cycle', 'add'); 'set' round-trips to null on disk.
         edit('variableMode', variableMode === 'set' ? '' : variableMode);
@@ -1613,7 +1646,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
     // from actionType + action.conditionType which are already in the array, so the
     // callback rebinds whenever those change. Listing the derived flags would also
     // be a forward-reference error (they're declared further down the component body).
-  }, [actionIndex, action, actionType, formDraft, initialForm, effectiveSelector, x, y, delay, comment, repeatCount, repeatGapMs, jitterOn, jitterPct, posJitterOn, posJitterPx, atCursor, holdMs, timeout, confidence, browserText, variableValue, variableMode, slotMode, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, waitImageOnTimeout, waitImageInvert, waitImageClickOnMatch, waitImageSearchRegion, pixelX, pixelY, pixelColor, pixelTolerance, pixelOnTimeout, pixelInvert, pixelClickOnMatch, conditionNegate, ifOnProbeError, conditionTimeout, loopMaxIterations, windowProcessName, windowTitle, windowTitleMatchMode, windowMatchForegroundOnly, clipboardPatternType, clipboardPattern, randomPercent, conditionOperator, conditionOperand, filePath, timeStart, timeEnd, daysOfWeek, launchPath, launchArgs, activateOnTimeout, restorePosition, restoreSize, windowX, windowY, windowWidth, windowHeight, windowVerb, matchIndex, assertOnFail, alternatives, pickedThisSession, send, onClose,
+  }, [actionIndex, action, actionType, formDraft, initialForm, effectiveSelector, x, y, delay, comment, repeatCount, repeatGapMs, jitterOn, jitterPct, posJitterOn, posJitterPx, atCursor, holdMs, timeout, confidence, browserText, variableValue, variableMode, slotMode, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, waitImageOnTimeout, waitImageInvert, waitImageClickOnMatch, waitImageSearchRegion, pixelX, pixelY, pixelColor, pixelTolerance, pixelOnTimeout, pixelInvert, pixelClickOnMatch, conditionNegate, ifOnProbeError, conditionTimeout, loopMaxIterations, windowProcessName, windowTitle, windowTitleMatchMode, windowMatchForegroundOnly, clipboardPatternType, clipboardPattern, randomPercent, conditionOperator, conditionOperand, filePath, timeStart, timeEnd, daysOfWeek, launchPath, launchArgs, activateOnTimeout, restorePosition, restoreSize, windowX, windowY, windowWidth, windowHeight, windowVerb, matchIndex, assertOnFail, alternatives, pickedThisSession, ocrEditState, send, onClose,
     // The two booleans, never the buttonStates object: it is republished on unrelated events
     // and this callback already rebuilds on every keystroke.
     refuseDuringRun]);
@@ -1679,6 +1712,8 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
       // to close and Cancel read "Discard" with nothing to discard.
       if (isClickHold(actionType) && clampHoldMs(holdMs) !== rowDwellMs(action)) return true;
     }
+
+    if (collectOcrEdits(action, ocrEditState).length > 0) return true;
 
     if (actionType === 'WaitImage' || _isIfImage) {
       if (actionType === 'WaitImage') {
@@ -1834,7 +1869,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
 
     if (actionType === 'SetVariable') {
       if (variableValue !== (action.variableValue ?? '')) return true;
-      const currentVarMode = action.variableMode === 'cycle' || action.variableMode === 'add' ? action.variableMode : 'set';
+      const currentVarMode = action.variableMode === 'cycle' || action.variableMode === 'add' || action.variableMode === 'screen' ? action.variableMode : 'set';
       if (variableMode !== currentVarMode) return true;
     }
 
@@ -1881,7 +1916,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
     }
 
     return false;
-  }, [actionIndex, action, actionType, effectiveSelector, x, y, delay, comment, repeatCount, repeatGapMs, jitterOn, jitterPct, posJitterOn, posJitterPx, atCursor, holdMs, timeout, confidence, browserText, variableValue, variableMode, slotMode, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, waitImageOnTimeout, waitImageInvert, waitImageClickOnMatch, waitImageSearchRegion, pixelX, pixelY, pixelColor, pixelTolerance, pixelOnTimeout, pixelInvert, pixelClickOnMatch, conditionNegate, ifOnProbeError, conditionTimeout, loopMaxIterations, windowProcessName, windowTitle, windowTitleMatchMode, windowMatchForegroundOnly, clipboardPatternType, clipboardPattern, randomPercent, conditionOperator, conditionOperand, filePath, timeStart, timeEnd, daysOfWeek, launchPath, launchArgs, activateOnTimeout, restorePosition, restoreSize, windowX, windowY, windowWidth, windowHeight, windowVerb, matchIndex, assertOnFail, alternatives, pickedThisSession]);
+  }, [actionIndex, action, actionType, effectiveSelector, x, y, delay, comment, repeatCount, repeatGapMs, jitterOn, jitterPct, posJitterOn, posJitterPx, atCursor, holdMs, timeout, confidence, browserText, variableValue, variableMode, slotMode, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, waitImageOnTimeout, waitImageInvert, waitImageClickOnMatch, waitImageSearchRegion, pixelX, pixelY, pixelColor, pixelTolerance, pixelOnTimeout, pixelInvert, pixelClickOnMatch, conditionNegate, ifOnProbeError, conditionTimeout, loopMaxIterations, windowProcessName, windowTitle, windowTitleMatchMode, windowMatchForegroundOnly, clipboardPatternType, clipboardPattern, randomPercent, conditionOperator, conditionOperand, filePath, timeStart, timeEnd, daysOfWeek, launchPath, launchArgs, activateOnTimeout, restorePosition, restoreSize, windowX, windowY, windowWidth, windowHeight, windowVerb, matchIndex, assertOnFail, alternatives, pickedThisSession, ocrEditState]);
 
   // Powers the dirty-aware Esc guard (a reflexive Esc arms a warning instead of discarding). The
   // form is a draft like any other field, so it has to reach the dirty check — otherwise Save
@@ -2672,6 +2707,8 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
   const isIfProcess = hasCondition && action?.conditionType === 'ProcessRunning';
   const isIfFile = hasCondition && action?.conditionType === 'FileExists';
   const isIfTime = hasCondition && action?.conditionType === 'TimeWindow';
+  const isIfScreenText = hasCondition && action?.conditionType === 'ScreenText';
+  const isWaitText = actionType === 'WaitText';
   const isConditional = isIf || isElseIf || isElse || isEndIf;
   const isBrowserType = actionType === 'BrowserType';
   const isBrowserNavigate = actionType === 'BrowserNavigate';
@@ -2829,11 +2866,13 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
     : isCopyToSlot ? 'Copy to Slot'
     : isActivateWindow ? 'Activate Window'
     : isWaitPixelColor ? 'Wait Pixel Color'
+    : isWaitText ? 'Wait Text'
     // The isIfX flags now mean "this row HAS condition X" (they cover Assert too), so the
     // prefix must come from the row's actual TYPE — otherwise an Assert row's drawer headline
     // reads "If Window Open", i.e. it names the one action it is deliberately NOT.
     : isIfImage ? `${condPrefix} Image Found`
     : isIfPixel ? `${condPrefix} Pixel Color Match`
+    : isIfScreenText ? `${condPrefix} Screen Text`
     : isIfWindow ? `${condPrefix} Window Open`
     : isIfClipboard ? `${condPrefix} Clipboard`
     : isIfBrowser ? `${condPrefix} Browser Element`
@@ -2883,6 +2922,8 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
     : (actionType === 'Keystroke' || actionType === 'KeyDown' || actionType === 'KeyUp' || actionType === 'HoldKey') ? 'var(--color-action-key-fg)'
     : (isIf || isElseIf || isElse || isEndIf) ? 'var(--color-action-if-fg)'
     : (actionType === 'Stop' || actionType === 'Return') ? 'var(--color-action-flow-fg, var(--color-action-pause-fg))'
+    : (actionType === 'WaitImage' || actionType === 'WaitPixelColor' || actionType === 'WaitText')
+      ? 'var(--color-action-waitimage-fg)'
     : (isWhile || actionType === 'EndLoop' || actionType === 'BreakLoop'
         || actionType === 'ContinueLoop' || actionType === 'ForEachRow')
       ? 'var(--color-action-loop-fg, var(--color-action-if-fg))'
@@ -3149,7 +3190,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   state checks (Clipboard/Variable/Random/Time) read Met/NOT Met. Same
                   conditionNegate boolean write either way. */}
               {(() => {
-                const met = isIfClipboard || isIfVariable || isIfRandom || isIfTime;
+                const met = isIfClipboard || isIfVariable || isIfRandom || isIfTime || isIfScreenText;
                 return (
                   <SegmentedControl<'found' | 'not'>
                     ariaLabel="Condition polarity"
@@ -3701,6 +3742,78 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
               row can only be reached by hand-editing a profile today (HandleActionsInsertAssert
               deliberately refuses Image/Pixel), which is precisely why the gate was worth fixing
               while it is still latent rather than after someone hits it. */}
+          {/* Screen text (OCR) — Wait for Text and the Screen Text condition share ONE editor block
+              (sheet/ScreenTextFields); the wait adds the WaitImage knobs below it. */}
+          {(isWaitText || isIfScreenText) && (
+            <>
+              <ScreenTextFields
+                variant="match"
+                hideMatcher={isWaitText && waitMode === 'changes'}
+                region={waitImageSearchRegion}
+                onConfigureRegion={handleConfigureSearchRegion}
+                onRegionChange={setWaitImageSearchRegion}
+                readAs={ocrReadAs} onReadAsChange={setOcrReadAs}
+                textOp={ocrTextOp} onTextOpChange={setOcrTextOp}
+                numberOp={ocrNumberOp} onNumberOpChange={setOcrNumberOp}
+                operand={conditionOperand} onOperandChange={setConditionOperand}
+                textColor={ocrTextColor} onTextColorChange={setOcrTextColor}
+                tolerance={ocrColorTolerance} onToleranceChange={setOcrColorTolerance}
+              />
+              {isWaitText && (
+                <>
+                  <Field label="Wait Until">
+                    <SegmentedControl<'appears' | 'disappears' | 'changes'>
+                      ariaLabel="Wait until"
+                      grow
+                      value={waitMode === 'disappears' || waitMode === 'changes' ? waitMode : 'appears'}
+                      onChange={setWaitMode}
+                      options={[
+                        { value: 'appears', label: 'Appears' },
+                        { value: 'disappears', label: 'Disappears' },
+                        { value: 'changes', label: 'Changes', tip: tt('Waits for the region to read something else', 'Espera a região mostrar outra coisa') },
+                      ]}
+                    />
+                  </Field>
+                  <div className="flex gap-2.5">
+                    <Field label="Timeout" className="w-31 shrink-0">
+                      <NumberInput
+                        value={(() => { const n = parseFloat(timeout); return Number.isFinite(n) && n > 0 ? n : 5000; })()}
+                        onChange={(n) => setTimeout_(String(n))}
+                        min={1000}
+                        step={1000}
+                        thousands
+                        suffix="ms" suffixInside
+                        inputWidth="w-full"
+                        inputHeight="h-8"
+                        className="w-full"
+                        ariaLabel="Timeout in milliseconds"
+                      />
+                    </Field>
+                    <Field label="On Timeout" className="flex-1">
+                      <SegmentedControl<'StopReplay' | 'Continue'>
+                        ariaLabel="On timeout"
+                        grow
+                        value={waitImageOnTimeout === 'Continue' ? 'Continue' : 'StopReplay'}
+                        onChange={(v) => setWaitImageOnTimeout(v)}
+                        options={[
+                          { value: 'StopReplay', label: 'Halt' },
+                          { value: 'Continue', label: 'Continue' },
+                        ]}
+                      />
+                    </Field>
+                  </div>
+                  {waitMode !== 'disappears' && waitMode !== 'changes' && (
+                    <Checkbox
+                      checked={waitImageClickOnMatch}
+                      onChange={setWaitImageClickOnMatch}
+                      label="Click on found location"
+                    />
+                  )}
+                </>
+              )}
+            </>
+          )}
+
           {(isWaitImage || isIfImage) && (
           <>
             {/* Thumbnail + Recapture + Test match — thumbnail is clickable to open the cropper
@@ -4797,7 +4910,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 />
               </Field>
               <Field label="Mode">
-                <SegmentedControl<'set' | 'cycle' | 'add'>
+                <SegmentedControl<'set' | 'cycle' | 'add' | 'screen'>
                   ariaLabel="Variable mode"
                   grow
                   value={variableMode}
@@ -4806,9 +4919,40 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                     { value: 'set', label: 'Set' },
                     { value: 'cycle', label: 'Cycle' },
                     { value: 'add', label: 'Add' },
+                    { value: 'screen', label: 'Screen', tip: tt('Reads text from a region of the screen (OCR)', 'Lê o texto de uma região da tela (OCR)') },
                   ]}
                 />
               </Field>
+              {variableMode === 'screen' ? (
+                <>
+                  <ScreenTextFields
+                    variant="read"
+                    region={waitImageSearchRegion}
+                onConfigureRegion={handleConfigureSearchRegion}
+                onRegionChange={setWaitImageSearchRegion}
+                readAs={ocrReadAs} onReadAsChange={setOcrReadAs}
+                textOp={ocrTextOp} onTextOpChange={setOcrTextOp}
+                numberOp={ocrNumberOp} onNumberOpChange={setOcrNumberOp}
+                operand={conditionOperand} onOperandChange={setConditionOperand}
+                textColor={ocrTextColor} onTextColorChange={setOcrTextColor}
+                tolerance={ocrColorTolerance} onToleranceChange={setOcrColorTolerance}
+                  />
+                  <Field label="Wait Up To" hint="0 = read once. Nothing read deletes the variable.">
+                    <NumberInput
+                      value={Math.max(0, parseInt(conditionTimeout, 10) || 0)}
+                      onChange={(n) => setConditionTimeout(String(n))}
+                      min={0}
+                      step={500}
+                      thousands
+                      suffix="ms" suffixInside
+                      inputWidth="w-full"
+                      inputHeight="h-8"
+                      className="w-[124px]"
+                      ariaLabel="Wait up to, in milliseconds"
+                    />
+                  </Field>
+                </>
+              ) : (
               <Field
                 label={variableMode === 'cycle' ? 'List (one item per line)' : variableMode === 'add' ? 'Amount' : 'Value'}
                 hint={variableMode === 'cycle'
@@ -4826,6 +4970,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   className="w-full min-h-[3.25rem] px-2 py-1.5 text-ui font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid resize-y"
                 />
               </Field>
+              )}
             </>
           )}
 

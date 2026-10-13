@@ -2512,6 +2512,15 @@ namespace TrueReplayer
                 OnHotkeyPressed?.Invoke(combo);
                 return GlobalHotkeyResult.Handled;
             }
+            // Copy screen text (OCR → clipboard): the same half of the split as Capture Slot — a
+            // one-shot read with nothing to stop. Empty = disabled (the default).
+            if (!string.IsNullOrEmpty(UserProfile.Current.CopyScreenTextHotkey)
+                && combo == UserProfile.Current.CopyScreenTextHotkey)
+            {
+                if (PassThroughWhileProfileKeysOff(combo)) return GlobalHotkeyResult.NotMatched;
+                OnHotkeyPressed?.Invoke(combo);
+                return GlobalHotkeyResult.Handled;
+            }
             return GlobalHotkeyResult.NotMatched;
         }
 
@@ -3367,6 +3376,18 @@ namespace TrueReplayer
                             if (ShouldCancelMenuFor(key)) InjectMenuCancelKey();
                             return SwallowHotkey(key);
                         }
+                        // Copy screen text — same treatment as Capture Slot above.
+                        if (!string.IsNullOrEmpty(UserProfile.Current.CopyScreenTextHotkey)
+                            && key == UserProfile.Current.CopyScreenTextHotkey)
+                        {
+                            if (PassThroughWhileProfileKeysOff(key))
+                            {
+                                PassThroughRecordsDown(keyName);
+                                return NativeMethods.CallNextHookEx(_keyboardHookId, nCode, wParam, lParam);
+                            }
+                            if (ShouldCancelMenuFor(key)) InjectMenuCancelKey();
+                            return SwallowHotkey(key);
+                        }
                     }
                     else
                     {
@@ -3414,6 +3435,13 @@ namespace TrueReplayer
                         }
                         if (!string.IsNullOrEmpty(UserProfile.Current.CaptureSlotHotkey)
                             && key == UserProfile.Current.CaptureSlotHotkey)
+                        {
+                            if (!UserProfile.Current.ProfileKeyEnabled)
+                                return NativeMethods.CallNextHookEx(_keyboardHookId, nCode, wParam, lParam);
+                            return (IntPtr)1;
+                        }
+                        if (!string.IsNullOrEmpty(UserProfile.Current.CopyScreenTextHotkey)
+                            && key == UserProfile.Current.CopyScreenTextHotkey)
                         {
                             if (!UserProfile.Current.ProfileKeyEnabled)
                                 return NativeMethods.CallNextHookEx(_keyboardHookId, nCode, wParam, lParam);

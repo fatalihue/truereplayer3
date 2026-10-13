@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useContext, createContext } from 'react';
-import { Timer, TimerReset, Mic, Zap, Monitor, ChevronDown, ChevronRight, ChevronsLeft, ChevronsRight, MousePointerClick, Palette, Gamepad2, AlertTriangle, Power, BellRing, X, ArrowLeftRight, Crosshair, Hourglass, SlidersHorizontal, RotateCcw } from 'lucide-react';
+import { Timer, TimerReset, Mic, Zap, Monitor, ChevronDown, ChevronRight, ChevronsLeft, ChevronsRight, MousePointerClick, Palette, Gamepad2, AlertTriangle, Power, BellRing, X, ArrowLeftRight, Crosshair, Hourglass, SlidersHorizontal, RotateCcw, ScanText, Frame } from 'lucide-react';
 import { APP_VERSION } from '../appVersion';
 import { RemapSection, type RemapDraft } from './RemapSection';
 import { useLanguage, useTt } from '../state/LanguageContext';
@@ -30,6 +30,23 @@ function CompactToggle(props: { isOn: boolean; onChange: (v: boolean) => void; d
 // ~86px at 12px Consolas) ONLY because HotkeyInput uses px-1.5 padding (88px content box —
 // see the comment there); together with the reserved scrollbar gutter no row label wraps.
 const FIELD_W = 'w-[100px]';
+
+// OCR language picker labels. Windows' display names carry the region ("English (United
+// States)", 176 px) and never fit a settings field, so a pack shows its bare language name —
+// "Português", "English" — and the region subtag joins it only when two installed packs share
+// that name ("English (US)" + "English (GB)"), the one case where the region tells them apart.
+// The full tag would not do: "English (en-US)" is 115 px against the field's ~92 px of text.
+function ocrLanguageOptions(langs: { tag: string; name: string }[]) {
+  // Full-width parentheses too: Windows names Chinese "中文(中华人民共和国)".
+  const base = (n: string) => n.replace(/\s*[(（].*[)）]\s*$/, '').trim() || n;
+  const count = new Map<string, number>();
+  for (const l of langs) count.set(base(l.name), (count.get(base(l.name)) ?? 0) + 1);
+  return langs.map(l => {
+    const b = base(l.name);
+    const region = l.tag.split('-').slice(1).join('-') || l.tag;
+    return { value: l.tag, label: (count.get(b) ?? 0) > 1 ? `${b} (${region})` : b };
+  });
+}
 
 // Upper bounds for the timing / scatter fields — typing past these snaps back to the cap on
 // commit (blur/Enter). A typo-guard (stops an accidental extra zero making a macro appear to
@@ -1248,8 +1265,16 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
   // FilterContext.Provider wrapper in the tab content, and re-add `Search` to the lucide import.
   // const [query, setQuery] = useState('');
 
+  // OCR recognizer languages installed on THIS PC — asked for whenever the App tab opens, since a
+  // language pack can be added while the app runs.
+  const [ocrLangs, setOcrLangs] = useState<{ available: { tag: string; name: string }[]; auto: string | null } | null>(null);
+  useEffect(() => {
+    if (activeTab === 'app') send({ type: 'ocr:languages', payload: {} });
+  }, [activeTab, send]);
+
   useEffect(() => {
     return subscribe((msg) => {
+      if (msg.type === 'ocr:languagesResult') setOcrLangs(msg.payload);
       if (msg.type === 'update:available') setUpdateStatus('idle');
       if (msg.type === 'update:none') setUpdateStatus('up-to-date');
       if (msg.type === 'update:error') setUpdateStatus('error');
@@ -1380,6 +1405,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
     // armed dot on the profile rail's avatars (same color, same meaning).
     { tab: 'app', title: 'Automation', icon: TimerReset,
       ...(anyTriggerArmed ? { dot: 'var(--color-replay)', tip: `Automation · ${tt('armed', 'armada')}` } : {}) },
+    { tab: 'app', title: 'Screen Text', icon: ScanText },
     { tab: 'app', title: 'Interface', icon: Palette },
   ];
 
@@ -1772,6 +1798,58 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                   onChange={changeHotkey}
                 />
               </SettingRow>
+              {/* Copy screen text: hotkey → OCR → clipboard. Empty = off (the default). The
+                  region below is "Ask" (drag one each time) or a fixed one, absolute like the
+                  Clicker area — a global hotkey has no profile window to be relative to. */}
+              <SettingRow
+                label="Screen Text"
+                tooltip={tt('Read a screen region → clipboard', 'Lê uma região da tela → clipboard')}
+              >
+                <HotkeyInput
+                  value={settings.copyScreenTextHotkey ?? ''}
+                  settingKey="copyScreenTextHotkey"
+                  onChange={changeHotkey}
+                />
+              </SettingRow>
+              <SettingRow label="Text Region">
+                {(() => {
+                  const parts = (settings.copyScreenTextRegion ?? '').split(',').map(Number);
+                  const isSet = parts.length === 4 && parts[2] > 0 && parts[3] > 0;
+                  const off = !settings.copyScreenTextHotkey;
+                  return (
+                    <div className={`${FIELD_W} h-7 flex items-center rounded border border-border-default bg-bg-input ${off ? 'opacity-50' : ''}`}>
+                      <button
+                        type="button"
+                        disabled={off}
+                        onClick={() => send({ type: 'ocr:configureHotkeyRegion', payload: {} })}
+                        className="flex-1 min-w-0 h-full flex items-center justify-between gap-1 px-2 cursor-pointer disabled:cursor-not-allowed hover:underline disabled:no-underline"
+                        data-tip-pos="left"
+                        data-tip={off
+                          ? tt('Set the hotkey first', 'Defina o atalho primeiro')
+                          : isSet
+                            ? tt(`${parts[2]}×${parts[3]} at (${parts[0]}, ${parts[1]}) — click to redraw`, `${parts[2]}×${parts[3]} em (${parts[0]}, ${parts[1]}) — clique para redesenhar`)
+                            : tt('Drag a region each time — click to fix one', 'Arraste uma região a cada vez — clique para fixar uma')}
+                      >
+                        <span className={`truncate ${isSet ? 'text-[10px] font-mono text-text-primary' : 'text-[11px] text-text-secondary'}`}>
+                          {isSet ? `${parts[2]}×${parts[3]}` : 'Ask'}
+                        </span>
+                        <Frame size={11} className="shrink-0 text-text-tertiary" />
+                      </button>
+                      {isSet && !off && (
+                        <button
+                          type="button"
+                          onClick={() => changeSetting('copyScreenTextRegion', '')}
+                          className="h-full px-1.5 flex items-center text-text-tertiary hover:text-text-primary"
+                          data-tip-pos="left"
+                          data-tip={tt('Back to dragging a region each time', 'Voltar a arrastar uma região a cada vez')}
+                        >
+                          <X size={11} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
+              </SettingRow>
             </Section>
 
             {/* Clicker Start/Pause — moved here from the Profile tab so every key lives in
@@ -1892,6 +1970,36 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                 >
                   Manage <ChevronRight size={12} />
                 </button>
+              </SettingRow>
+            </Section>
+
+            {/* Screen Text — the OCR engine's language (Windows OCR packs installed on this PC).
+                Auto = the user's profile languages. Read by Wait for Text, the Screen Text
+                condition, Set Variable's Screen mode, the watcher and the Copy screen text hotkey. */}
+            <Section title="Screen Text">
+              <SettingRow
+                label="Language"
+                tooltip={tt('Text recognition language — the Windows OCR packs on this PC. Add more in Windows Settings → Language.', 'Idioma do reconhecimento de texto — os pacotes de OCR do Windows neste PC. Adicione mais em Configurações do Windows → Idioma.')}
+              >
+                {ocrLangs && ocrLangs.available.length === 0 ? (
+                  <span className="text-ui text-warning-ink" data-tip-pos="left"
+                    data-tip={tt('Windows Settings → Time & language → Language & region → add a language with "Optical character recognition".', 'Configurações do Windows → Hora e idioma → Idioma e região → adicione um idioma com "Reconhecimento óptico de caracteres".')}>
+                    None installed
+                  </span>
+                ) : (
+                  <ComboInput
+                    value={settings.ocrLanguage ?? ''}
+                    onCommit={(v) => changeSetting('ocrLanguage', v)}
+                    options={[
+                      { value: '', label: ocrLangs?.auto ? `Auto (${ocrLangs.auto})` : 'Auto' },
+                      ...ocrLanguageOptions(ocrLangs?.available ?? []),
+                    ]}
+                    // 118, not the 132 of Tooltips: "Language" needs 56 px of label, and the
+                    // short names fit where Windows' full ones never did.
+                    width="w-[118px]"
+                    editable={false}
+                  />
+                )}
               </SettingRow>
             </Section>
 

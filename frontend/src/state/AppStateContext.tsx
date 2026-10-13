@@ -63,6 +63,10 @@ const defaultSettings = {
   // Mirrors AppSettings.CaptureSlotHotkey so there's no wrong-value flash before
   // settings:loaded arrives. Empty still means disabled if the user clears it.
   captureSlotHotkey: 'Win+Ctrl+C',
+  // Mirrors AppSettings.CopyScreenTextHotkey (HotkeyDefaults.CopyScreenText).
+  copyScreenTextHotkey: 'Win+F12',
+  copyScreenTextRegion: '',
+  ocrLanguage: '',
   alwaysOnTop: false,
   minimizeToTray: true,
   runOnStartup: true,

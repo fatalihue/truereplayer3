@@ -110,6 +110,7 @@ namespace TrueReplayer.Services
             {
                 "WaitImage" => "Wait Image",
                 "WaitPixelColor" => "Pixel Color",
+                "WaitText" => "Wait Text",
                 "BrowserClick" => "Click Element",
                 "BrowserRightClick" => "Right Click Element",
                 "BrowserType" => "Type Text",

@@ -343,7 +343,7 @@ namespace TrueReplayer
                 "ScrollUp", "ScrollDown",
                 "KeyDown", "KeyUp", "HoldKey", "Keystroke",
                 "SendText", "SetVariable", "CopyToSlot", "ActivateWindow",
-                "WaitImage", "WaitPixelColor", "Pause", "RunProfile",
+                "WaitImage", "WaitPixelColor", "WaitText", "Pause", "RunProfile",
                 // "Assert" is a LEAF condition row (ActionExecution's `case "Assert"` →
                 // ExecuteAssert), not a block type, which is how it came to be missed here while
                 // If/Else/EndIf were listed. Omitting it made this allowlist reject a real
@@ -1017,6 +1017,9 @@ namespace TrueReplayer
                     case "clicker:deletePreset": HandleDeleteClickerPreset(payload); break;
                     case "waitimage:cropReference": HandleCropReference(payload); break;
                     case "image:testMatch": _ = HandleTestMatchAsync(payload); break;
+                    case "ocr:testRead": _ = HandleOcrTestReadAsync(payload); break;
+                    case "ocr:languages": HandleOcrLanguages(); break;
+                    case "ocr:configureHotkeyRegion": _ = HandleConfigureCopyScreenTextRegionAsync(); break;
                     case "mouse:pickPosition": _ = HandleMousePickPositionAsync(payload); break;
                     case "pixel:pickColor": _ = HandlePixelColorPickAsync(payload); break;
                     case "pixel:testMatch": HandlePixelColorTestMatch(payload); break;
@@ -1381,6 +1384,9 @@ namespace TrueReplayer
                 randomPercent = a.RandomPercent,
                 conditionOperator = a.ConditionOperator,
                 conditionOperand = a.ConditionOperand,
+                ocrReadAs = a.OcrReadAs,
+                ocrTextColor = a.OcrTextColor,
+                ocrColorTolerance = a.OcrColorTolerance,
                 filePath = a.FilePath,
                 timeStart = a.TimeStart,
                 timeEnd = a.TimeEnd,
@@ -1700,6 +1706,11 @@ namespace TrueReplayer
                 ? new { x = t.SearchRegionX ?? 0, y = t.SearchRegionY ?? 0, w, h }
                 : null,
             clipboardPattern = t.ClipboardPattern,
+            conditionOperator = t.ConditionOperator,
+            conditionOperand = t.ConditionOperand,
+            ocrReadAs = t.OcrReadAs,
+            ocrTextColor = t.OcrTextColor,
+            ocrColorTolerance = t.OcrColorTolerance,
             cooldownSeconds = t.CooldownSeconds,
             retrigger = t.Retrigger,
             pollIntervalMs = t.PollIntervalMs,
@@ -1782,6 +1793,22 @@ namespace TrueReplayer
                 }
             }
             if (el.TryGetProperty("clipboardPattern", out v) && v.ValueKind == JsonValueKind.String) t.ClipboardPattern = v.GetString();
+            // ScreenText fields — kept only for that type, so switching an automation away from it
+            // leaves no residue in the file (the other types stay byte-identical).
+            if (string.Equals(t.ConditionType, "ScreenText", StringComparison.OrdinalIgnoreCase))
+            {
+                bool number = el.TryGetProperty("ocrReadAs", out v) && v.ValueKind == JsonValueKind.String && v.GetString() == "number";
+                t.OcrReadAs = number ? "number" : null;
+                if (el.TryGetProperty("conditionOperator", out v) && v.ValueKind == JsonValueKind.String)
+                    t.ConditionOperator = ScreenTextMatcher.EffectiveOperator(v.GetString(), number);
+                if (el.TryGetProperty("conditionOperand", out v) && v.ValueKind == JsonValueKind.String)
+                    t.ConditionOperand = string.IsNullOrEmpty(v.GetString()) ? null : v.GetString();
+                if (el.TryGetProperty("ocrTextColor", out v) && v.ValueKind == JsonValueKind.String
+                    && PixelColorService.ParseHex(v.GetString()) is System.Drawing.Color oc)
+                    t.OcrTextColor = $"#{oc.R:X2}{oc.G:X2}{oc.B:X2}";
+                if (el.TryGetProperty("ocrColorTolerance", out v) && TryGetWhole(v, out var octol))
+                    t.OcrColorTolerance = Math.Clamp(octol, 0, 255);
+            }
             if (el.TryGetProperty("cooldownSeconds", out v) && TryGetWhole(v, out var cd)) t.CooldownSeconds = cd;
             if (el.TryGetProperty("retrigger", out v) && v.ValueKind == JsonValueKind.String) t.Retrigger = v.GetString();
             if (el.TryGetProperty("useRelativeCoordinates", out v) && (v.ValueKind == JsonValueKind.True || v.ValueKind == JsonValueKind.False))
@@ -3176,6 +3203,9 @@ namespace TrueReplayer
                 foregroundHotkey = profile.ForegroundHotkey,
                 modeToggleHotkey = profile.ModeToggleHotkey,
                 captureSlotHotkey = profile.CaptureSlotHotkey,
+                copyScreenTextHotkey = profile.CopyScreenTextHotkey,
+                copyScreenTextRegion = profile.CopyScreenTextRegion,
+                ocrLanguage = OcrService.PreferredLanguage,
                 alwaysOnTop = profile.AlwaysOnTop,
                 minimizeToTray = profile.MinimizeToTray,
                 runOnStartup = appSettings.RunOnStartup,
@@ -4944,7 +4974,7 @@ namespace TrueReplayer
                 case "variableMode":
                     // Only the non-default modes ("cycle", "add") are persisted; "set" stays null on
                     // disk (same convention as waitImageOnTimeout / activateOnTimeout).
-                    action.VariableMode = value is "cycle" or "add" ? value : null;
+                    action.VariableMode = value is "cycle" or "add" or "screen" ? value : null;
                     break;
                 case "slotMode":
                     // CopyToSlot: only the non-default "clear" is persisted; "capture"
@@ -5026,8 +5056,31 @@ namespace TrueReplayer
                     break;
                 case "conditionOperator":
                     // If Variable: eq (default) | neq | contains | gt | lt. Default stays null on disk.
+                    // Screen-text rows (Wait for Text, a ScreenText condition) store the operator
+                    // EXPLICITLY: there null means the MODE's default (contains in Text, = in Number), so
+                    // folding eq to null like the Variable row does would turn "Equals" into "Contains".
+                    if (string.Equals(action.ActionType, "WaitText", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(action.ConditionType, "ScreenText", StringComparison.OrdinalIgnoreCase))
+                    {
+                        action.ConditionOperator = value is "contains" or "eq" or "regex" or "neq" or "gt" or "lt" ? value : null;
+                        break;
+                    }
                     action.ConditionOperator = (value == "neq" || value == "contains" || value == "gt" || value == "lt")
                         ? value : null;
+                    break;
+                case "ocrReadAs":
+                    // Screen text: null = text | "number" (the first number read).
+                    action.OcrReadAs = value == "number" ? "number" : null;
+                    break;
+                case "ocrTextColor":
+                    // "#RRGGBB" or empty (= read every colour). A malformed hex is dropped, never stored.
+                    {
+                        var parsed = string.IsNullOrWhiteSpace(value) ? null : PixelColorService.ParseHex(value);
+                        action.OcrTextColor = parsed is System.Drawing.Color c ? $"#{c.R:X2}{c.G:X2}{c.B:X2}" : null;
+                    }
+                    break;
+                case "ocrColorTolerance":
+                    action.OcrColorTolerance = int.TryParse(value, out int octol) ? Math.Clamp(octol, 0, 255) : null;
                     break;
                 case "conditionOperand":
                     action.ConditionOperand = string.IsNullOrEmpty(value) ? null : value;
@@ -5936,6 +5989,14 @@ namespace TrueReplayer
                 return;
             }
 
+            // WaitText: the same capture-first flow — drag a region, OCR the frozen crop, and the
+            // row is born with that region and the first line it read as its text.
+            if (actionType == "WaitText")
+            {
+                _ = HandleInsertScreenTextAsync(insertIndex, "WaitText");
+                return;
+            }
+
             // WaitPixelColor is handled by the dedicated actions:insertWaitPixelColor
             // message (captures coords + colour through the screen overlay before the
             // row is inserted, matching WaitImage's behaviour). If someone still routes
@@ -6133,6 +6194,8 @@ namespace TrueReplayer
             // inserts nothing, exactly like the IF insert.
             if (string.Equals(conditionType, "ImageFound", StringComparison.OrdinalIgnoreCase))
                 _ = HandleInsertConditionalImageAsync(anchor, "ElseIf");
+            else if (string.Equals(conditionType, "ScreenText", StringComparison.OrdinalIgnoreCase))
+                _ = HandleInsertScreenTextAsync(anchor, "ElseIf");
             else if (string.Equals(conditionType, "PixelColorMatch", StringComparison.OrdinalIgnoreCase))
                 _ = HandleInsertConditionalPixelAsync(anchor, "ElseIf");
             else if (string.Equals(conditionType, "WindowOpen", StringComparison.OrdinalIgnoreCase)
@@ -6195,6 +6258,8 @@ namespace TrueReplayer
 
             if (string.Equals(conditionType, "ImageFound", StringComparison.OrdinalIgnoreCase))
                 _ = HandleInsertConditionalImageAsync(insertIndex);
+            else if (string.Equals(conditionType, "ScreenText", StringComparison.OrdinalIgnoreCase))
+                _ = HandleInsertScreenTextAsync(insertIndex, "If");
             else if (string.Equals(conditionType, "PixelColorMatch", StringComparison.OrdinalIgnoreCase))
                 _ = HandleInsertConditionalPixelAsync(insertIndex);
             else if (string.Equals(conditionType, "WindowOpen", StringComparison.OrdinalIgnoreCase))
@@ -6367,6 +6432,9 @@ namespace TrueReplayer
             {
                 case "ImageFound":
                     _ = HandleInsertConditionalImageAsync(insertIndex, "While");
+                    break;
+                case "ScreenText":
+                    _ = HandleInsertScreenTextAsync(insertIndex, "While");
                     break;
                 case "PixelColorMatch":
                     _ = HandleInsertConditionalPixelAsync(insertIndex, "While");
@@ -7102,6 +7170,119 @@ namespace TrueReplayer
             mainController.UpdateButtonStates();
         }
 
+        /// <summary>
+        /// Capture-first insert for the screen-text family: Wait for Text, and If / Else If / While on
+        /// a ScreenText condition. Same overlay, gates and write-back checks as the image inserts, but
+        /// nothing is saved to disk: the frozen crop is READ on the spot and the row is born with the
+        /// region (window-relative when the profile is) and the first line read, as a Contains match.
+        /// Nothing readable still inserts the row — the Sheet opens and says so — because the region is
+        /// the expensive half of the setup and the text is one field away.
+        /// </summary>
+        private async Task HandleInsertScreenTextAsync(int insertIndex, string rowType)
+        {
+            if (RefuseCaptureDuringRun("Screen text insert")) return;
+            var scope = Services.EditScope.Capture(CurrentProfileName);
+            var overlayHost = new Services.CaptureOverlayHost("insert screen text overlay");
+            using var interaction = await Services.InteractionScope.EnterExclusiveAsync(
+                "insert screen text overlay", overlayHost.IsAlive, overlayHost.RequestCancel);
+            if (interaction == null) { ReportOverlayRefused("the screen text capture"); return; }
+            var mainHwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
+            NativeMethods.ShowWindow(mainHwnd, NativeMethods.SW_MINIMIZE);
+            await Task.Delay(400);
+
+            System.Drawing.Bitmap screenshot;
+            try
+            {
+                screenshot = ScreenCaptureService.CaptureVirtualScreen();
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Error("Insert screen text screenshot failed", ex);
+                NativeMethods.ShowWindow(mainHwnd, NativeMethods.SW_RESTORE);
+                return;
+            }
+
+            try
+            {
+                var selection = await overlayHost.RunAsync(() => new ScreenOverlayForm(screenshot,
+                    hintText: "Drag around the text to read  •  Esc cancels"));
+                dispatcherQueue.TryEnqueue(() => NativeMethods.ShowWindow(mainHwnd, NativeMethods.SW_RESTORE));
+                if (selection?.CroppedImage == null) return;
+
+                string firstLine = "";
+                string? readError = null;
+                try
+                {
+                    var read = await OcrService.ReadBitmapAsync(selection.CroppedImage,
+                        new System.Drawing.Point(selection.ScreenX, selection.ScreenY), new OcrOptions(), null, CancellationToken.None);
+                    firstLine = read.Lines.FirstOrDefault()?.Text.Trim() ?? "";
+                    if (firstLine.Length > 60) firstLine = firstLine[..60];
+                }
+                catch (OcrUnavailableException ex) { readError = ex.Message; }
+                catch (Exception ex)
+                {
+                    DiagnosticLog.Warn($"[OCR] insert read failed: {ex.Message}");
+                    readError = "Couldn't read the region: " + ex.Message;
+                }
+                finally { selection.CroppedImage.Dispose(); }
+
+                // Window-relative when the profile is — the same conversion every capture path uses.
+                int rx = selection.ScreenX, ry = selection.ScreenY;
+                if (TryGetRelativeCaptureOffset(out var wr)) { rx -= wr.Left; ry -= wr.Top; }
+                int rw = selection.Width, rh = selection.Height;
+
+                int delay = int.TryParse(CustomDelay, out var d) ? d : 100;
+                dispatcherQueue.TryEnqueue(() =>
+                {
+                    if (!CaptureStillApplies(scope, "Captured region")) return;
+                    int at = Math.Min(insertIndex, actions.Count);
+                    PushUndoState();
+                    bool isWait = rowType == "WaitText";
+                    actions.Insert(at, new ActionItem
+                    {
+                        ActionType = rowType,
+                        ConditionType = isWait ? null : "ScreenText",
+                        WaitImageSearchX = rx,
+                        WaitImageSearchY = ry,
+                        WaitImageSearchW = rw,
+                        WaitImageSearchH = rh,
+                        ConditionOperator = "contains",
+                        ConditionOperand = firstLine.Length > 0 ? firstLine : null,
+                        Timeout = 5000,
+                        // A wait inherits the profile's step delay like WaitImage; condition rows
+                        // keep 0 (their Delay is a pre-probe settle the user opts into).
+                        Delay = isWait ? delay : 0,
+                        Key = "",
+                        Comment = "",
+                    });
+                    if (rowType is "If" or "While")
+                    {
+                        actions.Insert(at + 1, new ActionItem
+                        {
+                            ActionType = rowType == "If" ? "EndIf" : "EndLoop",
+                            Delay = 0,
+                            Key = "",
+                            Comment = "",
+                        });
+                    }
+                    for (int i = 0; i < actions.Count; i++)
+                        actions[i].RowNumber = i + 1;
+                    HasUnsavedChanges = true;
+                    PushActionsUpdate();
+                    mainController.UpdateButtonStates();
+                    SendMessage("sheet:openIndex", new { index = at });
+                    if (readError != null)
+                        SendMessage("alert:show", new { message = readError, type = "error" });
+                    else if (firstLine.Length == 0)
+                        SendMessage("alert:show", new { message = "No text read in that region — type it in the editor, or try Text color.", type = "info" });
+                });
+            }
+            finally
+            {
+                screenshot.Dispose();
+            }
+        }
+
         private async Task HandleInsertWaitImageAsync(int insertIndex)
         {
             // Before the EditScope and before the window dance — see RefuseCaptureDuringRun.
@@ -7422,6 +7603,218 @@ namespace TrueReplayer
         // Single-shot match against the current screen — powers the "Test match" calibration
         // button in the WaitImage editor. Pure round-trip: request carries imagePath + tolerance
         // + optional search region; response carries the best score and matched rect.
+        /// <summary>
+        /// Test read — the OCR twin of image:testMatch, shared by the Sheet (Wait for Text, the Screen
+        /// Text condition, Set Variable's Screen mode) and the Automation panel. Same coordinate round
+        /// trip: the region goes UP into screen space (relative offset, or the watcher's anchor when
+        /// absolute) and the match rect comes back DOWN into the caller's space. Answers with what was
+        /// read, whether it matches, the first number, timing, the variant and a small preview of what
+        /// the engine saw. Tokens in the operand are not resolved here (they resolve at run time).
+        /// </summary>
+        private async Task HandleOcrTestReadAsync(JsonElement payload)
+        {
+            string requestId = payload.TryGetProperty("requestId", out var ridEl) ? (ridEl.GetString() ?? "") : "";
+            bool absolute = payload.TryGetProperty("absolute", out var absEl) && absEl.ValueKind == JsonValueKind.True;
+            string? Str(string name) => payload.TryGetProperty(name, out var el) && el.ValueKind == JsonValueKind.String ? el.GetString() : null;
+            bool number = ScreenTextMatcher.IsNumberMode(Str("readAs"));
+            string op = Str("operator") ?? "";
+            string operand = Str("operand") ?? "";
+            bool wantMatch = payload.TryGetProperty("match", out var mEl) && mEl.ValueKind == JsonValueKind.True;
+            int tolerance = payload.TryGetProperty("tolerance", out var tEl) && tEl.ValueKind == JsonValueKind.Number ? tEl.GetInt32() : OcrService.DefaultColorTolerance;
+            TryParseAnchorTarget(payload, out var anchorTarget, out bool anchorRequested);
+
+            void Reply(object body) => SendMessage("ocr:testReadResult", body);
+
+            if (absolute && anchorRequested && !TryGetAnchorCaptureOffset(anchorTarget, out _))
+            {
+                Reply(new { requestId, error = anchorTarget == null
+                    ? "Name the anchor window first (process name or window title) — until then there is no origin to test against."
+                    : "The anchor window is not open (or is minimised) — restore it and test again, or turn off \"Relative to a window\"." });
+                return;
+            }
+
+            System.Drawing.Rectangle? region = null;
+            int offX = 0, offY = 0;
+            if (!absolute && TryGetRelativeCaptureOffset(out var winRect)) { offX = winRect.Left; offY = winRect.Top; }
+            else if (absolute && TryGetAnchorCaptureOffset(anchorTarget, out var anchorRect)) { offX = anchorRect.Left; offY = anchorRect.Top; }
+            if (payload.TryGetProperty("searchRegion", out var srEl) && srEl.ValueKind == JsonValueKind.Object)
+            {
+                int sw = srEl.GetProperty("w").GetInt32(), sh = srEl.GetProperty("h").GetInt32();
+                if (sw > 0 && sh > 0)
+                    region = new System.Drawing.Rectangle(srEl.GetProperty("x").GetInt32() + offX, srEl.GetProperty("y").GetInt32() + offY, sw, sh);
+            }
+
+            try
+            {
+                var options = new OcrOptions(number, PixelColorService.ParseHex(Str("textColor")), Math.Clamp(tolerance, 0, 255), WantPreview: true);
+                ScreenTextMatcher.Result? last = null;
+                Func<OcrRead, bool>? accept = wantMatch
+                    ? r => (last = ScreenTextMatcher.Evaluate(r, op, operand, number)).Ok
+                    : null;
+                var read = await Task.Run(() => OcrService.ReadAsync(region, options, accept, CancellationToken.None));
+                string? numberText = number ? ScreenTextMatcher.ValueForVariable(read, true) : null;
+                int x = 0, y = 0, w = 0, h = 0;
+                if (last?.Rect is System.Drawing.Rectangle hit) { x = hit.X - offX; y = hit.Y - offY; w = hit.Width; h = hit.Height; }
+                Reply(new
+                {
+                    requestId,
+                    text = read.Text,
+                    matched = wantMatch ? (bool?)(last?.Ok ?? false) : null,
+                    number = numberText,
+                    x, y, w, h,
+                    elapsedMs = read.ElapsedMs,
+                    variant = read.Variant,
+                    language = read.Language,
+                    previewBase64 = read.PreviewPng != null ? Convert.ToBase64String(read.PreviewPng) : null,
+                });
+            }
+            catch (Exception ex)
+            {
+                Reply(new { requestId, error = ex is OcrUnavailableException ? ex.Message : $"Test failed: {ex.Message}" });
+            }
+        }
+
+        private void HandleOcrLanguages()
+        {
+            var langs = OcrService.AvailableLanguages().Select(l => new { tag = l.Tag, name = l.Name }).ToList();
+            SendMessage("ocr:languagesResult", new { available = langs, auto = OcrService.AutoLanguageTag() });
+        }
+
+        // Settings → Keys → "Text Region": pick the fixed region the Copy screen text hotkey reads.
+        // Absolute, like the Clicker area — a global hotkey has no profile window to be relative to.
+        private async Task HandleConfigureCopyScreenTextRegionAsync()
+        {
+            System.Drawing.Rectangle? initial = TryParseRegion(UserProfile.Current.CopyScreenTextRegion, out var cur) ? cur : null;
+            var selection = await RunRegionPickerAsync(
+                initial,
+                hintWhenSet: "Drag to redraw the text region  •  ESC to keep current",
+                hintWhenEmpty: "Drag around the text the hotkey should read  •  ESC to cancel",
+                logPrefix: "Copy screen text");
+            if (selection == null) return;
+            UserProfile.Current.CopyScreenTextRegion = $"{selection.ScreenX},{selection.ScreenY},{selection.Width},{selection.Height}";
+            SaveGlobalSettings();
+            PushSettingsLoaded();
+        }
+
+        internal static bool TryParseRegion(string? text, out System.Drawing.Rectangle rect)
+        {
+            rect = default;
+            var parts = (text ?? "").Split(',');
+            if (parts.Length != 4) return false;
+            if (!int.TryParse(parts[0], out int x) || !int.TryParse(parts[1], out int y)
+                || !int.TryParse(parts[2], out int w) || !int.TryParse(parts[3], out int h)) return false;
+            if (w <= 0 || h <= 0) return false;
+            rect = new System.Drawing.Rectangle(x, y, w, h);
+            return true;
+        }
+
+        private int _copyScreenTextBusy;
+
+        /// <summary>
+        /// The Copy screen text hotkey: read a region (dragged now, or the saved fixed one) and put the
+        /// text on the clipboard, with a toast saying what was copied. Called from MainWindow's hotkey
+        /// dispatch (which already refused it during a run).
+        ///
+        /// Two things the editor-born capture flows do NOT do, on purpose: they minimise the app and
+        /// RESTORE it afterwards, which here would steal focus from the game the user is in — so the
+        /// app window is left alone and focus goes back to whatever was in front. And the copy is NOT
+        /// hidden from "Clipboard changed" automations (Capture to Slot hides its round trip): this is
+        /// the user's own copy, and chaining an automation off it is a feature.
+        /// </summary>
+        internal async Task RunCopyScreenTextAsync()
+        {
+            if (Interlocked.Exchange(ref _copyScreenTextBusy, 1) == 1) return; // one at a time
+            try
+            {
+                var previousForeground = NativeMethods.GetForegroundWindow();
+                System.Drawing.Bitmap? crop = null;
+                System.Drawing.Point origin;
+                if (TryParseRegion(UserProfile.Current.CopyScreenTextRegion, out var fixedRegion))
+                {
+                    origin = fixedRegion.Location;
+                    crop = await Task.Run(() => ScreenCaptureService.CaptureRegion(fixedRegion.X, fixedRegion.Y, fixedRegion.Width, fixedRegion.Height));
+                }
+                else
+                {
+                    // The overlay takes the foreground. A modifier of the hotkey still held at that
+                    // moment (the Shift of Shift+F12) releases INTO the overlay, so the app the user
+                    // was in never gets the key-up and reads Shift as stuck once focus returns.
+                    // The fixed-region branch above never moves focus and needs no wait.
+                    var combo = UserProfile.Current.CopyScreenTextHotkey;
+                    if (!string.IsNullOrEmpty(combo))
+                        await Services.ActionReplayer.WaitForComboReleaseAsync(combo, CancellationToken.None);
+                    var overlayHost = new Services.CaptureOverlayHost("copy screen text overlay");
+                    using var interaction = await Services.InteractionScope.EnterExclusiveAsync(
+                        "copy screen text overlay", overlayHost.IsAlive, overlayHost.RequestCancel);
+                    if (interaction == null) { ReportOverlayRefused("the screen text capture"); return; }
+                    using var screenshot = await Task.Run(ScreenCaptureService.CaptureVirtualScreen);
+                    var selection = await overlayHost.RunAsync(() => new ScreenOverlayForm(screenshot,
+                        hintText: "Drag around the text to copy  •  Esc cancels"));
+                    if (previousForeground != IntPtr.Zero) NativeMethods.SetForegroundWindow(previousForeground);
+                    if (selection?.CroppedImage == null) return;
+                    crop = selection.CroppedImage;
+                    origin = new System.Drawing.Point(selection.ScreenX, selection.ScreenY);
+                }
+
+                OcrRead read;
+                try
+                {
+                    var c = crop;
+                    read = await Task.Run(() => OcrService.ReadBitmapAsync(c, origin, new OcrOptions(), null, CancellationToken.None));
+                }
+                finally { crop.Dispose(); }
+
+                var text = string.Join("\r\n", read.Lines.Select(l => l.Text)).Trim();
+                if (text.Length == 0)
+                {
+                    DiagnosticLog.Info($"Copy screen text: nothing read ({read.ElapsedMs} ms)");
+                    SendMessage("alert:show", new { message = "No text found in that region", type = "info" });
+                    return;
+                }
+                bool copied = false;
+                for (int attempt = 0; attempt < 3 && !copied; attempt++)
+                {
+                    try { await RunOnUiAsync(() => ClipboardService.CopyText(text)); copied = true; }
+                    catch { await Task.Delay(60); }
+                }
+                if (!copied)
+                {
+                    SendMessage("alert:show", new { message = "Couldn't write to the clipboard — another app is holding it. Try again.", type = "error" });
+                    return;
+                }
+                DiagnosticLog.Info($"Copy screen text: {text.Length} char(s) in {read.ElapsedMs} ms");
+                int lines = read.Lines.Count;
+                var shown = text.Replace("\r\n", " ");
+                if (shown.Length > 40) shown = shown[..40] + "…";
+                SendMessage("alert:show", new { message = lines > 1 ? $"Copied {lines} lines: \"{shown}\"" : $"Copied: \"{shown}\"", type = "success" });
+            }
+            catch (OcrUnavailableException ex)
+            {
+                SendMessage("alert:show", new { message = ex.Message, type = "error" });
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Error("Copy screen text failed", ex);
+                SendMessage("alert:show", new { message = $"Copy screen text failed: {ex.Message}", type = "error" });
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _copyScreenTextBusy, 0);
+            }
+        }
+
+        private Task RunOnUiAsync(Action action)
+        {
+            var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (!dispatcherQueue.TryEnqueue(() =>
+            {
+                try { action(); tcs.SetResult(); }
+                catch (Exception ex) { tcs.SetException(ex); }
+            }))
+                tcs.SetException(new InvalidOperationException("UI dispatcher unavailable"));
+            return tcs.Task;
+        }
+
         private async Task HandleTestMatchAsync(JsonElement payload)
         {
             string requestId = payload.TryGetProperty("requestId", out var ridEl) ? (ridEl.GetString() ?? "") : "";
@@ -10248,8 +10641,12 @@ namespace TrueReplayer
                 // WaitImage (and IF Image with a search region): only translate when W/H
                 // are set. The X/Y fields are meaningless without W/H — leaving them at 0
                 // lets the action fall back to a full-screen scan (existing behaviour).
-                else if ((action.ActionType == "WaitImage"
-                          || (CarriesConditionProbeRow(action) && string.Equals(action.ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase)))
+                // The screen-text family (Wait for Text, a ScreenText condition, Set Variable reading
+                // the screen) keeps its region in the SAME four fields, so it converts the same way.
+                else if ((action.ActionType == "WaitImage" || action.ActionType == "WaitText"
+                          || (action.ActionType == "SetVariable" && string.Equals(action.VariableMode, "screen", StringComparison.OrdinalIgnoreCase))
+                          || (CarriesConditionProbeRow(action) && (string.Equals(action.ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase)
+                                                                    || string.Equals(action.ConditionType, "ScreenText", StringComparison.OrdinalIgnoreCase))))
                     && action.WaitImageSearchW is int w && action.WaitImageSearchH is int h
                     && w > 0 && h > 0)
                 {
@@ -12579,6 +12976,9 @@ namespace TrueReplayer
             s.ForegroundHotkey = UserProfile.Current.ForegroundHotkey;
             s.ModeToggleHotkey = UserProfile.Current.ModeToggleHotkey;
             s.CaptureSlotHotkey = UserProfile.Current.CaptureSlotHotkey;
+            s.CopyScreenTextHotkey = UserProfile.Current.CopyScreenTextHotkey;
+            s.CopyScreenTextRegion = UserProfile.Current.CopyScreenTextRegion;
+            s.OcrLanguage = OcrService.PreferredLanguage;
             s.ProfileKeyEnabled = ProfileKeyEnabled;
             s.BrowserSelectorEnabled = BrowserSelectorEnabled;
             s.AutomationEnabled = UserProfile.Current.AutomationEnabled;
@@ -12689,7 +13089,8 @@ namespace TrueReplayer
 
         private static readonly HashSet<string> HotkeySettingKeys = new()
         {
-            "recordingHotkey", "replayHotkey", "profileKeyToggleHotkey", "foregroundHotkey", "modeToggleHotkey", "captureSlotHotkey"
+            "recordingHotkey", "replayHotkey", "profileKeyToggleHotkey", "foregroundHotkey", "modeToggleHotkey", "captureSlotHotkey",
+            "copyScreenTextHotkey"
         };
 
         // A collision found at load, waiting for a UI to tell. Null once said.
@@ -12709,6 +13110,7 @@ namespace TrueReplayer
                 ("foregroundHotkey", saved.ForegroundHotkey),
                 ("modeToggleHotkey", saved.ModeToggleHotkey),
                 ("captureSlotHotkey", saved.CaptureSlotHotkey),
+                ("copyScreenTextHotkey", saved.CopyScreenTextHotkey),
             };
             // The fifth combination the edit path refuses: the two Clicker hotkeys being the SAME
             // key. Checked before the loop below, not inside it, or the pair would be reported
@@ -12743,6 +13145,7 @@ namespace TrueReplayer
             ["foregroundHotkey"] = "Foreground",
             ["modeToggleHotkey"] = "Mode Toggle",
             ["captureSlotHotkey"] = "Capture to Slot",
+            ["copyScreenTextHotkey"] = "Copy Screen Text",
             ["cursorClickStartHotkey"] = "Clicker Start",
             ["cursorClickPauseHotkey"] = "Clicker Pause",
         };
@@ -12756,7 +13159,7 @@ namespace TrueReplayer
         // the Foreground key would silently eat it.
         private static readonly string[] ModeAgnosticHotkeyKeys =
         {
-            "profileKeyToggleHotkey", "foregroundHotkey", "modeToggleHotkey", "captureSlotHotkey",
+            "profileKeyToggleHotkey", "foregroundHotkey", "modeToggleHotkey", "captureSlotHotkey", "copyScreenTextHotkey",
         };
 
         // Conflict check for the two Clicker hotkeys: each other, plus the four mode-agnostic
@@ -12775,6 +13178,7 @@ namespace TrueReplayer
                     "profileKeyToggleHotkey" => UserProfile.Current.ProfileKeyToggleHotkey,
                     "foregroundHotkey" => UserProfile.Current.ForegroundHotkey,
                     "modeToggleHotkey" => UserProfile.Current.ModeToggleHotkey,
+                    "copyScreenTextHotkey" => UserProfile.Current.CopyScreenTextHotkey,
                     _ => UserProfile.Current.CaptureSlotHotkey,
                 };
                 if (string.Equals(current, hotkey, StringComparison.OrdinalIgnoreCase))
@@ -12837,6 +13241,7 @@ namespace TrueReplayer
                 ["foregroundHotkey"] = UserProfile.Current.ForegroundHotkey,
                 ["modeToggleHotkey"] = UserProfile.Current.ModeToggleHotkey,
                 ["captureSlotHotkey"] = UserProfile.Current.CaptureSlotHotkey,
+                ["copyScreenTextHotkey"] = UserProfile.Current.CopyScreenTextHotkey,
             };
 
             foreach (var kv in globalHotkeys)
@@ -13110,6 +13515,18 @@ namespace TrueReplayer
                     // Empty = disabled: clearing the input sends "" and turns the feature off. A null
                     // restores the default, like the five above.
                     UserProfile.Current.CaptureSlotHotkey = valueElement.GetString() ?? HotkeyDefaults.CaptureSlot;
+                    break;
+                case "copyScreenTextHotkey":
+                    // Empty = disabled (the default).
+                    UserProfile.Current.CopyScreenTextHotkey = valueElement.GetString() ?? HotkeyDefaults.CopyScreenText;
+                    break;
+                case "copyScreenTextRegion":
+                    // Only CLEARED from here (back to "ask each time"); a region is set through the
+                    // ocr:configureHotkeyRegion picker, which validates it.
+                    UserProfile.Current.CopyScreenTextRegion = "";
+                    break;
+                case "ocrLanguage":
+                    OcrService.PreferredLanguage = valueElement.GetString() ?? "";
                     break;
                 case "runAsAdmin":
                     {

@@ -736,6 +736,24 @@ namespace TrueReplayer.Services
             (p => p.GameMode.HasValue,
                 new Version(2, 46, 0), "Per-profile Game Mode"),
 
+            // Screen text (OCR). Each family fails SILENTLY on an older build, which is the whole
+            // reason for one row apiece: Wait for Text has no case in the action switch (no default),
+            // so the row is skipped and its step reads "ok"; a ScreenText condition hits
+            // InstantProbe's unknown-ConditionType branch → false → always the Else; Set Variable in
+            // "screen" mode falls through to Set and stores VariableValue (usually empty → deletes
+            // the variable). The automation watcher is the loud one (DescribeUnfireable stops it),
+            // pinned anyway so the import names it. Introduced after 2.46.0 — bump at release if
+            // the release number differs.
+            (p => p.Actions.Any(a => string.Equals(a.ActionType, "WaitText", StringComparison.OrdinalIgnoreCase)),
+                new Version(2, 47, 0), "Wait for Text"),
+            (p => p.Actions.Any(a => string.Equals(a.ConditionType, "ScreenText", StringComparison.OrdinalIgnoreCase)),
+                new Version(2, 47, 0), "Screen text condition"),
+            (p => p.Actions.Any(a => string.Equals(a.ActionType, "SetVariable", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(a.VariableMode, "screen", StringComparison.OrdinalIgnoreCase)),
+                new Version(2, 47, 0), "Read screen text into a variable"),
+            (p => p.Triggers != null && string.Equals(p.Triggers.ConditionType, "ScreenText", StringComparison.OrdinalIgnoreCase),
+                new Version(2, 47, 0), "Automation screen text"),
+
             // Restore Size split from Restore Position; older builds only honour Position. Same
             // correction as the UseRelativeCoordinates pin above — the 2.0.5 this used to name
             // was never a real release (the 2.x line runs 2.0.0 then 2.1.0), so it is now 2.1.0.
@@ -796,7 +814,10 @@ namespace TrueReplayer.Services
             {
                 if (string.Equals(a.ConditionType, "Variable", StringComparison.OrdinalIgnoreCase) && contains(a.ConditionOperand)) return true;
                 if (string.Equals(a.ConditionType, "FileExists", StringComparison.OrdinalIgnoreCase) && contains(a.FilePath)) return true;
+                if (string.Equals(a.ConditionType, "ScreenText", StringComparison.OrdinalIgnoreCase) && contains(a.ConditionOperand)) return true;
             }
+            // Wait for Text resolves its operand once per wait (ExecuteWaitText).
+            if (string.Equals(type, "WaitText", StringComparison.OrdinalIgnoreCase) && contains(a.ConditionOperand)) return true;
             return string.Equals(type, "ActivateWindow", StringComparison.OrdinalIgnoreCase)
                 && (contains(a.LaunchPath) || contains(a.LaunchArgs));
         }

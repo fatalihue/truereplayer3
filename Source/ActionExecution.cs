@@ -2048,7 +2048,7 @@ namespace TrueReplayer.Services
         /// skipped), so the row says what it is checking without claiming an answer it does not
         /// have yet.
         /// </summary>
-        private static string? DescribeIfDetail(ActionItem a, bool? branchTrue)
+        private static string? DescribeIfDetail(ActionItem a, bool? branchTrue, string? screenRead = null)
         {
             string probe = string.IsNullOrWhiteSpace(a.ConditionType) ? "condition" : a.ConditionType!;
             // IFNOT inverts the branch the user reads, so showing the raw probe result would
@@ -2061,8 +2061,19 @@ namespace TrueReplayer.Services
                 if (label.Length > 40) label = label.Substring(0, 40) + "…";
                 probe = $"{probe} · {label}";
             }
-            return branchTrue is null ? probe : $"{probe} → {(branchTrue.Value ? "true" : "false")}";
+            if (branchTrue is null) return probe;
+            var outcome = $"{probe} → {(branchTrue.Value ? "true" : "false")}";
+            // Screen Text: what the engine read, so a branch that went the "wrong" way explains itself.
+            if (screenRead != null)
+            {
+                var r = Clip40(screenRead);
+                outcome += r.Length == 0 ? " · read nothing" : $" · read \"{r}\"";
+            }
+            return outcome;
         }
+
+        private string? ScreenReadFor(ActionItem a) =>
+            string.Equals(a.ConditionType, "ScreenText", StringComparison.OrdinalIgnoreCase) ? _lastScreenRead : null;
 
         private static string? DescribeStepDetail(ActionItem a)
         {
@@ -2106,6 +2117,8 @@ namespace TrueReplayer.Services
                     return Clip(a.Key, 30);
                 case "RunProfile":
                 case "ActivateWindow":
+                case "WaitText":
+                    return Clip(a.Comment) ?? Clip(string.Equals(a.WaitMode, "changes", StringComparison.OrdinalIgnoreCase) ? "changes" : ScreenTextMatcher.Summary(a));
                 case "WaitImage":
                 case "WaitPixelColor":
                 // "If" is NOT here: IF rows never reach this switch — they are recorded from the
@@ -2949,7 +2962,7 @@ namespace TrueReplayer.Services
         private static readonly HashSet<string> LongWaitActionTypes = new(StringComparer.OrdinalIgnoreCase)
         {
             "WaitImage", "WaitPixelColor", "Pause", "RunProfile", "HoldKey",
-            "SendText", "ActivateWindow", "CopyToSlot",
+            "SendText", "ActivateWindow", "CopyToSlot", "WaitText",
             // The *ClickHold family for the same reason HoldKey is here: the dwell between the
             // press and the release is AUTHORED, so it was never part of any recorded gap.
             // Absorbing it would delete the settle time the next action was recorded with.
@@ -3416,7 +3429,7 @@ namespace TrueReplayer.Services
                             ifWatch.Stop();
                             ifRec.DurationMs = ifWatch.ElapsedMilliseconds;
                             ifRec.Status = "ok";      // the PROBE ran; a false condition is an answer, not a failure
-                            if (!_runStepsFull) ifRec.Detail = DescribeIfDetail(armRow, branchTrue);
+                            if (!_runStepsFull) ifRec.Detail = DescribeIfDetail(armRow, branchTrue, ScreenReadFor(armRow));
                             // A timed arm polls for up to ConditionTimeout ms — wall time that is the
                             // feature, not schedule debt. Same wait-class resync as the one after the
                             // action switch, for the same settle-delay reason. (Branch rows never reach
@@ -3628,7 +3641,7 @@ namespace TrueReplayer.Services
                     whileWatch.Stop();
                     whileRec.DurationMs = whileWatch.ElapsedMilliseconds;
                     whileRec.Status = "ok";      // the PROBE ran; false is an answer (loop exit)
-                    if (!_runStepsFull) whileRec.Detail = DescribeIfDetail(action, loopTrue);
+                    if (!_runStepsFull) whileRec.Detail = DescribeIfDetail(action, loopTrue, ScreenReadFor(action));
                     bool guardWaited = ConsumeWaitedOnUser();   // see the If arm
                     if (action.ConditionTimeout > 0 || guardWaited)
                         nextTickMs = sw.ElapsedMilliseconds;   // timed probe = wait-class resync
@@ -4089,7 +4102,7 @@ namespace TrueReplayer.Services
                             await SendTextPayload(d.Text, d.Html, d.Type, d.CharDelayMs, token);
                             break;
                         }
-                        case "SetVariable": await ExecuteSetVariable(action); break;
+                        case "SetVariable": await ExecuteSetVariable(action, token); break;
                         case "CopyToSlot": await ExecuteCopyToSlot(action, token); break;
                         case "Assert": {
                             // D4 quiet-stop: the row stays "ok" (the probe RAN — the same
@@ -4105,6 +4118,7 @@ namespace TrueReplayer.Services
                         }
                         case "ActivateWindow": await ExecuteActivateWindow(action, token); break;
                         case "WaitImage": await ExecuteWaitImage(action, token); break;
+                        case "WaitText": await ExecuteWaitText(action, token); break;
                         case "WaitPixelColor": await ExecuteWaitPixelColor(action, token); break;
                         case "RunProfile": {
                             // A refusal (disabled target, cycle, over-depth, missing profile, …)
@@ -4974,9 +4988,20 @@ namespace TrueReplayer.Services
             if (hotkey.StartsWith("HOTSTRING::", StringComparison.Ordinal))
                 return;
 
+            await WaitForComboReleaseAsync(hotkey, token);
+        }
+
+        /// <summary>
+        /// Polls until every key of <paramref name="combo"/> ("Shift+F12") is physically up, for at
+        /// most 2 s. Shared with the Copy screen text hotkey, which opens a focus-taking overlay: a
+        /// modifier still held at that moment releases INTO the overlay, so the app the user was in
+        /// never sees the key-up and keeps reading the modifier as down after focus comes back.
+        /// </summary>
+        internal static async Task WaitForComboReleaseAsync(string combo, CancellationToken token)
+        {
             var vkCodes = new List<int>();
 
-            foreach (var part in hotkey.Split('+'))
+            foreach (var part in combo.Split('+'))
             {
                 var trimmed = part.Trim();
                 if (ModifierGenericVkCodes.TryGetValue(trimmed, out int genericVk))
@@ -7076,7 +7101,7 @@ namespace TrueReplayer.Services
         // 1) and a negative step subtracting. A non-numeric step leaves the variable untouched and
         // logs — a typo must never overwrite a counter. This is the "i = i + 1" a While needs; the
         // arithmetic lives in TryAddVariable so it can be proven without a replayer.
-        private async Task ExecuteSetVariable(ActionItem action)
+        private async Task ExecuteSetVariable(ActionItem action, CancellationToken token = default)
         {
             var name = action.Key?.Trim();
             if (string.IsNullOrEmpty(name) || !VariableNameRegex.IsMatch(name))
@@ -7089,6 +7114,13 @@ namespace TrueReplayer.Services
                 return;
             }
             var key = name.ToLowerInvariant();
+
+            if (string.Equals(action.VariableMode, "screen", StringComparison.OrdinalIgnoreCase))
+            {
+                await ExecuteSetVariableFromScreen(action, name, key, token);
+                return;
+            }
+
             // escapeBracesInSubstitution:false — the dict stores raw text, braces and all. The
             // resolver escapes them only while it runs (so a clipboard holding "{counter}" is
             // stored as those nine characters, never as the count), and the escaping the SendText
@@ -8750,6 +8782,165 @@ namespace TrueReplayer.Services
             }
         }
 
+        // The OCR families' search region, re-composed per tick through the CURRENT relative offset
+        // (the WaitImage rule). null region = whole screen. false = the target window is gone.
+        private bool TryResolveOcrRegion(ActionItem action, out System.Drawing.Rectangle? region)
+        {
+            region = null;
+            if (action.WaitImageSearchW is int sw && action.WaitImageSearchH is int sh && sw > 0 && sh > 0)
+            {
+                if (!TryResolveRelativeOffset(out int dx, out int dy)) return false;
+                region = new System.Drawing.Rectangle((action.WaitImageSearchX ?? 0) + dx, (action.WaitImageSearchY ?? 0) + dy, sw, sh);
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Wait for Text — the OCR twin of <see cref="ExecuteWaitImage"/>: same Timeout, same OnTimeout
+        /// vocabulary, same "Click on found location" (centre of the matched words). WaitMode:
+        /// null = appears, "disappears", "changes" (the region's text — or number — differs from the
+        /// first read, confirmed by two reads in a row so one flickering glyph cannot end the wait).
+        /// "disappears" runs the WHOLE variant ladder before calling the text gone: one variant failing
+        /// to read text that is still there must not read as absence.
+        /// </summary>
+        private async Task ExecuteWaitText(ActionItem action, CancellationToken token)
+        {
+            bool changes = string.Equals(action.WaitMode, "changes", StringComparison.OrdinalIgnoreCase);
+            bool disappear = string.Equals(action.WaitMode, "disappears", StringComparison.OrdinalIgnoreCase);
+            bool number = ScreenTextMatcher.IsNumberMode(action.OcrReadAs);
+            var options = OcrOptionsFor(action);
+            // One wait is one window: the operand resolves once, like the hoisted If operand.
+            var operand = changes ? "" : await ResolveTokens(action.ConditionOperand ?? string.Empty);
+            int timeoutMs = action.Timeout > 0 ? action.Timeout : 30000;
+            var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+            string? baseline = null, candidate = null;
+            string lastRead = "";
+
+            while (true)
+            {
+                if (token.IsCancellationRequested) return;
+                if (!TryResolveOcrRegion(action, out var region))
+                {
+                    ReportMissingTargetWindow();
+                    return;
+                }
+
+                ScreenTextMatcher.Result? last = null;
+                OcrRead read;
+                try
+                {
+                    read = await OcrService.ReadAsync(region, options,
+                        changes ? null : r => (last = ScreenTextMatcher.Evaluate(r, action.ConditionOperator, operand, number)).Ok,
+                        token);
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested) { return; }
+                lastRead = read.Text;
+
+                bool done;
+                if (changes)
+                {
+                    var now = number ? ScreenTextMatcher.ValueForVariable(read, true) : ScreenTextMatcher.Normalize(read.Text);
+                    if (baseline == null) { baseline = now; done = false; }
+                    else if (now == baseline) { candidate = null; done = false; }
+                    else if (now == candidate) done = true;
+                    else { candidate = now; done = false; }
+                }
+                else
+                {
+                    bool found = last?.Ok ?? false;
+                    done = disappear ? !found : found;
+                }
+
+                if (done)
+                {
+                    if (_currentStepRec is { } rec && !_runStepsFull)
+                    {
+                        var shown = Clip40(read.Text);
+                        rec.Detail = changes ? $"changed → \"{shown}\"" : disappear ? "gone" : $"found \"{shown}\"";
+                    }
+                    if (!changes && !disappear && action.WaitImageClickOnMatch && last?.Rect is System.Drawing.Rectangle hit)
+                    {
+                        // Absolute virtual-screen coords from the OCR pipeline — never profile space.
+                        int cx = hit.X + hit.Width / 2;
+                        int cy = hit.Y + hit.Height / 2;
+                        SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_LEFTDOWN, coordsAreProfileSpace: false, token: token);
+                        SimulateMouse(cx, cy, NativeMethods.MOUSEEVENTF_LEFTUP, coordsAreProfileSpace: false, token: token);
+                    }
+                    return;
+                }
+
+                if (DateTime.UtcNow >= deadline)
+                {
+                    HandleWaitTextTimeout(action, lastRead);
+                    return;
+                }
+                try { await Task.Delay(500, token); }
+                catch (OperationCanceledException) { return; }
+            }
+        }
+
+        private static string Clip40(string s)
+        {
+            s = (s ?? "").Replace("\r", " ").Replace("\n", " ").Trim();
+            return s.Length <= 40 ? s : s.Substring(0, 40) + "…";
+        }
+
+        // Same policy as HandleWaitImageTimeout (Continue = expected miss, no screenshot); the message
+        // carries what was read last, which is the first thing anyone asks about an OCR miss.
+        private void HandleWaitTextTimeout(ActionItem action, string lastRead)
+        {
+            if (action.WaitImageOnTimeout == "Continue") return;
+            var read = Clip40(lastRead);
+            string reason = $"Wait Text timed out — last read: \"{read}\"";
+            SaveTimeoutScreenshot(action);
+            FailCurrentStep(reason);
+            if (SkipRowOnErrorActive)
+            {
+                FaultRow(reason);
+                return;
+            }
+            try { _cts?.Cancel(); } catch (ObjectDisposedException) { }
+        }
+
+        /// <summary>
+        /// Set Variable, Screen mode: read the region into {var:name} — the text, or (Number) the first
+        /// number. ConditionTimeout is the "Wait up to": 0 reads once; more retries until something is
+        /// read. Nothing read deletes the variable, the same contract as an empty Set.
+        /// </summary>
+        private async Task ExecuteSetVariableFromScreen(ActionItem action, string name, string key, CancellationToken token)
+        {
+            bool number = ScreenTextMatcher.IsNumberMode(action.OcrReadAs);
+            var options = OcrOptionsFor(action);
+            var deadline = DateTime.UtcNow.AddMilliseconds(Math.Max(0, action.ConditionTimeout));
+            string value;
+            while (true)
+            {
+                if (!TryResolveOcrRegion(action, out var region))
+                {
+                    ReportMissingTargetWindow();
+                    return;
+                }
+                var read = await OcrService.ReadAsync(region, options,
+                    r => ScreenTextMatcher.ValueForVariable(r, number).Length > 0, token);
+                value = ScreenTextMatcher.ValueForVariable(read, number);
+                if (value.Length > 0 || DateTime.UtcNow >= deadline) break;
+                await Task.Delay(300, token);
+            }
+
+            if (value.Length == 0)
+            {
+                lock (_runStateLock) _runtimeVariables.Remove(key);
+                Services.DiagnosticLog.Info($"Set Variable '{name}' (screen): read nothing — variable removed");
+            }
+            else
+            {
+                lock (_runStateLock) _runtimeVariables[key] = value;
+            }
+            if (_currentStepRec is { } rec && !_runStepsFull)
+                rec.Detail = value.Length == 0 ? $"{name} ← nothing read" : $"{name} ← \"{Clip40(value)}\"";
+            PushVariablesSnapshot(force: true);
+        }
+
         // Two branches: explicit "Continue" silently moves on to the next action; everything
         // else (null default / "StopReplay" / anything legacy) cancels the shared CTS so the
         // replay halts cleanly mid-iteration, equivalent to pressing the Stop button. A debug
@@ -9102,6 +9293,12 @@ namespace TrueReplayer.Services
             {
                 ctx.HoistedFilePath = await HoistStatefulOperandAsync(action.FilePath);
             }
+            else if (string.Equals(action.ConditionType, "ScreenText", StringComparison.OrdinalIgnoreCase))
+            {
+                // Same rule as Variable: a stateful operand ({input}, {random}, {clipboard:next}…)
+                // resolves once per window so a poll cannot consume it tick after tick.
+                ctx.HoistedOperand = await HoistStatefulOperandAsync(action.ConditionOperand);
+            }
             // Every remaining family has nothing hoistable — Random and TimeWindow are meant to
             // read fresh, ProcessRunning and ClipboardMatch have no inputs to resolve, and the
             // browser probe's selector goes over the pipe untouched. The empty context is ignored.
@@ -9196,7 +9393,9 @@ namespace TrueReplayer.Services
             bool isBrowserElement = string.Equals(action.ConditionType, "BrowserElementState", StringComparison.OrdinalIgnoreCase);
             bool isVariable = string.Equals(action.ConditionType, "Variable", StringComparison.OrdinalIgnoreCase);
             bool isFileExists = string.Equals(action.ConditionType, "FileExists", StringComparison.OrdinalIgnoreCase);
-            if (!isClipboard && !isBrowserElement && !isVariable && !isFileExists)
+            // OCR awaits WinRT — it belongs with the async families, never on the sync chain below.
+            bool isScreenText = string.Equals(action.ConditionType, "ScreenText", StringComparison.OrdinalIgnoreCase);
+            if (!isClipboard && !isBrowserElement && !isVariable && !isFileExists && !isScreenText)
                 return InstantProbe(action, ctx, token);
 
             token.ThrowIfCancellationRequested();
@@ -9215,6 +9414,10 @@ namespace TrueReplayer.Services
                 else if (isFileExists)
                 {
                     rawResult = await ProbeFileExistsAsync(action, ctx);
+                }
+                else if (isScreenText)
+                {
+                    rawResult = await ProbeScreenTextAsync(action, ctx, token);
                 }
                 else
                 {
@@ -9236,6 +9439,33 @@ namespace TrueReplayer.Services
                     throw;
                 return action.ConditionNegate; // TreatAsFalse + negate — mirrors InstantProbe's catch
             }
+        }
+
+        // Last text the Screen Text probe read — appended to the If/While run-report detail so a
+        // branch that went the "wrong" way shows what the engine actually saw. Replay-thread only.
+        private string? _lastScreenRead;
+
+        internal static OcrOptions OcrOptionsFor(ActionItem action, bool wantPreview = false) => new(
+            Number: ScreenTextMatcher.IsNumberMode(action.OcrReadAs),
+            TextColor: PixelColorService.ParseHex(action.OcrTextColor),
+            ColorTolerance: action.OcrColorTolerance ?? OcrService.DefaultColorTolerance,
+            WantPreview: wantPreview);
+
+        // If/While Screen Text raw probe: read the region (re-composed every tick, like ImageFound,
+        // so a moving target window is tracked), stop the variant ladder at the first read the
+        // matcher accepts. A missing target window reads not-matched (or Halt, via the shared
+        // helper). An operand that is not a number in Number mode throws → probe-error policy.
+        private async Task<bool> ProbeScreenTextAsync(ActionItem action, IfProbeContext? ctx, CancellationToken token)
+        {
+            _lastScreenRead = null;
+            if (!TryComposeIfSearchRegion(action, out var region)) return false;
+            bool number = ScreenTextMatcher.IsNumberMode(action.OcrReadAs);
+            var operand = ctx?.HoistedOperand ?? await ResolveTokens(action.ConditionOperand ?? string.Empty);
+            ScreenTextMatcher.Result? last = null;
+            var read = await OcrService.ReadAsync(region, OcrOptionsFor(action),
+                r => (last = ScreenTextMatcher.Evaluate(r, action.ConditionOperator, operand, number)).Ok, token);
+            _lastScreenRead = read.Text;
+            return last?.Ok ?? false;
         }
 
         // If-Browser-Element raw probe: one instant state check (appears/disappears/enabled/

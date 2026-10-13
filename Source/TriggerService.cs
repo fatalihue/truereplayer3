@@ -889,7 +889,7 @@ namespace TrueReplayer.Services
                 // missing" mora naquele mesmo ramo e também era pulada, e o deslocamento de ROI
                 // escrito logo abaixo era código morto. A âncora é ORTOGONAL ao tipo: ela não
                 // substitui a preparação de nenhum deles, soma-se a ela.
-                if (cfg.UseRelativeCoordinates && (kind == "pixelcolormatch" || kind == "imagefound"))
+                if (cfg.UseRelativeCoordinates && (kind == "pixelcolormatch" || kind == "imagefound" || kind == "screentext"))
                 {
                     (anchorTarget, anchorRegex) = ActionReplayer.BuildWindowTarget(
                         cfg.WindowProcessName, cfg.WindowTitle, cfg.WindowTitleMatchMode);
@@ -915,7 +915,7 @@ namespace TrueReplayer.Services
                 // stop we announced for it: if the same problem comes back later it is news again.
                 lock (_lock) _announcedStop.Remove(name);
 
-                bool wasTrue = ProbeCondition(cfg, kind, windowTarget, titleRegex, pixelColor, templateMat, searchRegion, reportRegion, anchorTarget, anchorRegex);
+                bool wasTrue = await ProbeConditionAsync(cfg, kind, windowTarget, titleRegex, pixelColor, templateMat, searchRegion, reportRegion, anchorTarget, anchorRegex);
                 reportRegion = false;
                 rt.ConditionTrue = wasTrue;
                 if (wasTrue) NotifyStateChanged();
@@ -954,7 +954,7 @@ namespace TrueReplayer.Services
                 {
                     await Task.Delay(pollMs, ct);
 
-                    bool raw = ProbeCondition(cfg, kind, windowTarget, titleRegex, pixelColor, templateMat, searchRegion, reportRegion, anchorTarget, anchorRegex);
+                    bool raw = await ProbeConditionAsync(cfg, kind, windowTarget, titleRegex, pixelColor, templateMat, searchRegion, reportRegion, anchorTarget, anchorRegex);
                     // True is believed at once — a condition appearing is the event we exist for,
                     // and delaying it would cost reaction time on every fire. Only the DROP waits
                     // for a second opinion; see falseStreak.
@@ -1450,7 +1450,7 @@ namespace TrueReplayer.Services
         {
             "pixelcolormatch" => 250,
             "clipboardchanged" => 500,
-            _ => 1000,   // WindowOpen / ProcessRunning / FileExists / ImageFound
+            _ => 1000,   // WindowOpen / ProcessRunning / FileExists / ImageFound / ScreenText
         };
 
         /// <summary>
@@ -1474,7 +1474,7 @@ namespace TrueReplayer.Services
             // e a condição é falsa em todo tick para sempre. Era o único estado "nunca dispara"
             // que nenhum dos dois validadores conhecia: o vigia armava, dizia Running, e não dizia
             // mais nada. Fica ANTES do switch porque vale para os dois tipos que têm coordenada.
-            if (cfg.UseRelativeCoordinates && (kind == "pixelcolormatch" || kind == "imagefound"))
+            if (cfg.UseRelativeCoordinates && (kind == "pixelcolormatch" || kind == "imagefound" || kind == "screentext"))
             {
                 if (string.IsNullOrWhiteSpace(cfg.WindowProcessName) && string.IsNullOrWhiteSpace(cfg.WindowTitle))
                     return "coordinates are anchored to a window, but no process name or window title is set — this can never match";
@@ -1530,6 +1530,28 @@ namespace TrueReplayer.Services
                     return PixelColorService.ParseHex(cfg.PixelColor) == null
                         ? $"the pixel colour '{cfg.PixelColor}' is not a 6-digit hex value — this can never match"
                         : null;
+                case "screentext":
+                {
+                    // A whole-screen read every tick is ~0.45 s of CPU per poll — the editor requires a
+                    // region, and so does the daemon, for configs that never went through the editor.
+                    if (!(cfg.SearchRegionW is int rw && rw > 0 && cfg.SearchRegionH is int rh && rh > 0))
+                        return "no search region set — reading the whole screen every check is too slow";
+                    if (OcrService.AutoLanguageTag() == null)
+                        return "no OCR language is installed on this PC";
+                    bool number = ScreenTextMatcher.IsNumberMode(cfg.OcrReadAs);
+                    var op = ScreenTextMatcher.EffectiveOperator(cfg.ConditionOperator, number);
+                    var operand = cfg.ConditionOperand ?? "";
+                    if (number && !ScreenTextMatcher.TryParseNumber(operand, out _))
+                        return "the value to compare with is not a number — this can never match";
+                    if (!number && operand.Length == 0)
+                        return "no text to watch for — this can never match";
+                    if (!number && op == "regex")
+                    {
+                        try { _ = new System.Text.RegularExpressions.Regex(operand); }
+                        catch (ArgumentException) { return "the text pattern (regex) does not compile — this can never match"; }
+                    }
+                    return null;
+                }
                 case "imagefound":
                 case "clipboardchanged":
                     return null;   // ImageFound reports its own missing reference below
@@ -1557,6 +1579,40 @@ namespace TrueReplayer.Services
         /// the ones its own condition type needs. <paramref name="reportRegion"/> is true only
         /// for the caller's seed probe — see the gate at the call site.
         /// </remarks>
+        // ScreenText awaits OCR (WinRT), so the loop calls through this async front door; every other
+        // family stays on the synchronous switch below, unchanged.
+        private async Task<bool> ProbeConditionAsync(
+            ProfileTriggerConfig cfg,
+            string? kind,
+            Models.WindowTarget? windowTarget,
+            System.Text.RegularExpressions.Regex? titleRegex,
+            System.Drawing.Color? pixelColor,
+            OpenCvSharp.Mat? templateMat,
+            System.Drawing.Rectangle? searchRegion,
+            bool reportRegion,
+            Models.WindowTarget? anchorTarget,
+            System.Text.RegularExpressions.Regex? anchorRegex)
+        {
+            if (kind != "screentext")
+                return ProbeCondition(cfg, kind, windowTarget, titleRegex, pixelColor, templateMat, searchRegion, reportRegion, anchorTarget, anchorRegex);
+            try
+            {
+                if (!(cfg.SearchRegionW is int sw && sw > 0 && cfg.SearchRegionH is int sh && sh > 0)) return false;
+                if (!TryAnchorOffset(anchorTarget, anchorRegex, out int ax, out int ay)) return false;
+                var roi = new System.Drawing.Rectangle((cfg.SearchRegionX ?? 0) + ax, (cfg.SearchRegionY ?? 0) + ay, sw, sh);
+                bool number = ScreenTextMatcher.IsNumberMode(cfg.OcrReadAs);
+                var operand = cfg.ConditionOperand ?? "";
+                var options = new OcrOptions(number, PixelColorService.ParseHex(cfg.OcrTextColor), cfg.OcrColorTolerance ?? OcrService.DefaultColorTolerance);
+                bool ok = false;
+                await OcrService.ReadAsync(roi, options, r => ok = ScreenTextMatcher.Evaluate(r, cfg.ConditionOperator, operand, number).Ok, CancellationToken.None);
+                return ok;
+            }
+            catch
+            {
+                return false; // a probe error reads FALSE, like the synchronous families
+            }
+        }
+
         private bool ProbeCondition(
             ProfileTriggerConfig cfg,
             string? kind,

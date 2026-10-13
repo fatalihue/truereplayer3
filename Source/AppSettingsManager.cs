@@ -121,6 +121,12 @@ namespace TrueReplayer.Services
             // system-wide; a Win-modified combo is the compromise.) Clearable in
             // Settings → Keys → Hotkeys, where empty still means disabled.
             public string CaptureSlotHotkey { get; set; } = HotkeyDefaults.CaptureSlot;
+            // Copy screen text (OCR → clipboard): Win+F12 by default, empty = disabled. Region "" = drag each time,
+            // "x,y,w,h" (absolute) = always read that region.
+            public string CopyScreenTextHotkey { get; set; } = HotkeyDefaults.CopyScreenText;
+            public string CopyScreenTextRegion { get; set; } = "";
+            // OCR recognizer language tag. "" = Auto (the user's profile languages).
+            public string OcrLanguage { get; set; } = "";
             public bool ProfileKeyEnabled { get; set; } = true;
             public bool BrowserSelectorEnabled { get; set; } = true;
             // Automation master switch — armed per-profile triggers only run while this is on.
@@ -377,6 +383,9 @@ namespace TrueReplayer.Services
             profile.ForegroundHotkey = s.ForegroundHotkey;
             profile.ModeToggleHotkey = s.ModeToggleHotkey;
             profile.CaptureSlotHotkey = s.CaptureSlotHotkey;
+            profile.CopyScreenTextHotkey = s.CopyScreenTextHotkey ?? "";
+            profile.CopyScreenTextRegion = s.CopyScreenTextRegion ?? "";
+            OcrService.PreferredLanguage = s.OcrLanguage ?? "";
             profile.ProfileKeyEnabled = s.ProfileKeyEnabled;
             profile.AutomationEnabled = s.AutomationEnabled;
             // Keep the daemon's runtime master in lockstep with every settings reload —

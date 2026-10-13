@@ -140,6 +140,13 @@ export interface ActionItem {
   // against conditionOperand under conditionOperator (eq|neq|contains|gt|lt).
   conditionOperator?: string | null;
   conditionOperand?: string | null;
+  // Screen text / OCR (WaitText, conditionType 'ScreenText', SetVariable variableMode 'screen').
+  // Region = the waitImageSearch* fields. The matcher reuses conditionOperator/conditionOperand:
+  // Text mode contains|eq|regex, Number mode eq|neq|gt|lt on the FIRST number read.
+  // ocrReadAs: null = text | 'number'. ocrTextColor '#RRGGBB' keys on the text colour (game HUDs).
+  ocrReadAs?: string | null;
+  ocrTextColor?: string | null;
+  ocrColorTolerance?: number | null;
   // If File exists (conditionType 'FileExists') — TRUE when the resolved path exists.
   filePath?: string | null;
   // If Time (conditionType 'TimeWindow') — "HH:mm" window + day bitmask (Sun=1<<0…Sat=1<<6; 0=every day).
@@ -489,6 +496,11 @@ export interface SettingsState {
   modeToggleHotkey: string;
   // Capture-selection → clipboard slot ({clip:1}…{clip:9}). Empty = disabled (the default).
   captureSlotHotkey: string;
+  // Copy screen text (OCR → clipboard): '' = disabled. Region '' = drag each time, or 'x,y,w,h'
+  // (absolute) = always read that region. ocrLanguage '' = Auto.
+  copyScreenTextHotkey: string;
+  copyScreenTextRegion: string;
+  ocrLanguage: string;
   alwaysOnTop: boolean;
   minimizeToTray: boolean;
   runOnStartup: boolean;
@@ -600,6 +612,12 @@ export interface TriggerConfig {
   // ImageFound search region (ROI), absolute virtual-screen coords; null = full screen.
   searchRegion: { x: number; y: number; w: number; h: number } | null;
   clipboardPattern: string | null;
+  // ScreenText watcher — same names and meaning as the ActionItem fields.
+  conditionOperator?: string | null;
+  conditionOperand?: string | null;
+  ocrReadAs?: string | null;
+  ocrTextColor?: string | null;
+  ocrColorTolerance?: number | null;
   cooldownSeconds: number;
   retrigger: string | null;
   // How often the watcher re-probes, in ms. 0 = the per-condition default (see
@@ -933,6 +951,8 @@ export type IncomingMessage =
   // must not be shown as a plain "false".
   | { type: 'browser:testConditionResult'; payload: { requestId: string; satisfied: boolean; raw: boolean; connected: boolean } }
   | { type: 'browser:extensionOutdated'; payload: { currentVersion: string; expectedVersion: string } }
+  | { type: 'ocr:testReadResult'; payload: { requestId: string; text?: string; matched?: boolean | null; number?: string | null; x?: number; y?: number; w?: number; h?: number; elapsedMs?: number; variant?: string; language?: string; previewBase64?: string | null; error?: string } }
+  | { type: 'ocr:languagesResult'; payload: { available: { tag: string; name: string }[]; auto: string | null } }
   | { type: 'image:testMatchResult'; payload: { requestId: string; found: boolean; score: number; x: number; y: number; w: number; h: number; error?: string } }
   | { type: 'waitimage:searchRegionSet'; payload: { requestId: string; cancelled: boolean; x?: number; y?: number; w?: number; h?: number } }
   // clicker:areaSet / clicker:pointSet used to live here. Removed with their emitters: the
@@ -1153,7 +1173,7 @@ export type OutgoingMessage =
   // accepts; 'ImageFound' / 'PixelColorMatch' run their capture overlay first and a cancel
   // inserts zero rows. Unlike insertConditional this adds ONE row — the block already owns its
   // EndIf. PushUndoState is fired so the arm is a single Ctrl+Z away.
-  | { type: 'actions:addElseIfBranch'; payload: { ifRowIndex: number; conditionType: 'ImageFound' | 'PixelColorMatch' | 'WindowOpen' | 'ClipboardMatch' | 'BrowserElementState' | 'Random' | 'Variable' | 'ProcessRunning' | 'FileExists' | 'TimeWindow' } }
+  | { type: 'actions:addElseIfBranch'; payload: { ifRowIndex: number; conditionType: 'ImageFound' | 'PixelColorMatch' | 'WindowOpen' | 'ClipboardMatch' | 'BrowserElementState' | 'Random' | 'Variable' | 'ProcessRunning' | 'FileExists' | 'TimeWindow' | 'ScreenText' } }
   // Conditional logic — capture-first insert. conditionType selects which probe family
   // the new IF uses: 'ImageFound' runs the same screen overlay region-pick as WaitImage
   // and the captured image becomes the IF's reference; 'PixelColorMatch' runs the same
@@ -1165,7 +1185,7 @@ export type OutgoingMessage =
   // {If, EndIf} pair inserts immediately with empty probe fields and the Sheet auto-opens
   // to fill them. BrowserElementState reuses BrowserWaitElement's probe fields (key =
   // selector, waitMode, browserText = text pattern) the same way If-Image reuses WaitImage's.
-  | { type: 'actions:insertConditional'; payload: { conditionType: 'ImageFound' | 'PixelColorMatch' | 'WindowOpen' | 'ClipboardMatch' | 'BrowserElementState' | 'Random' | 'Variable' | 'ProcessRunning' | 'FileExists' | 'TimeWindow'; insertIndex: number } }
+  | { type: 'actions:insertConditional'; payload: { conditionType: 'ImageFound' | 'PixelColorMatch' | 'WindowOpen' | 'ClipboardMatch' | 'BrowserElementState' | 'Random' | 'Variable' | 'ProcessRunning' | 'FileExists' | 'TimeWindow' | 'ScreenText'; insertIndex: number } }
   // Desktop Assert — a LEAF row (no EndIf partner), so it gets its own message instead of riding
   // actions:insertConditional, which always inserts a block pair. Narrower condition union on
   // purpose: image/pixel already abort on timeout via WaitImage/WaitPixelColor, Random is
@@ -1183,7 +1203,7 @@ export type OutgoingMessage =
   // Sheet for the state families; Random is deliberately NOT offered: a coin-flip loop
   // guard has no stable ending) or {ForEachRow, EndLoop} (kind: 'ForEachRow'; ignores
   // conditionType, nothing to configure so no Sheet auto-open).
-  | { type: 'actions:insertLoop'; payload: { conditionType?: 'ImageFound' | 'PixelColorMatch' | 'WindowOpen' | 'ClipboardMatch' | 'BrowserElementState' | 'Variable' | 'ProcessRunning' | 'FileExists' | 'TimeWindow'; insertIndex: number; kind?: 'While' | 'ForEachRow' } }
+  | { type: 'actions:insertLoop'; payload: { conditionType?: 'ImageFound' | 'PixelColorMatch' | 'WindowOpen' | 'ClipboardMatch' | 'BrowserElementState' | 'Variable' | 'ProcessRunning' | 'FileExists' | 'TimeWindow' | 'ScreenText'; insertIndex: number; kind?: 'While' | 'ForEachRow' } }
   // Delete the entire loop block (opener + body + EndLoop) — deleteConditional's mirror
   // with a kind-aware scan (both loop openers deepen, only EndLoop pops).
   | { type: 'actions:deleteLoop'; payload: { loopRowIndex: number } }
@@ -1245,6 +1265,9 @@ export type OutgoingMessage =
   | { type: 'clicker:applyPreset'; payload: { name: string } }
   | { type: 'clicker:deletePreset'; payload: { name: string } }
   | { type: 'waitimage:cropReference'; payload: { index: number; x: number; y: number; w: number; h: number } }
+  | { type: 'ocr:testRead'; payload: { requestId: string; searchRegion?: { x: number; y: number; w: number; h: number }; absolute?: boolean; anchor?: { processName: string; windowTitle: string; titleMatchMode: string }; readAs?: string | null; operator?: string | null; operand?: string; match?: boolean; textColor?: string | null; tolerance?: number } }
+  | { type: 'ocr:languages'; payload: Record<string, never> }
+  | { type: 'ocr:configureHotkeyRegion'; payload: Record<string, never> }
   | { type: 'image:testMatch'; payload: { requestId: string; imagePath: string; confidence: number; searchRegion?: { x: number; y: number; w: number; h: number }; absolute?: boolean; anchor?: { processName: string; windowTitle: string; titleMatchMode: string }; profile?: string } }
   | { type: 'mouse:pickPosition'; payload: { requestId: string } }
   // absolute: skip the profile-relative translation (automation watchers sample

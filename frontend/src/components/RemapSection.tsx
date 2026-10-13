@@ -362,6 +362,7 @@ export function RemapSection({ draft }: {
       [settings.foregroundHotkey, 'the Foreground hotkey'],
       [settings.modeToggleHotkey, 'the Mode Toggle hotkey'],
       [settings.captureSlotHotkey, 'the Capture Slot hotkey'],
+      [settings.copyScreenTextHotkey, 'the Copy Screen Text hotkey'],
     ] as [string, string][]).filter(([combo]) => !!combo).map(([combo, label]) => ({ label, combo })),
     ...profiles.filter((p) => !!p.hotkey).map((p) => ({ label: `profile "${p.name}"`, combo: p.hotkey as string })),
   ];
