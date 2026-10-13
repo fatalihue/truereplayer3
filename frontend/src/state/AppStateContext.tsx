@@ -13,6 +13,7 @@ const defaultSettings = {
   loopInterval: '200',
   loopIntervalEnabled: false,
   smoothMovement: true,
+  restoreCursor: false,
   moveStepPx: '20',
   moveStepDelay: '2',
   moveClickDelay: '10',
@@ -91,7 +92,7 @@ const initialState: AppState = {
   settings: defaultSettings,
   // Mirrors WebViewBridge's "No Profile" fallback so there's no wrong-value flash before the
   // first profile:loop / state:init lands. count '1', never '0' — 0 means forever to the engine.
-  profileLoop: { count: '1', enabled: false, interval: '200', intervalEnabled: false, dirty: false, scoped: false, gameMode: null },
+  profileLoop: { count: '1', enabled: false, interval: '200', intervalEnabled: false, dirty: false, scoped: false, gameMode: null, restoreCursor: null },
   toolbar: { profileName: 'No Profile' },
   statusBar: { directory: 'Profiles', profileName: null, actionCount: 0 },
   buttonStates: {
@@ -133,7 +134,11 @@ function appStateReducer(state: AppState, message: IncomingMessage): AppState {
         // Same guard as settings/profileOrder: a version-skewed payload that omits the slice
         // must not make profileLoop.count undefined and blank the ActionBar chip.
         profileLoop: message.payload.profileLoop
-          ? { ...message.payload.profileLoop, gameMode: message.payload.profileLoop.gameMode ?? null }
+          ? {
+              ...message.payload.profileLoop,
+              gameMode: message.payload.profileLoop.gameMode ?? null,
+              restoreCursor: message.payload.profileLoop.restoreCursor ?? null,
+            }
           : initialState.profileLoop,
       };
     case 'status:changed':
@@ -164,9 +169,16 @@ function appStateReducer(state: AppState, message: IncomingMessage): AppState {
     case 'profile:loop':
       // Whole-slice replace: the C# bridge is the sole owner of these values (it resolves
       // profile-vs-global and does the 1..999 clamp), so there is no local state to preserve.
-      // gameMode is pinned to null when absent: undefined would read as "follows" anyway, but
-      // `!== null` checks downstream must not see a third value.
-      return { ...state, profileLoop: { ...message.payload, gameMode: message.payload.gameMode ?? null } };
+      // gameMode / restoreCursor are pinned to null when absent: undefined would read as
+      // "follows" anyway, but `!== null` checks downstream must not see a third value.
+      return {
+        ...state,
+        profileLoop: {
+          ...message.payload,
+          gameMode: message.payload.gameMode ?? null,
+          restoreCursor: message.payload.restoreCursor ?? null,
+        },
+      };
     case 'button:states':
       return { ...state, buttonStates: message.payload };
     case 'toolbar:updated':

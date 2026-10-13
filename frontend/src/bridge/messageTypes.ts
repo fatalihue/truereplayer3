@@ -444,6 +444,10 @@ export interface SettingsState {
   // single large jump. Off = legacy instant move. moveStepPx/moveStepDelay/moveClickDelay are
   // numeric strings (same convention as customDelay).
   smoothMovement: boolean;
+  // Cursor return at the end of a macro run — the app default every profile without its own
+  // follows (ActionReplayer.RestoreCursorDefault). Edited through `profileRestoreCursor` under
+  // "No Profile"; the effective value is `profileLoop.restoreCursor ?? restoreCursor`.
+  restoreCursor: boolean;
   moveStepPx: string;
   moveStepDelay: string;
   moveClickDelay: string;
@@ -689,6 +693,12 @@ export interface ProfileLoopState {
    * value is `gameMode ?? settings.smoothMovement`.
    */
   gameMode: boolean | null;
+  /**
+   * The loaded profile's OWN cursor return (WebViewBridge.ResolveRestoreCursor); null = it follows
+   * the app default (`settings.restoreCursor`), always null when `scoped` is false. Same lifecycle
+   * and same reason as `gameMode`.
+   */
+  restoreCursor: boolean | null;
 }
 
 export interface AppState {

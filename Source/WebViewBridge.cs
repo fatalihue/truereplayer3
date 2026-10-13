@@ -3003,6 +3003,17 @@ namespace TrueReplayer
         }
 
         /// <summary>
+        /// The ONE place a macro run's cursor return is resolved: the profile's own explicit choice,
+        /// or null = follow the app default (ActionReplayer.RestoreCursorDefault, read at the run's
+        /// end). Same `profile` contract and same "No Profile" check as ResolveGameMode.
+        /// </summary>
+        public bool? ResolveRestoreCursor(UserProfile? profile = null)
+        {
+            if (profile == null && CurrentProfileName == "No Profile") return null;
+            return (profile ?? UserProfile.Current).RestoreCursor;
+        }
+
+        /// <summary>
         /// Narrow push for the active profile's loop settings. Deliberately NOT PushSettingsLoaded:
         /// that message replaces the whole React `settings` slice by merging over the DEFAULTS and
         /// has ~19 emitters (tray, ScrollLock, Pause, remaps, the automation master, every Clicker
@@ -3039,6 +3050,9 @@ namespace TrueReplayer
                 // profile's value on every switch — and a second message would need its own copy
                 // of the twelve push sites and fourteen clears.
                 gameMode = ResolveGameMode(),
+                // The profile's OWN cursor return (null = follows the app default) — same
+                // lifecycle, same payload, for the same reason as gameMode.
+                restoreCursor = ResolveRestoreCursor(),
             };
         }
 
@@ -3132,6 +3146,7 @@ namespace TrueReplayer
                 loopInterval = LoopInterval,
                 loopIntervalEnabled = LoopIntervalEnabled,
                 smoothMovement = ActionReplayer.SmoothMovement,
+                restoreCursor = ActionReplayer.RestoreCursorDefault,
                 moveStepPx = ActionReplayer.MoveStepPx.ToString(),
                 moveStepDelay = ActionReplayer.MoveStepDelayMs.ToString(),
                 moveClickDelay = ActionReplayer.MoveClickDelayMs.ToString(),
@@ -3489,6 +3504,8 @@ namespace TrueReplayer
                 // Per-profile Game Mode, under the same rule: left out here, a Save would write
                 // nothing and the profile's choice would quietly revert to "follow the default".
                 GameMode = UserProfile.Current.GameMode,
+                // Per-profile cursor return — same rule.
+                RestoreCursor = UserProfile.Current.RestoreCursor,
                 // Data-loop table travels with the profile so a normal Save preserves it
                 // (data:save also persists immediately, but the main Save must not null it).
                 Data = UserProfile.Current.Data,
@@ -4396,7 +4413,7 @@ namespace TrueReplayer
                 }
             }
 
-            mainController.ToggleReplay(loopEnabled, loopCount, intervalEnabled, intervalText, ResolveGameMode(), useVariation, variationPercent, effRelCoords, effTarget, effBringFocus, effW, effH, effGX, effGY, effRestorePos, effRestoreSz);
+            mainController.ToggleReplay(loopEnabled, loopCount, intervalEnabled, intervalText, ResolveGameMode(), ResolveRestoreCursor(), useVariation, variationPercent, effRelCoords, effTarget, effBringFocus, effW, effH, effGX, effGY, effRestorePos, effRestoreSz);
         }
 
         private void HandleActionsClear()
@@ -12843,6 +12860,7 @@ namespace TrueReplayer
             // those too, otherwise the runtime + the UI (PushSettingsLoaded reads the statics)
             // would keep the user's old values while disk holds the defaults.
             ActionReplayer.SmoothMovement = defaults.SmoothMovement;
+            ActionReplayer.RestoreCursorDefault = defaults.RestoreCursor;
             ActionReplayer.MoveStepPx = defaults.MoveStepPx;
             ActionReplayer.MoveStepDelayMs = defaults.MoveStepDelayMs;
             ActionReplayer.MoveClickDelayMs = defaults.MoveClickDelayMs;
@@ -12944,6 +12962,7 @@ namespace TrueReplayer
             s.LoopIntervalEnabled = LoopIntervalEnabled;
             s.LoopInterval = int.TryParse(LoopInterval, out var li) ? li : 200;
             s.SmoothMovement = ActionReplayer.SmoothMovement;
+            s.RestoreCursor = ActionReplayer.RestoreCursorDefault;
             s.MoveStepPx = ActionReplayer.MoveStepPx;
             s.MoveStepDelayMs = ActionReplayer.MoveStepDelayMs;
             s.MoveClickDelayMs = ActionReplayer.MoveClickDelayMs;
@@ -13008,7 +13027,9 @@ namespace TrueReplayer
             "profileLoopCount", "profileEnableLoop", "profileLoopInterval", "profileLoopIntervalEnabled",
             // The Game Mode header switch, scoped the same way: the loaded profile's own value, or
             // under "No Profile" the app-wide switch (the smoothMovement global).
-            "profileGameMode"
+            "profileGameMode",
+            // Execution's "Return cursor" row — same scoping; the global is RestoreCursorDefault.
+            "profileRestoreCursor"
         };
 
         /// <summary>
@@ -13078,6 +13099,21 @@ namespace TrueReplayer
                     else if (next is bool on) ActionReplayer.SmoothMovement = on;
                     break;
                 }
+                case "profileRestoreCursor":
+                {
+                    // Same three-valued contract as profileGameMode: true/false = the profile's own
+                    // explicit value (or the default under No Profile), null = the row's ↺, back
+                    // to following. A sub-profile's value is never read in a chain — only the root's.
+                    bool? next = value.ValueKind switch
+                    {
+                        JsonValueKind.True => true,
+                        JsonValueKind.False => false,
+                        _ => null,
+                    };
+                    if (scoped) { changed = p.RestoreCursor != next; p.RestoreCursor = next; }
+                    else if (next is bool on) ActionReplayer.RestoreCursorDefault = on;
+                    break;
+                }
             }
 
             if (scoped)
@@ -13093,8 +13129,9 @@ namespace TrueReplayer
                 // No profile loaded → the mirrors ARE the global, so write them straight through.
                 var saved = SaveGlobalSettings();
                 // The Game Mode default is also the React `settings.smoothMovement` (the rail dot
-                // and the knob gates read it), which only settings:loaded refreshes.
-                if (key == "profileGameMode") PushSettingsLoaded(saved);
+                // and the knob gates read it), which only settings:loaded refreshes. Same for the
+                // cursor return default (`settings.restoreCursor`).
+                if (key is "profileGameMode" or "profileRestoreCursor") PushSettingsLoaded(saved);
             }
 
             PushProfileLoop();

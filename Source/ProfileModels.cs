@@ -139,6 +139,15 @@ namespace TrueReplayer.Models
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public bool? GameMode { get; set; }
 
+        // ── Per-profile cursor return (serialized, optional) ──
+        // When the run ends — finish, Stop or error — the cursor goes back to where it was when
+        // the run started (ActionReplayer.StartAsync). null = FOLLOWS the app default
+        // (ActionReplayer.RestoreCursorDefault). Only the ROOT profile of a run decides: a
+        // sub-profile's value is ignored in a RunProfile chain, because the end of the run
+        // belongs to whoever started it. Same bool? / written-only-when-set rule as GameMode.
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? RestoreCursor { get; set; }
+
         [JsonIgnore]
         public bool AlwaysOnTop { get; set; } = false;
 
@@ -519,6 +528,9 @@ namespace TrueReplayer.Models
         // loop fields above. null = follows; omitted when null so a plain export is unchanged.
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public bool? GameMode { get; set; }
+        // Per-profile cursor return — mirrors UserProfile.RestoreCursor, same rule as GameMode.
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? RestoreCursor { get; set; }
         public ObservableCollection<ActionItem> Actions { get; set; } = new();
         /// <summary>
         /// Embedded WaitImage reference images: filename → base64 PNG data.

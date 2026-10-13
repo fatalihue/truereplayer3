@@ -321,6 +321,7 @@ namespace TrueReplayer.Controllers
                 LoopInterval = UserProfile.Current.LoopInterval,
                 // Per-profile Game Mode — same reason as the loop four.
                 GameMode = UserProfile.Current.GameMode,
+                RestoreCursor = UserProfile.Current.RestoreCursor,
                 // Data-loop table — mirror CreateProfileFromState so a "Save As New" /
                 // first-save doesn't silently drop the table.
                 Data = UserProfile.Current.Data,
@@ -1408,8 +1409,8 @@ namespace TrueReplayer.Controllers
         }
 
         /// <param name="loopOnly">
-        /// True when the ONLY pending change is a Loops / Interval / Game Mode edit (the three ride
-        /// one flag, HasUnsavedLoopChange). "You have unsaved
+        /// True when the ONLY pending change is a run-settings edit — Loops, Interval, Game Mode or
+        /// Return cursor (all ride one flag, HasUnsavedLoopChange). "You have unsaved
         /// actions" would be a lie there — the action list is untouched, and on a profile with
         /// no actions at all it reads as a bug rather than a prompt.
         /// </param>
@@ -1424,7 +1425,7 @@ namespace TrueReplayer.Controllers
             var messageBlock = new TextBlock
             {
                 Text = loopOnly
-                    ? $"You changed this profile's Loops or Game Mode settings. Save before {beforeWhat}?"
+                    ? $"You changed this profile's run settings. Save before {beforeWhat}?"
                     : $"You have unsaved actions. Save before {beforeWhat}?",
                 TextWrapping = TextWrapping.Wrap
             };
@@ -2133,6 +2134,7 @@ namespace TrueReplayer.Controllers
                     LoopIntervalEnabled = profile.LoopIntervalEnabled,
                     LoopInterval = profile.LoopInterval >= 0 ? profile.LoopInterval : 0,
                     GameMode = profile.GameMode,
+                    RestoreCursor = profile.RestoreCursor,
                     Actions = profile.Actions,
                     Images = images,
                     Data = profile.Data,
@@ -2512,6 +2514,7 @@ namespace TrueReplayer.Controllers
                     LoopInterval = entry.LoopInterval >= 0 ? entry.LoopInterval : 0,
                     // A bool? has no out-of-range value to normalize — null (absent) follows.
                     GameMode = entry.GameMode,
+                    RestoreCursor = entry.RestoreCursor,
                     // Round-trip sharing metadata. Pre-metadata .trprofile files leave these null
                     // (System.Text.Json default-inits when the property is missing in the JSON),
                     // which is exactly what we want — the Info tab will render "Unknown" / empty.

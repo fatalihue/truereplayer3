@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useContext, createContext } from 'react';
-import { Timer, TimerReset, Mic, Zap, Monitor, ChevronDown, ChevronRight, ChevronsLeft, ChevronsRight, MousePointerClick, Palette, Gamepad2, AlertTriangle, Power, BellRing, X, ArrowLeftRight, Crosshair, Hourglass, SlidersHorizontal, RotateCcw, ScanText, Frame } from 'lucide-react';
+import { Timer, TimerReset, Mic, Zap, Monitor, ChevronDown, ChevronRight, ChevronsLeft, ChevronsRight, MousePointerClick, MousePointer2, Palette, Gamepad2, AlertTriangle, Power, BellRing, X, ArrowLeftRight, Crosshair, Hourglass, SlidersHorizontal, RotateCcw, ScanText, Frame } from 'lucide-react';
 import { APP_VERSION } from '../appVersion';
 import { RemapSection, type RemapDraft } from './RemapSection';
 import { useLanguage, useTt } from '../state/LanguageContext';
@@ -22,6 +22,49 @@ import { CLICK_HOLD_MAX_MS, CLICK_PERIOD_FLOOR_MS, delayForCps, effectiveCps, fo
 // on/off control; other surfaces (dialogs) keep the default 40×20 Toggle.
 function CompactToggle(props: { isOn: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return <Toggle {...props} size="sm" />;
+}
+
+// A per-profile run setting that FOLLOWS the app default until the profile picks its own — Game
+// Mode's header switch and Execution's "Return cursor" row. One component so the two never drift.
+// `own` is the profile's value (null = follows); `effective` is what its runs will see. With a
+// profile loaded, a fixed-width slot sits left of the switch so the switch never moves when the
+// state flips: a muted "Default" while it follows; while it holds its own value, ↺ sends null
+// (follows again; unsaved until Ctrl+S, like the switch). The ↺ wears the switch's own footprint
+// (28×16, a pill) so the two read as a pair. Without a profile the switch IS the default.
+function ProfileOverrideToggle({ scoped, own, effective, onChange, tip }: {
+  scoped: boolean;
+  own: boolean | null;
+  effective: boolean;
+  onChange: (v: boolean | null) => void;
+  // The switch's own tooltip — for a host (a Section header) that carries no data-tip of its own.
+  tip?: string;
+}) {
+  const tt = useTt();
+  return (
+    <span className="flex items-center gap-1.5">
+      {scoped && (
+        <span className="w-10 flex items-center justify-end">
+          {own === null ? (
+            <span className="text-[10px] leading-none text-text-disabled">Default</span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onChange(null)}
+              aria-label="Follow the app default again"
+              data-tip={tt('Follow the app default again', 'Voltar a seguir o padrão do app')}
+              data-tip-pos="left"
+              className="w-7 h-4 rounded-full flex items-center justify-center border border-border-default text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+            >
+              <RotateCcw size={10} strokeWidth={2.25} />
+            </button>
+          )}
+        </span>
+      )}
+      <span className="flex items-center" data-tip={tip || undefined} data-tip-pos="left">
+        <CompactToggle isOn={effective} onChange={onChange} />
+      </span>
+    </span>
+  );
 }
 
 // ONE width for EVERY right-aligned settings field — hotkeys, value chips, combos — across
@@ -90,7 +133,8 @@ function Section({ title, color, action, children }: {
   // one row. This is not the deleted chevron coming back — it's a switch, the vocabulary the
   // panel already speaks, and its state is information rather than a view preference.
   action?: React.ReactNode;
-  children: React.ReactNode;
+  // Optional: a header-only section (Return cursor) is just its title and its `action`.
+  children?: React.ReactNode;
 }) {
   return (
     <div data-section={title}>
@@ -1208,6 +1252,8 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
   // reads this, never settings.smoothMovement directly, or a profile set to Off would show the
   // default's On (and its knobs) while its runs jump.
   const gameModeOn = profileLoop.scoped ? (profileLoop.gameMode ?? settings.smoothMovement) : settings.smoothMovement;
+  // Return cursor, resolved the same way (the engine re-reads the default at the run's end).
+  const restoreCursorOn = profileLoop.scoped ? (profileLoop.restoreCursor ?? settings.restoreCursor) : settings.restoreCursor;
   const { showToast } = useToast();
   // Clicker Rate unit — lifted out of ClickerSection so it survives that component's
   // remounts. settingsResetEpoch still bounces it back to the default, which was its only
@@ -1373,8 +1419,8 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
     : 0;
   const railProfile: RailEntry[] =
     settings.useCursorClick
-      /* Three entries, matching the three Sections — and matching macro mode's three, so a
-         mode switch with the panel collapsed no longer swaps three icons for one. Purple
+      /* Four entries, matching the four Sections — and matching macro mode's four, so a
+         mode switch with the panel collapsed never swaps one icon count for another. Purple
          stays on Clicker alone: the hue is the mode cue, not a per-section decoration. */
       ? [
           { tab: 'profile', title: 'Clicker', icon: MousePointerClick, color: 'var(--color-clicker-fg)' },
@@ -1384,6 +1430,9 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
         ]
       : [
           { tab: 'profile', title: 'Execution', icon: Timer },
+          // Return cursor ON (the effective value) = accent icon + dot, like Game Mode below.
+          { tab: 'profile', title: 'Return cursor', icon: MousePointer2,
+            ...(restoreCursorOn ? { color: 'var(--color-accent)', dot: 'var(--color-accent)', tip: `Return cursor · ${tt('on', 'ligado')}` } : {}) },
           // Game Mode ON = accent-tinted icon + dot: the same "hue is the mode cue"
           // rule the clicker purple follows, but only while the mode is live.
           { tab: 'profile', title: 'Game Mode', icon: Gamepad2,
@@ -1625,6 +1674,32 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
               </SettingRow>
             </Section>
 
+            {/* Return cursor — a per-profile run setting scoped like Game Mode (the profile's own
+                value or the app default; profileRestoreCursor). A section of its own, header switch
+                and no body — the shape Game Mode takes when off, so the two read as peers. Not a
+                row under Game Mode: that one is about games, and this applies to any macro. The
+                engine reads the position when the run fires and puts it back at any ending —
+                finish, Stop or error — unless a mouse button is still held. */}
+            <Section
+              title="Return cursor"
+              action={
+                <ProfileOverrideToggle
+                  scoped={profileLoop.scoped}
+                  own={profileLoop.restoreCursor}
+                  effective={restoreCursorOn}
+                  onChange={(v) => changeSetting('profileRestoreCursor', v)}
+                  tip={!profileLoop.scoped
+                    ? tt('Cursor goes back to where it was when the run started. Default for profiles without their own.',
+                         'O cursor volta para onde estava quando o run começou. Padrão dos perfis sem o seu.')
+                    : profileLoop.restoreCursor === null
+                      ? tt('Cursor goes back to where it was when the run started. This profile follows the default until you flip it.',
+                           'O cursor volta para onde estava quando o run começou. Este perfil segue o padrão até você mudar.')
+                      : tt('Cursor goes back to where it was when the run started. Saved with this profile.',
+                           'O cursor volta para onde estava quando o run começou. Salvo com este perfil.')}
+                />
+              }
+            />
+
             {/* Game Mode — interpolated cursor path so games (e.g. Roblox) that ignore a single
                 large jump follow the cursor. The header switch IS the walk's master (the profile's
                 own value, else `smoothMovement`), not a second flag on top of it: with it off
@@ -1642,35 +1717,14 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
             <Section
               title="Game Mode"
               action={
-                <span className="flex items-center gap-1.5">
-                {/* Where the profile's value comes from — only with a profile loaded. A fixed-width
-                    slot, so the switch never moves when the state flips: a muted "Default" while
-                    the profile follows; while it holds its own value, ↺ hands it back (null —
-                    follows again; unsaved until Ctrl+S, like the switch). The ↺ wears the switch's
-                    own footprint (28×16, a pill) so the two read as a pair of header controls. */}
-                {profileLoop.scoped && (
-                  <span className="w-10 flex items-center justify-end">
-                    {profileLoop.gameMode === null ? (
-                      <span className="text-[10px] leading-none text-text-disabled">Default</span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => changeSetting('profileGameMode', null)}
-                        aria-label="Follow the app default again"
-                        data-tip={tt('Follow the app default again', 'Voltar a seguir o padrão do app')}
-                        data-tip-pos="left"
-                        className="w-7 h-4 rounded-full flex items-center justify-center border border-border-default text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
-                      >
-                        <RotateCcw size={10} strokeWidth={2.25} />
-                      </button>
-                    )}
-                  </span>
-                )}
-                {/* The Section header carries no data-tip of its own, so the switch brings its own
-                    wrapper — without it the only text explaining what this control does is gone. */}
-                <span
-                  className="flex items-center"
-                  data-tip={!profileLoop.scoped
+                /* The Section header carries no data-tip of its own, so the switch brings its own
+                   tooltip — without it the only text explaining what this control does is gone. */
+                <ProfileOverrideToggle
+                  scoped={profileLoop.scoped}
+                  own={profileLoop.gameMode}
+                  effective={gameModeOn}
+                  onChange={(v) => changeSetting('profileGameMode', v)}
+                  tip={!profileLoop.scoped
                     ? tt('Cursor walks a path so games accept the move. Default for profiles without their own; off = instant jump.',
                          'O cursor percorre um caminho para jogos aceitarem o movimento. Padrão dos perfis sem o seu; off = salto instantâneo.')
                     : profileLoop.gameMode === null
@@ -1678,11 +1732,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                            'O cursor percorre um caminho para jogos aceitarem o movimento. Este perfil segue o padrão até você mudar; off = salto instantâneo.')
                       : tt('Cursor walks a path so games accept the move. Saved with this profile; off = instant jump.',
                            'O cursor percorre um caminho para jogos aceitarem o movimento. Salvo com este perfil; off = salto instantâneo.')}
-                  data-tip-pos="left"
-                >
-                  <CompactToggle isOn={gameModeOn} onChange={(v) => changeSetting('profileGameMode', v)} />
-                </span>
-                </span>
+                />
               }
             >
               {gameModeOn && (

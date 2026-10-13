@@ -42,6 +42,9 @@ namespace TrueReplayer.Services
             // Smooth mouse movement — interpolated cursor path so games that reject a single
             // large "teleport" (e.g. Roblox) follow the cursor. See ActionReplayer.SmoothMovement.
             public bool SmoothMovement { get; set; } = true;
+            // Cursor return at the end of a macro run — the default every profile without its own
+            // follows. Off = today's behaviour. See ActionReplayer.RestoreCursorDefault.
+            public bool RestoreCursor { get; set; } = false;
             public int MoveStepPx { get; set; } = 20;
             public int MoveStepDelayMs { get; set; } = 2;
             public int MoveClickDelayMs { get; set; } = 10;
@@ -372,6 +375,7 @@ namespace TrueReplayer.Services
             // Smooth-movement settings live on ActionReplayer statics (global runtime config),
             // not on the profile — load them straight into those statics.
             ActionReplayer.SmoothMovement = s.SmoothMovement;
+            ActionReplayer.RestoreCursorDefault = s.RestoreCursor;
             ActionReplayer.MoveStepPx = s.MoveStepPx;
             ActionReplayer.MoveStepDelayMs = s.MoveStepDelayMs;
             ActionReplayer.MoveClickDelayMs = s.MoveClickDelayMs;

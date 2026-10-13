@@ -736,6 +736,13 @@ namespace TrueReplayer.Services
             (p => p.GameMode.HasValue,
                 new Version(2, 46, 0), "Per-profile Game Mode"),
 
+            // Per-profile cursor return. Same destroy-on-round-trip mechanism as Game Mode: an
+            // older build drops the key, and the macro set to put the cursor back stops doing it
+            // with nothing on screen saying why. Gated on USE the same way (written only when set).
+            // Introduced after 2.46.0 — bump at release if the release number differs.
+            (p => p.RestoreCursor.HasValue,
+                new Version(2, 47, 0), "Per-profile cursor return"),
+
             // Screen text (OCR). Each family fails SILENTLY on an older build, which is the whole
             // reason for one row apiece: Wait for Text has no case in the action switch (no default),
             // so the row is skipped and its step reads "ok"; a ScreenText condition hits

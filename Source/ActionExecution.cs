@@ -341,15 +341,17 @@ namespace TrueReplayer.Services
         // app-wide switch. REQUIRED, not defaulted like its neighbours, so that every entry point
         // has to answer it — a defaulted null would let a new caller run every profile on the
         // global value without anything noticing.
-        public void ToggleReplay(bool loopEnabled, string loopCountText, bool intervalEnabled, string intervalText, bool? gameMode, bool useDelayVariation = false, int delayVariationPercent = 20, bool useRelativeCoords = false, Models.WindowTarget? windowTarget = null, bool bringToFocus = false, int lockWidth = 0, int lockHeight = 0, int lockX = 0, int lockY = 0, bool restorePosition = false, bool restoreSize = false, bool forceInfiniteLoop = false)
+        // restoreCursor: the profile's own cursor return (WebViewBridge.ResolveRestoreCursor), null =
+        // follows the app default. REQUIRED for the same reason as gameMode.
+        public void ToggleReplay(bool loopEnabled, string loopCountText, bool intervalEnabled, string intervalText, bool? gameMode, bool? restoreCursor, bool useDelayVariation = false, int delayVariationPercent = 20, bool useRelativeCoords = false, Models.WindowTarget? windowTarget = null, bool bringToFocus = false, int lockWidth = 0, int lockHeight = 0, int lockX = 0, int lockY = 0, bool restorePosition = false, bool restoreSize = false, bool forceInfiniteLoop = false)
         {
             if (!IsReplaying && actions.Count > 0)
-                StartReplay(loopEnabled, loopCountText, intervalEnabled, intervalText, gameMode, useDelayVariation, delayVariationPercent, useRelativeCoords, windowTarget, bringToFocus, lockWidth, lockHeight, lockX, lockY, restorePosition, restoreSize, forceInfiniteLoop);
+                StartReplay(loopEnabled, loopCountText, intervalEnabled, intervalText, gameMode, restoreCursor, useDelayVariation, delayVariationPercent, useRelativeCoords, windowTarget, bringToFocus, lockWidth, lockHeight, lockX, lockY, restorePosition, restoreSize, forceInfiniteLoop);
             else if (IsReplaying)
                 StopReplay();
         }
 
-        private void StartReplay(bool loopEnabled, string loopCountText, bool intervalEnabled, string intervalText, bool? gameMode, bool useDelayVariation, int delayVariationPercent, bool useRelativeCoords, Models.WindowTarget? windowTarget, bool bringToFocus, int lockWidth, int lockHeight, int lockX, int lockY, bool restorePosition, bool restoreSize, bool forceInfiniteLoop)
+        private void StartReplay(bool loopEnabled, string loopCountText, bool intervalEnabled, string intervalText, bool? gameMode, bool? restoreCursor, bool useDelayVariation, int delayVariationPercent, bool useRelativeCoords, Models.WindowTarget? windowTarget, bool bringToFocus, int lockWidth, int lockHeight, int lockX, int lockY, bool restorePosition, bool restoreSize, bool forceInfiniteLoop)
         {
             // Data-loop (Model A): the active profile's table. Read BEFORE flipping IsReplaying
             // so the empty-table guard can bail cleanly without a state to unwind. Data is
@@ -389,6 +391,7 @@ namespace TrueReplayer.Services
             replayer.SetBringToFocus(bringToFocus);
             replayer.SetForceInfiniteLoop(forceInfiniteLoop);
             replayer.SetGameMode(gameMode);
+            replayer.SetRestoreCursor(restoreCursor);
 
             // Start banner — the single highest-value diagnostic line: records action count,
             // loop config, the resolved window target, relative-coords, and the movement strategy
@@ -403,7 +406,9 @@ namespace TrueReplayer.Services
                 // Effective value AND where it came from: "my Roblox macro didn't walk" is
                 // answered by this field, and "default" vs "profile" is half of that answer.
                 $"gameMode={gameMode ?? ActionReplayer.SmoothMovement} ({(gameMode.HasValue ? "profile" : "default")}) (step {ActionReplayer.MoveStepPx}px/{ActionReplayer.MoveStepDelayMs}ms, clickGap {ActionReplayer.MoveClickDelayMs}ms), " +
-                $"fastApproach={ActionReplayer.FastApproach} (settle {ActionReplayer.SettleDistancePx}px)");
+                $"fastApproach={ActionReplayer.FastApproach} (settle {ActionReplayer.SettleDistancePx}px), " +
+                // Effective at start; a profile that follows re-reads the default at the end.
+                $"restoreCursor={restoreCursor ?? ActionReplayer.RestoreCursorDefault} ({(restoreCursor.HasValue ? "profile" : "default")})");
 
             onStatusChanged?.Invoke("replaying");
 
@@ -1573,6 +1578,14 @@ namespace TrueReplayer.Services
         // sub-profile with its own value swaps it for its call (SaveWindowContext carries it).
         private bool? _runGameMode;
         public void SetGameMode(bool? gameMode) => _runGameMode = gameMode;
+        // Cursor return at the end of a macro run — the app default (AppSettings.RestoreCursor).
+        // The run's own value lives in _runRestoreCursor, for the same re-stamping reason as
+        // _runGameMode. Effective = run ?? default, read at the END (StartAsync's finally), so a
+        // profile that follows sees the default flipped mid-run. Only the ROOT run's value counts:
+        // RunProfile never touches it, so a sub-profile's own choice is ignored in a chain.
+        public static bool RestoreCursorDefault = false;
+        private bool? _runRestoreCursor;
+        public void SetRestoreCursor(bool? restoreCursor) => _runRestoreCursor = restoreCursor;
         public static int MoveStepPx = 20;
         // Fallback step for a FORCED walk (Clicker "Game move") when MoveStepPx is 0 — legal for
         // macro, meaningless for a walk. Mirrors the shipped MoveStepPx default.
@@ -2382,6 +2395,12 @@ namespace TrueReplayer.Services
                 try { oldCts.Cancel(); } catch (ObjectDisposedException) { /* already gone */ }
                 _ = Task.Delay(500).ContinueWith(_ => { try { oldCts.Dispose(); } catch { } }, TaskScheduler.Default);
             }
+            // Cursor return: where the cursor was when the run was fired. Read HERE, before the
+            // yield — this synchronous prefix still runs on the thread that started the run (button,
+            // hotkey, automation), so it is the position "before the trigger", not one the first
+            // action may already have moved. Read always (cheap); whether it is used is decided at
+            // the end, against the effective value then.
+            bool haveCursorOrigin = NativeMethods.GetCursorPos(out var cursorOrigin);
             await Task.Yield(); // preserve the original "yield before kickoff" behaviour
             int iteration = 0;
             bool isInfinite = _forceInfiniteLoop || _loopCount == 0;
@@ -2681,6 +2700,11 @@ namespace TrueReplayer.Services
                     ResetKeyState();
                 }
 
+                // Cursor return — every ending (finish, Stop, error) passes through here, and it
+                // runs AFTER the release above so nothing is held while the cursor moves.
+                if ((_runRestoreCursor ?? RestoreCursorDefault) && haveCursorOrigin)
+                    RestoreCursorToOrigin(cursorOrigin);
+
                 _callStack.Clear();
                 NotifyChainChanged();
                 // Stamp the duration here, at the one place every ending passes through — normal
@@ -2688,6 +2712,31 @@ namespace TrueReplayer.Services
                 FinishRunReport(reportGen);
                 PushVariablesSnapshot(force: true); // live pane: land on the final state
             }
+        }
+
+        /// <summary>
+        /// End-of-run half of the cursor return. SetCursorPos ONLY — the Raw-Input-silent move the
+        /// fast approach also uses: no move INPUT, so a game reading raw deltas sees no camera
+        /// flick, and Windows still posts the WM_MOUSEMOVE itself. Not the Game Mode walk: this is
+        /// the end of the run, not a click anyone has to accept.
+        ///
+        /// Refused when a mouse button is still down: a NATURAL end leaves a LeftClickDown without
+        /// its Up pressed as authored (the release in the finally is for Stop and errors only), and
+        /// moving then would drag whatever is under the cursor and drop it at the origin.
+        /// </summary>
+        private void RestoreCursorToOrigin(NativeMethods.POINT origin)
+        {
+            bool buttonHeld;
+            lock (_simInputLock) buttonHeld = _simLeftDown || _simRightDown || _simMiddleDown;
+            if (buttonHeld)
+            {
+                Services.DiagnosticLog.Warn($"Cursor not restored to ({origin.x},{origin.y}): a mouse button is still held at the end of the run.");
+                return;
+            }
+            if (NativeMethods.SetCursorPos(origin.x, origin.y))
+                Services.DiagnosticLog.Info($"Cursor restored to ({origin.x},{origin.y})");
+            else
+                Services.DiagnosticLog.Warn($"Cursor not restored to ({origin.x},{origin.y}): SetCursorPos failed.");
         }
 
         /// <summary>
