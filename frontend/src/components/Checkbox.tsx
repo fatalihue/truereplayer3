@@ -17,6 +17,8 @@ interface CheckboxProps {
   disabled?: boolean;
   /** Extra classes on the outer button (typically for layout/spacing tweaks). */
   className?: string;
+  /** Accessible name for a box-only checkbox (no visible `label`), e.g. a table row's. */
+  ariaLabel?: string;
 }
 
 /**
@@ -37,6 +39,7 @@ export function Checkbox({
   stopPropagation,
   disabled = false,
   className = '',
+  ariaLabel,
 }: CheckboxProps) {
   const filled = checked || !!indeterminate;
 
@@ -53,6 +56,7 @@ export function Checkbox({
       type="button"
       role="checkbox"
       aria-checked={indeterminate ? 'mixed' : checked}
+      aria-label={label ? undefined : ariaLabel}
       disabled={disabled}
       onClick={handleClick}
       data-tip={title}

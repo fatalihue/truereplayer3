@@ -212,7 +212,7 @@ export function BulkActionBar({
                 <div className="w-px h-4 bg-border-default mx-1" />
               </>
             )}
-            <span className="text-caption text-text-disabled uppercase">{activeInput === 'notes' ? 'Notes' : activeInput}</span>
+            <span className="label-micro text-text-tertiary">{activeInput === 'notes' ? 'Notes' : activeInput}</span>
             {hasModes && (
               <SegmentedControl<BulkEditMode>
                 ariaLabel="Set or add"
@@ -231,12 +231,14 @@ export function BulkActionBar({
                 onKeyDown={(e) => { if (e.key === 'Enter') handleConfirm(); if (e.key === 'Escape') closeInput(); }}
                 autoFocus
                 placeholder={inputPlaceholder}
+                aria-label={activeInput === 'notes' ? 'Notes' : activeInput === 'delay' ? 'Delay (ms)' : activeInput?.toUpperCase()}
+                aria-invalid={inputInvalid}
                 className={`${inputWidth} h-7 px-2 text-minor font-mono bg-bg-input border rounded text-center text-text-primary outline-none ${
                   inputInvalid ? 'border-recording/60 focus:border-recording' : 'border-border-default focus:border-accent-solid'
                 }`}
               />
               {hint && (
-                <span className="absolute right-0 bottom-full mb-1.5 z-20 px-2 py-1 rounded text-caption whitespace-nowrap bg-bg-card border border-recording/40 text-recording-fg pointer-events-none">
+                <span role="alert" className="absolute right-0 bottom-full mb-1.5 z-20 px-2 py-1 rounded text-caption whitespace-nowrap bg-bg-card border border-recording/40 text-recording-fg pointer-events-none">
                   {hint}
                 </span>
               )}
@@ -246,6 +248,7 @@ export function BulkActionBar({
             </Button>
             <button
               onClick={closeInput}
+              aria-label="Cancel"
               className={iconButtonClass('md')}
             >
               <X size={10} />
@@ -336,7 +339,7 @@ export function BulkActionBar({
             {/* Delete — destructive group of one (the Del hotkey also deletes the selection). */}
             <button
               onClick={onDelete}
-              className="flex items-center gap-1.5 h-7 px-2 rounded text-minor font-medium text-recording-fg hover:text-recording-fg/80 hover:bg-recording-bg transition-colors"
+              className="flex items-center gap-1.5 h-7 px-2 rounded text-minor font-medium text-recording-fg hover:bg-recording-bg transition-colors"
             >
               <Trash2 size={14} />
               Delete

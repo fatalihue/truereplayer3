@@ -2239,13 +2239,16 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                         setSelectedIndices(new Set(actions.map((_, i) => i)));
                       }
                     }}
+                    role="checkbox"
+                    aria-checked={allSelected ? true : selectedIndices.size > 0 ? 'mixed' : false}
+                    aria-label="Select all rows"
                     className="flex items-center justify-center cursor-pointer"
                   >
                     <CheckboxBox checked={allSelected} />
                   </button>
                 </div>
               </th>
-              <th className="sticky top-0 z-10 bg-bg-surface shadow-hairline-b text-left label-micro text-text-tertiary pl-3">#</th>
+              <th className="sticky top-0 z-10 bg-bg-surface shadow-hairline-b text-right label-micro text-text-tertiary pr-3">#</th>
               {columnVisibility.action && <th className="sticky top-0 z-10 bg-bg-surface shadow-hairline-b text-left label-micro text-text-tertiary pl-1">Action</th>}
               {columnVisibility.details && <th className="sticky top-0 z-10 bg-bg-surface shadow-hairline-b text-left label-micro text-text-tertiary pl-1">Details</th>}
               {columnVisibility.delay && <th className="sticky top-0 z-10 bg-bg-surface shadow-hairline-b text-right label-micro text-text-tertiary pl-2 pr-2">Delay</th>}
@@ -2281,8 +2284,10 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
               // physically parts to open space, matching the dnd-kit row-reorder
               // language. dropTarget is only ever set by the profile-drag flow.
               const profileShift = dropTarget !== null && idx >= dropTarget;
-              const profileDragTransition = dropTarget !== null
-                ? 'transform 150ms cubic-bezier(0.2, 0, 0, 1)'
+              // Behind the animations toggle like the FLIP below, and on the motion tokens.
+              const rowMotion = document.documentElement.getAttribute('data-animations') === 'true';
+              const profileDragTransition = dropTarget !== null && rowMotion
+                ? 'transform var(--motion-base) var(--ease-enter)'
                 : undefined;
 
               // Structural rows of BOTH families (If/Else/EndIf and While/ForEachRow/EndLoop)
@@ -2534,7 +2539,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                     transform: sortable.transform
                       ? CSS.Translate.toString(sortable.transform)
                       : (profileShift ? 'translateY(var(--ui-row-height))' : undefined),
-                    transition: sortable.transition ?? profileDragTransition,
+                    transition: (rowMotion ? sortable.transition : undefined) ?? profileDragTransition,
                   } as React.CSSProperties}
                   className={`group h-row border-b border-border-subtle transition-colors relative ${
                     // Cursor signals draggability: grabbing during an active drag, grab on
@@ -2556,7 +2561,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                     // rules there are specific enough to override whichever branch below wins,
                     // hover variants included. See the note above the row map.
                     isSelected
-                      ? 'bg-[color-mix(in_srgb,var(--color-accent)_8%,transparent)] hover:bg-bg-elevated'
+                      ? 'bg-[color-mix(in_srgb,var(--color-accent)_8%,transparent)] hover:bg-[color-mix(in_srgb,var(--color-accent)_12%,var(--color-bg-elevated))]'
                       : isStructural
                         // Structural row tint replaces the odd/even striping so the
                         // whole IF / ELSE / ENDIF row group reads as a cohesive scope
@@ -2639,6 +2644,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                     <div className="flex items-center justify-center">
                       <Checkbox
                         checked={isSelected}
+                        ariaLabel={`Select row ${action.rowNumber}`}
                         stopPropagation
                         onChange={() => {
                           setSelectedIndices(prev => {
@@ -2662,7 +2668,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                       portalling into this <td> directly — the slot has no React children of
                       its own, so nothing the marker appends can collide with this cell's
                       reconciliation. */}
-                  <td className="pl-3">
+                  <td className="text-right pr-3">
                     <span data-rownum-value className="inline-block text-caption font-mono text-text-tertiary leading-none translate-y-[-2px]">{action.rowNumber}</span>
                     <span data-replay-slot />
                   </td>
@@ -2782,13 +2788,15 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                           onKeyDown={handleEditKeyDown}
                           onBlur={() => commitEdit('blur')}
                           placeholder="x, y"
+                          aria-label="X, Y"
+                          aria-invalid={editInvalid}
                           className={`w-[100px] h-6 px-1 text-minor font-mono text-text-primary bg-bg-input border rounded outline-none ${editInvalid ? 'border-recording' : 'border-accent-solid'}`}
                         />
                         {/* Inline hint, not data-tip: TooltipLayer is mouseover-driven
                             and the pointer is rarely over the input at rejection time
                             (the user just pressed Enter). Clears on the next keystroke. */}
                         {editInvalid && (
-                          <span className="absolute left-0 top-full mt-1 z-20 px-2 py-1 rounded text-caption whitespace-nowrap bg-bg-card border border-recording/40 text-recording-fg pointer-events-none">
+                          <span role="alert" className="absolute left-0 top-full mt-1 z-20 px-2 py-1 rounded text-caption whitespace-nowrap bg-bg-card border border-recording/40 text-recording-fg pointer-events-none">
                             {'Needs both coordinates — e.g. 960, 540'}
                           </span>
                         )}
@@ -2799,7 +2807,8 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                         type="text"
                         value=""
                         readOnly
-                        placeholder="New key..."
+                        placeholder="New key…"
+                        aria-label="Key"
                         // The key arrives from the hook (useSingleKeyCapture), which swallows the
                         // keyboard while armed — this field only holds focus, so a click anywhere
                         // else cancels. preventDefault is for a key that reaches the page anyway
@@ -2908,7 +2917,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                         editor — it writes x/y — must never be offered. */}
                     {displayX !== '' && (
                       <span
-                        className={`text-minor font-mono text-text-secondary tabular-nums ${displayKey ? 'ml-1.5' : ''} ${coordsEditable ? 'cursor-text hover:text-text-primary' : ''}`}
+                        className={`inline-flex items-center translate-y-[-2px] text-minor font-mono text-text-secondary tabular-nums ${displayKey ? 'ml-1.5' : ''} ${coordsEditable ? 'cursor-text hover:text-text-primary' : ''}`}
                         onPointerDown={coordsEditable ? markSpanPress : undefined}
                         onClick={coordsEditable ? (e) => openSpanEditor(e, idx, 'coords', `${action.x}, ${action.y}`) : undefined}
                       >
@@ -2971,11 +2980,13 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                           onChange={(e) => { setEditValue(e.target.value); setEditInvalid(false); }}
                           onKeyDown={handleEditKeyDown}
                           onBlur={() => commitEdit('blur')}
+                          aria-label="Delay (ms)"
+                          aria-invalid={editInvalid}
                           className={`w-16 h-6 px-1 text-minor font-mono text-right text-text-primary bg-bg-input border rounded outline-none ${editInvalid ? 'border-recording' : 'border-accent-solid'}`}
                         />
                         {/* Same inline hint as the coords editor, for the same reason. */}
                         {editInvalid && (
-                          <span className="absolute right-0 top-full mt-1 z-20 px-2 py-1 rounded text-caption whitespace-nowrap bg-bg-card border border-recording/40 text-recording-fg pointer-events-none">
+                          <span role="alert" className="absolute right-0 top-full mt-1 z-20 px-2 py-1 rounded text-caption whitespace-nowrap bg-bg-card border border-recording/40 text-recording-fg pointer-events-none">
                             {'Use a whole number of ms — 0 or more'}
                           </span>
                         )}
@@ -3013,6 +3024,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                         onChange={(e) => setEditValue(e.target.value)}
                         onKeyDown={handleEditKeyDown}
                         onBlur={() => commitEdit('blur')}
+                        aria-label="Notes"
                         className="w-full h-6 px-1 text-minor text-text-primary bg-bg-input border border-accent-solid rounded outline-none"
                       />
                     ) : (
@@ -3375,7 +3387,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
           className="fixed z-50 min-w-[180px] py-1 menu-surface"
           style={{ left: elseIfPickerPos.x, top: elseIfPickerPos.y }}
         >
-          <div className="px-3 py-1 text-caption uppercase tracking-wider text-text-tertiary">
+          <div className="px-3 py-1 label-micro text-text-tertiary">
             Else If — condition
           </div>
           {BRANCH_CONDITION_FAMILIES.map(({ ct, Icon, label }) => (

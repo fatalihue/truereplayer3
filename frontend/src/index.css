@@ -332,6 +332,14 @@ html, body, #root {
      (WCAG 1.4.11 non-text contrast). */
   box-shadow: 0 0 0 1px var(--color-text-primary);
 }
+/* The action grid's scroll container is the grid's only tab stop and fills an overflow-hidden
+   parent, which clipped the ring above (it is drawn OUTSIDE the box) — keyboard focus on the grid
+   showed nothing. Draw it inside: the outline steps in by its own width, and the contrast halo
+   becomes an inset shadow under it (3 px, 2 of them covered by the outline). */
+[data-actions-grid]:focus-visible {
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 3px var(--color-text-primary);
+}
 /* Ring exemptions — text-entry surfaces carry their own border-focused
    treatment (a second ring doubles up), range sliders keep the ring (their
    only focus cue), and tabindex="-1" hosts are programmatic-focus-only
@@ -1005,8 +1013,12 @@ html[data-animations="true"] .callout-enter {
   width: 2px;
   pointer-events: none;
   background: color-mix(in srgb, var(--rail-color) 35%, transparent);
-  transition: background 120ms ease-out, width 120ms ease-out;
   &[data-strong], &[data-lit], &[data-lit-sel] { width: 3px; background: var(--rail-color); }
+}
+/* The rail's lift (2 → 3 px, 35 % → full ink) eases only with the animations toggle on. Width is
+   safe to transition here: the rail is absolutely positioned, so nothing around it reflows. */
+html[data-animations="true"] .block-rail {
+  transition: background 120ms ease-out, width 120ms ease-out;
 }
 
 @utility kbd {
