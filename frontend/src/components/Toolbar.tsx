@@ -17,6 +17,7 @@ import { PauseDialog } from './PauseDialog';
 import { ClickDialog } from './ClickDialog';
 import { useFlyoutFlip } from '../hooks/useFlyoutFlip';
 import { iconButtonClass } from './common/IconButton';
+import { Button } from './common/Button';
 import { useDismissOnOutside } from '../hooks/useDismissOnOutside';
 import { snapIndicesToBlocks, loopDepthAt } from '../utils/conditionalBlocks';
 import { useEditorClaim } from '../hooks/useEditorClaim';
@@ -656,6 +657,8 @@ export function Toolbar(_props: ToolbarProps) {
             // Disabled during record/replay so a stray click can't yank the profile
             // out from under an in-progress capture or playback.
             <button
+              aria-label="Deselect profile"
+              data-tip={tt('Deselect profile', 'Desselecionar perfil')}
               tabIndex={-1}
               onClick={() => send({ type: 'profile:click', payload: { name: activeProfile } })}
               disabled={insertsDisabled}
@@ -689,6 +692,7 @@ export function Toolbar(_props: ToolbarProps) {
               three. The Sheet's scrim covers this row today, so the guard is the rule holding by
               construction rather than a path a click can take. */}
           <button
+            aria-label="Undo"
             tabIndex={-1}
             disabled={!buttonStates.canUndo || insertsDisabled}
             onClick={() => window.dispatchEvent(new CustomEvent('cmd:undo'))}
@@ -698,6 +702,7 @@ export function Toolbar(_props: ToolbarProps) {
             <Undo2 size={16} />
           </button>
           <button
+            aria-label="Redo"
             tabIndex={-1}
             disabled={!buttonStates.canRedo || insertsDisabled}
             onClick={() => window.dispatchEvent(new CustomEvent('cmd:redo'))}
@@ -730,6 +735,7 @@ export function Toolbar(_props: ToolbarProps) {
           {/* Send Keystroke — unified keyboard insert (Press 1×, Press N×, or
               Hold for X ms; mode toggle lives inside the dialog). */}
           <button
+            aria-label="Send Keystroke"
             tabIndex={-1}
             onClick={() => setShowKeystrokeCapture(true)}
             disabled={insertsDisabled}
@@ -746,6 +752,7 @@ export function Toolbar(_props: ToolbarProps) {
               wait, branch and loop but not CLICK: the only sources of a click row were the
               recorder and "Pick from screen" on a row that already was one. */}
           <button
+            aria-label="Insert Click"
             tabIndex={-1}
             onClick={() => setShowClickDialog(true)}
             disabled={insertsDisabled}
@@ -760,6 +767,7 @@ export function Toolbar(_props: ToolbarProps) {
 
           {/* Send Text */}
           <button
+            aria-label="Send Text"
             tabIndex={-1}
             onClick={() => setShowSendTextDialog(true)}
             disabled={insertsDisabled}
@@ -773,6 +781,7 @@ export function Toolbar(_props: ToolbarProps) {
               opens a config-first dialog (Pattern B) instead of the old "insert empty
               then auto-open Sheet" flow — Cancel here means no row is created at all. */}
           <button
+            aria-label="Pause"
             tabIndex={-1}
             onClick={() => setShowPauseDialog(true)}
             disabled={insertsDisabled}
@@ -799,6 +808,9 @@ export function Toolbar(_props: ToolbarProps) {
               successful capture) is unchanged. */}
           <div className="relative" ref={waitMenuRef}>
             <button
+              aria-label="Wait"
+              aria-haspopup="menu"
+              aria-expanded={showWaitMenu}
               tabIndex={-1}
               onClick={() => setShowWaitMenu(!showWaitMenu)}
               disabled={insertsDisabled}
@@ -898,6 +910,9 @@ export function Toolbar(_props: ToolbarProps) {
               condition. GitBranch is the universal "branch / decision" glyph. */}
           <div className="relative" ref={conditionalMenuRef}>
             <button
+              aria-label="Conditional"
+              aria-haspopup="menu"
+              aria-expanded={showConditionalMenu}
               tabIndex={-1}
               onClick={() => setShowConditionalMenu(!showConditionalMenu)}
               disabled={insertsDisabled}
@@ -1020,6 +1035,7 @@ export function Toolbar(_props: ToolbarProps) {
               Variable pair. Pattern A: inserts an empty row and auto-opens the Sheet (the backend
               sends sheet:openIndex). */}
           <button
+            aria-label="Set Variable"
             tabIndex={-1}
             onClick={() => {
               const sel = selectionRef.current;
@@ -1036,6 +1052,9 @@ export function Toolbar(_props: ToolbarProps) {
           {/* Browser Actions */}
           <div className="relative" ref={browserMenuRef}>
             <button
+              aria-label="Browser Actions"
+              aria-haspopup="menu"
+              aria-expanded={showBrowserMenu}
               tabIndex={-1}
               onClick={() => setShowBrowserMenu(!showBrowserMenu)}
               disabled={insertsDisabled}
@@ -1103,6 +1122,7 @@ export function Toolbar(_props: ToolbarProps) {
               an empty row and auto-opens the Sheet (backend sends sheet:openIndex). */}
           {inRow('activateWindow') && (
           <button
+            aria-label="Activate Window"
             tabIndex={-1}
             onClick={() => {
               const sel = selectionRef.current;
@@ -1132,6 +1152,7 @@ export function Toolbar(_props: ToolbarProps) {
               this gate is the whole story. */}
           {inRow('dataLoop') && (
           <button
+            aria-label="Data Loop"
             tabIndex={-1}
             onClick={() => window.dispatchEvent(new CustomEvent('cmd:dataeditor'))}
             disabled={insertsDisabled}
@@ -1157,6 +1178,9 @@ export function Toolbar(_props: ToolbarProps) {
           {inRow('clearAll') && (
           <div className="relative" ref={clearMenuRef} data-tb-fold="clearAll">
             <button
+              aria-label="Clear All"
+              aria-haspopup="dialog"
+              aria-expanded={showClearConfirm}
               tabIndex={-1}
               onClick={() => setShowClearConfirm(prev => !prev)}
               disabled={insertsDisabled || actions.length === 0}
@@ -1183,13 +1207,13 @@ export function Toolbar(_props: ToolbarProps) {
                   {'Ctrl+Z undoes it.'}
                 </div>
                 <div className="mt-2.5 flex justify-end gap-1.5">
-                  <button
+                  <Button
                     onClick={() => setShowClearConfirm(false)}
-                    className="px-2.5 py-1 rounded text-caption text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors"
+                    variant="ghost" size="xs"
                   >
                     Cancel
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     onClick={() => {
                       // A reset is one of the list changes the Sheet's guard is asked about
                       // (SheetGuardContext) — the same question Ctrl+V and Undo put.
@@ -1200,10 +1224,10 @@ export function Toolbar(_props: ToolbarProps) {
                     // Same gate as the trigger — covers the render-tick race between
                     // the run-state push and a click on the already-open popover.
                     disabled={insertsDisabled}
-                    className="px-2.5 py-1 rounded text-caption font-semibold bg-recording text-[color:var(--color-recording-ink)] hover:opacity-85 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+                    variant="destructive" size="xs"
                   >
                     Clear all
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}
@@ -1227,6 +1251,9 @@ export function Toolbar(_props: ToolbarProps) {
               closes on click — so in here it confirms inside the menu instead (below). */}
           <div className="relative" ref={moreMenuRef}>
             <button
+              aria-label="More actions"
+              aria-haspopup="menu"
+              aria-expanded={showMoreMenu}
               tabIndex={-1}
               onClick={() => setShowMoreMenu(!showMoreMenu)}
               disabled={insertsDisabled}
@@ -1484,13 +1511,13 @@ export function Toolbar(_props: ToolbarProps) {
                         {'Ctrl+Z undoes it.'}
                       </div>
                       <div className="mt-2.5 flex justify-end gap-1.5">
-                        <button
+                        <Button
                           onClick={() => setClearArmed(false)}
-                          className="px-2.5 py-1 rounded text-caption text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors"
+                          variant="ghost" size="xs"
                         >
                           Cancel
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           onClick={() => {
                             if (!sheetGuard.allowListChange()) return;
                             send({ type: 'actions:clear', payload: {} });
@@ -1502,10 +1529,10 @@ export function Toolbar(_props: ToolbarProps) {
                           // all 0 actions?" with the red button live — the popover sibling is held
                           // to both by an effect, and this one was held to one by hand.
                           disabled={insertsDisabled || actions.length === 0}
-                          className="px-2.5 py-1 rounded text-caption font-semibold bg-recording text-[color:var(--color-recording-ink)] hover:opacity-85 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+                          variant="destructive" size="xs"
                         >
                           Clear all
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   ) : (

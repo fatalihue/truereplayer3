@@ -280,14 +280,14 @@ export function StatusBar() {
             // with nothing to press. Say it is paused, and offer Resume.
             if (pauseState.isPaused) {
               return (
-                <span className="flex items-center gap-2 font-mono" style={{ color: 'var(--color-action-pause-fg)' }}>
+                <span className="flex items-center gap-2" style={{ color: 'var(--color-action-pause-fg)' }}>
                   <PauseIcon size={11} className="shrink-0" fill="currentColor" />
                   <span className="font-medium">PAUSED</span>
                   <span className="text-text-secondary">— resumes at</span>
-                  <strong className="text-text-primary">{Math.ceil(clickerStats.countdownMs / 1000)} s</strong>
+                  <span className="font-semibold text-text-primary">{Math.ceil(clickerStats.countdownMs / 1000)} s</span>
                   <button
                     onClick={() => send({ type: 'replay:resume', payload: {} })}
-                    className="px-2 py-0.5 text-caption font-medium rounded border border-border-default text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors shrink-0"
+                    className="h-6 px-2 flex items-center text-caption font-medium rounded border border-border-default text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors shrink-0"
                   >
                     Resume
                   </button>
@@ -295,22 +295,22 @@ export function StatusBar() {
               );
             }
             return (
-              <span className="flex items-center gap-2 font-mono" style={{ color: 'var(--color-clicker-fg)' }}>
+              <span className="flex items-center gap-2" style={{ color: 'var(--color-clicker-fg)' }}>
                 <MousePointerClick size={11} className="shrink-0" />
                 <span className="text-text-secondary">Starting in</span>
-                <strong className="text-text-primary">{Math.ceil(clickerStats.countdownMs / 1000)} s</strong>
+                <span className="font-semibold text-text-primary">{Math.ceil(clickerStats.countdownMs / 1000)} s</span>
                 <span className="text-text-secondary">— move the mouse to the target</span>
               </span>
             );
           }
           const { elapsed: clickerElapsed, rateLabel } = formatClickerStats(clickerStats.count, clickerStats.elapsedMs);
           return (
-            <span className="flex items-center gap-2 font-mono" style={{ color: 'var(--color-clicker-fg)' }}>
+            <span className="flex items-center gap-2" style={{ color: 'var(--color-clicker-fg)' }}>
               <MousePointerClick size={11} className="shrink-0" />
               <span className="text-text-secondary">Clicked</span>
-              <strong className="text-text-primary">{clickerStats.count.toLocaleString()}</strong>
+              <span className="font-semibold text-text-primary">{clickerStats.count.toLocaleString()}</span>
               <span className="text-text-disabled">·</span>
-              <strong className="text-text-primary">{rateLabel}/s</strong>
+              <span className="font-semibold text-text-primary">{rateLabel}/s</span>
               <span className="text-text-disabled">·</span>
               <span className="flex items-center gap-1 text-text-secondary"><Clock size={10} />{clickerElapsed}</span>
               {/* The window under the cursor runs elevated and we do not: SendInput says yes,
@@ -342,7 +342,7 @@ export function StatusBar() {
                   </span>
                   <button
                     onClick={() => send({ type: 'replay:resume', payload: {} })}
-                    className="px-2 py-0.5 text-caption font-medium rounded border border-border-default text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors shrink-0"
+                    className="h-6 px-2 flex items-center text-caption font-medium rounded border border-border-default text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors shrink-0"
                   >
                     Resume
                   </button>
@@ -363,7 +363,7 @@ export function StatusBar() {
                 <Sep />
                 <span className="flex items-center gap-1.5 text-text-tertiary">
                   <Gauge size={11} />
-                  <span className="text-text-secondary font-mono">~{formatRate(clickerTargetCps)}/s</span>
+                  <span className="text-text-secondary">~{formatRate(clickerTargetCps)}/s</span>
                 </span>
               </>
             )}
@@ -407,7 +407,7 @@ export function StatusBar() {
                     }
                   >
                     <Timer size={11} />
-                    <span className="text-text-secondary font-mono">~{fmtDuration(estimateMs, language)}{allPassesMs == null ? ' ×' : ''}</span>
+                    <span className="text-text-secondary">~{fmtDuration(estimateMs, language)}{allPassesMs == null ? ' ×' : ''}</span>
                   </span>
                 </>
               )}
@@ -417,13 +417,13 @@ export function StatusBar() {
                   <button
                     type="button"
                     onClick={() => window.dispatchEvent(new CustomEvent('cmd:runreport'))}
-                    className="flex items-center gap-1.5 px-1 -mx-1 rounded hover:bg-bg-elevated transition-colors"
+                    className="flex items-center gap-1.5 h-6 px-1 -mx-1 rounded hover:bg-bg-elevated transition-colors"
                     style={{ color: TONE[lastRunKind(lastRun)] }}
                     data-tip={tt('Open the run report', 'Abrir o relatório da execução')}
                   >
                     {ICON[lastRunKind(lastRun)]}
                     <span className="font-medium">{lastRunLabel({ ...lastRun, loadedProfile: statusBar.profileName })}</span>
-                    <span className="font-mono text-text-secondary">{lastRun.ok}/{lastRun.total} · {fmtDuration(lastRun.durationMs, language)}</span>
+                    <span className="text-text-secondary">{lastRun.ok}/{lastRun.total} · {fmtDuration(lastRun.durationMs, language)}</span>
                   </button>
                 </>
               )}
@@ -433,7 +433,7 @@ export function StatusBar() {
           {isReplaying && (
             <div className="flex items-center gap-2 flex-1 min-w-0">
               <Play size={10} className="text-accent shrink-0" fill="currentColor" />
-              <span className="text-caption font-medium font-mono text-accent shrink-0">
+              <span className="text-caption font-medium text-accent shrink-0">
                 {current} / {total}
               </span>
               <div className="h-[2px] bg-bg-elevated rounded-full overflow-hidden shrink-0" style={{ flex: '0 1 160px' }}>
@@ -442,14 +442,14 @@ export function StatusBar() {
                   style={{ width: `${pct}%` }}
                 />
               </div>
-              <span className="flex items-center gap-1 text-caption text-text-tertiary font-mono shrink-0">
+              <span className="flex items-center gap-1 text-caption text-text-tertiary shrink-0">
                 <Clock size={10} />{minutes}:{seconds}
               </span>
               {chainLabel && (
                 <>
                   <div className="w-px h-3 bg-border-subtle shrink-0" />
                   <span
-                    className="flex items-center gap-1.5 text-caption font-mono whitespace-nowrap min-w-0"
+                    className="flex items-center gap-1.5 text-caption whitespace-nowrap min-w-0"
                     style={{ color: 'var(--color-action-runprofile-fg)' }}
                     data-tip={chainStepLabel ? `${chainLabel} · ${chainStepLabel}` : chainLabel}
                   >
@@ -479,7 +479,7 @@ export function StatusBar() {
                   </span>
                   <button
                     onClick={() => send({ type: 'replay:resume', payload: {} })}
-                    className="px-2 py-0.5 text-caption font-medium rounded border border-border-default text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors shrink-0"
+                    className="h-6 px-2 flex items-center text-caption font-medium rounded border border-border-default text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors shrink-0"
                   >
                     Resume
                   </button>
@@ -494,11 +494,11 @@ export function StatusBar() {
           {loopProgress.active && (
             <>
               <Sep />
-              <span className="flex items-center gap-1.5 text-caption font-mono text-text-secondary shrink-0">
+              <span className="flex items-center gap-1.5 text-caption text-text-secondary shrink-0">
                 <Repeat size={10} className="text-text-tertiary" />
-                Loop <strong className="text-text-primary">{loopProgress.current}</strong>
+                Loop <span className="font-semibold text-text-primary">{loopProgress.current}</span>
                 <span className="text-text-disabled">/</span>
-                <strong className="text-text-primary">{loopProgress.total === 0 ? '∞' : loopProgress.total}</strong>
+                <span className="font-semibold text-text-primary">{loopProgress.total === 0 ? '∞' : loopProgress.total}</span>
               </span>
             </>
           )}

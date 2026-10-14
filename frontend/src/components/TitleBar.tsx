@@ -80,7 +80,7 @@ export function TitleBar({ onOpenCommandPalette }: TitleBarProps) {
         >
           {/* tertiary, not disabled — this is a live control's label (~2:1 as disabled) */}
           <Search size={13} className="text-text-tertiary" />
-          <span className="text-minor text-text-tertiary flex-1 text-left">Search profiles, actions, commands...</span>
+          <span className="text-minor text-text-tertiary flex-1 text-left">Search profiles, actions, commands…</span>
           <div className="flex gap-0.5">
             <span className="kbd">Ctrl</span>
             <span className="kbd">K</span>
@@ -95,6 +95,7 @@ export function TitleBar({ onOpenCommandPalette }: TitleBarProps) {
           (.rec-badge-pulse / .replay-badge-pulse in index.css) so the live state is unmistakable
           without a full-viewport frame. */}
       <div
+        role="status"
         className={`no-drag flex items-center gap-1.5 px-2.5 py-1 rounded-full ${cfg.bg} border ${cfg.border} ${status === 'recording' ? 'rec-badge-pulse' : status === 'replaying' ? 'replay-badge-pulse' : runDone ? 'status-done-pulse' : ''}`}
         style={{ marginRight: CAPTION_BUTTONS_WIDTH_PX }}
       >
