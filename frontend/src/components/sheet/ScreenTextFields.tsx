@@ -172,6 +172,7 @@ export function ScreenTextFields(p: ScreenTextFieldsProps) {
           </button>
           {p.region && (
             <button
+              aria-label="Read the whole screen"
               onClick={() => p.onRegionChange(null)}
               className="h-8 px-2 flex items-center rounded text-minor text-text-tertiary hover:text-[var(--color-recording-fg)] hover:bg-bg-card transition-colors"
               data-tip={tt('Read the whole screen', 'Ler a tela inteira')}
@@ -269,6 +270,7 @@ export function ScreenTextFields(p: ScreenTextFieldsProps) {
           </button>
           {p.textColor && (
             <button
+              aria-label="Read every color"
               onClick={() => p.onTextColorChange('')}
               className="h-8 px-2 flex items-center rounded text-minor text-text-tertiary hover:text-[var(--color-recording-fg)] hover:bg-bg-card transition-colors"
               data-tip={tt('Read every color', 'Ler todas as cores')}
@@ -325,7 +327,7 @@ export function ScreenTextFields(p: ScreenTextFieldsProps) {
                   </span>
                 </div>
                 <div className="mt-1 font-mono break-words whitespace-pre-wrap">
-                  {result.text ? `Read: "${result.text}"` : 'Read: nothing'}
+                  {result.text ? `Read: “${result.text}”` : 'Read: nothing'}
                   {number && <>{'\n'}Number: {result.number ? result.number : 'none'}</>}
                 </div>
                 {result.previewBase64 && (

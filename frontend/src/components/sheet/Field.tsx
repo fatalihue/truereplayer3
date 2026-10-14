@@ -1,3 +1,5 @@
+import { Children, cloneElement, isValidElement, useId } from 'react';
+
 // Standard labelled field block for the Sheet panel. One source of truth for
 // the label typography (the app-wide label-micro recipe) and the optional
 // hint line below the control, so individual sections stop hand-rolling
@@ -20,13 +22,25 @@ export function Field({ label, labelAdornment, hint, hintTone, children, classNa
   children: React.ReactNode;
   className?: string;
 }) {
+  // The caption has to NAME the control, which a <label> without htmlFor never did — every
+  // Field-wrapped control was nameless, or named only by its placeholder. A lone native
+  // input/textarea/select child gets aria-labelledby directly; anything else (NumberInput,
+  // SegmentedControl, a row of controls) sits in a group named by the caption. The group is
+  // display:contents so the Field's layout is exactly what it was.
+  const labelId = useId();
+  const only = Children.toArray(children);
+  const native = only.length === 1 && isValidElement<Record<string, unknown>>(only[0])
+    && typeof only[0].type === 'string' && ['input', 'textarea', 'select'].includes(only[0].type)
+    && !only[0].props['aria-label'] && !only[0].props['aria-labelledby'];
   return (
     <div className={className}>
       <div className="mb-1.5 flex items-center gap-1.5">
-        <label className="label-micro text-text-tertiary">{label}</label>
+        <label id={labelId} className="label-micro text-text-tertiary">{label}</label>
         {labelAdornment}
       </div>
-      {children}
+      {native
+        ? cloneElement(only[0] as React.ReactElement<Record<string, unknown>>, { 'aria-labelledby': labelId })
+        : <div role="group" aria-labelledby={labelId} className="contents">{children}</div>}
       {hint && <div className={`text-caption ${hintTone === 'warn' ? 'text-warning-ink' : 'text-text-tertiary'} leading-snug mt-1`}>{hint}</div>}
     </div>
   );

@@ -11,6 +11,7 @@ import { useToast } from '../state/ToastContext';
 import type { SelectorAlternative, BrowserTestResult } from '../bridge/messageTypes';
 import { Checkbox } from './Checkbox';
 import { NumberInput } from './common/NumberInput';
+import { tokenChipClass } from './common/chipStyles';
 import { SegmentedControl } from './common/SegmentedControl';
 import { DurationChips, DURATION_PRESETS, TIMEOUT_PRESETS } from './common/DurationChips';
 import { ProcessNameInput } from './common/ProcessNameInput';
@@ -2911,7 +2912,10 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
     // title a hold exactly like the plain click it is not.
     : isHoldClick ? `Hold ${(clickHalfBase ?? '').replace('Click', '')} Click`
     : isClickHalf ? `${(clickHalfBase ?? '').replace('Click', '')} Click`
-    : actionType;
+    // Every type without a case above: split the CamelCase type name into words, so a missing
+    // case can never leak "SendText" / "ScrollDown" into the header again (the grid's pill
+    // says "Send Text"). Two hand-kept lists drift; this makes the drift harmless.
+    : actionType.replace(/([a-z])([A-Z])/g, '$1 $2');
 
   // Header swatch family tint — the drawer's ENTIRE per-action-color budget (matches the
   // dialogs: Keystroke=key-fg, Pause=pause-fg, etc.). Render-only lookup; unknown types
@@ -2972,6 +2976,8 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
       {/* Panel — enters with slide-in-right, exits with its mirror (leaving is
           driven by App; onExited hands control back for the actual unmount). */}
       <div
+        role="region"
+        aria-label={actionLabel}
         className="fixed right-0 top-0 bottom-0 w-[340px] z-[70] bg-bg-surface border-l border-border-default flex flex-col"
         style={{
           animation: leaving
@@ -3165,9 +3171,10 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 <button
                   key={t.value}
                   onClick={() => setActionType(t.value)}
+                  aria-pressed={actionType === t.value}
                   // Grid cells stretch, so every chip is the same width — nowrap + centre keeps
-                  // a long label on one line so the row stays level.
-                  className={`px-2.5 py-1 rounded text-caption font-medium border transition-colors text-center whitespace-nowrap ${
+                  // a long label on one line so the row stays level. h-8 like every Sheet control.
+                  className={`h-8 px-2.5 inline-flex items-center justify-center rounded text-caption font-medium border transition-colors text-center whitespace-nowrap ${
                     actionType === t.value
                       ? 'text-accent border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)] bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)]'
                       : 'text-text-secondary border-border-default bg-bg-elevated hover:bg-bg-card'
@@ -3521,10 +3528,12 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                       key={bit}
                       type="button"
                       onClick={() => setDaysOfWeek(daysOfWeek ^ (1 << bit))}
-                      className={`w-7 h-6 rounded text-caption font-medium border transition-colors ${
+                      aria-pressed={on}
+                      aria-label={['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][bit]}
+                      className={`w-8 h-8 rounded text-caption font-medium border transition-colors ${
                         on
                           ? 'text-accent border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)] bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)]'
-                          : 'text-text-tertiary border-border-subtle bg-bg-card hover:text-text-secondary'
+                          : 'text-text-tertiary border-border-default bg-bg-card hover:text-text-secondary'
                       }`}
                       data-tip={['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][bit]}
                     >
@@ -3580,6 +3589,8 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                     send({ type: 'browser:pickElement', payload: { requestId } });
                   }}
                   disabled={isPicking}
+                  aria-label="Pick element"
+                  data-tip={tt('Pick an element on the page', 'Escolher um elemento na página')}
                   className={`h-8 w-8 flex items-center justify-center rounded border transition-colors ${
                     isPicking
                       ? 'bg-accent-solid/20 border-accent-solid text-accent-light'
@@ -3598,6 +3609,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   <div className="flex items-center justify-between px-1">
                     <span className="label-micro text-text-tertiary">Alternatives</span>
                     <button
+                      aria-label="Close alternatives"
                       onClick={() => setShowAlternatives(false)}
                       className="flex items-center text-text-tertiary hover:text-text-primary"
                     >
@@ -3971,6 +3983,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 </button>
                 {waitImageSearchRegion && (
                   <button
+                    aria-label="Clear search region"
                     onClick={() => setWaitImageSearchRegion(null)}
                     className="h-8 px-2 flex items-center rounded text-minor text-text-tertiary hover:text-[var(--color-recording-fg)] hover:bg-bg-card transition-colors"
                   >
@@ -3995,6 +4008,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 step={5}
                 onChange={(n) => setConfidence(String(n))}
                 suffix="%"
+                ariaLabel="Tolerance"
               />
             </Field>
 
@@ -4199,6 +4213,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 max={50}
                 inputMax={255}
                 onChange={(n) => setPixelTolerance(String(n))}
+                ariaLabel="Tolerance per channel"
               />
             </Field>
 
@@ -4374,6 +4389,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   type="text"
                   value={key}
                   onChange={(e) => { setKey(e.target.value); invalidatePickedAlternatives(); }}
+                  aria-label={isBrowserNavigate ? 'URL' : 'CSS Selector'}
                   className="input-field flex-1"
                   placeholder={isBrowserNavigate ? 'https://example.com' : '.btn-save'}
                 />
@@ -4388,6 +4404,8 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                       send({ type: 'browser:pickElement', payload: { requestId } });
                     }}
                     disabled={isPicking}
+                    aria-label="Pick element"
+                    data-tip={tt('Pick an element on the page', 'Escolher um elemento na página')}
                     className={`h-8 w-8 flex items-center justify-center rounded border transition-colors ${
                       isPicking
                         ? 'bg-accent-solid/20 border-accent-solid text-accent-light'
@@ -4405,6 +4423,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   <div className="flex items-center justify-between px-1">
                     <span className="label-micro text-text-tertiary">Alternatives</span>
                     <button
+                      aria-label="Close alternatives"
                       onClick={() => setShowAlternatives(false)}
                       className="flex items-center text-text-tertiary hover:text-text-primary"
                     >
@@ -4447,7 +4466,8 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 <select
                   value={textMode}
                   onChange={(e) => setTextMode(e.target.value as TextMode)}
-                  className="h-8 px-1.5 text-caption bg-bg-input border border-border-default rounded text-text-secondary outline-none focus:border-accent-solid"
+                  aria-label="Text match mode"
+                  className="input-field font-sans w-auto"
                 >
                   {TEXT_MODES.map(m => (
                     <option key={m.value} value={m.value}>{m.label}</option>
@@ -4461,6 +4481,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   // element's fallbacks would ride along behind a primary generated for nothing
                   // like them.
                   onChange={(e) => { setTextMatch(e.target.value); invalidatePickedAlternatives(); }}
+                  aria-label="Text match"
                   className="input-field flex-1"
                   placeholder={textMode === 'regex' ? 'e.g. ^Sign in$' : 'e.g. Sign in'}
                 />
@@ -4563,7 +4584,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                     key={item.var}
                     type="button"
                     onClick={() => browserTextEditorRef.current?.insertText(item.var)}
-                    className="h-6 px-2 inline-flex items-center text-caption font-mono bg-bg-surface border border-border-default rounded text-text-secondary hover:text-accent hover:border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)] hover:bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)] transition-colors"
+                    className={tokenChipClass}
                   >
                     {item.label}
                   </button>
@@ -4882,7 +4903,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                       key={item.var}
                       type="button"
                       onClick={() => sendTextEditorRef.current?.insertText(item.var)}
-                      className="h-6 px-2 inline-flex items-center text-caption font-mono bg-bg-surface border border-border-default rounded text-text-secondary hover:text-accent hover:border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)] hover:bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)] transition-colors"
+                      className={tokenChipClass}
                     >
                       {item.label}
                     </button>
@@ -5136,7 +5157,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   type="button"
                   onClick={handleCaptureGeometry}
                   disabled={captureGeoRequestId !== null || (!windowProcessName.trim() && !windowTitle.trim())}
-                  className="shrink-0 h-6 px-2 flex items-center gap-1.5 rounded text-caption font-medium border border-border-default bg-bg-input hover:bg-bg-elevated text-text-secondary transition-colors disabled:opacity-60"
+                  className="shrink-0 h-8 px-2 flex items-center gap-1.5 rounded text-caption font-medium border border-border-default bg-bg-input hover:bg-bg-elevated text-text-secondary transition-colors disabled:opacity-60"
                 >
                   <Frame size={12} />
                   {captureGeoRequestId ? 'Reading…' : 'Read from window'}
@@ -5590,6 +5611,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
               rewrite), "Repeat to discard". Every string is measured to fit the span unwrapped —
               the buttons stay shrink-0 / nowrap so "Save" never wraps. */}
           <span
+            aria-live="polite"
             className={`flex-1 min-w-0 truncate text-caption transition-opacity duration-150 pointer-events-none ${armedBy ? 'text-warning-ink' : 'text-text-tertiary'}`}
             style={{ opacity: armedBy || hasUnsavedChanges ? 1 : 0 }}
           >

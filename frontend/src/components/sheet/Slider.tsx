@@ -5,7 +5,7 @@ import { NumberInput } from '../common/NumberInput';
 // the paired NumberInput gives precise entry plus +/− nudging. Replaces the
 // raw <input type="range"> + bare <input> pairs that each section hand-rolled
 // with slightly different layouts.
-export function Slider({ value, min, max, step = 1, onChange, suffix, disabled = false, inputMax }: {
+export function Slider({ value, min, max, step = 1, onChange, suffix, disabled = false, inputMax, ariaLabel }: {
   value: number;
   min: number;
   max: number;
@@ -17,6 +17,8 @@ export function Slider({ value, min, max, step = 1, onChange, suffix, disabled =
   // sensible value (max) while expert users can still type higher (up to
   // inputMax). E.g. pixel tolerance: slider 0–50, typeable 0–255.
   inputMax?: number;
+  /** Names both halves — the track and the number box — for assistive tech. */
+  ariaLabel?: string;
 }) {
   return (
     <div className="flex items-center gap-2.5">
@@ -29,6 +31,7 @@ export function Slider({ value, min, max, step = 1, onChange, suffix, disabled =
         // entry) exceeds max, so it doesn't overflow past the track end.
         value={Math.min(value, max)}
         disabled={disabled}
+        aria-label={ariaLabel}
         onChange={(e) => onChange(Number(e.target.value))}
         className="sheet-slider flex-1 min-w-0"
       />
@@ -39,7 +42,11 @@ export function Slider({ value, min, max, step = 1, onChange, suffix, disabled =
         max={inputMax ?? max}
         step={step}
         suffix={suffix}
+        // The unit rides INSIDE the field ("85 %"), like every delay in the Sheet — a "%"
+        // hanging outside the box was the one unit in the panel that broke the convention.
+        suffixInside={!!suffix}
         disabled={disabled}
+        ariaLabel={ariaLabel}
       />
     </div>
   );
