@@ -285,7 +285,7 @@ export function ImageCropper({ imageBase64, onSave, onCancel }: ImageCropperProp
               <span className="px-1.5 py-0.5 rounded bg-bg-input border border-border-subtle text-text-secondary">{crop.w} × {crop.h}</span>
               <span className="text-text-disabled">/ {natural.w} × {natural.h}</span>
             </>
-          ) : 'Loading...'}
+          ) : 'Loading…'}
         </div>
 
         {/* Centred container — the image+crop overlay sit inside a flex centerer so they

@@ -1361,7 +1361,7 @@ export function LexicalTokenEditor({
   density = 'dialog',
   contentClassName = EDITOR_DENSITY[density].content,
   placeholderClassName = EDITOR_DENSITY[density].placeholder,
-  placeholder: placeholderContent = 'Type the text to send...',
+  placeholder: placeholderContent = 'Type the text to send…',
   tokenAutocomplete = false,
   tokenScope = 'desktop',
   onClipboardChipEdit,

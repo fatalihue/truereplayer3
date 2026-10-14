@@ -192,7 +192,7 @@ export function UpdateOverlay() {
         <div className="text-center text-[11px] text-text-tertiary mb-[18px]">
           {phase.step === 'available' && 'A new version of TrueReplayer is ready'}
           {phase.step === 'downloading' && 'Do not close the app'}
-          {phase.step === 'installing' && 'Closing TrueReplayer...'}
+          {phase.step === 'installing' && 'Closing TrueReplayer…'}
           {phase.step === 'complete' && 'You are now on the latest version'}
         </div>
 
@@ -244,14 +244,14 @@ export function UpdateOverlay() {
               </div>
               {phase.step === 'downloading' && (
                 <div className="flex justify-between mt-1.5 text-[11px] text-text-tertiary tabular-nums">
-                  <span>Downloading...</span>
+                  <span>Downloading…</span>
                   <span className="text-accent font-semibold">{phase.percent}%</span>
                 </div>
               )}
             </div>
             {phase.step === 'installing' && (
               <>
-                <div className="text-center text-xs text-text-tertiary mt-1">Applying update, please wait...</div>
+                <div className="text-center text-xs text-text-tertiary mt-1">Applying update, please wait…</div>
                 <div className="text-center text-[11px] text-text-tertiary mt-3.5">The app will restart automatically</div>
               </>
             )}

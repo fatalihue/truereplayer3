@@ -382,7 +382,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Type a command or search..."
+            placeholder="Type a command or search…"
             className="flex-1 bg-transparent outline-none text-body text-text-primary placeholder:text-text-disabled"
           />
           <span className="kbd">Esc</span>

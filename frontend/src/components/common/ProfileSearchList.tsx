@@ -235,7 +235,7 @@ export function ProfileSearchList({
           aria-expanded
           aria-controls={`${baseId}-list`}
           aria-activedescendant={filtered.length > 0 ? rowId(highlight) : undefined}
-          placeholder={placeholder ?? 'Search profiles...'}
+          placeholder={placeholder ?? 'Search profiles…'}
           value={query}
           // Typing re-filters, which moves the highlight to the top match — revealing it is
           // right, so raise the flag the same way the arrow keys do.

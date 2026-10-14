@@ -1196,7 +1196,7 @@ function HotkeyInput({ value, settingKey, onChange, width = FIELD_W }: {
       {isFocused
         ? (localValue
           ? <KbdTag combo={localValue} accent />
-          : <span className="text-minor font-mono text-accent-light/60 motion-ok:animate-pulse">New key...</span>)
+          : <span className="text-minor font-mono text-accent-light/60 motion-ok:animate-pulse">New key…</span>)
         : (localValue
           ? <KbdTag combo={localValue} accent />
           : <span className="text-minor font-mono text-text-tertiary">—</span>)}
@@ -2096,7 +2096,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
             disabled={updateStatus === 'checking'}
             className="hover:text-accent-solid hover:underline transition-colors disabled:opacity-50 disabled:no-underline"
           >
-            {updateStatus === 'checking' ? 'Checking...'
+            {updateStatus === 'checking' ? 'Checking…'
               : updateStatus === 'up-to-date' ? '✓ Up to date'
               : updateStatus === 'error' ? 'Check failed — Retry'
               : 'Check for Updates'}

@@ -811,7 +811,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
               ) : source.ready ? (
                 source.raw === '' ? <span className="italic text-text-disabled">(empty)</span> : source.raw
               ) : (
-                <span className="italic text-text-disabled">Reading...</span>
+                <span className="italic text-text-disabled">Reading…</span>
               )}
             </div>
           </div>

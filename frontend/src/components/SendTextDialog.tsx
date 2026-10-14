@@ -198,7 +198,7 @@ function SnippetEditForm({
         onKeyDown={(e) => {
           if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onCancel(); }
         }}
-        placeholder="Snippet name..."
+        placeholder="Snippet name…"
         autoFocus
         className="w-full h-7 px-2 text-minor text-text-primary bg-bg-input border border-border-subtle rounded outline-none focus:border-accent-solid placeholder:text-text-disabled"
       />
@@ -209,7 +209,7 @@ function SnippetEditForm({
           // Let Ctrl+Enter still confirm the parent dialog; Escape cancels the edit.
           if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onCancel(); }
         }}
-        placeholder="Snippet text..."
+        placeholder="Snippet text…"
         rows={5}
         className="w-full px-2 py-1.5 text-caption font-mono text-text-primary bg-bg-input border border-border-subtle rounded outline-none focus:border-accent-solid resize-none placeholder:text-text-disabled"
       />
@@ -1215,7 +1215,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                 theme={emojiTheme}
                 width="100%"
                 height="100%"
-                searchPlaceholder="Search emoji..."
+                searchPlaceholder="Search emoji…"
                 previewConfig={{ showPreview: false }}
                 skinTonesDisabled
                 style={{
@@ -1376,7 +1376,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                         if (e.key === 'Enter' && !e.ctrlKey) { e.preventDefault(); handleSaveSnippet(); }
                         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setSavingSnippet(false); }
                       }}
-                      placeholder="Snippet name..."
+                      placeholder="Snippet name…"
                       autoFocus
                       className="h-7 px-2 text-minor text-text-primary bg-bg-input border border-border-subtle rounded outline-none focus:border-accent-solid placeholder:text-text-disabled"
                     />
@@ -1404,7 +1404,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                         type="text"
                         value={snippetFilter}
                         onChange={(e) => setSnippetFilter(e.target.value)}
-                        placeholder="Search snippets..."
+                        placeholder="Search snippets…"
                         className="w-full h-7 pl-6 pr-2 text-caption text-text-primary bg-bg-input border border-border-subtle rounded outline-none focus:border-accent-solid placeholder:text-text-disabled"
                       />
                     </div>

@@ -572,7 +572,7 @@ export function ClipboardModifierBody({
               clipRaw
             )
           ) : (
-            <span className="italic text-text-disabled">Reading...</span>
+            <span className="italic text-text-disabled">Reading…</span>
           )}
         </div>
         {/* Source → Result → Token, the order and the words ClipboardSurface uses: what goes in,

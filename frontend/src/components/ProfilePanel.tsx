@@ -1633,6 +1633,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
       // utility below, same mechanism as the dialog cards).
       tabIndex={0}
       role="button"
+      aria-current={p.isActive || undefined}
+      aria-disabled={isClicker || runActive || undefined}
       data-tip={isClicker ? tt('Macro mode only', 'Só no modo Macro') : undefined}
       onKeyDown={(e) => {
         if (e.key !== 'Enter' && e.key !== ' ') return;
@@ -1747,7 +1749,12 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             <span
               data-tip={tt('Automation armed', 'Automação armada')}
               data-tip-pos="end"
-              className="absolute -right-1 -bottom-1 w-1.5 h-1.5 rounded-full"
+              // Corner badge ON the icon; with no icon in the slot the corner is empty air, and the
+              // dot floated under the first letter of the name — centre it in the reserved slot then.
+              className={`absolute w-1.5 h-1.5 rounded-full ${
+                p.appIconBase64 || p.hasWindowTarget || (p.hasEffectiveTarget && p.effectiveTargetSource === 'folder')
+                  ? '-right-1 -bottom-1' : 'inset-0 m-auto'
+              }`}
               style={{ background: 'var(--color-replay)', outline: '1.5px solid var(--color-bg-card)' }}
             />
           )}
@@ -1904,6 +1911,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                 would clip the right-side tooltips). */}
             <div className="h-band w-full flex items-center justify-center border-b border-border-subtle shrink-0">
               <button
+                aria-label="Expand panel"
                 onClick={onToggleCollapse}
                 className={iconButtonClass('md')}
                 data-tip={tt('Expand panel', 'Expandir painel')}
@@ -1914,6 +1922,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             </div>
             <div className="flex flex-col items-center gap-1 pt-2 pb-2 shrink-0">
               <button
+                aria-label="New profile"
                 onClick={() => handleCreate(null)}
                 className={iconButtonClass('md')}
                 data-tip={tt('New profile', 'Novo profile')}
@@ -1922,6 +1931,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                 <FilePlus size={14} />
               </button>
               <button
+                aria-label="Search profiles"
                 onClick={() => { pendingFocusSearch.current = true; onToggleCollapse?.(); }}
                 className={iconButtonClass('md', { className: 'relative' })}
                 data-tip={searchQuery.length > 0 ? tt('Search — filter active', 'Buscar — filtro ativo') : tt('Search profiles', 'Buscar profiles')}
@@ -1964,6 +1974,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                         <Fragment key={p.name}>
                         {newGroup && <div className="w-6 my-0.5 border-t border-border-subtle shrink-0" aria-hidden />}
                         <button
+                          aria-label={p.name}
+                          aria-current={p.isActive || undefined}
                           // Same activation gate as the expanded row: collapsing the panel must not
                           // hand back a capability the expanded list refuses. It was missing here,
                           // so the rail activated profiles in Clicker mode — and ignored runActive
@@ -2054,13 +2066,14 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                       ].filter(Boolean).join(' · ');
                       return (
                         <button
+                          aria-label={`${overflow} more profiles`}
                           onClick={onToggleCollapse}
                           className="relative w-8 h-8 rounded-full flex items-center justify-center text-caption font-semibold bg-bg-elevated text-text-tertiary hover:bg-bg-card hover:text-text-primary transition-colors shrink-0"
                           style={conflicts > 0 ? { boxShadow: '0 0 0 1.5px color-mix(in srgb, var(--color-recording) 60%, transparent)' } : undefined}
                           data-tip={tip}
                           data-tip-pos="right"
                         >
-                          +{overflow}
+                          <span className="tabular-nums">+{overflow}</span>
                           {armed > 0 && (
                             <span
                               className="absolute -right-px -top-px w-1.5 h-1.5 rounded-full"
@@ -2100,7 +2113,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               this panel's own context menu. Not a sort glyph by accident either: this
               toolbar has no sort control for ↓↑ to be mistaken for. */}
           <div className="flex items-center">
-            <button onClick={onToggleCollapse} className={iconButtonClass('sm')} data-tip={tt('Collapse panel', 'Colapsar painel')}>
+            <button onClick={onToggleCollapse} className={iconButtonClass('sm')} data-tip={tt('Collapse panel', 'Colapsar painel')} aria-label="Collapse panel">
               <ChevronsLeft size={14} />
             </button>
             {/* Collapse / expand ALL folders. Promoted out of the folder context menu: it acts
@@ -2114,6 +2127,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               const Icon = anyExpanded ? ChevronsDownUp : ChevronsUpDown;
               return (
                 <button
+                  aria-label={anyExpanded ? 'Collapse all folders' : 'Expand all folders'}
                   onClick={() => send({ type: 'profile:setAllFoldersCollapsed', payload: { collapsed: anyExpanded } })}
                   disabled={folders.length === 0}
                   className={iconButtonClass('sm')}
@@ -2126,17 +2140,17 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               );
             })()}
             <div className="w-px h-3.5 bg-border-subtle mx-0.5" />
-            <button onClick={handleOpenProfilesFolder} className={iconButtonClass('sm')} data-tip={tt('Open profiles folder', 'Abrir pasta de perfis')}>
+            <button onClick={handleOpenProfilesFolder} className={iconButtonClass('sm')} data-tip={tt('Open profiles folder', 'Abrir pasta de perfis')} aria-label="Open profiles folder">
               <ExternalLink size={14} />
             </button>
-            <button onClick={handleExportClick} className={iconButtonClass('sm')} data-tip={tt('Import / Export', 'Importar / Exportar')}>
+            <button onClick={handleExportClick} className={iconButtonClass('sm')} data-tip={tt('Import / Export', 'Importar / Exportar')} aria-label="Import / Export">
               <ArrowDownUp size={14} />
             </button>
             <div className="w-px h-3.5 bg-border-subtle mx-0.5" />
-            <button onClick={handleCreateFolder} className={iconButtonClass('sm')} data-tip={tt('New folder', 'Nova pasta')}>
+            <button onClick={handleCreateFolder} className={iconButtonClass('sm')} data-tip={tt('New folder', 'Nova pasta')} aria-label="New folder">
               <FolderPlus size={14} />
             </button>
-            <button onClick={() => handleCreate(null)} className={iconButtonClass('sm')} data-tip={tt('New profile', 'Novo perfil')}>
+            <button onClick={() => handleCreate(null)} className={iconButtonClass('sm')} data-tip={tt('New profile', 'Novo perfil')} aria-label="New profile">
               <FilePlus size={14} />
             </button>
           </div>
@@ -2156,13 +2170,15 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             <input
               ref={searchInputRef}
               type="text"
-              placeholder="Search profiles..."
+              placeholder="Search profiles…"
+              aria-label="Search profiles"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="bg-transparent text-minor text-text-primary placeholder:text-text-disabled outline-none flex-1 min-w-0"
             />
             {searchQuery && (
               <button
+                aria-label="Clear search"
                 onClick={() => setSearchQuery('')}
                 className="text-text-disabled hover:text-text-secondary transition-colors shrink-0"
               >
@@ -2334,7 +2350,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                         // the width flip is instant and silent. Fixing it at the class that toggles
                         // rather than by opting this element out of the global transition: that rule
                         // is the theme-change fade, and it should keep applying here.
-                        className={`w-full flex items-center gap-1 px-1.5 py-1.5 text-left border-border-subtle group cursor-grab active:cursor-grabbing select-none ${folder.collapsed ? 'rounded-md' : 'rounded-t-shell border-b'}`}
+                        className={`w-full flex items-center gap-1 px-1.5 py-1.5 text-left border-border-subtle group cursor-grab active:cursor-grabbing select-none ${folder.collapsed ? 'rounded-shell' : 'rounded-t-shell border-b'}`}
                         onMouseDown={(e) => handleFolderMouseDown(e, folder.name)}
                         // The whole header collapses the folder, not just the 12 px chevron —
                         // the convention every file explorer already taught, on a 218 px target
@@ -2347,6 +2363,20 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                         // guard below is the same one the chevron uses.
                         onClick={() => { if (!folderDragActive.current) handleToggleFolderCollapse(folder.name); }}
                         onContextMenu={(e) => handleFolderContextMenu(e, folder.name)}
+                        // Keyboard path, same shape as the profile rows: the header was a click-only
+                        // div, so Tab could never reach a folder to fold it (Shift+F10 / the Menu key
+                        // now reach its context menu too, through the native contextmenu event).
+                        role="button"
+                        tabIndex={0}
+                        aria-expanded={!folder.collapsed}
+                        onKeyDown={(e) => {
+                          // Only the header itself: Enter on a button INSIDE it (the target chip's
+                          // remove) bubbles here and must not fold the folder too.
+                          if (e.target !== e.currentTarget) return;
+                          if (e.key !== 'Enter' && e.key !== ' ') return;
+                          e.preventDefault();
+                          handleToggleFolderCollapse(folder.name);
+                        }}
                       >
                         {/* The chevron is the AFFORDANCE for the collapse, not a second handler
                             for it: the header above now owns that click, and this sits inside it.
@@ -2538,12 +2568,14 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                   <button
                     key={f.name}
                     onClick={() => handleMoveToFolder(contextMenu.profileName, f.name)}
-                    className={`w-full flex items-center gap-2 px-3 py-1.5 text-minor hover:bg-bg-elevated transition-colors ${
+                    aria-current={getProfileFolder(contextMenu.profileName) === f.name || undefined}
+                    className={`menu-item ${
                       getProfileFolder(contextMenu.profileName) === f.name ? 'text-accent' : 'text-text-primary'
                     }`}
                   >
                     <FolderOpen size={12} style={{ color: f.color }} />
                     {f.name}
+                    {getProfileFolder(contextMenu.profileName) === f.name && <Check size={12} className="ml-auto" />}
                   </button>
                 ))}
                 {(profileOrder?.folders ?? []).length > 0 && getProfileFolder(contextMenu.profileName) && (
@@ -2551,7 +2583,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                     <div className="my-1 border-t border-border-subtle" />
                     <button
                       onClick={() => handleMoveToFolder(contextMenu.profileName, null)}
-                      className="w-full flex items-center gap-2 px-3 py-1.5 text-minor text-text-primary hover:bg-bg-elevated transition-colors"
+                      className="menu-item text-text-primary"
                     >
                       <FolderMinus size={12} className="text-text-tertiary" />
                       Remove from folder
@@ -2692,7 +2724,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
           {/* ── Destructive ── */}
           <button
             onClick={() => handleDelete(contextMenu.profileName)}
-            className="w-full flex items-center justify-between px-3 py-1.5 text-minor text-recording-fg hover:bg-bg-elevated transition-colors"
+            className="menu-item justify-between text-recording-fg"
           >
             <span className="flex items-center gap-2.5">
               <Trash2 size={13} />
@@ -2760,7 +2792,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                         key={c}
                         onClick={() => handleSetFolderColor(folderContextMenu.folderName, c)}
                         aria-label={`Colour ${c}`}
-                        className="relative w-full aspect-square rounded transition-transform hover:scale-110"
+                        aria-pressed={selected}
+                        className="relative w-full aspect-square rounded motion-ok:transition-transform motion-ok:hover:scale-110"
                         style={{
                           backgroundColor: c,
                           boxShadow: selected ? '0 0 0 2px var(--color-bg-card), 0 0 0 4px var(--color-text-primary)' : undefined,
@@ -2841,7 +2874,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
           {/* ── Destructive ── */}
           <button
             onClick={() => handleDeleteFolder(folderContextMenu.folderName)}
-            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-minor text-recording-fg hover:bg-bg-elevated transition-colors"
+            className="menu-item text-recording-fg"
           >
             <Trash2 size={13} />
             Delete folder
@@ -2865,7 +2898,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               value={dialogValue}
               onChange={(e) => setDialogValue(e.target.value)}
               onKeyDown={(e) => handleDialogKeyDown(e, confirmCreate)}
-              placeholder="Profile name..."
+              placeholder="Profile name…"
+              aria-label="Profile name"
               className="input-field font-sans"
             />
             {/* Reserved slot, not a conditional mount — see FieldError. The name is deliberately
@@ -2887,7 +2921,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               value={dialogValue}
               onChange={(e) => setDialogValue(e.target.value)}
               onKeyDown={(e) => handleDialogKeyDown(e, confirmRename)}
-              placeholder="New name..."
+              placeholder="New name…"
+              aria-label="New name"
               className="input-field font-sans"
             />
             <FieldError show={renameProfileNameTaken}>A profile with that name already exists.</FieldError>
@@ -2956,7 +2991,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               type="text"
               readOnly
               value={!hotkeyCapture || hotkeyCapture === '...' ? '' : hotkeyCapture}
-              placeholder="New key..."
+              placeholder="New key…"
+              aria-label="Hotkey"
               className={`w-full h-8 px-2 text-ui font-mono bg-bg-input border border-accent-solid rounded text-center outline-none placeholder:text-accent-light/50 ${
                 !hotkeyCapture || hotkeyCapture === '...'
                   ? 'text-accent-light motion-ok:animate-pulse'
@@ -2977,6 +3013,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                   { id: 'hold', label: 'Hold (long-press)', help: tt('Fires once after ~0.6 s held; does not stop on release', 'Dispara uma vez após ~0,6 s segurando; não para ao soltar') },
                 ] as const).map((opt) => (
                   <button
+                    aria-pressed={hotkeyTriggerMode === opt.id}
                     key={opt.id}
                     onClick={() => setHotkeyTriggerMode(opt.id)}
                     className={`h-7 text-caption rounded border transition-colors ${
@@ -3021,6 +3058,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                 if (e.key === 'Enter') { e.preventDefault(); confirmHotstring(); }
               }}
               placeholder="e.g. /id"
+              aria-label="Hotstring"
               maxLength={32}
               className="w-full h-8 px-2 text-ui font-mono text-accent bg-bg-input border border-accent-solid rounded outline-none"
             />
@@ -3029,6 +3067,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             </p>
 
             <button
+              role="checkbox"
+              aria-checked={hotstringInstant}
               type="button"
               onClick={() => setHotstringInstant(!hotstringInstant)}
               className="flex items-center gap-2 mt-3 cursor-pointer text-left"
@@ -3118,7 +3158,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                   <Download size={12} />
                   Import…
                 </Button>
-                <span>
+                <span className="tabular-nums">
                   {totalSelectedCount} selected
                   {hiddenSelectedCount > 0 && <> · {hiddenSelectedCount} hidden by filter</>}
                 </span>
@@ -3145,7 +3185,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                 <Search size={12} className="text-text-disabled shrink-0" />
                 <input
                   type="text"
-                  placeholder="Filter profiles..."
+                  placeholder="Filter profiles…"
                   aria-label={'Filter profiles'}
                   value={exportSearch}
                   onChange={(e) => setExportSearch(e.target.value)}
@@ -3168,13 +3208,15 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               {/* hover is bg-surface, NOT bg-elevated: the DialogShell card is itself
                   bg-elevated, so the old hover painted the same color — no feedback. */}
               <button
+                role="checkbox"
+                aria-checked={allExportSelected}
                 type="button"
                 onClick={toggleExportSelectAll}
                 className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg-surface cursor-pointer border-b border-border-subtle text-left"
               >
                 <CheckboxBox checked={allExportSelected} />
                 <span className="text-minor font-medium text-text-secondary">Select All</span>
-                <span className="ml-auto text-caption text-text-tertiary">{selectedCount}/{visibleNames.length}</span>
+                <span className="ml-auto text-caption text-text-tertiary tabular-nums">{selectedCount}/{visibleNames.length}</span>
               </button>
             </div>
 
@@ -3198,6 +3240,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                   <div className="px-2 py-1 label-micro text-text-tertiary">Pinned</div>
                   {pinned.map(name => (
                     <button
+                      role="checkbox"
+                      aria-checked={!!exportSelection[name]}
                       key={name}
                       type="button"
                       onClick={() => toggleExportProfile(name)}
@@ -3220,6 +3264,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                 return (
                   <div key={f.name} className="mb-1">
                     <button
+                      role="checkbox"
+                      aria-checked={folderAllSelected ? true : folderSomeSelected ? 'mixed' : false}
                       type="button"
                       onClick={() => toggleExportFolder(visibleItems)}
                       className="w-full flex items-center gap-1.5 px-2 py-1 rounded hover:bg-bg-surface cursor-pointer text-left"
@@ -3230,11 +3276,13 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                       />
                       <FolderOpen size={12} style={{ color: f.color }} className="shrink-0" />
                       <span className="text-minor font-medium text-text-secondary truncate">{f.name}</span>
-                      <span className="ml-auto text-caption text-text-tertiary">{visibleItems.filter(n => exportSelection[n]).length}/{visibleItems.length}</span>
+                      <span className="ml-auto text-caption text-text-tertiary tabular-nums">{visibleItems.filter(n => exportSelection[n]).length}/{visibleItems.length}</span>
                     </button>
                     <div className="ml-5">
                       {visibleItems.map(name => (
                         <button
+                          role="checkbox"
+                          aria-checked={!!exportSelection[name]}
                           key={name}
                           type="button"
                           onClick={() => toggleExportProfile(name)}
@@ -3257,6 +3305,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                   {folders.length > 0 && <div className="px-2 py-1 label-micro text-text-tertiary">Ungrouped</div>}
                   {ungrouped.map(p => (
                     <button
+                      role="checkbox"
+                      aria-checked={!!exportSelection[p.name]}
                       key={p.name}
                       type="button"
                       onClick={() => toggleExportProfile(p.name)}
@@ -3281,6 +3331,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                 ships a SILENTLY broken chain, a harder failure than a dropped folder target. */}
             <div className="px-4 py-2.5 border-t border-border-subtle space-y-2">
               <button
+                role="checkbox"
+                aria-checked={includeExportOrg}
                 type="button"
                 onClick={() => setIncludeExportOrg(v => !v)}
                 className="w-full flex items-center gap-2 text-left"
@@ -3317,7 +3369,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               value={folderDialogName}
               onChange={(e) => setFolderDialogName(e.target.value)}
               onKeyDown={(e) => handleDialogKeyDown(e, confirmCreateFolder)}
-              placeholder="Folder name..."
+              placeholder="Folder name…"
+              aria-label="Folder name"
               className="input-field font-sans"
             />
             {/* Colour picker — a full-width 8×3 grid of rounded tiles. Square cells tile the
@@ -3331,7 +3384,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                     key={c}
                     onClick={() => setFolderDialogColor(c)}
                     aria-label={`Colour ${c}`}
-                    className="relative w-full aspect-square rounded transition-transform hover:scale-110"
+                    aria-pressed={folderDialogColor === c}
+                    className="relative w-full aspect-square rounded motion-ok:transition-transform motion-ok:hover:scale-110"
                     style={{
                       backgroundColor: c,
                       boxShadow: selected ? '0 0 0 2px var(--color-bg-card), 0 0 0 4px var(--color-text-primary)' : undefined,
@@ -3357,7 +3411,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               <span className="text-minor font-medium text-text-secondary truncate">
                 {folderDialogName.trim() || 'Folder name'}
               </span>
-              <span className="ml-auto text-caption uppercase tracking-wide text-text-disabled shrink-0">preview</span>
+              <span className="ml-auto label-micro text-text-disabled shrink-0">preview</span>
             </div>
             <FieldError show={createFolderNameTaken}>A folder with that name already exists.</FieldError>
           </div>
@@ -3377,7 +3431,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               onKeyDown={(e) => {
                 if (e.key === 'Enter') { e.preventDefault(); confirmRenameFolder(); }
               }}
-              placeholder="New folder name..."
+              placeholder="New folder name…"
+              aria-label="Folder name"
               className="input-field font-sans"
             />
             <FieldError show={renameFolderNameTaken}>A folder with that name already exists.</FieldError>
