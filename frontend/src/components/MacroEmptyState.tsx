@@ -26,7 +26,7 @@ export function MacroEmptyState() {
         {/* Instructional prose is bilingual (the app defaults to pt-BR); "Macro mode"
             above stays English because it is a label. Same split as ClickerEmptyState. */}
         {isRecording ? (
-          <span className="font-medium text-recording">
+          <span className="font-medium text-recording-fg">
             {'Recording — waiting for input…'}
           </span>
         ) : (

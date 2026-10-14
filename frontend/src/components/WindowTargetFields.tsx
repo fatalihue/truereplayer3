@@ -290,7 +290,7 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
             dialog that hosts these fields. One line, truncated, full text on hover. */}
         <FieldError
           show={!!shownTitleError}
-          className="text-caption text-recording mt-1 leading-tight"
+          className="text-caption text-recording-fg mt-1 leading-tight"
           tip={shownTitleError ?? undefined}
         >
           {shownTitleError}
@@ -310,7 +310,7 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
             : undefined}
           className={`w-full h-8 text-minor border rounded transition-colors ${
             isDetecting
-              ? 'text-recording border-recording/40 bg-recording/10 hover:bg-recording/20'
+              ? 'text-recording-fg border-recording/40 bg-recording/10 hover:bg-recording/20'
               : 'text-accent border-accent-solid/40 hover:bg-accent-solid/10'
           }`}
         >

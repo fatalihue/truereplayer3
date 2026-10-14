@@ -236,7 +236,7 @@ export function BulkActionBar({
                 }`}
               />
               {hint && (
-                <span className="absolute right-0 bottom-full mb-1.5 z-20 px-2 py-1 rounded text-caption whitespace-nowrap bg-bg-card border border-recording/40 text-recording pointer-events-none">
+                <span className="absolute right-0 bottom-full mb-1.5 z-20 px-2 py-1 rounded text-caption whitespace-nowrap bg-bg-card border border-recording/40 text-recording-fg pointer-events-none">
                   {hint}
                 </span>
               )}
@@ -336,7 +336,7 @@ export function BulkActionBar({
             {/* Delete — destructive group of one (the Del hotkey also deletes the selection). */}
             <button
               onClick={onDelete}
-              className="flex items-center gap-1.5 h-7 px-2 rounded text-minor font-medium text-recording hover:text-recording/80 hover:bg-recording-bg transition-colors"
+              className="flex items-center gap-1.5 h-7 px-2 rounded text-minor font-medium text-recording-fg hover:text-recording-fg/80 hover:bg-recording-bg transition-colors"
             >
               <Trash2 size={14} />
               Delete

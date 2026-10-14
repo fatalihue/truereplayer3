@@ -31,7 +31,7 @@ const SIZE_CLASSES: Record<IconButtonSize, string> = {
 
 const TONE_CLASSES: Record<IconButtonTone, string> = {
   ghost: 'text-text-icon enabled:hover:bg-bg-elevated enabled:hover:text-text-primary',
-  danger: 'text-text-icon enabled:hover:bg-recording-bg enabled:hover:text-recording',
+  danger: 'text-text-icon enabled:hover:bg-recording-bg enabled:hover:text-recording-fg',
 };
 
 const ACTIVE_CLASSES = 'bg-bg-elevated text-text-primary';

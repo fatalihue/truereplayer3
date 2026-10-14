@@ -2788,7 +2788,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                             and the pointer is rarely over the input at rejection time
                             (the user just pressed Enter). Clears on the next keystroke. */}
                         {editInvalid && (
-                          <span className="absolute left-0 top-full mt-1 z-20 px-2 py-1 rounded text-caption whitespace-nowrap bg-bg-card border border-recording/40 text-recording pointer-events-none">
+                          <span className="absolute left-0 top-full mt-1 z-20 px-2 py-1 rounded text-caption whitespace-nowrap bg-bg-card border border-recording/40 text-recording-fg pointer-events-none">
                             {'Needs both coordinates — e.g. 960, 540'}
                           </span>
                         )}
@@ -2975,7 +2975,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                         />
                         {/* Same inline hint as the coords editor, for the same reason. */}
                         {editInvalid && (
-                          <span className="absolute right-0 top-full mt-1 z-20 px-2 py-1 rounded text-caption whitespace-nowrap bg-bg-card border border-recording/40 text-recording pointer-events-none">
+                          <span className="absolute right-0 top-full mt-1 z-20 px-2 py-1 rounded text-caption whitespace-nowrap bg-bg-card border border-recording/40 text-recording-fg pointer-events-none">
                             {'Use a whole number of ms — 0 or more'}
                           </span>
                         )}
@@ -4119,7 +4119,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                            'A seleção toca um marcador de bloco, então blocos inteiros vão junto')
                       : undefined
             }
-            className="menu-item justify-between text-recording"
+            className="menu-item justify-between text-recording-fg"
           >
             <span className="flex items-center gap-2.5">
               <Trash2 size={13} />

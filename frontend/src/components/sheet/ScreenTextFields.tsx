@@ -219,7 +219,7 @@ export function ScreenTextFields(p: ScreenTextFieldsProps) {
               placeholder="30"
               className="input-field w-full"
             />
-            <FieldError show={!!operandError} className="text-caption text-recording mt-1">{operandError}</FieldError>
+            <FieldError show={!!operandError} className="text-caption text-recording-fg mt-1">{operandError}</FieldError>
           </Field>
         </>
       ) : (
@@ -245,7 +245,7 @@ export function ScreenTextFields(p: ScreenTextFieldsProps) {
               placeholder={p.textOp === 'regex' ? '^Level \\d+' : 'Victory'}
               className="input-field w-full"
             />
-            <FieldError show={!!operandError} className="text-caption text-recording mt-1">{operandError}</FieldError>
+            <FieldError show={!!operandError} className="text-caption text-recording-fg mt-1">{operandError}</FieldError>
           </Field>
         </>
       ))}

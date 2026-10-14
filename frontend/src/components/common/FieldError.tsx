@@ -35,14 +35,15 @@ import type { CSSProperties, ReactNode } from 'react';
 export function FieldError({
   show,
   children,
-  className = 'text-caption text-recording mt-2',
+  className = 'text-caption text-recording-fg mt-2',
   style,
   tip,
 }: {
   show: boolean;
   children: ReactNode;
-  /** Full class list INCLUDING the colour — call sites differ (`text-recording` vs the
-   *  `--color-recording-fg` ink), and this component does not have an opinion about which. */
+  /** Full class list INCLUDING the colour. The ink is `text-recording-fg`, never the raw
+   *  `text-recording`: the raw hue is for fills and tints, and as 11 px text it fails contrast on
+   *  the light presets (the -fg token is solved per theme). Rework 2026-10-13. */
   className?: string;
   style?: CSSProperties;
   /** Portal tooltip carrying the untruncated text. For dynamic messages only; never `title=`. */

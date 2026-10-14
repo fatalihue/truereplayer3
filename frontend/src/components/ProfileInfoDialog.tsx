@@ -451,7 +451,7 @@ const keepEditing = () => {
                   rows={4}
                   className="w-full px-3 py-2 text-minor text-text-primary bg-bg-input border border-border-subtle rounded outline-none focus:border-accent-solid placeholder:text-text-disabled transition-colors resize-none"
                 />
-                <div className={`text-caption text-right ${descTooLong ? 'text-recording' : 'text-text-tertiary'}`}>
+                <div className={`text-caption text-right ${descTooLong ? 'text-recording-fg' : 'text-text-tertiary'}`}>
                   {description.length} / {MAX_DESCRIPTION}
                 </div>
                 {/* A description longer than the cap can only come from a file written elsewhere —
@@ -518,7 +518,7 @@ const keepEditing = () => {
                 <div className="flex items-start justify-between gap-2">
                   <FieldError
                     show
-                    className={`text-caption mt-0 flex-1 min-w-0 ${tagError ? 'text-recording' : 'text-text-tertiary'}`}
+                    className={`text-caption mt-0 flex-1 min-w-0 ${tagError ? 'text-recording-fg' : 'text-text-tertiary'}`}
                     tip={tagError ? TAG_MESSAGE[tagError] : undefined}
                   >
                     {tagError

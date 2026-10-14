@@ -1514,7 +1514,7 @@ export function Toolbar(_props: ToolbarProps) {
                       className="menu-item text-text-primary disabled:opacity-40 disabled:cursor-not-allowed"
                       onClick={() => setClearArmed(true)}
                     >
-                      <Trash2 size={13} className="text-recording" />
+                      <Trash2 size={13} className="text-recording-fg" />
                       Clear All…
                     </button>
                   ))}

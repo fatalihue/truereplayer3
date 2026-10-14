@@ -786,7 +786,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
           {isCustom && (
             <button
               onClick={(e) => { e.stopPropagation(); deleteCustomPreset(theme.id); }}
-              className="absolute top-1 right-1 w-5 h-5 rounded bg-bg-base/80 text-text-tertiary hover:text-recording opacity-0 group-hover/card:opacity-100 transition-opacity flex items-center justify-center"
+              className="absolute top-1 right-1 w-5 h-5 rounded bg-bg-base/80 text-text-tertiary hover:text-recording-fg opacity-0 group-hover/card:opacity-100 transition-opacity flex items-center justify-center"
             >
               <span className="text-sm leading-none">×</span>
             </button>
@@ -1115,7 +1115,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
             </div>
             <textarea value={importText} onChange={(e) => setImportText(e.target.value)} placeholder="Paste theme JSON here…" className="w-full h-28 px-3 py-2 text-minor font-mono text-text-primary bg-bg-input border border-border-default rounded resize-none outline-none focus:border-accent-solid" />
             {importText && <Button variant="primary" className="mt-2" onClick={() => doImport(importText)}>Apply theme</Button>}
-            {importError && <p className="mt-2 text-minor text-recording">{importError}</p>}
+            {importError && <p className="mt-2 text-minor text-recording-fg">{importError}</p>}
           </div>
         </div>
       </div>

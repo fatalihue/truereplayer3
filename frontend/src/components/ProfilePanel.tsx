@@ -2692,7 +2692,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
           {/* ── Destructive ── */}
           <button
             onClick={() => handleDelete(contextMenu.profileName)}
-            className="w-full flex items-center justify-between px-3 py-1.5 text-minor text-recording hover:bg-bg-elevated transition-colors"
+            className="w-full flex items-center justify-between px-3 py-1.5 text-minor text-recording-fg hover:bg-bg-elevated transition-colors"
           >
             <span className="flex items-center gap-2.5">
               <Trash2 size={13} />
@@ -2841,7 +2841,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
           {/* ── Destructive ── */}
           <button
             onClick={() => handleDeleteFolder(folderContextMenu.folderName)}
-            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-minor text-recording hover:bg-bg-elevated transition-colors"
+            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-minor text-recording-fg hover:bg-bg-elevated transition-colors"
           >
             <Trash2 size={13} />
             Delete folder

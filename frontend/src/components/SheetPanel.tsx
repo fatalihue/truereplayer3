@@ -3128,7 +3128,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   The third state is the merge conflict — see mergeConflict. */}
               <FieldError
                 show
-                className={`text-caption mt-1 truncate ${mergeConflict ? 'text-recording' : formDraft !== initialForm ? 'text-warning-ink' : 'text-text-tertiary'}`}
+                className={`text-caption mt-1 truncate ${mergeConflict ? 'text-recording-fg' : formDraft !== initialForm ? 'text-warning-ink' : 'text-text-tertiary'}`}
               >
                 {mergeConflict
                   ? (mergeShapeChanged

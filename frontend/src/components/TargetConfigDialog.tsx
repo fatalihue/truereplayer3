@@ -448,8 +448,8 @@ export function TargetConfigDialog({
               ? 'text-text-tertiary border-border-default bg-bg-elevated/40'
               : testResult
                 ? testResult.error || !testResult.matches
-                  ? 'bg-recording/10 text-recording border-recording/30 hover:bg-recording/15'
-                  : 'bg-replay/10 text-replay border-replay/30 hover:bg-replay/15'
+                  ? 'bg-recording/10 text-recording-fg border-recording/30 hover:bg-recording/15'
+                  : 'bg-replay/10 text-replay-fg border-replay/30 hover:bg-replay/15'
                 : 'text-text-secondary border-border-default hover:bg-bg-elevated'
           }`}
         >

@@ -430,7 +430,7 @@ function SettingRow({ label, labelSuffix, tooltip, children, danger }: {
           100 px control), and a labelSuffix that does not fit must drop to its own line whole,
           not shrink and break mid-token ("≈" alone on line one, the number below). Only bites
           when a suffix overflows; every plain label is far shorter than the column. */}
-      <span className={`text-ui flex flex-wrap items-center gap-1.5 min-w-0 ${danger ? 'text-recording' : 'text-text-secondary'}`}>
+      <span className={`text-ui flex flex-wrap items-center gap-1.5 min-w-0 ${danger ? 'text-recording-fg' : 'text-text-secondary'}`}>
         {danger && <AlertTriangle size={12} className="shrink-0" />}
         {label}
         {labelSuffix}
