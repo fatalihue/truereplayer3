@@ -438,7 +438,7 @@ export function StatusBar() {
               </span>
               <div className="h-[2px] bg-bg-elevated rounded-full overflow-hidden shrink-0" style={{ flex: '0 1 160px' }}>
                 <div
-                  className="h-full bg-accent-solid rounded-full transition-[width] duration-300"
+                  className="h-full bg-accent-solid rounded-full motion-ok:transition-[width] duration-300"
                   style={{ width: `${pct}%` }}
                 />
               </div>

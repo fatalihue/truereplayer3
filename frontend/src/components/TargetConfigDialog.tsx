@@ -514,7 +514,7 @@ export function TargetConfigDialog({
             // the dialog — the inline hint used to push every row down and resize the
             // box). Opaque card + shadow so it reads as a layer on top. No timeout —
             // stays until the user converts or skips, same actions as the old hint.
-            <div ref={floatingCardRef} className="absolute bottom-3 left-4 right-4 flex items-start gap-2 px-3 py-2 text-caption text-warning-ink bg-bg-card border border-warning-ink/35 rounded-lg shadow-overlay z-20">
+            <div ref={floatingCardRef} className="absolute bottom-3 left-4 right-4 flex items-start gap-2 px-3 py-2 text-caption text-warning-ink bg-bg-card border border-warning-ink/35 rounded-overlay shadow-overlay z-20">
               <span className="flex-1 leading-snug">
                 {hintCanConvert ? (
                   <>
@@ -572,7 +572,7 @@ export function TargetConfigDialog({
           {memberSpaceWarn && (
             // Same floating card as the hint above (the two never meet: the hint needs
             // onConvertCoordinates, which only the profile scope passes).
-            <div ref={floatingCardRef} className="absolute bottom-3 left-4 right-4 flex items-start gap-2 px-3 py-2 text-caption text-warning-ink bg-bg-card border border-warning-ink/35 rounded-lg shadow-overlay z-20">
+            <div ref={floatingCardRef} className="absolute bottom-3 left-4 right-4 flex items-start gap-2 px-3 py-2 text-caption text-warning-ink bg-bg-card border border-warning-ink/35 rounded-overlay shadow-overlay z-20">
               <span className="flex-1 leading-snug">
                 {inheritingMemberCount} profile{inheritingMemberCount === 1 ? '' : 's'} in this folder use{inheritingMemberCount === 1 ? 's' : ''} its target, with X/Y set for {initial.relativeCoordinates ? 'relative' : 'absolute'} coords.
                 They are not converted — if a profile's clicks land in the wrong place, load it and run

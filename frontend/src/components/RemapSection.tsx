@@ -471,7 +471,7 @@ export function RemapSection({ draft }: {
       // long key name (the placeholders themselves are kept short enough to fit).
       className={`h-7 flex-1 min-w-0 flex items-center justify-center px-1.5 rounded border text-caption transition-colors ${
         capturing === side
-          ? 'border-accent-solid text-accent bg-accent-solid/10 animate-pulse'
+          ? 'border-accent-solid text-accent bg-accent-solid/10 motion-ok:animate-pulse'
           : value
             ? 'border-border-strong text-text-primary bg-bg-input'
             : 'border-border-default text-text-tertiary bg-bg-input'

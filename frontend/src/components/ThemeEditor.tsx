@@ -761,7 +761,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
         <div key={theme.id} className="group/card relative">
           <button
             onClick={() => selectPreset(theme.id)}
-            className={`w-full flex flex-col rounded-md overflow-hidden border transition-colors cursor-pointer ${
+            className={`w-full flex flex-col rounded-shell overflow-hidden border transition-colors cursor-pointer ${
               isActive ? 'border-accent ring-1 ring-accent/30' : 'border-border-subtle hover:border-border-default'
             }`}
           >

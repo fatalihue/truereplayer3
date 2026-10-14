@@ -1288,7 +1288,11 @@ export function DataPanel({ onClose }: DataPanelProps) {
                               <button
                                 type="button"
                                 onClick={(e) => setHeaderMenu({ c, anchor: e.currentTarget })}
-                                className="opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded hover:bg-bg-card text-text-tertiary hover:text-text-primary transition-all shrink-0 ml-auto"
+                                aria-label="Column options"
+                                data-tip={tt('Column options', 'Opções da coluna')}
+                                // Hover-revealed for the mouse, but visible on keyboard focus too:
+                                // an opacity-0 control the Tab key lands on is invisible.
+                                className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 w-5 h-5 flex items-center justify-center rounded hover:bg-bg-card text-text-tertiary hover:text-text-primary transition shrink-0 ml-auto"
                               >
                                 <MoreHorizontal size={12} />
                               </button>

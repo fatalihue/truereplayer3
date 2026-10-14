@@ -350,7 +350,7 @@ export function KeystrokeCaptureDialog({
               reports the hook state truthfully: dashed = low-level capture armed,
               solid = manual mode (hook off, the keyboard is yours). */}
           <div
-            className={`bg-bg-input border rounded-md py-5 px-4 text-center min-h-[140px] flex flex-col justify-center transition-colors ${
+            className={`bg-bg-input border rounded py-5 px-4 text-center min-h-[140px] flex flex-col justify-center transition-colors ${
               manualEntry ? 'border-border-default' : 'border-dashed'
             }`}
             style={manualEntry ? undefined : {

@@ -2806,7 +2806,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                         // (the hook stands down when the app is not in front).
                         onKeyDown={(e) => e.preventDefault()}
                         onBlur={cancelEdit}
-                        className="w-[220px] h-6 px-1 text-minor font-mono text-accent-light bg-bg-input border border-accent-solid rounded outline-none placeholder:text-accent-light/50 animate-pulse"
+                        className="w-[220px] h-6 px-1 text-minor font-mono text-accent-light bg-bg-input border border-accent-solid rounded outline-none placeholder:text-accent-light/50 motion-ok:animate-pulse"
                       />
                     ) : isProbeAction(action) ? (
                       // Image/pixel probe (Wait* or If/While) — unified payload, no GUID.
@@ -3085,7 +3085,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
           return (
             <div className="pointer-events-none" style={{ transform: 'rotate(1.5deg)' }}>
               <div
-                className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-bg-card border border-border-default w-[300px]"
+                className="flex items-center gap-2 px-2.5 py-1.5 rounded-overlay bg-bg-card border border-border-default w-[300px]"
                 style={{
                   opacity: 0.88,
                   boxShadow: 'var(--shadow-overlay), 0 0 0 1px color-mix(in srgb, var(--color-accent) 35%, transparent)',

@@ -139,7 +139,8 @@ export interface DialogShellProps {
   footerStart?: ReactNode;
   /** Tailwind max-width clamp for the card. Default preserves the historical 90vw
    *  clamp; space-hungry dialogs (Insert Text) pass a tighter-gutter clamp like
-   *  'max-w-[calc(100vw-24px)]' to use the whole window at the minimum app size. */
+   *  'max-w-[calc(100vw/var(--ui-zoom)-24px)]' to use the whole window at the minimum app size
+   *  (vw divided by the zoom for the same reason as the vh caps above). */
   maxWidthClass?: string;
   /** Called after the exit animation completes (or immediately when animations are off). */
   onClose: () => void;
@@ -199,7 +200,7 @@ export function DialogShell({
   // Width: the size step. The full panel size must not be clawed back by the default 90vw
   // clamp (see PANEL_MAX_WIDTH).
   const widthClasses = SIZE_CLASSES[size];
-  const maxWidthClasses = maxWidthClass ?? (size === 'full' ? PANEL_MAX_WIDTH : 'max-w-[calc(100vw-24px)]');
+  const maxWidthClasses = maxWidthClass ?? (size === 'full' ? PANEL_MAX_WIDTH : 'max-w-[calc(100vw/var(--ui-zoom)-24px)]');
   // Where the last mousedown landed — a drag that merely ENDS on the scrim
   // (text selection pulled outside the card) must not count as a backdrop click.
   const pressOnScrim = useRef(false);

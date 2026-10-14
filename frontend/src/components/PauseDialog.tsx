@@ -179,7 +179,7 @@ export function PauseDialog({ initialKey, initialTimeoutMs, onConfirm, onClose }
           <div className="flex flex-col gap-1.5">
             <span className="label-micro text-text-tertiary">Resume hotkey</span>
             <div
-              className="bg-bg-input border border-dashed rounded-md py-5 px-4 text-center min-h-[140px] flex flex-col justify-center transition-colors"
+              className="bg-bg-input border border-dashed rounded py-5 px-4 text-center min-h-[140px] flex flex-col justify-center transition-colors"
               style={{
                 borderColor: 'color-mix(in srgb, var(--color-action-pause-fg) 40%, transparent)',
                 ...(captured ? { background: 'color-mix(in srgb, var(--color-action-pause-fg) 4%, var(--color-bg-input))' } : null),

@@ -112,7 +112,8 @@ export function ClickerDashboard() {
         <div
           className="font-mono font-bold tabular-nums"
           style={{
-            fontSize: 'clamp(56px, 10vw, 112px)',
+            // vw ignores the zoom on <html>, so divide it out: 10 % of the WINDOW at any zoom.
+            fontSize: 'clamp(56px, calc(10vw / var(--ui-zoom)), 112px)',
             color: 'var(--color-clicker-fg)',
             lineHeight: 1,
             letterSpacing: '-0.02em',
@@ -148,7 +149,7 @@ export function ClickerDashboard() {
         <div className="w-full max-w-[480px]">
           <div className="h-[3px] bg-bg-elevated rounded-full overflow-hidden">
             <div
-              className="h-full rounded-full transition-[width] duration-300"
+              className="h-full rounded-full motion-ok:transition-[width] duration-300"
               style={{ width: `${progressPct}%`, background: 'var(--color-clicker)' }}
             />
           </div>

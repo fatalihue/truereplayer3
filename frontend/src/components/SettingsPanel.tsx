@@ -1196,7 +1196,7 @@ function HotkeyInput({ value, settingKey, onChange, width = FIELD_W }: {
       {isFocused
         ? (localValue
           ? <KbdTag combo={localValue} accent />
-          : <span className="text-minor font-mono text-accent-light/60 animate-pulse">New key...</span>)
+          : <span className="text-minor font-mono text-accent-light/60 motion-ok:animate-pulse">New key...</span>)
         : (localValue
           ? <KbdTag combo={localValue} accent />
           : <span className="text-minor font-mono text-text-tertiary">—</span>)}
@@ -1466,7 +1466,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
   // overridden by a bare transition-[width] (see ProfilePanel).
   if (collapsed) {
     return (
-      <div className="w-12 flex flex-col shrink-0 bg-bg-surface border border-border-subtle border-l-border-default rounded-r-shell transition-[width,background-color,border-color] duration-200">
+      <div className="w-12 flex flex-col shrink-0 bg-bg-surface border border-border-subtle border-l-border-default rounded-r-shell motion-ok:transition-[width,background-color,border-color] motion-ok:duration-(--motion-base)">
         <div className="flex items-center justify-center border-b border-border-subtle shrink-0 h-band">
           <button
             onClick={onToggleCollapse}
@@ -1515,7 +1515,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
     // No overflow-hidden: the collapse button's tooltip renders to the left of
     // the tab bar and would be clipped at the panel edge (scrolling is handled
     // by the tab-content div below).
-    <div className="w-[224px] flex flex-col shrink-0 bg-bg-surface border border-border-subtle border-l-border-default rounded-r-shell transition-[width,background-color,border-color] duration-200">
+    <div className="w-[224px] flex flex-col shrink-0 bg-bg-surface border border-border-subtle border-l-border-default rounded-r-shell motion-ok:transition-[width,background-color,border-color] motion-ok:duration-(--motion-base)">
       {/* Tab Bar — explicit 47 px height (matches the Toolbar's measured rendered height in
           the centre column) so the section header below this tab bar lines up vertically
           with the action grid's column-header row in the centre. Without this, the tab

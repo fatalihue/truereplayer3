@@ -276,6 +276,12 @@
   box-sizing: border-box;
 }
 
+/* motion-ok: — a class prefixed with it applies only while the animations toggle is on
+   (html[data-animations="true"]). The ONE gate for motion that Tailwind utilities carry (pulses,
+   width transitions, progress fills): before it, those ran regardless of the toggle while the
+   named keyframes below respected it. :where() keeps the prefix at zero specificity. */
+@custom-variant motion-ok (&:where(html[data-animations="true"] *));
+
 /* Animations toggle — when html[data-animations="true"] is set (default), opt key
    surfaces into a short color/background transition so theme changes don't snap
    harshly. Lives in @layer base with :where() so any element that declares its own
@@ -850,6 +856,10 @@ tbody tr[data-replay="paused"],
 tbody tr[data-replay="paused"]:hover {
   background-color: color-mix(in srgb, var(--color-action-pause-fg) 18%, transparent);
   box-shadow: inset 3px 0 0 var(--color-action-pause-fg);
+}
+/* The pulse is motion, so it waits on the toggle; the tint and the rail above are the state and
+   stay either way. */
+html[data-animations="true"] tbody tr[data-replay="paused"] {
   animation: replay-row-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 

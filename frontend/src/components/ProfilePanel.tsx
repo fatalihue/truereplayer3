@@ -1892,7 +1892,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
       {/* width + colors in the transition list: a bare transition-[width] overrides
           the global theme-change fade, so the panel's background/border would snap
           on theme switch while everything around it cross-fades. */}
-      <div className={`flex flex-col bg-bg-surface border border-border-subtle border-r-border-default rounded-l-shell shrink-0 transition-[width,background-color,border-color] duration-200 ${collapsed ? 'w-12' : 'w-[260px]'}`}>
+      <div className={`flex flex-col bg-bg-surface border border-border-subtle border-r-border-default rounded-l-shell shrink-0 motion-ok:transition-[width,background-color,border-color] motion-ok:duration-(--motion-base) ${collapsed ? 'w-12' : 'w-[260px]'}`}>
         {collapsed ? (
           <>
             {/* Collapsed rail — mirrors the SettingsPanel rail: a 47px header cell
@@ -2280,7 +2280,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                       // The resting look moved to `style` for the same reason, guarded by the
                       // same condition: an inline style would BEAT the drag classes outright,
                       // which is the identical bug one layer up.
-                      className={`group/folder border rounded-md my-1 transition-colors ${
+                      className={`group/folder border rounded-shell my-1 transition-colors ${
                         isDragOver
                           ? 'bg-accent-solid/20 border-accent-solid/50 ring-2 ring-accent-solid/50'
                           : ''
@@ -2334,7 +2334,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                         // the width flip is instant and silent. Fixing it at the class that toggles
                         // rather than by opting this element out of the global transition: that rule
                         // is the theme-change fade, and it should keep applying here.
-                        className={`w-full flex items-center gap-1 px-1.5 py-1.5 text-left border-border-subtle group cursor-grab active:cursor-grabbing select-none ${folder.collapsed ? 'rounded-md' : 'rounded-t-md border-b'}`}
+                        className={`w-full flex items-center gap-1 px-1.5 py-1.5 text-left border-border-subtle group cursor-grab active:cursor-grabbing select-none ${folder.collapsed ? 'rounded-md' : 'rounded-t-shell border-b'}`}
                         onMouseDown={(e) => handleFolderMouseDown(e, folder.name)}
                         // The whole header collapses the folder, not just the 12 px chevron —
                         // the convention every file explorer already taught, on a 218 px target
@@ -2760,7 +2760,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                         key={c}
                         onClick={() => handleSetFolderColor(folderContextMenu.folderName, c)}
                         aria-label={`Colour ${c}`}
-                        className="relative w-full aspect-square rounded-md transition-transform hover:scale-110"
+                        className="relative w-full aspect-square rounded transition-transform hover:scale-110"
                         style={{
                           backgroundColor: c,
                           boxShadow: selected ? '0 0 0 2px var(--color-bg-card), 0 0 0 4px var(--color-text-primary)' : undefined,
@@ -2959,7 +2959,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               placeholder="New key..."
               className={`w-full h-8 px-2 text-ui font-mono bg-bg-input border border-accent-solid rounded text-center outline-none placeholder:text-accent-light/50 ${
                 !hotkeyCapture || hotkeyCapture === '...'
-                  ? 'text-accent-light animate-pulse'
+                  ? 'text-accent-light motion-ok:animate-pulse'
                   : 'text-accent'
               }`}
             />
@@ -3331,7 +3331,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                     key={c}
                     onClick={() => setFolderDialogColor(c)}
                     aria-label={`Colour ${c}`}
-                    className="relative w-full aspect-square rounded-md transition-transform hover:scale-110"
+                    className="relative w-full aspect-square rounded transition-transform hover:scale-110"
                     style={{
                       backgroundColor: c,
                       boxShadow: selected ? '0 0 0 2px var(--color-bg-card), 0 0 0 4px var(--color-text-primary)' : undefined,
@@ -3351,7 +3351,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             </div>
             {/* Live preview — how the folder will read in the sidebar: icon tinted with the
                 chosen colour + the name as you type it. */}
-            <div className="flex items-center gap-2 mt-3.5 px-2.5 py-2 rounded-md bg-bg-elevated border border-border-subtle">
+            <div className="flex items-center gap-2 mt-3.5 px-2.5 py-2 rounded bg-bg-elevated border border-border-subtle">
               <ChevronDown size={12} className="shrink-0" style={{ color: folderDialogColor }} />
               <FolderOpen size={13} className="shrink-0" style={{ color: folderDialogColor }} />
               <span className="text-minor font-medium text-text-secondary truncate">
@@ -3554,7 +3554,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
           }}
         >
           <div
-            className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-bg-card border border-border-default text-caption font-medium text-text-primary"
+            className="flex items-center gap-2 px-2.5 py-1.5 rounded-overlay bg-bg-card border border-border-default text-caption font-medium text-text-primary"
             style={{
               opacity: 0.88,
               boxShadow: 'var(--shadow-overlay), 0 0 0 1px color-mix(in srgb, var(--color-accent) 35%, transparent)',

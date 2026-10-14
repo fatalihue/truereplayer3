@@ -2976,8 +2976,11 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
         style={{
           animation: leaving
             ? 'slide-out-right var(--motion-base) var(--ease-exit) forwards'
-            // --motion-slow keeps the "exit is faster than entrance" relationship.
-            : 'slide-in-right var(--motion-slow) var(--ease-enter)',
+            // --motion-slow keeps the "exit is faster than entrance" relationship. The entrance
+            // waits on the toggle like the exit does (App skips the exit when it is off).
+            : document.documentElement.getAttribute('data-animations') === 'true'
+              ? 'slide-in-right var(--motion-slow) var(--ease-enter)'
+              : undefined,
           boxShadow: 'var(--shadow-dialog)',
         }}
         onAnimationEnd={(e) => {
@@ -4303,7 +4306,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 }}
                 className={`w-full h-8 px-2 text-ui font-mono bg-bg-input border rounded outline-none cursor-pointer placeholder:text-accent-light/50 ${
                   pauseHotkeyFocused
-                    ? 'text-accent-light border-accent-solid animate-pulse'
+                    ? 'text-accent-light border-accent-solid motion-ok:animate-pulse'
                     : 'text-text-primary border-border-default'
                 }`}
               />
@@ -4835,7 +4838,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 placeholder="Click to capture…"
                 className={`w-full h-8 px-2 text-ui font-mono bg-bg-input border rounded outline-none cursor-pointer placeholder:text-accent-light/50 ${
                   keyFieldFocused
-                    ? 'text-accent-light border-accent-solid animate-pulse'
+                    ? 'text-accent-light border-accent-solid motion-ok:animate-pulse'
                     : 'text-text-primary border-border-default'
                 }`}
               />
