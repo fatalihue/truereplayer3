@@ -264,7 +264,7 @@ export function StatusBar() {
   const clickerTargetCps = describeClickerConfig(settings).rateCps;
 
   return (
-    <div className="flex items-center h-[26px] px-4 bg-bg-base border-t border-border-subtle shrink-0 text-[11px] font-small">
+    <div className="flex items-center h-statusbar px-4 bg-bg-base border-t border-border-subtle shrink-0 text-[11px] font-small">
       {isClicker ? (
         /* ── CLICKER MODE ── profile/action-count are meaningless here, so the bar
             shows the clicker's own context instead: button + target rate when idle,

@@ -635,11 +635,11 @@ export function Toolbar(_props: ToolbarProps) {
 
   return (
     <>
-      {/* Explicit h-[47px] so the toolbar's bottom edge lines up with the right panel's
-          Profile/Keys/App tab strip (also h-[47px]). Earlier the toolbar used py-2.5 which
+      {/* Explicit h-band so the toolbar's bottom edge lines up with the right panel's
+          Profile/Keys/App tab strip (also h-band — the --spacing-band contract in index.css). Earlier the toolbar used py-2.5 which
           worked when the contents were flat (~46px), but the boxed-group containers
           added in the redesign bumped the row to ~52px and broke the alignment. */}
-      <div className="flex items-center gap-3 px-4 h-[47px] border-b border-border-subtle shrink-0">
+      <div className="flex items-center gap-3 px-4 h-band border-b border-border-subtle shrink-0">
         {/* Left: deselect button + profile name with inline action count.
             The X only appears when a profile is actually active — at the
             "No Profile" baseline there's nothing to deselect. Status bar still

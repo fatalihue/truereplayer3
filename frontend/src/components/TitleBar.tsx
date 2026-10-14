@@ -55,7 +55,7 @@ export function TitleBar({ onOpenCommandPalette }: TitleBarProps) {
     : settings.useCursorClick ? 'var(--color-clicker)' : 'var(--color-accent)';
 
   return (
-    <div className="drag-region flex items-center h-[48px] px-4 bg-bg-base border-b border-border-subtle shrink-0">
+    <div className="drag-region flex items-center h-titlebar px-4 bg-bg-base border-b border-border-subtle shrink-0">
       {/* Logo */}
       <div className="no-drag flex items-center gap-2.5">
         <svg width="20" height="20" viewBox="0 0 64 64" aria-hidden="true" className="shrink-0">

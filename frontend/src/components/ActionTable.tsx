@@ -2228,7 +2228,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
           {actions.length > 0 && (
           <thead>
             <tr className="h-row">
-              <th className="sticky top-0 z-10 bg-bg-surface shadow-[inset_0_-1px_0_var(--color-border-subtle)]">
+              <th className="sticky top-0 z-10 bg-bg-surface shadow-hairline-b">
                 <div className="flex items-center justify-center">
                   <button
                     type="button"
@@ -2245,11 +2245,11 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                   </button>
                 </div>
               </th>
-              <th className="sticky top-0 z-10 bg-bg-surface shadow-[inset_0_-1px_0_var(--color-border-subtle)] text-left label-micro text-text-tertiary pl-3">#</th>
-              {columnVisibility.action && <th className="sticky top-0 z-10 bg-bg-surface shadow-[inset_0_-1px_0_var(--color-border-subtle)] text-left label-micro text-text-tertiary pl-1">Action</th>}
-              {columnVisibility.details && <th className="sticky top-0 z-10 bg-bg-surface shadow-[inset_0_-1px_0_var(--color-border-subtle)] text-left label-micro text-text-tertiary pl-1">Details</th>}
-              {columnVisibility.delay && <th className="sticky top-0 z-10 bg-bg-surface shadow-[inset_0_-1px_0_var(--color-border-subtle)] text-right label-micro text-text-tertiary pl-2 pr-2">Delay</th>}
-              {columnVisibility.notes && <th className="sticky top-0 z-10 bg-bg-surface shadow-[inset_0_-1px_0_var(--color-border-subtle)] text-left label-micro text-text-tertiary pl-2 pr-2">Notes</th>}
+              <th className="sticky top-0 z-10 bg-bg-surface shadow-hairline-b text-left label-micro text-text-tertiary pl-3">#</th>
+              {columnVisibility.action && <th className="sticky top-0 z-10 bg-bg-surface shadow-hairline-b text-left label-micro text-text-tertiary pl-1">Action</th>}
+              {columnVisibility.details && <th className="sticky top-0 z-10 bg-bg-surface shadow-hairline-b text-left label-micro text-text-tertiary pl-1">Details</th>}
+              {columnVisibility.delay && <th className="sticky top-0 z-10 bg-bg-surface shadow-hairline-b text-right label-micro text-text-tertiary pl-2 pr-2">Delay</th>}
+              {columnVisibility.notes && <th className="sticky top-0 z-10 bg-bg-surface shadow-hairline-b text-left label-micro text-text-tertiary pl-2 pr-2">Notes</th>}
             </tr>
           </thead>
           )}

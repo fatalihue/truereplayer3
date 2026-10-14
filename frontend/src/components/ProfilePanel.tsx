@@ -1902,7 +1902,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                 the measured strip height; the last slot becomes a "+N expand" chip
                 when there are more profiles than fit (no scrolling — a scroll list
                 would clip the right-side tooltips). */}
-            <div className="h-[47px] w-full flex items-center justify-center border-b border-border-subtle shrink-0">
+            <div className="h-band w-full flex items-center justify-center border-b border-border-subtle shrink-0">
               <button
                 onClick={onToggleCollapse}
                 className={iconButtonClass('md')}
@@ -2082,7 +2082,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             six-button layout had, so the divider margins dropped mx-1 → mx-0.5 to pay
             for it. Estimated, not yet re-measured live (UI is screenshot-masked); if
             PROFILES clips, shorten the label before shrinking the buttons. */}
-        <div className="flex items-center justify-between h-[47px] px-2 border-b border-border-subtle shrink-0">
+        <div className="flex items-center justify-between h-band px-2 border-b border-border-subtle shrink-0">
           <span className="label-micro text-text-tertiary">PROFILES</span>
           {/* Grouped by function (2026-07 reorg), Toolbar divider idiom: panel chrome
               (collapse) | library utilities (open folder, import/export) | creation

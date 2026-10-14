@@ -32,3 +32,13 @@ export const chipDotOff: CSSProperties = {
   background: 'transparent',
   border: '1.5px solid var(--color-text-tertiary)',
 };
+
+/**
+ * The TOKEN chip — a mono `{token}` pill you click to insert or copy (the Insert Text rail, the
+ * Data panel's column tokens). One recipe for both: they had drifted, and the Data panel copy
+ * kept border-subtle (6 %), the value that made the chips vanish on light presets, plus a
+ * warning-coloured hover on an action that only copies. border-default + the accent "lit" tint
+ * on hover (12 % fill / 40 % border), the same pair every toggle and chip uses when on.
+ */
+export const tokenChipClass =
+  'h-6 px-2 inline-flex items-center text-caption font-mono bg-bg-surface border border-border-default rounded text-text-secondary hover:text-accent hover:border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)] hover:bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)] transition-colors';

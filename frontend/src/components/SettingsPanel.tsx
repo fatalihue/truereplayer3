@@ -237,7 +237,7 @@ function EnableChip({ value, isOn, unit, format, min, max, width, offDisplay, ow
         type="button"
         onClick={() => onToggle(!isOn)}
         aria-label={isOn ? 'Disable' : 'Enable'}
-        className="h-full pl-2 pr-1.5 flex items-center shrink-0 cursor-pointer transition-colors hover:bg-[rgba(127,127,127,0.18)]"
+        className="h-full pl-2 pr-1.5 flex items-center shrink-0 cursor-pointer transition-colors hover:bg-wash-hover"
       >
         <span
           className="w-2 h-2 rounded-full block shrink-0"
@@ -833,7 +833,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
                   else setClickMode('cursorClickUseArea', !useArea);
                 }}
                 aria-label={useArea ? 'Disable area' : 'Enable area'}
-                className="h-full pl-2 pr-1 flex items-center shrink-0 cursor-pointer transition-colors hover:bg-[rgba(127,127,127,0.18)]"
+                className="h-full pl-2 pr-1 flex items-center shrink-0 cursor-pointer transition-colors hover:bg-wash-hover"
               >
                 <span
                   className="w-2 h-2 rounded-full block shrink-0"
@@ -890,7 +890,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
                 type="button"
                 onClick={() => setClickMode('cursorClickUseFixed', !useFixed)}
                 aria-label={useFixed ? 'Disable fixed point' : 'Enable fixed point'}
-                className="h-full pl-2 pr-1 flex items-center shrink-0 cursor-pointer transition-colors hover:bg-[rgba(127,127,127,0.18)]"
+                className="h-full pl-2 pr-1 flex items-center shrink-0 cursor-pointer transition-colors hover:bg-wash-hover"
               >
                 <span
                   className="w-2 h-2 rounded-full block shrink-0"
@@ -1467,7 +1467,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
   if (collapsed) {
     return (
       <div className="w-12 flex flex-col shrink-0 bg-bg-surface border border-border-subtle border-l-border-default rounded-r-shell transition-[width,background-color,border-color] duration-200">
-        <div className="flex items-center justify-center border-b border-border-subtle shrink-0 h-[47px]">
+        <div className="flex items-center justify-center border-b border-border-subtle shrink-0 h-band">
           <button
             onClick={onToggleCollapse}
             className={iconButtonClass('md')}
@@ -1521,7 +1521,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
           with the action grid's column-header row in the centre. Without this, the tab
           bar was ~39 px (default py-1.5 + 1 px border) vs the Toolbar's ~46 px, pulling
           the entire right column up by ~7 px. */}
-      <div className="flex items-center gap-1 px-1.5 border-b border-border-subtle shrink-0 h-[47px]">
+      <div className="flex items-center gap-1 px-1.5 border-b border-border-subtle shrink-0 h-band">
         <SegmentedControl
           ariaLabel="Settings scope"
           className="flex-1"

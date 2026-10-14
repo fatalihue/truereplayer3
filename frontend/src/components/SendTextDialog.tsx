@@ -27,6 +27,7 @@ import { FieldError } from './common/FieldError';
 import { describeDelivery, pickStatusNote } from '../utils/sendTextStatus';
 import type { SendMode, SendMethod } from '../utils/sendTextTypes';
 import { NumberInput } from './common/NumberInput';
+import { tokenChipClass } from './common/chipStyles';
 import { ClipboardSurface } from './lexical/ClipboardSurface';
 import { MessagePreviewPanel } from './lexical/MessagePreviewPanel';
 import {
@@ -268,11 +269,8 @@ function SnippetText({ text }: { text: string }) {
 // The chips themselves live in lexical/tokenCatalog, shared with the editor autocomplete (typing {),
 // so the two surfaces offer ONE list: a second copy is how the palette and the menu would drift.
 
-// One chip recipe everywhere (SheetPanel parity). border-default, not border-subtle: at 6 % the
-// chips — the rail's main affordance — vanished on light presets. Hover is the app's accent
-// "lit" tint (12 % fill / 40 % border), the same pair every toggle and chip uses when on.
-const CHIP_CLASS =
-  'h-6 px-2 inline-flex items-center text-[11px] font-mono bg-bg-surface border border-border-default rounded text-text-secondary hover:text-accent hover:border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)] hover:bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)] transition-colors';
+// One chip recipe everywhere — tokenChipClass in common/chipStyles (shared with the Data panel).
+const CHIP_CLASS = tokenChipClass;
 
 // ── Name prompt popover ({Variable…} / {Row column…}) ──────────────────────
 //

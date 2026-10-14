@@ -84,6 +84,12 @@
   --color-scrim: rgba(0, 0, 0, 0.3);
   --color-scrim-strong: rgba(0, 0, 0, 0.6);
 
+  /* Neutral hover wash for a control segment that sits on varying surfaces (the enable half of
+     the settings chips, the remap row's toggle half). Mid-grey at 18 % darkens a light surface
+     and lifts a dark one by a similar amount, so one value serves all 37 presets. Was the same
+     literal repeated in four call sites. */
+  --color-wash-hover: rgba(127, 127, 127, 0.18);
+
   /* Static fallback for the UI zoom, overwritten by applyTheme on every theme apply.
      Must exist here too: a `calc(... / var(--ui-zoom))` with the var unset is an INVALID
      declaration, so a panel sized that way would fall back to height:auto on the first
@@ -207,6 +213,16 @@
   --ui-border-radius: 3px;
   --ui-row-height: 34px;
 
+  /* Chrome bands — the fixed-height strips, one token per role instead of the magic numbers
+     each panel carried (rework 2026-10-13). `band` is the CONTRACT between the toolbar and the
+     right panel's tab strip / headers: both must stay at the same height so their bottom
+     hairlines line up across the window. The title bar, the sheet header and the status bar
+     are their own roles. Tailwind's --spacing-* namespace turns each into h-band, h-titlebar… */
+  --spacing-band: 47px;
+  --spacing-titlebar: 48px;
+  --spacing-sheet-header: 52px;
+  --spacing-statusbar: 26px;
+
   /* Radius scale — four roles in place of the eight ad-hoc values the audit of 2026-09-03
      counted. Control = buttons, chips, pills, inputs (Tailwind `rounded`, 4px). The SHELL radius
      (panels, the centre card) follows the user's border-radius setting at twice the control
@@ -223,6 +239,9 @@
      as a stain). These dark-theme values only cover the pre-hydration frame. */
   --shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.45);
   --shadow-dialog: 0 16px 48px rgba(0, 0, 0, 0.55);
+  /* Bottom hairline drawn as an inset shadow — for sticky header cells, where a real
+     border-bottom scrolls away with border-collapse and leaves the header seamless. */
+  --shadow-hairline-b: inset 0 -1px 0 var(--color-border-subtle);
 
   /* Brand mark — the vector robot (memory/tool-make-icons-robot.mjs, variant A, chosen
      2026-09-04 over the TR monogram after a live look). These are ILLUSTRATION colours, fixed
@@ -414,6 +433,20 @@ html[data-animations="true"] .app-tip {
   height: var(--ui-row-height);
 }
 
+/* The two elevation shadows MUST read the runtime variable. Tailwind's theme-generated
+   `shadow-dialog` / `shadow-overlay` inline the @theme value (the DARK pre-hydration one) into
+   the rule so they can splice in --tw-shadow-color — which meant every class consumer kept the
+   45-55 % black shadow on all 14 light presets, while applyThemeConfig's lighter blue-grey pair
+   only reached the call sites that wrote var(--shadow-*) by hand. These static utilities win
+   over the generated ones and resolve per theme. */
+@utility shadow-dialog {
+  box-shadow: var(--shadow-dialog);
+}
+
+@utility shadow-overlay {
+  box-shadow: var(--shadow-overlay);
+}
+
 /* Animations */
 @keyframes toast-in {
   from { opacity: 0; transform: translateX(20px); }
@@ -459,17 +492,6 @@ html[data-animations="true"] .bulk-bar-enter {
    gated on the animations toggle. key={surface} remounts the wrapper so it re-fires. */
 html[data-animations="true"] .theme-surface-slide {
   animation: slide-in-right 150ms var(--ease-enter);
-}
-
-@keyframes command-in {
-  from { opacity: 0; transform: scale(0.97) translateY(-8px); }
-  to   { opacity: 1; transform: scale(1) translateY(0); }
-}
-
-/* Command palette entrance — gated on the animations toggle (was an inline
-   style in CommandPalette.tsx that ignored it). */
-html[data-animations="true"] .command-enter {
-  animation: command-in var(--motion-base) var(--ease-enter);
 }
 
 /* DialogShell motion — symmetric enter/exit on the shared dialog chrome.

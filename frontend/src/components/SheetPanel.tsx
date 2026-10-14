@@ -2988,7 +2988,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
         {/* 52 px, one line: back · 24 px family tile · name · "Action #n". It was 64 px with a
             32 px tile and the number on a second line — 17 px taller than every other header
             in the window (the main-window bands closed at 47 px on 2026-09-04). */}
-        <div className="flex items-center gap-2.5 h-[52px] px-3 border-b border-border-subtle shrink-0">
+        <div className="flex items-center gap-2.5 h-sheet-header px-3 border-b border-border-subtle shrink-0">
           {/* Back is the explicit one-click way out, like Cancel; while there is something to lose
               its tip says so, so the arrow never reads as a harmless "go back". */}
           <button

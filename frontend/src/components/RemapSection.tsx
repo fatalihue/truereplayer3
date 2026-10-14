@@ -542,7 +542,7 @@ export function RemapSection({ draft }: {
             type="button"
             onClick={() => saveList(remaps.entries.map((e, j) => (j === i ? { ...e, enabled: !r.enabled } : e)))}
             aria-label={r.enabled ? 'Disable remap' : 'Enable remap'}
-            className="h-full pl-1.5 pr-1 flex items-center shrink-0 cursor-pointer transition-colors hover:bg-[rgba(127,127,127,0.18)]"
+            className="h-full pl-1.5 pr-1 flex items-center shrink-0 cursor-pointer transition-colors hover:bg-wash-hover"
           >
             <span
               className="w-2 h-2 rounded-full block shrink-0"

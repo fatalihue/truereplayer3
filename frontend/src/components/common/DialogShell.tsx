@@ -239,7 +239,7 @@ export function DialogShell({
 
   return (
     <div
-      className={`fixed inset-0 ${zClass} flex items-center justify-center bg-black/50 dialog-scrim ${leaving ? 'dialog-leaving' : ''}`}
+      className={`fixed inset-0 ${zClass} flex items-center justify-center bg-scrim-strong dialog-scrim ${leaving ? 'dialog-leaving' : ''}`}
       onMouseDown={(e) => {
         // Pressing the scrim itself must not steal focus from the card —
         // otherwise Chromium focuses <body> and the card's Esc handler goes

@@ -7,6 +7,7 @@ import {
 import { DialogShell  } from './common/DialogShell';
 import { Button } from './common/Button';
 import { SegmentedControl } from './common/SegmentedControl';
+import { tokenChipClass } from './common/chipStyles';
 import { CheckboxBox } from './Checkbox';
 import { useBridge } from '../bridge/BridgeContext';
 import { useAppState } from '../state/AppStateContext';
@@ -26,9 +27,8 @@ interface DataPanelProps {
 // spends: '{' and '}' bound the token, ':' starts the modifier chain (RowDataTokenRegex, 2.37.0 —
 // spaces, accents and punctuation are fine). Matched trimmed and case-insensitively at replay.
 const VALID_HEADER = /^[^{}:]+$/;
-// One chip recipe everywhere (SheetPanel / Insert Text parity).
-const CHIP_CLASS =
-  'h-6 px-2 inline-flex items-center text-[11px] font-mono bg-bg-surface border border-border-subtle rounded text-text-secondary hover:text-warning-ink hover:border-warning-ink/40 transition-colors';
+// One chip recipe everywhere — tokenChipClass in common/chipStyles (shared with Insert Text).
+const CHIP_CLASS = tokenChipClass;
 // Read-only render cap: beyond this the grid stays visible but cell editing is
 // disabled (the paste surface remains the bulk editor). Keeps typing O(1) without
 // speculative virtualization.
@@ -1264,7 +1264,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
                       return (
                         <th
                           key={c}
-                          className={`group sticky top-0 z-10 bg-bg-surface shadow-[inset_0_-1px_0_var(--color-border-subtle)] h-row text-left text-xs font-semibold font-mono px-2 whitespace-nowrap ${
+                          className={`group sticky top-0 z-10 bg-bg-surface shadow-hairline-b h-row text-left text-xs font-semibold font-mono px-2 whitespace-nowrap ${
                             meta.valid ? 'text-text-tertiary' : 'text-warning-ink'
                           } ${editingThis ? 'shadow-[inset_0_0_0_1.5px_var(--color-accent-solid)] bg-bg-input' : ''}`}
                         >
@@ -1297,7 +1297,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
                         </th>
                       );
                     })}
-                    <th className="sticky top-0 z-10 bg-bg-surface shadow-[inset_0_-1px_0_var(--color-border-subtle)] h-row">
+                    <th className="sticky top-0 z-10 bg-bg-surface shadow-hairline-b h-row">
                       {!readOnly && (
                         <button
                           type="button"

@@ -365,13 +365,14 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-start justify-center pt-[calc(15vh/var(--ui-zoom))]"
-      style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+      className="fixed inset-0 z-[100] flex items-start justify-center pt-[calc(15vh/var(--ui-zoom))] bg-scrim-strong"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
+      {/* No entrance animation: the palette opens from Ctrl+K, and keyboard-opened surfaces
+          skip entrance motion (index.css motion tokens; owner decision 2026-10-13). Same
+          scrim token as DialogShell, no decorative blur. */}
       <div
-        className="command-enter w-[520px] flex flex-col max-h-[calc(83vh/var(--ui-zoom))] bg-bg-card border border-border-default rounded-dialog overflow-hidden"
-        style={{ boxShadow: 'var(--shadow-dialog)' }}
+        className="w-[520px] flex flex-col max-h-[calc(83vh/var(--ui-zoom))] bg-bg-card border border-border-default rounded-dialog shadow-dialog overflow-hidden"
       >
         {/* Search input */}
         <div className="flex items-center gap-2.5 px-4 py-3.5 border-b border-border-subtle">

@@ -4,11 +4,6 @@
       "count": 2
     }
   },
-  "src/components/CommandPalette.tsx": {
-    "no-restricted-syntax": {
-      "count": 1
-    }
-  },
   "src/components/DataPanel.tsx": {
     "no-restricted-syntax": {
       "count": 1
@@ -19,24 +14,9 @@
       "count": 31
     }
   },
-  "src/components/RemapSection.tsx": {
-    "no-restricted-syntax": {
-      "count": 1
-    }
-  },
-  "src/components/SettingsPanel.tsx": {
-    "no-restricted-syntax": {
-      "count": 3
-    }
-  },
   "src/components/ThemeEditor.tsx": {
     "no-restricted-syntax": {
       "count": 2
-    }
-  },
-  "src/components/common/DialogShell.tsx": {
-    "no-restricted-syntax": {
-      "count": 1
     }
   },
   "src/components/common/ErrorBoundary.tsx": {
