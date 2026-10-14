@@ -812,7 +812,7 @@ function InputEditor({ token, onChange }: { token: string; onChange: (t: string)
             autoFocus
             spellCheck={false}
             placeholder="What to ask"
-            className="h-7 w-full px-2 text-xs bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid placeholder:text-text-disabled"
+            className="input-inline font-sans px-2"
           />
         </div>
         {/* "Replay pauses and asks" is the header's line; what the control needs is where the
@@ -834,7 +834,7 @@ function InputEditor({ token, onChange }: { token: string; onChange: (t: string)
             onChange={(e) => onMenu(e.target.value)}
             spellCheck={false}
             placeholder="Yes,No,Maybe"
-            className="h-7 w-full px-2 text-xs bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid placeholder:text-text-disabled"
+            className="input-inline font-sans px-2"
           />
         </div>
         <div className="text-[10px] text-text-tertiary mt-1">
@@ -998,7 +998,7 @@ function DateEditor({ token, onChange }: { token: string; onChange: (t: string) 
           onChange={(e) => { setFormat(e.target.value); emit(magnitude, back, unit, e.target.value); }}
           placeholder={DEFAULT_DATE_FORMAT[head]}
           spellCheck={false}
-          className="h-7 w-full px-2 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid placeholder:text-text-disabled disabled:opacity-40"
+          className="input-inline px-2 disabled:opacity-40"
         />
         <div className="text-[10px] text-text-tertiary mt-1">.NET pattern. MM = month, mm = minutes.</div>
       </Section>

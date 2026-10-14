@@ -66,7 +66,7 @@ export function ProcessNameInput({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         spellCheck={false}
-        className="w-full h-8 px-2 pr-14 text-ui font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid"
+        className="input-field pr-14"
       />
       <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
         {value && (

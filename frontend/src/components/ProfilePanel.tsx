@@ -2200,12 +2200,10 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               <FolderOpen size={24} className="text-text-disabled" />
               <span className="text-xs font-medium text-text-secondary">No profiles yet</span>
               <span className="text-[11px] text-text-tertiary leading-snug">Record a macro and save it, or create an empty profile to start.</span>
-              <button
-                onClick={() => handleCreate(null)}
-                className="mt-1 px-3 py-1 rounded text-[11px] text-[color:var(--color-accent-ink)] bg-accent-solid hover:bg-accent-solid/85 transition-colors"
-              >
-                + New profile
-              </button>
+              <Button variant="primary" size="xs" className="mt-1" onClick={() => handleCreate(null)}>
+                <Plus size={13} />
+                New profile
+              </Button>
             </div>
           ) : (
             <>

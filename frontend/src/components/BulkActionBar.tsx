@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { useTt } from '../state/LanguageContext';
 import { Clock, Trash2, X, Crosshair, MessageSquare, Eye, EyeOff, ArrowUpToLine, ArrowDownToLine, Eraser } from 'lucide-react';
 import { iconButtonClass } from './common/IconButton';
+import { Button } from './common/Button';
 import { SegmentedControl } from './common/SegmentedControl';
 
 export type BulkEditMode = 'set' | 'add';
@@ -240,12 +241,9 @@ export function BulkActionBar({
                 </span>
               )}
             </span>
-            <button
-              onClick={handleConfirm}
-              className="h-7 px-2.5 rounded text-xs font-medium bg-accent-solid text-[color:var(--color-accent-ink)] hover:bg-accent-solid/80 transition-colors"
-            >
+            <Button variant="primary" size="xs" onClick={handleConfirm}>
               OK
-            </button>
+            </Button>
             <button
               onClick={closeInput}
               className={iconButtonClass('md')}

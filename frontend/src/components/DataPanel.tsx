@@ -2,7 +2,7 @@ import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, 
 import ReactDOM from 'react-dom';
 import {
   Table2, TriangleAlert, Repeat, Plus, Trash2, Wand2, Check, Copy,
-  MoreHorizontal, ClipboardPaste, FileUp, Search, X, Bell, ChevronRight,
+  MoreHorizontal, ClipboardPaste, FileUp, Search, X, Bell, ChevronRight, ArrowLeft, ArrowRight,
 } from 'lucide-react';
 import { DialogShell  } from './common/DialogShell';
 import { Button } from './common/Button';
@@ -213,8 +213,11 @@ function HeaderMenu({
     };
   }, [anchor, onClose]);
 
-  const itemCls =
-    'w-full flex items-center gap-2 px-3 h-7 text-[11px] text-text-secondary hover:text-text-primary hover:bg-bg-card transition-colors disabled:opacity-40 disabled:cursor-not-allowed';
+  // The app's menu recipe (menu-surface / menu-item, the same as the grid's context menus):
+  // 32 px rows at 12 px, icons at 13 px in tertiary ink. Was a hand-rolled copy at 28 px / 11 px
+  // with its own accent border and a hex fallback for the surface.
+  const itemCls = 'menu-item text-text-primary';
+  const iconCls = 'shrink-0 text-text-tertiary';
 
   const visibilityStyle: React.CSSProperties = pos
     ? { visibility: 'visible', left: pos.left, top: pos.top }
@@ -230,46 +233,43 @@ function HeaderMenu({
         ...visibilityStyle,
         zIndex: 100,
         width: 200,
-        background: 'var(--color-bg-elevated, #2d2d2d)',
-        border: '1px solid color-mix(in srgb, var(--color-accent-solid) 35%, transparent)',
-        boxShadow: 'var(--shadow-dialog)',
       }}
-      className="rounded-lg overflow-hidden py-1"
+      className="menu-surface overflow-hidden py-1"
     >
       <button type="button" className={itemCls} disabled={!valid} onClick={() => { onAction('copy'); onClose(); }}>
-        <Copy size={12} className="shrink-0" />
+        <Copy size={13} className={iconCls} />
         <span className="font-mono truncate">{valid ? `Copy {row:${name}}` : 'Invalid token name'}</span>
       </button>
       <div className="h-px bg-border-subtle my-1" />
       <button type="button" className={itemCls} disabled={readOnly} onClick={() => { onAction('insert-left'); onClose(); }}>
-        <Plus size={12} className="shrink-0" /> {'Insert column left'}
+        <Plus size={13} className={iconCls} /> {'Insert column left'}
       </button>
       <button type="button" className={itemCls} disabled={readOnly} onClick={() => { onAction('insert-right'); onClose(); }}>
-        <Plus size={12} className="shrink-0" /> {'Insert column right'}
+        <Plus size={13} className={iconCls} /> {'Insert column right'}
       </button>
       <button type="button" className={itemCls} disabled={readOnly || colIndex === 0} onClick={() => { onAction('move-left'); onClose(); }}>
-        ← {'Move left'}
+        <ArrowLeft size={13} className={iconCls} /> {'Move left'}
       </button>
       <button type="button" className={itemCls} disabled={readOnly || colIndex === colCount - 1} onClick={() => { onAction('move-right'); onClose(); }}>
-        → {'Move right'}
+        <ArrowRight size={13} className={iconCls} /> {'Move right'}
       </button>
       <div className="h-px bg-border-subtle my-1" />
       <button
         type="button"
         disabled={readOnly}
-        // The armed colour has to beat itemCls's `hover:text-text-primary`, which is a more
-        // specific selector — and the pointer is NECESSARILY on this item, since arming it took a
-        // click. Dropping the old `hover:` half left the confirm state visible only after moving
-        // the mouse away, which is the one moment nobody looks. The label change is the second
-        // channel; the colour is the first, and both now survive the hover.
-        className={`${itemCls} ${armedDelete ? 'text-[color:var(--color-recording-fg)] hover:text-[color:var(--color-recording-fg)]' : ''}`}
+        // The armed colour rides on an inline style so it beats itemCls's text colour in every
+        // state — the pointer is NECESSARILY on this item, since arming it took a click, so a
+        // colour that lost to hover would show only after the mouse moved away, the one moment
+        // nobody looks. The label change is the second channel; the colour is the first.
+        className={itemCls}
+        style={armedDelete ? { color: 'var(--color-recording-fg)' } : undefined}
         onClick={() => {
           if (!armedDelete) { setArmedDelete(true); return; }
           onAction('delete');
           onClose();
         }}
       >
-        <Trash2 size={12} className="shrink-0" />
+        <Trash2 size={13} className="shrink-0" style={armedDelete ? undefined : { color: 'var(--color-text-tertiary)' }} />
         {armedDelete ? 'Really delete column?' : 'Delete column'}
       </button>
     </div>,

@@ -181,7 +181,7 @@ export function ClipboardModifierBody({
             placeholder="find"
             aria-label="Find"
             data-tip={tt('Every match, ignoring case. { } : not allowed.', 'Toda ocorrência, sem diferenciar maiúsculas. { } : não podem.')}
-            className="h-7 w-[92px] px-1.5 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid"
+            className="input-inline w-[92px]"
           />
           <span className="text-[11px] text-text-tertiary">→</span>
           <input
@@ -192,7 +192,7 @@ export function ClipboardModifierBody({
             placeholder="(nothing)"
             aria-label="Replace with"
             data-tip={tt('Empty deletes the match. { } : not allowed.', 'Vazio apaga a ocorrência. { } : não podem.')}
-            className="h-7 w-[92px] px-1.5 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid disabled:opacity-50"
+            className="input-inline w-[92px]"
           />
         </div>
       </StepSection>
@@ -229,7 +229,7 @@ export function ClipboardModifierBody({
               'Cut here — the delimiter is dropped. Spaces and : allowed, { } not. Absent = empty result.',
               'Corta aqui — o delimitador é descartado. Espaços e : podem, { } não. Ausente = resultado vazio.',
             )}
-            className="h-7 w-[104px] px-1.5 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid disabled:opacity-50"
+            className="input-inline w-[104px]"
           />
           <CheckRow
             checked={state.splitLast}
@@ -254,7 +254,7 @@ export function ClipboardModifierBody({
               'Strips leading digits + this text (e.g. "1x "). { } not allowed.',
               'Remove dígitos iniciais + este texto (ex.: "1x "). { } não podem.',
             )}
-            className="h-7 w-[104px] px-1.5 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid disabled:opacity-50"
+            className="input-inline w-[104px]"
           />
         </div>
       </StepSection>
@@ -307,7 +307,7 @@ export function ClipboardModifierBody({
                 onChange={(e) => setState((s) => ({ ...s, linesSpec: e.target.value.replace(/[^0-9,]/g, '') }))}
                 disabled={state.listPick !== 'lines'}
                 placeholder="3,1,2"
-                className="h-7 w-[70px] px-1.5 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid disabled:opacity-50"
+                className="input-inline w-[70px]"
               />
             }
           />
@@ -353,7 +353,7 @@ export function ClipboardModifierBody({
               'Joins lines with this — empty allowed. { } : not allowed.',
               'Une as linhas com isto — vazio permitido. { } : não podem.',
             )}
-            className="h-7 w-[70px] px-1.5 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid disabled:opacity-50"
+            className="input-inline w-[70px]"
           />
         </div>
       </StepSection>
@@ -550,7 +550,7 @@ export function ClipboardModifierBody({
             placeholder="when empty"
             aria-label="Default text"
             data-tip={tt('Used when the result is empty. Spaces and : allowed, { } not.', 'Usado quando o resultado fica vazio. Espaços e : podem, { } não.')}
-            className="h-7 w-full px-1.5 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid"
+            className="input-inline"
           />
         </div>
       </StepSection>

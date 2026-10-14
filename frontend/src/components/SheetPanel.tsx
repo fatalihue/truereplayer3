@@ -4177,7 +4177,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   value={pixelColor}
                   onChange={(e) => setPixelColor(e.target.value)}
                   placeholder="#RRGGBB"
-                  className="flex-1 h-8 px-2 text-ui font-mono text-text-primary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid"
+                  className="input-field flex-1"
                 />
               </div>
             </Field>
@@ -5093,7 +5093,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   onChange={(e) => setLaunchPath(e.target.value)}
                   placeholder="notepad.exe · https://… · C:\path\app.exe"
                   spellCheck={false}
-                  className="flex-1 min-w-0 h-8 px-2 text-ui font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid"
+                  className="input-field flex-1 min-w-0"
                 />
                 <button
                   type="button"
@@ -5112,7 +5112,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 onChange={(e) => setLaunchArgs(e.target.value)}
                 disabled={!launchPath.trim()}
                 spellCheck={false}
-                className="w-full h-8 px-2 text-ui font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid disabled:opacity-50"
+                className="input-field"
               />
             </Field>
             </>

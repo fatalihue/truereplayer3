@@ -222,9 +222,12 @@ function whyCannotFire(t: TriggerConfig): string | null {
  *  a tagged union rather than `string | 'close'`. */
 type NavDest = { kind: 'close' } | { kind: 'row'; name: string; asNewDraft: boolean };
 
+// The input-field recipe minus its font (call sites add font-mono for values, and some paint
+// display-only boxes with it). border-default, not border-subtle: at 6 % the field edge vanished
+// on the light presets — the same fix the token chips needed.
 const inputCls =
-  'h-8 px-2 rounded bg-bg-input border border-border-subtle text-[12px] text-text-primary ' +
-  'focus:outline-none focus:border-accent-solid w-full';
+  'h-8 px-2 rounded bg-bg-input border border-border-default text-[12px] text-text-primary ' +
+  'outline-none focus:border-accent-solid placeholder:text-text-tertiary disabled:opacity-50 w-full';
 
 /**
  * Time alone for today, day and month prepended otherwise.

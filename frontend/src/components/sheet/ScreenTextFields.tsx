@@ -261,7 +261,7 @@ export function ScreenTextFields(p: ScreenTextFieldsProps) {
             value={p.textColor}
             onChange={(e) => p.onTextColorChange(e.target.value)}
             placeholder="Any"
-            className="flex-1 min-w-0 h-8 px-2 text-ui font-mono text-text-primary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid"
+            className="input-field flex-1 min-w-0"
           />
           <button onClick={pickColor} disabled={pickId != null} className={`${SECONDARY_BTN} disabled:opacity-50`}>
             <Pipette size={12} />

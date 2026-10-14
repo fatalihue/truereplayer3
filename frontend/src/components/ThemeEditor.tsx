@@ -805,7 +805,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
               value={presetSearch}
               onChange={(e) => setPresetSearch(e.target.value)}
               placeholder="Search themes…"
-              className="w-full h-8 pl-2.5 pr-7 text-xs text-text-primary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid"
+              className="input-field font-sans pl-2.5 pr-7"
             />
             {presetSearch && (
               <button onClick={() => setPresetSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary text-sm leading-none">×</button>
@@ -1100,7 +1100,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
           <div>
             <div className="label-micro text-text-tertiary mb-2">Export current theme</div>
             <div className="flex gap-2 items-center">
-              <input type="text" value={exportName} onChange={(e) => setExportName(e.target.value)} placeholder="My Theme" className="w-[240px] h-8 px-2.5 text-xs text-text-primary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid" />
+              <input type="text" value={exportName} onChange={(e) => setExportName(e.target.value)} placeholder="My Theme" className="input-field font-sans w-[240px] px-2.5" />
               <Button variant="secondary" onClick={handleExportFile}><Download size={13} /> Export to file</Button>
               <Button variant="secondary" onClick={handleCopyClipboard}><Clipboard size={13} /> {copyError ? 'Copy failed' : copySuccess ? 'Copied!' : 'Copy to clipboard'}</Button>
             </div>
