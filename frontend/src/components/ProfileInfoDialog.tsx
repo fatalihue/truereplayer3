@@ -411,7 +411,7 @@ const keepEditing = () => {
             grow by ~400 px the moment the metadata arrives. */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 min-h-[27rem]">
           {!loaded ? (
-            <div className="text-xs text-text-tertiary py-4 text-center">Loading…</div>
+            <div className="text-minor text-text-tertiary py-4 text-center">Loading…</div>
           ) : (
             <>
               {/* Icon. The Version readout that used to sit beside it moved down into HISTORY:
@@ -419,7 +419,7 @@ const keepEditing = () => {
                   yet), so a bare number was taking half of the app's most prominent row to say
                   something no one can act on. Among the other read-only facts it reads as one. */}
               <div className="flex flex-col gap-1">
-                <label className="text-[11px] text-text-tertiary uppercase tracking-wide">Icon</label>
+                <label className="text-caption text-text-tertiary uppercase tracking-wide">Icon</label>
                 <div className="flex items-center gap-3">
                   <button
                     type="button"
@@ -432,7 +432,7 @@ const keepEditing = () => {
                     <button
                       type="button"
                       onClick={() => setIconEmoji(null)}
-                      className="text-[11px] text-text-tertiary hover:text-text-primary transition-colors"
+                      className="text-caption text-text-tertiary hover:text-text-primary transition-colors"
                     >
                       Clear
                     </button>
@@ -442,16 +442,16 @@ const keepEditing = () => {
 
               {/* Description */}
               <div className="flex flex-col gap-1">
-                <label className="text-[11px] text-text-tertiary uppercase tracking-wide">Description</label>
+                <label className="text-caption text-text-tertiary uppercase tracking-wide">Description</label>
                 <textarea
                   ref={descRef}
                   value={description}
                   onChange={(e) => setDescription(e.target.value.slice(0, MAX_DESCRIPTION))}
                   placeholder="What does this profile do?"
                   rows={4}
-                  className="w-full px-3 py-2 text-xs text-text-primary bg-bg-input border border-border-subtle rounded outline-none focus:border-accent-solid placeholder:text-text-disabled transition-colors resize-none"
+                  className="w-full px-3 py-2 text-minor text-text-primary bg-bg-input border border-border-subtle rounded outline-none focus:border-accent-solid placeholder:text-text-disabled transition-colors resize-none"
                 />
-                <div className={`text-[10px] text-right ${descTooLong ? 'text-recording' : 'text-text-tertiary'}`}>
+                <div className={`text-caption text-right ${descTooLong ? 'text-recording' : 'text-text-tertiary'}`}>
                   {description.length} / {MAX_DESCRIPTION}
                 </div>
                 {/* A description longer than the cap can only come from a file written elsewhere —
@@ -460,19 +460,19 @@ const keepEditing = () => {
                     characters the moment the user touched the field, or to let Save do it, which
                     threw them away one click later. Always mounted, one line
                     ([[convention-reserved-validation-line]]). */}
-                <FieldError show={descTooLong} className="text-[10px] mt-0">
+                <FieldError show={descTooLong} className="text-caption mt-0">
                   {`Too long by ${description.length - MAX_DESCRIPTION} — trim it before saving.`}
                 </FieldError>
               </div>
 
               {/* Tags */}
               <div className="flex flex-col gap-1 relative">
-                <label className="text-[11px] text-text-tertiary uppercase tracking-wide">Tags</label>
+                <label className="text-caption text-text-tertiary uppercase tracking-wide">Tags</label>
                 <div className="flex flex-wrap gap-1 px-2 py-2 bg-bg-input border border-border-subtle rounded focus-within:border-accent-solid transition-colors">
                   {tags.map(t => (
                     <span
                       key={t}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] rounded bg-bg-surface text-text-primary border border-border-subtle"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 text-caption rounded bg-bg-surface text-text-primary border border-border-subtle"
                     >
                       <Hash size={10} className="text-text-tertiary" />
                       {t}
@@ -508,7 +508,7 @@ const keepEditing = () => {
                     // 17 px of --ui-font-size.
                     // Chips wrapping to a SECOND line still grows the box — that is what a wrapping
                     // field does, and no reserve can honestly prevent it.
-                    className="flex-1 min-w-[100px] bg-transparent text-[11px] py-0.5 border border-transparent text-text-primary outline-none placeholder:text-text-disabled disabled:opacity-50"
+                    className="flex-1 min-w-[100px] bg-transparent text-caption py-0.5 border border-transparent text-text-primary outline-none placeholder:text-text-disabled disabled:opacity-50"
                   />
                 </div>
 
@@ -518,21 +518,21 @@ const keepEditing = () => {
                 <div className="flex items-start justify-between gap-2">
                   <FieldError
                     show
-                    className={`text-[10px] mt-0 flex-1 min-w-0 ${tagError ? 'text-recording' : 'text-text-tertiary'}`}
+                    className={`text-caption mt-0 flex-1 min-w-0 ${tagError ? 'text-recording' : 'text-text-tertiary'}`}
                     tip={tagError ? TAG_MESSAGE[tagError] : undefined}
                   >
                     {tagError
                       ? TAG_MESSAGE[tagError]
                       : 'Press Enter or comma to add. Spaces and accents are converted.'}
                   </FieldError>
-                  <span className="text-[10px] text-text-tertiary shrink-0 tabular-nums">{tags.length} / {MAX_TAGS}</span>
+                  <span className="text-caption text-text-tertiary shrink-0 tabular-nums">{tags.length} / {MAX_TAGS}</span>
                 </div>
 
                 {/* Most-used tags, one click each. Always mounted — an invisible placeholder chip
                     holds the row when there is nothing left to offer, so the card does not
                     resize as the last suggestion is consumed. */}
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className={`text-[10px] text-text-tertiary shrink-0 ${topTags.length ? '' : 'invisible'}`}>
+                  <span className={`text-caption text-text-tertiary shrink-0 ${topTags.length ? '' : 'invisible'}`}>
                     {'Most used'}
                   </span>
                   {topTags.length > 0 ? topTags.map(t => (
@@ -542,12 +542,12 @@ const keepEditing = () => {
                       onClick={() => commitTag(t.tag)}
                       disabled={tags.length >= MAX_TAGS}
                       data-tip={tt(`Used by ${t.count} profiles`, `Usada em ${t.count} profiles`)}
-                      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] rounded border border-border-subtle text-text-secondary hover:border-accent-solid hover:text-text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-caption rounded border border-border-subtle text-text-secondary hover:border-accent-solid hover:text-text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       <Hash size={9} className="text-text-tertiary" />{t.tag}
                     </button>
                   )) : (
-                    <span aria-hidden="true" className="invisible inline-flex px-1.5 py-0.5 text-[10px] border">·</span>
+                    <span aria-hidden="true" className="invisible inline-flex px-1.5 py-0.5 text-caption border">·</span>
                   )}
                 </div>
 
@@ -577,7 +577,7 @@ const keepEditing = () => {
                           commitTag(s.tag);
                           tagInputRef.current?.focus();
                         }}
-                        className={`w-full flex items-center justify-between px-3 py-1.5 text-xs transition-colors ${
+                        className={`w-full flex items-center justify-between px-3 py-1.5 text-minor transition-colors ${
                           i === activeSuggestion ? 'bg-bg-surface text-text-primary' : 'text-text-secondary hover:bg-bg-surface'
                         }`}
                       >
@@ -585,7 +585,7 @@ const keepEditing = () => {
                           <Hash size={10} className="text-text-tertiary" />
                           {s.tag}
                         </span>
-                        <span className="text-[10px] text-text-tertiary">
+                        <span className="text-caption text-text-tertiary">
                           used {s.count}×
                         </span>
                       </button>
@@ -600,7 +600,7 @@ const keepEditing = () => {
                   when unset: a block that drops rows for a profile without a hotkey would make two
                   profiles' dialogs different heights for no reason the reader can see. */}
               <div className="pt-2 border-t border-border-subtle">
-                <div className="text-[10px] text-text-tertiary uppercase tracking-wide mb-2">Contents</div>
+                <div className="text-caption text-text-tertiary uppercase tracking-wide mb-2">Contents</div>
                 <div className="grid grid-cols-2 gap-3">
                   <ReadOnlyField label="Actions" value={entry?.actionCount != null ? String(entry.actionCount) : '—'} />
                   <ReadOnlyField label="Hotkey" value={entry?.hotkey ? splitCombo(entry.hotkey).map(compactKey).join(' + ') : '—'} />
@@ -625,7 +625,7 @@ const keepEditing = () => {
 
               {/* ── History ── */}
               <div className="pt-2 border-t border-border-subtle">
-                <div className="text-[10px] text-text-tertiary uppercase tracking-wide mb-2">History</div>
+                <div className="text-caption text-text-tertiary uppercase tracking-wide mb-2">History</div>
                 <div className="grid grid-cols-2 gap-3">
                   <ReadOnlyField label="Created" value={formatDateLong(original?.createdAt)} />
                   <ReadOnlyField label="Updated" value={formatDateLong(original?.updatedAt)} />
@@ -689,7 +689,7 @@ const keepEditing = () => {
           />
         }
       >
-        <p className="px-4 py-4 text-xs text-text-secondary leading-relaxed">
+        <p className="px-4 py-4 text-minor text-text-secondary leading-relaxed">
           Unsaved changes will be lost — icon, description and tags.
         </p>
       </DialogShell>
@@ -709,9 +709,9 @@ function targetLabel(procName?: string | null, windowTitle?: string | null, has?
 function ReadOnlyField({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="flex flex-col gap-0.5 min-w-0">
-      <label className="text-[10px] text-text-tertiary uppercase tracking-wide">{label}</label>
-      <span className="text-xs text-text-secondary truncate" data-tip={value.length > 28 ? value : undefined}>{value}</span>
-      {hint && <span className="text-[10px] text-text-tertiary truncate" data-tip={hint}>{hint}</span>}
+      <label className="text-caption text-text-tertiary uppercase tracking-wide">{label}</label>
+      <span className="text-minor text-text-secondary truncate" data-tip={value.length > 28 ? value : undefined}>{value}</span>
+      {hint && <span className="text-caption text-text-tertiary truncate" data-tip={hint}>{hint}</span>}
     </div>
   );
 }

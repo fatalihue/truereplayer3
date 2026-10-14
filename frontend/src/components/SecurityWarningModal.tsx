@@ -46,7 +46,7 @@ export function SecurityWarningModal({ fileName, profileCount, onContinue, onCan
     >
       {/* Body */}
       <div className="px-4 py-4 space-y-3">
-        <p className="text-xs text-text-secondary leading-relaxed">
+        <p className="text-minor text-text-secondary leading-relaxed">
           Profiles run automated mouse and keyboard actions. Only import profiles
           from sources you trust.
         </p>
@@ -54,11 +54,11 @@ export function SecurityWarningModal({ fileName, profileCount, onContinue, onCan
         {/* File chip — same idiom as the Import Preview's file summary, so the two
             steps read as one flow anchored on the same file. */}
         {fileName && (
-          <div className="flex items-center gap-2 text-xs">
+          <div className="flex items-center gap-2 text-minor">
             <FolderOpen size={12} className="text-text-tertiary shrink-0" />
             <span className="text-text-secondary font-medium truncate">{fileName}</span>
             {profileCount !== undefined && (
-              <span className="text-[11px] text-text-tertiary shrink-0">
+              <span className="text-caption text-text-tertiary shrink-0">
                 · {profileCount} profile{profileCount === 1 ? '' : 's'}
               </span>
             )}
@@ -67,7 +67,7 @@ export function SecurityWarningModal({ fileName, profileCount, onContinue, onCan
 
         {/* The danger facts get the DS warning band (left rule + translucent tint) —
             visually marked without shouting. */}
-        <div className="warning-band text-xs text-text-secondary leading-relaxed pl-3 py-2 rounded-r">
+        <div className="warning-band text-minor text-text-secondary leading-relaxed pl-3 py-2 rounded-r">
           Imported profiles can:
           <ul className="mt-1.5 ml-4 space-y-1 list-disc text-text-tertiary">
             <li>Click anywhere on screen</li>

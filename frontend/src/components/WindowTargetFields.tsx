@@ -213,18 +213,18 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
                 onChange={(e) => setFilter(e.target.value)}
                 autoFocus
                 placeholder={'Filter…'}
-                className="w-full h-7 px-2 text-[11px] text-text-primary bg-bg-input border-b border-border-subtle outline-none"
+                className="w-full h-7 px-2 text-caption text-text-primary bg-bg-input border-b border-border-subtle outline-none"
               />
               <div className="overflow-y-auto flex-1">
                 {processList === null ? (
-                  <div className="px-2 py-2 text-[11px] text-text-tertiary">{'Loading…'}</div>
+                  <div className="px-2 py-2 text-caption text-text-tertiary">{'Loading…'}</div>
                 ) : (() => {
                   const f = filter.trim().toLowerCase();
                   const items = f.length === 0
                     ? processList
                     : processList.filter(p => p.name.toLowerCase().includes(f) || p.title.toLowerCase().includes(f));
                   if (items.length === 0) {
-                    return <div className="px-2 py-2 text-[11px] text-text-tertiary">{'No processes match.'}</div>;
+                    return <div className="px-2 py-2 text-caption text-text-tertiary">{'No processes match.'}</div>;
                   }
                   return items.map((p) => (
                     <button
@@ -235,7 +235,7 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
                         setShowPicker(false);
                         setFilter('');
                       }}
-                      className="w-full text-left px-2 py-1 text-[11px] hover:bg-bg-elevated transition-colors"
+                      className="w-full text-left px-2 py-1 text-caption hover:bg-bg-elevated transition-colors"
                     >
                       <span className="font-mono text-text-primary">{p.name}</span>
                       {p.title && <span className="text-text-tertiary"> — {p.title}</span>}
@@ -290,7 +290,7 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
             dialog that hosts these fields. One line, truncated, full text on hover. */}
         <FieldError
           show={!!shownTitleError}
-          className="text-[10px] text-recording mt-1 leading-tight"
+          className="text-caption text-recording mt-1 leading-tight"
           tip={shownTitleError ?? undefined}
         >
           {shownTitleError}
@@ -308,7 +308,7 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
             ? tt('Click the window to target. Click here or press Esc to cancel.',
               'Clique na janela-alvo. Clique aqui ou aperte Esc para cancelar.')
             : undefined}
-          className={`w-full h-8 text-xs border rounded transition-colors ${
+          className={`w-full h-8 text-minor border rounded transition-colors ${
             isDetecting
               ? 'text-recording border-recording/40 bg-recording/10 hover:bg-recording/20'
               : 'text-accent border-accent-solid/40 hover:bg-accent-solid/10'

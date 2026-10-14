@@ -169,7 +169,7 @@ export function BulkActionBar({
   const inputWidth = activeInput === 'notes' ? 'w-40' : 'w-24';
 
   // Ghost recipe of the bar's own buttons, with the Move Up/Down disabled treatment.
-  const ghostButton = 'flex items-center gap-1.5 h-7 px-2 rounded text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-text-secondary';
+  const ghostButton = 'flex items-center gap-1.5 h-7 px-2 rounded text-minor font-medium text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-text-secondary';
 
   // bulk-bar-enter: small slide-up on appear (the old floating-bar bulk-bar-in
   // keyframe was orphaned when the bar became docked); gated on the Animations
@@ -181,7 +181,7 @@ export function BulkActionBar({
           grows enough to compress the flex layout — without these, narrow window
           widths would wrap "N" and "selected" onto two lines. */}
       <div className="flex items-center gap-2 shrink-0">
-        <span className="text-xs font-semibold text-accent-light whitespace-nowrap">{selectedCount} selected</span>
+        <span className="text-minor font-semibold text-accent-light whitespace-nowrap">{selectedCount} selected</span>
         <button onClick={onClearSelection} className={iconButtonClass('sm')} aria-label="Clear selection">
           <X size={14} />
         </button>
@@ -212,7 +212,7 @@ export function BulkActionBar({
                 <div className="w-px h-4 bg-border-default mx-1" />
               </>
             )}
-            <span className="text-[10px] text-text-disabled uppercase">{activeInput === 'notes' ? 'Notes' : activeInput}</span>
+            <span className="text-caption text-text-disabled uppercase">{activeInput === 'notes' ? 'Notes' : activeInput}</span>
             {hasModes && (
               <SegmentedControl<BulkEditMode>
                 ariaLabel="Set or add"
@@ -231,12 +231,12 @@ export function BulkActionBar({
                 onKeyDown={(e) => { if (e.key === 'Enter') handleConfirm(); if (e.key === 'Escape') closeInput(); }}
                 autoFocus
                 placeholder={inputPlaceholder}
-                className={`${inputWidth} h-7 px-2 text-xs font-mono bg-bg-input border rounded text-center text-text-primary outline-none ${
+                className={`${inputWidth} h-7 px-2 text-minor font-mono bg-bg-input border rounded text-center text-text-primary outline-none ${
                   inputInvalid ? 'border-recording/60 focus:border-recording' : 'border-border-default focus:border-accent-solid'
                 }`}
               />
               {hint && (
-                <span className="absolute right-0 bottom-full mb-1.5 z-20 px-2 py-1 rounded text-[10px] whitespace-nowrap bg-bg-card border border-recording/40 text-recording pointer-events-none">
+                <span className="absolute right-0 bottom-full mb-1.5 z-20 px-2 py-1 rounded text-caption whitespace-nowrap bg-bg-card border border-recording/40 text-recording pointer-events-none">
                   {hint}
                 </span>
               )}
@@ -261,7 +261,7 @@ export function BulkActionBar({
               disabled={!canMoveUp}
               aria-label="Move up"
               data-tip={tt('Move up (Alt+Up)', 'Mover para cima (Alt+Up)')}
-              className="flex items-center gap-1.5 h-7 px-2 rounded text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-text-secondary"
+              className="flex items-center gap-1.5 h-7 px-2 rounded text-minor font-medium text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-text-secondary"
             >
               <ArrowUpToLine size={14} />
             </button>
@@ -270,7 +270,7 @@ export function BulkActionBar({
               disabled={!canMoveDown}
               aria-label="Move down"
               data-tip={tt('Move down (Alt+Down)', 'Mover para baixo (Alt+Down)')}
-              className="flex items-center gap-1.5 h-7 px-2 rounded text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-text-secondary"
+              className="flex items-center gap-1.5 h-7 px-2 rounded text-minor font-medium text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-text-secondary"
             >
               <ArrowDownToLine size={14} />
             </button>
@@ -280,7 +280,7 @@ export function BulkActionBar({
             {/* Set Delay */}
             <button
               onClick={() => openInput('delay')}
-              className="flex items-center gap-1.5 h-7 px-2 rounded text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+              className="flex items-center gap-1.5 h-7 px-2 rounded text-minor font-medium text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors"
             >
               <Clock size={14} />
               Delay
@@ -290,7 +290,7 @@ export function BulkActionBar({
                 context menu, so coord-related UI uses the same glyph across the app. */}
             <button
               onClick={() => openInput('x')}
-              className="flex items-center gap-1.5 h-7 px-2 rounded text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+              className="flex items-center gap-1.5 h-7 px-2 rounded text-minor font-medium text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors"
             >
               <Crosshair size={14} />
               X
@@ -298,7 +298,7 @@ export function BulkActionBar({
 
             <button
               onClick={() => openInput('y')}
-              className="flex items-center gap-1.5 h-7 px-2 rounded text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+              className="flex items-center gap-1.5 h-7 px-2 rounded text-minor font-medium text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors"
             >
               <Crosshair size={14} />
               Y
@@ -307,7 +307,7 @@ export function BulkActionBar({
             {/* Set Notes */}
             <button
               onClick={() => openInput('notes')}
-              className="flex items-center gap-1.5 h-7 px-2 rounded text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+              className="flex items-center gap-1.5 h-7 px-2 rounded text-minor font-medium text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors"
             >
               <MessageSquare size={14} />
               Notes
@@ -321,7 +321,7 @@ export function BulkActionBar({
                 more discoverable path for the rare cases users want a copy of a row. */}
             <button
               onClick={onToggleSkip}
-              className={`flex items-center gap-1.5 h-7 px-2 rounded text-xs font-medium transition-colors ${
+              className={`flex items-center gap-1.5 h-7 px-2 rounded text-minor font-medium transition-colors ${
                 allSelectedSkipped
                   ? 'text-accent-light hover:text-accent-light hover:bg-accent-solid/10'
                   : 'text-text-secondary hover:text-text-primary hover:bg-bg-elevated'
@@ -336,7 +336,7 @@ export function BulkActionBar({
             {/* Delete — destructive group of one (the Del hotkey also deletes the selection). */}
             <button
               onClick={onDelete}
-              className="flex items-center gap-1.5 h-7 px-2 rounded text-xs font-medium text-recording hover:text-recording/80 hover:bg-recording-bg transition-colors"
+              className="flex items-center gap-1.5 h-7 px-2 rounded text-minor font-medium text-recording hover:text-recording/80 hover:bg-recording-bg transition-colors"
             >
               <Trash2 size={14} />
               Delete

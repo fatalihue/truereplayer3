@@ -188,7 +188,9 @@
      the floor for text that carries meaning; body matches --ui-font-size's 13px
      default. Weights: 400/500/600 only, sentence case (platform convention). */
   --text-caption: 11px;
-  --text-caption--line-height: 14px;
+  /* 16, not the 14 first drafted: the ~350 call sites that moved onto the ramp in the 2026-10-13
+     rework had been inheriting 1.5 (16.5 px at 11 px), and multi-line hints read cramped at 14. */
+  --text-caption--line-height: 16px;
   --text-minor: 12px;
   --text-minor--line-height: 16px;
   --text-body: 13px;
@@ -1005,7 +1007,7 @@ html[data-animations="true"] .callout-enter {
   height: 20px;
   padding: 0 5px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--text-caption);
   font-weight: 500;
   color: var(--color-text-secondary);
   background: var(--color-bg-elevated);

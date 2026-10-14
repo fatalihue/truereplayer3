@@ -267,7 +267,7 @@ export function NumberInput({
       // box that intrinsic size would become the box's min-content and push a two-up X/Y row
       // past the panel edge (measured: 172px boxes in a 276px row). Zero specified width makes
       // the input contribute nothing to the box's minimum; flex-1 then grows it to the box.
-      className="numberbox-input w-0 flex-1 min-w-0 pl-2 pr-0.5 text-right text-xs font-mono text-text-primary bg-transparent border-0 outline-none tabular-nums placeholder:text-text-tertiary"
+      className="numberbox-input w-0 flex-1 min-w-0 pl-2 pr-0.5 text-right text-minor font-mono text-text-primary bg-transparent border-0 outline-none tabular-nums placeholder:text-text-tertiary"
     />
   );
 
@@ -288,10 +288,10 @@ export function NumberInput({
           // higher). Nudging the unit down by that measured delta makes "1.000 ms" read as one
           // baseline-aligned line. Uniform for this 12px/10px pairing, so it holds for every
           // suffixInside call site.
-          <span className="shrink-0 self-center relative top-[1px] select-none pointer-events-none text-[10px] text-text-tertiary font-mono pl-0.5 pr-1">{suffix}</span>
+          <span className="shrink-0 self-center relative top-[1px] select-none pointer-events-none text-caption text-text-tertiary font-mono pl-0.5 pr-1">{suffix}</span>
         )}
         {ghostSuffix && !suffixInside && (
-          <span aria-hidden="true" className="shrink-0 self-center select-none pointer-events-none text-[10px] font-mono pl-0.5 pr-1 invisible">{ghostSuffix}</span>
+          <span aria-hidden="true" className="shrink-0 self-center select-none pointer-events-none text-caption font-mono pl-0.5 pr-1 invisible">{ghostSuffix}</span>
         )}
         {/* Spinners: stacked in the reserved right edge, revealed by hover or focus-within.
             tabIndex -1 keeps them out of the Tab order (↑/↓ is the keyboard path) and the
@@ -324,7 +324,7 @@ export function NumberInput({
           </span>
         )}
       </span>
-      {suffix && !suffixInside && <span className="shrink-0 text-[11px] text-text-disabled self-center ml-1.5">{suffix}</span>}
+      {suffix && !suffixInside && <span className="shrink-0 text-caption text-text-disabled self-center ml-1.5">{suffix}</span>}
     </span>
   );
 }

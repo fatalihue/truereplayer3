@@ -45,7 +45,7 @@ function ProfileOverrideToggle({ scoped, own, effective, onChange, tip }: {
       {scoped && (
         <span className="w-10 flex items-center justify-end">
           {own === null ? (
-            <span className="text-[10px] leading-none text-text-disabled">Default</span>
+            <span className="text-caption leading-none text-text-disabled">Default</span>
           ) : (
             <button
               type="button"
@@ -261,7 +261,7 @@ function EnableChip({ value, isOn, unit, format, min, max, width, offDisplay, ow
         className={`flex-1 min-w-0 bg-transparent outline-none text-ui font-mono text-right ${isOn ? 'text-text-primary' : 'text-text-tertiary'}`}
       />
       {unit
-        ? <span className="text-[10px] shrink-0 text-text-tertiary pl-1 pr-2">{unit}</span>
+        ? <span className="text-caption shrink-0 text-text-tertiary pl-1 pr-2">{unit}</span>
         : <span className="pr-2" />}
     </div>
   );
@@ -306,7 +306,7 @@ function ValueField({ value, unit, min, max, onCommitValue }: {
       />
       {/* tertiary, not disabled — the unit is real information (audit: text-disabled
           was doing double duty for informative content at ~2:1). */}
-      {unit && <span className="text-[10px] shrink-0 text-text-tertiary">{unit}</span>}
+      {unit && <span className="text-caption shrink-0 text-text-tertiary">{unit}</span>}
     </div>
   );
 }
@@ -320,7 +320,7 @@ function PathStepZeroNote({ step }: { step: string }) {
   const s = parseInt(step, 10);
   if (!Number.isFinite(s) || s > 0) return null;
   return (
-    <div className="px-2.5 pb-1 text-[11px] text-text-tertiary text-right">
+    <div className="px-2.5 pb-1 text-caption text-text-tertiary text-right">
       {'No walk — single jump'}
     </div>
   );
@@ -352,7 +352,7 @@ function ClickerRateClampNote({ reason, ceiling, holdMs }: {
 }) {
   if (!reason) return null;
   return (
-    <div className="px-2.5 pb-1 text-[11px] text-text-tertiary text-right">
+    <div className="px-2.5 pb-1 text-caption text-text-tertiary text-right">
       {reason === 'hold'
         ? `max ~${formatRate(ceiling)}/s (hold ${holdMs} ms)`
         : reason === 'ceiling'
@@ -376,7 +376,7 @@ function ClickerRateClampNote({ reason, ceiling, holdMs }: {
 function GameMoveNote({ on, useArea, useFixed, positionPx }: { on: boolean; useArea: boolean; useFixed: boolean; positionPx: number }) {
   if (!on || useArea || useFixed || positionPx > 0) return null;
   return (
-    <div className="px-2.5 pb-1 text-[11px] text-text-tertiary text-right">
+    <div className="px-2.5 pb-1 text-caption text-text-tertiary text-right">
       {'no effect in cursor mode'}
     </div>
   );
@@ -388,7 +388,7 @@ function Disclosure({ label, children }: { label: string; children: React.ReactN
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button onClick={() => setOpen(o => !o)} className="group w-full flex items-center gap-1 px-2.5 py-1 text-[11px] text-accent-solid hover:underline transition-colors">
+      <button onClick={() => setOpen(o => !o)} className="group w-full flex items-center gap-1 px-2.5 py-1 text-caption text-accent-solid hover:underline transition-colors">
         <ChevronRight size={12} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
         {label}
       </button>
@@ -533,7 +533,7 @@ function ComboInput({ value, onCommit, options, width = FIELD_W, editable = true
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => { setText(o.value); onCommit(o.value); setOpen(false); }}
-              className="w-full px-2 py-1 text-center text-[11px] font-mono text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors"
+              className="w-full px-2 py-1 text-center text-caption font-mono text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors"
             >
               {o.label}
             </button>
@@ -743,7 +743,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
           <SettingRow
             label="Rate"
             labelSuffix={unit === 'ms'
-              ? <span className="text-[11px] font-mono text-text-tertiary whitespace-nowrap">~{formatRate(liveCps)}/s</span>
+              ? <span className="text-caption font-mono text-text-tertiary whitespace-nowrap">~{formatRate(liveCps)}/s</span>
               : undefined}
           >
             {/* Combo + /s↔ms unit toggle share one FIELD_W slot so the row aligns with the chips. */}
@@ -767,7 +767,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
               <select
                 value={unit}
                 onChange={(e) => onUnitChange(e.target.value as 'ms' | 'cps')}
-                className="w-6 h-7 text-center text-[10px] text-text-secondary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid font-mono cursor-pointer appearance-none shrink-0"
+                className="w-6 h-7 text-center text-caption text-text-secondary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid font-mono cursor-pointer appearance-none shrink-0"
               >
                 <option value="cps">/s</option>
                 <option value="ms">ms</option>
@@ -853,8 +853,8 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
                   : tt('Draw a box on screen', 'Desenhe uma caixa na tela')}
               >
                 {area
-                  ? <span className={`text-[10px] truncate ${useArea ? 'text-text-primary' : 'text-text-tertiary'}`}>{area.w}×{area.h}</span>
-                  : <span className={`text-[11px] ${useArea ? 'text-text-secondary' : 'text-text-tertiary'}`}>Set…</span>}
+                  ? <span className={`text-caption truncate ${useArea ? 'text-text-primary' : 'text-text-tertiary'}`}>{area.w}×{area.h}</span>
+                  : <span className={`text-caption ${useArea ? 'text-text-secondary' : 'text-text-tertiary'}`}>Set…</span>}
               </button>
               {area && (
                 // In-flow (not absolute) so it never overlaps the value text — it takes
@@ -866,7 +866,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
                     onChange('cursorClickArea', null);
                   }}
                   aria-label="Clear area"
-                  className="shrink-0 h-full px-1 flex items-center text-text-tertiary hover:text-text-primary text-[11px] leading-none transition-colors"
+                  className="shrink-0 h-full px-1 flex items-center text-text-tertiary hover:text-text-primary text-caption leading-none transition-colors"
                   tabIndex={-1}
                 >
                   ✕
@@ -910,8 +910,8 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
                   : tt('Locks to the cursor at start — click to pick a point', 'Trava no cursor ao começar — clique para escolher um ponto')}
               >
                 {fixedPoint
-                  ? <span className={`text-[10px] truncate ${useFixed ? 'text-text-primary' : 'text-text-tertiary'}`}>{fixedPoint.x}, {fixedPoint.y}</span>
-                  : <span className={`text-[11px] ${useFixed ? 'text-text-secondary' : 'text-text-tertiary'}`}>At start</span>}
+                  ? <span className={`text-caption truncate ${useFixed ? 'text-text-primary' : 'text-text-tertiary'}`}>{fixedPoint.x}, {fixedPoint.y}</span>
+                  : <span className={`text-caption ${useFixed ? 'text-text-secondary' : 'text-text-tertiary'}`}>At start</span>}
               </button>
               {fixedPoint && (
                 <button
@@ -921,7 +921,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
                     onChange('cursorClickFixedPoint', null);
                   }}
                   aria-label="Clear fixed point"
-                  className="shrink-0 h-full px-1 flex items-center text-text-tertiary hover:text-text-primary text-[11px] leading-none transition-colors"
+                  className="shrink-0 h-full px-1 flex items-center text-text-tertiary hover:text-text-primary text-caption leading-none transition-colors"
                   tabIndex={-1}
                 >
                   ✕
@@ -975,7 +975,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
             />
           </SettingRow>
           {useLoops && useMaxDuration && (
-            <div className="px-2.5 pb-1 text-[11px] text-text-tertiary text-right">
+            <div className="px-2.5 pb-1 text-caption text-text-tertiary text-right">
               {'whichever comes first'}
             </div>
           )}
@@ -1196,10 +1196,10 @@ function HotkeyInput({ value, settingKey, onChange, width = FIELD_W }: {
       {isFocused
         ? (localValue
           ? <KbdTag combo={localValue} accent />
-          : <span className="text-xs font-mono text-accent-light/60 animate-pulse">New key...</span>)
+          : <span className="text-minor font-mono text-accent-light/60 animate-pulse">New key...</span>)
         : (localValue
           ? <KbdTag combo={localValue} accent />
-          : <span className="text-xs font-mono text-text-tertiary">—</span>)}
+          : <span className="text-minor font-mono text-text-tertiary">—</span>)}
     </button>
   );
   // EVERY hotkey field clears (2026-07-19). It used to be opt-in for Capture Slot alone,
@@ -1880,7 +1880,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                             ? tt(`${parts[2]}×${parts[3]} at (${parts[0]}, ${parts[1]}) — click to redraw`, `${parts[2]}×${parts[3]} em (${parts[0]}, ${parts[1]}) — clique para redesenhar`)
                             : tt('Drag a region each time — click to fix one', 'Arraste uma região a cada vez — clique para fixar uma')}
                       >
-                        <span className={`truncate ${isSet ? 'text-[10px] font-mono text-text-primary' : 'text-[11px] text-text-secondary'}`}>
+                        <span className={`truncate ${isSet ? 'text-caption font-mono text-text-primary' : 'text-caption text-text-secondary'}`}>
                           {isSet ? `${parts[2]}×${parts[3]}` : 'Ask'}
                         </span>
                         <Frame size={11} className="shrink-0 text-text-tertiary" />
@@ -2086,7 +2086,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
       {/* App-tab footer — Updates demoted from a section to one quiet line (the app
           auto-checks on launch; this is just the manual re-check + the running version). */}
       {activeTab === 'app' && (
-        <div className="shrink-0 border-t border-border-subtle flex items-center justify-between px-3 py-1.5 text-[11px] text-text-tertiary">
+        <div className="shrink-0 border-t border-border-subtle flex items-center justify-between px-3 py-1.5 text-caption text-text-tertiary">
           <span className="font-mono">{APP_VERSION}</span>
           <button
             onClick={() => {

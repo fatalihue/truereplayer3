@@ -65,7 +65,7 @@ export function Callout({ tone = 'neutral', color, ink, icon, still = false, rol
   return (
     <div
       role={role}
-      className={`border-l-2 rounded px-2.5 py-2 text-[11px] leading-relaxed ${icon ? 'flex items-start gap-2' : ''} ${still ? '' : 'callout-enter'} ${className}`}
+      className={`border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed ${icon ? 'flex items-start gap-2' : ''} ${still ? '' : 'callout-enter'} ${className}`}
       style={calloutStyle(tone, color, ink)}
     >
       {icon && <span className="shrink-0 mt-[1px]">{icon}</span>}

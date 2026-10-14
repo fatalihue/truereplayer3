@@ -147,14 +147,14 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
           so an intrinsic height ignores the space the header and footer leave over (DialogShell:38). */}
       <div className="flex-1 min-h-0 overflow-y-auto p-3">
         {steps.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-center text-[12px] text-text-tertiary px-8 leading-relaxed">
+          <div className="h-full flex items-center justify-center text-center text-minor text-text-tertiary px-8 leading-relaxed">
             {'No run yet. Play a profile to see each step here: the selector that matched, how long it took and why it failed.'}
           </div>
         ) : (
           <>
             {/* Summary strip — what ran, when, how long, and the pass / skip / fail tally, read
                 first; it used to sit in the footer in 11 px. The jump goes to the first failure. */}
-            <div className="mb-2 flex items-center gap-x-3 gap-y-1 flex-wrap rounded border border-border-subtle bg-bg-card px-3 py-2 text-[12px] text-text-secondary">
+            <div className="mb-2 flex items-center gap-x-3 gap-y-1 flex-wrap rounded border border-border-subtle bg-bg-card px-3 py-2 text-minor text-text-secondary">
               {stats.profiles[0] && <span className="font-semibold text-text-primary truncate">{stats.profiles[0]}</span>}
               <span
                 className="tabular-nums"
@@ -172,7 +172,7 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
                 <button
                   type="button"
                   onClick={() => document.getElementById(`run-step-${stats.firstFailedIdx}`)?.scrollIntoView({ block: 'center' })}
-                  className="ml-auto text-[12px] font-medium text-accent hover:underline"
+                  className="ml-auto text-minor font-medium text-accent hover:underline"
                 >
                   step {steps[stats.firstFailedIdx].row} →
                 </button>
@@ -198,7 +198,7 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
                     of the profile it invoked. Under Loop the whole alternation repeats per
                     iteration. */}
                 {stats.profiles.length > 1 && s.profile !== (idx > 0 ? steps[idx - 1].profile : null) && (
-                  <div className={`flex items-center gap-1.5 px-2 pb-0.5 text-[10px] font-mono ${idx > 0 ? 'pt-2' : ''}`}
+                  <div className={`flex items-center gap-1.5 px-2 pb-0.5 text-caption font-mono ${idx > 0 ? 'pt-2' : ''}`}
                     style={{ color: 'var(--color-action-runprofile-fg)' }}>
                     <Repeat size={10} className="shrink-0" />
                     <span className="truncate" data-tip={s.profile}>{s.profile}</span>
@@ -207,19 +207,19 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
                 <div
                   id={`run-step-${idx}`}
                   className={`rounded px-2 py-1.5 ${s.status === 'failed' ? 'bg-bg-card' : 'hover:bg-bg-elevated/50'}`}>
-                  <div className="flex items-center gap-2 text-[12px]">
-                    <span className="w-7 shrink-0 text-right font-mono text-[10px] text-text-disabled">{s.row}</span>
+                  <div className="flex items-center gap-2 text-minor">
+                    <span className="w-7 shrink-0 text-right font-mono text-caption text-text-disabled">{s.row}</span>
                     <StatusIcon status={s.status} />
                     <span className="text-text-primary shrink-0">{s.actionType}</span>
                     {/* data-tip, never a native title= (the house rule), and REVEAL so the tooltip
                         only appears when the column actually cut the text off — otherwise it just
                         repeats text the reader can already see. */}
                     {s.detail && (
-                      <span className="font-mono text-[11px] text-text-tertiary truncate min-w-0" data-tip={s.detail} data-tip-reveal>
+                      <span className="font-mono text-caption text-text-tertiary truncate min-w-0" data-tip={s.detail} data-tip-reveal>
                         {s.detail}
                       </span>
                     )}
-                    <span className="ml-auto shrink-0 font-mono text-[10px] text-text-disabled">
+                    <span className="ml-auto shrink-0 font-mono text-caption text-text-disabled">
                       {/* An in-flight step has DurationMs 0 because the stopwatch has not stopped
                           yet. Rendering that as "0 ms" is the same lie the green tick was. */}
                       {s.status === 'running' ? '…' : fmtMs(s.durationMs)}
@@ -233,13 +233,13 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
                       "no element matched" reads completely differently once you can see the run
                       was on a login page. So a failure always names its page. */}
                   {s.tabUrl && (s.status === 'failed' || stats.pages.length > 1) && (
-                    <div className="ml-[52px] mt-0.5 text-[10px] font-mono text-text-tertiary truncate" data-tip={s.tabUrl} data-tip-reveal>
+                    <div className="ml-[52px] mt-0.5 text-caption font-mono text-text-tertiary truncate" data-tip={s.tabUrl} data-tip-reveal>
                       {s.tabUrl}
                     </div>
                   )}
 
                   {s.matchedTier && (
-                    <div className="ml-[52px] mt-0.5 text-[10px] leading-snug" style={{ color: 'var(--color-recording-fg)' }}>
+                    <div className="ml-[52px] mt-0.5 text-caption leading-snug" style={{ color: 'var(--color-recording-fg)' }}>
                       {'matched via fallback'} <b>tier {s.matchedTier}</b>
                       {s.matchedSelector && <span className="font-mono"> · {s.matchedSelector}</span>}
                     </div>
@@ -248,7 +248,7 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
                   {/* The failed step gets the same card a failed probe gets in the sheet. */}
                   {s.status === 'failed' && (
                     <Callout tone="error" className="ml-[52px] mt-1" still>
-                      {s.errorCode && <div className="font-mono text-[10px] tracking-wide opacity-80">{s.errorCode}</div>}
+                      {s.errorCode && <div className="font-mono text-caption tracking-wide opacity-80">{s.errorCode}</div>}
                       <div>{explainCode(s.errorCode) ?? s.errorMessage}</div>
                       {s.tip && <div className="mt-0.5 text-text-secondary">{s.tip}</div>}
                     </Callout>
@@ -258,7 +258,7 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
               ))}
             </div>
             {(report?.overflow ?? 0) > 0 && (
-              <div className="mt-2 text-[10px] text-text-tertiary text-center">
+              <div className="mt-2 text-caption text-text-tertiary text-center">
                 {`+${report!.overflow} more steps not recorded (report is capped).`}
               </div>
             )}

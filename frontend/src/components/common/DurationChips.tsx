@@ -58,7 +58,7 @@ interface DurationChipsProps {
 // 12% / 40% — the one intensity shared with Toggle, IconToggle and the enable chips
 // (see chipStyles.ts). Was 10% / 30%, the last drift left.
 const chipClass = (active: boolean) =>
-  `px-2 py-0.5 rounded text-[10px] border transition-colors ${
+  `px-2 py-0.5 rounded text-caption border transition-colors ${
     active
       ? 'text-accent border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)] bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)]'
       : 'text-text-tertiary border-border-subtle bg-bg-card hover:text-text-secondary hover:bg-bg-input'
@@ -92,7 +92,7 @@ export function DurationChips({ presets, value, onSelect, infinityTip }: Duratio
           // English like every other control label — the translated explanation is the tip.
           className={`${chipClass(value === 0)} w-full flex items-center justify-center gap-1.5`}
         >
-          <span className="font-mono text-[11px] leading-none">∞</span>
+          <span className="font-mono text-caption leading-none">∞</span>
           <span>No timeout</span>
         </button>
       )}

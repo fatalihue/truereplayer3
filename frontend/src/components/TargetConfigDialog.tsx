@@ -398,7 +398,7 @@ export function TargetConfigDialog({
       {/* `relative` replaces the old card's positioning context — the convert-hint toast
           below pins itself to this wrapper's bottom edge (just above the shell footer). */}
       <div className="relative px-4 py-4">
-        <p className="text-xs text-text-secondary mb-4">{description}</p>
+        <p className="text-minor text-text-secondary mb-4">{description}</p>
 
         <div className="space-y-3">
           <WindowTargetFields
@@ -443,7 +443,7 @@ export function TargetConfigDialog({
             });
           }}
           disabled={(!processName.trim() && !windowTitle.trim()) || regexError !== null}
-          className={`mt-2 w-full h-7 px-2 text-[11px] border rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed overflow-hidden ${
+          className={`mt-2 w-full h-7 px-2 text-caption border rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed overflow-hidden ${
             testInFlight
               ? 'text-text-tertiary border-border-default bg-bg-elevated/40'
               : testResult
@@ -497,7 +497,7 @@ export function TargetConfigDialog({
               ? tt("Inherits the folder's window target. Set a process or title above for its own.", 'Herda a janela-alvo da pasta. Defina um processo ou título acima para ter a própria.')
               : undefined}
           >
-            <span className={`text-xs ${relativeToggleDisabled ? 'text-text-disabled' : 'text-text-secondary'}`}>Relative Coordinates</span>
+            <span className={`text-minor ${relativeToggleDisabled ? 'text-text-disabled' : 'text-text-secondary'}`}>Relative Coordinates</span>
             <Toggle
               isOn={relativeCoordinates}
               onChange={handleToggleRelativeCoordinates}
@@ -514,7 +514,7 @@ export function TargetConfigDialog({
             // the dialog — the inline hint used to push every row down and resize the
             // box). Opaque card + shadow so it reads as a layer on top. No timeout —
             // stays until the user converts or skips, same actions as the old hint.
-            <div ref={floatingCardRef} className="absolute bottom-3 left-4 right-4 flex items-start gap-2 px-3 py-2 text-[11px] text-warning-ink bg-bg-card border border-warning-ink/35 rounded-lg shadow-overlay z-20">
+            <div ref={floatingCardRef} className="absolute bottom-3 left-4 right-4 flex items-start gap-2 px-3 py-2 text-caption text-warning-ink bg-bg-card border border-warning-ink/35 rounded-lg shadow-overlay z-20">
               <span className="flex-1 leading-snug">
                 {hintCanConvert ? (
                   <>
@@ -556,13 +556,13 @@ export function TargetConfigDialog({
                   }}
                   disabled={applying || runActive || !hintCanConvert}
                   data-tip={runActive ? tt('Not while a run is active', 'Não durante uma execução') : undefined}
-                  className="px-2 py-0.5 text-[10px] font-medium text-text-primary bg-accent-solid/30 hover:bg-accent-solid/50 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="px-2 py-0.5 text-caption font-medium text-text-primary bg-accent-solid/30 hover:bg-accent-solid/50 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {convertAlsoApplies ? 'Apply target & convert' : 'Convert'}
                 </button>
                 <button
                   onClick={() => { raiseClickShield(); setConvertHint(null); setConvertHintDismissed(true); }}
-                  className="px-1.5 py-0.5 text-[10px] text-text-tertiary hover:text-text-primary transition-colors"
+                  className="px-1.5 py-0.5 text-caption text-text-tertiary hover:text-text-primary transition-colors"
                 >
                   Skip
                 </button>
@@ -572,7 +572,7 @@ export function TargetConfigDialog({
           {memberSpaceWarn && (
             // Same floating card as the hint above (the two never meet: the hint needs
             // onConvertCoordinates, which only the profile scope passes).
-            <div ref={floatingCardRef} className="absolute bottom-3 left-4 right-4 flex items-start gap-2 px-3 py-2 text-[11px] text-warning-ink bg-bg-card border border-warning-ink/35 rounded-lg shadow-overlay z-20">
+            <div ref={floatingCardRef} className="absolute bottom-3 left-4 right-4 flex items-start gap-2 px-3 py-2 text-caption text-warning-ink bg-bg-card border border-warning-ink/35 rounded-lg shadow-overlay z-20">
               <span className="flex-1 leading-snug">
                 {inheritingMemberCount} profile{inheritingMemberCount === 1 ? '' : 's'} in this folder use{inheritingMemberCount === 1 ? 's' : ''} its target, with X/Y set for {initial.relativeCoordinates ? 'relative' : 'absolute'} coords.
                 They are not converted — if a profile's clicks land in the wrong place, load it and run
@@ -580,7 +580,7 @@ export function TargetConfigDialog({
               </span>
               <button
                 onClick={() => { raiseClickShield(); setMemberSpaceWarn(false); setMemberSpaceWarnRead(true); }}
-                className="shrink-0 px-2 py-0.5 text-[10px] font-medium text-text-primary bg-accent-solid/30 hover:bg-accent-solid/50 rounded transition-colors"
+                className="shrink-0 px-2 py-0.5 text-caption font-medium text-text-primary bg-accent-solid/30 hover:bg-accent-solid/50 rounded transition-colors"
               >
                 Got it
               </button>
@@ -590,7 +590,7 @@ export function TargetConfigDialog({
             <div aria-hidden className="absolute left-4 right-4 z-20" style={{ top: clickShield.top, height: clickShield.height }} />
           )}
           <div className="flex items-center justify-between">
-            <span className="text-xs text-text-secondary">Bring to Focus</span>
+            <span className="text-minor text-text-secondary">Bring to Focus</span>
             <Toggle isOn={bringToFocus} onChange={setBringToFocus} />
           </div>
           {/* Restore Position/Size + Update Geometry apply to both profile and folder scopes —
@@ -598,11 +598,11 @@ export function TargetConfigDialog({
               them with its own target). Convert Coordinates is profile-only because it rewrites
               the actions of the active profile, not a property of the target itself. */}
           <div className="flex items-center justify-between">
-            <span className="text-xs text-text-secondary">Restore Position</span>
+            <span className="text-minor text-text-secondary">Restore Position</span>
             <Toggle isOn={restorePosition} onChange={setRestorePosition} />
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-xs text-text-secondary">Restore Size</span>
+            <span className="text-minor text-text-secondary">Restore Size</span>
             <Toggle isOn={restoreSize} onChange={setRestoreSize} />
           </div>
           {onUpdateGeometry && (
@@ -613,7 +613,7 @@ export function TargetConfigDialog({
                 titleMatchMode,
               })}
               disabled={submitDisabled}
-              className="w-full h-7 text-[11px] text-text-secondary border border-border-default rounded hover:bg-bg-elevated transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-full h-7 text-caption text-text-secondary border border-border-default rounded hover:bg-bg-elevated transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Update Window Size &amp; Position
             </button>

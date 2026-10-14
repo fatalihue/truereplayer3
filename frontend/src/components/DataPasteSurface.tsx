@@ -57,7 +57,7 @@ export function DataPasteSurface({
         <button
           type="button"
           onClick={onBack}
-          className="flex items-center gap-1 h-6 px-1.5 text-[11px] rounded text-text-tertiary hover:text-text-primary hover:bg-bg-card transition-colors"
+          className="flex items-center gap-1 h-6 px-1.5 text-caption rounded text-text-tertiary hover:text-text-primary hover:bg-bg-card transition-colors"
           data-tip={tt('Discards this paste', 'Descarta esta colagem')}
         >
           <ChevronLeft size={13} />
@@ -65,7 +65,7 @@ export function DataPasteSurface({
         </button>
         <div className="w-px h-4 bg-border-subtle" />
         <ClipboardPaste size={13} className="text-accent-light shrink-0" />
-        <div className="text-xs font-semibold text-text-primary flex-1">Paste table</div>
+        <div className="text-minor font-semibold text-text-primary flex-1">Paste table</div>
       </div>
 
       <div className="flex flex-1 min-h-0">
@@ -97,7 +97,7 @@ export function DataPasteSurface({
               spellCheck={false}
               autoFocus
               placeholder={'cliente\tpedido\tvalor\nMaria\t1023\tR$ 89,90\nJoão\t1044\tR$ 149,00'}
-              className="w-full h-full font-mono text-xs bg-bg-input p-4 outline-none resize-none whitespace-pre overflow-auto text-text-primary placeholder:text-text-disabled"
+              className="w-full h-full font-mono text-minor bg-bg-input p-4 outline-none resize-none whitespace-pre overflow-auto text-text-primary placeholder:text-text-disabled"
             />
           </div>
         </div>
@@ -109,7 +109,7 @@ export function DataPasteSurface({
             role="checkbox"
             aria-checked={firstRowHeader}
             onClick={() => onFirstRowHeaderChange(!firstRowHeader)}
-            className="flex items-center gap-2 text-xs text-text-secondary hover:text-text-primary transition-colors"
+            className="flex items-center gap-2 text-minor text-text-secondary hover:text-text-primary transition-colors"
             data-tip={tt(
               'Off: columns become col1…colN and every line is data',
               'Desligado: colunas viram col1…colN e toda linha é dado',
@@ -119,7 +119,7 @@ export function DataPasteSurface({
             {'First row is the header'}
           </button>
 
-          <div className="text-[11px] text-text-tertiary tabular-nums">
+          <div className="text-caption text-text-tertiary tabular-nums">
             {parsed.headers.length} {'columns'} · {parsed.rows.length} {'rows'}
           </div>
 
@@ -130,7 +130,7 @@ export function DataPasteSurface({
                 const name = h.trim();
                 const ok = name !== '' && VALID_HEADER.test(name);
                 return (
-                  <div key={`${h}-${i}`} className="flex items-center gap-1.5 text-[11px] font-mono">
+                  <div key={`${h}-${i}`} className="flex items-center gap-1.5 text-caption font-mono">
                     {ok ? (
                       <Check size={11} className="text-[color:var(--color-replay-fg)] shrink-0" />
                     ) : (
@@ -146,25 +146,25 @@ export function DataPasteSurface({
           )}
 
           {invalidHeaders.length > 0 && (
-            <div className="text-[10px] text-text-tertiary leading-relaxed">
+            <div className="text-caption text-text-tertiary leading-relaxed">
               {'⚠ headers holding { } or : can’t be {row:…} tokens, but still save.'}
             </div>
           )}
 
           {short && (
-            <div className="text-[10px] text-text-tertiary leading-relaxed">
+            <div className="text-caption text-text-tertiary leading-relaxed">
               {'Rows shorter than the header: missing cells read as empty.'}
             </div>
           )}
 
           {long && (
-            <div className="text-[10px] text-text-tertiary leading-relaxed">
+            <div className="text-caption text-text-tertiary leading-relaxed">
               {'Rows longer than the header: the extra cells become new columns.'}
             </div>
           )}
 
           {mode === 'replace' && hasExistingTable && (
-            <div className="text-[10px] text-text-tertiary leading-relaxed mt-auto">
+            <div className="text-caption text-text-tertiary leading-relaxed mt-auto">
               {'Edit in place or paste over it.'}
             </div>
           )}

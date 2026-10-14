@@ -121,7 +121,7 @@ export function ClickerDashboard() {
           {counting ? countdownSec : clickerStats.count.toLocaleString()}
         </div>
         <div
-          className="text-[11px] uppercase tracking-[0.2em] mt-2 flex items-center gap-2"
+          className="text-caption uppercase tracking-[0.2em] mt-2 flex items-center gap-2"
           style={{ color: 'var(--color-clicker-fg)', opacity: 0.7 }}
         >
           {counting ? 'starting in' : 'clicks'}
@@ -158,14 +158,14 @@ export function ClickerDashboard() {
       {/* Config recall (button · rate · limits · where …) — text-secondary, not
           text-disabled, so it stays readable. The faded disabled colour blended
           into the gradient and was hard to make out. */}
-      <div className="text-[11px] text-text-secondary font-mono text-center max-w-[480px]">
+      <div className="text-caption text-text-secondary font-mono text-center max-w-[480px]">
         {summary.bits.join('  ·  ')}
       </div>
 
       {/* SendInput rejected some calls outright (BlockInput held by another app, never UIPI —
           UIPI is silent). The log always had this number; the dashboard reported a healthy run. */}
       {!isReplaying && clickerStats.blocked > 0 && (
-        <div className="text-[11px] font-medium" style={{ color: 'var(--color-warning-ink)' }}>
+        <div className="text-caption font-medium" style={{ color: 'var(--color-warning-ink)' }}>
           {`${clickerStats.blocked} ${clickerStats.blocked === 1 ? 'click was' : 'clicks were'} rejected by Windows — input was blocked`}
         </div>
       )}
@@ -174,7 +174,7 @@ export function ClickerDashboard() {
           Windows drops the click — the one failure the counter cannot see (see ClickerButton),
           found by comparing integrity levels at the stats cadence (ProcessIntegrity). */}
       {clickerStats.warning === 'elevatedTarget' && (
-        <div className="text-[11px] font-medium text-center max-w-[480px]" style={{ color: 'var(--color-warning-ink)' }}>
+        <div className="text-caption font-medium text-center max-w-[480px]" style={{ color: 'var(--color-warning-ink)' }}>
           {'The window under the cursor runs as administrator — Windows drops these clicks. Run TrueReplayer as administrator.'}
         </div>
       )}
@@ -185,7 +185,7 @@ export function ClickerDashboard() {
       {isReplaying && !counting && !pauseState.isPaused && (
         <button
           onClick={() => send({ type: 'clicker:pause', payload: {} })}
-          className="flex items-center gap-1.5 px-4 py-1.5 rounded-ui border border-border-default text-[12px] font-medium transition-colors hover:bg-bg-elevated"
+          className="flex items-center gap-1.5 px-4 py-1.5 rounded-ui border border-border-default text-minor leading-[inherit] font-medium transition-colors hover:bg-bg-elevated"
           style={{ color: 'var(--color-clicker-fg)' }}
         >
           <PauseIcon size={13} fill="currentColor" /> Pause
@@ -195,7 +195,7 @@ export function ClickerDashboard() {
       {/* KbdTag, not a raw <kbd>: it spells the key the way the keycap does (PgDn, not
           PageDown) and splits a combo into one cap per key — the same rendering the Keys tab
           uses for these two settings, so the dashboard and the panel name the key alike. */}
-      <div className="text-[11px] text-text-tertiary flex items-center gap-1.5">
+      <div className="text-caption text-text-tertiary flex items-center gap-1.5">
         {counting ? (
           <>
             {'Move the mouse to the target —'}
@@ -243,7 +243,7 @@ export function ClickerDashboard() {
                 configured pause key: this component only mounts in Clicker mode, so that is
                 always the right one. A flex row (gap-x for the word spacing) because KbdTag
                 renders block caps that have to sit on the text baseline. */}
-            <div className="text-[11px] text-text-secondary flex flex-wrap items-center justify-center gap-x-1">
+            <div className="text-caption text-text-secondary flex flex-wrap items-center justify-center gap-x-1">
               {pauseState.hotkey || pauseState.timeoutMs > 0 ? (
                 <>
                   {pauseState.hotkey && <>{'Press'}<KbdTag combo={pauseState.hotkey} accent /></>}
@@ -260,7 +260,7 @@ export function ClickerDashboard() {
             </div>
             <button
               onClick={() => send({ type: 'replay:resume', payload: {} })}
-              className="px-3 py-1 text-[12px] font-medium rounded border border-border-default text-text-primary hover:bg-bg-elevated transition-colors"
+              className="px-3 py-1 text-minor leading-[inherit] font-medium rounded border border-border-default text-text-primary hover:bg-bg-elevated transition-colors"
             >
               Resume
             </button>

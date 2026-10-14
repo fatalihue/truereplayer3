@@ -190,12 +190,12 @@ export function PauseDialog({ initialKey, initialTimeoutMs, onConfirm, onClose }
                   {/* The hook only captures while TrueReplayer is the FOREGROUND app, so the pad
                       must not promise "press any key" while the user is in another window —
                       it would be inviting a press that (correctly) goes to that other app. */}
-                  <div className="text-[12px] text-text-secondary mb-1">
+                  <div className="text-minor text-text-secondary mb-1">
                     {windowFocused
                       ? 'Press any key — optional'
                       : 'Click TrueReplayer to capture keys'}
                   </div>
-                  <div className="text-[10px] font-mono text-text-tertiary">F8 · Esc · Ctrl+R</div>
+                  <div className="text-caption font-mono text-text-tertiary">F8 · Esc · Ctrl+R</div>
                 </>
               ) : (
                 <>
@@ -203,7 +203,7 @@ export function PauseDialog({ initialKey, initialTimeoutMs, onConfirm, onClose }
                   <button
                     type="button"
                     onClick={() => setCaptured(null)}
-                    className="self-center mt-2.5 text-[10px] text-text-tertiary hover:text-text-secondary underline underline-offset-2"
+                    className="self-center mt-2.5 text-caption text-text-tertiary hover:text-text-secondary underline underline-offset-2"
                   >
                     Clear
                   </button>
@@ -217,7 +217,7 @@ export function PauseDialog({ initialKey, initialTimeoutMs, onConfirm, onClose }
               resumes only via the captured hotkey above. */}
           <div className="flex flex-col gap-2.5">
             <div className="flex items-center justify-between gap-3">
-              <label className="text-[12px] font-medium text-text-secondary">Timeout</label>
+              <label className="text-minor font-medium text-text-secondary">Timeout</label>
               <NumberInput
                 value={timeoutMs}
                 onChange={setTimeoutMs}
@@ -265,7 +265,7 @@ export function PauseDialog({ initialKey, initialTimeoutMs, onConfirm, onClose }
             const active = captured && timeoutMs > 0 ? 0 : captured ? 1 : timeoutMs > 0 ? 2 : 3;
             return (
               <div
-                className="border-l-2 rounded px-2.5 py-2 text-[11px] leading-relaxed grid"
+                className="border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed grid"
                 style={{
                   background: `color-mix(in srgb, ${tone} 8%, transparent)`,
                   borderColor: tone,

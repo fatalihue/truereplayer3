@@ -34,7 +34,7 @@ export function ImportResultDialog({ result, onClose }: ImportResultDialogProps)
       closeOnBackdrop
       footer={<DialogFooter primary={{ label: 'Close', onClick: onClose }} />}
     >
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-xs">
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-minor">
         {/* Imported — final names; rename-allocated ones say so. */}
         {result.importedNames.length > 0 && (
           <section>
@@ -80,7 +80,7 @@ export function ImportResultDialog({ result, onClose }: ImportResultDialogProps)
             </div>
             {/* Index keys: the same image file name can fail in TWO profiles of one
                 envelope (names are per-profile; only the on-disk GUID differs). */}
-            <ul className="mt-1 space-y-0.5 text-text-secondary font-mono text-[11px]">
+            <ul className="mt-1 space-y-0.5 text-text-secondary font-mono text-caption">
               {result.imageFailureNames.map((n, i) => (
                 <li key={i} className="truncate">{n}</li>
               ))}

@@ -66,7 +66,7 @@ export function TitleBar({ onOpenCommandPalette }: TitleBarProps) {
           <circle cx="27" cy="33.25" r="4.6" fill="var(--mark-eye)" />
           <path d="M13 54 c0 -4 8 -7 19 -7 s19 3 19 7 v1 h-38 z" fill="var(--mark-steel)" />
         </svg>
-        <span className="text-xs text-text-secondary">TrueReplayer</span>
+        <span className="text-minor text-text-secondary">TrueReplayer</span>
       </div>
 
       {/* Spacer */}
@@ -80,7 +80,7 @@ export function TitleBar({ onOpenCommandPalette }: TitleBarProps) {
         >
           {/* tertiary, not disabled — this is a live control's label (~2:1 as disabled) */}
           <Search size={13} className="text-text-tertiary" />
-          <span className="text-xs text-text-tertiary flex-1 text-left">Search profiles, actions, commands...</span>
+          <span className="text-minor text-text-tertiary flex-1 text-left">Search profiles, actions, commands...</span>
           <div className="flex gap-0.5">
             <span className="kbd">Ctrl</span>
             <span className="kbd">K</span>
@@ -102,7 +102,7 @@ export function TitleBar({ onOpenCommandPalette }: TitleBarProps) {
             was motion with no meaning (and ignored the Animations toggle: inline
             style bypassed the data-animations gate; the class rule respects it). */}
         <div className={`w-1.5 h-1.5 rounded-full ${cfg.dot} ${status !== 'ready' ? 'status-dot-pulse' : ''}`} />
-        <span className="text-[11px] font-medium text-text-primary">{cfg.text}</span>
+        <span className="text-caption font-medium text-text-primary">{cfg.text}</span>
       </div>
     </div>
   );

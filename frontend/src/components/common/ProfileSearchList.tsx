@@ -241,7 +241,7 @@ export function ProfileSearchList({
           // right, so raise the flag the same way the arrow keys do.
           onChange={(e) => { scrollOnHighlightRef.current = true; setQuery(e.target.value); }}
           onKeyDown={handleKeyDown}
-          className="bg-transparent text-xs text-text-primary placeholder:text-text-disabled outline-none flex-1 min-w-0"
+          className="bg-transparent text-minor text-text-primary placeholder:text-text-disabled outline-none flex-1 min-w-0"
         />
         {query && (
           <button
@@ -269,7 +269,7 @@ export function ProfileSearchList({
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center gap-1.5 py-6 text-text-disabled">
             <SearchX size={18} />
-            <span className="text-[11px]">
+            <span className="text-caption">
               {profiles.length === 0
                 ? 'No profiles available'
                 : 'No profile matches'}
@@ -309,7 +309,7 @@ export function ProfileSearchList({
                       : 'text-text-secondary hover:bg-bg-elevated'
                 }`}
               >
-                <span className="text-xs truncate flex-1 min-w-0">{name}</span>
+                <span className="text-minor truncate flex-1 min-w-0">{name}</span>
                 {renderMeta?.(name)}
               </button>
             );

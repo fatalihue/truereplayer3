@@ -383,7 +383,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Type a command or search..."
-            className="flex-1 bg-transparent outline-none text-sm text-text-primary placeholder:text-text-disabled"
+            className="flex-1 bg-transparent outline-none text-body text-text-primary placeholder:text-text-disabled"
           />
           <span className="kbd">Esc</span>
         </div>
@@ -401,7 +401,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             never exceeds the window at any zoom, and the list scrolls when it has to. */}
         <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto py-1.5">
           {filteredGroups.length === 0 && (
-            <div className="px-4 py-6 text-center text-xs text-text-tertiary">
+            <div className="px-4 py-6 text-center text-minor text-text-tertiary">
               No results found
             </div>
           )}
@@ -437,7 +437,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
                     {item.icon}
                     <span className="flex-1 text-left">{item.label}</span>
                     {isDisabled && item.disabledHint && (
-                      <span className="text-[10px] text-text-disabled italic">{item.disabledHint}</span>
+                      <span className="text-caption text-text-disabled italic">{item.disabledHint}</span>
                     )}
                   </button>
                 );
@@ -447,7 +447,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center gap-4 px-4 py-2 border-t border-border-subtle text-[11px] text-text-disabled">
+        <div className="flex items-center gap-4 px-4 py-2 border-t border-border-subtle text-caption text-text-disabled">
           {/* No inline fontSize override — the shared .kbd utility's 10px is the app-wide
               minimum for legible text (the old fontSize: 9 was flagged by the type audit). */}
           <span><span className="kbd">↑↓</span> navigate</span>

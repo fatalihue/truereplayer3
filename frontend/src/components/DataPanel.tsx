@@ -118,7 +118,7 @@ function CellEditor({
           finish(true, e.shiftKey ? 'left' : 'right');
         }
       }}
-      className="w-full bg-transparent outline-none resize-none font-mono text-xs text-text-primary leading-[1.4] max-h-[88px] overflow-auto"
+      className="w-full bg-transparent outline-none resize-none font-mono text-minor text-text-primary leading-[1.4] max-h-[88px] overflow-auto"
     />
   );
 }
@@ -325,7 +325,7 @@ const GridRow = memo(function GridRow({
           themes where the two inks land close together. */}
       <td
         onClick={onSetCursor ? () => onSetCursor(r) : undefined}
-        className={`sticky left-0 z-[5] bg-bg-surface shadow-[inset_-1px_0_0_var(--color-border-subtle)] text-[10px] tabular-nums text-right pr-2 select-none ${
+        className={`sticky left-0 z-[5] bg-bg-surface shadow-[inset_-1px_0_0_var(--color-border-subtle)] text-caption tabular-nums text-right pr-2 select-none ${
           onSetCursor ? 'cursor-pointer hover:text-text-primary' : ''
         } ${isCursor ? 'font-semibold text-[color:var(--color-replay-fg)]' : 'text-text-tertiary'}`}
         data-tip={onSetCursor
@@ -346,7 +346,7 @@ const GridRow = memo(function GridRow({
           <td
             key={c}
             onClick={() => { if (!readOnly && !editing) onEdit(r, c); }}
-            className={`px-2 text-xs font-mono text-text-secondary whitespace-nowrap truncate align-middle ${
+            className={`px-2 text-minor font-mono text-text-secondary whitespace-nowrap truncate align-middle ${
               readOnly ? '' : 'cursor-text'
             } ${editing ? 'shadow-[inset_0_0_0_1.5px_var(--color-accent-solid)] bg-bg-input' : matched ? 'bg-[color-mix(in_srgb,var(--color-warning)_22%,transparent)]' : ''}`}
           >
@@ -1076,7 +1076,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
 
   // ── Status strip ──
   const stripLeft = (
-    <span className="text-[11px] text-text-tertiary tabular-nums whitespace-nowrap">
+    <span className="text-caption text-text-tertiary tabular-nums whitespace-nowrap">
       {grid.headers.length} {'columns'} · {grid.rows.length} {'rows'}
       {loopOverData && grid.rows.length > 0 && (
         <span style={{ color: 'var(--color-replay-fg)' }}> · {grid.rows.length} {'iterations/run'}</span>
@@ -1087,7 +1087,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
   );
   // Hint ladder — first match wins.
   const stripRight = (() => {
-    const cls = 'text-[10px] truncate';
+    const cls = 'text-caption truncate';
     if (editing) return <span className={`${cls} text-text-tertiary`}>{'Enter commits · Alt+Enter line break · Esc reverts'}</span>;
     if (willClear) return <span className={`${cls} text-warning-ink`}>{'Saving now clears the stored table.'}</span>;
     if (loopOverData && grid.rows.length === 0) return <span className={`${cls} text-warning-ink`}>{'No rows — replay won’t start.'}</span>;
@@ -1122,7 +1122,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
             jumpToMatch(e.shiftKey ? -1 : 1);
           }}
           placeholder={'Find in table…'}
-          className="input-inline pl-7 pr-7 font-sans text-[11px]"
+          className="input-inline pl-7 pr-7 font-sans text-caption"
         />
         {find && (
           <button
@@ -1135,7 +1135,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
         )}
       </div>
       {findLower !== '' && (
-        <span className="flex items-center gap-1 text-[10px] text-text-tertiary tabular-nums whitespace-nowrap">
+        <span className="flex items-center gap-1 text-caption text-text-tertiary tabular-nums whitespace-nowrap">
           <span>{matchRows.length === 0 ? 'No matches' : `${matchRows.length} row${matchRows.length === 1 ? '' : 's'}`}</span>
           {matchRows.length > 0 && (
             <>
@@ -1221,8 +1221,8 @@ export function DataPanel({ onClose }: DataPanelProps) {
           {emptyGrid ? (
             <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-3 bg-bg-surface">
               <Table2 size={24} className="text-text-tertiary" />
-              <div className="text-sm text-text-primary">{'No data table'}</div>
-              <div className="text-xs text-text-tertiary max-w-[340px] text-center leading-relaxed">
+              <div className="text-body text-text-primary">{'No data table'}</div>
+              <div className="text-minor text-text-tertiary max-w-[340px] text-center leading-relaxed">
                 {'Each row runs the profile once; columns become {row:column} tokens.'}
               </div>
               <div className="flex items-center gap-2 mt-1">
@@ -1253,7 +1253,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
                   <tr>
                     <th
                       onClick={() => copyToken('{row}', '__rownum')}
-                      className="sticky top-0 left-0 z-20 bg-bg-surface shadow-[inset_-1px_0_0_var(--color-border-subtle),inset_0_-1px_0_var(--color-border-subtle)] h-row text-[10px] text-text-tertiary text-right pr-2 select-none cursor-pointer"
+                      className="sticky top-0 left-0 z-20 bg-bg-surface shadow-[inset_-1px_0_0_var(--color-border-subtle),inset_0_-1px_0_var(--color-border-subtle)] h-row text-caption text-text-tertiary text-right pr-2 select-none cursor-pointer"
                       data-tip={tt('{row} — click to copy the token', '{row} — clique para copiar o token')}
                     >
                       {copiedKey === '__rownum' ? <Check size={11} className="inline text-[color:var(--color-replay-fg)]" /> : '#'}
@@ -1264,7 +1264,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
                       return (
                         <th
                           key={c}
-                          className={`group sticky top-0 z-10 bg-bg-surface shadow-hairline-b h-row text-left text-xs font-semibold font-mono px-2 whitespace-nowrap ${
+                          className={`group sticky top-0 z-10 bg-bg-surface shadow-hairline-b h-row text-left text-minor font-semibold font-mono px-2 whitespace-nowrap ${
                             meta.valid ? 'text-text-tertiary' : 'text-warning-ink'
                           } ${editingThis ? 'shadow-[inset_0_0_0_1.5px_var(--color-accent-solid)] bg-bg-input' : ''}`}
                         >
@@ -1336,7 +1336,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
                         <button
                           type="button"
                           onClick={addRow}
-                          className="w-full h-row flex items-center gap-1.5 px-3 text-[11px] text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+                          className="w-full h-row flex items-center gap-1.5 px-3 text-caption text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
                         >
                           <Plus size={12} />
                           {'Add row'}
@@ -1363,7 +1363,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
             role="checkbox"
             aria-checked={loopOverData}
             onClick={() => setLoop(!loopOverData)}
-            className="flex items-center gap-2 px-3 py-1 text-xs text-text-secondary hover:text-text-primary transition-colors"
+            className="flex items-center gap-2 px-3 py-1 text-minor text-text-secondary hover:text-text-primary transition-colors"
             data-tip={tt(
               'Runs the profile once per row. Overrides Loop count and infinite replay.',
               'Roda o perfil uma vez por linha. Sobrepõe o Loop count e o replay infinito.',
@@ -1375,7 +1375,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
           <div className="px-3 pt-1.5 pb-2">
             {loopOverData && grid.rows.length > 0 ? (
               <div
-                className="border-l-2 rounded px-2.5 py-2 text-[11px] leading-relaxed"
+                className="border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed"
                 style={{
                   background: 'color-mix(in srgb, var(--color-replay) 8%, transparent)',
                   borderColor: 'var(--color-replay-fg)',
@@ -1386,7 +1386,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
               </div>
             ) : loopOverData ? (
               <div
-                className="border-l-2 rounded px-2.5 py-2 text-[11px] leading-relaxed"
+                className="border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed"
                 style={{
                   background: 'color-mix(in srgb, var(--color-recording) 8%, transparent)',
                   borderColor: 'var(--color-recording-fg)',
@@ -1396,7 +1396,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
                 {'No rows — replay won’t start.'}
               </div>
             ) : (
-              <div className="border-l-2 border-border-subtle rounded px-2.5 py-2 text-[11px] leading-relaxed text-text-tertiary">
+              <div className="border-l-2 border-border-subtle rounded px-2.5 py-2 text-caption leading-relaxed text-text-tertiary">
                 {'Each run uses the marked row, then advances (wrapping). Click a row number to move the cursor. The advance happens at start, so a stopped run has still consumed its row.'}
               </div>
             )}
@@ -1410,7 +1410,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
                 role="checkbox"
                 aria-checked={notifyLap}
                 onClick={() => setNotifyLap(!notifyLap)}
-                className="mt-2 flex items-center gap-2 text-[11px] text-text-tertiary hover:text-text-secondary transition-colors"
+                className="mt-2 flex items-center gap-2 text-caption text-text-tertiary hover:text-text-secondary transition-colors"
                 data-tip={tt(
                   'Chime and tray balloon when the list finishes',
                   'Som e balão na bandeja quando a lista acaba',
@@ -1439,7 +1439,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
                 />
                 {!loopOverData && (
                   <div
-                    className="pt-1.5 text-[11px] leading-relaxed text-text-tertiary"
+                    className="pt-1.5 text-caption leading-relaxed text-text-tertiary"
                     data-tip={overDataCallers.length > 1 ? overDataCallers.join(', ') : undefined}
                   >
                     {rowPolicyScope}
@@ -1480,7 +1480,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
                             )}
                           </button>
                           <span
-                            className={`text-[10px] tabular-nums ml-auto shrink-0 ${count > 0 ? 'text-text-tertiary' : 'text-text-disabled'}`}
+                            className={`text-caption tabular-nums ml-auto shrink-0 ${count > 0 ? 'text-text-tertiary' : 'text-text-disabled'}`}
                             data-tip={count > 0
                               ? tt(`Used in ${count} action(s)`, `Usado em ${count} action(s)`)
                               : rowInheritingSubs.length > 0
@@ -1494,7 +1494,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
                       ) : (
                         <>
                           <TriangleAlert size={11} className="text-warning-ink shrink-0" />
-                          <span className="text-[11px] font-mono text-warning-ink truncate">
+                          <span className="text-caption font-mono text-warning-ink truncate">
                             {meta.name || `(${'empty'})`}
                           </span>
                           <button
@@ -1521,9 +1521,9 @@ export function DataPanel({ onClose }: DataPanelProps) {
                   <div key={name} className="flex items-center gap-1.5 px-3 py-1 min-w-0">
                     <TriangleAlert size={11} className="text-warning-ink shrink-0" />
                     {/* Drawn with the head the author wrote, so a {rownext:Ghost} reads as itself. */}
-                    <span className="text-[11px] font-mono text-warning-ink truncate">{`{${orphanHead(u)}:${name}}`}</span>
+                    <span className="text-caption font-mono text-warning-ink truncate">{`{${orphanHead(u)}:${name}}`}</span>
                     <span
-                      className="text-[10px] text-warning-ink ml-auto shrink-0"
+                      className="text-caption text-warning-ink ml-auto shrink-0"
                       data-tip={rowPassingCallers.length > 0
                         ? tt(`No such column in this profile — types empty text when it runs on its own. Run from ${rowPassingCallers.join(', ')} (Run Profile without “Run once per data row”), it reads the caller's row instead.`,
                           `A coluna não existe neste perfil — digita texto vazio quando ele roda sozinho. Rodado a partir de ${rowPassingCallers.join(', ')} (Run Profile sem “Run once per data row”), lê a linha de quem chamou.`)
@@ -1534,7 +1534,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
                   </div>
                 ))}
               </div>
-              <div className="text-[10px] text-text-tertiary px-3 pt-1 pb-2">
+              <div className="text-caption text-text-tertiary px-3 pt-1 pb-2">
                 {'Case-insensitive. {row} = row number. Transforms: type {row:name:trim:upper} or click a {row:…} chip.'}
               </div>
             </>
@@ -1545,7 +1545,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
             <button
               type="button"
               onClick={openPaste}
-              className="flex items-center gap-2 px-3 h-7 text-[11px] text-text-secondary hover:text-text-primary hover:bg-bg-card transition-colors"
+              className="flex items-center gap-2 px-3 h-7 text-caption text-text-secondary hover:text-text-primary hover:bg-bg-card transition-colors"
             >
               <ClipboardPaste size={12} className="shrink-0" />
               {'Paste / bulk edit…'}
@@ -1564,7 +1564,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
             <button
               type="button"
               onClick={() => csvInputRef.current?.click()}
-              className="flex items-center gap-2 px-3 h-7 text-[11px] text-text-secondary hover:text-text-primary hover:bg-bg-card transition-colors"
+              className="flex items-center gap-2 px-3 h-7 text-caption text-text-secondary hover:text-text-primary hover:bg-bg-card transition-colors"
             >
               <FileUp size={12} className="shrink-0" />
               {'Import CSV…'}
@@ -1580,7 +1580,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
                 }, copyFailed);
               }}
               disabled={emptyGrid}
-              className="flex items-center gap-2 px-3 h-7 text-[11px] text-text-secondary hover:text-text-primary hover:bg-bg-card transition-colors disabled:opacity-40 disabled:cursor-not-allowed"            >
+              className="flex items-center gap-2 px-3 h-7 text-caption text-text-secondary hover:text-text-primary hover:bg-bg-card transition-colors disabled:opacity-40 disabled:cursor-not-allowed"            >
               {copiedKey === '__table' ? <Check size={12} className="shrink-0" style={{ color: 'var(--color-replay-fg)' }} /> : <Copy size={12} className="shrink-0" />}
               {'Copy table (TSV)'}
             </button>
@@ -1591,7 +1591,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
                 clearTable();
               }}
               disabled={emptyGrid}
-              className={`flex items-center gap-2 px-3 h-7 text-[11px] transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+              className={`flex items-center gap-2 px-3 h-7 text-caption transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                 armedClear ? 'text-[color:var(--color-recording-fg)] hover:bg-[color-mix(in_srgb,var(--color-recording)_15%,transparent)]' : 'text-text-secondary hover:text-text-primary hover:bg-bg-card'
               }`}
             >

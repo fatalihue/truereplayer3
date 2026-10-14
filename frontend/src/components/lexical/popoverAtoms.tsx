@@ -29,7 +29,7 @@ export function PopoverHeader({
       <div className="flex items-center gap-2">
         <Wand2 size={14} className="text-accent-light shrink-0" />
         <div
-          className="text-xs font-mono flex-1 truncate"
+          className="text-minor font-mono flex-1 truncate"
           style={{ color: 'var(--color-action-sendtext-fg)' }}
         >
           {token}
@@ -38,7 +38,7 @@ export function PopoverHeader({
           <X size={14} />
         </IconButton>
       </div>
-      <div className="text-[10px] text-text-tertiary leading-relaxed mt-1">{description}</div>
+      <div className="text-caption text-text-tertiary leading-relaxed mt-1">{description}</div>
     </div>
   );
 }
@@ -65,7 +65,7 @@ export function StepSection({
     <div className="px-3.5 py-1.5 border-b border-border-subtle">
       <div className="flex items-center gap-1.5 mb-1">
         <span
-          className={`w-4 h-4 rounded-full text-[10px] font-semibold flex items-center justify-center border transition-colors shrink-0 ${
+          className={`w-4 h-4 rounded-full text-caption font-semibold flex items-center justify-center border transition-colors shrink-0 ${
             active
               ? 'text-accent-light bg-accent-solid/15 border-accent-solid/40'
               : 'text-text-tertiary bg-bg-surface border-border-subtle'
@@ -109,7 +109,7 @@ export function CheckRow({ checked, onChange, label, className = 'w-full', disab
       aria-checked={checked}
       disabled={disabled}
       onClick={onChange}
-      className={`flex items-center gap-2 py-0.5 text-xs text-text-secondary enabled:hover:text-text-primary disabled:opacity-50 disabled:cursor-default transition-colors ${className}`}
+      className={`flex items-center gap-2 py-0.5 text-minor text-text-secondary enabled:hover:text-text-primary disabled:opacity-50 disabled:cursor-default transition-colors ${className}`}
     >
       <CheckboxBox checked={checked} />
       <span className="flex-1 text-left">{label}</span>
@@ -129,7 +129,7 @@ export function RadioRow({
   input?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-2 py-0.5 text-xs">
+    <div className="flex items-center gap-2 py-0.5 text-minor">
       <button
         type="button"
         role="radio"
@@ -254,7 +254,7 @@ export function ArgInput({
             const raw = e.target.value.replace(/[^A-Za-z0-9_@]/g, '');
             onRefChange('@' + raw.replace(/@/g, ''));
           }}
-          className="h-7 px-1.5 rounded bg-bg-input border border-border-subtle text-[11px] font-mono text-text-primary focus:outline-none focus:border-accent-solid disabled:opacity-50"
+          className="h-7 px-1.5 rounded bg-bg-input border border-border-subtle text-caption font-mono text-text-primary focus:outline-none focus:border-accent-solid disabled:opacity-50"
           style={{ width: width + 22 }}
         />
       ) : (
@@ -275,7 +275,7 @@ export function ArgInput({
         disabled={disabled}
         data-tip={isRef ? numTip : refTip}
         onClick={() => onRefChange(isRef ? '' : '@')}
-        className={`h-7 w-6 shrink-0 rounded border text-[11px] font-mono transition-colors disabled:opacity-40 ${
+        className={`h-7 w-6 shrink-0 rounded border text-caption font-mono transition-colors disabled:opacity-40 ${
           isRef
             ? 'bg-accent-solid border-accent-solid text-[color:var(--color-accent-ink)]'
             : 'bg-bg-input border-border-subtle text-text-tertiary hover:text-text-primary hover:border-border-strong'

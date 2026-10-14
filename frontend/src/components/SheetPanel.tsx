@@ -192,7 +192,7 @@ function growTextarea(el: HTMLTextAreaElement) {
   const borders = el.offsetHeight - el.clientHeight;
   el.style.height = `${el.scrollHeight + borders}px`;
 }
-const RESULT_CARD = 'border-l-2 rounded px-2.5 py-2 text-[11px] leading-relaxed callout-enter';
+const RESULT_CARD = 'border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed callout-enter';
 
 // One axis of the Activate Window placement grid: a single-letter caption and a stepper, half a
 // row wide. Four of these make X/Y and W/H, so the caption alignment, the clamp and the disabled
@@ -3011,10 +3011,10 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
           <div className="min-w-0 flex items-baseline gap-2 flex-1">
             {/* Headline = the action name; the redundant "Edit Action" is dropped (the
                 drawer context already makes it obvious). */}
-            <div className="text-[15px] font-semibold font-display text-text-primary truncate">{actionLabel}</div>
-            <span className="text-[11px] font-small text-text-tertiary shrink-0">Action #{(actionIndex ?? 0) + 1}</span>
+            <div className="text-subtitle font-semibold font-display text-text-primary truncate">{actionLabel}</div>
+            <span className="text-caption font-small text-text-tertiary shrink-0">Action #{(actionIndex ?? 0) + 1}</span>
             {clickHalfSuffix && (
-              <span className="px-1.5 py-[1px] rounded text-[10px] font-medium border bg-bg-card text-text-secondary border-border-default shrink-0">
+              <span className="px-1.5 py-[1px] rounded text-caption font-medium border bg-bg-card text-text-secondary border-border-default shrink-0">
                 {clickHalfSuffix === 'Down' ? '↓ press' : '↑ release'}
               </span>
             )}
@@ -3128,7 +3128,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   The third state is the merge conflict — see mergeConflict. */}
               <FieldError
                 show
-                className={`text-[11px] mt-1 truncate ${mergeConflict ? 'text-recording' : formDraft !== initialForm ? 'text-warning-ink' : 'text-text-tertiary'}`}
+                className={`text-caption mt-1 truncate ${mergeConflict ? 'text-recording' : formDraft !== initialForm ? 'text-warning-ink' : 'text-text-tertiary'}`}
               >
                 {mergeConflict
                   ? (mergeShapeChanged
@@ -3164,7 +3164,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   onClick={() => setActionType(t.value)}
                   // Grid cells stretch, so every chip is the same width — nowrap + centre keeps
                   // a long label on one line so the row stays level.
-                  className={`px-2.5 py-1 rounded text-[11px] font-medium border transition-colors text-center whitespace-nowrap ${
+                  className={`px-2.5 py-1 rounded text-caption font-medium border transition-colors text-center whitespace-nowrap ${
                     actionType === t.value
                       ? 'text-accent border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)] bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)]'
                       : 'text-text-secondary border-border-default bg-bg-elevated hover:bg-bg-card'
@@ -3339,7 +3339,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 onClick={handleTestWindowProbe}
                 data-probe
                 disabled={windowProbeRequestId !== null || (!windowProcessName.trim() && !windowTitle.trim())}
-                className="w-full h-8 flex items-center justify-center gap-1.5 px-2.5 rounded text-xs font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-light transition-colors disabled:opacity-60"
+                className="w-full h-8 flex items-center justify-center gap-1.5 px-2.5 rounded text-minor font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-light transition-colors disabled:opacity-60"
               >
                 <PlayCircle size={13} />
                 {windowProbeRequestId ? 'Testing…' : 'Test'}
@@ -3518,7 +3518,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                       key={bit}
                       type="button"
                       onClick={() => setDaysOfWeek(daysOfWeek ^ (1 << bit))}
-                      className={`w-7 h-6 rounded text-[10px] font-medium border transition-colors ${
+                      className={`w-7 h-6 rounded text-caption font-medium border transition-colors ${
                         on
                           ? 'text-accent border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)] bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)]'
                           : 'text-text-tertiary border-border-subtle bg-bg-card hover:text-text-secondary'
@@ -3550,7 +3550,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   data-tip={tt(`${tier} · ${tierMeta.label}`, `${tier} · ${tierMeta.labelPtBr}`)}
                 >
                   <tierMeta.Icon size={12} />
-                  <span className="text-[10px] font-semibold normal-case">{tier}</span>
+                  <span className="text-caption font-semibold normal-case">{tier}</span>
                 </span>
               ) : undefined}
               hint={'Extension offline = reads as not found.'}
@@ -3607,12 +3607,12 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                       <button
                         key={i}
                         onClick={() => { setKey(alt.selector); setTextMatch(''); setShowAlternatives(false); }}
-                        className="w-full text-left px-2 py-1 rounded text-[11px] hover:bg-bg-card transition-colors flex items-center gap-1.5"
+                        className="w-full text-left px-2 py-1 rounded text-caption hover:bg-bg-card transition-colors flex items-center gap-1.5"
                         data-tip={alt.description}
                       >
                         <span style={{ color: m.color, display: 'inline-flex', alignItems: 'center', gap: 2 }}>
                           <m.Icon size={10} />
-                          <span className="text-[10px] font-bold">{alt.tier}</span>
+                          <span className="text-caption font-semibold">{alt.tier}</span>
                         </span>
                         <span className="font-mono text-text-secondary truncate">{alt.selector}</span>
                       </button>
@@ -3656,7 +3656,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
               <button
                 onClick={handleTestCondition}
                 disabled={condRequestId !== null}
-                className="w-full h-8 flex items-center justify-center gap-1.5 px-2.5 rounded text-xs font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-light transition-colors disabled:opacity-60"
+                className="w-full h-8 flex items-center justify-center gap-1.5 px-2.5 rounded text-minor font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-light transition-colors disabled:opacity-60"
               >
                 <PlayCircle size={13} />
                 {condRequestId ? 'Checking…' : 'Check now'}
@@ -3696,7 +3696,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
               so the otherwise-empty panel reads as intentional, not broken. */}
           {(isElse || isEndIf) && (
             <div
-              className="border-l-2 rounded px-2.5 py-2 text-[11px] leading-relaxed"
+              className="border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed"
               style={calloutStyle('neutral', 'var(--color-action-if-fg)', 'var(--color-text-secondary)')}
             >
               {isElse
@@ -3710,7 +3710,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
           {(actionType === 'EndLoop' || actionType === 'BreakLoop'
             || actionType === 'ContinueLoop' || actionType === 'ForEachRow') && (
             <div
-              className="border-l-2 rounded px-2.5 py-2 text-[11px] leading-relaxed"
+              className="border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed"
               style={calloutStyle('neutral', 'var(--color-action-loop-fg, var(--color-action-if-fg))', 'var(--color-text-secondary)')}
             >
               {actionType === 'EndLoop'
@@ -3727,7 +3727,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
               family (pause fallback) instead of the If teal. Delay + Notes still apply. */}
           {(actionType === 'Stop' || actionType === 'Return') && (
             <div
-              className="border-l-2 rounded px-2.5 py-2 text-[11px] leading-relaxed"
+              className="border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed"
               style={calloutStyle('neutral', 'var(--color-action-flow-fg, var(--color-action-pause-fg))', 'var(--color-text-secondary)')}
             >
               {actionType === 'Stop'
@@ -3843,7 +3843,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                     className="w-full max-h-[140px] object-contain bg-bg-input"
                   />
                 ) : (
-                  <div className="flex items-center justify-center h-[80px] text-xs text-text-disabled">
+                  <div className="flex items-center justify-center h-[80px] text-minor text-text-disabled">
                     No image captured
                   </div>
                 )}
@@ -3866,7 +3866,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                     if (refuseDuringRun()) return;
                     send({ type: 'waitimage:recapture', payload: { index: actionIndex } });
                   }}
-                  className="flex-1 flex items-center justify-center gap-1.5 h-8 px-2.5 rounded text-xs font-medium border border-border-default bg-bg-elevated hover:bg-bg-card text-text-secondary hover:text-text-primary transition-colors"
+                  className="flex-1 flex items-center justify-center gap-1.5 h-8 px-2.5 rounded text-minor font-medium border border-border-default bg-bg-elevated hover:bg-bg-card text-text-secondary hover:text-text-primary transition-colors"
                 >
                   <RefreshCw size={12} />
                   Recapture
@@ -3875,7 +3875,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   onClick={handleTestMatch}
                   data-probe
                   disabled={!action?.imagePath || testMatchRequestId != null}
-                  className="flex-1 flex items-center justify-center gap-1.5 h-8 px-2.5 rounded text-xs font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 flex items-center justify-center gap-1.5 h-8 px-2.5 rounded text-minor font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <PlayCircle size={13} />
                   {testMatchRequestId != null ? 'Testing…' : 'Test match'}
@@ -3905,14 +3905,14 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                         </span>
                       </div>
                       {imageVerdictFlipped && (
-                        <div className="mt-1 text-[10px] opacity-80">
+                        <div className="mt-1 text-caption opacity-80">
                           {isIfImage
                             ? (testMatchResult.found ? 'Negated: the condition reads false right now.' : 'Negated: the condition reads true right now.')
                             : (testMatchResult.found ? 'Still on screen: the wait for it to disappear goes on.' : 'Not on screen: the wait for it to disappear ends now.')}
                         </div>
                       )}
                       {testMatchResult.found && (
-                        <div className="mt-1 text-[10px] opacity-80">
+                        <div className="mt-1 text-caption opacity-80">
                           {'Search region set around this match.'}
                         </div>
                       )}
@@ -3948,7 +3948,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 : 'Whole screen can match the wrong thing — ~440 ms per check instead of ~4 ms.'}
             >
               <div className="flex items-center gap-2.5">
-                <div className="flex-1 h-8 px-2 flex items-center text-[11px] font-mono bg-bg-input border border-border-default rounded text-text-secondary">
+                <div className="flex-1 h-8 px-2 flex items-center text-caption font-mono bg-bg-input border border-border-default rounded text-text-secondary">
                   {waitImageSearchRegion
                     ? `${waitImageSearchRegion.x}, ${waitImageSearchRegion.y}  ·  ${waitImageSearchRegion.w} × ${waitImageSearchRegion.h}`
                     : (
@@ -3960,7 +3960,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 </div>
                 <button
                   onClick={handleConfigureSearchRegion}
-                  className="h-8 px-2.5 flex items-center gap-1.5 rounded text-xs font-medium border border-border-default bg-bg-elevated hover:bg-bg-card text-text-secondary hover:text-text-primary transition-colors"
+                  className="h-8 px-2.5 flex items-center gap-1.5 rounded text-minor font-medium border border-border-default bg-bg-elevated hover:bg-bg-card text-text-secondary hover:text-text-primary transition-colors"
                   data-tip={tt('Faster, fewer false positives.', 'Mais rápido, menos falsos positivos.')}
                 >
                   <Frame size={12} />
@@ -3969,7 +3969,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 {waitImageSearchRegion && (
                   <button
                     onClick={() => setWaitImageSearchRegion(null)}
-                    className="h-8 px-2 flex items-center rounded text-xs text-text-tertiary hover:text-[var(--color-recording-fg)] hover:bg-bg-card transition-colors"
+                    className="h-8 px-2 flex items-center rounded text-minor text-text-tertiary hover:text-[var(--color-recording-fg)] hover:bg-bg-card transition-colors"
                   >
                     <X size={12} />
                   </button>
@@ -4107,7 +4107,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   type="button"
                   onClick={handlePickPixelColor}
                   disabled={pickColorRequestId != null}
-                  className="flex-1 h-8 flex items-center justify-center gap-1.5 px-2.5 text-xs font-medium border border-border-default bg-bg-elevated hover:bg-bg-card text-text-secondary hover:text-text-primary rounded whitespace-nowrap transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 h-8 flex items-center justify-center gap-1.5 px-2.5 text-minor font-medium border border-border-default bg-bg-elevated hover:bg-bg-card text-text-secondary hover:text-text-primary rounded whitespace-nowrap transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Pipette size={13} />
                   {pickColorRequestId != null ? 'Picking…' : 'Pick'}
@@ -4115,7 +4115,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 <button
                   type="button"
                   onClick={handleTestPixelMatch}
-                  className="flex-1 h-8 flex items-center justify-center gap-1.5 px-2.5 text-xs font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-light rounded whitespace-nowrap transition-colors"
+                  className="flex-1 h-8 flex items-center justify-center gap-1.5 px-2.5 text-minor font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-light rounded whitespace-nowrap transition-colors"
                 >
                   <PlayCircle size={13} />
                   Test match
@@ -4143,7 +4143,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                     </span>
                   </div>
                   {pixelVerdictFlipped && !testPixelResult.error && (
-                    <div className="mt-1 text-[10px] opacity-80">
+                    <div className="mt-1 text-caption opacity-80">
                       {isIfPixel
                         ? (testPixelResult.matches ? 'Negated: the condition reads false right now.' : 'Negated: the condition reads true right now.')
                         : (testPixelResult.matches ? 'Colour still there: the wait for it to change goes on.' : 'Colour gone: the wait for it to change ends now.')}
@@ -4340,7 +4340,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   `parseFloat(…) > 0` is false for NaN, which is what an empty field parses to. */}
               <FieldError
                 show={!key.trim() && !(parseFloat(timeout) > 0)}
-                className="text-[11px] text-warning-ink mt-1.5 truncate"
+                className="text-caption text-warning-ink mt-1.5 truncate"
               >
                 {'No hotkey and no timeout — this Pause is skipped.'}
               </FieldError>
@@ -4362,7 +4362,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                     data-tip={tt(`${tier} · ${tierMeta.label}`, `${tier} · ${tierMeta.labelPtBr}`)}
                   >
                     <tierMeta.Icon size={12} />
-                    <span className="text-[10px] font-semibold normal-case">{tier}</span>
+                    <span className="text-caption font-semibold normal-case">{tier}</span>
                   </span>
                 )}
               </label>
@@ -4414,12 +4414,12 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                       <button
                         key={i}
                         onClick={() => { setKey(alt.selector); setTextMatch(''); setShowAlternatives(false); }}
-                        className="w-full text-left px-2 py-1 rounded text-[11px] hover:bg-bg-card transition-colors flex items-center gap-1.5"
+                        className="w-full text-left px-2 py-1 rounded text-caption hover:bg-bg-card transition-colors flex items-center gap-1.5"
                         data-tip={alt.description}
                       >
                         <span style={{ color: m.color, display: 'inline-flex', alignItems: 'center', gap: 2 }}>
                           <m.Icon size={10} />
-                          <span className="text-[10px] font-bold">{alt.tier}</span>
+                          <span className="text-caption font-semibold">{alt.tier}</span>
                         </span>
                         <span className="font-mono text-text-secondary truncate">{alt.selector}</span>
                       </button>
@@ -4444,7 +4444,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 <select
                   value={textMode}
                   onChange={(e) => setTextMode(e.target.value as TextMode)}
-                  className="h-8 px-1.5 text-[11px] bg-bg-input border border-border-default rounded text-text-secondary outline-none focus:border-accent-solid"
+                  className="h-8 px-1.5 text-caption bg-bg-input border border-border-default rounded text-text-secondary outline-none focus:border-accent-solid"
                 >
                   {TEXT_MODES.map(m => (
                     <option key={m.value} value={m.value}>{m.label}</option>
@@ -4465,7 +4465,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
               {/* Reserved slot — same per-keystroke flicker as the window-target title field. */}
               <FieldError
                 show={!!regexError}
-                className="text-[10px] mt-1 font-mono"
+                className="text-caption mt-1 font-mono"
                 style={{ color: 'var(--color-recording-fg)' }}
                 tip={regexError ? `Invalid regex: ${regexError}` : undefined}
               >
@@ -4560,7 +4560,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                     key={item.var}
                     type="button"
                     onClick={() => browserTextEditorRef.current?.insertText(item.var)}
-                    className="h-6 px-2 inline-flex items-center text-[11px] font-mono bg-bg-surface border border-border-default rounded text-text-secondary hover:text-accent hover:border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)] hover:bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)] transition-colors"
+                    className="h-6 px-2 inline-flex items-center text-caption font-mono bg-bg-surface border border-border-default rounded text-text-secondary hover:text-accent hover:border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)] hover:bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)] transition-colors"
                   >
                     {item.label}
                   </button>
@@ -4585,7 +4585,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 title={tt('Instant, not key by key', 'Instantâneo, não tecla a tecla')}
               />
               <div className="flex items-center gap-2">
-                <label className="text-xs text-text-secondary">Char delay</label>
+                <label className="text-minor text-text-secondary">Char delay</label>
                 <NumberInput
                   // typeDelay '' = no pause between characters. The engine used to pick a
                   // default from the text length; since 2.37.0 content.js reads a blank field
@@ -4664,7 +4664,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   on a plain selector and the action times out silently. */}
               {waitMode === 'text-match' && !textMatch.trim() && (
                 <div
-                  className="mt-1.5 flex items-start gap-2 border-l-2 rounded px-2.5 py-2 text-[11px] leading-relaxed"
+                  className="mt-1.5 flex items-start gap-2 border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed"
                   style={calloutStyle('warn')}
                 >
                   <ShieldAlert size={13} className="shrink-0 mt-px" />
@@ -4699,7 +4699,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
               <button
                 onClick={handleTestAction}
                 disabled={testRequestId !== null}
-                className="w-full h-8 flex items-center justify-center gap-1.5 px-2.5 rounded text-xs font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-light transition-colors disabled:opacity-60"
+                className="w-full h-8 flex items-center justify-center gap-1.5 px-2.5 rounded text-minor font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-light transition-colors disabled:opacity-60"
               >
                 <PlayCircle size={13} />
                 {testRequestId ? 'Running…' : 'Test action'}
@@ -4739,7 +4739,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                           return (
                             <span style={{ color: m.color, display: 'inline-flex', alignItems: 'center', gap: 2 }}>
                               <m.Icon size={10} />
-                              <span className="text-[10px] font-bold">{testResult.matchedVia.tier}</span>
+                              <span className="text-caption font-semibold">{testResult.matchedVia.tier}</span>
                             </span>
                           );
                         })()}
@@ -4879,7 +4879,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                       key={item.var}
                       type="button"
                       onClick={() => sendTextEditorRef.current?.insertText(item.var)}
-                      className="h-6 px-2 inline-flex items-center text-[11px] font-mono bg-bg-surface border border-border-default rounded text-text-secondary hover:text-accent hover:border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)] hover:bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)] transition-colors"
+                      className="h-6 px-2 inline-flex items-center text-caption font-mono bg-bg-surface border border-border-default rounded text-text-secondary hover:text-accent hover:border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)] hover:bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)] transition-colors"
                     >
                       {item.label}
                     </button>
@@ -4891,7 +4891,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   // nulls KeyHtml). Kept a plain hint, NOT common/FieldError: this is not a
                   // validation line, and action.keyHtml cannot flip while the panel is open
                   // without the remount key above firing anyway, so it cannot cause a jump.
-                  <div className="mt-1 text-[10px] text-warning-ink leading-snug">
+                  <div className="mt-1 text-caption text-warning-ink leading-snug">
                     {'Saving here drops the formatting.'}
                   </div>
                 )}
@@ -5098,7 +5098,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 <button
                   type="button"
                   onClick={handleBrowseLaunch}
-                  className="shrink-0 h-8 px-2.5 flex items-center gap-1 rounded text-xs border border-border-default bg-bg-input hover:bg-bg-elevated text-text-secondary transition-colors"
+                  className="shrink-0 h-8 px-2.5 flex items-center gap-1 rounded text-minor border border-border-default bg-bg-input hover:bg-bg-elevated text-text-secondary transition-colors"
                 >
                   <FolderOpen size={13} />
                   Browse…
@@ -5133,7 +5133,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   type="button"
                   onClick={handleCaptureGeometry}
                   disabled={captureGeoRequestId !== null || (!windowProcessName.trim() && !windowTitle.trim())}
-                  className="shrink-0 h-6 px-2 flex items-center gap-1.5 rounded text-[11px] font-medium border border-border-default bg-bg-input hover:bg-bg-elevated text-text-secondary transition-colors disabled:opacity-60"
+                  className="shrink-0 h-6 px-2 flex items-center gap-1.5 rounded text-caption font-medium border border-border-default bg-bg-input hover:bg-bg-elevated text-text-secondary transition-colors disabled:opacity-60"
                 >
                   <Frame size={12} />
                   {captureGeoRequestId ? 'Reading…' : 'Read from window'}
@@ -5178,7 +5178,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 onClick={handleTestWindowProbe}
                 data-probe
                 disabled={windowProbeRequestId !== null || (!windowProcessName.trim() && !windowTitle.trim())}
-                className="w-full h-8 flex items-center justify-center gap-1.5 px-2.5 rounded text-xs font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-light transition-colors disabled:opacity-60"
+                className="w-full h-8 flex items-center justify-center gap-1.5 px-2.5 rounded text-minor font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-light transition-colors disabled:opacity-60"
               >
                 <PlayCircle size={13} />
                 {windowProbeRequestId ? 'Testing…' : 'Test'}
@@ -5238,7 +5238,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 left-rail card (no tint) — informational, not a warning. */}
             {profiles.find(p => p.name === activeProfile)?.hasEffectiveTarget && (
               <div
-                className="border-l-2 rounded px-2.5 py-2 text-[11px] leading-relaxed"
+                className="border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed"
                 style={calloutStyle('neutral')}
               >
                 {'Clicks still follow the profile’s Window Target, not this window.'}
@@ -5261,7 +5261,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
             // time, which is exactly what the hint rule says not to keep.
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between gap-3">
-                <label className="text-[12px] font-medium text-text-secondary">Hold</label>
+                <label className="text-minor font-medium text-text-secondary">Hold</label>
                 <NumberInput
                   value={holdMs}
                   onChange={(n) => setHoldMs(clampHoldMs(n))}
@@ -5351,7 +5351,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   one — an absolute profile needs no caption, a relative one very much does,
                   because 40,60 looks identical either way. */}
               {coordsAreRelative && (
-                <div className="text-[11px] text-text-tertiary flex items-center gap-1.5 flex-wrap">
+                <div className="text-caption text-text-tertiary flex items-center gap-1.5 flex-wrap">
                   <Crosshair size={11} className="shrink-0 opacity-70" />
                   <span>
                     {relativeTargetLabel
@@ -5368,7 +5368,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                     type="button"
                     onClick={handlePickPosition}
                     disabled={pickPositionRequestId != null}
-                    className="flex-1 h-8 flex items-center justify-center gap-1.5 px-2.5 text-xs font-medium border border-border-default bg-bg-elevated hover:bg-bg-card text-text-secondary hover:text-text-primary rounded whitespace-nowrap transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-1 h-8 flex items-center justify-center gap-1.5 px-2.5 text-minor font-medium border border-border-default bg-bg-elevated hover:bg-bg-card text-text-secondary hover:text-text-primary rounded whitespace-nowrap transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Crosshair size={13} />
                     {pickPositionRequestId != null ? 'Picking…' : 'Pick from screen'}
@@ -5377,7 +5377,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                     type="button"
                     onClick={handleCopyCoords}
                     style={coordCopyFlash ? { borderColor: 'var(--color-replay-fg)', color: 'var(--color-replay-fg)', backgroundColor: 'var(--color-replay-bg)' } : undefined}
-                    className={`h-8 shrink-0 flex items-center justify-center gap-1.5 px-2.5 text-xs font-medium border rounded transition-colors ${
+                    className={`h-8 shrink-0 flex items-center justify-center gap-1.5 px-2.5 text-minor font-medium border rounded transition-colors ${
                       coordCopyFlash
                         ? ''
                         : 'border-border-default bg-bg-elevated hover:bg-bg-card text-text-secondary hover:text-text-primary'
@@ -5389,7 +5389,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                     type="button"
                     onClick={handlePasteCoords}
                     style={coordPasteError ? { borderColor: 'var(--color-recording-fg)', color: 'var(--color-recording-fg)', backgroundColor: 'var(--color-recording-bg)' } : undefined}
-                    className={`h-8 shrink-0 flex items-center justify-center gap-1.5 px-2.5 text-xs font-medium border rounded transition-colors ${
+                    className={`h-8 shrink-0 flex items-center justify-center gap-1.5 px-2.5 text-minor font-medium border rounded transition-colors ${
                       coordPasteError
                         ? ''
                         : 'border-border-default bg-bg-elevated hover:bg-bg-card text-text-secondary hover:text-text-primary'
@@ -5423,7 +5423,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 title="Repeat"
                 adornment={
                   <span className="flex items-center gap-2">
-                    <label className="text-[12px] font-medium text-text-secondary">Times</label>
+                    <label className="text-minor font-medium text-text-secondary">Times</label>
                     <NumberInput
                       value={repeatCount}
                       onChange={(n) => setRepeatCount(clampRepeatCount(n))}
@@ -5439,7 +5439,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
               />
               <div className="flex items-center justify-between gap-3">
                 <label
-                  className={`text-[12px] font-medium transition-colors ${repeatCount > 1 ? 'text-text-secondary' : 'text-text-tertiary'}`}
+                  className={`text-minor font-medium transition-colors ${repeatCount > 1 ? 'text-text-secondary' : 'text-text-tertiary'}`}
                   data-tip={isMultiClick
                     ? tt('Keep it above your system double-click speed (~½ s).', 'Mantenha acima da velocidade de duplo-clique do sistema (~½ s).')
                     : undefined}
@@ -5473,7 +5473,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   data-tip={tt('Random ±% on each gap — less robotic.', 'Variação ±% aleatória em cada intervalo — menos robótico.')}
                 >
                   <CheckboxBox checked={jitterOn && repeatCount > 1} />
-                  <span className={`text-[12px] font-medium transition-colors ${jitterOn && repeatCount > 1 ? 'text-text-secondary' : 'text-text-tertiary'}`}>
+                  <span className={`text-minor font-medium transition-colors ${jitterOn && repeatCount > 1 ? 'text-text-secondary' : 'text-text-tertiary'}`}>
                     Gap jitter
                   </span>
                 </button>
@@ -5513,7 +5513,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                     : tt('Random ±px on the click point — less robotic.', 'Variação ±px aleatória no ponto do clique — menos robótico.')}
                 >
                   <CheckboxBox checked={posJitterOn && repeatCount > 1 && !atCursor} />
-                  <span className={`text-[12px] font-medium transition-colors ${posJitterOn && repeatCount > 1 && !atCursor ? 'text-text-secondary' : 'text-text-tertiary'}`}>
+                  <span className={`text-minor font-medium transition-colors ${posJitterOn && repeatCount > 1 && !atCursor ? 'text-text-secondary' : 'text-text-tertiary'}`}>
                     Position jitter
                   </span>
                 </button>
@@ -5571,7 +5571,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
               rows={2}
               ref={notesRef}
               onInput={(e) => growTextarea(e.currentTarget)}
-              className="w-full min-h-[3.25rem] max-h-40 px-2 py-1.5 text-xs bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid resize-none placeholder:text-text-tertiary"
+              className="w-full min-h-[3.25rem] max-h-40 px-2 py-1.5 text-minor bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid resize-none placeholder:text-text-tertiary"
               placeholder="Add a note…"
             />
           </Field>
@@ -5587,7 +5587,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
               rewrite), "Repeat to discard". Every string is measured to fit the span unwrapped —
               the buttons stay shrink-0 / nowrap so "Save" never wraps. */}
           <span
-            className={`flex-1 min-w-0 truncate text-[11px] transition-opacity duration-150 pointer-events-none ${armedBy ? 'text-warning-ink' : 'text-text-tertiary'}`}
+            className={`flex-1 min-w-0 truncate text-caption transition-opacity duration-150 pointer-events-none ${armedBy ? 'text-warning-ink' : 'text-text-tertiary'}`}
             style={{ opacity: armedBy || hasUnsavedChanges ? 1 : 0 }}
           >
             {armedBy === 'esc' ? 'Esc again discards'

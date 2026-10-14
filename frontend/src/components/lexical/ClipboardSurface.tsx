@@ -250,13 +250,13 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
       <div data-clip-surface className="absolute inset-0 z-20 bg-bg-elevated flex flex-col">
         <div className="h-9 px-2 flex items-center gap-2 border-b border-border-subtle shrink-0">
           <button type="button" onClick={onBack}
-            className="flex items-center gap-1 h-6 px-1.5 text-[11px] rounded text-text-tertiary hover:text-text-primary hover:bg-bg-card transition-colors">
+            className="flex items-center gap-1 h-6 px-1.5 text-caption rounded text-text-tertiary hover:text-text-primary hover:bg-bg-card transition-colors">
             <ChevronLeft size={13} />
             Editor
           </button>
           <div className="w-px h-4 bg-border-subtle" />
           <Wand2 size={13} className="text-accent-light shrink-0" />
-          <div className="text-xs font-semibold text-text-primary flex-1">{HEAD_TITLES[head.kind]}</div>
+          <div className="text-minor font-semibold text-text-primary flex-1">{HEAD_TITLES[head.kind]}</div>
         </div>
         <div className="flex-1 p-4 space-y-3">
           {/* A warning, not an error: the token runs — only the builder declines to rebuild it.
@@ -267,7 +267,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
               : 'Read-only: a modifier here can’t be rebuilt as written (unknown, repeated or reordered). Edit the token text in the editor instead.'}
           </Callout>
           <div className="label-micro text-text-tertiary">Token</div>
-          <div className="font-mono text-[12px] px-2 py-1 rounded break-all"
+          <div className="font-mono text-minor px-2 py-1 rounded break-all"
             style={{
               color: 'var(--color-action-sendtext-fg)',
               background: 'color-mix(in srgb, var(--color-action-sendtext-fg) 10%, transparent)',
@@ -286,7 +286,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
         <button
           type="button"
           onClick={onBack}
-          className="flex items-center gap-1 h-6 px-1.5 text-[11px] rounded text-text-tertiary hover:text-text-primary hover:bg-bg-card transition-colors"
+          className="flex items-center gap-1 h-6 px-1.5 text-caption rounded text-text-tertiary hover:text-text-primary hover:bg-bg-card transition-colors"
           data-tip={tt('Discards changes', 'Descarta as alterações')}
         >
           <ChevronLeft size={13} />
@@ -294,11 +294,11 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
         </button>
         <div className="w-px h-4 bg-border-subtle" />
         <Wand2 size={13} className="text-accent-light shrink-0" />
-        <div className="text-xs font-semibold text-text-primary flex-1">{HEAD_TITLES[head.kind]}</div>
+        <div className="text-minor font-semibold text-text-primary flex-1">{HEAD_TITLES[head.kind]}</div>
         <button
           type="button"
           onClick={onReset}
-          className="flex items-center gap-1 h-6 px-1.5 text-[11px] rounded text-text-tertiary hover:text-text-primary hover:bg-bg-card transition-colors"
+          className="flex items-center gap-1 h-6 px-1.5 text-caption rounded text-text-tertiary hover:text-text-primary hover:bg-bg-card transition-colors"
         >
           <RotateCcw size={12} />
           Reset
@@ -328,7 +328,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                     inputHeight="h-8"
                     ariaLabel="History item"
                   />
-                  <span className="text-[11px] text-text-tertiary">1 = most recent</span>
+                  <span className="text-caption text-text-tertiary">1 = most recent</span>
                 </div>
               ) : head.kind === 'timestamp' ? (
                 <div className="flex items-center gap-2 flex-wrap">
@@ -370,7 +370,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                   className="input-field"
                 />
               ) : null /* the head-only kinds never reach this card (HEAD_ONLY above) */}
-              <div className="text-[11px] text-text-tertiary mt-1 leading-snug">
+              <div className="text-caption text-text-tertiary mt-1 leading-snug">
                 {IDENTITY_HINTS[head.kind]}
               </div>
               {/* Reserved validation line — ALWAYS mounted, so emptying the field cannot grow the
@@ -379,7 +379,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                   FieldError call site. winclip never shows it — chainHeadIsUsable is true for it. */}
               <FieldError
                 show={!chainHeadIsUsable(head)}
-                className="text-[11px] mt-1"
+                className="text-caption mt-1"
                 style={{ color: 'var(--color-recording-fg)' }}
               >
                 {head.kind === 'row' || head.kind === 'rownext'
@@ -403,7 +403,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                 only repeated the unchecked box, and the three Off lines together cost the ladder
                 a step's worth of height. */}
             {state.next && (
-              <div className="text-[11px] text-text-tertiary leading-snug mt-1">
+              <div className="text-caption text-text-tertiary leading-snug mt-1">
                 Each use takes the next line; a new copy starts over. The preview always shows line 1.
               </div>
             )}
@@ -433,7 +433,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                   data-tip={tt('Every match, ignoring case. { } : not allowed.', 'Toda ocorrência, sem diferenciar maiúsculas. { } : não podem.')}
                   className="input-field w-28"
                 />
-                <span className="text-[11px] text-text-tertiary">→</span>
+                <span className="text-caption text-text-tertiary">→</span>
                 <input
                   type="text"
                   value={state.replaceTo}
@@ -490,7 +490,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                 />
               </div>
               {state.split !== 'none' && (
-                <div className="text-[11px] text-text-tertiary leading-snug">
+                <div className="text-caption text-text-tertiary leading-snug">
                   No delimiter in the text = nothing, not the whole text.
                 </div>
               )}
@@ -514,7 +514,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                 />
               </div>
               {state.dropNumSuffix.length > 0 && (
-                <div className="text-[11px] text-text-tertiary leading-snug">
+                <div className="text-caption text-text-tertiary leading-snug">
                   Strips only a leading count with this exact suffix: "1x Caixa" → "Caixa".
                 </div>
               )}
@@ -547,7 +547,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                     inputWidth="w-14"
                     inputHeight="h-8"
                   />
-                  <span className="text-[11px] text-text-tertiary">–</span>
+                  <span className="text-caption text-text-tertiary">–</span>
                   <NumberInput
                     value={state.rangeTo}
                     onChange={(n) => set({ rangeTo: Math.max(1, n) })}
@@ -643,7 +643,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                     inputWidth="w-14"
                     inputHeight="h-8"
                   />
-                  <span className="text-[11px] text-text-tertiary">–</span>
+                  <span className="text-caption text-text-tertiary">–</span>
                   <NumberInput
                     value={state.wordsTo}
                     onChange={(n) => set({ wordsTo: Math.max(1, n) })}
@@ -765,7 +765,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                 className="input-field"
               />
               {state.defaultText.length > 0 && (
-                <div className="text-[11px] text-text-tertiary leading-snug">
+                <div className="text-caption text-text-tertiary leading-snug">
                   An unset variable, a missing delimiter or a line past the end pastes this instead of nothing.
                 </div>
               )}
@@ -803,7 +803,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
               )}
             </div>
             <div
-              className="font-mono text-[11px] text-text-secondary bg-bg-input border border-border-subtle px-2 py-1 rounded whitespace-pre-wrap break-all max-h-24 overflow-auto"
+              className="font-mono text-caption text-text-secondary bg-bg-input border border-border-subtle px-2 py-1 rounded whitespace-pre-wrap break-all max-h-24 overflow-auto"
               style={{ lineHeight: 1.35 }}
             >
               {source.unknown ? (
@@ -819,7 +819,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
           <div className="shrink-0 flex flex-col">
             <div className="label-micro text-text-tertiary mb-1 shrink-0">Result</div>
             <div
-              className="min-h-[64px] max-h-[calc(40vh/var(--ui-zoom))] font-mono text-[11px] px-2 py-1 rounded border-l-2 whitespace-pre-wrap break-all overflow-auto"
+              className="min-h-[64px] max-h-[calc(40vh/var(--ui-zoom))] font-mono text-caption px-2 py-1 rounded border-l-2 whitespace-pre-wrap break-all overflow-auto"
               style={{
                 background: 'color-mix(in srgb, var(--color-replay) 8%, transparent)',
                 borderColor: 'color-mix(in srgb, var(--color-replay) 40%, transparent)',
@@ -848,7 +848,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
           <div className="shrink-0">
             <div className="label-micro text-text-tertiary mb-1">Token</div>
             <div
-              className="font-mono text-[12px] px-2 py-1 rounded break-all"
+              className="font-mono text-minor px-2 py-1 rounded break-all"
               style={{
                 color: 'var(--color-action-sendtext-fg)',
                 background: 'color-mix(in srgb, var(--color-action-sendtext-fg) 10%, transparent)',
@@ -879,7 +879,7 @@ function Step({
     <div>
       <div className="flex items-center gap-2 mb-1">
         <span
-          className={`w-4 h-4 rounded-full text-[10px] font-semibold flex items-center justify-center border transition-colors ${
+          className={`w-4 h-4 rounded-full text-caption font-semibold flex items-center justify-center border transition-colors ${
             active
               ? 'text-accent-light bg-accent-solid/15 border-accent-solid/40'
               : 'text-text-tertiary bg-bg-surface border-border-subtle'

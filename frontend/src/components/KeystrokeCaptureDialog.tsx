@@ -367,9 +367,9 @@ export function KeystrokeCaptureDialog({
                   onChange={(e) => setCaptured(e.target.value || null)}
                   placeholder="F5 · Ctrl+S · {var:name}"
                   spellCheck={false}
-                  className="w-full h-9 px-2 text-[13px] font-mono bg-bg-elevated border border-border-default rounded text-[color:var(--color-action-key-fg)] text-center outline-none focus:border-accent-solid"
+                  className="w-full h-9 px-2 text-body font-mono bg-bg-elevated border border-border-default rounded text-[color:var(--color-action-key-fg)] text-center outline-none focus:border-accent-solid"
                 />
-                <div className="mt-2.5 text-[10px] text-text-tertiary leading-relaxed">
+                <div className="mt-2.5 text-caption text-text-tertiary leading-relaxed">
                   {mode === 'hold' ? (
                     // Hold goes through SimulateKey (single virtual-key) — a token
                     // resolving to a combo would silently no-op, so don't teach it here.
@@ -387,12 +387,12 @@ export function KeystrokeCaptureDialog({
                 {/* The hook only captures while TrueReplayer is the FOREGROUND app, so the pad
                     must not promise "press any key" while the user is in another window —
                     it would be inviting a press that (correctly) goes to that other app. */}
-                <div className="text-[12px] text-text-secondary mb-1">
+                <div className="text-minor text-text-secondary mb-1">
                   {windowFocused
                     ? 'Press any key or combo'
                     : 'Click TrueReplayer to capture keys'}
                 </div>
-                <div className="text-[10px] font-mono text-text-tertiary">A · F5 · Ctrl+S · Win+A</div>
+                <div className="text-caption font-mono text-text-tertiary">A · F5 · Ctrl+S · Win+A</div>
               </>
             ) : (
               <KeyCaps combo={captured} fg="var(--color-action-key-fg)" />
@@ -405,7 +405,7 @@ export function KeystrokeCaptureDialog({
           <button
             type="button"
             onClick={() => setManualEntry(v => !v)}
-            className="self-center mt-0.5 text-[11px] text-text-secondary hover:text-text-primary underline decoration-dotted transition-colors"
+            className="self-center mt-0.5 text-caption text-text-secondary hover:text-text-primary underline decoration-dotted transition-colors"
           >
             {manualEntry ? 'Back to key capture' : 'Type manually · {var} tokens'}
           </button>
@@ -451,7 +451,7 @@ export function KeystrokeCaptureDialog({
             >
               <div className="flex items-center justify-between gap-3">
                 <label
-                  className="text-[12px] font-medium text-text-secondary"
+                  className="text-minor font-medium text-text-secondary"
                 >Times to repeat</label>
                 <NumberInput
                   value={repeat}
@@ -469,7 +469,7 @@ export function KeystrokeCaptureDialog({
                   jump in height when the user increments Times. */}
               <div className="flex items-center justify-between gap-3">
                 <label
-                  className={`text-[12px] font-medium transition-colors ${repeat > 1 ? 'text-text-secondary' : 'text-text-tertiary'}`}
+                  className={`text-minor font-medium transition-colors ${repeat > 1 ? 'text-text-secondary' : 'text-text-tertiary'}`}
                 >
                   Gap between presses
                 </label>
@@ -502,7 +502,7 @@ export function KeystrokeCaptureDialog({
                   data-tip={tt('Random ±% on each gap — less robotic.', 'Variação ±% aleatória em cada intervalo — menos robótico.')}
                 >
                   <CheckboxBox checked={jitterOn && repeat > 1} />
-                  <span className={`text-[12px] font-medium transition-colors ${jitterOn && repeat > 1 ? 'text-text-secondary' : 'text-text-tertiary'}`}>
+                  <span className={`text-minor font-medium transition-colors ${jitterOn && repeat > 1 ? 'text-text-secondary' : 'text-text-tertiary'}`}>
                     Gap jitter
                   </span>
                 </button>
@@ -527,7 +527,7 @@ export function KeystrokeCaptureDialog({
             >
               <div className="flex items-center justify-between gap-3">
                 <label
-                  className="text-[12px] font-medium text-text-secondary"
+                  className="text-minor font-medium text-text-secondary"
                 >Hold duration</label>
                 {/* Step is dynamic (stepFor returns 1000 once we're at/above 1s, 100
                     below it). NumberInput's step is constant per render, so we recompute
@@ -562,7 +562,7 @@ export function KeystrokeCaptureDialog({
                   token of the combo, so "Ctrl+S" gives "S" — never longer than the plain-key case),
                   which is what keeps the reserved height honest instead of merely close. */}
               <div
-                className={`warning-band rounded-r px-2.5 py-2 text-[10px] leading-relaxed text-text-secondary ${hasModifiers ? '' : 'invisible'}`}
+                className={`warning-band rounded-r px-2.5 py-2 text-caption leading-relaxed text-text-secondary ${hasModifiers ? '' : 'invisible'}`}
                 aria-hidden={!hasModifiers}
               >
                 {'Hold takes a single key: this saves as'}{' '}
@@ -570,7 +570,7 @@ export function KeystrokeCaptureDialog({
                     "ScrollDown") used to push the wrap to one more line and grow the dialog by
                     16 px on capture — measured. 10ch fits every compact key name; anything longer
                     truncates rather than reflowing the band. */}
-                <kbd className="inline-block w-[10ch] max-w-[10ch] truncate align-bottom text-center px-1 py-px bg-bg-elevated border border-border-default rounded font-mono text-[10px] text-warning-ink">
+                <kbd className="inline-block w-[10ch] max-w-[10ch] truncate align-bottom text-center px-1 py-px bg-bg-elevated border border-border-default rounded font-mono text-caption text-warning-ink">
                   {/* nbsp when nothing is captured: an empty cap has no line box and the band
                       was 4 px shorter before the first key. */}
                   {compactKey(keystrokeDisplay(heldKey)) || ' '}
@@ -608,7 +608,7 @@ export function KeystrokeCaptureDialog({
             const active = !answered ? 0 : mode === 'hold' ? 2 : 1;
             return (
               <div
-                className="border-l-2 rounded px-2.5 py-2 text-[11px] leading-relaxed grid"
+                className="border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed grid"
                 style={calloutStyle('neutral', answered ? 'var(--color-action-key-fg)' : undefined)}
               >
                 {messages.map((m, i) => (

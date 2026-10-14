@@ -74,7 +74,7 @@ export function SegmentedControl<T extends string>({
             disabled={disabled}
             onClick={() => onChange(opt.value)}
             data-tip={opt.tip}
-            className={`flex items-center justify-center gap-1.5 px-2.5 ${dense ? 'py-0.5' : 'py-1'} rounded text-[12px] font-semibold transition-colors ${grow ? 'flex-1' : ''} ${disabled ? 'cursor-not-allowed' : ''} ${
+            className={`flex items-center justify-center gap-1.5 px-2.5 ${dense ? 'py-0.5' : 'py-1'} rounded text-minor leading-[inherit] font-semibold transition-colors ${grow ? 'flex-1' : ''} ${disabled ? 'cursor-not-allowed' : ''} ${
               active
                 ? (opt.activeClass ?? DEFAULT_ACTIVE)
                 : 'text-text-tertiary hover:text-text-secondary'

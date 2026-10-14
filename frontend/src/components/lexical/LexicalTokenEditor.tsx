@@ -964,13 +964,13 @@ function TokenAutocompletePlugin({ scope }: { scope: TokenScope }) {
             onClick={() => commit(entry, match)}
           >
             <span className="flex-1 truncate">{entry.label}</span>
-            <span className="font-mono text-[11px] text-text-tertiary shrink-0">
+            <span className="font-mono text-caption text-text-tertiary shrink-0">
               {entry.kind === 'direct' ? entry.insert : `${entry.insert}…}`}
             </span>
           </button>
         </Fragment>
       ))}
-      <div className="mt-1 px-3 pt-1 pb-0.5 border-t border-border-subtle text-[10px] text-text-tertiary">
+      <div className="mt-1 px-3 pt-1 pb-0.5 border-t border-border-subtle text-caption text-text-tertiary">
         Enter inserts · Esc keeps the brace
       </div>
     </div>,
@@ -1241,7 +1241,7 @@ function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDe
             placeholder="https://…"
             autoFocus
             spellCheck={false}
-            className="h-6 w-52 min-w-[7rem] shrink px-1.5 text-[11px] font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid"
+            className="h-6 w-52 min-w-[7rem] shrink px-1.5 text-caption font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid"
           />
           <button type="button" onClick={applyLink} className={btnClass(false)} data-tip={tt('Apply link', 'Aplicar link')}>
             <Check size={14} />

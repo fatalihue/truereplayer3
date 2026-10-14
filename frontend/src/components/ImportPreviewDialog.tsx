@@ -189,11 +189,11 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
             tertiary. The old header opened with the trivia and scattered the decision
             numbers across three bands. */}
         <div className="px-4 py-3 border-b border-border-subtle bg-bg-surface/30">
-          <div className="flex items-center gap-2 text-xs">
+          <div className="flex items-center gap-2 text-minor">
             <FolderOpen size={12} className="text-text-tertiary" />
             <span className="text-text-secondary font-medium truncate">{preview.fileName}</span>
           </div>
-          <div className="mt-1 text-xs text-text-secondary flex flex-wrap items-center gap-x-3 gap-y-0.5">
+          <div className="mt-1 text-minor text-text-secondary flex flex-wrap items-center gap-x-3 gap-y-0.5">
             <span>{preview.profiles.length} profile{preview.profiles.length === 1 ? '' : 's'}</span>
             {conflictCountAll > 0 && (
               <span
@@ -216,7 +216,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
               <span className="text-accent-light">+ folder organization</span>
             )}
           </div>
-          <div className="mt-1 text-[11px] text-text-tertiary flex flex-wrap gap-x-4 gap-y-0.5">
+          <div className="mt-1 text-caption text-text-tertiary flex flex-wrap gap-x-4 gap-y-0.5">
             <span>Exported {formatDate(preview.exportedAt)}</span>
             <span>Format v{preview.envelopeVersion}</span>
             <span>Your app v{preview.runningVersion}</span>
@@ -233,8 +233,8 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
             className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg-surface cursor-pointer text-left disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <CheckboxBox checked={allSelected} indeterminate={selectedCount > 0 && !allSelected} />
-            <span className="text-xs font-medium text-text-secondary">Select all</span>
-            <span className="ml-auto text-[10px] text-text-tertiary">{selectedCount}/{compatibleCount}</span>
+            <span className="text-minor font-medium text-text-secondary">Select all</span>
+            <span className="ml-auto text-caption text-text-tertiary">{selectedCount}/{compatibleCount}</span>
           </button>
         </div>
 
@@ -244,7 +244,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
             hardcoded amber wash. */}
         {selectedConflictNames.length > 0 && (
           <div className="warning-band px-4 py-3 border-b border-border-subtle flex items-center gap-4 flex-wrap">
-            <span className="text-xs font-medium text-warning-ink flex items-center gap-2">
+            <span className="text-minor font-medium text-warning-ink flex items-center gap-2">
               <AlertTriangle size={14} style={{ color: 'var(--color-warning-ink)' }} />
               {selectedConflictNames.length} name conflict{selectedConflictNames.length === 1 ? '' : 's'} — apply to all:
             </span>
@@ -312,13 +312,13 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
                   {/* Z1 — identity; provenance right-aligned as a watermark, with the
                       created date on hover instead of competing inline. */}
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-text-primary truncate">{p.name}</span>
-                    <span className="text-[10px] px-1.5 py-px rounded bg-bg-surface text-text-tertiary border border-border-subtle shrink-0">
+                    <span className="text-minor font-medium text-text-primary truncate">{p.name}</span>
+                    <span className="text-caption px-1.5 py-px rounded bg-bg-surface text-text-tertiary border border-border-subtle shrink-0">
                       v{p.profileVersion}
                     </span>
                     {p.updatedAt && (
                       <span
-                        className="ml-auto shrink-0 text-[10px] text-text-disabled"
+                        className="ml-auto shrink-0 text-caption text-text-disabled"
                         data-tip={p.createdAt ? tt(`Created ${formatDate(p.createdAt)}`, `Criado em ${formatDate(p.createdAt)}`) : undefined}
                       >
                         Updated {formatRelative(p.updatedAt)}
@@ -330,7 +330,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
                       only field that says WHAT it does. It used to sit below the
                       dependency chips. */}
                   {p.description && (
-                    <div className="mt-0.5 text-[11px] text-text-secondary leading-snug line-clamp-2">
+                    <div className="mt-0.5 text-caption text-text-secondary leading-snug line-clamp-2">
                       {p.description}
                     </div>
                   )}
@@ -338,7 +338,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
                   {/* Z3 — risk facts, grouped and one nuance above the scale line:
                       what the profile will DO to this machine once imported. */}
                   {(p.hotkey || p.hotstring || (p.enableLoop && (p.loopCount ?? 1) > 1) || p.targetProcessName || p.targetWindowTitle || p.hasTrigger) && (
-                    <div className="mt-1 flex items-center gap-x-2.5 gap-y-1 flex-wrap text-[11px] text-text-secondary">
+                    <div className="mt-1 flex items-center gap-x-2.5 gap-y-1 flex-wrap text-caption text-text-secondary">
                       {/* Hostile-envelope guard: KbdTag renders one unbreakable monospace
                           token, so an absurd combo would overflow the card sideways.
                           Sane combos keep the chip; junk degrades to a clamped span. */}
@@ -389,7 +389,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
                       text color alone died on the presets where the hues converge. */}
                   {p.dependencies && p.dependencies.length > 0 && (
                     <div className="mt-1 flex flex-wrap items-center gap-1">
-                      <span className="text-[10px] text-text-tertiary">Runs:</span>
+                      <span className="text-caption text-text-tertiary">Runs:</span>
                       {p.dependencies.map(d => {
                         const DepIcon = d.status === 'inEnvelope' ? PackageCheck
                                       : d.status === 'missing' ? AlertTriangle
@@ -397,7 +397,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
                         return (
                           <span
                             key={d.name}
-                            className="text-[10px] px-1.5 py-0.5 rounded border font-mono inline-flex items-center gap-1"
+                            className="text-caption px-1.5 py-0.5 rounded border font-mono inline-flex items-center gap-1"
                             data-tip={
                               d.status === 'inEnvelope'
                                 ? tt('Bundled — imported alongside', 'Incluído — importado junto')
@@ -430,7 +430,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
                       {p.tags.map(t => (
                         <span
                           key={t}
-                          className="text-[10px] px-1.5 py-0.5 rounded bg-bg-surface text-text-tertiary border border-border-subtle"
+                          className="text-caption px-1.5 py-0.5 rounded bg-bg-surface text-text-tertiary border border-border-subtle"
                         >
                           <Hash size={8} className="inline -mt-px mr-0.5" />
                           {t}
@@ -440,7 +440,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
                   )}
 
                   {/* Z4 — scale, demoted to the last line in tertiary. */}
-                  <div className="mt-1 text-[11px] text-text-tertiary flex items-center gap-3 flex-wrap">
+                  <div className="mt-1 text-caption text-text-tertiary flex items-center gap-3 flex-wrap">
                     <span>{p.actionCount} action{p.actionCount === 1 ? '' : 's'}</span>
                     {!!p.imageCount && (
                       <span>{p.imageCount} image{p.imageCount === 1 ? '' : 's'}</span>
@@ -451,7 +451,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
                   </div>
 
                   {!p.compatible && (
-                    <div className="mt-1.5 flex items-start gap-1.5 text-[11px] text-warning-ink">
+                    <div className="mt-1.5 flex items-start gap-1.5 text-caption text-warning-ink">
                       <AlertTriangle size={11} className="mt-0.5 flex-shrink-0" style={{ color: 'var(--color-warning-ink)' }} />
                       <span>
                         Requires TrueReplayer {p.appMinVersion} or newer — cannot import.
@@ -467,13 +467,13 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
                       {/* Incoming-vs-yours diff so Overwrite is an informed choice. Present, don't
                           editorialize — a newer date doesn't imply better. */}
                       {p.localVersion != null && (
-                        <div className="mt-1.5 text-[11px] text-text-tertiary">
+                        <div className="mt-1.5 text-caption text-text-tertiary">
                           Incoming v{p.profileVersion}{p.updatedAt ? ` · ${formatRelative(p.updatedAt)}` : ''}
                           {' → '}
                           Yours v{p.localVersion}{p.localUpdatedAt ? ` · ${formatRelative(p.localUpdatedAt)}` : ''}
                         </div>
                       )}
-                      <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-warning-ink">
+                      <div className="mt-1.5 flex items-center gap-1.5 text-caption text-warning-ink">
                         <span>Name exists:</span>
                         <SegmentedControl
                           options={resolutionOptions(11)}

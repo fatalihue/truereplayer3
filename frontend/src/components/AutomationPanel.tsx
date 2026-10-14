@@ -226,7 +226,7 @@ type NavDest = { kind: 'close' } | { kind: 'row'; name: string; asNewDraft: bool
 // display-only boxes with it). border-default, not border-subtle: at 6 % the field edge vanished
 // on the light presets — the same fix the token chips needed.
 const inputCls =
-  'h-8 px-2 rounded bg-bg-input border border-border-default text-[12px] text-text-primary ' +
+  'h-8 px-2 rounded bg-bg-input border border-border-default text-minor text-text-primary ' +
   'outline-none focus:border-accent-solid placeholder:text-text-tertiary disabled:opacity-50 w-full';
 
 /**
@@ -775,7 +775,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
           <div className="flex items-center gap-2 mr-auto">
             <IconToggle isOn={automation.enabled} icon={Power} ariaLabel="Automations enabled"
               onChange={(v) => send({ type: 'automation:setEnabled', payload: { enabled: v } })} />
-            <span className="text-[12px] text-text-secondary">Automations enabled</span>
+            <span className="text-minor text-text-secondary">Automations enabled</span>
           </div>
           <Button variant="secondary" size="md" onClick={() => navigateTo({ kind: 'close' })}>Close</Button>
           {/* The tooltip explains a blocked Save (cannotFire); when there's simply nothing
@@ -839,7 +839,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
           </div>
           <div className="flex-1 overflow-y-auto">
             {listProfiles.length === 0 && (
-              <div className="p-4 text-[12px] text-text-tertiary leading-relaxed">
+              <div className="p-4 text-minor text-text-tertiary leading-relaxed">
                 {'No automations yet. One fires a profile on a timer, a schedule or a watched condition — no hotkey needed.'}
               </div>
             )}
@@ -899,11 +899,11 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                       style={{ background: dotColor, boxShadow: armed || entry?.running ? `0 0 0 3px color-mix(in srgb, ${dotColor} 20%, transparent)` : undefined }}
                       data-tip={dotTip}
                     />
-                    <span className="text-[12px] text-text-primary truncate flex-1">{name}</span>
+                    <span className="text-minor text-text-primary truncate flex-1">{name}</span>
                     {/* Unsaved marker — nothing in the list used to distinguish an edited row,
                         so a draft could be abandoned without ever looking abandoned. */}
                     {isSel && hasUnsavedWork && (
-                      <span className="text-[10px] text-accent-light shrink-0"
+                      <span className="text-caption text-accent-light shrink-0"
                         data-tip={tt('Unsaved changes', 'Alterações não salvas')}>●</span>
                     )}
                     {entry ? (
@@ -915,14 +915,14 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                           onChange={(v) => send({ type: 'automation:setArmed', payload: { profile: name, armed: v } })} />
                       </span>
                     ) : (
-                      <span className="text-[10px] text-text-tertiary uppercase">{'new'}</span>
+                      <span className="text-caption text-text-tertiary uppercase">{'new'}</span>
                     )}
                   </div>
                   {/* One meta line: schedule · fires · last · next · result. */}
                   {/* The whole line on hover: it is `truncate` in a 248 px column, so the tail —
                       which is where the last result lands — is exactly what gets cut. */}
                   <div
-                    className="mt-0.5 pl-4 text-[11px] text-text-tertiary truncate"
+                    className="mt-0.5 pl-4 text-caption text-text-tertiary truncate"
                     data-tip={[
                       trig ? kindSummary(trig) : 'not saved yet',
                       entry && entry.fireCount > 0 ? `${entry.fireCount}× · ${fmtWhen(entry.lastFiredAt)}` : null,
@@ -945,7 +945,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
         {/* ── Right: editor ── */}
         <div className="flex-1 min-w-0 overflow-y-auto p-4">
           {!selected || !draft ? (
-            <div className="h-full flex items-center justify-center text-[12px] text-text-tertiary">
+            <div className="h-full flex items-center justify-center text-minor text-text-tertiary">
               {'Select an automation on the left, or add one.'}
             </div>
           ) : (
@@ -958,7 +958,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
             // selected live in this component, not in the subtree, so remounting is free.
             <div key={selected} className="flex flex-col gap-4 max-w-[520px]">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-[13px] font-medium text-text-primary truncate">{selected}</div>
+                <div className="text-body font-medium text-text-primary truncate">{selected}</div>
                 <div className="flex items-center gap-1 shrink-0">
                   {/* Run now: the ONLY way to find out whether an automation works without
                       waiting for its real trigger. Goes through the same fire path, so the
@@ -984,7 +984,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   </span>
                   {confirmDelete ? (
                     <div className="flex items-center gap-1">
-                      <span className="text-[11px] text-text-secondary">{'Delete?'}</span>
+                      <span className="text-caption text-text-secondary">{'Delete?'}</span>
                       <span data-tip={saving ? tt('Saving…', 'Salvando…') : undefined}>
                         <Button variant="destructive" size="sm" onClick={handleRemove} disabled={saving}>{'Yes'}</Button>
                       </span>
@@ -1005,7 +1005,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
               </div>
 
               {testFireResult && (
-                <div className={`flex items-center gap-1.5 text-[11px] ${testFireResult.ok ? 'text-accent-light' : 'text-text-tertiary'}`}>
+                <div className={`flex items-center gap-1.5 text-caption ${testFireResult.ok ? 'text-accent-light' : 'text-text-tertiary'}`}>
                   {testFireResult.ok ? <Check size={12} /> : <X size={12} />}
                   {testFireResult.text}
                 </div>
@@ -1024,7 +1024,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   further down instead of being promoted to a warning. */}
               {automation.enabled && !selectedEntry?.isDisabled && selectedEntry?.trigger.armed
                 && !selectedEntry.running && selectedEntry.lastResult && !cannotFire && (
-                <div className="rounded border px-3 py-2 text-[11px] leading-relaxed"
+                <div className="rounded border px-3 py-2 text-caption leading-relaxed"
                   style={{
                     color: 'var(--color-warning-ink)',
                     borderColor: 'color-mix(in srgb, var(--color-warning) 40%, transparent)',
@@ -1039,7 +1039,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   required field is blank probes false forever: it arms, reports Running, and
                   never fires, with nothing on screen to say why. */}
               {cannotFire && (
-                <div className="rounded border px-3 py-2 text-[11px] leading-relaxed"
+                <div className="rounded border px-3 py-2 text-caption leading-relaxed"
                   style={{
                     color: 'var(--color-recording-fg)',
                     borderColor: 'color-mix(in srgb, var(--color-recording) 40%, transparent)',
@@ -1051,7 +1051,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
               )}
 
               {selectedEntry?.isDisabled && (
-                <div className="rounded border px-3 py-2 text-[11px] leading-relaxed"
+                <div className="rounded border px-3 py-2 text-caption leading-relaxed"
                   style={{
                     color: 'var(--color-recording-fg)',
                     borderColor: 'color-mix(in srgb, var(--color-recording) 40%, transparent)',
@@ -1062,7 +1062,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
               )}
 
               {noTarget && (
-                <div className="rounded border px-3 py-2 text-[11px] leading-relaxed"
+                <div className="rounded border px-3 py-2 text-caption leading-relaxed"
                   style={{
                     color: 'var(--color-recording-fg)',
                     borderColor: 'color-mix(in srgb, var(--color-recording) 40%, transparent)',
@@ -1139,7 +1139,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                     <div className="flex items-center gap-2">
                       <input type="time" className={`${inputCls} w-28`} value={from}
                         onChange={(e) => write(e.target.value, to || lastHoursRef.current.to)} />
-                      <span className="text-[12px] text-text-tertiary">{'to'}</span>
+                      <span className="text-minor text-text-tertiary">{'to'}</span>
                       <input type="time" className={`${inputCls} w-28`} value={to}
                         onChange={(e) => write(from || lastHoursRef.current.from, e.target.value)} />
                       {(from || to) && (
@@ -1180,7 +1180,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                             key={d.label}
                             type="button"
                             onClick={() => patch({ daysOfWeek: draft.daysOfWeek ^ d.bit })}
-                            className={`h-7 px-2 rounded text-[11px] border transition-colors ${
+                            className={`h-7 px-2 rounded text-caption border transition-colors ${
                               on
                                 ? 'bg-accent-solid border-accent-solid text-[color:var(--color-accent-ink)]'
                                 : 'bg-bg-input border-border-subtle text-text-secondary hover:border-border-strong'
@@ -1270,7 +1270,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                       <div className="flex items-center gap-2">
                         <Toggle size="sm" isOn={draft.windowMatchForegroundOnly}
                           onChange={(v) => patch({ windowMatchForegroundOnly: v })} />
-                        <span className="text-[12px] text-text-secondary"
+                        <span className="text-minor text-text-secondary"
                           data-tip={tt('Must be in front, not just open', 'Precisa estar em primeiro plano, não só aberta')}>
                           Foreground only
                         </span>
@@ -1338,7 +1338,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                               : tt('Coordinates cleared — they were relative to the window. Pick again to store them as screen coordinates.',
                                    'Coordenadas limpas — elas eram relativas à janela. Pegue de novo para gravá-las como coordenadas de tela.'));
                           }} />
-                        <span className="text-[12px] text-text-secondary"
+                        <span className="text-minor text-text-secondary"
                           data-tip={tt('Coordinates follow the window instead of the screen',
                                        'As coordenadas seguem a janela em vez da tela')}>
                           Relative to a window
@@ -1369,7 +1369,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   {draft.useRelativeCoordinates
                     && (draft.conditionType === 'PixelColorMatch' || draft.conditionType === 'ImageFound' || draft.conditionType === 'ScreenText')
                     && (
-                      <div className="text-[11px] text-text-tertiary flex items-center gap-1.5 flex-wrap">
+                      <div className="text-caption text-text-tertiary flex items-center gap-1.5 flex-wrap">
                         <Crosshair size={11} className="shrink-0 opacity-70" />
                         <span>
                           {(draft.windowProcessName ?? '').trim() || (draft.windowTitle ?? '').trim()
@@ -1443,7 +1443,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                     <>
                       <Field label="Search region" hint={draft.searchRegion ? undefined : 'Required — reading the whole screen every check is too slow.'}>
                         <div className="flex items-center gap-2">
-                          <div className={`${inputCls} flex-1 flex items-center ${draft.searchRegion ? 'font-mono text-[11px]' : 'text-text-disabled italic'}`}>
+                          <div className={`${inputCls} flex-1 flex items-center ${draft.searchRegion ? 'font-mono text-caption' : 'text-text-disabled italic'}`}>
                             {draft.searchRegion
                               ? `${draft.searchRegion.x}, ${draft.searchRegion.y}  ·  ${draft.searchRegion.w} × ${draft.searchRegion.h}`
                               : 'Not set'}
@@ -1529,7 +1529,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                         </Button>
                       </div>
                       {testReadResult && (
-                        <div className={`flex items-start gap-1.5 text-[11px] ${testReadResult.ok ? 'text-accent-light' : 'text-text-tertiary'}`}>
+                        <div className={`flex items-start gap-1.5 text-caption ${testReadResult.ok ? 'text-accent-light' : 'text-text-tertiary'}`}>
                           {testReadResult.ok ? <Check size={12} className="shrink-0 mt-px" /> : <X size={12} className="shrink-0 mt-px" />}
                           <span className="break-words">
                             {testReadResult.error
@@ -1565,7 +1565,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                         </Button>
                       </div>
                       {testMatchResult && (
-                        <div className={`flex items-center gap-1.5 text-[11px] ${testMatchResult.found ? 'text-accent-light' : 'text-text-tertiary'}`}>
+                        <div className={`flex items-center gap-1.5 text-caption ${testMatchResult.found ? 'text-accent-light' : 'text-text-tertiary'}`}>
                           {testMatchResult.found ? <Check size={12} /> : <X size={12} />}
                           {testMatchResult.error
                             ? testMatchResult.error
@@ -1576,7 +1576,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                       )}
                       <Field label="Search region" hint={'Empty = full screen (slower, more false matches).'}>
                         <div className="flex items-center gap-2">
-                          <div className={`${inputCls} flex-1 flex items-center ${draft.searchRegion ? 'font-mono text-[11px]' : 'text-text-disabled italic'}`}>
+                          <div className={`${inputCls} flex-1 flex items-center ${draft.searchRegion ? 'font-mono text-caption' : 'text-text-disabled italic'}`}>
                             {draft.searchRegion
                               ? `${draft.searchRegion.x}, ${draft.searchRegion.y}  ·  ${draft.searchRegion.w} × ${draft.searchRegion.h}`
                               : 'Full screen (default)'}
@@ -1659,13 +1659,13 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                 </>
               )}
 
-              <div className="pt-2 border-t border-border-subtle text-[11px] text-text-tertiary leading-relaxed"
+              <div className="pt-2 border-t border-border-subtle text-caption text-text-tertiary leading-relaxed"
 >
                 {'The list toggle arms or disarms at once, independent of Save.'}
               </div>
 
               {selectedEntry && (selectedEntry.skippedBusy > 0 || selectedEntry.skippedDirty > 0 || selectedEntry.skippedModal > 0) && (
-                <div className="text-[11px] text-text-tertiary leading-relaxed">
+                <div className="text-caption text-text-tertiary leading-relaxed">
                   {'Skipped fires'}: {selectedEntry.skippedBusy} {'busy'} ·{' '}
                   {selectedEntry.skippedDirty} {'unsaved changes'} ·{' '}
                   {selectedEntry.skippedModal} {'dialog open'}
@@ -1677,7 +1677,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   and restore traffic doesn't trigger it — a copy the user made in that window is
                   swallowed with it, and used to be invisible. */}
               {selectedEntry && selectedEntry.skippedSuppressed > 0 && (
-                <div className="text-[11px] text-text-tertiary leading-relaxed">
+                <div className="text-caption text-text-tertiary leading-relaxed">
                   {'Clipboard changes ignored just after a replay'}: {selectedEntry.skippedSuppressed}
                 </div>
               )}
@@ -1736,7 +1736,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
           />
         }
       >
-        <p className="px-4 py-4 text-xs text-text-secondary leading-relaxed">
+        <p className="px-4 py-4 text-minor text-text-secondary leading-relaxed">
           Unsaved changes will be lost — including the captured image and search region.
         </p>
       </DialogShell>

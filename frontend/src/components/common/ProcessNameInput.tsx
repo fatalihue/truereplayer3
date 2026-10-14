@@ -101,18 +101,18 @@ export function ProcessNameInput({
             onChange={(e) => setFilter(e.target.value)}
             autoFocus
             placeholder={'Filter…'}
-            className="w-full h-7 px-2 text-[11px] text-text-primary bg-bg-input border-b border-border-subtle outline-none"
+            className="w-full h-7 px-2 text-caption text-text-primary bg-bg-input border-b border-border-subtle outline-none"
           />
           <div className="overflow-y-auto flex-1">
             {processList === null ? (
-              <div className="px-2 py-2 text-[11px] text-text-tertiary">{'Loading…'}</div>
+              <div className="px-2 py-2 text-caption text-text-tertiary">{'Loading…'}</div>
             ) : (() => {
               const f = filter.trim().toLowerCase();
               const items = f.length === 0
                 ? processList
                 : processList.filter(p => p.name.toLowerCase().includes(f) || p.title.toLowerCase().includes(f));
               if (items.length === 0) {
-                return <div className="px-2 py-2 text-[11px] text-text-tertiary">{'No processes match.'}</div>;
+                return <div className="px-2 py-2 text-caption text-text-tertiary">{'No processes match.'}</div>;
               }
               return items.map((p) => (
                 <button
@@ -123,7 +123,7 @@ export function ProcessNameInput({
                     setShowPicker(false);
                     setFilter('');
                   }}
-                  className="w-full text-left px-2 py-1 text-[11px] hover:bg-bg-elevated transition-colors"
+                  className="w-full text-left px-2 py-1 text-caption hover:bg-bg-elevated transition-colors"
                 >
                   <span className="font-mono text-text-primary">{p.name}</span>
                   {p.title && <span className="text-text-tertiary"> — {p.title}</span>}

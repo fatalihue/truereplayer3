@@ -27,7 +27,7 @@ export function Field({ label, labelAdornment, hint, hintTone, children, classNa
         {labelAdornment}
       </div>
       {children}
-      {hint && <div className={`text-[10px] ${hintTone === 'warn' ? 'text-warning-ink' : 'text-text-tertiary'} leading-snug mt-1`}>{hint}</div>}
+      {hint && <div className={`text-caption ${hintTone === 'warn' ? 'text-warning-ink' : 'text-text-tertiary'} leading-snug mt-1`}>{hint}</div>}
     </div>
   );
 }

@@ -123,14 +123,14 @@ export function ClipboardModifierBody({
             : 'Read-only: a modifier here can’t be rebuilt as written (unknown, repeated or reordered).'}
         </Callout>
         <div className="label-micro text-text-tertiary">Token</div>
-        <div className="font-mono text-[12px] px-2 py-0.5 rounded break-all"
+        <div className="font-mono text-minor px-2 py-0.5 rounded break-all"
           style={{
             color: 'var(--color-action-sendtext-fg)',
             background: 'color-mix(in srgb, var(--color-action-sendtext-fg) 10%, transparent)',
           }}>
           {token}
         </div>
-        <div className="text-[10px] text-text-tertiary leading-snug">
+        <div className="text-caption text-text-tertiary leading-snug">
           {'Edit the token text in the editor to change it.'}
         </div>
       </div>
@@ -149,7 +149,7 @@ export function ClipboardModifierBody({
             onChange={() => setState((s) => ({ ...s, next: !s.next }))}
             label="One line per use"
           />
-          <div className="text-[10px] text-text-tertiary leading-snug mt-0.5">
+          <div className="text-caption text-text-tertiary leading-snug mt-0.5">
             {state.next
               ? 'Each use takes the next line; a new copy starts over. The preview always shows line 1.'
               : 'Pastes the whole clipboard.'}
@@ -183,7 +183,7 @@ export function ClipboardModifierBody({
             data-tip={tt('Every match, ignoring case. { } : not allowed.', 'Toda ocorrência, sem diferenciar maiúsculas. { } : não podem.')}
             className="input-inline w-[92px]"
           />
-          <span className="text-[11px] text-text-tertiary">→</span>
+          <span className="text-caption text-text-tertiary">→</span>
           <input
             type="text"
             value={state.replaceTo}
@@ -283,7 +283,7 @@ export function ClipboardModifierBody({
                   placeholder="1"
                   ariaLabel="First line"
                 />
-                <span className="text-[11px] text-text-tertiary">–</span>
+                <span className="text-caption text-text-tertiary">–</span>
                 <NumInput
                   value={state.rangeTo}
                   onChange={(n) => setSpan('rangeTo', n)}
@@ -420,7 +420,7 @@ export function ClipboardModifierBody({
                   placeholder="1"
                   ariaLabel="First word"
                 />
-                <span className="text-[11px] text-text-tertiary">–</span>
+                <span className="text-caption text-text-tertiary">–</span>
                 <NumInput
                   value={state.wordsTo}
                   onChange={(n) => setSpan('wordsTo', n)}
@@ -558,7 +558,7 @@ export function ClipboardModifierBody({
       <div className="px-3.5 py-1.5 bg-bg-surface border-b border-border-subtle">
         <div className="label-micro text-text-tertiary mb-0.5">{sourceLabel}</div>
         <div
-          className="font-mono text-[11px] text-text-secondary bg-[color-mix(in_srgb,var(--color-text-primary)_3%,transparent)] border-l-2 border-border-subtle px-2 py-0.5 mb-1.5 rounded-r whitespace-pre-wrap break-all max-h-[36px] overflow-auto"
+          className="font-mono text-caption text-text-secondary bg-[color-mix(in_srgb,var(--color-text-primary)_3%,transparent)] border-l-2 border-border-subtle px-2 py-0.5 mb-1.5 rounded-r whitespace-pre-wrap break-all max-h-[36px] overflow-auto"
           style={{ lineHeight: 1.35 }}
         >
           {sourceUnknown ? (
@@ -579,7 +579,7 @@ export function ClipboardModifierBody({
             what comes out, what gets written. It used to read Source → Token → Preview here. */}
         <div className="label-micro text-text-tertiary mb-0.5">Result</div>
         <div
-          className="font-mono text-[11px] px-2 py-0.5 mb-1.5 rounded border-l-2 whitespace-pre-wrap break-all min-h-[20px] max-h-[72px] overflow-auto"
+          className="font-mono text-caption px-2 py-0.5 mb-1.5 rounded border-l-2 whitespace-pre-wrap break-all min-h-[20px] max-h-[72px] overflow-auto"
           style={{
             background: 'color-mix(in srgb, var(--color-replay) 8%, transparent)',
             borderColor: 'color-mix(in srgb, var(--color-replay) 50%, transparent)',
@@ -604,7 +604,7 @@ export function ClipboardModifierBody({
         </div>
         <div className="label-micro text-text-tertiary mb-0.5">Token</div>
         <div
-          className="font-mono text-[12px] px-2 py-0.5 rounded break-all"
+          className="font-mono text-minor px-2 py-0.5 rounded break-all"
           style={{
             color: 'var(--color-action-sendtext-fg)',
             background: 'color-mix(in srgb, var(--color-action-sendtext-fg) 10%, transparent)',

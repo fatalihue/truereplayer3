@@ -1974,7 +1974,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                             (e.currentTarget as HTMLElement).blur();
                           }}
                           onContextMenu={(e) => handleContextMenu(e, p.name)}
-                          className={`relative w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold transition-colors shrink-0 ${
+                          className={`relative w-8 h-8 rounded-full flex items-center justify-center text-minor font-semibold transition-colors shrink-0 ${
                             p.isActive
                               ? 'bg-[color-mix(in_srgb,var(--color-accent)_16%,transparent)] text-accent'
                               : 'bg-bg-elevated text-text-secondary hover:bg-bg-card'
@@ -2019,7 +2019,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                               className={`w-[18px] h-[18px] object-contain pointer-events-none ${p.effectiveTargetSource === 'folder' ? 'opacity-55' : ''}`}
                             />
                           ) : (
-                            <span className={`pointer-events-none ${glyphCount(initials) > 2 ? 'text-[10px] tracking-tight' : ''}`}>{initials}</span>
+                            <span className={`pointer-events-none ${glyphCount(initials) > 2 ? 'text-caption tracking-tight' : ''}`}>{initials}</span>
                           )}
                           {folderColor && (
                             <span
@@ -2055,7 +2055,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                       return (
                         <button
                           onClick={onToggleCollapse}
-                          className="relative w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-semibold bg-bg-elevated text-text-tertiary hover:bg-bg-card hover:text-text-primary transition-colors shrink-0"
+                          className="relative w-8 h-8 rounded-full flex items-center justify-center text-caption font-semibold bg-bg-elevated text-text-tertiary hover:bg-bg-card hover:text-text-primary transition-colors shrink-0"
                           style={conflicts > 0 ? { boxShadow: '0 0 0 1.5px color-mix(in srgb, var(--color-recording) 60%, transparent)' } : undefined}
                           data-tip={tip}
                           data-tip-pos="right"
@@ -2159,7 +2159,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               placeholder="Search profiles..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="bg-transparent text-xs text-text-primary placeholder:text-text-disabled outline-none flex-1 min-w-0"
+              className="bg-transparent text-minor text-text-primary placeholder:text-text-disabled outline-none flex-1 min-w-0"
             />
             {searchQuery && (
               <button
@@ -2184,10 +2184,10 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             ) : (
               <div className="flex flex-col items-center gap-1.5 px-3 py-8 text-center select-none">
                 <SearchX size={22} className="text-text-disabled" />
-                <span className="text-xs font-medium text-text-secondary">No results for "{trimmedQuery}"</span>
+                <span className="text-minor font-medium text-text-secondary">No results for "{trimmedQuery}"</span>
                 <button
                   onClick={() => setSearchQuery('')}
-                  className="text-[11px] text-accent hover:text-accent-hover transition-colors"
+                  className="text-caption text-accent hover:text-accent-hover transition-colors"
                 >
                   Clear search
                 </button>
@@ -2198,8 +2198,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             // vocabulary (icon, one-liner, action).
             <div className="flex flex-col items-center gap-1.5 px-3 py-8 text-center select-none">
               <FolderOpen size={24} className="text-text-disabled" />
-              <span className="text-xs font-medium text-text-secondary">No profiles yet</span>
-              <span className="text-[11px] text-text-tertiary leading-snug">Record a macro and save it, or create an empty profile to start.</span>
+              <span className="text-minor font-medium text-text-secondary">No profiles yet</span>
+              <span className="text-caption text-text-tertiary leading-snug">Record a macro and save it, or create an empty profile to start.</span>
               <Button variant="primary" size="xs" className="mt-1" onClick={() => handleCreate(null)}>
                 <Plus size={13} />
                 New profile
@@ -2384,7 +2384,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                             typographically WEAKER than the profiles inside it, so the parent
                             dissolved into its own children — backwards for a hierarchy, and
                             worse once the group sits inside a card. */}
-                        <span className={`text-xs font-semibold flex-1 truncate ${folderAllDisabled ? 'text-text-disabled' : 'text-text-primary'}`}>{folder.name}</span>
+                        <span className={`text-minor font-semibold flex-1 truncate ${folderAllDisabled ? 'text-text-disabled' : 'text-text-primary'}`}>{folder.name}</span>
                         {folder.hasWindowTarget && !folder.appIconBase64 && (
                           <RemovableChip
                             variant="circle"
@@ -2426,7 +2426,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                             type="button"
                             onClick={(e) => { e.stopPropagation(); handleCreate(folder.name); }}
                             aria-label={`New profile in ${folder.name}`}
-                            className={`w-full mx-0.5 h-6 px-1.5 flex items-center gap-1.5 rounded text-[11px] text-left
+                            className={`w-full mx-0.5 h-6 px-1.5 flex items-center gap-1.5 rounded text-caption text-left
                               text-text-tertiary hover:text-text-secondary hover:bg-bg-elevated
                               transition-[opacity,color,background-color] duration-150
                               ${hasVisibleProfiles ? 'opacity-0 group-hover/folder:opacity-100 focus-visible:opacity-100' : 'opacity-100'}`}
@@ -2538,7 +2538,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                   <button
                     key={f.name}
                     onClick={() => handleMoveToFolder(contextMenu.profileName, f.name)}
-                    className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-bg-elevated transition-colors ${
+                    className={`w-full flex items-center gap-2 px-3 py-1.5 text-minor hover:bg-bg-elevated transition-colors ${
                       getProfileFolder(contextMenu.profileName) === f.name ? 'text-accent' : 'text-text-primary'
                     }`}
                   >
@@ -2551,7 +2551,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                     <div className="my-1 border-t border-border-subtle" />
                     <button
                       onClick={() => handleMoveToFolder(contextMenu.profileName, null)}
-                      className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-text-primary hover:bg-bg-elevated transition-colors"
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-minor text-text-primary hover:bg-bg-elevated transition-colors"
                     >
                       <FolderMinus size={12} className="text-text-tertiary" />
                       Remove from folder
@@ -2559,7 +2559,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                   </>
                 )}
                 {(profileOrder?.folders ?? []).length === 0 && (
-                  <span className="block px-3 py-1.5 text-xs text-text-disabled">No folders</span>
+                  <span className="block px-3 py-1.5 text-minor text-text-disabled">No folders</span>
                 )}
               </div>
               </div>
@@ -2692,7 +2692,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
           {/* ── Destructive ── */}
           <button
             onClick={() => handleDelete(contextMenu.profileName)}
-            className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-recording hover:bg-bg-elevated transition-colors"
+            className="w-full flex items-center justify-between px-3 py-1.5 text-minor text-recording hover:bg-bg-elevated transition-colors"
           >
             <span className="flex items-center gap-2.5">
               <Trash2 size={13} />
@@ -2841,7 +2841,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
           {/* ── Destructive ── */}
           <button
             onClick={() => handleDeleteFolder(folderContextMenu.folderName)}
-            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-recording hover:bg-bg-elevated transition-colors"
+            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-minor text-recording hover:bg-bg-elevated transition-colors"
           >
             <Trash2 size={13} />
             Delete folder
@@ -2912,7 +2912,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
              activation, which is what the guard already assumes. */
           footer={<DialogFooter danger secondary={{ label: 'Cancel', onClick: () => setShowDeleteConfirm(null), autoFocus: true }} primary={{ label: 'Delete', onClick: confirmDelete }} />}>
           <div className="p-4 flex flex-col">
-            <p className="text-sm text-text-secondary">
+            <p className="text-body text-text-secondary">
               Delete profile <span className="text-text-primary font-medium">'{showDeleteConfirm}'</span>?
             </p>
           </div>
@@ -2930,7 +2930,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
              but a destructive primary should not be the implicit default either way. */
           footer={<DialogFooter danger secondary={{ label: 'No', onClick: () => setConfirmRemoval(null), autoFocus: true }} primary={{ label: 'Yes, remove', onClick: runConfirmedRemoval }} />}>
           <div className="p-4 flex flex-col">
-            <p className="text-sm text-text-secondary">
+            <p className="text-body text-text-secondary">
               Remove {confirmRemoval.label} from <span className="text-text-primary font-medium">'{confirmRemoval.name}'</span>?
             </p>
           </div>
@@ -2945,7 +2945,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
           ) : undefined}
           footer={<DialogFooter secondary={{ label: 'Cancel', onClick: () => setShowHotkeyDialog(null) }} primary={{ label: 'Assign', onClick: confirmHotkey, disabled: hotkeyCapture === '...' }} />}>
           <div className="p-4 flex flex-col">
-            <p className="text-xs text-text-secondary mb-3">
+            <p className="text-minor text-text-secondary mb-3">
               Press a key combination for <span className="text-text-primary font-medium">'{showHotkeyDialog}'</span>
             </p>
             {/* Matches the SettingsPanel global-hotkey field: a blinking "New key…"
@@ -2979,7 +2979,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                   <button
                     key={opt.id}
                     onClick={() => setHotkeyTriggerMode(opt.id)}
-                    className={`h-7 text-[11px] rounded border transition-colors ${
+                    className={`h-7 text-caption rounded border transition-colors ${
                       hotkeyTriggerMode === opt.id
                         ? 'bg-accent-solid/15 border-accent-solid/40 text-accent'
                         : 'bg-transparent border-border-default text-text-tertiary hover:text-text-secondary hover:border-border-strong'
@@ -2990,7 +2990,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                   </button>
                 ))}
               </div>
-              <div className="mt-1.5 text-[10px] text-text-tertiary leading-tight min-h-[14px]">
+              <div className="mt-1.5 text-caption text-text-tertiary leading-tight min-h-[14px]">
                 {hotkeyTriggerMode === 'whilePressed' && 'Loops while held.'}
                 {hotkeyTriggerMode === 'toggle' && 'Loops until pressed again.'}
                 {hotkeyTriggerMode === 'doubleTap' && 'Single taps are ignored.'}
@@ -3009,7 +3009,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
           ) : undefined}
           footer={<DialogFooter secondary={{ label: 'Cancel', onClick: () => setShowHotstringDialog(null) }} primary={{ label: 'Assign', onClick: confirmHotstring, disabled: hotstringValue.trim().length < 2 }} />}>
           <div className="p-4 flex flex-col">
-            <p className="text-xs text-text-secondary mb-3">
+            <p className="text-minor text-text-secondary mb-3">
               Type a character sequence for <span className="text-text-primary font-medium">'{showHotstringDialog}'</span>
             </p>
             <input
@@ -3024,7 +3024,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               maxLength={32}
               className="w-full h-8 px-2 text-ui font-mono text-accent bg-bg-input border border-accent-solid rounded outline-none"
             />
-            <p className="text-[11px] text-text-tertiary mt-1.5">
+            <p className="text-caption text-text-tertiary mt-1.5">
               Min 2 characters.
             </p>
 
@@ -3034,8 +3034,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               className="flex items-center gap-2 mt-3 cursor-pointer text-left"
             >
               <CheckboxBox checked={hotstringInstant} />
-              <span className="text-xs text-text-secondary">Instant trigger</span>
-              <span className="text-[11px] text-text-tertiary">(no Enter/Space/Tab needed)</span>
+              <span className="text-minor text-text-secondary">Instant trigger</span>
+              <span className="text-caption text-text-tertiary">(no Enter/Space/Tab needed)</span>
             </button>
           </div>
         </DialogShell>
@@ -3061,7 +3061,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             <span className="ml-auto shrink-0 flex items-center gap-1.5">
               {p.hotkey && <KbdTag combo={p.hotkey} unified />}
               {p.actionCount !== undefined && (
-                <span className="text-[10px] text-text-tertiary">{p.actionCount} action{p.actionCount === 1 ? '' : 's'}</span>
+                <span className="text-caption text-text-tertiary tabular-nums">{p.actionCount} action{p.actionCount === 1 ? '' : 's'}</span>
               )}
             </span>
           );
@@ -3149,7 +3149,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                   aria-label={'Filter profiles'}
                   value={exportSearch}
                   onChange={(e) => setExportSearch(e.target.value)}
-                  className="bg-transparent text-xs text-text-primary placeholder:text-text-disabled outline-none flex-1 min-w-0"
+                  className="bg-transparent text-minor text-text-primary placeholder:text-text-disabled outline-none flex-1 min-w-0"
                 />
                 {exportSearch && (
                   <button
@@ -3173,8 +3173,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                 className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg-surface cursor-pointer border-b border-border-subtle text-left"
               >
                 <CheckboxBox checked={allExportSelected} />
-                <span className="text-xs font-medium text-text-secondary">Select All</span>
-                <span className="ml-auto text-[10px] text-text-tertiary">{selectedCount}/{visibleNames.length}</span>
+                <span className="text-minor font-medium text-text-secondary">Select All</span>
+                <span className="ml-auto text-caption text-text-tertiary">{selectedCount}/{visibleNames.length}</span>
               </button>
             </div>
 
@@ -3183,7 +3183,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               {/* Empty states — the old dialog rendered mute whitespace here, which read
                   as broken when a filter matched nothing. */}
               {visibleNames.length === 0 && (
-                <div className="py-6 flex flex-col items-center gap-2 text-[11px] text-text-tertiary">
+                <div className="py-6 flex flex-col items-center gap-2 text-caption text-text-tertiary">
                   <span>
                     {profiles.length === 0 ? 'No profiles to export.' : `No profiles match "${exportSearch}"`}
                   </span>
@@ -3205,7 +3205,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                     >
                       <CheckboxBox checked={!!exportSelection[name]} />
                       {rowEmoji(name)}
-                      <span className="text-xs text-text-primary truncate">{name}</span>
+                      <span className="text-minor text-text-primary truncate">{name}</span>
                       {rowMeta(name)}
                     </button>
                   ))}
@@ -3229,8 +3229,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                         indeterminate={folderSomeSelected && !folderAllSelected}
                       />
                       <FolderOpen size={12} style={{ color: f.color }} className="shrink-0" />
-                      <span className="text-xs font-medium text-text-secondary truncate">{f.name}</span>
-                      <span className="ml-auto text-[10px] text-text-tertiary">{visibleItems.filter(n => exportSelection[n]).length}/{visibleItems.length}</span>
+                      <span className="text-minor font-medium text-text-secondary truncate">{f.name}</span>
+                      <span className="ml-auto text-caption text-text-tertiary">{visibleItems.filter(n => exportSelection[n]).length}/{visibleItems.length}</span>
                     </button>
                     <div className="ml-5">
                       {visibleItems.map(name => (
@@ -3242,7 +3242,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                         >
                           <CheckboxBox checked={!!exportSelection[name]} />
                           {rowEmoji(name)}
-                          <span className="text-xs text-text-primary truncate">{name}</span>
+                          <span className="text-minor text-text-primary truncate">{name}</span>
                           {rowMeta(name)}
                         </button>
                       ))}
@@ -3264,7 +3264,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                     >
                       <CheckboxBox checked={!!exportSelection[p.name]} />
                       {rowEmoji(p.name)}
-                      <span className="text-xs text-text-primary truncate">{p.name}</span>
+                      <span className="text-minor text-text-primary truncate">{p.name}</span>
                       {rowMeta(p.name)}
                     </button>
                   ))}
@@ -3287,7 +3287,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                 data-tip={tt('Pins, folders, order and folder targets', 'Pins, pastas, ordem e alvos de pasta')}
               >
                 <CheckboxBox checked={includeExportOrg} />
-                <span className="text-xs text-text-secondary">Include folder organization</span>
+                <span className="text-minor text-text-secondary">Include folder organization</span>
               </button>
               {/* Sub-profiles ride along ALWAYS (no toggle — see exportDepNames). This is the
                   disclosure: it names what the Run Profile chain drags in, so the file size and
@@ -3295,7 +3295,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                   visible BEFORE you export. Hidden entirely when the selection calls nothing. */}
               {exportDepNames.length > 0 && (
                 <div
-                  className="text-[11px] text-text-tertiary leading-relaxed"
+                  className="text-caption text-text-tertiary leading-relaxed"
                   data-tip={`${tt('Called via Run Profile:', 'Chamados via Run Profile:')} ${exportDepNames.join(', ')}`}
                 >
                   {`+${exportDepNames.length} referenced sub-profile${exportDepNames.length === 1 ? '' : 's'} included`}
@@ -3354,10 +3354,10 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             <div className="flex items-center gap-2 mt-3.5 px-2.5 py-2 rounded-md bg-bg-elevated border border-border-subtle">
               <ChevronDown size={12} className="shrink-0" style={{ color: folderDialogColor }} />
               <FolderOpen size={13} className="shrink-0" style={{ color: folderDialogColor }} />
-              <span className="text-xs font-medium text-text-secondary truncate">
+              <span className="text-minor font-medium text-text-secondary truncate">
                 {folderDialogName.trim() || 'Folder name'}
               </span>
-              <span className="ml-auto text-[10px] uppercase tracking-wide text-text-disabled shrink-0">preview</span>
+              <span className="ml-auto text-caption uppercase tracking-wide text-text-disabled shrink-0">preview</span>
             </div>
             <FieldError show={createFolderNameTaken}>A folder with that name already exists.</FieldError>
           </div>
@@ -3554,7 +3554,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
           }}
         >
           <div
-            className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-bg-card border border-border-default text-[11px] font-medium text-text-primary"
+            className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-bg-card border border-border-default text-caption font-medium text-text-primary"
             style={{
               opacity: 0.88,
               boxShadow: 'var(--shadow-overlay), 0 0 0 1px color-mix(in srgb, var(--color-accent) 35%, transparent)',

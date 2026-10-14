@@ -35,7 +35,7 @@ import { chipOn, chipOff } from './common/chipStyles';
 // identical geometry, since .rail-tinted paints a real 1px border.
 const RAIL_PRIMARY =
   'inline-flex items-center justify-center gap-1.5 h-7 min-w-[112px] px-3 rounded border border-transparent ' +
-  'text-[12px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+  'text-minor font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
 
 export function ActionBar() {
   const { buttonStates, settings, actions, profileLoop, profiles, activeProfile, dataTable } = useAppState();
@@ -315,7 +315,7 @@ function LoopChip({ isReplaying, perRow, hotkeyLoops, loopEnabled, loopCount, lo
       data-tip={loopTip}
       // `relative` is explicit rather than inherited from the [data-tip] base rule,
       // because the dot below anchors to it and that rule is not this file's to rely on.
-      className={`relative h-7 min-w-9 px-2 flex items-center justify-center rounded border text-[11px] font-mono tabular-nums select-none ${
+      className={`relative h-7 min-w-9 px-2 flex items-center justify-center rounded border text-caption font-mono tabular-nums select-none ${
         loopEmphasised ? 'text-accent-solid' : 'text-text-tertiary'
       }`}
       // The unsaved edit does NOT touch the skin — see .loop-unsaved-dot in

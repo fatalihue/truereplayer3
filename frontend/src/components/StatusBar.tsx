@@ -264,7 +264,7 @@ export function StatusBar() {
   const clickerTargetCps = describeClickerConfig(settings).rateCps;
 
   return (
-    <div className="flex items-center h-statusbar px-4 bg-bg-base border-t border-border-subtle shrink-0 text-[11px] font-small">
+    <div className="flex items-center h-statusbar px-4 bg-bg-base border-t border-border-subtle shrink-0 text-caption font-small tabular-nums">
       {isClicker ? (
         /* ── CLICKER MODE ── profile/action-count are meaningless here, so the bar
             shows the clicker's own context instead: button + target rate when idle,
@@ -287,7 +287,7 @@ export function StatusBar() {
                   <strong className="text-text-primary">{Math.ceil(clickerStats.countdownMs / 1000)} s</strong>
                   <button
                     onClick={() => send({ type: 'replay:resume', payload: {} })}
-                    className="px-2 py-0.5 text-[10px] font-medium rounded border border-border-default text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors shrink-0"
+                    className="px-2 py-0.5 text-caption font-medium rounded border border-border-default text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors shrink-0"
                   >
                     Resume
                   </button>
@@ -320,7 +320,7 @@ export function StatusBar() {
                 <>
                   <div className="w-px h-3 bg-border-subtle shrink-0" />
                   <span
-                    className="flex items-center gap-1 text-[11px] font-medium whitespace-nowrap"
+                    className="flex items-center gap-1 text-caption font-medium whitespace-nowrap"
                     style={{ color: 'var(--color-warning-ink)' }}
                     data-tip={tt('Windows drops clicks on elevated windows — run as administrator', 'O Windows descarta cliques em janelas elevadas — rode como administrador')}
                   >
@@ -336,13 +336,13 @@ export function StatusBar() {
                 <>
                   <div className="w-px h-3 bg-border-subtle shrink-0" />
                   <PauseIcon size={10} className="shrink-0" style={{ color: 'var(--color-action-pause-fg)' }} fill="currentColor" />
-                  <span className="text-[11px] font-medium whitespace-nowrap" style={{ color: 'var(--color-action-pause-fg)' }}>
+                  <span className="text-caption font-medium whitespace-nowrap" style={{ color: 'var(--color-action-pause-fg)' }}>
                     {/* Keycap spelling (PgUp, Ctrl + F9), the same the Keys tab shows for this key. */}
                     PAUSED{settings.cursorClickPauseHotkey && ` — ${formatKeyCombo(settings.cursorClickPauseHotkey)}`}
                   </span>
                   <button
                     onClick={() => send({ type: 'replay:resume', payload: {} })}
-                    className="px-2 py-0.5 text-[10px] font-medium rounded border border-border-default text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors shrink-0"
+                    className="px-2 py-0.5 text-caption font-medium rounded border border-border-default text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors shrink-0"
                   >
                     Resume
                   </button>
@@ -433,7 +433,7 @@ export function StatusBar() {
           {isReplaying && (
             <div className="flex items-center gap-2 flex-1 min-w-0">
               <Play size={10} className="text-accent shrink-0" fill="currentColor" />
-              <span className="text-[11px] font-medium font-mono text-accent shrink-0">
+              <span className="text-caption font-medium font-mono text-accent shrink-0">
                 {current} / {total}
               </span>
               <div className="h-[2px] bg-bg-elevated rounded-full overflow-hidden shrink-0" style={{ flex: '0 1 160px' }}>
@@ -442,14 +442,14 @@ export function StatusBar() {
                   style={{ width: `${pct}%` }}
                 />
               </div>
-              <span className="flex items-center gap-1 text-[11px] text-text-tertiary font-mono shrink-0">
+              <span className="flex items-center gap-1 text-caption text-text-tertiary font-mono shrink-0">
                 <Clock size={10} />{minutes}:{seconds}
               </span>
               {chainLabel && (
                 <>
                   <div className="w-px h-3 bg-border-subtle shrink-0" />
                   <span
-                    className="flex items-center gap-1.5 text-[11px] font-mono whitespace-nowrap min-w-0"
+                    className="flex items-center gap-1.5 text-caption font-mono whitespace-nowrap min-w-0"
                     style={{ color: 'var(--color-action-runprofile-fg)' }}
                     data-tip={chainStepLabel ? `${chainLabel} · ${chainStepLabel}` : chainLabel}
                   >
@@ -471,7 +471,7 @@ export function StatusBar() {
                 <>
                   <div className="w-px h-3 bg-border-subtle shrink-0" />
                   <PauseIcon size={10} className="shrink-0" style={{ color: 'var(--color-action-pause-fg)' }} fill="currentColor" />
-                  <span className="text-[11px] font-medium whitespace-nowrap" style={{ color: 'var(--color-action-pause-fg)' }}>
+                  <span className="text-caption font-medium whitespace-nowrap" style={{ color: 'var(--color-action-pause-fg)' }}>
                     PAUSED
                     {pauseState.hotkey && ` — Press ${formatKeyCombo(pauseState.hotkey)}`}
                     {pauseState.hotkey && pauseState.timeoutMs > 0 ? ' or ' : pauseState.timeoutMs > 0 ? ' — ' : ''}
@@ -479,7 +479,7 @@ export function StatusBar() {
                   </span>
                   <button
                     onClick={() => send({ type: 'replay:resume', payload: {} })}
-                    className="px-2 py-0.5 text-[10px] font-medium rounded border border-border-default text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors shrink-0"
+                    className="px-2 py-0.5 text-caption font-medium rounded border border-border-default text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors shrink-0"
                   >
                     Resume
                   </button>
@@ -494,7 +494,7 @@ export function StatusBar() {
           {loopProgress.active && (
             <>
               <Sep />
-              <span className="flex items-center gap-1.5 text-[11px] font-mono text-text-secondary shrink-0">
+              <span className="flex items-center gap-1.5 text-caption font-mono text-text-secondary shrink-0">
                 <Repeat size={10} className="text-text-tertiary" />
                 Loop <strong className="text-text-primary">{loopProgress.current}</strong>
                 <span className="text-text-disabled">/</span>
@@ -528,7 +528,7 @@ export function StatusBar() {
           />
         ) : (
           <span
-            className="flex items-center gap-1.5 shrink-0 ml-3 text-[11px] font-medium whitespace-nowrap"
+            className="flex items-center gap-1.5 shrink-0 ml-3 text-caption font-medium whitespace-nowrap"
             // --color-warning-ink, not raw --color-warning: the ink rung is the one mixed
             // toward the theme's text to clear 4.5:1, and this is TEXT on the bar's surface.
             style={{ color: 'var(--color-warning-ink)' }}
@@ -546,7 +546,7 @@ export function StatusBar() {
         )
       )}
 
-      <span className="text-[11px] text-text-secondary shrink-0 ml-3">{APP_VERSION}</span>
+      <span className="text-caption text-text-secondary shrink-0 ml-3">{APP_VERSION}</span>
     </div>
   );
 }

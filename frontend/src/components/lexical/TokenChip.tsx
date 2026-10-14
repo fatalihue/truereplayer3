@@ -167,7 +167,7 @@ export function TokenChip({ nodeKey, token }: { nodeKey: NodeKey; token: string 
         // Pairing the editor chip with the grid chip and the action-type badge gives the
         // user a single colour language for everything SendText-related — see also
         // SendTextPreview.tsx which uses the exact same opacity ramp.
-        className={`inline-flex items-center px-1.5 py-[1px] mx-[1px] text-[12px] font-mono rounded text-[var(--color-action-sendtext-fg)] border select-none cursor-pointer transition-colors ${
+        className={`inline-flex items-center px-1.5 py-[1px] mx-[1px] text-minor leading-[inherit] font-mono rounded text-[var(--color-action-sendtext-fg)] border select-none cursor-pointer transition-colors ${
           isSelected
             // TWO channels, per the toggle convention: a heavier fill AND an accent ring.
             // Colour alone does not survive 37 themes.

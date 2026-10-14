@@ -46,13 +46,13 @@ export function ExtensionUpdateBanner() {
       }}
     >
       <AlertCircle size={16} className="shrink-0" style={{ color: 'var(--color-action-browser-fg)' }} />
-      <span className="flex-1 text-xs text-text-secondary">
+      <span className="flex-1 text-minor text-text-secondary">
         Chrome Extension update:
-        <span className="font-mono text-[11px] mx-1 px-1.5 py-0.5 rounded" style={{ color: 'var(--color-action-browser-fg)', background: 'color-mix(in srgb, var(--color-action-browser-fg) 10%, transparent)' }}>
+        <span className="font-mono text-caption mx-1 px-1.5 py-0.5 rounded" style={{ color: 'var(--color-action-browser-fg)', background: 'color-mix(in srgb, var(--color-action-browser-fg) 10%, transparent)' }}>
           v{outdated.current}
         </span>
         &rarr;
-        <span className="font-mono text-[11px] mx-1 px-1.5 py-0.5 rounded" style={{ color: 'var(--color-action-browser-fg)', background: 'color-mix(in srgb, var(--color-action-browser-fg) 10%, transparent)' }}>
+        <span className="font-mono text-caption mx-1 px-1.5 py-0.5 rounded" style={{ color: 'var(--color-action-browser-fg)', background: 'color-mix(in srgb, var(--color-action-browser-fg) 10%, transparent)' }}>
           v{outdated.expected}
         </span>
         &mdash; Reload in chrome://extensions

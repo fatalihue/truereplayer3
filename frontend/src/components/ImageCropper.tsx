@@ -279,7 +279,7 @@ export function ImageCropper({ imageBase64, onSave, onCancel }: ImageCropperProp
           next pass computes the same number. A scroller costs nothing when it fits. */}
       <div ref={bodyRef} className="p-4 flex flex-col gap-3 min-h-0 overflow-y-auto">
         {/* Size readout — crop size, then the source size, as one mono line. */}
-        <div className="flex justify-end items-baseline gap-1.5 text-[11px] font-mono tabular-nums text-text-tertiary">
+        <div className="flex justify-end items-baseline gap-1.5 text-caption font-mono tabular-nums text-text-tertiary">
           {natural ? (
             <>
               <span className="px-1.5 py-0.5 rounded bg-bg-input border border-border-subtle text-text-secondary">{crop.w} × {crop.h}</span>

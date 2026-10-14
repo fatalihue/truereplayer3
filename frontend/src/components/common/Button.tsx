@@ -48,8 +48,8 @@ const SIZE_CLASSES: Record<ButtonSize, string> = {
   // the bar sits at the visual weight of the toolbar strip at the top of the
   // same column. Deliberate exception, declared here rather than hand-rolled at
   // the call site — that is how the previous four heights got there.
-  xs: 'h-7 px-2.5 text-[12px]',
-  sm: 'px-4 py-1.5 text-xs',
+  xs: 'h-7 px-2.5 text-minor',
+  sm: 'px-4 py-1.5 text-minor',
   md: 'h-8 px-4 text-ui',
 };
 

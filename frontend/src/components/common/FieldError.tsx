@@ -35,7 +35,7 @@ import type { CSSProperties, ReactNode } from 'react';
 export function FieldError({
   show,
   children,
-  className = 'text-[11px] text-recording mt-2',
+  className = 'text-caption text-recording mt-2',
   style,
   tip,
 }: {

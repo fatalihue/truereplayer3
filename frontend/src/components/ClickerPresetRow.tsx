@@ -162,7 +162,7 @@ export function ClickerPresetRow({ settings, width, lastMatched, pendingName }: 
             placeholder="Name, then Enter"
             maxLength={40}
             aria-label="Preset name"
-            className="w-full h-full px-2 text-[11px] font-mono bg-transparent text-text-primary outline-none placeholder:text-text-tertiary"
+            className="w-full h-full px-2 text-caption font-mono bg-transparent text-text-primary outline-none placeholder:text-text-tertiary"
           />
         ) : (
           <button
@@ -172,7 +172,7 @@ export function ClickerPresetRow({ settings, width, lastMatched, pendingName }: 
             aria-expanded={open}
             className="flex-1 min-w-0 h-full flex items-center justify-between gap-1 pl-2 pr-1 cursor-pointer"
           >
-            <span className={`text-[10px] font-mono truncate ${active ? 'text-text-primary' : 'text-text-tertiary'}`}>{label}</span>
+            <span className={`text-caption font-mono truncate ${active ? 'text-text-primary' : 'text-text-tertiary'}`}>{label}</span>
             <ChevronDown size={11} className="shrink-0 text-text-tertiary" />
           </button>
         )}
@@ -185,7 +185,7 @@ export function ClickerPresetRow({ settings, width, lastMatched, pendingName }: 
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => { send({ type: 'clicker:applyPreset', payload: { name: p.name } }); setOpen(false); }}
-                className="flex-1 min-w-0 flex items-center gap-1 px-2 py-1 text-left text-[11px] font-mono text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors"
+                className="flex-1 min-w-0 flex items-center gap-1 px-2 py-1 text-left text-caption font-mono text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors"
               >
                 <span className="truncate">{p.name}</span>
                 {active?.name === p.name && <Check size={10} className="shrink-0 text-accent-solid" />}
@@ -195,7 +195,7 @@ export function ClickerPresetRow({ settings, width, lastMatched, pendingName }: 
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => send({ type: 'clicker:deletePreset', payload: { name: p.name } })}
                 aria-label={`Delete preset ${p.name}`}
-                className="shrink-0 px-1.5 py-1 text-[11px] leading-none text-text-tertiary hover:text-text-primary transition-colors"
+                className="shrink-0 px-1.5 py-1 text-caption leading-none text-text-tertiary hover:text-text-primary transition-colors"
               >
                 ✕
               </button>
@@ -206,7 +206,7 @@ export function ClickerPresetRow({ settings, width, lastMatched, pendingName }: 
             type="button"
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => { setOpen(false); openedWithRef.current = prefill; setName(prefill); setNaming(true); }}
-            className="w-full px-2 py-1 text-left text-[11px] text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors"
+            className="w-full px-2 py-1 text-left text-caption text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors"
           >
             Save current as…
           </button>

@@ -55,7 +55,7 @@ export function NavigateDialog({ onConfirm, onClose }: NavigateDialogProps) {
           spellCheck={false}
           autoCorrect="off"
           autoCapitalize="off"
-          className="w-full h-9 px-3 text-sm text-text-primary bg-bg-input border border-border-subtle rounded outline-none focus:border-accent-solid placeholder:text-text-disabled transition-colors"
+          className="w-full h-9 px-3 text-body text-text-primary bg-bg-input border border-border-subtle rounded outline-none focus:border-accent-solid placeholder:text-text-disabled transition-colors"
         />
 
         <Checkbox
@@ -64,7 +64,7 @@ export function NavigateDialog({ onConfirm, onClose }: NavigateDialogProps) {
           label="Open in new tab"
         />
 
-        <p className="text-[11px] text-text-tertiary">
+        <p className="text-caption text-text-tertiary">
           https:// is added if omitted.
         </p>
       </div>

@@ -47,7 +47,7 @@ function AskInputDialog({ label, options, onSubmit, onCancel }: AskInputDialogPr
       }}
     >
       <div className="px-4 py-4 flex flex-col gap-3">
-        <p className="text-sm text-text-primary break-words">{label}</p>
+        <p className="text-body text-text-primary break-words">{label}</p>
         {isMenu ? (
           <div className="flex flex-col gap-1.5 max-h-[300px] overflow-y-auto">
             {options!.map((opt, i) => (

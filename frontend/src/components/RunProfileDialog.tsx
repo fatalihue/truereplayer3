@@ -107,7 +107,7 @@ export function RunProfileDialog({ mode, initial, excludeProfileName, onConfirm,
       {/* Body */}
       <div className="px-4 py-4 flex flex-col gap-4">
         {eligibleProfiles.length === 0 ? (
-          <div className="text-xs text-text-tertiary py-4 text-center">
+          <div className="text-minor text-text-tertiary py-4 text-center">
             {'No other profile to call.'}
             <br />
             {'Create one first.'}
@@ -118,7 +118,7 @@ export function RunProfileDialog({ mode, initial, excludeProfileName, onConfirm,
                 so picking one of ~80 profiles meant scrolling a wall of names. Same
                 type-to-narrow behaviour as the Profiles panel and the export dialog. */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] uppercase tracking-wide font-semibold text-text-tertiary">
+              <label className="text-caption uppercase tracking-wide font-semibold text-text-tertiary">
                 Profile to run
               </label>
               <ProfileSearchList
@@ -132,7 +132,7 @@ export function RunProfileDialog({ mode, initial, excludeProfileName, onConfirm,
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] uppercase tracking-wide font-semibold text-text-tertiary">
+              <label className="text-caption uppercase tracking-wide font-semibold text-text-tertiary">
                 Repeat
               </label>
               {/* REAL disabled on the input, not only a dimmed wrapper. `pointer-events-none`
@@ -155,7 +155,7 @@ export function RunProfileDialog({ mode, initial, excludeProfileName, onConfirm,
                     ariaLabel={'Repeat count'}
                   />
                 </span>
-                <span className="text-xs text-text-tertiary">
+                <span className="text-minor text-text-tertiary">
                   {repeatCount === 1 ? 'time per call' : 'times per call'}
                 </span>
               </div>
@@ -167,13 +167,13 @@ export function RunProfileDialog({ mode, initial, excludeProfileName, onConfirm,
                 checked={runOverData}
                 onChange={(e) => setRunOverData(e.target.checked)}
               />
-              <span className="text-xs text-text-primary"
+              <span className="text-minor text-text-primary"
                 data-tip={tt("Once per row of the called profile's table. Overrides Repeat.", 'Uma vez por linha da tabela do perfil chamado. Substitui o Repeat.')}>
                 Run once per data row
               </span>
             </label>
 
-            <div className="text-[11px] text-text-tertiary leading-relaxed bg-bg-card border border-border-subtle rounded px-2.5 py-2">
+            <div className="text-caption text-text-tertiary leading-relaxed bg-bg-card border border-border-subtle rounded px-2.5 py-2">
               {'Runs the called profile’s actions inline; its own Loops/Interval are ignored (use Repeat). Disabled profiles are skipped; max 5 levels deep.'}
             </div>
           </>

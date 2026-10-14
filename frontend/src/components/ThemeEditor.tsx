@@ -151,7 +151,7 @@ function ColorRow({ label, value, overridden, check, hslOpen, onChange, onReset,
       onMouseLeave={() => onHover(false)}
     >
       <div className="flex items-center gap-1.5">
-        <span className="w-[96px] text-xs text-text-secondary shrink-0">{label}</span>
+        <span className="w-[96px] text-minor text-text-secondary shrink-0">{label}</span>
 
         <label className="relative w-6 h-6 rounded border border-border-default cursor-pointer shrink-0 overflow-hidden">
           <div className="absolute inset-0" style={{ backgroundColor: value }} />
@@ -173,7 +173,7 @@ function ColorRow({ label, value, overridden, check, hslOpen, onChange, onReset,
             setHexDraft(v);
             if (/^#[0-9a-fA-F]{6}$/.test(v)) onChange(v);
           }}
-          className="w-[76px] h-6 px-1 text-xs font-mono text-text-primary bg-bg-input border border-border-default rounded text-center outline-none focus:border-accent-solid"
+          className="w-[76px] h-6 px-1 text-minor font-mono text-text-primary bg-bg-input border border-border-default rounded text-center outline-none focus:border-accent-solid"
         />
 
         {/* Icon cluster (fixed width so 2-col rows line up). Pipette + tune reveal on
@@ -227,11 +227,11 @@ function ColorRow({ label, value, overridden, check, hslOpen, onChange, onReset,
             `${WHAT_PT[check.what] ?? check.what}: ${ratio.toFixed(1)}:1 — precisa de ${check.target}+`,
           );
           if (passing) {
-            return <span className="ml-auto font-mono text-[10px] text-text-tertiary" data-tip={tip}>{ratio.toFixed(1)}</span>;
+            return <span className="ml-auto font-mono text-caption text-text-tertiary" data-tip={tip}>{ratio.toFixed(1)}</span>;
           }
           return (
             <span
-              className="ml-auto inline-flex items-center gap-1 px-1.5 rounded font-mono text-[10px]"
+              className="ml-auto inline-flex items-center gap-1 px-1.5 rounded font-mono text-caption"
               style={{
                 // -fg, not the raw hue: this chip is TEXT, and the raw recording red is solved
                 // for fills. On a light preset the raw hue put the contrast warning itself below
@@ -267,12 +267,12 @@ function HSLSlider({ label, value, max, unit, gradient, onChange }: {
 }) {
   return (
     <div className="flex items-center gap-2">
-      <span className="font-mono text-[10px] text-text-tertiary w-3">{label}</span>
+      <span className="font-mono text-caption text-text-tertiary w-3">{label}</span>
       <div className="flex-1 relative h-3 rounded" style={{ background: gradient }}>
         <input type="range" min={0} max={max} value={value} onChange={(e) => onChange(Number(e.target.value))} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
         <div className="absolute top-1/2 w-2.5 h-2.5 rounded-full bg-white border border-black/40 pointer-events-none" style={{ left: `${(value / max) * 100}%`, transform: 'translate(-50%, -50%)' }} />
       </div>
-      <span className="font-mono text-[10px] text-text-tertiary w-7 text-right">{value}{unit}</span>
+      <span className="font-mono text-caption text-text-tertiary w-7 text-right">{value}{unit}</span>
     </div>
   );
 }
@@ -309,7 +309,7 @@ function SliderSetting({ label, value, min, max, unit, defaultValue, onChange }:
 
   return (
     <div ref={containerRef} className="flex items-center gap-3 py-1" onMouseEnter={() => { hovering.current = true; }} onMouseLeave={() => { hovering.current = false; }}>
-      <span className="text-xs text-text-secondary w-[100px]">{label}</span>
+      <span className="text-minor text-text-secondary w-[100px]">{label}</span>
       <div className="flex-1 relative">
         <input type="range" min={min} max={max} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-full h-1.5 accent-accent-solid" />
         {defaultPct !== null && (
@@ -631,7 +631,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     <div className="relative" onMouseDown={(e) => e.stopPropagation()}>
       <button
         onClick={() => setResetMenuOpen(o => !o)}
-        className="inline-flex items-center gap-1.5 h-7 px-2 rounded text-xs text-text-secondary hover:text-text-primary hover:bg-bg-card transition-colors"
+        className="inline-flex items-center gap-1.5 h-7 px-2 rounded text-minor text-text-secondary hover:text-text-primary hover:bg-bg-card transition-colors"
       >
         <RotateCcw size={12} /> Reset <ChevronDown size={11} />
       </button>
@@ -656,7 +656,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
           >
             Reset everything
           </button>
-          <div className="px-2 pb-1 text-[10px] text-text-tertiary">Includes app language</div>
+          <div className="px-2 pb-1 text-caption text-text-tertiary">Includes app language</div>
         </div>
       )}
     </div>
@@ -769,7 +769,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
               {theme.preview.map((color, i) => <div key={i} className="flex-1" style={{ backgroundColor: color }} />)}
             </div>
             <div className="flex items-center justify-between px-2 py-1.5" style={{ backgroundColor: theme.colors['bg-card'] }}>
-              <span className="text-[11px] font-medium truncate" style={{ color: theme.colors['text-secondary'] }}>{theme.name}</span>
+              <span className="text-caption font-medium truncate" style={{ color: theme.colors['text-secondary'] }}>{theme.name}</span>
               {isActive && <Check size={12} style={{ color: theme.colors.accent }} />}
             </div>
           </button>
@@ -833,7 +833,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
               <button
                 key={chip.id}
                 onClick={() => setPresetFilter(chip.id)}
-                className={`h-6 px-2.5 rounded text-[11px] font-medium border transition-colors ${
+                className={`h-6 px-2.5 rounded text-caption font-medium border transition-colors ${
                   on
                     ? 'text-accent border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)] bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)]'
                     : 'text-text-secondary border-border-default bg-bg-elevated hover:bg-bg-card'
@@ -847,7 +847,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
 
         {/* Modified bar */}
         {hasOverrides && (
-          <div className="flex items-center gap-2 mt-2 h-8 px-3 rounded text-xs" style={{ background: 'color-mix(in srgb, var(--color-accent) 6%, transparent)' }}>
+          <div className="flex items-center gap-2 mt-2 h-8 px-3 rounded text-minor" style={{ background: 'color-mix(in srgb, var(--color-accent) 6%, transparent)' }}>
             <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
             {saveMode ? (
               <input
@@ -858,7 +858,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
                 onKeyDown={(e) => { if (e.key === 'Enter') doSaveAsPreset(); else if (e.key === 'Escape') { setSaveMode(false); setSavePresetName(''); } }}
                 onBlur={() => { if (!savePresetName.trim()) setSaveMode(false); }}
                 placeholder="Preset name…"
-                className="flex-1 h-6 px-2 text-xs text-text-primary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid"
+                className="flex-1 h-6 px-2 text-minor text-text-primary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid"
               />
             ) : (
               <span className="text-text-secondary truncate">
@@ -883,7 +883,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
           // reads as a bug. English, like every other label: the earlier pt-BR version also
           // interpolated presetFilter, whose values are English tags, so it read "Nenhum tema em
           // dark" — half-translated, which is worse than either language on its own.
-          <div className="text-xs text-text-tertiary text-center py-8">
+          <div className="text-minor text-text-tertiary text-center py-8">
             {presetSearch && presetFilter !== 'all'
               ? `No ${presetFilter} themes match “${presetSearch}”.`
               : presetSearch
@@ -916,10 +916,10 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
       <div>
         {/* Local header */}
         <div className="h-9 px-4 flex items-center gap-2.5 border-b border-border-subtle sticky top-0 bg-bg-elevated z-10">
-          <button onClick={() => setSurface('gallery')} className="inline-flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary transition-colors">
+          <button onClick={() => setSurface('gallery')} className="inline-flex items-center gap-1 text-minor text-text-secondary hover:text-text-primary transition-colors">
             <ChevronLeft size={14} /> Themes
           </button>
-          <span className="text-xs text-text-secondary truncate">
+          <span className="text-minor text-text-secondary truncate">
             {basePreset.name}{hasOverrides ? ` · ${Object.keys(config.colorOverrides).length} edits` : ''}
           </span>
           <div className="ml-auto">
@@ -946,8 +946,8 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
             <div key={section.title} className={si < COLOR_SECTIONS.length - 1 ? 'border-b border-border-subtle' : ''}>
               <button onClick={() => toggleSection(section.title)} className="w-full h-8 px-4 flex items-center gap-2 hover:bg-bg-card/50 transition-colors">
                 {collapsed ? <ChevronRight size={12} className="text-text-tertiary shrink-0" /> : <ChevronDown size={12} className="text-text-tertiary shrink-0" />}
-                <span className="text-xs font-medium text-text-primary">{section.title}</span>
-                {modified > 0 && <span className="text-[11px] text-accent">· {modified}</span>}
+                <span className="text-minor font-medium text-text-primary">{section.title}</span>
+                {modified > 0 && <span className="text-caption text-accent">· {modified}</span>}
                 {collapsed && (
                   <span className="ml-auto flex gap-0.5">
                     {section.fields.map(f => <span key={f.key} className="w-2.5 h-2.5 rounded-sm border border-border-default" style={{ backgroundColor: fieldValue(f) }} />)}
@@ -972,7 +972,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
                     </div>
                   ))}
                   {section.accent && (
-                    <button onClick={() => setAccentColor(currentAccentHex)} className="mt-1 inline-flex items-center gap-1.5 h-6 px-2 rounded text-[11px] text-text-secondary hover:text-text-primary hover:bg-bg-card transition-colors">
+                    <button onClick={() => setAccentColor(currentAccentHex)} className="mt-1 inline-flex items-center gap-1.5 h-6 px-2 rounded text-caption text-text-secondary hover:text-text-primary hover:bg-bg-card transition-colors">
                       <Wand2 size={12} /> Derive solid &amp; hover
                     </button>
                   )}
@@ -1024,7 +1024,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
                 className="flex flex-col items-stretch gap-1.5 px-2 py-2 rounded transition-colors"
                 style={isActive ? { background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)' } : undefined}
               >
-                <span className={`text-[11px] font-medium ${isActive ? 'text-accent' : 'text-text-primary'}`}>{p.name}</span>
+                <span className={`text-caption font-medium ${isActive ? 'text-accent' : 'text-text-primary'}`}>{p.name}</span>
                 <div className="flex flex-col gap-px">
                   {Array.from({ length: p.lines }).map((_, i) => <div key={i} style={{ height: p.lineH }} className="bg-text-disabled/50 rounded-sm" />)}
                 </div>
@@ -1041,36 +1041,36 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
 
         <div className="label-micro text-text-tertiary mt-4 mb-1">Font</div>
         <div className="flex items-center gap-2 py-0.5">
-          <span className="text-xs text-text-secondary w-[100px]">Monospace</span>
+          <span className="text-minor text-text-secondary w-[100px]">Monospace</span>
           <select
             value={MONO_FONTS.includes(config.uiSettings.fontMono) ? config.uiSettings.fontMono : '__custom'}
             onChange={(e) => { if (e.target.value !== '__custom') setUISetting('fontMono', e.target.value); }}
-            className="flex-1 h-7 px-2 text-xs text-text-primary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid cursor-pointer"
+            className="flex-1 h-7 px-2 text-minor text-text-primary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid cursor-pointer"
           >
             {MONO_FONTS.map(f => <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>)}
             {!MONO_FONTS.includes(config.uiSettings.fontMono) && <option value="__custom">{config.uiSettings.fontMono}</option>}
           </select>
-          <span className="text-xs font-mono text-text-tertiary truncate w-[80px] text-center" style={{ fontFamily: `'${config.uiSettings.fontMono}', monospace` }}>Abc 123</span>
+          <span className="text-minor font-mono text-text-tertiary truncate w-[80px] text-center" style={{ fontFamily: `'${config.uiSettings.fontMono}', monospace` }}>Abc 123</span>
         </div>
 
         <div className="label-micro text-text-tertiary mt-4 mb-1">System</div>
         <div className="flex items-center justify-between py-1.5">
           <div className="flex flex-col">
-            <span className="text-xs text-text-secondary">Match Windows theme</span>
+            <span className="text-minor text-text-secondary">Match Windows theme</span>
           </div>
           <Toggle isOn={config.uiSettings.matchSystemTheme} onChange={(v) => setUISetting('matchSystemTheme', v)} />
         </div>
         {config.uiSettings.matchSystemTheme && (
           <div className="ml-3 pl-3 border-l border-border-subtle space-y-1.5 py-1">
             <div className="flex items-center gap-2">
-              <span className="text-[11px] text-text-tertiary w-[100px]">Dark preset</span>
-              <select value={config.uiSettings.darkPresetId} onChange={(e) => setUISetting('darkPresetId', e.target.value)} className="flex-1 h-6 px-2 text-[11px] text-text-primary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid cursor-pointer">
+              <span className="text-caption text-text-tertiary w-[100px]">Dark preset</span>
+              <select value={config.uiSettings.darkPresetId} onChange={(e) => setUISetting('darkPresetId', e.target.value)} className="flex-1 h-6 px-2 text-caption text-text-primary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid cursor-pointer">
                 {themes.filter(t => !getThemeTags(t.id).includes('light')).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-[11px] text-text-tertiary w-[100px]">Light preset</span>
-              <select value={config.uiSettings.lightPresetId} onChange={(e) => setUISetting('lightPresetId', e.target.value)} className="flex-1 h-6 px-2 text-[11px] text-text-primary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid cursor-pointer">
+              <span className="text-caption text-text-tertiary w-[100px]">Light preset</span>
+              <select value={config.uiSettings.lightPresetId} onChange={(e) => setUISetting('lightPresetId', e.target.value)} className="flex-1 h-6 px-2 text-caption text-text-primary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid cursor-pointer">
                 {themes.filter(t => getThemeTags(t.id).includes('light')).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </div>
@@ -1078,7 +1078,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
         )}
         <div className="flex items-center justify-between py-1.5">
           <div className="flex flex-col">
-            <span className="text-xs text-text-secondary">Enable animations</span>
+            <span className="text-minor text-text-secondary">Enable animations</span>
           </div>
           <Toggle isOn={config.uiSettings.enableAnimations} onChange={(v) => setUISetting('enableAnimations', v)} />
         </div>
@@ -1091,10 +1091,10 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     return (
       <div>
         <div className="h-9 px-4 flex items-center gap-2.5 border-b border-border-subtle">
-          <button onClick={() => setSurface('gallery')} className="inline-flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary transition-colors">
+          <button onClick={() => setSurface('gallery')} className="inline-flex items-center gap-1 text-minor text-text-secondary hover:text-text-primary transition-colors">
             <ChevronLeft size={14} /> Themes
           </button>
-          <span className="text-xs text-text-secondary">Import / Export</span>
+          <span className="text-minor text-text-secondary">Import / Export</span>
         </div>
         <div className="p-4 space-y-5">
           <div>
@@ -1104,7 +1104,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
               <Button variant="secondary" onClick={handleExportFile}><Download size={13} /> Export to file</Button>
               <Button variant="secondary" onClick={handleCopyClipboard}><Clipboard size={13} /> {copyError ? 'Copy failed' : copySuccess ? 'Copied!' : 'Copy to clipboard'}</Button>
             </div>
-            <p className="mt-2 text-[10px] text-text-tertiary">One JSON with the base preset, your color overrides and appearance settings.</p>
+            <p className="mt-2 text-caption text-text-tertiary">One JSON with the base preset, your color overrides and appearance settings.</p>
           </div>
           <div>
             <div className="label-micro text-text-tertiary mb-2">Import a theme</div>
@@ -1113,9 +1113,9 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
               <input ref={fileInputRef} type="file" accept=".json" onChange={handleImportFile} className="hidden" />
               <Button variant="secondary" onClick={handlePasteClipboard}><ClipboardPaste size={13} /> Paste from clipboard</Button>
             </div>
-            <textarea value={importText} onChange={(e) => setImportText(e.target.value)} placeholder="Paste theme JSON here…" className="w-full h-28 px-3 py-2 text-xs font-mono text-text-primary bg-bg-input border border-border-default rounded resize-none outline-none focus:border-accent-solid" />
+            <textarea value={importText} onChange={(e) => setImportText(e.target.value)} placeholder="Paste theme JSON here…" className="w-full h-28 px-3 py-2 text-minor font-mono text-text-primary bg-bg-input border border-border-default rounded resize-none outline-none focus:border-accent-solid" />
             {importText && <Button variant="primary" className="mt-2" onClick={() => doImport(importText)}>Apply theme</Button>}
-            {importError && <p className="mt-2 text-xs text-recording">{importError}</p>}
+            {importError && <p className="mt-2 text-minor text-recording">{importError}</p>}
           </div>
         </div>
       </div>

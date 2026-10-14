@@ -78,7 +78,7 @@ export function Checkbox({
         ) : null}
       </span>
       {label && (
-        <span className="text-xs text-text-secondary group-hover:text-text-primary transition-colors">
+        <span className="text-minor text-text-secondary group-hover:text-text-primary transition-colors">
           {label}
         </span>
       )}

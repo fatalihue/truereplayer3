@@ -388,7 +388,7 @@ function rowDisplayKey(action: ActionItem, dataRows: number): string {
 // by While rows whose condition family carries no Details payload.
 function whileCapSuffix(action: ActionItem): ReactNode {
   if (action.actionType !== 'While' || !action.loopMaxIterations || action.loopMaxIterations <= 0) return null;
-  return <span className="ml-1.5 text-[10px] text-text-tertiary align-middle">≤{action.loopMaxIterations}×</span>;
+  return <span className="ml-1.5 text-caption text-text-tertiary align-middle">≤{action.loopMaxIterations}×</span>;
 }
 
 // The condition's primary identifier for the grid cell — shared by If, While and Assert
@@ -441,7 +441,7 @@ function renderMsDetail(text: string, language: Language): ReactNode {
     out.push(
       <span key={i++} className="text-text-secondary tabular-nums">
         {formatMs(Number(m[1]), language)}
-        <span className="text-[10px] text-text-tertiary ml-0.5">ms</span>
+        <span className="text-caption text-text-tertiary ml-0.5">ms</span>
       </span>
     );
     last = m.index + m[0].length;
@@ -475,9 +475,9 @@ function ProbeDetails({ action }: { action: ActionItem }) {
   // -2px optical nudge then lands the thumbnail/icon exactly on the Action pill's
   // centre (without align-middle the image sat ~4px high).
   return (
-    <span className="inline-flex items-center gap-1.5 align-middle translate-y-[-2px] text-xs min-w-0">
+    <span className="inline-flex items-center gap-1.5 align-middle translate-y-[-2px] text-minor min-w-0">
       {isIf && (
-        <span className="inline-flex items-center gap-1 px-1.5 py-px rounded text-[10px] bg-bg-elevated text-text-secondary shrink-0">
+        <span className="inline-flex items-center gap-1 px-1.5 py-px rounded text-caption bg-bg-elevated text-text-secondary shrink-0">
           {isImage ? <ScanSearch size={10} /> : <Pipette size={10} />}
           {isImage ? 'image' : 'pixel'}
         </span>
@@ -623,8 +623,8 @@ function ConditionDetails({ action }: { action: ActionItem }) {
         : { Icon: Globe, label: 'element', value: action.key || '' };
   const { Icon, label, value } = meta;
   return (
-    <span className="inline-flex items-center gap-1.5 align-middle translate-y-[-2px] text-xs min-w-0">
-      <span className="inline-flex items-center gap-1 px-1.5 py-px rounded text-[10px] bg-bg-elevated text-text-secondary shrink-0">
+    <span className="inline-flex items-center gap-1.5 align-middle translate-y-[-2px] text-minor min-w-0">
+      <span className="inline-flex items-center gap-1 px-1.5 py-px rounded text-caption bg-bg-elevated text-text-secondary shrink-0">
         <Icon size={10} />
         {label}
       </span>
@@ -2447,7 +2447,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                             setElseIfPicker({ x: r.left, y: r.bottom + 2, ifRowIndex: chainOpener });
                           }}
                           disabled={buttonStates.recordingActive || buttonStates.replayActive}
-                          className="pointer-events-auto inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[11px] font-medium rounded border border-dashed transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                          className="pointer-events-auto inline-flex items-center gap-1.5 px-2.5 py-0.5 text-caption font-medium rounded border border-dashed transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                           style={{
                             // Plain text-primary, NOT a mix toward the block hue. The old 72% mix
                             // was inherited from the W1 pill recipe, but a pill supplies its own
@@ -2472,7 +2472,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                             type="button"
                             onClick={() => send({ type: 'actions:addElseBranch', payload: { ifRowIndex: chainOpener } })}
                             disabled={buttonStates.recordingActive || buttonStates.replayActive}
-                            className="pointer-events-auto inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[11px] font-medium rounded border border-dashed transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                            className="pointer-events-auto inline-flex items-center gap-1.5 px-2.5 py-0.5 text-caption font-medium rounded border border-dashed transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                             style={{
                               // Same measured recipe as the sibling chip above.
                               color: 'var(--color-text-primary)',
@@ -2663,7 +2663,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                       its own, so nothing the marker appends can collide with this cell's
                       reconciliation. */}
                   <td className="pl-3">
-                    <span data-rownum-value className="inline-block text-[11px] font-mono text-text-tertiary leading-none translate-y-[-2px]">{action.rowNumber}</span>
+                    <span data-rownum-value className="inline-block text-caption font-mono text-text-tertiary leading-none translate-y-[-2px]">{action.rowNumber}</span>
                     <span data-replay-slot />
                   </td>
 
@@ -2680,7 +2680,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                       // Skipped rows get a second channel beyond the opacity dim:
                       // strike the pill label (the EyeOff badge below is the third) so
                       // the state survives light themes and grayscale.
-                      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium ${isSkipped ? 'line-through' : ''}`}
+                      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-minor font-medium ${isSkipped ? 'line-through' : ''}`}
                       style={{ background: colors.bg, color: colors.fg }}
                       // Structural rows only: where the block ends / what it closes / that it has
                       // no pair — the orientation a long block with scrolling otherwise lacks.
@@ -2699,7 +2699,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                         // No tooltip: the badge reads NOT next to the condition it negates, which
                         // is the whole of what the tip used to spell out.
                         <span
-                          className="ml-0.5 px-1 rounded text-[10px] font-bold tracking-wider"
+                          className="ml-0.5 px-1 rounded text-caption font-semibold tracking-wider"
                           style={{ background: 'var(--color-action-if-fg)', color: 'var(--color-bg-surface)' }}
                         >
                           NOT
@@ -2782,13 +2782,13 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                           onKeyDown={handleEditKeyDown}
                           onBlur={() => commitEdit('blur')}
                           placeholder="x, y"
-                          className={`w-[100px] h-6 px-1 text-xs font-mono text-text-primary bg-bg-input border rounded outline-none ${editInvalid ? 'border-recording' : 'border-accent-solid'}`}
+                          className={`w-[100px] h-6 px-1 text-minor font-mono text-text-primary bg-bg-input border rounded outline-none ${editInvalid ? 'border-recording' : 'border-accent-solid'}`}
                         />
                         {/* Inline hint, not data-tip: TooltipLayer is mouseover-driven
                             and the pointer is rarely over the input at rejection time
                             (the user just pressed Enter). Clears on the next keystroke. */}
                         {editInvalid && (
-                          <span className="absolute left-0 top-full mt-1 z-20 px-2 py-1 rounded text-[10px] whitespace-nowrap bg-bg-card border border-recording/40 text-recording pointer-events-none">
+                          <span className="absolute left-0 top-full mt-1 z-20 px-2 py-1 rounded text-caption whitespace-nowrap bg-bg-card border border-recording/40 text-recording pointer-events-none">
                             {'Needs both coordinates — e.g. 960, 540'}
                           </span>
                         )}
@@ -2806,7 +2806,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                         // (the hook stands down when the app is not in front).
                         onKeyDown={(e) => e.preventDefault()}
                         onBlur={cancelEdit}
-                        className="w-[220px] h-6 px-1 text-xs font-mono text-accent-light bg-bg-input border border-accent-solid rounded outline-none placeholder:text-accent-light/50 animate-pulse"
+                        className="w-[220px] h-6 px-1 text-minor font-mono text-accent-light bg-bg-input border border-accent-solid rounded outline-none placeholder:text-accent-light/50 animate-pulse"
                       />
                     ) : isProbeAction(action) ? (
                       // Image/pixel probe (Wait* or If/While) — unified payload, no GUID.
@@ -2822,7 +2822,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                         // is display only (editing is the hover pencil); Keystroke and
                         // HoldKey keep their dialog. data-tip still surfaces the full string
                         // for truncated content.
-                        className={`inline-flex items-center translate-y-[-2px] text-xs font-mono text-text-primary max-w-[220px] truncate ${isKeyHalf ? 'cursor-text' : ''}`}
+                        className={`inline-flex items-center translate-y-[-2px] text-minor font-mono text-text-primary max-w-[220px] truncate ${isKeyHalf ? 'cursor-text' : ''}`}
                         onPointerDown={isKeyHalf ? markSpanPress : undefined}
                         onClick={isKeyHalf ? (e) => openSpanEditor(e, idx, 'key', action.key) : undefined}
                         // Tighten the " + " separators of a combined keystroke ("Ctrl + Alt + A")
@@ -2908,7 +2908,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                         editor — it writes x/y — must never be offered. */}
                     {displayX !== '' && (
                       <span
-                        className={`text-xs font-mono text-text-secondary tabular-nums ${displayKey ? 'ml-1.5' : ''} ${coordsEditable ? 'cursor-text hover:text-text-primary' : ''}`}
+                        className={`text-minor font-mono text-text-secondary tabular-nums ${displayKey ? 'ml-1.5' : ''} ${coordsEditable ? 'cursor-text hover:text-text-primary' : ''}`}
                         onPointerDown={coordsEditable ? markSpanPress : undefined}
                         onClick={coordsEditable ? (e) => openSpanEditor(e, idx, 'coords', `${action.x}, ${action.y}`) : undefined}
                       >
@@ -2971,11 +2971,11 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                           onChange={(e) => { setEditValue(e.target.value); setEditInvalid(false); }}
                           onKeyDown={handleEditKeyDown}
                           onBlur={() => commitEdit('blur')}
-                          className={`w-16 h-6 px-1 text-xs font-mono text-right text-text-primary bg-bg-input border rounded outline-none ${editInvalid ? 'border-recording' : 'border-accent-solid'}`}
+                          className={`w-16 h-6 px-1 text-minor font-mono text-right text-text-primary bg-bg-input border rounded outline-none ${editInvalid ? 'border-recording' : 'border-accent-solid'}`}
                         />
                         {/* Same inline hint as the coords editor, for the same reason. */}
                         {editInvalid && (
-                          <span className="absolute right-0 top-full mt-1 z-20 px-2 py-1 rounded text-[10px] whitespace-nowrap bg-bg-card border border-recording/40 text-recording pointer-events-none">
+                          <span className="absolute right-0 top-full mt-1 z-20 px-2 py-1 rounded text-caption whitespace-nowrap bg-bg-card border border-recording/40 text-recording pointer-events-none">
                             {'Use a whole number of ms — 0 or more'}
                           </span>
                         )}
@@ -2984,9 +2984,9 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                       // Right-aligned + tabular-nums so a column of delays reads as
                       // one number ladder; the quiet "ms" suffix answers the unit
                       // question the bare integer used to leave open.
-                      <span className={`text-xs font-mono tabular-nums block text-right pr-2 ${action.delay > 0 ? 'text-text-secondary hover:text-text-primary' : 'text-text-disabled hover:text-text-tertiary'}`}>
+                      <span className={`text-minor font-mono tabular-nums block text-right pr-2 ${action.delay > 0 ? 'text-text-secondary hover:text-text-primary' : 'text-text-disabled hover:text-text-tertiary'}`}>
                         {formatMs(action.delay >= 0 ? action.delay : 0, language)}
-                        <span className={`text-[10px] ml-0.5 ${action.delay > 0 ? 'text-text-tertiary' : 'text-text-disabled'}`}>ms</span>
+                        <span className={`text-caption ml-0.5 ${action.delay > 0 ? 'text-text-tertiary' : 'text-text-disabled'}`}>ms</span>
                       </span>
                     )}
                   </td>
@@ -3013,14 +3013,14 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                         onChange={(e) => setEditValue(e.target.value)}
                         onKeyDown={handleEditKeyDown}
                         onBlur={() => commitEdit('blur')}
-                        className="w-full h-6 px-1 text-xs text-text-primary bg-bg-input border border-accent-solid rounded outline-none"
+                        className="w-full h-6 px-1 text-minor text-text-primary bg-bg-input border border-accent-solid rounded outline-none"
                       />
                     ) : (
                       // No group-hover padding shift here \u2014 a hover-only padding
                       // change shoved the note text sideways and read as the row
                       // "jumping". The row stays static; the edit pencil lives in the
                       // Details cell now.
-                      <span className="text-xs text-text-tertiary truncate block hover:text-text-secondary">
+                      <span className="text-minor text-text-tertiary truncate block hover:text-text-secondary">
                         {action.comment || '\u00A0'}
                       </span>
                     )}
@@ -3093,19 +3093,19 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
               >
                 <GripVertical size={12} className="text-text-disabled shrink-0" />
                 <span
-                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium shrink-0"
+                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-minor font-medium shrink-0"
                   style={{ background: ghostColors.bg, color: ghostColors.fg }}
                 >
                   <ActionIcon actionType={primary.actionType} />
                   {actionPillLabel(primary)}
                 </span>
                 {ghostDetail && (
-                  <span className="text-xs font-mono text-text-secondary truncate flex-1">
+                  <span className="text-minor font-mono text-text-secondary truncate flex-1">
                     {ghostDetail}
                   </span>
                 )}
                 {dragIndices.length > 1 && (
-                  <span className="ml-auto shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-accent-solid text-[color:var(--color-accent-ink)]">
+                  <span className="ml-auto shrink-0 px-1.5 py-0.5 rounded-full text-caption font-semibold bg-accent-solid text-[color:var(--color-accent-ink)]">
                     +{dragIndices.length - 1}
                   </span>
                 )}
@@ -3375,7 +3375,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
           className="fixed z-50 min-w-[180px] py-1 menu-surface"
           style={{ left: elseIfPickerPos.x, top: elseIfPickerPos.y }}
         >
-          <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-text-tertiary">
+          <div className="px-3 py-1 text-caption uppercase tracking-wider text-text-tertiary">
             Else If — condition
           </div>
           {BRANCH_CONDITION_FAMILIES.map(({ ct, Icon, label }) => (

@@ -23,12 +23,12 @@ export function KeyCaps({ combo, fg }: KeyCapsProps) {
       {parts.map((part, i) => (
         <span key={`${part}-${i}`} className="inline-flex items-center gap-1">
           <kbd
-            className="inline-block px-2.5 py-1 bg-bg-elevated border border-border-default rounded font-mono text-[13px] font-semibold shadow-[0_2px_0_var(--color-border-default)]"
+            className="inline-block px-2.5 py-1 bg-bg-elevated border border-border-default rounded font-mono text-body font-semibold shadow-[0_2px_0_var(--color-border-default)]"
             style={{ color: fg }}
           >
             {part}
           </kbd>
-          {i < parts.length - 1 && <span className="text-text-tertiary text-[12px]">+</span>}
+          {i < parts.length - 1 && <span className="text-text-tertiary text-minor">+</span>}
         </span>
       ))}
     </div>

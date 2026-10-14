@@ -294,7 +294,7 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
           // onClick={handlePick} would hand it the MouseEvent as that argument.
           onClick={() => handlePick(target)}
           disabled={inert || pickRequestId != null}
-          className="flex-1 h-8 flex items-center justify-center gap-1.5 px-2.5 text-xs font-medium border border-border-default bg-bg-elevated hover:bg-bg-card text-text-secondary hover:text-text-primary rounded whitespace-nowrap transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-1 h-8 flex items-center justify-center gap-1.5 px-2.5 text-minor font-medium border border-border-default bg-bg-elevated hover:bg-bg-card text-text-secondary hover:text-text-primary rounded whitespace-nowrap transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Crosshair size={13} />
           {/* The label names the ACTION, in all three states. The empty release slot used to read
@@ -473,7 +473,7 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
             >
               {/* Word for word the Sheet's hint for the same state. The two surfaces described one
                   idea in two sentences, and the one that survives is the shorter. */}
-              <span className="text-[11px] leading-relaxed text-text-tertiary">
+              <span className="text-caption leading-relaxed text-text-tertiary">
                 {'Mouse position when the step runs.'}
               </span>
             </div>
@@ -501,7 +501,7 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
             <Section title="Repeat" />
 
             <div className="flex items-center justify-between gap-3">
-              <label className="text-[12px] font-medium text-text-secondary">Times</label>
+              <label className="text-minor font-medium text-text-secondary">Times</label>
               <NumberInput
                 value={repeat}
                 onChange={(n) => setRepeat(clampRepeat(n))}
@@ -518,7 +518,7 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
             {/* Gap stays visible but dims when Times = 1 — it communicates that the field exists
                 for repeat-flavoured clicks without making the dialog jump when Times changes. */}
             <div className="flex items-center justify-between gap-3">
-              <label className={`text-[12px] font-medium transition-colors ${repeat > 1 ? 'text-text-secondary' : 'text-text-tertiary'}`}>
+              <label className={`text-minor font-medium transition-colors ${repeat > 1 ? 'text-text-secondary' : 'text-text-tertiary'}`}>
                 Gap
               </label>
               <NumberInput
@@ -549,7 +549,7 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
             aria-hidden={effectiveMode !== 'hold'}
           >
             <div className="flex items-center justify-between gap-3">
-              <label className="text-[12px] font-medium text-text-secondary">Hold</label>
+              <label className="text-minor font-medium text-text-secondary">Hold</label>
               <NumberInput
                 value={holdMs}
                 onChange={(n) => setHoldMs(clampHold(n))}
@@ -591,7 +591,7 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
               type="button"
               onClick={() => { setReleaseX(null); setReleaseY(null); }}
               disabled={releaseX == null && releaseY == null}
-              className={`self-start text-[11px] leading-relaxed disabled:opacity-40 disabled:cursor-default transition-colors ${
+              className={`self-start text-caption leading-relaxed disabled:opacity-40 disabled:cursor-default transition-colors ${
                 releaseHalfFilled ? 'text-warning-ink' : 'text-text-tertiary hover:text-text-secondary'
               }`}
             >
@@ -667,7 +667,7 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
             : 1;
           return (
             <div
-              className="border-l-2 rounded px-2.5 py-2 text-[11px] leading-relaxed grid"
+              className="border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed grid"
               style={calloutStyle('neutral', tone)}
             >
               {messages.map((m, i) => (

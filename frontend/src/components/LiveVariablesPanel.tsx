@@ -33,8 +33,8 @@ function ValueRow({ name, value }: { name: string; value: string }) {
   const tip = oneLine.length > 220 ? `${oneLine.slice(0, 220)}…` : oneLine;
   return (
     <div className="flex items-baseline gap-1.5 px-2.5 py-0.5 min-w-0" data-tip={tip}>
-      <span className="font-mono text-[11px] text-text-secondary shrink-0">{name}</span>
-      <span className="font-mono text-[11px] text-text-primary truncate min-w-0">{oneLine || '·'}</span>
+      <span className="font-mono text-caption text-text-secondary shrink-0">{name}</span>
+      <span className="font-mono text-caption text-text-primary truncate min-w-0">{oneLine || '·'}</span>
     </div>
   );
 }
@@ -96,7 +96,7 @@ export function LiveVariablesHost() {
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto pb-1.5">
         {empty && (
-          <div className="px-2.5 py-2 text-[11px] text-text-tertiary leading-relaxed">
+          <div className="px-2.5 py-2 text-caption text-text-tertiary leading-relaxed">
             {'Nothing yet. Variables, {input:} answers and {clip:} captures appear here as they happen.'}
           </div>
         )}

@@ -55,9 +55,9 @@ type ToolbarProps = Record<string, never>;
 
 /**
  * Profile-name display that gracefully degrades:
- * 1. fits at base size → text-base (16px)
- * 2. slightly too long  → text-sm (14px) — keeps the full name readable
- * 3. way too long       → text-sm + ellipsis truncation
+ * 1. fits at base size → text-subtitle (15px)
+ * 2. slightly too long  → text-body (13px) — keeps the full name readable
+ * 3. way too long       → text-body + ellipsis truncation
  *
  * Width is measured via a hidden mirror element so we always know the
  * NATURAL width at base size, regardless of which class is currently
@@ -93,7 +93,7 @@ function ResponsiveProfileName({ name }: { name: string }) {
   return (
     <div ref={containerRef} className="flex-1 min-w-0 relative">
       <span
-        className={`block font-semibold text-text-primary truncate ${size === 'sm' ? 'text-sm' : 'text-base'}`}
+        className={`block font-semibold text-text-primary truncate ${size === 'sm' ? 'text-body' : 'text-subtitle'}`}
       >
         {name}
       </span>
@@ -101,7 +101,7 @@ function ResponsiveProfileName({ name }: { name: string }) {
           at base size. Kept aria-hidden so screen readers don't see it twice. */}
       <span
         ref={measureRef}
-        className="absolute -left-[9999px] top-0 font-semibold text-base whitespace-nowrap pointer-events-none"
+        className="absolute -left-[9999px] top-0 font-semibold text-subtitle whitespace-nowrap pointer-events-none"
         aria-hidden="true"
       >
         {name}
@@ -1176,16 +1176,16 @@ export function Toolbar(_props: ToolbarProps) {
               // constant, so the offset is stable). Same kind of pixel nudge as the
               // deselect X's -ml-[13px]. flipY is kept for the (rare) short-window case.
               <div ref={clearFlyout.ref} className={`absolute w-60 menu-surface z-50 p-3 -right-[30px] ${clearFlyout.flipY ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
-                <div className="text-xs font-semibold text-text-primary">
+                <div className="text-minor font-semibold text-text-primary">
                   Clear all {actions.length} action{actions.length === 1 ? '' : 's'}?
                 </div>
-                <div className="mt-1 text-[11px] text-text-tertiary leading-relaxed">
+                <div className="mt-1 text-caption text-text-tertiary leading-relaxed">
                   {'Ctrl+Z undoes it.'}
                 </div>
                 <div className="mt-2.5 flex justify-end gap-1.5">
                   <button
                     onClick={() => setShowClearConfirm(false)}
-                    className="px-2.5 py-1 rounded text-[11px] text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors"
+                    className="px-2.5 py-1 rounded text-caption text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors"
                   >
                     Cancel
                   </button>
@@ -1200,7 +1200,7 @@ export function Toolbar(_props: ToolbarProps) {
                     // Same gate as the trigger — covers the render-tick race between
                     // the run-state push and a click on the already-open popover.
                     disabled={insertsDisabled}
-                    className="px-2.5 py-1 rounded text-[11px] font-semibold bg-recording text-[color:var(--color-recording-ink)] hover:opacity-85 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="px-2.5 py-1 rounded text-caption font-semibold bg-recording text-[color:var(--color-recording-ink)] hover:opacity-85 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Clear all
                   </button>
@@ -1334,7 +1334,7 @@ export function Toolbar(_props: ToolbarProps) {
                             >
                               <Table2 size={12} style={{ color: 'var(--color-action-loop-fg, var(--color-action-if-fg))' }} />
                               For Each Data Row
-                              <span className="ml-auto text-[10px] text-text-tertiary">{rowsN} row{rowsN === 1 ? '' : 's'}</span>
+                              <span className="ml-auto text-caption text-text-tertiary">{rowsN} row{rowsN === 1 ? '' : 's'}</span>
                             </button>
                             <div className="my-1 border-t border-border-subtle" />
                             <div className="px-3 py-1 label-micro text-text-tertiary">
@@ -1434,7 +1434,7 @@ export function Toolbar(_props: ToolbarProps) {
                             >
                               <Icon size={12} style={{ color: 'var(--color-action-flow-fg, var(--color-action-pause-fg))' }} />
                               {label}
-                              <span className="ml-auto text-[10px] text-text-tertiary">{tip}</span>
+                              <span className="ml-auto text-caption text-text-tertiary">{tip}</span>
                             </button>
                           ))}
                         </div>
@@ -1477,16 +1477,16 @@ export function Toolbar(_props: ToolbarProps) {
                       popover — it names the count, and it says Ctrl+Z undoes it. */}
                   {collapsed('clearAll') && (clearArmed ? (
                     <div className="px-3 py-2">
-                      <div className="text-xs font-semibold text-text-primary">
+                      <div className="text-minor font-semibold text-text-primary">
                         Clear all {actions.length} action{actions.length === 1 ? '' : 's'}?
                       </div>
-                      <div className="mt-1 text-[11px] text-text-tertiary leading-relaxed">
+                      <div className="mt-1 text-caption text-text-tertiary leading-relaxed">
                         {'Ctrl+Z undoes it.'}
                       </div>
                       <div className="mt-2.5 flex justify-end gap-1.5">
                         <button
                           onClick={() => setClearArmed(false)}
-                          className="px-2.5 py-1 rounded text-[11px] text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors"
+                          className="px-2.5 py-1 rounded text-caption text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors"
                         >
                           Cancel
                         </button>
@@ -1502,7 +1502,7 @@ export function Toolbar(_props: ToolbarProps) {
                           // all 0 actions?" with the red button live — the popover sibling is held
                           // to both by an effect, and this one was held to one by hand.
                           disabled={insertsDisabled || actions.length === 0}
-                          className="px-2.5 py-1 rounded text-[11px] font-semibold bg-recording text-[color:var(--color-recording-ink)] hover:opacity-85 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+                          className="px-2.5 py-1 rounded text-caption font-semibold bg-recording text-[color:var(--color-recording-ink)] hover:opacity-85 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           Clear all
                         </button>

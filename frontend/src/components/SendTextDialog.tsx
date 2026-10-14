@@ -200,7 +200,7 @@ function SnippetEditForm({
         }}
         placeholder="Snippet name..."
         autoFocus
-        className="w-full h-7 px-2 text-xs text-text-primary bg-bg-input border border-border-subtle rounded outline-none focus:border-accent-solid placeholder:text-text-disabled"
+        className="w-full h-7 px-2 text-minor text-text-primary bg-bg-input border border-border-subtle rounded outline-none focus:border-accent-solid placeholder:text-text-disabled"
       />
       <textarea
         value={text}
@@ -211,7 +211,7 @@ function SnippetEditForm({
         }}
         placeholder="Snippet text..."
         rows={5}
-        className="w-full px-2 py-1.5 text-[11px] font-mono text-text-primary bg-bg-input border border-border-subtle rounded outline-none focus:border-accent-solid resize-none placeholder:text-text-disabled"
+        className="w-full px-2 py-1.5 text-caption font-mono text-text-primary bg-bg-input border border-border-subtle rounded outline-none focus:border-accent-solid resize-none placeholder:text-text-disabled"
       />
       <div className="flex items-center gap-2">
         <Button variant="secondary" size="sm" onClick={onCancel}>
@@ -243,7 +243,7 @@ function SnippetText({ text }: { text: string }) {
         segment.kind === 'token' ? (
           <span
             key={idx}
-            className="inline-flex items-center px-1 mx-[1px] rounded text-[10px] font-mono align-baseline select-none border text-text-secondary bg-bg-input border-border-default"
+            className="inline-flex items-center px-1 mx-[1px] rounded text-caption font-mono align-baseline select-none border text-text-secondary bg-bg-input border-border-default"
           >
             {/* Normalised like the editor's chips, so an imported `{enter}` reads "Enter" here too. */}
             {normalizeToken(segment.value).slice(1, -1)}
@@ -424,11 +424,11 @@ function NamePromptPopover({
             spellCheck={false}
             placeholder={kind === 'var' ? 'name' : kind === 'input' ? 'What to ask' : kind === 'clip' ? '1' : kind === 'env' ? 'USERNAME' : 'column'}
             // h-7 like every input in the chip popovers — the popover scale; h-8 is the surface's.
-            className={`h-7 w-full px-2 text-xs bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid placeholder:text-text-disabled ${kind === 'input' ? '' : 'font-mono'}`}
+            className={`h-7 w-full px-2 text-minor bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid placeholder:text-text-disabled ${kind === 'input' ? '' : 'font-mono'}`}
           />
         </div>
         {hint && (
-          <div className="text-[10px] text-text-tertiary mt-1 leading-relaxed">{hint}</div>
+          <div className="text-caption text-text-tertiary mt-1 leading-relaxed">{hint}</div>
         )}
       </Section>
       {/* Two buttons, no fifth palette section: the chain builder gets an entry point for the
@@ -441,7 +441,7 @@ function NamePromptPopover({
             type="button"
             onClick={advanced}
             disabled={!name.trim()}
-            className="flex items-center gap-1 h-7 px-2 text-[11px] rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-1 h-7 px-2 text-caption rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             data-tip={tt('Transforms: trim, split, lines, case…', 'Transformações: trim, corte, linhas, maiúsculas…')}
           >
             <Wand2 size={11} className="shrink-0" />
@@ -1054,7 +1054,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
               <button
                 type="button"
                 onClick={() => { surface.remove(); closeSurface(); }}
-                className="flex items-center gap-1 h-7 px-2 text-[11px] rounded text-[color:var(--color-recording-fg)] hover:bg-[color-mix(in_srgb,var(--color-recording)_15%,transparent)] border border-transparent hover:border-[color-mix(in_srgb,var(--color-recording)_30%,transparent)] transition-colors"
+                className="flex items-center gap-1 h-7 px-2 text-caption rounded text-[color:var(--color-recording-fg)] hover:bg-[color-mix(in_srgb,var(--color-recording)_15%,transparent)] border border-transparent hover:border-[color-mix(in_srgb,var(--color-recording)_30%,transparent)] transition-colors"
               >
                 <Trash2 size={12} />
                 Delete token
@@ -1151,7 +1151,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
               placeholder={
                 <>
                   Type the text to send...
-                  <span className="block mt-1.5 text-xs leading-relaxed">
+                  <span className="block mt-1.5 text-minor leading-relaxed">
                     Tokens like <span className="font-mono">{'{clipboard}'}</span>, <span className="font-mono">{'{date}'}</span> and <span className="font-mono">{'{enter}'}</span> are filled in at replay · pick them in the Insert panel, or type <span className="font-mono">{'{'}</span> to search them here
                   </span>
                 </>
@@ -1159,7 +1159,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
             />
           </div>
           <div className="h-7 shrink-0 px-4 flex items-center justify-between gap-3 bg-bg-card border-t border-border-subtle">
-            <span className="text-[11px] text-text-tertiary tabular-nums whitespace-nowrap">
+            <span className="text-caption text-text-tertiary tabular-nums whitespace-nowrap">
               {text.length} chars · {tokenCount} token{tokenCount === 1 ? '' : 's'} · {lineCount} line{lineCount === 1 ? '' : 's'}
             </span>
             {/* Right slot — ONE line, always mounted, message chosen by the ladder in
@@ -1174,7 +1174,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                 into the editor body, which paints on bg-bg-input and is not in that list. */}
             <FieldError
               show={statusNote !== null}
-              className={`min-w-0 text-right text-[10px] ${statusNote?.tone === 'warn' ? 'text-warning-ink' : 'text-text-tertiary'}`}
+              className={`min-w-0 text-right text-caption ${statusNote?.tone === 'warn' ? 'text-warning-ink' : 'text-text-tertiary'}`}
               tip={statusNote?.tip}
             >
               {statusNote?.tone === 'warn' && (
@@ -1357,7 +1357,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                 <div className="px-3 shrink-0">
                   <FieldError
                     show={snippetTransferNote !== ''}
-                    className="text-[10px] text-text-tertiary"
+                    className="text-caption text-text-tertiary"
                   >
                     {snippetTransferNote}
                   </FieldError>
@@ -1378,7 +1378,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                       }}
                       placeholder="Snippet name..."
                       autoFocus
-                      className="h-7 px-2 text-xs text-text-primary bg-bg-input border border-border-subtle rounded outline-none focus:border-accent-solid placeholder:text-text-disabled"
+                      className="h-7 px-2 text-minor text-text-primary bg-bg-input border border-border-subtle rounded outline-none focus:border-accent-solid placeholder:text-text-disabled"
                     />
                     <div className="flex items-center gap-2">
                       <Button variant="secondary" size="sm" onClick={() => setSavingSnippet(false)}>
@@ -1405,7 +1405,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                         value={snippetFilter}
                         onChange={(e) => setSnippetFilter(e.target.value)}
                         placeholder="Search snippets..."
-                        className="w-full h-7 pl-6 pr-2 text-[11px] text-text-primary bg-bg-input border border-border-subtle rounded outline-none focus:border-accent-solid placeholder:text-text-disabled"
+                        className="w-full h-7 pl-6 pr-2 text-caption text-text-primary bg-bg-input border border-border-subtle rounded outline-none focus:border-accent-solid placeholder:text-text-disabled"
                       />
                     </div>
                   </div>
@@ -1413,7 +1413,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
 
                 <div className="flex-1 min-h-0 overflow-y-auto border-t border-border-subtle">
                   {snippets.length === 0 ? (
-                    <div className="px-3 py-4 flex flex-col items-center gap-2.5 text-center text-[11px] text-text-tertiary">
+                    <div className="px-3 py-4 flex flex-col items-center gap-2.5 text-center text-caption text-text-tertiary">
                       <span>No saved snippets yet</span>
                       {/* The empty state offers the one action that fills it — the same one the
                           bookmark icon above does, with a label this time. */}
@@ -1422,7 +1422,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                       </Button>
                     </div>
                   ) : filteredSnippets.length === 0 ? (
-                    <div className="px-3 py-4 text-center text-[11px] text-text-disabled">
+                    <div className="px-3 py-4 text-center text-caption text-text-disabled">
                       {'No snippets match'} “{snippetFilter}”
                     </div>
                   ) : (
@@ -1450,8 +1450,8 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                             // which is the only way to tell two long ones apart before inserting.
                             data-tip={s.text}
                           >
-                            <div className="text-xs font-medium text-text-primary truncate">{s.name}</div>
-                            <div className="text-[11px] text-text-tertiary line-clamp-2 mt-0.5"><SnippetText text={s.text} /></div>
+                            <div className="text-minor font-medium text-text-primary truncate">{s.name}</div>
+                            <div className="text-caption text-text-tertiary line-clamp-2 mt-0.5"><SnippetText text={s.text} /></div>
                           </button>
                           {/* Keyed fragments: unkeyed, child[1] is the Trash button in one
                               branch and the red confirm button in the other — both <button> —
@@ -1461,7 +1461,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                               since autoFocus only acts on mount. */}
                           {deletingSnippetId === s.id ? (
                             <React.Fragment key="confirm">
-                              <span className="text-[10px] text-[color:var(--color-recording-fg)] mr-1 shrink-0">Delete?</span>
+                              <span className="text-caption text-[color:var(--color-recording-fg)] mr-1 shrink-0">Delete?</span>
                               <button
                                 type="button"
                                 onClick={() => handleDeleteSnippet(s.id)}
@@ -1564,7 +1564,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
           />
         }
       >
-        <p className="px-4 py-4 text-xs text-text-secondary leading-relaxed">
+        <p className="px-4 py-4 text-minor text-text-secondary leading-relaxed">
           Unapplied changes will be lost — text, formatting and delivery settings.
         </p>
       </DialogShell>

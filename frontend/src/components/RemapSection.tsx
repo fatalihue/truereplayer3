@@ -469,7 +469,7 @@ export function RemapSection({ draft }: {
       // flex-1 + min-w-0 lets the two chips split the row evenly instead of sizing to
       // their text and overflowing the 224px panel; truncate is the safety net for a
       // long key name (the placeholders themselves are kept short enough to fit).
-      className={`h-7 flex-1 min-w-0 flex items-center justify-center px-1.5 rounded border text-[11px] transition-colors ${
+      className={`h-7 flex-1 min-w-0 flex items-center justify-center px-1.5 rounded border text-caption transition-colors ${
         capturing === side
           ? 'border-accent-solid text-accent bg-accent-solid/10 animate-pulse'
           : value
@@ -502,7 +502,7 @@ export function RemapSection({ draft }: {
           <div className="flex flex-col gap-1.5">
             <span>{quarantineText}</span>
             {remaps.loadFailureDetail && (
-              <span className="text-[10px] font-mono opacity-80 break-words">{remaps.loadFailureDetail}</span>
+              <span className="text-caption font-mono opacity-80 break-words">{remaps.loadFailureDetail}</span>
             )}
             <div>
               <Button variant="secondary" size="sm" onClick={() => send({ type: 'remap:overwriteUnreadable', payload: {} })}>
@@ -514,7 +514,7 @@ export function RemapSection({ draft }: {
       )}
 
       {remaps.entries.length === 0 && !addOpen && (
-        <div className="text-[11px] text-text-tertiary leading-relaxed">
+        <div className="text-caption text-text-tertiary leading-relaxed">
           {'Nothing yet. A remap turns one key into another — CapsLock → Esc — or disables it.'}
         </div>
       )}
@@ -560,7 +560,7 @@ export function RemapSection({ draft }: {
             {r.to ? (
               <KeyCap name={r.to} />
             ) : (
-              <span className="text-[10px] font-mono text-text-tertiary flex items-center gap-1 min-w-0">
+              <span className="text-caption font-mono text-text-tertiary flex items-center gap-1 min-w-0">
                 <Ban size={9} className="shrink-0" /> <span className="truncate">{'disabled'}</span>
               </span>
             )}
@@ -620,7 +620,7 @@ export function RemapSection({ draft }: {
               )}
             </div>
           </div>
-          <label className="flex items-center gap-1.5 text-[11px] text-text-tertiary cursor-pointer select-none">
+          <label className="flex items-center gap-1.5 text-caption text-text-tertiary cursor-pointer select-none">
             <input type="checkbox" checked={disableMode}
               onChange={(e) => { setDisableMode(e.target.checked); if (capturing === 'to') stopCapture(); setMouseMenuOpen(false); }} />
             {'Just disable the key'}
@@ -628,29 +628,29 @@ export function RemapSection({ draft }: {
           {/* Per-app scope. Empty = everywhere, which is what every remap was before this
               field existed. The picker lists what is running now. */}
           <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-text-tertiary shrink-0 flex items-center gap-1">
+            <span className="text-caption text-text-tertiary shrink-0 flex items-center gap-1">
               <AppWindow size={11} /> {'Only in'}
             </span>
             <div className="flex-1 min-w-0">
               <ProcessNameInput value={processKey} onChange={setProcessKey} placeholder="any app" />
             </div>
           </div>
-          {captureError && <div className="text-[10px]" style={{ color: 'var(--color-recording-fg)' }}>{captureError}</div>}
+          {captureError && <div className="text-caption" style={{ color: 'var(--color-recording-fg)' }}>{captureError}</div>}
           {duplicate && (
-            <div className="text-[10px]" style={{ color: 'var(--color-recording-fg)' }}>
+            <div className="text-caption" style={{ color: 'var(--color-recording-fg)' }}>
               {processKey.trim() ? 'That key is already remapped in this app.' : 'That key is already remapped.'}
             </div>
           )}
           {selfRemap && (
-            <div className="text-[10px]" style={{ color: 'var(--color-recording-fg)' }}>
+            <div className="text-caption" style={{ color: 'var(--color-recording-fg)' }}>
               {'Source and target are the same key.'}
             </div>
           )}
           {fromMessage && (
-            <div className="text-[10px]" style={{ color: 'var(--color-recording-fg)' }}>{fromMessage}</div>
+            <div className="text-caption" style={{ color: 'var(--color-recording-fg)' }}>{fromMessage}</div>
           )}
           {toMessage && (
-            <div className="text-[10px] text-text-secondary">{toMessage}</div>
+            <div className="text-caption text-text-secondary">{toMessage}</div>
           )}
           <div className="flex gap-2">
             <Button variant="secondary" size="sm" onClick={closeForm}>
@@ -703,7 +703,7 @@ export function RemapSection({ draft }: {
           a number the user watched climb, not a bug. It lives HERE rather than beside Add
           because that row is already full at 224px: "32/32" next to the button wrapped the
           button's label onto two lines in the capture. */}
-      <FieldError show={transferNote !== '' || nearCap} className="text-[10px] text-text-tertiary tabular-nums">
+      <FieldError show={transferNote !== '' || nearCap} className="text-caption text-text-tertiary tabular-nums">
         {transferNote !== '' ? transferNote : `${remaps.entries.length}/${MAX_REMAPS} remaps`}
       </FieldError>
     </div>

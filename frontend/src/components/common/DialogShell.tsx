@@ -338,8 +338,8 @@ export function DialogShell({
           {/* Title and meta share one BASELINE (items-baseline, as the sheet header pairs its
               name with "Action #n"); centring two type sizes would float the small one. */}
           <div className="min-w-0 flex items-baseline gap-2">
-            <h3 className="text-sm font-semibold text-text-primary truncate">{title}</h3>
-            {titleMeta != null && <span className="text-[11px] text-text-tertiary shrink-0">{titleMeta}</span>}
+            <h3 className="text-subtitle font-display font-semibold text-text-primary truncate">{title}</h3>
+            {titleMeta != null && <span className="text-caption text-text-tertiary shrink-0">{titleMeta}</span>}
           </div>
           {showClose && (
             <IconButton size="sm" aria-label="Close" className="ml-auto" onClick={requestClose}>
@@ -354,7 +354,7 @@ export function DialogShell({
             actions (a DialogFooter, or hand-composed buttons for the four panels). */}
         {(footer || footerHint || footerStart) && (
           <div className="flex items-center gap-2 px-4 py-3 border-t border-border-subtle">
-            {footerStart ?? <span className="text-[11px] text-text-tertiary min-w-0">{footerHint}</span>}
+            {footerStart ?? <span className="text-caption text-text-tertiary min-w-0">{footerHint}</span>}
             <div className="ml-auto flex items-center gap-2 shrink-0">
               {typeof footer === 'function' ? footer(requestClose) : footer}
             </div>

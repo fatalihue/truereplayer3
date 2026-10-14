@@ -312,7 +312,7 @@ function Footer({ onDelete }: { onDelete: () => void }) {
       <button
         type="button"
         onClick={onDelete}
-        className="flex items-center gap-1 h-7 px-2 text-[11px] rounded text-[color:var(--color-recording-fg)] hover:bg-[color-mix(in_srgb,var(--color-recording)_15%,transparent)] border border-transparent hover:border-[color-mix(in_srgb,var(--color-recording)_30%,transparent)] transition-colors"
+        className="flex items-center gap-1 h-7 px-2 text-caption rounded text-[color:var(--color-recording-fg)] hover:bg-[color-mix(in_srgb,var(--color-recording)_15%,transparent)] border border-transparent hover:border-[color-mix(in_srgb,var(--color-recording)_30%,transparent)] transition-colors"
       >
         <Trash2 size={12} />
         Delete token
@@ -421,12 +421,12 @@ function RepeatableEditor({
     <Section label="Repeat">
       <div className="flex items-center gap-2 py-1">
         <NumInput value={n} onChange={update} min={1} width={70} />
-        <span className="text-[11px] text-text-tertiary">
+        <span className="text-caption text-text-tertiary">
           time{n === 1 ? '' : 's'}
         </span>
       </div>
       {n >= MAX_KEY_REPEAT && (
-        <div className="text-[10px] text-text-tertiary mt-1">
+        <div className="text-caption text-text-tertiary mt-1">
           {`${MAX_KEY_REPEAT} presses is the engine's limit for one token.`}
         </div>
       )}
@@ -451,12 +451,12 @@ function RandomEditor({ token, onChange }: { token: string; onChange: (t: string
     <Section label="Random number">
       <div className="flex items-center gap-2 py-1">
         <NumInput value={min} onChange={(v) => update(v, max)} min={0} width={86} thousands />
-        <span className="text-[11px] text-text-tertiary">to</span>
+        <span className="text-caption text-text-tertiary">to</span>
         <NumInput value={max} onChange={(v) => update(min, v)} min={0} width={86} thousands />
       </div>
       {/* The header already says "fresh each run"; the bounds are what the control needs
           explained — a plain range reads as exclusive at the top to many people. */}
-      <div className="text-[10px] text-text-tertiary mt-1">
+      <div className="text-caption text-text-tertiary mt-1">
         Inclusive.
       </div>
     </Section>
@@ -499,15 +499,15 @@ function WinClipEditor({ token, onChange }: { token: string; onChange: (t: strin
     <>
       <Section label="Clipboard history">
         <div className="flex items-center gap-2 py-1">
-          <span className="text-[11px] text-text-tertiary">item</span>
+          <span className="text-caption text-text-tertiary">item</span>
           <NumInput value={index} onChange={update} min={1} width={70} disabled={state.unmodeled} />
-          <span className="text-[11px] text-text-tertiary">1 = most recent</span>
+          <span className="text-caption text-text-tertiary">1 = most recent</span>
         </div>
         {/* The header already says what the token is (Win+V history, 1 = most recent, must be
             enabled); the one fact the header does not carry — and the one the user must know
             before pasting an arbitrary history item — is this. Read-only is said once, by the
             body's Callout below. */}
-        <div className="text-[10px] text-text-tertiary mt-1 leading-relaxed">
+        <div className="text-caption text-text-tertiary mt-1 leading-relaxed">
           May hold anything any app copied — passwords too.
         </div>
       </Section>
@@ -587,7 +587,7 @@ function NameEditor({
             autoFocus={!state.unmodeled}
             spellCheck={false}
             placeholder={tokenName === 'var' ? 'name' : tokenName === 'clip' ? '1' : 'USERNAME'}
-            className={`h-7 w-full px-2 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none placeholder:text-text-disabled ${
+            className={`h-7 w-full px-2 text-minor font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none placeholder:text-text-disabled ${
               state.unmodeled ? 'opacity-60 cursor-not-allowed' : 'focus:border-accent-solid'
             }`}
           />
@@ -746,7 +746,7 @@ function RowColEditor({ token, onChange, head = 'row' }: { token: string; onChan
             autoFocus={!state.unmodeled}
             spellCheck={false}
             placeholder="column"
-            className={`h-7 w-full px-2 text-xs font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none placeholder:text-text-disabled ${
+            className={`h-7 w-full px-2 text-minor font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none placeholder:text-text-disabled ${
               state.unmodeled ? 'opacity-60 cursor-not-allowed' : 'focus:border-accent-solid'
             }`}
           />
@@ -820,7 +820,7 @@ function InputEditor({ token, onChange }: { token: string; onChange: (t: string)
             {var:…} reads names of letters, digits and _ only (VarTokenRegex) — so for a label with
             a space or an accent, which this field allows on purpose, the old fixed line taught a
             token that stays literal in the message. */}
-        <div className="text-[10px] text-text-tertiary mt-1">
+        <div className="text-caption text-text-tertiary mt-1">
           {/^[A-Za-z0-9_]+$/.test(label.trim())
             ? <>Answer also readable as {`{var:${label.trim()}}`}.</>
             : <>To reuse the answer as {'{var:…}'}, use letters, digits and _ only.</>}
@@ -837,7 +837,7 @@ function InputEditor({ token, onChange }: { token: string; onChange: (t: string)
             className="input-inline font-sans px-2"
           />
         </div>
-        <div className="text-[10px] text-text-tertiary mt-1">
+        <div className="text-caption text-text-tertiary mt-1">
           Comma-separated → shown as a dropdown.
         </div>
       </Section>
@@ -881,7 +881,7 @@ function PickEditor({ token, onChange }: { token: string; onChange: (t: string) 
           spellCheck={false}
           rows={5}
           placeholder={'Olá! Tudo bem?\nOi, como posso ajudar?\nBom dia!'}
-          className={`w-full px-2 py-1.5 text-xs bg-bg-input border border-border-default rounded text-text-primary outline-none placeholder:text-text-disabled resize-none font-mono leading-relaxed ${
+          className={`w-full px-2 py-1.5 text-minor bg-bg-input border border-border-default rounded text-text-primary outline-none placeholder:text-text-disabled resize-none font-mono leading-relaxed ${
             unmodeled ? 'opacity-60 cursor-not-allowed' : 'focus:border-accent-solid'
           }`}
         />
@@ -893,7 +893,7 @@ function PickEditor({ token, onChange }: { token: string; onChange: (t: string) 
           Read-only: an option holds a line break, which one option per line can’t show. It still runs; edit the token text in the editor to change it.
         </Callout>
       ) : (
-        <div className="text-[10px] text-text-tertiary mt-1">
+        <div className="text-caption text-text-tertiary mt-1">
           One per line.
         </div>
       )}
@@ -922,7 +922,7 @@ const DATE_PRESETS: Record<DateHead, { label: string; format: string }[]> = {
   datetime: [{ label: 'Default', format: '' }, { label: 'ISO', format: 'yyyy-MM-dd HH:mm' }, { label: 'Long', format: 'F' }],
 };
 // Two channels for the chosen option (fill and ink), never a hue alone.
-const PILL = 'h-6 px-1.5 text-[10px] rounded border transition-colors disabled:opacity-40';
+const PILL = 'h-6 px-1.5 text-caption rounded border transition-colors disabled:opacity-40';
 const PILL_ON = 'text-text-primary bg-[color-mix(in_srgb,var(--color-accent)_18%,transparent)] border-[color-mix(in_srgb,var(--color-accent)_45%,transparent)]';
 const PILL_OFF = 'text-text-secondary border-border-default hover:text-text-primary hover:bg-bg-elevated';
 
@@ -957,7 +957,7 @@ function DateEditor({ token, onChange }: { token: string; onChange: (t: string) 
     <>
       <Section label="Shift">
         {several ? (
-          <div className="text-[10px] text-text-tertiary py-1">Several offsets in this token — edit it by hand.</div>
+          <div className="text-caption text-text-tertiary py-1">Several offsets in this token — edit it by hand.</div>
         ) : (
           <>
             <div className="flex items-center gap-2 py-1">
@@ -966,10 +966,10 @@ function DateEditor({ token, onChange }: { token: string; onChange: (t: string) 
                 <button type="button" onClick={() => { setBack(true); emit(magnitude, true, unit, format); }} className={`${PILL} ${back ? PILL_ON : PILL_OFF}`}>back</button>
                 <button type="button" onClick={() => { setBack(false); emit(magnitude, false, unit, format); }} className={`${PILL} ${!back ? PILL_ON : PILL_OFF}`}>ahead</button>
               </div>
-              {magnitude === 0 && <span className="text-[11px] text-text-tertiary">now</span>}
+              {magnitude === 0 && <span className="text-caption text-text-tertiary">now</span>}
             </div>
             {magnitude >= MAX_DATE_OFFSET && (
-              <div className="text-[10px] text-text-tertiary">
+              <div className="text-caption text-text-tertiary">
                 {`${MAX_DATE_OFFSET} is the engine's limit for one shift.`}
               </div>
             )}
@@ -1000,14 +1000,14 @@ function DateEditor({ token, onChange }: { token: string; onChange: (t: string) 
           spellCheck={false}
           className="input-inline px-2 disabled:opacity-40"
         />
-        <div className="text-[10px] text-text-tertiary mt-1">.NET pattern. MM = month, mm = minutes.</div>
+        <div className="text-caption text-text-tertiary mt-1">.NET pattern. MM = month, mm = minutes.</div>
       </Section>
       <Section label="Resolves now to">
         <div className="py-1">
           {preview === null ? (
-            <div className="text-xs text-warning-ink">Invalid format — the token is typed as text.</div>
+            <div className="text-minor text-warning-ink">Invalid format — the token is typed as text.</div>
           ) : (
-            <div className="text-xs font-mono text-text-primary bg-bg-input border border-border-subtle rounded px-2 py-1 break-all">{preview}</div>
+            <div className="text-minor font-mono text-text-primary bg-bg-input border border-border-subtle rounded px-2 py-1 break-all">{preview}</div>
           )}
         </div>
       </Section>
@@ -1054,7 +1054,7 @@ function HeadOnlyEditor({ token, onChange }: { token: string; onChange: (t: stri
 // says that there is nothing to edit.
 function StaticInfo() {
   return (
-    <div className="px-3.5 py-3 text-[11px] text-text-tertiary">
+    <div className="px-3.5 py-3 text-caption text-text-tertiary">
       No editable parameters.
     </div>
   );

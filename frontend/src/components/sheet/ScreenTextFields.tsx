@@ -50,8 +50,8 @@ interface TestReadResult {
   error?: string;
 }
 
-const RESULT_CARD = 'border-l-2 rounded px-2.5 py-2 text-[11px] leading-relaxed callout-enter';
-const SECONDARY_BTN = 'h-8 px-2.5 flex items-center gap-1.5 rounded text-xs font-medium border border-border-default bg-bg-elevated hover:bg-bg-card text-text-secondary hover:text-text-primary transition-colors';
+const RESULT_CARD = 'border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed callout-enter';
+const SECONDARY_BTN = 'h-8 px-2.5 flex items-center gap-1.5 rounded text-minor font-medium border border-border-default bg-bg-elevated hover:bg-bg-card text-text-secondary hover:text-text-primary transition-colors';
 const validHex = (s: string) => /^#?[0-9A-Fa-f]{6}$/.test(s.trim());
 const withHash = (s: string) => (s.trim().startsWith('#') ? s.trim() : '#' + s.trim());
 
@@ -152,7 +152,7 @@ export function ScreenTextFields(p: ScreenTextFieldsProps) {
         hint={p.region ? undefined : 'Whole screen: ~0.5 s per read. Set a region.'}
       >
         <div className="flex items-center gap-2.5">
-          <div className="flex-1 h-8 px-2 flex items-center text-[11px] font-mono bg-bg-input border border-border-default rounded text-text-secondary">
+          <div className="flex-1 h-8 px-2 flex items-center text-caption font-mono bg-bg-input border border-border-default rounded text-text-secondary">
             {p.region
               ? `${p.region.x}, ${p.region.y}  ·  ${p.region.w} × ${p.region.h}`
               : (
@@ -173,7 +173,7 @@ export function ScreenTextFields(p: ScreenTextFieldsProps) {
           {p.region && (
             <button
               onClick={() => p.onRegionChange(null)}
-              className="h-8 px-2 flex items-center rounded text-xs text-text-tertiary hover:text-[var(--color-recording-fg)] hover:bg-bg-card transition-colors"
+              className="h-8 px-2 flex items-center rounded text-minor text-text-tertiary hover:text-[var(--color-recording-fg)] hover:bg-bg-card transition-colors"
               data-tip={tt('Read the whole screen', 'Ler a tela inteira')}
             >
               <X size={12} />
@@ -219,7 +219,7 @@ export function ScreenTextFields(p: ScreenTextFieldsProps) {
               placeholder="30"
               className="input-field w-full"
             />
-            <FieldError show={!!operandError} className="text-[11px] text-recording mt-1">{operandError}</FieldError>
+            <FieldError show={!!operandError} className="text-caption text-recording mt-1">{operandError}</FieldError>
           </Field>
         </>
       ) : (
@@ -245,7 +245,7 @@ export function ScreenTextFields(p: ScreenTextFieldsProps) {
               placeholder={p.textOp === 'regex' ? '^Level \\d+' : 'Victory'}
               className="input-field w-full"
             />
-            <FieldError show={!!operandError} className="text-[11px] text-recording mt-1">{operandError}</FieldError>
+            <FieldError show={!!operandError} className="text-caption text-recording mt-1">{operandError}</FieldError>
           </Field>
         </>
       ))}
@@ -270,7 +270,7 @@ export function ScreenTextFields(p: ScreenTextFieldsProps) {
           {p.textColor && (
             <button
               onClick={() => p.onTextColorChange('')}
-              className="h-8 px-2 flex items-center rounded text-xs text-text-tertiary hover:text-[var(--color-recording-fg)] hover:bg-bg-card transition-colors"
+              className="h-8 px-2 flex items-center rounded text-minor text-text-tertiary hover:text-[var(--color-recording-fg)] hover:bg-bg-card transition-colors"
               data-tip={tt('Read every color', 'Ler todas as cores')}
             >
               <X size={12} />
@@ -301,7 +301,7 @@ export function ScreenTextFields(p: ScreenTextFieldsProps) {
           onClick={runTest}
           data-probe
           disabled={testId != null}
-          className="w-full flex items-center justify-center gap-1.5 h-8 px-2.5 rounded text-xs font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full flex items-center justify-center gap-1.5 h-8 px-2.5 rounded text-minor font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <PlayCircle size={13} />
           {testId != null ? 'Reading…' : 'Test read'}
@@ -338,13 +338,13 @@ export function ScreenTextFields(p: ScreenTextFieldsProps) {
                 {showMatcher && !number && firstLine && firstLine !== p.operand && (
                   <button
                     onClick={() => { p.onTextOpChange(p.textOp === 'regex' ? 'contains' : p.textOp); p.onOperandChange(firstLine); }}
-                    className="mt-1.5 text-[11px] underline underline-offset-2 opacity-90 hover:opacity-100"
+                    className="mt-1.5 text-caption underline underline-offset-2 opacity-90 hover:opacity-100"
                   >
                     Use this text
                   </button>
                 )}
                 {result.matched && snapped && (
-                  <div className="mt-1 text-[10px] opacity-80">Search region set around this match.</div>
+                  <div className="mt-1 text-caption opacity-80">Search region set around this match.</div>
                 )}
               </>
             )}

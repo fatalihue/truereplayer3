@@ -143,14 +143,14 @@ export function MessagePreviewPanel({ text, method, marksAdded = false, delivery
             hasFormatting because with none the two flavors are identical and the note would be
             noise. */}
         {marksAdded && (
-          <div className="text-[10px] leading-snug text-text-tertiary mt-0.5">
+          <div className="text-caption leading-snug text-text-tertiary mt-0.5">
             {'Formatting marks (*bold*) are added on send.'}
           </div>
         )}
       </div>
       <div className="flex-1 min-h-0 overflow-auto px-3 pb-3">
         <div
-          className="text-xs leading-relaxed whitespace-pre-wrap break-words rounded border-l-2 px-2 py-1.5"
+          className="text-minor leading-relaxed whitespace-pre-wrap break-words rounded border-l-2 px-2 py-1.5"
           style={{
             background: 'color-mix(in srgb, var(--color-replay) 8%, transparent)',
             borderColor: 'color-mix(in srgb, var(--color-replay) 40%, transparent)',
@@ -178,7 +178,7 @@ export function MessagePreviewPanel({ text, method, marksAdded = false, delivery
               ) : (
                 <span
                   key={i}
-                  className="inline-flex items-center px-1 mx-[1px] rounded text-[11px] font-mono align-baseline select-none border text-text-tertiary bg-bg-card border-border-default"
+                  className="inline-flex items-center px-1 mx-[1px] rounded text-caption font-mono align-baseline select-none border text-text-tertiary bg-bg-card border-border-default"
                   data-tip={`${tt(REASON_TIP[p.reason][0], REASON_TIP[p.reason][1])} — ${p.token}`}
                 >
                   {p.label}
@@ -196,7 +196,7 @@ export function MessagePreviewPanel({ text, method, marksAdded = false, delivery
         {delivery && (
           <div className="mt-3">
             <div className="label-micro text-text-tertiary mb-1">Delivery</div>
-            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px] leading-snug">
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-caption leading-snug">
               <dt className="text-text-tertiary">Transport</dt>
               <dd className="text-text-secondary min-w-0">{delivery.transport}</dd>
               <dt className="text-text-tertiary">Flavor</dt>
