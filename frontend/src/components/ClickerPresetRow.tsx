@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, Check } from 'lucide-react';
+import { ChevronDown, Check, X } from 'lucide-react';
 import type { ClickerPreset, ClickerPresetFields, SettingsState } from '../bridge/messageTypes';
 import { useBridge } from '../bridge/BridgeContext';
 import { chipOn, chipOff } from './common/chipStyles';
@@ -138,7 +138,7 @@ export function ClickerPresetRow({ settings, width, lastMatched, pendingName }: 
   return (
     <div ref={wrapRef} className={`relative ${width}`}>
       {/* Chip-shaped like the Area and Fixed rows: lit while a saved preset is what is loaded. */}
-      <div className="h-7 flex items-center rounded border overflow-hidden" style={active ? chipOn : chipOff}>
+      <div className="h-7 flex items-center rounded border overflow-hidden focus-within:!border-accent-solid" style={active ? chipOn : chipOff}>
         {naming ? (
           <input
             ref={inputRef}
@@ -185,6 +185,7 @@ export function ClickerPresetRow({ settings, width, lastMatched, pendingName }: 
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => { send({ type: 'clicker:applyPreset', payload: { name: p.name } }); setOpen(false); }}
+                aria-current={active?.name === p.name || undefined}
                 className="flex-1 min-w-0 flex items-center gap-1 px-2 py-1 text-left text-caption font-mono text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors"
               >
                 <span className="truncate">{p.name}</span>
@@ -195,9 +196,9 @@ export function ClickerPresetRow({ settings, width, lastMatched, pendingName }: 
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => send({ type: 'clicker:deletePreset', payload: { name: p.name } })}
                 aria-label={`Delete preset ${p.name}`}
-                className="shrink-0 px-1.5 py-1 text-caption leading-none text-text-tertiary hover:text-text-primary transition-colors"
+                className="shrink-0 self-stretch px-1.5 flex items-center text-text-tertiary hover:text-text-primary transition-colors"
               >
-                ✕
+                <X size={11} />
               </button>
             </div>
           ))}

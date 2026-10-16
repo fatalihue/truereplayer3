@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback, useContext, createContext } from 'react';
-import { Timer, TimerReset, Mic, Zap, Monitor, ChevronDown, ChevronRight, ChevronsLeft, ChevronsRight, MousePointerClick, MousePointer2, Palette, Gamepad2, AlertTriangle, Power, BellRing, X, ArrowLeftRight, Crosshair, Hourglass, SlidersHorizontal, RotateCcw, ScanText, Frame } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback, useContext, useId, createContext } from 'react';
+import { Timer, TimerReset, Mic, Zap, Monitor, Check, ChevronDown, ChevronRight, ChevronsLeft, ChevronsRight, MousePointerClick, MousePointer2, Palette, Gamepad2, AlertTriangle, Power, BellRing, X, ArrowLeftRight, Crosshair, Hourglass, SlidersHorizontal, RotateCcw, ScanText, Frame } from 'lucide-react';
 import { APP_VERSION } from '../appVersion';
 import { RemapSection, type RemapDraft } from './RemapSection';
 import { useLanguage, useTt } from '../state/LanguageContext';
@@ -45,7 +45,7 @@ function ProfileOverrideToggle({ scoped, own, effective, onChange, tip }: {
       {scoped && (
         <span className="w-10 flex items-center justify-end">
           {own === null ? (
-            <span className="text-caption leading-none text-text-disabled">Default</span>
+            <span className="text-caption leading-none text-text-tertiary">Default</span>
           ) : (
             <button
               type="button"
@@ -145,7 +145,8 @@ function Section({ title, color, action, children }: {
             px-1.5 (6px) but SettingRow is px-2.5 (10px), and both sit inside this one box.
             flex is load-bearing too — a bare <button> is inline-block and would drag its
             baseline descender into the header height. */}
-        {action && <span className="shrink-0 flex items-center pr-1">{action}</span>}
+        {/* Named by the title: a header switch sits in no SettingRow, so it read "switch, on". */}
+        {action && <span role="group" aria-label={title} className="shrink-0 flex items-center pr-1">{action}</span>}
       </div>
       <div>{children}</div>
     </div>
@@ -236,7 +237,11 @@ function EnableChip({ value, isOn, unit, format, min, max, width, offDisplay, ow
       <button
         type="button"
         onClick={() => onToggle(!isOn)}
-        aria-label={isOn ? 'Disable' : 'Enable'}
+        // A switch with a constant name: the flipping "Enable"/"Disable" verb was the only place
+        // the state lived. The row's group supplies the subject ("Delay").
+        role="switch"
+        aria-checked={isOn}
+        aria-label="Enabled"
         className="h-full pl-2 pr-1.5 flex items-center shrink-0 cursor-pointer transition-colors hover:bg-wash-hover"
       >
         <span
@@ -352,7 +357,7 @@ function ClickerRateClampNote({ reason, ceiling, holdMs }: {
 }) {
   if (!reason) return null;
   return (
-    <div className="px-2.5 pb-1 text-caption text-text-tertiary text-right">
+    <div className="px-2.5 pb-1 text-caption text-text-tertiary text-right tabular-nums">
       {reason === 'hold'
         ? `max ~${formatRate(ceiling)}/s (hold ${holdMs} ms)`
         : reason === 'ceiling'
@@ -388,8 +393,8 @@ function Disclosure({ label, children }: { label: string; children: React.ReactN
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button onClick={() => setOpen(o => !o)} className="group w-full flex items-center gap-1 px-2.5 py-1 text-caption text-accent-solid hover:underline transition-colors">
-        <ChevronRight size={12} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
+      <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open} className="group w-full flex items-center gap-1 px-2.5 py-1 text-caption text-accent-solid hover:underline transition-colors">
+        <ChevronRight size={12} aria-hidden="true" className={`motion-ok:transition-transform ${open ? 'rotate-90' : ''}`} />
         {label}
       </button>
       {open && <div>{children}</div>}
@@ -410,6 +415,10 @@ function SettingRow({ label, labelSuffix, tooltip, children, danger }: {
   // `danger` paints the row in a loud red so a disabled-but-critical toggle
   // (e.g. Profile Keys OFF) is impossible to miss when glancing at the panel.
   const filter = useContext(FilterContext);
+  // The label has to NAME the row's control, the way the Sheet's Field does: every switch, chip
+  // and picker in the panel was nameless ("switch, off" with no subject). The controls sit in a
+  // group named by the label, so the layout below is unchanged. Before the early return: a hook.
+  const labelId = useId();
   // Hide when the "Filter settings" query doesn't match this row's label.
   if (filter && !label.toLowerCase().includes(filter)) return null;
   // Tooltip via the global TooltipLayer (data-tip) — pos="left" so it opens into the work area
@@ -430,12 +439,12 @@ function SettingRow({ label, labelSuffix, tooltip, children, danger }: {
           100 px control), and a labelSuffix that does not fit must drop to its own line whole,
           not shrink and break mid-token ("≈" alone on line one, the number below). Only bites
           when a suffix overflows; every plain label is far shorter than the column. */}
-      <span className={`text-ui flex flex-wrap items-center gap-1.5 min-w-0 ${danger ? 'text-recording-fg' : 'text-text-secondary'}`}>
-        {danger && <AlertTriangle size={12} className="shrink-0" />}
+      <span id={labelId} className={`text-ui flex flex-wrap items-center gap-1.5 min-w-0 ${danger ? 'text-recording-fg' : 'text-text-secondary'}`}>
+        {danger && <AlertTriangle size={12} className="shrink-0" aria-hidden="true" />}
         {label}
         {labelSuffix}
       </span>
-      <div className="flex items-center gap-2.5 shrink-0">
+      <div role="group" aria-labelledby={labelId} className="flex items-center gap-2.5 shrink-0">
         {children}
       </div>
     </div>
@@ -461,6 +470,12 @@ function ComboInput({ value, onCommit, options, width = FIELD_W, editable = true
 }) {
   const [text, setText] = useState(value);
   const [open, setOpen] = useState(false);
+  // The option the arrow keys are on while the menu is open (aria-activedescendant — the focus
+  // stays in the field). Picker mode had no keyboard path at all: the chevron is out of the Tab
+  // order on purpose and the read-only field only answered a click, so Button, OCR Language and
+  // Tooltips could be focused but never changed without a mouse.
+  const [active, setActive] = useState(-1);
+  const listId = useId();
   const wrapRef = useRef<HTMLDivElement>(null);
   const focused = useRef(false);
   // The text when the field took the focus. The blur commits only a CHANGE: the Rate field shows a
@@ -493,10 +508,54 @@ function ComboInput({ value, onCommit, options, width = FIELD_W, editable = true
   // Picker mode shows the selected option's label; editable mode shows the live text.
   const shownValue = editable ? text : (options.find((o) => o.value === value)?.label ?? value);
 
+  const openMenu = () => {
+    setActive(Math.max(0, options.findIndex((o) => o.value === (editable ? text : value))));
+    setOpen(true);
+  };
+  const choose = (o: { value: string }) => {
+    setText(o.value);
+    // Anchors the blur that follows: the pick IS the commit, so leaving the field must not send
+    // the same value a second time.
+    focusTextRef.current = o.value;
+    onCommit(o.value);
+    setOpen(false);
+  };
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (open) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const step = e.key === 'ArrowDown' ? 1 : -1;
+        setActive((a) => (a + step + options.length) % options.length);
+      } else if (e.key === 'Home' || e.key === 'End') {
+        e.preventDefault();
+        setActive(e.key === 'Home' ? 0 : options.length - 1);
+      } else if ((e.key === 'Enter' || (!editable && e.key === ' ')) && active >= 0) {
+        e.preventDefault();
+        choose(options[active]);
+      } else if (e.key === 'Tab') {
+        setOpen(false);
+      }
+      return;
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || (!editable && (e.key === 'Enter' || e.key === ' '))) {
+      e.preventDefault();
+      openMenu();
+    } else if (editable && e.key === 'Enter') {
+      commitIfEdited();
+      (e.target as HTMLInputElement).blur();
+    }
+  };
+
   return (
     <div ref={wrapRef} className={`relative ${width}`}>
       <input
         type="text"
+        role="combobox"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-controls={open ? listId : undefined}
+        aria-activedescendant={open && active >= 0 ? `${listId}-${active}` : undefined}
+        aria-autocomplete="none"
         value={shownValue}
         readOnly={!editable}
         onChange={editable ? (e) => setText(e.target.value) : undefined}
@@ -508,8 +567,8 @@ function ComboInput({ value, onCommit, options, width = FIELD_W, editable = true
         // via its key anyway, making this a harmless no-op. (Enter calls blur(), so it's covered too
         // — and commitIfEdited makes the Enter and the blur it triggers ONE commit, not two.)
         onBlur={editable ? () => { focused.current = false; commitIfEdited(); setText(value); } : undefined}
-        onKeyDown={editable ? (e) => { if (e.key === 'Enter') { commitIfEdited(); (e.target as HTMLInputElement).blur(); } } : undefined}
-        onClick={editable ? undefined : () => setOpen((o) => !o)}
+        onKeyDown={onKeyDown}
+        onClick={editable ? undefined : () => (open ? setOpen(false) : openMenu())}
         className={`w-full h-7 px-2 text-ui font-mono text-text-primary bg-bg-input border border-border-default rounded text-center outline-none focus:border-accent-solid ${editable ? '' : 'cursor-pointer'}`}
       />
       <button
@@ -517,7 +576,7 @@ function ComboInput({ value, onCommit, options, width = FIELD_W, editable = true
         tabIndex={-1}
         // Keep the input's focus on chevron click so it doesn't blur-commit before opening.
         onMouseDown={(e) => e.preventDefault()}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => (open ? setOpen(false) : openMenu())}
         // Pinned to the right edge (justify-end) and slightly smaller so the longest centered
         // value (e.g. "Middle") clears it — the text stays centered in the full field.
         className="absolute right-0 top-0 h-7 w-6 flex items-center justify-end pr-1 text-text-tertiary hover:text-text-secondary"
@@ -526,14 +585,23 @@ function ComboInput({ value, onCommit, options, width = FIELD_W, editable = true
         <ChevronDown size={11} />
       </button>
       {open && (
-        <div className="absolute left-0 top-full mt-1 z-50 w-full menu-surface py-1">
-          {options.map((o) => (
+        // Not menu-item: this list is as wide as its 100 px field, and the 12 px side padding of
+        // the recipe would leave the longer options ("Português (BR)") no room.
+        <div id={listId} role="listbox" className="absolute left-0 top-full mt-1 z-50 w-full menu-surface py-1">
+          {options.map((o, i) => (
             <button
               key={o.value}
+              id={`${listId}-${i}`}
               type="button"
+              role="option"
+              aria-selected={o.value === (editable ? text : value)}
+              tabIndex={-1}
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => { setText(o.value); onCommit(o.value); setOpen(false); }}
-              className="w-full px-2 py-1 text-center text-caption font-mono text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors"
+              onMouseEnter={() => setActive(i)}
+              onClick={() => choose(o)}
+              className={`w-full px-2 py-1 text-center text-caption font-mono transition-colors ${
+                i === active ? 'bg-bg-elevated text-text-primary' : 'text-text-secondary'
+              }`}
             >
               {o.label}
             </button>
@@ -709,7 +777,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
       // three times would spend it. Also gives the collapsed rail three targets instead of
       // one, matching what macro mode already has.
       <>
-        <Section color="var(--color-clicker)" title="Clicker">
+        <Section color="var(--color-clicker-fg)" title="Clicker">
           {/* Flat/chip layout: every settings control is one FIELD_W (100px) box, flush right,
               so chips, combos and the area control all line up — and match the macro Execution
               chips' width across a mode switch. Value+enable rows are a single EnableChip;
@@ -816,7 +884,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
               auto-enables useArea + disables Position jitter on a successful draw. */}
           <SettingRow label="Area" tooltip={tt('Random point inside a screen box', 'Ponto aleatório numa caixa na tela')}>
             <div
-              className={`${FIELD_W} h-7 flex items-center rounded border overflow-hidden group`}
+              className={`${FIELD_W} h-7 flex items-center rounded border overflow-hidden group focus-within:!border-accent-solid`}
               style={useArea
                 ? chipOn
                 : chipOff}
@@ -832,7 +900,9 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
                   if (!useArea && !area) send({ type: 'clicker:configureArea', payload: {} });
                   else setClickMode('cursorClickUseArea', !useArea);
                 }}
-                aria-label={useArea ? 'Disable area' : 'Enable area'}
+                role="switch"
+                aria-checked={useArea}
+                aria-label="Use area"
                 className="h-full pl-2 pr-1 flex items-center shrink-0 cursor-pointer transition-colors hover:bg-wash-hover"
               >
                 <span
@@ -866,10 +936,10 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
                     onChange('cursorClickArea', null);
                   }}
                   aria-label="Clear area"
-                  className="shrink-0 h-full px-1 flex items-center text-text-tertiary hover:text-text-primary text-caption leading-none transition-colors"
+                  className="shrink-0 h-full px-1 flex items-center text-text-tertiary hover:text-text-primary transition-colors"
                   tabIndex={-1}
                 >
-                  ✕
+                  <X size={11} />
                 </button>
               )}
             </div>
@@ -881,7 +951,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
               auto-enables useFixed + disables the other two on a successful pick. */}
           <SettingRow label="Fixed" tooltip={tt('One point every click. No point = locks where the cursor is at start.', 'Um ponto a cada clique. Sem ponto = trava onde o cursor está ao começar.')}>
             <div
-              className={`${FIELD_W} h-7 flex items-center rounded border overflow-hidden group`}
+              className={`${FIELD_W} h-7 flex items-center rounded border overflow-hidden group focus-within:!border-accent-solid`}
               style={useFixed
                 ? chipOn
                 : chipOff}
@@ -889,7 +959,9 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
               <button
                 type="button"
                 onClick={() => setClickMode('cursorClickUseFixed', !useFixed)}
-                aria-label={useFixed ? 'Disable fixed point' : 'Enable fixed point'}
+                role="switch"
+                aria-checked={useFixed}
+                aria-label="Use fixed point"
                 className="h-full pl-2 pr-1 flex items-center shrink-0 cursor-pointer transition-colors hover:bg-wash-hover"
               >
                 <span
@@ -921,10 +993,10 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
                     onChange('cursorClickFixedPoint', null);
                   }}
                   aria-label="Clear fixed point"
-                  className="shrink-0 h-full px-1 flex items-center text-text-tertiary hover:text-text-primary text-caption leading-none transition-colors"
+                  className="shrink-0 h-full px-1 flex items-center text-text-tertiary hover:text-text-primary transition-colors"
                   tabIndex={-1}
                 >
-                  ✕
+                  <X size={11} />
                 </button>
               )}
             </div>
@@ -1186,7 +1258,12 @@ function HotkeyInput({ value, settingKey, onChange, width = FIELD_W }: {
         }
       }}
       onBlur={() => { setIsFocused(false); setLocalValue(value); send({ type: 'hotkey:capture', payload: { enabled: false, ownerId: ownerIdRef.current } }); disarmCaptureTimer(); }}
-      aria-label={value ? `Hotkey: ${value}` : 'Set hotkey'}
+      // Armed, the name says what the field is waiting for (it used to keep announcing the stored
+      // combo over the visible "New key…"), and aria-pressed carries the armed state itself.
+      aria-label={isFocused
+        ? (localValue ? `New hotkey: ${localValue}` : 'Press the new hotkey')
+        : (value ? `Hotkey: ${value}` : 'Set hotkey')}
+      aria-pressed={isFocused}
       className={`min-w-[100px] h-7 px-1.5 flex items-center justify-center rounded border transition-colors cursor-pointer outline-none ${
         isFocused
           ? 'border-accent-solid bg-bg-input'
@@ -1371,7 +1448,9 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
     const title = pendingScrollSection.current;
     pendingScrollSection.current = null;
     requestAnimationFrame(() => {
-      document.querySelector(`[data-section="${title}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      // Smooth only with the app's animations toggle on (§4: everything passes through it).
+      const smooth = document.documentElement.getAttribute('data-animations') === 'true';
+      document.querySelector(`[data-section="${title}"]`)?.scrollIntoView({ block: 'start', behavior: smooth ? 'smooth' : 'auto' });
     });
   }, [collapsed]);
   const expandToSection = (tab: 'profile' | 'keys' | 'app', sectionTitle: string) => {
@@ -1401,7 +1480,8 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
   const profileKeysOff = !settings.profileKeyEnabled;
   const hotkeysCue: Partial<RailEntry> = profileKeysOff || anyHotkeyConflict
     ? {
-        ...(profileKeysOff ? { color: 'var(--color-recording)' } : {}),
+        // The icon is ink, so it takes the -fg; the dot is a fill and keeps the raw hue.
+        ...(profileKeysOff ? { color: 'var(--color-recording-fg)' } : {}),
         dot: 'var(--color-recording)',
         tip: ['Hotkeys',
           profileKeysOff ? tt('Profile Keys off', 'Profile Keys desligadas') : null,
@@ -1469,8 +1549,10 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
       <div className="w-12 flex flex-col shrink-0 bg-bg-surface border border-border-subtle border-l-border-default rounded-r-shell motion-ok:transition-[width,background-color,border-color] motion-ok:duration-(--motion-base)">
         <div className="flex items-center justify-center border-b border-border-subtle shrink-0 h-band">
           <button
+            type="button"
             onClick={onToggleCollapse}
             className={iconButtonClass('md')}
+            aria-label="Expand panel"
             data-tip={tt('Expand panel', 'Expandir painel')}
             data-tip-pos="left"
           >
@@ -1486,8 +1568,12 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
               {group.map(s => (
                 <button
                   key={s.title}
+                  type="button"
                   onClick={() => expandToSection(s.tab, s.title)}
                   className="group relative w-8 h-8 flex items-center justify-center rounded hover:bg-bg-elevated transition-colors shrink-0"
+                  // The tip carries the live state the dot shows ("Hotkeys · Profile Keys off"),
+                  // so it is the name too — an icon alone named nothing.
+                  aria-label={s.tip ?? s.title}
                   data-tip={s.tip ?? s.title}
                   data-tip-pos="left"
                 >
@@ -1498,6 +1584,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                   />
                   {s.dot && (
                     <span
+                      aria-hidden="true"
                       className="absolute right-0.5 top-0.5 w-[7px] h-[7px] rounded-full"
                       style={{ background: s.dot, outline: '1.5px solid var(--color-bg-surface)' }}
                     />
@@ -1537,8 +1624,10 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
         />
         {onToggleCollapse && (
           <button
+            type="button"
             onClick={onToggleCollapse}
             className={iconButtonClass('md')}
+            aria-label="Collapse panel"
             data-tip={tt('Collapse panel', 'Colapsar painel')}
             data-tip-pos="left"
           >
@@ -1556,8 +1645,8 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
           type at the same index it REUSES the DOM node instead of remounting. Keys→App hit
           exactly that — Section #3 is "Key Remaps" there and "Notifications" here, and each
           opens with a SettingRow + Toggle, so the "Enable Key Remaps" switch node became the
-          "Flash on Replay End" switch with aria-checked flipped. The knob's class went
-          left-[13px] → left-[1px] and its transition-[left] played, showing a phantom
+          "Flash on Replay End" switch with aria-checked flipped. The knob's class flipped from
+          on to off and its transition played, showing a phantom
           "switching off" animation on a control the user never touched. (Profile was
           accidentally immune only because its branch nests an extra fragment, so its child[0]
           is a Fragment, not a Section.) Keying by tab makes a switch always unmount + remount,
@@ -1889,6 +1978,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                         <button
                           type="button"
                           onClick={() => changeSetting('copyScreenTextRegion', '')}
+                          aria-label="Clear region"
                           className="h-full px-1.5 flex items-center text-text-tertiary hover:text-text-primary"
                           data-tip-pos="left"
                           data-tip={tt('Back to dragging a region each time', 'Voltar a arrastar uma região a cada vez')}
@@ -1905,7 +1995,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
             {/* Clicker Start/Pause — moved here from the Profile tab so every key lives in
                 one tab. Decoupled from the macro hotkeys; they only fire in Clicker mode.
                 Purple title = the Clicker mode cue (the one surviving section hue). */}
-            <Section title="Clicker" color="var(--color-clicker)">
+            <Section title="Clicker" color="var(--color-clicker-fg)">
               <SettingRow label="Start">
                 <HotkeyInput value={settings.cursorClickStartHotkey} settingKey="cursorClickStartHotkey" onChange={changeHotkey} />
               </SettingRow>
@@ -2094,10 +2184,10 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
               send({ type: 'update:check', payload: {} });
             }}
             disabled={updateStatus === 'checking'}
-            className="hover:text-accent-solid hover:underline transition-colors disabled:opacity-50 disabled:no-underline"
+            className="inline-flex items-center gap-1 hover:text-accent-solid hover:underline transition-colors disabled:opacity-50 disabled:no-underline"
           >
             {updateStatus === 'checking' ? 'Checking…'
-              : updateStatus === 'up-to-date' ? '✓ Up to date'
+              : updateStatus === 'up-to-date' ? <><Check size={11} /> Up to date</>
               : updateStatus === 'error' ? 'Check failed — Retry'
               : 'Check for Updates'}
           </button>

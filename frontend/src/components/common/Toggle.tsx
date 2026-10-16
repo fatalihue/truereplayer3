@@ -13,9 +13,11 @@ export function Toggle({ isOn, onChange, disabled = false, size = 'default' }: T
   // Knob: 1px inset on every side inside the 1px border (track inner box is 26×14 for
   // sm / 38×18 for default). The earlier sm values sat the knob flush to the bottom/
   // right edge; these centre it, matching the default look at the smaller size.
+  // It travels by `translate` (12 px sm / 20 px default — the old left 1→13 and 2→22), not by
+  // `left`: a layout property animated on every flip, and outside the animations toggle (§4).
   const knob = sm
-    ? `w-3 h-3 top-[1px] ${isOn ? 'left-[13px]' : 'left-[1px]'}`
-    : `w-3.5 h-3.5 top-[2px] ${isOn ? 'left-[22px]' : 'left-[2px]'}`;
+    ? `w-3 h-3 top-[1px] left-[1px] ${isOn ? 'translate-x-3' : ''}`
+    : `w-3.5 h-3.5 top-[2px] left-[2px] ${isOn ? 'translate-x-5' : ''}`;
   return (
     <button
       type="button"
@@ -38,7 +40,7 @@ export function Toggle({ isOn, onChange, disabled = false, size = 'default' }: T
             : 'bg-bg-card border-border-strong cursor-pointer'
       }`}
     >
-      <div className={`absolute rounded-full transition-[left,background-color] ${knob} ${
+      <div className={`absolute rounded-full transition-colors motion-ok:transition-[translate,background-color] ${knob} ${
         isOn ? 'bg-accent' : 'bg-text-tertiary'
       }`} />
     </button>

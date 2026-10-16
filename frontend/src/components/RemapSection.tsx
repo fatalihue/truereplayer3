@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { X, Plus, ArrowRight, Ban, Mouse, AppWindow, Download, Upload } from 'lucide-react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { X, Plus, ArrowRight, Ban, Mouse, AppWindow, Download, Upload, Check } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
 import type { RemapEntryDto } from '../bridge/messageTypes';
 import { useAppState } from '../state/AppStateContext';
@@ -178,6 +178,7 @@ export function RemapSection({ draft }: {
   const [capturing, setCapturing] = useState<'from' | 'to' | null>(null);
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [mouseMenuOpen, setMouseMenuOpen] = useState(false);
+  const onlyInId = useId();
   const [transferNote, setTransferNote] = useState('');
   const mouseMenuRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -466,6 +467,10 @@ export function RemapSection({ draft }: {
       // five sites the previous sweep converted.
       disabled={dimmed}
       onClick={() => (capturing === side ? stopCapture() : startCapture(side))}
+      // Which side, what it holds, and whether it is waiting for a key: two chips that only
+      // differ by position read the same to a screen reader.
+      aria-label={`${side === 'from' ? 'From' : 'To'}: ${capturing === side ? 'press a key' : value ? describeKey(value) : 'not set'}`}
+      aria-pressed={capturing === side}
       // flex-1 + min-w-0 lets the two chips split the row evenly instead of sizing to
       // their text and overflowing the 224px panel; truncate is the safety net for a
       // long key name (the placeholders themselves are kept short enough to fit).
@@ -535,13 +540,17 @@ export function RemapSection({ draft }: {
           key={`${r.from}|${r.process ?? ''}`}
           // Master switch off dims every row — none of them is doing anything — while each dot
           // keeps its own on/off, so the two channels stop disagreeing about one key.
-          className={`h-7 flex items-center rounded border overflow-hidden transition-opacity ${editIndex === i ? 'ring-1 ring-accent-solid' : ''} ${remaps.enabled ? '' : 'opacity-50'}`}
+          // focus-within: the chip recipe's focus cue — overflow-hidden clips the global outline
+          // of the buttons inside to a sliver.
+          className={`h-7 flex items-center rounded border overflow-hidden transition-opacity focus-within:!border-accent-solid ${editIndex === i ? 'ring-1 ring-accent-solid' : ''} ${remaps.enabled ? '' : 'opacity-50'}`}
           style={r.enabled ? chipOn : chipOff}
         >
           <button
             type="button"
             onClick={() => saveList(remaps.entries.map((e, j) => (j === i ? { ...e, enabled: !r.enabled } : e)))}
-            aria-label={r.enabled ? 'Disable remap' : 'Enable remap'}
+            role="switch"
+            aria-checked={r.enabled}
+            aria-label={`${describeKey(r.from)} remap`}
             className="h-full pl-1.5 pr-1 flex items-center shrink-0 cursor-pointer transition-colors hover:bg-wash-hover"
           >
             <span
@@ -598,24 +607,36 @@ export function RemapSection({ draft }: {
             <div ref={mouseMenuRef} className={`relative shrink-0 ${disableMode ? 'opacity-40 pointer-events-none' : ''}`}>
               <button
                 type="button"
+                // REAL disabled, like keyChip above: the wrapper's pointer-events-none stops only
+                // the mouse, and Tab + Enter still opened the menu in "just disable" mode.
+                disabled={disableMode}
                 onClick={() => { stopCapture(); setMouseMenuOpen((o) => !o); }}
                 className={iconButtonClass('md', { active: mouseMenuOpen })}
+                aria-label="Mouse button or wheel as target"
+                aria-haspopup="menu"
+                aria-expanded={mouseMenuOpen}
                 data-tip={tt('Mouse button or wheel as target', 'Botão do mouse ou roda como alvo')}
               >
                 <Mouse size={14} />
               </button>
               {mouseMenuOpen && (
                 <div className="absolute right-0 top-full mt-1 w-40 menu-surface z-20 py-1">
-                  {MOUSE_TARGETS.map((m) => (
-                    <button
-                      key={m.name}
-                      type="button"
-                      onClick={() => { setToKey(m.name); setCaptureError(null); setMouseMenuOpen(false); }}
-                      className={`menu-item w-full text-left ${toKey.toLowerCase() === m.name.toLowerCase() ? 'text-accent' : 'text-text-primary'}`}
-                    >
-                      {m.label}
-                    </button>
-                  ))}
+                  {MOUSE_TARGETS.map((m) => {
+                    // Current target: the ✓ is the second channel the accent ink alone was not.
+                    const current = toKey.toLowerCase() === m.name.toLowerCase();
+                    return (
+                      <button
+                        key={m.name}
+                        type="button"
+                        onClick={() => { setToKey(m.name); setCaptureError(null); setMouseMenuOpen(false); }}
+                        aria-current={current || undefined}
+                        className={`menu-item w-full text-left ${current ? 'text-accent' : 'text-text-primary'}`}
+                      >
+                        <span className="flex-1 min-w-0 truncate">{m.label}</span>
+                        {current && <Check size={12} className="shrink-0 text-accent-solid" />}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -627,30 +648,34 @@ export function RemapSection({ draft }: {
           </label>
           {/* Per-app scope. Empty = everywhere, which is what every remap was before this
               field existed. The picker lists what is running now. */}
+          {/* A group named by "Only in", not a <label>: the picker's popover renders inside the
+              field, and a label would hand every click on its empty space to the input. */}
           <div className="flex items-center gap-1.5">
-            <span className="text-caption text-text-tertiary shrink-0 flex items-center gap-1">
+            <span id={onlyInId} className="text-caption text-text-tertiary shrink-0 flex items-center gap-1">
               <AppWindow size={11} /> {'Only in'}
             </span>
-            <div className="flex-1 min-w-0">
+            <div role="group" aria-labelledby={onlyInId} className="flex-1 min-w-0">
               <ProcessNameInput value={processKey} onChange={setProcessKey} placeholder="any app" />
             </div>
           </div>
-          {captureError && <div className="text-caption" style={{ color: 'var(--color-recording-fg)' }}>{captureError}</div>}
+          {/* Refusals mount as alerts (the grid's refusal hints do the same) and the note as a
+              status, so a key that was turned down is heard, not only seen. */}
+          {captureError && <div role="alert" className="text-caption text-recording-fg">{captureError}</div>}
           {duplicate && (
-            <div className="text-caption" style={{ color: 'var(--color-recording-fg)' }}>
+            <div role="alert" className="text-caption text-recording-fg">
               {processKey.trim() ? 'That key is already remapped in this app.' : 'That key is already remapped.'}
             </div>
           )}
           {selfRemap && (
-            <div className="text-caption" style={{ color: 'var(--color-recording-fg)' }}>
+            <div role="alert" className="text-caption text-recording-fg">
               {'Source and target are the same key.'}
             </div>
           )}
           {fromMessage && (
-            <div className="text-caption" style={{ color: 'var(--color-recording-fg)' }}>{fromMessage}</div>
+            <div role="alert" className="text-caption text-recording-fg">{fromMessage}</div>
           )}
           {toMessage && (
-            <div className="text-caption text-text-secondary">{toMessage}</div>
+            <div role="status" className="text-caption text-text-secondary">{toMessage}</div>
           )}
           <div className="flex gap-2">
             <Button variant="secondary" size="sm" onClick={closeForm}>
@@ -676,6 +701,7 @@ export function RemapSection({ draft }: {
               onClick={handleExport}
               disabled={remaps.entries.length === 0}
               className={iconButtonClass('sm')}
+              aria-label="Export remaps"
               data-tip={tt('Export remaps', 'Exportar remaps')}
             >
               <Download size={13} />
@@ -684,6 +710,7 @@ export function RemapSection({ draft }: {
               type="button"
               onClick={() => fileRef.current?.click()}
               className={iconButtonClass('sm')}
+              aria-label="Import remaps"
               data-tip={tt('Import remaps (added to yours)', 'Importar remaps (somados aos seus)')}
             >
               <Upload size={13} />
