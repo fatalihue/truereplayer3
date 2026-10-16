@@ -44,11 +44,16 @@ export function formatClickerStats(count: number, elapsedMs: number): ClickerSta
 export const CLICK_PERIOD_FLOOR_MS = 5;
 /** Math.Clamp(holdMs, 0, 2000) — ActionExecution.cs safeHold. */
 export const CLICK_HOLD_MAX_MS = 2000;
+/** ActionExecution.cs MaxClickPeriodMs — the ceiling on BOTH the delay and the loop interval. */
+export const CLICK_PERIOD_CEILING_MS = 60000;
 
-/** One full cycle: the engine schedules against this, with hold absorbed INSIDE it. */
+/** One full cycle: the engine schedules against this, with hold absorbed INSIDE it. Both halves
+ *  are clamped exactly as ActionExecution clamps them (basePeriod to [5, 60000], loopInterval to
+ *  [0, 60000]); the UI bounds its own inputs, but a hand-edited setting or preset reached the
+ *  engine's cap while this kept promising the raw number. */
 export function clickPeriodMs(delayMs: number, intervalMs: number): number {
-  const base = Math.max(CLICK_PERIOD_FLOOR_MS, Number.isFinite(delayMs) ? delayMs : 0);
-  return base + Math.max(0, Number.isFinite(intervalMs) ? intervalMs : 0);
+  const base = Math.min(CLICK_PERIOD_CEILING_MS, Math.max(CLICK_PERIOD_FLOOR_MS, Number.isFinite(delayMs) ? delayMs : 0));
+  return base + Math.min(CLICK_PERIOD_CEILING_MS, Math.max(0, Number.isFinite(intervalMs) ? intervalMs : 0));
 }
 
 /**

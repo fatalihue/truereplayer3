@@ -48,15 +48,18 @@ export function clockSeconds(hhmm: string): number | null {
   // Deliberately NOT the day prefix TimeSpan also accepts: there, "1.09:00" means 33 hours and
   // "9" alone means nine DAYS, neither of which InsideActiveHours can ever match — reading them
   // as clocks would invent a window the backend does not have.
-  const m = /^(\d{1,2}):(\d{1,2})(?::(\d{1,2})(?:\.\d+)?)?$/.exec(hhmm);
+  const m = /^(\d{1,2}):(\d{1,2})(?::(\d{1,2}(?:\.\d+)?))?$/.exec(hhmm);
   if (!m) return null;
   const h = Number(m[1]), min = Number(m[2]);
-  // The seconds are ignored for the window, but they still have to be VALID, or the mirror ends up
-  // LOOSER than the backend — the other way to be wrong. TimeSpan.TryParse refuses "09:00:60", so
-  // accepting it here would invent an active window, and a phase-lock warning about it, for a
-  // config the daemon cannot parse at all.
-  if (m[3] != null && Number(m[3]) >= 60) return null;
-  return h < 24 && min < 60 ? h * 3600 + min * 60 : null;
+  // The seconds COUNT, because they count for the backend: InsideActiveHours compares TimeSpans,
+  // so "09:00:30-09:00:45" is a 15 s window there. Dropping them here made start == end and the
+  // wrap branch read a full day — the one hand-edited window most likely to phase-lock went
+  // silent (2026-10-16, a unit-test todo). They also have to be VALID, or the mirror ends up LOOSER
+  // than the backend: TimeSpan.TryParse refuses "09:00:60", so accepting it here would invent an
+  // active window, and a phase-lock warning about it, for a config the daemon cannot parse at all.
+  const sec = m[3] != null ? Number(m[3]) : 0;
+  if (sec >= 60) return null;
+  return h < 24 && min < 60 ? h * 3600 + min * 60 + sec : null;
 }
 
 export const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
@@ -80,6 +83,8 @@ export function phaseLockRisk(t: { kind: string; timeOfDay?: string | null; inte
   const start = clockSeconds(r.from);
   const end = clockSeconds(r.to);
   if (start == null || end == null) return false;
+  // ParseActiveHours treats start == end as NO window (unset), so there is nothing to lock out.
+  if (start === end) return false;
   const width = end > start ? end - start : 86400 - start + end;   // wraps midnight
   return gcd(Math.max(5, t.intervalSeconds), 86400) > width;
 }

@@ -59,6 +59,13 @@ export function skippedRowMask(actions: ActionItem[]): boolean[] {
       const closer = closerOf.get(i);
       if (closer !== undefined) {
         until = closer;   // the block's rows, closer included
+      } else if (a.actionType === 'If' || a.actionType === 'While' || a.actionType === 'ForEachRow') {
+        // A skipped OPENER with no closer: the engine bails to the end of the list rather than
+        // running the body as if the block were not there (ActionExecution: the If, While and
+        // ForEachRow IsSkipped branches all fall back to `i = actions.Count`). Only a hand-fed
+        // list gets here — the load-time validator strips orphans — but the mask must agree with
+        // what the run does, or the status bar charges rows that never execute.
+        until = actions.length - 1;
       } else if (a.actionType === 'ElseIf' || a.actionType === 'Else') {
         // A branch ARM owns its body, and a skipped arm takes the body with it. The engine says so
         // in as many words — "a greyed-out ELSEIF elides only ITS OWN arm" — and never probes it,

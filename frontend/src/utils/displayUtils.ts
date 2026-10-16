@@ -35,7 +35,8 @@ export const NO_COORD_TYPES = new Set(['Assert', 'KeyDown', 'KeyUp', 'Keystroke'
 export function getDisplayKey(key: string): string {
   if (!key) return '';
   if (key.startsWith('D') && key.length === 2 && /\d/.test(key[1])) return key[1];
-  return compactKey(DISPLAY_KEY_MAP[key] ?? key);
+  // Own keys only, as in compactKey: an inherited "toString" is not a table hit.
+  return compactKey(Object.prototype.hasOwnProperty.call(DISPLAY_KEY_MAP, key) ? DISPLAY_KEY_MAP[key] : key);
 }
 
 // Space the '+' separators in a keystroke combo for readability in the grid:
@@ -73,7 +74,8 @@ const MS_FORMAT = {
   'pt-BR': new Intl.NumberFormat('pt-BR'),
 } as const;
 export function formatMs(ms: number, language: 'en' | 'pt-BR'): string {
-  const n = Number.isFinite(ms) ? Math.trunc(ms) : 0;
+  // `|| 0` folds the -0 that Math.trunc gives for (-1, 0) into 0 — Intl prints it as "-0".
+  const n = Number.isFinite(ms) ? Math.trunc(ms) || 0 : 0;
   return MS_FORMAT[language === 'pt-BR' ? 'pt-BR' : 'en'].format(n);
 }
 

@@ -22,4 +22,7 @@ const COMPACT_KEY: Record<string, string> = {
   Escape: 'Esc',
 };
 
-export const compactKey = (key: string): string => COMPACT_KEY[key] ?? key;
+// Own keys only: a plain-object lookup also answers "toString" / "constructor" / "valueOf" with the
+// inherited FUNCTION, and a key literally named that would have rendered as source code.
+export const compactKey = (key: string): string =>
+  Object.prototype.hasOwnProperty.call(COMPACT_KEY, key) ? COMPACT_KEY[key] : key;
