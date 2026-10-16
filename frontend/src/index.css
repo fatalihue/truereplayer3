@@ -370,7 +370,10 @@ html, body, #root {
   outline: none;
   box-shadow: none;
 }
-:has(> [data-actions-grid]:focus-visible)::after {
+/* The subject is NAMED ([data-grid-frame], ActionTable's root): a bare `:has(...)` is `*:has(...)`,
+   which makes every element of the app a :has candidate the style engine re-checks on each DOM
+   change — measured as part of the extra style time on a Settings tab switch. */
+[data-grid-frame]:has(> [data-actions-grid]:focus-visible)::after {
   content: '';
   position: absolute;
   inset: 0;

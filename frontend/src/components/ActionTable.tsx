@@ -2169,6 +2169,9 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
 
   return (
     <div
+      // data-grid-frame: the SUBJECT of the focus-ring :has() rule in index.css — named so the rule
+      // is not `*:has(...)`, which makes every element a candidate on every DOM change.
+      data-grid-frame
       className="relative flex-1 bg-bg-surface overflow-hidden flex flex-col outline-none"
       // -1: click-focusable for the bubbled Delete/Ctrl+A/Escape handling below,
       // but OUT of the tab order — the inner scroll container (tabIndex=0, the
