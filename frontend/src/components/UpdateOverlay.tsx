@@ -182,7 +182,7 @@ export function UpdateOverlay() {
   const isInstalling = phase.step === 'installing';
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+    <div className="fixed inset-0 z-(--z-topmost) flex items-center justify-center">
       {/* Backdrop — the app's strong scrim token plus a blur, the same smoke the dialogs use.
           A press on it must not pull the focus out of the card onto <body> (DialogShell's rule). */}
       <div

@@ -217,7 +217,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
               </span>
             )}
             {preview.hasOrganization && (
-              <span className="text-accent-light">+ folder organization</span>
+              <span className="text-accent-hover">+ folder organization</span>
             )}
           </div>
           <div className="mt-1 text-caption text-text-tertiary flex flex-wrap gap-x-4 gap-y-0.5">

@@ -328,7 +328,7 @@ export function ImageCropper({ imageBase64, onSave, onCancel }: ImageCropperProp
       icon={<Crop size={14} style={{ color: 'var(--color-action-waitimage-fg)' }} />}
       title="Crop reference image"
       size="auto"
-      zClass="z-[80]"
+      zClass="z-(--z-dialog-raised)"
       // Divided by the zoom for the reason in the maxDisplayH note: a bare 90vh is 90 % of the
       // window in LAYOUT px, which the zoom then shrinks — at the 0.9 default the card could only
       // ever use 81 % of the height it was allowed.

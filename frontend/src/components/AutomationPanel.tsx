@@ -889,14 +889,14 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
   return (
     <>
     <DialogShell
-      icon={<Zap size={14} className="text-accent-light" />}
+      icon={<Zap size={14} className="text-accent-hover" />}
       title="Automation"
       size="full"
       // Above the Sheet (scrim z-60, panel z-70): the tray's "Automations…" opens this from
       // OUTSIDE the stack, and at the default z-50 it painted under an open Sheet — unreachable,
       // with DialogShell pulling the focus into it. Its own prompt sits a layer higher still, and
       // the cropper (z-80, rendered after this shell) paints over it by DOM order.
-      zClass="z-[80]"
+      zClass="z-(--z-dialog-raised)"
       onClose={onClose}
       // Pre-close veto, NOT an onClose that declines: DialogShell's onClose runs after it has
       // already committed to leaving, so refusing there fades the panel out and leaves it
@@ -1059,7 +1059,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                     {/* Unsaved marker — nothing in the list used to distinguish an edited row,
                         so a draft could be abandoned without ever looking abandoned. */}
                     {isSel && hasUnsavedWork && (
-                      <span role="img" aria-label="Unsaved changes" className="shrink-0 flex text-accent-light"
+                      <span role="img" aria-label="Unsaved changes" className="shrink-0 flex text-accent-hover"
                         data-tip={tt('Unsaved changes', 'Alterações não salvas')}>
                         <Circle size={7} fill="currentColor" />
                       </span>
@@ -1189,7 +1189,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
               </div>
 
               {testFireResult && (
-                <div className={`flex items-center gap-1.5 text-caption ${testFireResult.ok ? 'text-accent-light' : 'text-text-tertiary'}`}>
+                <div className={`flex items-center gap-1.5 text-caption ${testFireResult.ok ? 'text-accent-hover' : 'text-text-tertiary'}`}>
                   {testFireResult.ok ? <Check size={12} /> : <X size={12} />}
                   {testFireResult.text}
                 </div>
@@ -1673,7 +1673,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                         </Button>
                       </div>
                       {testReadResult && (
-                        <div className={`flex items-start gap-1.5 text-caption ${testReadResult.ok ? 'text-accent-light' : 'text-text-tertiary'}`}>
+                        <div className={`flex items-start gap-1.5 text-caption ${testReadResult.ok ? 'text-accent-hover' : 'text-text-tertiary'}`}>
                           {testReadResult.ok ? <Check size={12} className="shrink-0 mt-px" /> : <X size={12} className="shrink-0 mt-px" />}
                           <span className="break-words">{testReadText}</span>
                         </div>
@@ -1713,7 +1713,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                         </Button>
                       </div>
                       {testMatchResult && (
-                        <div className={`flex items-center gap-1.5 text-caption ${testMatchResult.found ? 'text-accent-light' : 'text-text-tertiary'}`}>
+                        <div className={`flex items-center gap-1.5 text-caption ${testMatchResult.found ? 'text-accent-hover' : 'text-text-tertiary'}`}>
                           {testMatchResult.found ? <Check size={12} /> : <X size={12} />}
                           {testMatchText}
                         </div>
@@ -1864,7 +1864,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
         icon={<TriangleAlert size={14} style={{ color: 'var(--color-warning-ink)' }} />}
         title="Unsaved automation"
         size="sm"
-        zClass="z-[90]"
+        zClass="z-(--z-prompt)"
         onClose={() => setPendingNav(null)}
         // Leaving the prompt (Esc, Keep editing) withdraws "save, THEN go": with animations on,
         // pendingNav outlives the exit animation, and a save echo landing in that window still

@@ -134,7 +134,7 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <DialogShell
-      icon={<ListChecks size={14} className="text-accent-light" />}
+      icon={<ListChecks size={14} className="text-accent-hover" />}
       title="Run report"
       // Height tracks the window instead of a fixed cap: this is a diagnostic LIST, and the
       // 640px ceiling meant a maximised window showed the same six rows as a small one — the
@@ -145,7 +145,7 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
       cardClassName="h-[calc(85vh/var(--ui-zoom))]"
       // Above the Sheet (z-60/70): the palette opens this over whatever is up, the Sheet included,
       // and at the default z-50 it painted under it — unreachable, with the focus pulled into it.
-      zClass="z-[80]"
+      zClass="z-(--z-dialog-raised)"
       onClose={onClose}
       showClose
       footer={<DialogFooter secondary={{ label: <><RefreshCw size={12} /> Refresh</>, onClick: () => send({ type: 'replay:reportRequest', payload: {} }) }} primary={{ label: 'Close', onClick: onClose }} />}

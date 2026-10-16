@@ -834,7 +834,7 @@ export function Toolbar(_props: ToolbarProps) {
                     setShowWaitMenu(false);
                   }}
                 >
-                  <ScanSearch size={12} className="text-accent-light" />
+                  <ScanSearch size={12} className="text-accent-hover" />
                   Wait for Image
                 </button>
                 <button
@@ -846,7 +846,7 @@ export function Toolbar(_props: ToolbarProps) {
                     setShowWaitMenu(false);
                   }}
                 >
-                  <Pipette size={12} className="text-accent-light" />
+                  <Pipette size={12} className="text-accent-hover" />
                   Wait for Pixel Color
                 </button>
                 {/* Wait for Text — the OCR twin of Wait for Image: the same capture-first insert
@@ -860,7 +860,7 @@ export function Toolbar(_props: ToolbarProps) {
                     setShowWaitMenu(false);
                   }}
                 >
-                  <ScanText size={12} className="text-accent-light" />
+                  <ScanText size={12} className="text-accent-hover" />
                   Wait for Text
                 </button>
                 {/* Wait-for-condition presets (D4): a pre-armed Assert — 10 s poll budget +
@@ -868,7 +868,7 @@ export function Toolbar(_props: ToolbarProps) {
                     does, just end the run with no error" is ONE click. Lives HERE and not in
                     Assert ▾: the intent a user arrives with is "wait for", and a full second
                     section there would push that menu past its height budget. The Sheet still
-                    opens pre-filled, so everything stays editable. accent-light icons mark
+                    opens pre-filled, so everything stays editable. accent-hover icons mark
                     these as wait-flavored, distinct from the If/Assert teal. */}
                 <div className="my-1 border-t border-border-subtle" />
                 <div className="px-3 py-1 label-micro text-text-tertiary">
@@ -897,7 +897,7 @@ export function Toolbar(_props: ToolbarProps) {
                       setShowWaitMenu(false);
                     }}
                   >
-                    <Icon size={12} className="text-accent-light" />
+                    <Icon size={12} className="text-accent-hover" />
                     {label}
                   </button>
                 ))}
@@ -1098,7 +1098,7 @@ export function Toolbar(_props: ToolbarProps) {
                       }
                     }}
                   >
-                    <Globe size={12} className="text-accent-light" />
+                    <Globe size={12} className="text-accent-hover" />
                     {item.label}
                   </button>
                 ))}
@@ -1323,7 +1323,7 @@ export function Toolbar(_props: ToolbarProps) {
                       const rowsN = dataTable.rows.length;
                       return (
                         <div ref={loopSubFlyout.ref} className={`absolute bg-transparent ${loopSubFlyout.flipX ? 'right-full' : 'left-full'} ${loopSubFlyout.flipY ? 'bottom-0' : 'top-0'}`} style={loopSubFlyout.flipX ? { paddingRight: '4px' } : { paddingLeft: '4px' }}>
-                          <div className="w-60 py-1 menu-surface z-[60]">
+                          <div className="w-60 py-1 menu-surface z-(--z-submenu)">
                             <div className="px-3 py-1 label-micro text-text-tertiary">
                               Insert While — repeats while true
                             </div>
@@ -1415,7 +1415,7 @@ export function Toolbar(_props: ToolbarProps) {
                     </button>
                     {moreSubmenu === 'assert' && (
                       <div ref={assertSubFlyout.ref} className={`absolute bg-transparent ${assertSubFlyout.flipX ? 'right-full' : 'left-full'} ${assertSubFlyout.flipY ? 'bottom-0' : 'top-0'}`} style={assertSubFlyout.flipX ? { paddingRight: '4px' } : { paddingLeft: '4px' }}>
-                        <div className="w-56 py-1 menu-surface z-[60]">
+                        <div className="w-56 py-1 menu-surface z-(--z-submenu)">
                           <div className="px-3 py-1 label-micro text-text-tertiary">
                             Insert Assert — must be true
                           </div>

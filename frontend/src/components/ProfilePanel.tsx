@@ -2563,7 +2563,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                 className={`absolute bg-transparent ${moveFlyout.flipX ? 'right-full' : 'left-full'} ${moveFlyout.flipY ? 'bottom-0' : 'top-0'}`}
                 style={moveFlyout.flipX ? { paddingRight: '4px' } : { paddingLeft: '4px' }}
               >
-              <div className="py-1 menu-surface z-[60] whitespace-nowrap">
+              <div className="py-1 menu-surface z-(--z-submenu) whitespace-nowrap">
                 {(profileOrder?.folders ?? []).map(f => (
                   <button
                     key={f.name}
@@ -2677,7 +2677,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                 className={`absolute bg-transparent ${moreFlyout.flipX ? 'right-full' : 'left-full'} ${moreFlyout.flipY ? 'bottom-0' : 'top-0'}`}
                 style={moreFlyout.flipX ? { paddingRight: '4px' } : { paddingLeft: '4px' }}
               >
-                <div className="py-1 menu-surface z-[60] whitespace-nowrap">
+                <div className="py-1 menu-surface z-(--z-submenu) whitespace-nowrap">
                   <button
                     onClick={() => handleShowInfo(contextMenu.profileName)}
                     className="menu-item text-text-primary"
@@ -2781,7 +2781,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                 className={`absolute min-w-0 bg-transparent ${colorFlyout.flipX ? 'right-full' : 'left-full'} ${colorFlyout.flipY ? 'bottom-0' : 'top-0'}`}
                 style={colorFlyout.flipX ? { paddingRight: '4px' } : { paddingLeft: '4px' }}
               >
-              <div className="p-2.5 menu-surface z-[60]">
+              <div className="p-2.5 menu-surface z-(--z-submenu)">
                 {/* Same rounded-tile grid as the New Folder dialog — 8 columns, 3 rows for
                     the 24 tones; the folder's current colour shows a ring + check. */}
                 <div className="grid grid-cols-8 gap-1.5" style={{ width: '212px' }}>
@@ -2993,9 +2993,9 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               value={!hotkeyCapture || hotkeyCapture === '...' ? '' : hotkeyCapture}
               placeholder="New key…"
               aria-label="Hotkey"
-              className={`w-full h-8 px-2 text-ui font-mono bg-bg-input border border-accent-solid rounded text-center outline-none placeholder:text-accent-light/50 ${
+              className={`w-full h-8 px-2 text-ui font-mono bg-bg-input border border-accent-solid rounded text-center outline-none placeholder:text-accent-hover/50 ${
                 !hotkeyCapture || hotkeyCapture === '...'
-                  ? 'text-accent-light motion-ok:animate-pulse'
+                  ? 'text-accent-hover motion-ok:animate-pulse'
                   : 'text-accent'
               }`}
             />

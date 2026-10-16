@@ -386,7 +386,7 @@ const GridRow = memo(function GridRow({
           button: as a clickable <td> the cursor could only be moved with the mouse, and the
           marked row was invisible to a screen reader (aria-current carries it now). */}
       <td
-        className={`sticky left-0 z-[5] bg-bg-surface shadow-[inset_-1px_0_0_var(--color-border-subtle)] text-caption tabular-nums text-right pr-2 select-none ${
+        className={`sticky left-0 z-(--z-sticky-cell) bg-bg-surface shadow-[inset_-1px_0_0_var(--color-border-subtle)] text-caption tabular-nums text-right pr-2 select-none ${
           isCursor ? 'font-semibold text-[color:var(--color-replay-fg)]' : 'text-text-tertiary'
         }`}
       >
@@ -1381,7 +1381,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
 
   return (
     <DialogShell
-      icon={<Table2 size={14} className="text-accent-light" />}
+      icon={<Table2 size={14} className="text-accent-hover" />}
       title="Data Loop"
       size="full"
       onClose={onClose}

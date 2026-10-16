@@ -1294,7 +1294,7 @@ function HotkeyInput({ value, settingKey, onChange, width = FIELD_W }: {
       {isFocused
         ? (localValue
           ? <KbdTag combo={localValue} accent />
-          : <span className="text-minor font-mono text-accent-light/60 motion-ok:animate-pulse">New key…</span>)
+          : <span className="text-minor font-mono text-accent-hover/60 motion-ok:animate-pulse">New key…</span>)
         : (localValue
           ? <KbdTag combo={localValue} accent />
           : <span className="text-minor font-mono text-text-tertiary">—</span>)}

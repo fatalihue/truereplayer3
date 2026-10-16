@@ -30,10 +30,8 @@
   --color-accent: #90caf9;
   --color-accent-solid: #42a5f5;
   --color-accent-hover: #bbdefb;
-  /* Alias — ~15 call sites use text-accent-light, which was never a defined
-     token (the utility silently produced no color). Maps to accent-hover so it
-     tracks every theme preset. */
-  --color-accent-light: var(--color-accent-hover);
+  /* (The `accent-light` alias of this token is gone: its 44 call sites now name accent-hover
+     directly — two names for one colour is how one of them drifts.) */
 
   /* Ink (text/icon color) for solid semantic button fills — white or near-black,
      whichever passes contrast against the fill. Re-derived per theme via
@@ -269,6 +267,33 @@
   --color-block-2-light: #5d5fd1;
   --color-block-3-light: #976d41;
   --color-block-4-light: #76762f;
+}
+
+/* The stacking scale — one name per LAYER, used as `z-(--z-…)` (and DialogShell's zClass). The
+   numbers are the ones the app already ran on; they were bracketed literals in a dozen files, and
+   the order between them lived only in comments (DialogShell's zClass doc, LiveVariablesPanel).
+   Plain :root, not @theme: Tailwind 4 has no z-index theme namespace, and an unused @theme
+   variable is dropped. Small in-component lifts (z-10 / z-20 inside a card) stay local.
+     sticky-cell      5  a sticky first column under the sticky header row (Data Loop)
+     floating-panel  40  Live Variables — below every modal and the Sheet stack
+     dialog          50  DialogShell default
+     submenu         60  flyout submenus; the Sheet's own scrim; Insert Text's top prompt
+     sheet           70  the Sheet panel
+     dialog-raised   80  a dialog that can land over an open Sheet (tray, palette, a run)
+     prompt          90  that dialog's own prompts; Ask Input
+     palette        100  the command palette
+     topmost       9999  toasts and the update splash — above everything, by design
+     (the portal tooltip sits at 99999 in .app-tip, above even topmost) */
+:root {
+  --z-sticky-cell: 5;
+  --z-floating-panel: 40;
+  --z-dialog: 50;
+  --z-submenu: 60;
+  --z-sheet: 70;
+  --z-dialog-raised: 80;
+  --z-prompt: 90;
+  --z-palette: 100;
+  --z-topmost: 9999;
 }
 
 /* Global resets */

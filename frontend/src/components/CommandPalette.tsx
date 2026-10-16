@@ -389,7 +389,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   return createPortal(
     <div
       ref={rootRef}
-      className="fixed inset-0 z-[100] flex items-start justify-center pt-[calc(15vh/var(--ui-zoom))] bg-scrim-strong"
+      className="fixed inset-0 z-(--z-palette) flex items-start justify-center pt-[calc(15vh/var(--ui-zoom))] bg-scrim-strong"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       {/* No entrance animation: the palette opens from Ctrl+K, and keyboard-opened surfaces

@@ -27,7 +27,7 @@ export function PopoverHeader({
   return (
     <div className="px-3.5 py-2.5 border-b border-border-subtle bg-bg-card shrink-0">
       <div className="flex items-center gap-2">
-        <Wand2 size={14} className="text-accent-light shrink-0" />
+        <Wand2 size={14} className="text-accent-hover shrink-0" />
         <div
           className="text-minor font-mono flex-1 truncate"
           style={{ color: 'var(--color-action-sendtext-fg)' }}
@@ -67,7 +67,7 @@ export function StepSection({
         <span
           className={`w-4 h-4 rounded-full text-caption font-semibold flex items-center justify-center border transition-colors shrink-0 ${
             active
-              ? 'text-accent-light bg-accent-solid/15 border-accent-solid/40'
+              ? 'text-accent-hover bg-accent-solid/15 border-accent-solid/40'
               : 'text-text-tertiary bg-bg-surface border-border-subtle'
           }`}
         >

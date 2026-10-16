@@ -303,7 +303,7 @@ export function ScreenTextFields(p: ScreenTextFieldsProps) {
           onClick={runTest}
           data-probe
           disabled={testId != null}
-          className="w-full flex items-center justify-center gap-1.5 h-8 px-2.5 rounded text-minor font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full flex items-center justify-center gap-1.5 h-8 px-2.5 rounded text-minor font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <PlayCircle size={13} />
           {testId != null ? 'Reading…' : 'Test read'}

@@ -998,7 +998,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
   // handler (dialog close) only sees Esc when no layer is open. Chip popovers
   // (TokenChipPopover) own their Esc via their own capture listener — when one
   // is open (data-token-popover marker) this router stands down entirely.
-  // The confirm prompt is the TOP rung because it is the visually topmost layer (z-[60] over
+  // The confirm prompt is the TOP rung because it is the visually topmost layer (z-(--z-submenu) over
   // the shell's z-50) and it can legitimately be open at the same time as a snippet sub-form.
   const escLayerActive =
     confirmDiscard || namePrompt !== null || surface !== null ||
@@ -1630,7 +1630,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
         icon={<AlertTriangle size={14} style={{ color: 'var(--color-warning-ink)' }} />}
         title="Unsaved text"
         size="sm"
-        zClass="z-[60]"
+        zClass="z-(--z-submenu)"
         onClose={() => { setConfirmDiscard(false); lexicalApiRef.current?.focus(); }}
         footer={
           <DialogFooter

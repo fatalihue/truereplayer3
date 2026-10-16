@@ -2815,7 +2815,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                         // (the hook stands down when the app is not in front).
                         onKeyDown={(e) => e.preventDefault()}
                         onBlur={cancelEdit}
-                        className="w-[220px] h-6 px-1 text-minor font-mono text-accent-light bg-bg-input border border-accent-solid rounded outline-none placeholder:text-accent-light/50 motion-ok:animate-pulse"
+                        className="w-[220px] h-6 px-1 text-minor font-mono text-accent-hover bg-bg-input border border-accent-solid rounded outline-none placeholder:text-accent-hover/50 motion-ok:animate-pulse"
                       />
                     ) : isProbeAction(action) ? (
                       // Image/pixel probe (Wait* or If/While) — unified payload, no GUID.
@@ -3554,7 +3554,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                 </button>
                 {activeSubmenu === 'clicktype' && (
                   <div ref={clickTypeFlyout.ref} className={`absolute min-w-[210px] bg-transparent ${clickTypeFlyout.flipX ? 'right-full' : 'left-full'} ${clickTypeFlyout.flipY ? 'bottom-0' : 'top-0'}`} style={clickTypeFlyout.flipX ? { paddingRight: '4px' } : { paddingLeft: '4px' }}>
-                    <div className="py-1 menu-surface z-[60]">
+                    <div className="py-1 menu-surface z-(--z-submenu)">
                       {options.map(opt => {
                         const target = opt.value + form;
                         // Over the whole SELECTION, not the clicked row. The check says "this is
@@ -3584,7 +3584,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                               <MousePointerClick size={13} className="text-text-tertiary" />
                               {opt.label}
                             </span>
-                            {current && <Check size={12} className="text-accent-light" />}
+                            {current && <Check size={12} className="text-accent-hover" />}
                           </button>
                         );
                       })}
@@ -3882,7 +3882,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
             </button>
             {activeSubmenu === 'more' && (
               <div ref={moreFlyout.ref} className={`absolute min-w-[210px] bg-transparent ${moreFlyout.flipX ? 'right-full' : 'left-full'} ${moreFlyout.flipY ? 'bottom-0' : 'top-0'}`} style={moreFlyout.flipX ? { paddingRight: '4px' } : { paddingLeft: '4px' }}>
-                <div className="py-1 menu-surface z-[60]">
+                <div className="py-1 menu-surface z-(--z-submenu)">
                   {/* Copy / Paste here — added 2026-09-16, and Copy is the reason this pair
                       exists: actions:copyInternal had exactly ONE door in the whole app, the
                       Ctrl+C keybinding, with no button, no menu and no palette entry. Its twin
@@ -4039,7 +4039,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                           Focus click
                           {clickIdx.length > 1 && <span className="text-text-disabled">({clickIdx.length})</span>}
                         </span>
-                        {allOn && <Check size={12} className="text-accent-light" />}
+                        {allOn && <Check size={12} className="text-accent-hover" />}
                       </button>
                     );
                   })()}

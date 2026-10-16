@@ -87,7 +87,7 @@ export function Toast() {
     // two used to overlap whenever that pane was open. Empty, it is an invisible box that takes
     // no pointer events.
     <div
-      className="fixed left-1/2 -translate-x-1/2 z-[9999] flex flex-col-reverse items-center gap-2 pointer-events-none"
+      className="fixed left-1/2 -translate-x-1/2 z-(--z-topmost) flex flex-col-reverse items-center gap-2 pointer-events-none"
       style={{ bottom: BOTTOM_CLEARANCE_PX }}
     >
       <div role="status" className="sr-only">{latest?.message ?? ''}</div>

@@ -74,7 +74,7 @@ export function DataPasteSurface({
           Grid
         </button>
         <div className="w-px h-4 bg-border-subtle" />
-        <ClipboardPaste size={13} className="text-accent-light shrink-0" />
+        <ClipboardPaste size={13} className="text-accent-hover shrink-0" />
         <div className="text-minor font-semibold text-text-primary flex-1">Paste table</div>
       </div>
 

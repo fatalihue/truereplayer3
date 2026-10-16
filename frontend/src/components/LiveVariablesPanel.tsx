@@ -80,10 +80,10 @@ export function LiveVariablesHost() {
   const row = snap.rowData ? Object.entries(snap.rowData) : [];
   const empty = vars.length === 0 && slots.length === 0 && row.length === 0;
 
-  // z-[40]: below every DialogShell modal (z-50) and the SheetPanel stack (60/70) —
+  // z-(--z-floating-panel): below every DialogShell modal (z-50) and the SheetPanel stack (60/70) —
   // a debug pane must never paint over, or steal clicks from, an open dialog.
   return (
-    <div className="fixed bottom-10 right-3 z-[40] w-[264px] max-h-[calc(45vh/var(--ui-zoom))] flex flex-col menu-surface overflow-hidden">
+    <div className="fixed bottom-10 right-3 z-(--z-floating-panel) w-[264px] max-h-[calc(45vh/var(--ui-zoom))] flex flex-col menu-surface overflow-hidden">
       <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-border-subtle shrink-0">
         <Activity size={12} className={status === 'replaying' ? '' : 'text-text-tertiary'} style={status === 'replaying' ? { color: 'var(--color-replay-fg)' } : undefined} />
         <span className="label-micro text-text-secondary flex-1">Live Variables</span>

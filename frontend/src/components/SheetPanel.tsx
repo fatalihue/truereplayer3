@@ -2966,7 +2966,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
     <>
       {/* Backdrop — no click-to-close, user must Save/Cancel/arrow */}
       <div
-        className="fixed inset-0 z-[60]"
+        className="fixed inset-0 z-(--z-submenu)"
         style={{
           background: 'var(--color-scrim)',
           animation: leaving ? 'fade-in var(--motion-base) var(--ease-exit) reverse forwards' : undefined,
@@ -2978,7 +2978,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
       <div
         role="region"
         aria-label={actionLabel}
-        className="fixed right-0 top-0 bottom-0 w-[340px] z-[70] bg-bg-surface border-l border-border-default flex flex-col"
+        className="fixed right-0 top-0 bottom-0 w-[340px] z-(--z-sheet) bg-bg-surface border-l border-border-default flex flex-col"
         style={{
           animation: leaving
             ? 'slide-out-right var(--motion-base) var(--ease-exit) forwards'
@@ -3349,7 +3349,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 onClick={handleTestWindowProbe}
                 data-probe
                 disabled={windowProbeRequestId !== null || (!windowProcessName.trim() && !windowTitle.trim())}
-                className="w-full h-8 flex items-center justify-center gap-1.5 px-2.5 rounded text-minor font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-light transition-colors disabled:opacity-60"
+                className="w-full h-8 flex items-center justify-center gap-1.5 px-2.5 rounded text-minor font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-hover transition-colors disabled:opacity-60"
               >
                 <PlayCircle size={13} />
                 {windowProbeRequestId ? 'Testing…' : 'Test'}
@@ -3593,7 +3593,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   data-tip={tt('Pick an element on the page', 'Escolher um elemento na página')}
                   className={`h-8 w-8 flex items-center justify-center rounded border transition-colors ${
                     isPicking
-                      ? 'bg-accent-solid/20 border-accent-solid text-accent-light'
+                      ? 'bg-accent-solid/20 border-accent-solid text-accent-hover'
                       : 'bg-bg-input border-border-default text-text-tertiary hover:text-text-primary hover:border-text-tertiary'
                   }`}
                 >
@@ -3671,7 +3671,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
               <button
                 onClick={handleTestCondition}
                 disabled={condRequestId !== null}
-                className="w-full h-8 flex items-center justify-center gap-1.5 px-2.5 rounded text-minor font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-light transition-colors disabled:opacity-60"
+                className="w-full h-8 flex items-center justify-center gap-1.5 px-2.5 rounded text-minor font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-hover transition-colors disabled:opacity-60"
               >
                 <PlayCircle size={13} />
                 {condRequestId ? 'Checking…' : 'Check now'}
@@ -3890,7 +3890,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   onClick={handleTestMatch}
                   data-probe
                   disabled={!action?.imagePath || testMatchRequestId != null}
-                  className="flex-1 flex items-center justify-center gap-1.5 h-8 px-2.5 rounded text-minor font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 flex items-center justify-center gap-1.5 h-8 px-2.5 rounded text-minor font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <PlayCircle size={13} />
                   {testMatchRequestId != null ? 'Testing…' : 'Test match'}
@@ -4132,7 +4132,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 <button
                   type="button"
                   onClick={handleTestPixelMatch}
-                  className="flex-1 h-8 flex items-center justify-center gap-1.5 px-2.5 text-minor font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-light rounded whitespace-nowrap transition-colors"
+                  className="flex-1 h-8 flex items-center justify-center gap-1.5 px-2.5 text-minor font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-hover rounded whitespace-nowrap transition-colors"
                 >
                   <PlayCircle size={13} />
                   Test match
@@ -4319,9 +4319,9 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   disarmKeyCaptureTimer();
                   send({ type: 'hotkey:capture', payload: { enabled: false, ownerId: captureOwnerIdRef.current } });
                 }}
-                className={`w-full h-8 px-2 text-ui font-mono bg-bg-input border rounded outline-none cursor-pointer placeholder:text-accent-light/50 ${
+                className={`w-full h-8 px-2 text-ui font-mono bg-bg-input border rounded outline-none cursor-pointer placeholder:text-accent-hover/50 ${
                   pauseHotkeyFocused
-                    ? 'text-accent-light border-accent-solid motion-ok:animate-pulse'
+                    ? 'text-accent-hover border-accent-solid motion-ok:animate-pulse'
                     : 'text-text-primary border-border-default'
                 }`}
               />
@@ -4408,7 +4408,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                     data-tip={tt('Pick an element on the page', 'Escolher um elemento na página')}
                     className={`h-8 w-8 flex items-center justify-center rounded border transition-colors ${
                       isPicking
-                        ? 'bg-accent-solid/20 border-accent-solid text-accent-light'
+                        ? 'bg-accent-solid/20 border-accent-solid text-accent-hover'
                         : 'bg-bg-input border-border-default text-text-tertiary hover:text-text-primary hover:border-text-tertiary'
                     }`}
                   >
@@ -4723,7 +4723,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
               <button
                 onClick={handleTestAction}
                 disabled={testRequestId !== null}
-                className="w-full h-8 flex items-center justify-center gap-1.5 px-2.5 rounded text-minor font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-light transition-colors disabled:opacity-60"
+                className="w-full h-8 flex items-center justify-center gap-1.5 px-2.5 rounded text-minor font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-hover transition-colors disabled:opacity-60"
               >
                 <PlayCircle size={13} />
                 {testRequestId ? 'Running…' : 'Test action'}
@@ -4857,9 +4857,9 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 }}
                 onBlur={() => setKeyFieldFocused(false)}
                 placeholder="Click to capture…"
-                className={`w-full h-8 px-2 text-ui font-mono bg-bg-input border rounded outline-none cursor-pointer placeholder:text-accent-light/50 ${
+                className={`w-full h-8 px-2 text-ui font-mono bg-bg-input border rounded outline-none cursor-pointer placeholder:text-accent-hover/50 ${
                   keyFieldFocused
-                    ? 'text-accent-light border-accent-solid motion-ok:animate-pulse'
+                    ? 'text-accent-hover border-accent-solid motion-ok:animate-pulse'
                     : 'text-text-primary border-border-default'
                 }`}
               />
@@ -5202,7 +5202,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 onClick={handleTestWindowProbe}
                 data-probe
                 disabled={windowProbeRequestId !== null || (!windowProcessName.trim() && !windowTitle.trim())}
-                className="w-full h-8 flex items-center justify-center gap-1.5 px-2.5 rounded text-minor font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-light transition-colors disabled:opacity-60"
+                className="w-full h-8 flex items-center justify-center gap-1.5 px-2.5 rounded text-minor font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-hover transition-colors disabled:opacity-60"
               >
                 <PlayCircle size={13} />
                 {windowProbeRequestId ? 'Testing…' : 'Test'}

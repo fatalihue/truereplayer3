@@ -181,7 +181,7 @@ export function BulkActionBar({
           grows enough to compress the flex layout — without these, narrow window
           widths would wrap "N" and "selected" onto two lines. */}
       <div className="flex items-center gap-2 shrink-0">
-        <span className="text-minor font-semibold text-accent-light whitespace-nowrap">{selectedCount} selected</span>
+        <span className="text-minor font-semibold text-accent-hover whitespace-nowrap">{selectedCount} selected</span>
         <button onClick={onClearSelection} className={iconButtonClass('sm')} aria-label="Clear selection">
           <X size={14} />
         </button>
@@ -326,7 +326,7 @@ export function BulkActionBar({
               onClick={onToggleSkip}
               className={`flex items-center gap-1.5 h-7 px-2 rounded text-minor font-medium transition-colors ${
                 allSelectedSkipped
-                  ? 'text-accent-light hover:text-accent-light hover:bg-accent-solid/10'
+                  ? 'text-accent-hover hover:text-accent-hover hover:bg-accent-solid/10'
                   : 'text-text-secondary hover:text-text-primary hover:bg-bg-elevated'
               }`}
             >

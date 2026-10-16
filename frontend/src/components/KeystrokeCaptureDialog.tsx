@@ -398,11 +398,11 @@ export function KeystrokeCaptureDialog({
                   {mode === 'hold' ? (
                     // Hold goes through SimulateKey (single virtual-key) — a token
                     // resolving to a combo would silently no-op, so don't teach it here.
-                    <>For Hold, a <code className="text-accent-light">{'{var:name}'}</code> token must
+                    <>For Hold, a <code className="text-accent-hover">{'{var:name}'}</code> token must
                       resolve to a <span className="text-text-secondary">single key</span> (F5, W, Space…).</>
                   ) : (
-                    <>Tokens like <code className="text-accent-light">{'{var:name}'}</code> or{' '}
-                      <code className="text-accent-light">{'{clipboard}'}</code> resolve at replay —
+                    <>Tokens like <code className="text-accent-hover">{'{var:name}'}</code> or{' '}
+                      <code className="text-accent-hover">{'{clipboard}'}</code> resolve at replay —
                       even into a full combo like Ctrl+V.</>
                   )}
                 </div>

@@ -255,7 +255,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
             Editor
           </button>
           <div className="w-px h-4 bg-border-subtle" />
-          <Wand2 size={13} className="text-accent-light shrink-0" />
+          <Wand2 size={13} className="text-accent-hover shrink-0" />
           <div className="text-minor font-semibold text-text-primary flex-1">{HEAD_TITLES[head.kind]}</div>
         </div>
         <div className="flex-1 p-4 space-y-3">
@@ -293,7 +293,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
           Editor
         </button>
         <div className="w-px h-4 bg-border-subtle" />
-        <Wand2 size={13} className="text-accent-light shrink-0" />
+        <Wand2 size={13} className="text-accent-hover shrink-0" />
         <div className="text-minor font-semibold text-text-primary flex-1">{HEAD_TITLES[head.kind]}</div>
         <button
           type="button"
@@ -881,7 +881,7 @@ function Step({
         <span
           className={`w-4 h-4 rounded-full text-caption font-semibold flex items-center justify-center border transition-colors ${
             active
-              ? 'text-accent-light bg-accent-solid/15 border-accent-solid/40'
+              ? 'text-accent-hover bg-accent-solid/15 border-accent-solid/40'
               : 'text-text-tertiary bg-bg-surface border-border-subtle'
           }`}
         >
