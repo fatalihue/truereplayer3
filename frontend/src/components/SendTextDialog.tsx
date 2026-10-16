@@ -171,6 +171,13 @@ function saveSnippets(snippets: Snippet[]) {
   }
 }
 
+/** The snippet search: name or text, case-insensitive. One predicate for the list and for the
+ *  search box's own check of which rows a new query hides. */
+function snippetMatches(s: Snippet, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  return !q || s.name.toLowerCase().includes(q) || s.text.toLowerCase().includes(q);
+}
+
 // Inline edit form for an existing snippet — rendered in place of the row so
 // the user can adjust name and text without leaving the panel.
 function SnippetEditForm({
@@ -199,8 +206,11 @@ function SnippetEditForm({
           if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onCancel(); }
         }}
         placeholder="Snippet name…"
+        aria-label="Snippet name"
         autoFocus
-        className="w-full h-7 px-2 text-minor text-text-primary bg-bg-input border border-border-subtle rounded outline-none focus:border-accent-solid placeholder:text-text-disabled"
+        // The field recipe, not a copy on border-subtle (the value that vanished on light
+        // presets). A name is prose: sans.
+        className="input-inline font-sans"
       />
       <textarea
         value={text}
@@ -210,8 +220,10 @@ function SnippetEditForm({
           if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onCancel(); }
         }}
         placeholder="Snippet text…"
+        aria-label="Snippet text"
         rows={5}
-        className="w-full px-2 py-1.5 text-caption font-mono text-text-primary bg-bg-input border border-border-subtle rounded outline-none focus:border-accent-solid resize-none placeholder:text-text-disabled"
+        // No textarea recipe yet; border-default at least, as the input above.
+        className="w-full px-2 py-1.5 text-caption font-mono text-text-primary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid resize-none placeholder:text-text-disabled"
       />
       <div className="flex items-center gap-2">
         <Button variant="secondary" size="sm" onClick={onCancel}>
@@ -386,6 +398,9 @@ function NamePromptPopover({
   const shown = normalizeToken(`{${kind}:${name || 'x'}}`);
   const headerToken = name ? shown : shown.replace(/x\}$/, '…}');
   const description = tokenTip(`{${kind}:x}`, (en) => en, { withRaw: false });
+  // One string for the Section caption AND the input's accessible name: the caption is a plain
+  // div (popoverAtoms' Section), so without the aria-label the field was named by its placeholder.
+  const fieldLabel = kind === 'var' ? 'Variable name' : kind === 'input' ? 'Prompt label' : kind === 'clip' ? 'Slot name' : kind === 'env' ? 'Environment variable' : 'Data column';
   const hint = kind === 'input'
     ? 'Click the chip afterwards to add dropdown options.'
     : kind === 'clip'
@@ -407,11 +422,12 @@ function NamePromptPopover({
     >
       {/* Same skeleton as TokenChipPopover: header (wand · token · ✕) → Section → footer. */}
       <PopoverHeader token={headerToken} description={description} onClose={onClose} />
-      <Section label={kind === 'var' ? 'Variable name' : kind === 'input' ? 'Prompt label' : kind === 'clip' ? 'Slot name' : kind === 'env' ? 'Environment variable' : 'Data column'}>
+      <Section label={fieldLabel}>
         <div className="py-1">
           <input
             ref={inputRef}
             type="text"
+            aria-label={fieldLabel}
             value={name}
             // Input labels allow spaces (only the token-breaking { } | are stripped); a column name
             // is any header — only { } : are out (RowDataTokenRegex, 2.37.0); var/clip names are the
@@ -423,8 +439,9 @@ function NamePromptPopover({
             }}
             spellCheck={false}
             placeholder={kind === 'var' ? 'name' : kind === 'input' ? 'What to ask' : kind === 'clip' ? '1' : kind === 'env' ? 'USERNAME' : 'column'}
-            // h-7 like every input in the chip popovers — the popover scale; h-8 is the surface's.
-            className={`h-7 w-full px-2 text-minor bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid placeholder:text-text-disabled ${kind === 'input' ? '' : 'font-mono'}`}
+            // input-inline (h-7) like every input in the chip popovers — the popover scale; h-8 is
+            // the surface's. Mono for the identifiers; a prompt label is prose, so sans.
+            className={`input-inline ${kind === 'input' ? 'font-sans' : ''}`}
           />
         </div>
         {hint && (
@@ -437,16 +454,19 @@ function NamePromptPopover({
           footer never shifts between kinds. */}
       <div className="flex items-center justify-between gap-2 px-3 py-2 bg-bg-card border-t border-border-subtle">
         {kind !== 'input' && onAdvanced ? (
-          <button
-            type="button"
+          // The Button primitive, not a hand-rolled ghost: this one carries a data-tip and goes
+          // disabled, and index.css restores pointer-events on [data-tip][disabled] — its ungated
+          // hover lit the disabled button up like a live one. Button gates every hover on enabled:.
+          <Button
+            variant="ghost"
+            size="xs"
             onClick={advanced}
             disabled={!name.trim()}
-            className="flex items-center gap-1 h-7 px-2 text-caption rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             data-tip={tt('Transforms: trim, split, lines, case…', 'Transformações: trim, corte, linhas, maiúsculas…')}
           >
-            <Wand2 size={11} className="shrink-0" />
+            <Wand2 size={12} className="shrink-0" />
             Advanced…
-          </button>
+          </Button>
         ) : (
           <span />
         )}
@@ -467,6 +487,23 @@ type SurfaceSession =
   // all changed under the user, who had only asked to clear the chain.
   | { mode: 'insert'; startHead: ChainHead }
   | { mode: 'edit'; token: string; commit: (next: string) => void; remove: () => void };
+
+/**
+ * Hand the keyboard to the clipboard surface that just opened, the way closeSurface hands it back.
+ * The surface mounts in this render, so the lookup waits a frame. A head with an identity field
+ * (Variable, Data column…) autofocuses that field on mount — the focus is already inside and is
+ * left there. A head-only token ({Clipboard}, {Counter}, {UUID}…) has no field, and the focus
+ * stayed BEHIND the overlay on whatever opened it: a chip, or the palette's Advanced… chip, where
+ * the next Space re-opened the builder and reset the chain being built.
+ */
+function focusClipSurface() {
+  requestAnimationFrame(() => {
+    const root = document.querySelector<HTMLElement>('[data-clip-surface]');
+    if (!root || root.contains(document.activeElement)) return;
+    const first = root.querySelector<HTMLElement>('button, input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    (first ?? root).focus();
+  });
+}
 
 export function SendTextDialog({ mode, initialText = '', initialHtml = null, initialMode = 'rich', initialMethod = 'paste', initialCharDelayMs = null, actionIndex = null, onConfirm, onClose }: SendTextDialogProps) {
   const tt = useTt();
@@ -520,22 +557,37 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
   const lexicalApiRef = useRef<LexicalEditorHandle | null>(null);
 
   /**
-   * Close the name prompt and put the keyboard back where it belongs.
+   * Put the keyboard back in the editor after a sub-layer that held it has gone.
    *
-   * The prompt's input holds the focus; removing it leaves document.activeElement on <body>, and
+   * The layer's control holds the focus; removing it leaves document.activeElement on <body>, and
    * from there the card is deaf — Esc, Ctrl+Enter and typing all stop working until the user
-   * clicks something. Restoring UNCONDITIONALLY would be worse: this same close runs when
-   * "Advanced…" hands over to the surface (the editor is under an overlay by then) and from the
-   * outside-mousedown handler, which fires BEFORE the click sets focus on whatever was clicked.
+   * clicks something. Restoring UNCONDITIONALLY would be worse: the name prompt's close also runs
+   * when "Advanced…" hands over to the surface (the editor is under an overlay by then) and from
+   * the outside-mousedown handler, which fires BEFORE the click sets focus on whatever was clicked.
    * So: only when the focus actually fell to the body, and on the next frame, after React has
-   * removed the portal.
+   * removed the layer.
    */
-  const closeNamePrompt = useCallback(() => {
-    setNamePrompt(null);
+  const refocusEditorIfLost = useCallback(() => {
     requestAnimationFrame(() => {
       if (document.activeElement === document.body) lexicalApiRef.current?.focus();
     });
   }, []);
+  // Close the name prompt and put the keyboard back where it belongs.
+  const closeNamePrompt = useCallback(() => {
+    setNamePrompt(null);
+    refocusEditorIfLost();
+  }, [refocusEditorIfLost]);
+
+  // The snippet sub-layers (save-as form, inline edit, delete confirm) close by unmounting the
+  // control that held the focus — Save, Cancel, ✓, ✕ and Esc all do — and Chromium parks it on
+  // <body>. DialogShell would bring it back to the card (a 30 ms timer; this frame lands first);
+  // the editor is the better landing, since what comes next is almost always typing. Keyed on the
+  // layer CLOSING, so every exit is covered without each handler having to remember. It also runs
+  // once at mount, where the body check declines: the editor already has the focus.
+  const snippetLayerOpen = savingSnippet || deletingSnippetId !== null || editingSnippetId !== null;
+  useEffect(() => {
+    if (!snippetLayerOpen) refocusEditorIfLost();
+  }, [snippetLayerOpen, refocusEditorIfLost]);
   // Unsaved-work gate. Rendered as a SIBLING of DialogShell (see the end of this file) and
   // reached ONLY through DialogShell.canClose — never through onClose, which the shell calls
   // after it has already committed to leaving.
@@ -590,6 +642,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
     setClipHead({ kind: 'clipboard' });
     setClipDirty(false);
     setSurface({ mode: 'insert', startHead: { kind: 'clipboard' } });
+    focusClipSurface();
   }, []);
 
   // Same insert session, arbitrary head. Reached from the name prompt's Advanced… button, so the
@@ -613,15 +666,9 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
     setClipHead(parsed.head);
     setClipDirty(false);
     setSurface({ mode: 'edit', token: req.token, commit: req.commit, remove: req.remove });
-    // Hand the keyboard to the surface that just opened, the way closeSurface hands it back. A chip
-    // with no identity of its own ({Clipboard}, {Counter}, {UUID}, {WinClip}, {Timestamp}) opens
-    // the builder over the editor and the focus stayed BEHIND it: the next keystroke went into an
-    // editor the user could not see, under the overlay.
-    requestAnimationFrame(() => {
-      const root = document.querySelector<HTMLElement>('[data-clip-surface]');
-      const first = root?.querySelector<HTMLElement>('button, input, select, textarea, [tabindex]:not([tabindex="-1"])');
-      (first ?? root)?.focus();
-    });
+    // A chip with no identity of its own opens the builder over the editor; without this the next
+    // keystroke went into an editor the user could not see, under the overlay.
+    focusClipSurface();
   }, []);
 
   const closeSurface = useCallback(() => {
@@ -702,24 +749,27 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
 
   const handleUpdateSnippet = useCallback((id: string, newName: string, newText: string) => {
     const trimmedName = newName.trim();
-    const trimmedText = newText.trim();
-    if (!trimmedName || !trimmedText) return;
-    const updated = snippets.map(s =>
-      // Plain-text edit invalidates the rich flavor (same contract as actions:edit on
-      // key) — keeping stale html would make insert ignore the text change entirely.
-      s.id === id ? { id: s.id, name: trimmedName, text: trimmedText } : s,
-    );
+    // The text is stored as typed, exactly as handleSaveSnippet stores it: trim only decides
+    // emptiness. Trimmed here, editing a snippet saved as "Oi " silently rewrote it to "Oi".
+    if (!trimmedName || !newText.trim()) return;
+    const updated = snippets.map(s => {
+      if (s.id !== id) return s;
+      // A plain-text edit invalidates the rich flavor (same contract as actions:edit on key) —
+      // keeping stale html would make insert ignore the text change entirely. A RENAME does not:
+      // the form always hands the text back, so dropping html unconditionally stripped the
+      // formatting from a rich snippet whose name was all that changed.
+      return newText === s.text
+        ? { ...s, name: trimmedName }
+        : { id: s.id, name: trimmedName, text: newText };
+    });
     setSnippets(updated);
     saveSnippets(updated);
     setEditingSnippetId(null);
   }, [snippets]);
 
   const filteredSnippets = useMemo(() => {
-    const q = snippetFilter.trim().toLowerCase();
-    if (!q) return snippets;
-    return snippets.filter(s =>
-      s.name.toLowerCase().includes(q) || s.text.toLowerCase().includes(q),
-    );
+    if (!snippetFilter.trim()) return snippets;
+    return snippets.filter(s => snippetMatches(s, snippetFilter));
   }, [snippets, snippetFilter]);
 
   // ── Snippet export / import ──
@@ -735,7 +785,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
     a.download = snippetExportFilename(new Date());
     a.click();
     URL.revokeObjectURL(url);
-    setSnippetTransferNote(`Saved ${snippets.length} snippets`);
+    setSnippetTransferNote(`Saved ${snippets.length} snippet${snippets.length === 1 ? '' : 's'}`);
   }, [snippets]);
 
   const handleImportSnippets = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -767,7 +817,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
       const n = result.snippets.length;
       setSnippetTransferNote(result.skipped > 0
         ? `Added ${n}, skipped ${result.skipped} incomplete`
-        : `Added ${n} snippets`);
+        : `Added ${n} snippet${n === 1 ? '' : 's'}`);
     };
     reader.readAsText(file);
   }, [snippets]);
@@ -1012,9 +1062,10 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
     <button
       type="button"
       onClick={toggle}
+      aria-expanded={open}
       className="w-full flex items-center gap-1 px-3 py-1 label-micro text-text-tertiary hover:text-text-primary transition-colors"
     >
-      <ChevronRight size={12} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
+      <ChevronRight size={12} aria-hidden="true" className={`motion-ok:transition-transform ${open ? 'rotate-90' : ''}`} />
       {label}
     </button>
   );
@@ -1051,14 +1102,12 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
         surface ? (
           <span className="flex items-center gap-3">
             {surface.mode === 'edit' && (
-              <button
-                type="button"
-                onClick={() => { surface.remove(); closeSurface(); }}
-                className="flex items-center gap-1 h-7 px-2 text-caption rounded text-[color:var(--color-recording-fg)] hover:bg-[color-mix(in_srgb,var(--color-recording)_15%,transparent)] border border-transparent hover:border-[color-mix(in_srgb,var(--color-recording)_30%,transparent)] transition-colors"
-              >
+              // Red text, no fill: removing the token is the secondary action here (the primary is
+              // Apply) — Button's destructiveText rule, not a hand-mixed copy of it.
+              <Button variant="destructiveText" size="xs" onClick={() => { surface.remove(); closeSurface(); }}>
                 <Trash2 size={12} />
                 Delete token
-              </button>
+              </Button>
             )}
             <span>{'Steps apply in the order shown'}</span>
           </span>
@@ -1150,7 +1199,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
               // the writing surface nothing. The sheet keeps the one-line default.
               placeholder={
                 <>
-                  Type the text to send...
+                  Type the text to send…
                   <span className="block mt-1.5 text-minor leading-relaxed">
                     Tokens like <span className="font-mono">{'{clipboard}'}</span>, <span className="font-mono">{'{date}'}</span> and <span className="font-mono">{'{enter}'}</span> are filled in at replay · pick them in the Insert panel, or type <span className="font-mono">{'{'}</span> to search them here
                   </span>
@@ -1319,6 +1368,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                       onClick={handleExportSnippets}
                       disabled={snippets.length === 0}
                       className={iconButtonClass('sm')}
+                      aria-label="Export snippets"
                       data-tip={tt('Export snippets', 'Exportar snippets')}
                     >
                       <Download size={14} />
@@ -1327,6 +1377,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                       type="button"
                       onClick={() => snippetFileRef.current?.click()}
                       className={iconButtonClass('sm')}
+                      aria-label="Import snippets"
                       data-tip={tt('Import snippets (added to yours)', 'Importar snippets (somados aos seus)')}
                     >
                       <Upload size={14} />
@@ -1337,6 +1388,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                       disabled={!text.trim()}
                       // Off → the reason; on → what it does. Same rule as the footer button.
                       className={iconButtonClass('sm')}
+                      aria-label="Save as snippet"
                       data-tip={needsTextTip ?? tt('Save as snippet', 'Salvar como snippet')}
                     >
                       <BookmarkPlus size={14} />
@@ -1377,8 +1429,9 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setSavingSnippet(false); }
                       }}
                       placeholder="Snippet name…"
+                      aria-label="Snippet name"
                       autoFocus
-                      className="h-7 px-2 text-minor text-text-primary bg-bg-input border border-border-subtle rounded outline-none focus:border-accent-solid placeholder:text-text-disabled"
+                      className="input-inline font-sans"
                     />
                     <div className="flex items-center gap-2">
                       <Button variant="secondary" size="sm" onClick={() => setSavingSnippet(false)}>
@@ -1399,13 +1452,25 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                 {snippets.length > 0 && (
                   <div className="px-3 pb-2 shrink-0">
                     <div className="relative">
-                      <Search size={11} className="absolute left-2 top-1/2 -translate-y-1/2 text-text-tertiary pointer-events-none" />
+                      <Search size={11} aria-hidden="true" className="absolute left-2 top-1/2 -translate-y-1/2 text-text-tertiary pointer-events-none" />
                       <input
                         type="text"
                         value={snippetFilter}
-                        onChange={(e) => setSnippetFilter(e.target.value)}
+                        onChange={(e) => {
+                          const next = e.target.value;
+                          setSnippetFilter(next);
+                          // A query that hides the row with an armed delete or an open edit form
+                          // disarms it. Left set, the hidden layer kept the Esc router armed: the
+                          // next Esc was swallowed with nothing on screen changing. A row the new
+                          // query still shows keeps its form — that may be an edit in progress.
+                          const hidden = (id: string | null) =>
+                            id !== null && !snippets.some((s) => s.id === id && snippetMatches(s, next));
+                          if (hidden(deletingSnippetId)) setDeletingSnippetId(null);
+                          if (hidden(editingSnippetId)) setEditingSnippetId(null);
+                        }}
                         placeholder="Search snippets…"
-                        className="w-full h-7 pl-6 pr-2 text-caption text-text-primary bg-bg-input border border-border-subtle rounded outline-none focus:border-accent-solid placeholder:text-text-disabled"
+                        aria-label="Search snippets"
+                        className="input-inline font-sans pl-6"
                       />
                     </div>
                   </div>
@@ -1438,7 +1503,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                         <div
                           key={s.id}
                           className={`flex items-center gap-1 px-3 py-2 transition-colors group border-b border-border-subtle last:border-b-0 ${
-                            deletingSnippetId === s.id ? 'bg-[color-mix(in_srgb,var(--color-recording)_10%,transparent)]' : 'hover:bg-bg-card'
+                            deletingSnippetId === s.id ? 'bg-recording-bg' : 'hover:bg-bg-card'
                           }`}
                         >
                           <button
@@ -1461,11 +1526,16 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                               since autoFocus only acts on mount. */}
                           {deletingSnippetId === s.id ? (
                             <React.Fragment key="confirm">
-                              <span className="text-caption text-[color:var(--color-recording-fg)] mr-1 shrink-0">Delete?</span>
+                              <span className="text-caption text-recording-fg mr-1 shrink-0">Delete?</span>
+                              {/* The armed confirm keeps a red fill AT REST — iconButtonClass's danger
+                                  tone is red only on hover, and an armed delete has to read as armed
+                                  before the pointer gets there. Same sm rung (24 px), tokens only. */}
                               <button
                                 type="button"
                                 onClick={() => handleDeleteSnippet(s.id)}
-                                className="shrink-0 p-1 rounded text-[color:var(--color-recording-fg)] bg-[color-mix(in_srgb,var(--color-recording)_20%,transparent)] hover:bg-[color-mix(in_srgb,var(--color-recording)_35%,transparent)] border border-[color-mix(in_srgb,var(--color-recording)_40%,transparent)] transition-colors"
+                                aria-label="Delete snippet"
+                                data-tip={tt('Delete', 'Excluir')}
+                                className="inline-flex items-center justify-center h-6 min-w-6 px-1 shrink-0 rounded text-recording-fg bg-recording/20 hover:bg-recording/35 border border-recording/40 transition-colors"
                                 autoFocus
                               >
                                 <Check size={12} />
@@ -1473,24 +1543,32 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                               <button
                                 type="button"
                                 onClick={() => setDeletingSnippetId(null)}
-                                className="shrink-0 p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+                                aria-label="Cancel"
+                                data-tip={tt('Cancel (Esc)', 'Cancelar (Esc)')}
+                                className={iconButtonClass('sm')}
                               >
                                 <X size={12} />
                               </button>
                             </React.Fragment>
                           ) : (
                             <React.Fragment key="actions">
+                              {/* Hidden until the row is hovered or holds the focus — Tab onto
+                                  either one sets focus-within and shows both. */}
                               <button
                                 type="button"
                                 onClick={() => setEditingSnippetId(s.id)}
-                                className="shrink-0 p-1 text-text-disabled hover:text-accent-light transition-colors opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                                aria-label="Edit snippet"
+                                data-tip={tt('Edit snippet', 'Editar snippet')}
+                                className={iconButtonClass('sm', { className: 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100' })}
                               >
                                 <Pencil size={12} />
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setDeletingSnippetId(s.id)}
-                                className="shrink-0 p-1 text-text-disabled hover:text-[color:var(--color-recording-fg)] transition-colors opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                                aria-label="Delete snippet"
+                                data-tip={tt('Delete snippet', 'Excluir snippet')}
+                                className={iconButtonClass('sm', { tone: 'danger', className: 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100' })}
                               >
                                 <Trash2 size={12} />
                               </button>

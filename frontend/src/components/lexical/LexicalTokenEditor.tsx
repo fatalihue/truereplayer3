@@ -1138,11 +1138,15 @@ function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDe
   const btnClass = (active: boolean) =>
     iconButtonClass('sm', { className: active ? 'text-accent bg-[color-mix(in_srgb,var(--color-accent)_14%,transparent)] enabled:hover:text-accent' : '' });
 
-  const fmtBtn = (fmt: TextFormatType, active: boolean, Icon: typeof Bold, tip: string) => (
+  // Icon-only, so each one is NAMED (English, like every name — the tip is the localised text) and
+  // says whether its format is ON: the accent tint was that state's only channel.
+  const fmtBtn = (fmt: TextFormatType, active: boolean, Icon: typeof Bold, tip: string, name: string) => (
     <button
       type="button"
       onMouseDown={(e) => e.preventDefault()}
       onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, fmt)}
+      aria-label={name}
+      aria-pressed={active}
       className={btnClass(active)}
       data-tip={tip}
     >
@@ -1163,11 +1167,11 @@ function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDe
       <div className={`flex flex-wrap items-center gap-x-0.5 gap-y-1 min-w-0 transition-opacity ${
         formattingDelivered ? '' : 'opacity-45 hover:opacity-75'
       }`}>
-      {fmtBtn('bold', formats.bold, Bold, tt('Bold (Ctrl+B)', 'Negrito (Ctrl+B)'))}
-      {fmtBtn('italic', formats.italic, Italic, tt('Italic (Ctrl+I)', 'Itálico (Ctrl+I)'))}
-      {fmtBtn('underline', formats.underline, Underline, tt('Underline (Ctrl+U)', 'Sublinhado (Ctrl+U)'))}
-      {fmtBtn('strikethrough', formats.strikethrough, Strikethrough, tt('Strikethrough', 'Tachado'))}
-      {fmtBtn('code', formats.code, Code, tt('Inline code', 'Código inline'))}
+      {fmtBtn('bold', formats.bold, Bold, tt('Bold (Ctrl+B)', 'Negrito (Ctrl+B)'), 'Bold')}
+      {fmtBtn('italic', formats.italic, Italic, tt('Italic (Ctrl+I)', 'Itálico (Ctrl+I)'), 'Italic')}
+      {fmtBtn('underline', formats.underline, Underline, tt('Underline (Ctrl+U)', 'Sublinhado (Ctrl+U)'), 'Underline')}
+      {fmtBtn('strikethrough', formats.strikethrough, Strikethrough, tt('Strikethrough', 'Tachado'), 'Strikethrough')}
+      {fmtBtn('code', formats.code, Code, tt('Inline code', 'Código inline'), 'Inline code')}
       {/* The eraser closes the inline-format cluster. Measured before adding it (2026-09-05, the
           rule from 08-31): at the minimum window the group had 133 px of slack with the link input
           closed, so these 24 px keep the row on one line; with the input open the delivery control
@@ -1178,6 +1182,7 @@ function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDe
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => editor.update($clearFormatting)}
         disabled={!formats.clearable}
+        aria-label="Clear formatting"
         className={btnClass(false)}
         data-tip={formats.clearable
           ? tt('Clear formatting (Ctrl+\\)', 'Limpar formatação (Ctrl+\\)')
@@ -1190,6 +1195,8 @@ function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDe
         type="button"
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => editor.dispatchCommand(formats.ul ? REMOVE_LIST_COMMAND : INSERT_UNORDERED_LIST_COMMAND, undefined)}
+        aria-label="Bullet list"
+        aria-pressed={formats.ul}
         className={btnClass(formats.ul)}
         data-tip={tt('Bullet list', 'Lista com marcadores')}
       >
@@ -1199,6 +1206,8 @@ function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDe
         type="button"
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => editor.dispatchCommand(formats.ol ? REMOVE_LIST_COMMAND : INSERT_ORDERED_LIST_COMMAND, undefined)}
+        aria-label="Numbered list"
+        aria-pressed={formats.ol}
         className={btnClass(formats.ol)}
         data-tip={tt('Numbered list', 'Lista numerada')}
       >
@@ -1221,6 +1230,8 @@ function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDe
           }
         }}
         className={btnClass(formats.link || linkInputOpen)}
+        aria-label={formats.link ? 'Remove link' : 'Link'}
+        aria-expanded={formats.link ? undefined : linkInputOpen}
         data-tip={formats.link ? tt('Remove link', 'Remover link') : tt('Link', 'Inserir link')}
       >
         <Link2 size={14} />
@@ -1239,16 +1250,18 @@ function RichToolbarPlugin({ formattingDelivered, toolbarExtra }: { formattingDe
               if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setLinkInputOpen(false); setLinkUrl(''); editor.focus(); }
             }}
             placeholder="https://…"
+            aria-label="Link URL"
             autoFocus
             spellCheck={false}
             className="h-6 w-52 min-w-[7rem] shrink px-1.5 text-caption font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid"
           />
-          <button type="button" onClick={applyLink} className={btnClass(false)} data-tip={tt('Apply link', 'Aplicar link')}>
+          <button type="button" onClick={applyLink} aria-label="Apply link" className={btnClass(false)} data-tip={tt('Apply link', 'Aplicar link')}>
             <Check size={14} />
           </button>
           <button
             type="button"
             onClick={() => { setLinkInputOpen(false); setLinkUrl(''); editor.focus(); }}
+            aria-label="Cancel link"
             className={btnClass(false)}
             data-tip={tt('Cancel', 'Cancelar')}
           >

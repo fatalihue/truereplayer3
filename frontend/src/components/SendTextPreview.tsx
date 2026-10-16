@@ -12,7 +12,7 @@
 // screen told the two apart until the macro ran and pasted the braces. The preview and the
 // Insert Text editor now ask the SAME walker (grammar ported from the engine's own matchers)
 // instead of each keeping a private copy of the rule.
-import { splitTokenSegments } from './lexical/tokenNormalize';
+import { normalizeToken, splitTokenSegments } from './lexical/tokenNormalize';
 import type { DeliveryBadge, DeliveryBadgeTip } from './lexical/deliveryBadge';
 
 interface SendTextPreviewProps {
@@ -57,6 +57,9 @@ export function SendTextPreview({ text, badge = null, badgeTips }: SendTextPrevi
         >
           {badge.degraded && <span aria-hidden="true">!</span>}
           {badge.label}
+          {/* The "!" is hidden from assistive tech and the explanation lives in the portal tip,
+              so a degraded badge read as a plain "rich". Say it in words, off screen. */}
+          {badge.degraded && <span className="sr-only normal-case"> (degraded)</span>}
         </span>
       )}
       {segments.map((segment, idx) =>
@@ -69,7 +72,9 @@ export function SendTextPreview({ text, badge = null, badgeTips }: SendTextPrevi
             key={idx}
             className="inline-flex items-center px-1.5 py-[1px] mx-[1px] text-minor leading-[inherit] font-mono rounded text-[var(--color-action-sendtext-fg)] bg-[var(--color-action-sendtext-fg)]/15 border border-[var(--color-action-sendtext-fg)]/40 select-none align-middle"
           >
-            {segment.value.slice(1, -1)}
+            {/* Normalised like the editor's chips, the Preview tab and the snippet rows, so a
+                hand-typed or imported `{enter}` reads "Enter" in the grid too. */}
+            {normalizeToken(segment.value).slice(1, -1)}
           </span>
         ) : (
           <span key={idx}>{segment.value}</span>
