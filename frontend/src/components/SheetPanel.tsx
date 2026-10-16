@@ -39,7 +39,7 @@ import { Slider } from './sheet/Slider';
 import { ScreenTextFields } from './sheet/ScreenTextFields';
 import { RESULT_CARD, SearchRegionRow, TOOL_BTN } from './sheet/probeAtoms';
 import { collectOcrEdits, OCR_DEFAULT_TOLERANCE } from './sheet/screenTextEdits';
-import { effectiveOperator, regexProblem } from '../utils/screenText';
+import { effectiveOperator, isNumberMode, regexProblem } from '../utils/screenText';
 
 interface SheetPanelProps {
   actionIndex: number | null;
@@ -907,7 +907,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
       setVariableValue(action.variableValue ?? '');
       setVariableMode(action.variableMode === 'cycle' || action.variableMode === 'add' || action.variableMode === 'screen' ? action.variableMode : 'set');
       {
-        const number = action.ocrReadAs === 'number';
+        const number = isNumberMode(action.ocrReadAs);
         const op = effectiveOperator(action.conditionOperator, number);
         setOcrReadAs(number ? 'number' : 'text');
         setOcrTextOp(number ? 'contains' : (op as 'contains' | 'eq' | 'regex'));
@@ -2940,7 +2940,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
   // states out loud.
   // The OCR Regex is checked for the same reason as the window-title one: a pattern that does not
   // compile saves cleanly and then fails the Wait (or reads false in an If) on every run.
-  const ocrRegexError = (isWaitText || isIfScreenText) && ocrReadAs !== 'number' && ocrTextOp === 'regex'
+  const ocrRegexError = (isWaitText || isIfScreenText) && !isNumberMode(ocrReadAs) && ocrTextOp === 'regex'
     && !(isWaitText && waitMode === 'changes') ? regexProblem(conditionOperand) : null;
   saveBlockedRef.current = !!regexError || !!ocrRegexError || runActive || mergeConflict;
   // The same three reasons the Save button's tooltip gives, in the same order, so the keyboard

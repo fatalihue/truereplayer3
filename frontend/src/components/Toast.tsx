@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { CheckCircle2, XCircle, Info, X } from 'lucide-react';
 import { useToast, useToasts, type ToastType } from '../state/ToastContext';
 import { Button } from './common/Button';
@@ -33,7 +34,15 @@ export function Toast() {
   // splitting it into an error region and a status region re-sorted the toasts by type, so a new
   // info toast grew the bottom stack and shoved an error up and out from under the pointer that
   // was holding it — the mouseleave then resumed its countdown mid-read.
-  const latest = toasts.length > 0 ? toasts[toasts.length - 1] : null;
+  //
+  // It speaks only when a NEWER toast arrives (ids only grow): pointing it at "the last toast in
+  // the list" re-read an older one whenever the newest was dismissed or expired first. A repeat of
+  // the same message flips a zero-width space so the text node still changes and is read again.
+  const [said, setSaid] = useState<{ id: number; text: string }>({ id: -1, text: '' });
+  const newest = toasts.length > 0 ? toasts[toasts.length - 1] : null;
+  if (newest && newest.id > said.id) {
+    setSaid({ id: newest.id, text: newest.message + (newest.message === said.text.replace(/​$/, '') && !said.text.endsWith('​') ? '​' : '') });
+  }
 
   const renderToast = (toast: (typeof toasts)[number]) => {
     const { Icon, color } = iconMap[toast.type];
@@ -90,7 +99,7 @@ export function Toast() {
       className="fixed left-1/2 -translate-x-1/2 z-(--z-topmost) flex flex-col-reverse items-center gap-2 pointer-events-none"
       style={{ bottom: BOTTOM_CLEARANCE_PX }}
     >
-      <div role="status" className="sr-only">{latest?.message ?? ''}</div>
+      <div role="status" className="sr-only">{said.text}</div>
       {toasts.map(renderToast)}
     </div>
   );

@@ -365,7 +365,11 @@ export function DialogShell({
           // they still go through.
           if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.altKey) {
             const target = e.target as HTMLElement | null;
-            if (target && (target.tagName === 'BUTTON' || target.getAttribute('role') === 'button')) {
+            // A role="checkbox" button is the exception: a checkbox does not ACT on Enter (Space
+            // toggles it — Checkbox swallows Enter), so Enter there is the dialog's, as it was when
+            // these were native <input type=checkbox>.
+            if (target && (target.tagName === 'BUTTON' || target.getAttribute('role') === 'button')
+                && target.getAttribute('role') !== 'checkbox') {
               // Still contain the key: a modal must not leak keystrokes to app-level shortcuts,
               // which is the whole job of ImportPreviewDialog's handler.
               e.stopPropagation();

@@ -59,6 +59,11 @@ export function Checkbox({
       aria-label={label ? undefined : ariaLabel}
       disabled={disabled}
       onClick={handleClick}
+      // A checkbox toggles on Space, not Enter — the native <input type=checkbox> rule. As a
+      // <button> it toggled on both, so inside a dialog whose footer says "Enter confirms" (Run
+      // Profile, Open URL) Enter on the box flipped the option instead of confirming. The key is
+      // left to bubble: DialogShell hands a checkbox's Enter to the dialog's own rule.
+      onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
       data-tip={title}
       className={`flex items-center gap-2 select-none group ${
         disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'

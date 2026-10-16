@@ -2395,20 +2395,6 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                         // guard below is the same one the chevron uses.
                         onClick={() => { if (!folderDragActive.current) handleToggleFolderCollapse(folder.name); }}
                         onContextMenu={(e) => handleFolderContextMenu(e, folder.name)}
-                        // Keyboard path, same shape as the profile rows: the header was a click-only
-                        // div, so Tab could never reach a folder to fold it (Shift+F10 / the Menu key
-                        // now reach its context menu too, through the native contextmenu event).
-                        role="button"
-                        tabIndex={0}
-                        aria-expanded={!folder.collapsed}
-                        onKeyDown={(e) => {
-                          // Only the header itself: Enter on a button INSIDE it (the target chip's
-                          // remove) bubbles here and must not fold the folder too.
-                          if (e.target !== e.currentTarget) return;
-                          if (e.key !== 'Enter' && e.key !== ' ') return;
-                          e.preventDefault();
-                          handleToggleFolderCollapse(folder.name);
-                        }}
                       >
                         {/* The chevron is the AFFORDANCE for the collapse, not a second handler
                             for it: the header above now owns that click, and this sits inside it.
@@ -2446,7 +2432,29 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                             typographically WEAKER than the profiles inside it, so the parent
                             dissolved into its own children — backwards for a hierarchy, and
                             worse once the group sits inside a card. */}
-                        <span className={`text-minor font-semibold flex-1 truncate ${folderAllDisabled ? 'text-text-disabled' : 'text-text-primary'}`}>{folder.name}</span>
+                        {/* The keyboard path is the NAME, not the whole header. The header holds the
+                            target chips' remove buttons, and a role="button" header made them
+                            interactive-inside-interactive (a button's children are presentational —
+                            the reason the Automation rows were restructured). The header keeps the
+                            mouse (click, drag, context menu) and is no longer focusable, so a click no
+                            longer leaves it focused for a stray Space/Enter — or one a replay types —
+                            to fold the folder again. Enter/Space here fold it; Shift+F10 / the Menu key
+                            reach the folder menu through the native contextmenu event, which bubbles. */}
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          aria-expanded={!folder.collapsed}
+                          // A mouse press must not FOCUS the name (the header's click already folds
+                          // it); the press still bubbles to the header for the click and the drag.
+                          onMouseDown={(e) => e.preventDefault()}
+                          onKeyDown={(e) => {
+                            if (e.key !== 'Enter' && e.key !== ' ') return;
+                            e.preventDefault();
+                            if (runActive) return;
+                            handleToggleFolderCollapse(folder.name);
+                          }}
+                          className={`text-minor font-semibold flex-1 truncate rounded ${folderAllDisabled ? 'text-text-disabled' : 'text-text-primary'}`}
+                        >{folder.name}</span>
                         {folder.hasWindowTarget && !folder.appIconBase64 && (
                           <RemovableChip
                             variant="circle"

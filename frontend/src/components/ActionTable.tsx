@@ -23,7 +23,7 @@ import { snapIndicesToBlocks, hasConditionFields, skippedRowMask, isStructuralRo
 import { uiZoom } from '../utils/zoomSpace';
 import { tryParseInt32 } from '../utils/int32';
 import { parseCoordPair } from '../utils/coordPair';
-import { screenTextSummary } from '../utils/screenText';
+import { screenTextSummary, isNumberMode } from '../utils/screenText';
 import { useSingleKeyCapture } from '../hooks/useSingleKeyCapture';
 // Deferred: already rendered conditionally, but a static import pulls the whole Lexical editor
 // stack and emoji-picker-react (~300 KB minified) into the startup chunk for a dialog most sessions
@@ -350,7 +350,7 @@ function rowDisplayKey(action: ActionItem, dataRows: number): string {
                 ? `${action.key} += ${action.variableValue ?? ''}`
               // Screen mode reads the region at run time — "name ← screen" (# in Number mode).
               : action.variableMode === 'screen'
-                ? `${action.key} ← screen${action.ocrReadAs === 'number' ? ' #' : ''}`
+                ? `${action.key} ← screen${isNumberMode(action.ocrReadAs) ? ' #' : ''}`
                 : `${action.key} = ${action.variableValue ?? ''}`)
           : action.actionType === 'CopyToSlot'
             // Show the read-back token — the one thing the user needs to reuse
@@ -2052,13 +2052,12 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
   const contextCount = useMemo(() => contextSelectionIndices().length, [contextSelectionIndices]);
 
   // What Delete and Duplicate will actually touch. They both run the effective selection through
-  // snapSelectionToBlocks, which widens EVERY selected index to the innermost enclosing pair as
-  // soon as ONE of them is structural — body rows included, even ones that alone would never
-  // widen. So selecting rows 3,4,5 where 5 is an EndIf sent "(3)" to the label and five rows to
-  // the backend, with the If and the untouched row between them going too. Derived from the same
-  // call the handlers make, so the number cannot drift from the act again; the lone-opener cases
-  // take dedicated routes and are counted through their own block span, exactly as handleDuplicate
-  // resolves them.
+  // snapSelectionToBlocks, which widens each selected MARKER to the innermost pair that encloses
+  // it (body rows stay as selected — ae2854b). So selecting rows 3,4,5 where 5 is an EndIf sent
+  // "(3)" to the label while the If that EndIf closes, and any rows between, went to the backend
+  // too. Derived from the same call the handlers make, so the number cannot drift from the act
+  // again; the lone-opener cases take dedicated routes and are counted through their own block
+  // span, exactly as handleDuplicate resolves them.
   const contextEffectiveCount = useMemo(() => {
     const sel = contextSelectionIndices();
     if (sel.length === 0) return 0;

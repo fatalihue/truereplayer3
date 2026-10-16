@@ -392,6 +392,13 @@ select:focus-visible,
   outline: none;
   box-shadow: none;
 }
+/* …but a modal CARD keeps its elevation. This rule is unlayered, so its box-shadow:none beat the
+   shadow-dialog utility on every dialog card and the update splash — and the card takes a
+   programmatic focus far more often now (DialogShell refocuses it when a focused control removes
+   itself, and when a stacked dialog closes): saving a theme preset by Enter flattened the card. */
+[role="dialog"][tabindex="-1"]:focus-visible {
+  box-shadow: var(--shadow-dialog);
+}
 
 /* Allow tooltips on disabled buttons (so they still fire mouseover for the portal). */
 [data-tip][disabled] {

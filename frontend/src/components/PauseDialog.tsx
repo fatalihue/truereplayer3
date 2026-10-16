@@ -10,6 +10,8 @@ import { useLanguage } from '../state/LanguageContext';
 import { useWindowFocused } from '../hooks/useWindowFocused';
 import { formatMs } from '../utils/displayUtils';
 import { AnnounceOnChange } from './common/AnnounceOnChange';
+import { splitCombo } from './common/KbdTag';
+import { compactKey } from '../utils/keyNames';
 
 interface PauseDialogProps {
   /**
@@ -286,7 +288,14 @@ export function PauseDialog({ initialKey, initialTimeoutMs, onConfirm, onClose }
                 {/* A capture from the hook and the "skipped" refusal change this sentence without
                     the focus moving, so they are announced — on the state change only, not on
                     every digit typed into Timeout (see AnnounceOnChange). */}
-                <AnnounceOnChange when={`${active}|${captured ?? ''}`} text={messages[active]} />
+                {/* The spoken line names the key (keycap spelling): the visible sentence does not,
+                    so replacing F8 by F9 changed the trigger but not the words, and nothing was read. */}
+                <AnnounceOnChange
+                  when={`${active}|${captured ?? ''}`}
+                  text={captured && active <= 1
+                    ? `${messages[active]} Hotkey: ${splitCombo(captured.replace(/\bVK_93\b/, 'Menu')).map(compactKey).join(' + ')}.`
+                    : messages[active]}
+                />
                 {messages.map((m, i) => (
                   <span
                     key={i}

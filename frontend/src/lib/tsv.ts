@@ -85,7 +85,9 @@ export function parseTsv(text: string, firstRowHeader: boolean): Grid {
 // paste-surface prefill and Copy table (TSV): one codec pair, round-trip by
 // construction.
 export function encodeTsv(headers: string[], rows: string[][]): string {
-  const enc = (c: string) => (/[\t\n"]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c);
+  // \r too: the tokenizer ends a row on a lone CR (Mac CSVs), so a stored cell holding one — a table
+  // imported before that rule — would be split into extra rows on the way back through paste.
+  const enc = (c: string) => (/[\t\n\r"]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c);
   return [headers, ...rows].map((r) => r.map(enc).join('\t')).join('\n');
 }
 

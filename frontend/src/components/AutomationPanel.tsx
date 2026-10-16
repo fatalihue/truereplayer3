@@ -19,7 +19,7 @@ import { ImageCropper } from './ImageCropper';
 import { rangeParts, phaseLockRisk } from '../utils/activeHours';
 import { useEditorClaim } from '../hooks/useEditorClaim';
 import type { AutomationEntry, TriggerConfig } from '../bridge/messageTypes';
-import { effectiveOperator, parsesAsNumber, regexProblem } from '../utils/screenText';
+import { effectiveOperator, isNumberMode, parsesAsNumber, regexProblem } from '../utils/screenText';
 
 // Day-pill order matches the backend bitmask convention (Sun = 1<<0, the If-Time one).
 const DAY_PILLS = [
@@ -115,7 +115,7 @@ function storedScreenTextShape(t: TriggerConfig): TriggerConfig {
   if (t.conditionType !== 'ScreenText') {
     return { ...t, conditionOperator: null, conditionOperand: null, ocrReadAs: null, ocrTextColor: null, ocrColorTolerance: null };
   }
-  const number = t.ocrReadAs === 'number';
+  const number = isNumberMode(t.ocrReadAs);
   const hex = (t.ocrTextColor ?? '').trim();
   const tol = t.ocrColorTolerance;
   return {
@@ -193,7 +193,7 @@ function whyCannotFire(t: TriggerConfig): string | null {
       // Mirrors TriggerService.DescribeUnfireable. The region is REQUIRED here (not just advised):
       // a whole-screen read every check costs ~0.45 s of CPU.
       if (!t.searchRegion) return 'Set a search region — reading the whole screen every check is too slow.';
-      const number = t.ocrReadAs === 'number';
+      const number = isNumberMode(t.ocrReadAs);
       const operand = t.conditionOperand ?? '';
       // A colour the backend cannot parse is DROPPED on save, and the watcher then reads every
       // colour — said here instead of saving something other than what is on screen.
@@ -843,7 +843,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
     const id = `autoread-${Date.now()}`;
     testReadReqRef.current = id;
     setTestReadResult(null);
-    const number = draft.ocrReadAs === 'number';
+    const number = isNumberMode(draft.ocrReadAs);
     const r = draft.searchRegion;
     send({ type: 'ocr:testRead', payload: {
       requestId: id, absolute: true, ...anchorPayload(), ...(r ? { searchRegion: r } : {}),
@@ -1574,7 +1574,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   )}
 
                   {draft.conditionType === 'ScreenText' && (() => {
-                    const number = draft.ocrReadAs === 'number';
+                    const number = isNumberMode(draft.ocrReadAs);
                     const op = effectiveOperator(draft.conditionOperator, number);
                     return (
                     <>

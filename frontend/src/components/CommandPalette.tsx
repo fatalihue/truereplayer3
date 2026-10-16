@@ -88,6 +88,15 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   // a dialog's Esc, Ctrl+Enter and Tab trap. A command that moved the focus itself (one that opens
   // a dialog) keeps it: the hand-back only acts while the focus is still nowhere.
   const returnFocusRef = useRef<HTMLElement | null>(null);
+  // Close, THEN open the surface — one task later. Closing and opening in the same render made
+  // the new dialog record the palette's own input as its opener (DialogShell captures it on the
+  // first render), an input that unmounted with the palette: on close the focus had nowhere to go
+  // back to and fell to <body>. A tick later the effect below has handed the focus back to where
+  // the user was, and that is what the dialog captures and later returns to.
+  const openAfterClose = useCallback((cmd: string) => {
+    onClose();
+    setTimeout(() => window.dispatchEvent(new CustomEvent(cmd)), 0);
+  }, [onClose]);
   useEffect(() => {
     if (isOpen) {
       const was = document.activeElement;
@@ -223,7 +232,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             icon: <Info size={14} className="text-text-secondary" />,
             disabled: !activeProfile,
             disabledHint: 'Select a profile first',
-            onAction: () => { if (activeProfile) { onClose(); window.dispatchEvent(new CustomEvent('cmd:profileinfo')); } },
+            onAction: () => { if (activeProfile) { openAfterClose('cmd:profileinfo'); } },
           },
         ],
       },
@@ -238,7 +247,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             id: 'livevars', label: 'Toggle Live Variables',
             keywords: ['debug', 'variables', 'slots', 'clip', 'watch', 'row'],
             icon: <Activity size={14} className="text-text-secondary" />,
-            onAction: () => { onClose(); window.dispatchEvent(new CustomEvent('cmd:livevars')); },
+            onAction: () => { openAfterClose('cmd:livevars'); },
           },
           {
             // Last-run step timeline. Palette-only for the same reason as Live Variables: it is
@@ -247,7 +256,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             id: 'runreport', label: 'Run Report',
             keywords: ['debug', 'trace', 'timeline', 'selector', 'browser', 'failed', 'why', 'relatorio'],
             icon: <ListChecks size={14} className="text-text-secondary" />,
-            onAction: () => { onClose(); window.dispatchEvent(new CustomEvent('cmd:runreport')); },
+            onAction: () => { openAfterClose('cmd:runreport'); },
           },
           {
             // Recovery hatch for a wedged WebView2 UI. It asks the Sheet like the list rewrites
@@ -295,7 +304,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     // Narrow deps to the exact settings field read above so unrelated settings changes
     // (hotkeys, loop config, movement knobs) don't rebuild every command group.
   }, [
-    activeProfile, send, onClose, computeInsertIndex, sheetAllows,
+    activeProfile, send, onClose, openAfterClose, computeInsertIndex, sheetAllows,
     settings.useCursorClick,
     // The two BOOLEAN fields, never the buttonStates object: it is republished on several
     // unrelated events, and depending on the object would rebuild every group each time.

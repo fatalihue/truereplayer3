@@ -9,7 +9,7 @@ import { calloutStyle } from '../common/Callout';
 import { Button } from '../common/Button';
 import { Field } from './Field';
 import { RESULT_CARD, SearchRegionRow, TOOL_BTN } from './probeAtoms';
-import { parsesAsNumber, regexProblem } from '../../utils/screenText';
+import { isNumberMode, parsesAsNumber, regexProblem } from '../../utils/screenText';
 
 // The screen-text (OCR) editor block shared by the three Sheet editors that read the screen:
 // Wait for Text, the Screen Text condition (If / Else If / While) and Set Variable's Screen mode.
@@ -98,7 +98,7 @@ export function ScreenTextFields(p: ScreenTextFieldsProps) {
 
   useEffect(() => () => { if (timerRef.current) window.clearTimeout(timerRef.current); }, []);
 
-  const number = p.readAs === 'number';
+  const number = isNumberMode(p.readAs);
   const showMatcher = p.variant === 'match' && !p.hideMatcher;
   const hasToken = p.operand.includes('{');
   const operandError = showMatcher

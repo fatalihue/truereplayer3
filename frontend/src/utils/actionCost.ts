@@ -81,28 +81,30 @@ export function rowBodyMs(a: ActionItem): number {
 }
 
 /**
- * What ONE row costs: its delay, the per-action floor, and the time the row itself spends.
- *
- * The row spends time two ways the grid can read exactly, and both used to be invisible to the
- * estimate:
- *   • a HOLD keeps the button or key down for its dwell (see rowDwellMs);
- *   • × N replays the row `repeatCount` times with a gap between cycles — (N-1) gaps, not N,
- *     because the gap is between them.
- * Neither is a guess the way a smooth move (distance-bound) or a wait (timeout-bound) is: both
- * are integers sitting on the row, already drawn in the Details column.
- */
-/**
  * The rows the engine replays through ExecuteRepeated / ExecuteRepeatedCore (ActionExecution.cs:
  * `case "Keystroke"`, the five clicks and the three *ClickHold) — the only ones Times and the gap
  * apply to. Every other type runs once, whatever RepeatCount it carries: a HoldKey is a single
- * down / delay / up, and a KeyDown or SendText that kept an old RepeatCount through a type change
- * is not repeated either. RunProfile loops in its own handler with nothing between passes.
+ * down / delay / up (so it pays its dwell ONCE however high Times is), and a KeyDown or SendText
+ * that kept an old RepeatCount through a type change is not repeated either. RunProfile loops in
+ * its own handler (HandleRunProfile) with nothing between passes, and the estimate charges the
+ * call itself, not the called profile.
  */
 const REPEATED_TYPES = new Set([
   'Keystroke', 'LeftClick', 'RightClick', 'MiddleClick', 'DoubleClick', 'TripleClick',
   'LeftClickHold', 'RightClickHold', 'MiddleClickHold',
 ]);
 
+/**
+ * What ONE row costs: its delay, the per-action floor, and the time the row itself spends.
+ *
+ * The row spends time two ways the grid can read exactly, and both used to be invisible to the
+ * estimate:
+ *   • a HOLD keeps the button or key down for its dwell (see rowDwellMs);
+ *   • × N replays the row `repeatCount` times with a gap between cycles — (N-1) gaps, not N,
+ *     because the gap is between them — for the REPEATED_TYPES only.
+ * Neither is a guess the way a smooth move (distance-bound) or a wait (timeout-bound) is: both
+ * are integers sitting on the row, already drawn in the Details column.
+ */
 export function actionCostMs(a: ActionItem): number {
   const base = (a.delay > 0 ? a.delay : 0) + PER_ACTION_OVERHEAD_MS;
   const dwell = rowDwellMs(a);
@@ -111,16 +113,6 @@ export function actionCostMs(a: ActionItem): number {
   // the engine runs once invented time the run never spends (1150 ms for a 1 s HoldKey × 5).
   const repeats = REPEATED_TYPES.has(a.actionType) ? Math.max(1, Math.min(999, a.repeatCount ?? 1)) : 1;
   if (repeats === 1) return base + dwell + body;
-  // A HoldKey pays its dwell ONCE however high Times is. `case "HoldKey"` in the engine is a
-  // single down / delay / up and never routes through ExecuteRepeated, so RepeatCount is inert
-  // there — charging `repeats × dwell` invented time the run does not spend, and at the 1 s
-  // default it invented whole seconds per row.
-  const dwellTotal = a.actionType === 'HoldKey' ? dwell : repeats * dwell;
-  // RunProfile repeats in its OWN loop (`for (int r = 0; r < repeats …)` in HandleRunProfile)
-  // with nothing between passes — no RepeatDelayMs, no jitter. Only rows that go through
-  // ExecuteRepeatedCore pay a gap.
-  const gap = a.actionType === 'RunProfile'
-    ? 0
-    : Math.max(0, Math.min(5000, a.repeatDelayMs ?? clickDefaultGap(a.actionType)));
-  return base + dwellTotal + repeats * body + (repeats - 1) * gap;
+  const gap = Math.max(0, Math.min(5000, a.repeatDelayMs ?? clickDefaultGap(a.actionType)));
+  return base + repeats * (dwell + body) + (repeats - 1) * gap;
 }

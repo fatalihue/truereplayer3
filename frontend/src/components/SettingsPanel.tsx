@@ -545,9 +545,18 @@ function ComboInput({ value, onCommit, options, width = FIELD_W, editable = true
       } else if (e.key === 'Home' || e.key === 'End') {
         e.preventDefault();
         setActive(e.key === 'Home' ? 0 : options.length - 1);
-      } else if ((e.key === 'Enter' || (!editable && e.key === ' ')) && active >= 0) {
-        e.preventDefault();
-        choose(options[active]);
+      } else if (e.key === 'Enter' || (!editable && e.key === ' ')) {
+        if (active >= 0) {
+          e.preventDefault();
+          choose(options[active]);
+        } else if (editable && e.key === 'Enter') {
+          // Typing released the highlight (see onChange): Enter commits what was TYPED, as it did
+          // before the list had a keyboard — it used to commit the highlighted preset instead and
+          // snap the field back, throwing "15" away for "10".
+          setOpen(false);
+          commitIfEdited();
+          (e.target as HTMLInputElement).blur();
+        }
       } else if (e.key === 'Tab') {
         setOpen(false);
       }
@@ -575,7 +584,8 @@ function ComboInput({ value, onCommit, options, width = FIELD_W, editable = true
         aria-autocomplete="none"
         value={shownValue}
         readOnly={!editable}
-        onChange={editable ? (e) => setText(e.target.value) : undefined}
+        // Typing takes the highlight off the list: from here Enter means "this text", not a preset.
+        onChange={editable ? (e) => { setText(e.target.value); setActive(-1); } : undefined}
         onFocus={editable ? () => { focused.current = true; focusTextRef.current = text; } : undefined}
         // After committing, snap the visible text back to the canonical `value`. When the commit
         // is REJECTED (empty / non-numeric / <=0 — commitRate returns without changing anything),

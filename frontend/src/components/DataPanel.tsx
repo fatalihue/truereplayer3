@@ -1499,9 +1499,13 @@ export function DataPanel({ onClose }: DataPanelProps) {
                       return (
                         <th
                           key={c}
-                          className={`group sticky top-0 z-10 bg-bg-surface shadow-hairline-b h-row text-left text-minor font-semibold font-mono px-2 whitespace-nowrap ${
+                          // Rest OR editing, never both: shadow-hairline-b and the editing ring set the
+                          // same box-shadow, and Tailwind sorts `[`-arbitraries before named ones — the
+                          // hairline won and a header being renamed looked exactly like one at rest
+                          // (bg-bg-input had already lost to bg-bg-surface the same way).
+                          className={`group sticky top-0 z-10 h-row text-left text-minor font-semibold font-mono px-2 whitespace-nowrap ${
                             meta.valid ? 'text-text-tertiary' : 'text-warning-ink'
-                          } ${editingThis ? 'shadow-[inset_0_0_0_1.5px_var(--color-accent-solid)] bg-bg-input' : ''}`}
+                          } ${editingThis ? 'shadow-[inset_0_0_0_1.5px_var(--color-accent-solid)] bg-bg-input' : 'bg-bg-surface shadow-hairline-b'}`}
                         >
                           {editingThis ? (
                             <CellEditor

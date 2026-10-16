@@ -1,6 +1,6 @@
 import type { ActionItem } from '../../bridge/messageTypes';
 import { hasConditionFields } from '../../utils/conditionalBlocks';
-import { effectiveOperator } from '../../utils/screenText';
+import { effectiveOperator, isNumberMode } from '../../utils/screenText';
 import type { OcrRegion } from './ScreenTextFields';
 
 // The Sheet's screen-text (OCR) persistence in ONE pure function, called by BOTH handleSave (send
@@ -48,8 +48,8 @@ export function collectOcrEdits(action: ActionItem, s: OcrEditState): { field: s
   const newRect = s.region ? `${s.region.x},${s.region.y},${s.region.w},${s.region.h}` : '';
   if (newRect !== currentRect) edit('waitImageSearchRegion', newRect);
 
-  const readAs = s.readAs === 'number' ? 'number' : '';
-  if ((action.ocrReadAs === 'number' ? 'number' : '') !== readAs) edit('ocrReadAs', readAs);
+  const readAs = isNumberMode(s.readAs) ? 'number' : '';
+  if ((isNumberMode(action.ocrReadAs) ? 'number' : '') !== readAs) edit('ocrReadAs', readAs);
 
   const color = normHex(s.textColor);
   if (normHex(action.ocrTextColor) !== color) edit('ocrTextColor', color);
@@ -59,10 +59,10 @@ export function collectOcrEdits(action: ActionItem, s: OcrEditState): { field: s
   }
 
   if (isWait || isCond) {
-    const op = s.readAs === 'number' ? s.numberOp : s.textOp;
+    const op = isNumberMode(s.readAs) ? s.numberOp : s.textOp;
     // Against the EFFECTIVE stored operator: a row that never stored one (a Changes wait) reads
     // as the mode's default, so opening it is not an edit.
-    if (effectiveOperator(action.conditionOperator, s.readAs === 'number') !== op) edit('conditionOperator', op);
+    if (effectiveOperator(action.conditionOperator, isNumberMode(s.readAs)) !== op) edit('conditionOperator', op);
     if ((action.conditionOperand ?? '') !== s.operand) edit('conditionOperand', s.operand);
   }
 
