@@ -62,9 +62,19 @@ export function formatKeyCombo(combo: string): string {
 // on purpose — a hardcoded "." would read as a decimal to an English user, and a
 // "," would to a Brazilian one. The unit ("ms") is added by the caller so it can be
 // styled as a separate quiet suffix. Floats are truncated; NaN/±∞ fall back to 0.
+//
+// One formatter per language, built once. `n.toLocaleString(locale)` is specified as
+// `new Intl.NumberFormat(locale).format(n)`, and V8 really does build a fresh ICU formatter on
+// every call that names a locale — ~60-80 µs each under the 4× CPU throttle. The grid calls this
+// once per row on every render (the Delay column), so a 500-row list paid 40-60 ms per render for
+// formatter construction alone. Same output: same locale, default options.
+const MS_FORMAT = {
+  en: new Intl.NumberFormat('en-US'),
+  'pt-BR': new Intl.NumberFormat('pt-BR'),
+} as const;
 export function formatMs(ms: number, language: 'en' | 'pt-BR'): string {
   const n = Number.isFinite(ms) ? Math.trunc(ms) : 0;
-  return n.toLocaleString(language === 'pt-BR' ? 'pt-BR' : 'en-US');
+  return MS_FORMAT[language === 'pt-BR' ? 'pt-BR' : 'en'].format(n);
 }
 
 // Pixel-coordinate display applies to the standalone WaitPixelColor action AND

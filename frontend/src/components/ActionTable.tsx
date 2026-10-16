@@ -1,4 +1,4 @@
-import { useRef, useEffect, useLayoutEffect, useState, useCallback, useMemo, Fragment, lazy, Suspense } from 'react';
+import { useRef, useEffect, useLayoutEffect, useState, useCallback, useMemo, Fragment, lazy, Suspense, memo } from 'react';
 import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, closestCenter, pointerWithin } from '@dnd-kit/core';
@@ -657,7 +657,17 @@ interface ActionTableProps {
   editorIndex?: number | null;
 }
 
-export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, editorIndex = null }: ActionTableProps) {
+// memo: AppShell holds the open/closed flag of every App-level overlay (Theme Editor, Data Loop,
+// Automation, Run Report, Command Palette) plus the sheet's exit and the rail collapses, and each
+// of those flips re-rendered this whole grid — every row's render-prop shell, one formatMs per
+// row, 500 rows of reconciliation — to change nothing in it. The props are all stable (a module
+// constant, two useCallback handlers, the sheet index), so the grid now re-renders only for its
+// own reasons: its contexts (app state, language, toast API) and the sheet index. Nothing here
+// depends on being re-rendered from above — `rowMotion` reads data-animations at render time, but
+// it only feeds drag transitions, and a drag always re-renders this component first.
+export const ActionTable = memo(ActionTableImpl);
+
+function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIndex = null }: ActionTableProps) {
   // pauseState is not read here any more: its only use was the paused-here row treatment,
   // which needs the replay index to be meaningful — both now live in ReplayRowMarker.
   const { actions, buttonStates, activeProfile, dataTable } = useAppState();
@@ -1719,7 +1729,24 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
   // Sortable ids are the backend action ids (stable across reorders); the
   // index fallback only exists for the brief pre-migration window where an
   // old profile's rows have no id yet.
-  const sortableIds = useMemo(() => actions.map((a, i) => a.id ?? `row-${i}`), [actions]);
+  //
+  // Same ids in the same order → the SAME array. useSortable compares its `items` by IDENTITY
+  // (`items !== previous.items`) and answers a "changed" list with a one-render
+  // `transition: transform 0ms linear` on every row whose index did not move, then takes it back
+  // on the next render. Every actions:updated push rebuilds this array, including the common one
+  // where only a field changed (an edit echoes the whole list back), so each push rewrote the
+  // style attribute of EVERY row twice — two whole-grid style recalcs for a one-cell edit
+  // (measured, 500 rows, 4× CPU throttle: ~95 ms of style work on the echo alone). SortableContext
+  // already compares by value (itemsEqual), so to dnd-kit's own context such a push was never a
+  // change; this only makes the per-row hook agree. A real reorder still yields a new array.
+  const prevSortableIds = useRef<string[]>([]);
+  const sortableIds = useMemo(() => {
+    const next = actions.map((a, i) => a.id ?? `row-${i}`);
+    const prev = prevSortableIds.current;
+    const same = prev.length === next.length && prev.every((id, i) => id === next[i]);
+    prevSortableIds.current = same ? prev : next;
+    return prevSortableIds.current;
+  }, [actions]);
   const sensors = useSensors(useSensor(RowPointerSensor, { activationConstraint: { distance: 8 } }));
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
 

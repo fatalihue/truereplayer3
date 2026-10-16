@@ -1855,6 +1855,9 @@ export function resolveThemeColors(config: ThemeConfig, customPresets: ThemePres
   return { ...base.colors, ...config.colorOverrides };
 }
 
+/** The declaration the last applyThemeConfig wrote to <html> — see the write guard there. */
+let lastAppliedCss = '';
+
 export function applyThemeConfig(colors: ThemeColors, uiSettings: ThemeUISettings) {
   const root = document.documentElement;
 
@@ -2028,29 +2031,42 @@ export function applyThemeConfig(colors: ThemeColors, uiSettings: ThemeUISetting
   // rather than read back off the element so it can't drift.
   parts.push(`--ui-zoom: ${uiSettings.zoom / 100};`);
 
-  root.style.cssText = parts.join(' ');
+  // Write only what changed. main.tsx puts the stored theme's declaration on <html> before the
+  // first render, and ThemeProvider's mount effect arrives a moment later with the identical
+  // config; rewriting the identical cssText would restyle the whole tree for nothing. `css`
+  // carries --ui-zoom and --color-bg-base, so it also decides the zoom and the color-scheme that
+  // are written with it. Nothing else in the app writes documentElement.style (grep before
+  // adding one), so an unchanged string means an unchanged inline style.
+  const css = parts.join(' ');
+  if (css !== lastAppliedCss) {
+    lastAppliedCss = css;
+    root.style.cssText = css;
 
-  // `zoom` doesn't sit cleanly in the cssText batch because it's a real CSS
-  // property (not a custom var). Set it separately — a single property assign
-  // still benefits from coming after the variable batch so the browser only
-  // composes one final layout. Same reasoning for the data-attribute.
-  root.style.zoom = `${uiSettings.zoom / 100}`;
+    // `zoom` doesn't sit cleanly in the cssText batch because it's a real CSS
+    // property (not a custom var). Set it separately — a single property assign
+    // still benefits from coming after the variable batch so the browser only
+    // composes one final layout. Same reasoning for the data-attribute.
+    root.style.zoom = `${uiSettings.zoom / 100}`;
 
-  // Native controls (the <input type="time"> picker glyph, date pickers, scrollbars)
-  // render their built-in icons per `color-scheme`. Without this the time-picker clock
-  // icon stays a dark UA glyph — invisible on a dark theme (Automation → Schedule, the
-  // If-Time condition). Derive it from the background luminance so the glyphs track
-  // whatever preset is active: dark bg → light glyphs, light bg → dark glyphs. Set after
-  // the cssText batch (which replaces the whole inline style), same as zoom above.
-  // isLightColor, not relativeLuminance on the raw string: that one also reads the value as hex
-  // digits, so an `rgba(18,18,18,1)` background produced NaN, `NaN < 0.5` is false, and a DARK
-  // theme was told to render light native glyphs — dark-on-dark. The `=== true` keeps the app's
-  // own default on the unreadable cases (dark), instead of today's accidental light.
-  root.style.colorScheme = isLightColor(colors['bg-base']) === true ? 'light' : 'dark';
+    // Native controls (the <input type="time"> picker glyph, date pickers, scrollbars)
+    // render their built-in icons per `color-scheme`. Without this the time-picker clock
+    // icon stays a dark UA glyph — invisible on a dark theme (Automation → Schedule, the
+    // If-Time condition). Derive it from the background luminance so the glyphs track
+    // whatever preset is active: dark bg → light glyphs, light bg → dark glyphs. Set after
+    // the cssText batch (which replaces the whole inline style), same as zoom above.
+    // isLightColor, not relativeLuminance on the raw string: that one also reads the value as hex
+    // digits, so an `rgba(18,18,18,1)` background produced NaN, `NaN < 0.5` is false, and a DARK
+    // theme was told to render light native glyphs — dark-on-dark. The `=== true` keeps the app's
+    // own default on the unreadable cases (dark), instead of today's accidental light.
+    root.style.colorScheme = isLightColor(colors['bg-base']) === true ? 'light' : 'dark';
+  }
 
   // Animations toggle — exposes a single data-attribute the CSS can hook into
-  // (e.g. `html[data-animations="true"] .some-thing { transition: ... }`).
-  root.setAttribute('data-animations', uiSettings.enableAnimations ? 'true' : 'false');
+  // (e.g. `html[data-animations="true"] .some-thing { transition: ... }`). Written only on a
+  // change: the attribute is matched by a rule over every element, so each write restyles the
+  // whole tree.
+  const animations = uiSettings.enableAnimations ? 'true' : 'false';
+  if (root.getAttribute('data-animations') !== animations) root.setAttribute('data-animations', animations);
 }
 
 /**
