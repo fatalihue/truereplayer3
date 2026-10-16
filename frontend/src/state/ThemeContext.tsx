@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import type { ThemeColors, ThemeConfig, ThemeUISettings, ExportedTheme, CustomThemePreset } from '../themes';
 import {
@@ -67,6 +67,10 @@ interface ThemeContextValue {
   saveAsPreset: (name: string) => void;
   /** Remove a custom preset by id */
   deleteCustomPreset: (id: string) => void;
+  /** The delete toast's Undo: put `preset` back at `index`; when it was the active theme
+   *  (`configBefore`), select it again with the overrides it had. A preset saved under the same
+   *  id since the delete is newer work and wins — the restore then does nothing. */
+  restoreCustomPreset: (preset: CustomThemePreset, index: number, configBefore?: ThemeConfig) => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -277,6 +281,22 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       : prev);
   }, []);
 
+  // The latest list, for restoreCustomPreset: its caller is a toast action created BEFORE the
+  // delete, whose closure still sees the preset in the list.
+  const presetsRef = useRef(customPresets);
+  useEffect(() => { presetsRef.current = customPresets; }, [customPresets]);
+  const restoreCustomPreset = useCallback((preset: CustomThemePreset, index: number, configBefore?: ThemeConfig) => {
+    if (presetsRef.current.some(p => p.id === preset.id)) return;
+    setCustomPresets(prev => {
+      const next = [...prev];
+      next.splice(Math.max(0, Math.min(index, next.length)), 0, preset);
+      return next;
+    });
+    if (configBefore?.baseThemeId === preset.id) {
+      setConfig(prev => ({ ...prev, baseThemeId: preset.id, colorOverrides: { ...configBefore.colorOverrides } }));
+    }
+  }, []);
+
   const replaceConfig = useCallback((next: ThemeConfig) => {
     // The snapshot's baseThemeId can have died while the editor was open — deleting the active
     // custom preset from the gallery moves the app to the default and drops it from storage, so
@@ -359,11 +379,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     importTheme,
     saveAsPreset,
     deleteCustomPreset,
+    restoreCustomPreset,
   }), [
     config, osReducedMotion, resolvedColors, customPresets, selectPreset, replaceConfig, setColorOverride,
     clearColorOverride, clearAllOverrides, setAccentColor,
     setUISetting, resetUISettings, exportTheme, importTheme,
-    saveAsPreset, deleteCustomPreset,
+    saveAsPreset, deleteCustomPreset, restoreCustomPreset,
   ]);
 
   return (

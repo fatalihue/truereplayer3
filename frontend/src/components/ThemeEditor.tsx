@@ -365,8 +365,22 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     setColorOverride, clearColorOverride, clearAllOverrides,
     setAccentColor, setUISetting, resetUISettings,
     exportTheme, importTheme,
-    saveAsPreset, deleteCustomPreset, osReducedMotion,
+    saveAsPreset, deleteCustomPreset, restoreCustomPreset, osReducedMotion,
   } = useTheme();
+  // The ✕ on a custom card deletes at once; a 10 s Undo puts it back where it was, active again
+  // if it was the active theme (the snapshot is the config at the moment of the delete).
+  const handleDeletePreset = (id: string) => {
+    const index = customPresets.findIndex(p => p.id === id);
+    const preset = customPresets[index];
+    if (!preset) return;
+    const before = config;
+    deleteCustomPreset(id);
+    showToast(tt(`Deleted preset "${preset.name}"`, `Preset "${preset.name}" excluído`), {
+      type: 'success',
+      duration: 10000,
+      action: { label: 'Undo', onClick: () => restoreCustomPreset(preset, index, before) },
+    });
+  };
   const { language, setLanguage } = useLanguage();
 
   const [surface, setSurface] = useState<Surface>('gallery');
@@ -874,7 +888,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
           {isCustom && (
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); deleteCustomPreset(theme.id); }}
+              onClick={(e) => { e.stopPropagation(); handleDeletePreset(theme.id); }}
               aria-label={`Delete preset ${theme.name}`}
               data-tip={tt('Delete preset', 'Excluir preset')}
               className="absolute top-1 right-1 w-5 h-5 rounded bg-bg-base/80 text-text-tertiary hover:text-recording-fg opacity-0 group-hover/card:opacity-100 focus-visible:opacity-100 transition-opacity flex items-center justify-center"

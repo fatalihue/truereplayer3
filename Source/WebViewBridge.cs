@@ -1015,6 +1015,7 @@ namespace TrueReplayer
                     case "clicker:savePreset": HandleSaveClickerPreset(payload); break;
                     case "clicker:applyPreset": HandleApplyClickerPreset(payload); break;
                     case "clicker:deletePreset": HandleDeleteClickerPreset(payload); break;
+                case "clicker:undoDeletePreset": HandleUndoDeleteClickerPreset(payload); break;
                     case "waitimage:cropReference": HandleCropReference(payload); break;
                     case "image:testMatch": _ = HandleTestMatchAsync(payload); break;
                     case "ocr:testRead": _ = HandleOcrTestReadAsync(payload); break;
@@ -3767,8 +3768,9 @@ namespace TrueReplayer
                 buttonStates = ProjectButtonStates()
             });
 
-            // Apply saved window settings that require the window handle
-            if (UserProfile.Current.AlwaysOnTop)
+            // Apply saved window settings that require the window handle. Current is nullable
+            // (CS8602): no profile loaded yet means nothing to apply, not a crash at boot.
+            if (UserProfile.Current?.AlwaysOnTop == true)
                 window.UpdateAlwaysOnTop(true);
 
             // Seed the extension's connection state. browser:status is otherwise pushed only on
@@ -8727,13 +8729,40 @@ namespace TrueReplayer
             PushSettingsLoaded(SaveGlobalSettings());
         }
 
+        // The last preset the ✕ removed and the slot it held, for the toast's Undo
+        // (clicker:undoDeletePreset). Kept here rather than sent back from the frontend so the
+        // restore is the very object that was deleted — no second parse-and-clamp of fields that
+        // already passed one.
+        private (AppSettingsManager.ClickerPreset Preset, int Index)? _lastDeletedClickerPreset;
+
         private void HandleDeleteClickerPreset(JsonElement payload)
         {
             var name = ReadPresetName(payload);
             var p = name == null ? null : FindClickerPreset(name);
             if (p == null) return;
+            int index = ClickerPresets.IndexOf(p);
             ClickerPresets.Remove(p);
+            _lastDeletedClickerPreset = (p, index);
             DiagnosticLog.Info($"Clicker preset deleted: \"{p.Name}\" ({ClickerPresets.Count} left).");
+            PushSettingsLoaded(SaveGlobalSettings());
+        }
+
+        private void HandleUndoDeleteClickerPreset(JsonElement payload)
+        {
+            var name = ReadPresetName(payload);
+            if (name == null || _lastDeletedClickerPreset is not { } last
+                || !string.Equals(last.Preset.Name, name, StringComparison.OrdinalIgnoreCase)) return;
+            _lastDeletedClickerPreset = null;
+            // A preset saved under the same name since the delete is newer work: Undo must not
+            // overwrite it, so the restore quietly stands down.
+            if (FindClickerPreset(name) != null) return;
+            if (ClickerPresets.Count >= MaxClickerPresets)
+            {
+                SendMessage("alert:show", new { message = $"Clicker presets are limited to {MaxClickerPresets}. Delete one to restore \"{last.Preset.Name}\"." });
+                return;
+            }
+            ClickerPresets.Insert(Math.Clamp(last.Index, 0, ClickerPresets.Count), last.Preset);
+            DiagnosticLog.Info($"Clicker preset restored: \"{last.Preset.Name}\" ({ClickerPresets.Count} total).");
             PushSettingsLoaded(SaveGlobalSettings());
         }
 

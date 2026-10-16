@@ -1274,6 +1274,8 @@ export type OutgoingMessage =
   | { type: 'clicker:savePreset'; payload: { name: string } }
   | { type: 'clicker:applyPreset'; payload: { name: string } }
   | { type: 'clicker:deletePreset'; payload: { name: string } }
+  /** The toast's Undo for the LAST delete: the backend puts that preset back in its slot. */
+  | { type: 'clicker:undoDeletePreset'; payload: { name: string } }
   | { type: 'waitimage:cropReference'; payload: { index: number; x: number; y: number; w: number; h: number } }
   | { type: 'ocr:testRead'; payload: { requestId: string; searchRegion?: { x: number; y: number; w: number; h: number }; absolute?: boolean; anchor?: { processName: string; windowTitle: string; titleMatchMode: string }; readAs?: string | null; operator?: string | null; operand?: string; match?: boolean; textColor?: string | null; tolerance?: number } }
   | { type: 'ocr:languages'; payload: Record<string, never> }

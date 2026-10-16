@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Check, X } from 'lucide-react';
 import type { ClickerPreset, ClickerPresetFields, SettingsState } from '../bridge/messageTypes';
 import { useBridge } from '../bridge/BridgeContext';
+import { useToast } from '../state/ToastContext';
+import { useTt } from '../state/LanguageContext';
 import { chipOn, chipOff } from './common/chipStyles';
 
 /**
@@ -48,7 +50,19 @@ export function ClickerPresetRow({ settings, width, lastMatched, pendingName }: 
   pendingName: React.MutableRefObject<PendingPresetName | null>;
 }) {
   const { send } = useBridge();
+  const { showToast } = useToast();
+  const tt = useTt();
   const presets = settings.cursorClickPresets ?? [];
+  // ✕ deletes at once (no confirm, the row is a menu), so the delete carries a 10 s Undo — the
+  // same window ProfilePanel gives its metadata removals. The backend keeps the deleted preset.
+  const deletePreset = (name: string) => {
+    send({ type: 'clicker:deletePreset', payload: { name } });
+    showToast(tt(`Deleted preset "${name}"`, `Preset "${name}" excluído`), {
+      type: 'success',
+      duration: 10000,
+      action: { label: 'Undo', onClick: () => send({ type: 'clicker:undoDeletePreset', payload: { name } }) },
+    });
+  };
   const active = presets.find((p) => sameSetup(p, settings)) ?? null;
   const [open, setOpen] = useState(false);
   // Read once, by the initializers; the mount effect below marks the slot consumed.
@@ -162,7 +176,7 @@ export function ClickerPresetRow({ settings, width, lastMatched, pendingName }: 
             placeholder="Name, then Enter"
             maxLength={40}
             aria-label="Preset name"
-            className="w-full h-full px-2 text-caption font-mono bg-transparent text-text-primary outline-none placeholder:text-text-tertiary"
+            className="w-full h-full px-2 text-caption bg-transparent text-text-primary outline-none placeholder:text-text-tertiary"
           />
         ) : (
           <button
@@ -172,7 +186,7 @@ export function ClickerPresetRow({ settings, width, lastMatched, pendingName }: 
             aria-expanded={open}
             className="flex-1 min-w-0 h-full flex items-center justify-between gap-1 pl-2 pr-1 cursor-pointer"
           >
-            <span className={`text-caption font-mono truncate ${active ? 'text-text-primary' : 'text-text-tertiary'}`}>{label}</span>
+            <span className={`text-caption truncate ${active ? 'text-text-primary' : 'text-text-tertiary'}`}>{label}</span>
             <ChevronDown size={11} className="shrink-0 text-text-tertiary" />
           </button>
         )}
@@ -186,7 +200,7 @@ export function ClickerPresetRow({ settings, width, lastMatched, pendingName }: 
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => { send({ type: 'clicker:applyPreset', payload: { name: p.name } }); setOpen(false); }}
                 aria-current={active?.name === p.name || undefined}
-                className="flex-1 min-w-0 flex items-center gap-1 px-2 py-1 text-left text-caption font-mono text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors"
+                className="flex-1 min-w-0 flex items-center gap-1 px-2 py-1 text-left text-caption text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors"
               >
                 <span className="truncate">{p.name}</span>
                 {active?.name === p.name && <Check size={10} className="shrink-0 text-accent-solid" />}
@@ -194,7 +208,7 @@ export function ClickerPresetRow({ settings, width, lastMatched, pendingName }: 
               <button
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => send({ type: 'clicker:deletePreset', payload: { name: p.name } })}
+                onClick={() => deletePreset(p.name)}
                 aria-label={`Delete preset ${p.name}`}
                 className="shrink-0 self-stretch px-1.5 flex items-center text-text-tertiary hover:text-text-primary transition-colors"
               >
