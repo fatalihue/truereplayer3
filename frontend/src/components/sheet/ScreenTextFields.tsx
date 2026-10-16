@@ -148,7 +148,7 @@ export function ScreenTextFields(p: ScreenTextFieldsProps) {
   return (
     <>
       <Field
-        label="Search Region"
+        label="Search region"
         hint={p.region ? undefined : 'Whole screen: ~0.5 s per read. Set a region.'}
       >
         <SearchRegionRow
@@ -161,7 +161,7 @@ export function ScreenTextFields(p: ScreenTextFieldsProps) {
         />
       </Field>
 
-      <Field label="Read As">
+      <Field label="Read as">
         <SegmentedControl<'text' | 'number'>
           ariaLabel="Read as"
           grow
@@ -229,7 +229,7 @@ export function ScreenTextFields(p: ScreenTextFieldsProps) {
         </>
       ))}
 
-      <Field label="Text Color" hint={p.textColor ? undefined : 'Any. Pick the text color to read game HUDs over a busy scene.'}>
+      <Field label="Text color" hint={p.textColor ? undefined : 'Any. Pick the text color to read game HUDs over a busy scene.'}>
         <div className="flex items-center gap-2.5">
           <span
             className={`w-8 h-8 rounded border shrink-0 ${validHex(p.textColor) ? 'border-border-default' : 'border-dashed border-border-default'}`}
@@ -260,7 +260,7 @@ export function ScreenTextFields(p: ScreenTextFieldsProps) {
       </Field>
 
       {validHex(p.textColor) && (
-        <Field label="Color Tolerance" hint="Per channel, 0–255. Higher = more pixels kept.">
+        <Field label="Color tolerance" hint="Per channel, 0–255. Higher = more pixels kept.">
           <NumberInput
             value={Number.parseInt(p.tolerance, 10) || 0}
             onChange={(n) => p.onToleranceChange(String(n))}

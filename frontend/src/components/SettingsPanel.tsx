@@ -1897,22 +1897,22 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                 and hotstrings stop firing. (The 2026-07 reorg tried moving it to
                 Global · Hotkeys; the owner preferred it here, next to what it gates.) */}
             <Section title="Recording">
-              <SettingRow label="Mouse Clicks">
+              <SettingRow label="Mouse clicks">
                 <CompactToggle isOn={settings.recordMouse} onChange={(v) => changeSetting('recordMouse', v)} />
               </SettingRow>
-              <SettingRow label="Mouse Scroll">
+              <SettingRow label="Mouse scroll">
                 <CompactToggle isOn={settings.recordScroll} onChange={(v) => changeSetting('recordScroll', v)} />
               </SettingRow>
               <SettingRow label="Keyboard">
                 <CompactToggle isOn={settings.recordKeyboard} onChange={(v) => changeSetting('recordKeyboard', v)} />
               </SettingRow>
-              <SettingRow label="Combined Actions" tooltip={tt('One action per click/key instead of Down+Up. Off for holds and drags.', 'Uma ação por clique/tecla em vez de Down+Up. Desligue para holds e arrastos.')}>
+              <SettingRow label="Combined actions" tooltip={tt('One action per click/key instead of Down+Up. Off for holds and drags.', 'Uma ação por clique/tecla em vez de Down+Up. Desligue para holds e arrastos.')}>
                 <CompactToggle isOn={settings.recordCombinedInput} onChange={(v) => changeSetting('recordCombinedInput', v)} />
               </SettingRow>
               <SettingRow label="Profile Keys" danger={!settings.profileKeyEnabled} tooltip={tt("Profile shortcuts & hotstrings won't fire while off.", 'Atalhos e hotstrings do perfil não disparam enquanto desligado.')}>
                 <CompactToggle isOn={settings.profileKeyEnabled} onChange={(v) => changeSetting('profileKeyEnabled', v)} />
               </SettingRow>
-              <SettingRow label="Browser Actions" tooltip={tt('Record Chrome CSS selectors instead of coordinates.', 'Grava seletores CSS do Chrome em vez de coordenadas.')}>
+              <SettingRow label="Browser actions" tooltip={tt('Record Chrome CSS selectors instead of coordinates.', 'Grava seletores CSS do Chrome em vez de coordenadas.')}>
                 <CompactToggle isOn={settings.browserSelectorEnabled ?? true} onChange={(v) => changeSetting('browserSelectorEnabled', v)} />
               </SettingRow>
             </Section>
@@ -1961,7 +1961,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                 />
               </SettingRow>
               <SettingRow
-                label="Capture Slot"
+                label="Capture slot"
                 tooltip={tt('Selection → next {clip:N} slot', 'Seleção → próximo slot {clip:N}')}
               >
                 <HotkeyInput
@@ -1983,7 +1983,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                   onChange={changeHotkey}
                 />
               </SettingRow>
-              <SettingRow label="Text Region">
+              <SettingRow label="Text region">
                 {(() => {
                   const parts = (settings.copyScreenTextRegion ?? '').split(',').map(Number);
                   const isSet = parts.length === 4 && parts[2] > 0 && parts[3] > 0;
@@ -2067,13 +2067,13 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
             {/* App tab — window behaviour, launch, notifications, automation, interface;
                 Updates lives in the panel footer below. */}
             <Section title="Window">
-              <SettingRow label="Always On Top">
+              <SettingRow label="Always on top">
                 <CompactToggle
                   isOn={settings.alwaysOnTop}
                   onChange={(v) => send({ type: 'window:alwaysOnTop', payload: { enabled: v } })}
                 />
               </SettingRow>
-              <SettingRow label="System Tray">
+              <SettingRow label="System tray">
                 <CompactToggle
                   isOn={settings.minimizeToTray}
                   onChange={(v) => send({ type: 'window:minimizeToTray', payload: { enabled: v } })}
@@ -2083,7 +2083,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
 
             {/* Startup — how the app launches. */}
             <Section title="Startup">
-              <SettingRow label="Run on Startup">
+              <SettingRow label="Run on startup">
                 <CompactToggle
                   isOn={settings.runOnStartup}
                   onChange={(v) => {
@@ -2094,14 +2094,14 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                   }}
                 />
               </SettingRow>
-              <SettingRow label="Startup Minimized">
+              <SettingRow label="Startup minimized">
                 <CompactToggle
                   isOn={settings.startMinimized}
                   onChange={(v) => send({ type: 'window:startMinimized', payload: { enabled: v } })}
                   disabled={!settings.runOnStartup}
                 />
               </SettingRow>
-              <SettingRow label="Run as Administrator">
+              <SettingRow label="Run as administrator">
                 <CompactToggle
                   isOn={settings.runAsAdmin ?? false}
                   onChange={(v) => changeSetting('runAsAdmin', v)}
@@ -2112,13 +2112,13 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
             {/* Notifications — out-of-window run-end cues. Both apply only while the
                 TrueReplayer window is NOT foreground (the game usually covers it). */}
             <Section title="Notifications">
-              <SettingRow label="Flash on Replay End">
+              <SettingRow label="Flash on replay end">
                 <CompactToggle
                   isOn={settings.runEndFlash}
                   onChange={(v) => send({ type: 'window:runEndFlash', payload: { enabled: v } })}
                 />
               </SettingRow>
-              <SettingRow label="Sound on Replay End">
+              <SettingRow label="Sound on replay end">
                 <CompactToggle
                   isOn={settings.runEndSound}
                   onChange={(v) => send({ type: 'window:runEndSound', payload: { enabled: v } })}
@@ -2130,7 +2130,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                 per-profile triggers themselves are configured inside the panel; this is
                 just the always-discoverable settings-surface home (tray mirrors both). */}
             <Section title="Automation">
-              <SettingRow label="Enable Automations">
+              <SettingRow label="Enable automations">
                 <CompactToggle
                   isOn={settings.automationEnabled}
                   onChange={(v) => send({ type: 'automation:setEnabled', payload: { enabled: v } })}
@@ -2221,8 +2221,8 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
           >
             {updateStatus === 'checking' ? 'Checking…'
               : updateStatus === 'up-to-date' ? <><Check size={11} /> Up to date</>
-              : updateStatus === 'error' ? 'Check failed — Retry'
-              : 'Check for Updates'}
+              : updateStatus === 'error' ? 'Check failed — retry'
+              : 'Check for updates'}
           </button>
         </div>
       )}

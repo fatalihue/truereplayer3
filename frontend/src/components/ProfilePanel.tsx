@@ -88,6 +88,15 @@ const sortByName = (a: ProfileEntry, b: ProfileEntry) =>
 // Rail tooltip spelling for a hotkey: the keycap names (PgDn, Esc), joined tight.
 const railHotkey = (combo: string) => splitCombo(combo).map(compactKey).join('+');
 
+// The inline ✕ removals and the title of their confirmation: the dialog names what goes.
+type RemovalKind = 'hotkey' | 'hotstring' | 'profileTarget' | 'folderTarget';
+const REMOVAL_TITLE: Record<RemovalKind, string> = {
+  hotkey: 'Remove hotkey',
+  hotstring: 'Remove hotstring',
+  profileTarget: 'Remove window target',
+  folderTarget: 'Remove folder target',
+};
+
 /** The profile description, trimmed to one readable tooltip line. The field accepts 500 chars;
  *  a tooltip is a line, not a paragraph, so the tail is elided rather than wrapped. */
 const DESC_TIP_MAX = 110;
@@ -204,7 +213,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
   // target / folder target). kind drives which handler runs on confirm; label
   // is shown in the prompt. The 10s undo toast is the second safety net.
   const [confirmRemoval, setConfirmRemoval] = useState<{
-    kind: 'hotkey' | 'hotstring' | 'profileTarget' | 'folderTarget';
+    kind: RemovalKind;
     name: string;
     label: string;
   } | null>(null);
@@ -1865,12 +1874,12 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             Tooltip shows only the mode name; the full description lives in the
             hotkey configuration dialog. */}
         {p.hotkey && p.triggerMode === 'onRelease' && (
-          <span data-tip={tt('On Release', 'Ao soltar')} data-tip-pos="end" className="shrink-0 text-text-tertiary flex">
+          <span data-tip={tt('On release', 'Ao soltar')} data-tip-pos="end" className="shrink-0 text-text-tertiary flex">
             <ArrowUpFromDot size={10} />
           </span>
         )}
         {p.hotkey && p.triggerMode === 'whilePressed' && (
-          <span data-tip={tt('While Pressed', 'Enquanto pressionado')} data-tip-pos="end" className="shrink-0 text-text-tertiary flex">
+          <span data-tip={tt('While pressed', 'Enquanto pressionado')} data-tip-pos="end" className="shrink-0 text-text-tertiary flex">
             <Zap size={10} />
           </span>
         )}
@@ -2191,7 +2200,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             <button onClick={handleOpenProfilesFolder} className={iconButtonClass('sm')} data-tip={tt('Open profiles folder', 'Abrir pasta de perfis')} aria-label="Open profiles folder">
               <ExternalLink size={14} />
             </button>
-            <button onClick={handleExportClick} className={iconButtonClass('sm')} data-tip={tt('Import / Export', 'Importar / Exportar')} aria-label="Import / Export">
+            <button onClick={handleExportClick} className={iconButtonClass('sm')} data-tip={tt('Import / export', 'Importar / exportar')} aria-label="Import / export">
               <ArrowDownUp size={14} />
             </button>
             <div className="w-px h-3.5 bg-border-subtle mx-0.5" />
@@ -2831,7 +2840,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                       <button
                         key={c}
                         onClick={() => handleSetFolderColor(folderContextMenu.folderName, c)}
-                        aria-label={`Colour ${c}`}
+                        aria-label={`Color ${c}`}
                         aria-pressed={selected}
                         className="relative w-full aspect-square rounded motion-ok:transition-transform motion-ok:hover:scale-110"
                         style={{
@@ -2952,7 +2961,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
 
       {/* Rename Dialog */}
       {showRenameDialog && (
-        <DialogShell icon={<Pencil size={14} className="text-accent" />} title="Rename Profile" size="sm" onClose={() => setShowRenameDialog(null)}
+        <DialogShell icon={<Pencil size={14} className="text-accent" />} title="Rename profile" size="sm" onClose={() => setShowRenameDialog(null)}
           footer={<DialogFooter secondary={{ label: 'Cancel', onClick: () => setShowRenameDialog(null) }} primary={{ label: 'Rename', onClick: confirmRename, disabled: !dialogValue.trim() || renameProfileNameTaken }} />}>
           <div className="p-4 flex flex-col">
             <input
@@ -2972,7 +2981,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
 
       {/* Delete Confirm Dialog */}
       {showDeleteConfirm && (
-        <DialogShell icon={<Trash2 size={14} style={{ color: 'var(--color-recording-fg)' }} />} title="Delete Profile" size="sm" onClose={() => setShowDeleteConfirm(null)} onCardKeyDown={(e) => { if (e.key === 'Enter') e.stopPropagation(); }}
+        <DialogShell icon={<Trash2 size={14} style={{ color: 'var(--color-recording-fg)' }} />} title="Delete profile" size="sm" onClose={() => setShowDeleteConfirm(null)} onCardKeyDown={(e) => { if (e.key === 'Enter') e.stopPropagation(); }}
           /* Cancel takes the initial focus: deleting a profile is irreversible (the file and the
              image directory go, with no undo toast), so the destructive action must never be what
              a reflexive Enter runs. The shell already refuses to read Enter-on-a-button as a
@@ -2998,12 +3007,13 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
           hotstring / profile target / folder target). Same shape as the delete
           dialog; the focused button confirms, Esc cancels. */}
       {confirmRemoval && (
-        <DialogShell icon={<AlertTriangle size={14} style={{ color: 'var(--color-warning-ink)' }} />} title="Are you sure?" size="sm" onClose={() => setConfirmRemoval(null)} onCardKeyDown={(e) => { if (e.key === 'Enter') e.stopPropagation(); }}
-          /* Same rule as Delete Profile — "No" holds the focus, and Enter is contained rather than
+        <DialogShell icon={<AlertTriangle size={14} style={{ color: 'var(--color-warning-ink)' }} />} title={REMOVAL_TITLE[confirmRemoval.kind]} size="sm" onClose={() => setConfirmRemoval(null)} onCardKeyDown={(e) => { if (e.key === 'Enter') e.stopPropagation(); }}
+          /* Same rule as Delete profile — Cancel holds the focus, and Enter is contained rather than
              acted on (see the note there: a click on the sentence focuses the card and slips past
              the shell's guard). This one is recoverable (each removal posts a 10 s Undo toast),
-             but a destructive primary should not be the implicit default either way. */
-          footer={<DialogFooter danger secondary={{ label: 'No', onClick: () => setConfirmRemoval(null), autoFocus: true }} primary={{ label: 'Yes, remove', onClick: runConfirmedRemoval }} />}>
+             but a destructive primary should not be the implicit default either way. The title
+             names the thing and the buttons name the act, as in Delete profile — never Yes/No. */
+          footer={<DialogFooter danger secondary={{ label: 'Cancel', onClick: () => setConfirmRemoval(null), autoFocus: true }} primary={{ label: 'Remove', onClick: runConfirmedRemoval }} />}>
           <div className="p-4 flex flex-col">
             <p className="text-body text-text-secondary">
               Remove {confirmRemoval.label} from <span className="text-text-primary font-medium">'{confirmRemoval.name}'</span>?
@@ -3014,7 +3024,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
 
       {/* Assign Hotkey Dialog */}
       {showHotkeyDialog && (
-        <DialogShell icon={<Keyboard size={14} className="text-accent" />} title="Assign Hotkey" size="sm" onClose={() => setShowHotkeyDialog(null)}
+        <DialogShell icon={<Keyboard size={14} className="text-accent" />} title="Assign hotkey" size="sm" onClose={() => setShowHotkeyDialog(null)}
           footerStart={profiles.find(p => p.name === showHotkeyDialog)?.hotkey ? (
             <Button variant="destructiveText" size="md" onClick={() => { handleRemoveHotkey(showHotkeyDialog!); setShowHotkeyDialog(null); }}>Remove</Button>
           ) : undefined}
@@ -3044,12 +3054,12 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
 
             {/* Trigger Mode */}
             <div className="mt-4">
-              <div className="label-micro text-text-tertiary mb-1.5">Trigger Mode</div>
+              <div className="label-micro text-text-tertiary mb-1.5">Trigger mode</div>
               <div className="grid grid-cols-2 gap-1.5">
                 {([
-                  { id: 'onPress', label: 'On Press', help: undefined },
-                  { id: 'onRelease', label: 'On Release', help: undefined },
-                  { id: 'whilePressed', label: 'While Pressed', help: tt('Loops while held; stops on release', 'Repete enquanto segura; para ao soltar') },
+                  { id: 'onPress', label: 'On press', help: undefined },
+                  { id: 'onRelease', label: 'On release', help: undefined },
+                  { id: 'whilePressed', label: 'While pressed', help: tt('Loops while held; stops on release', 'Repete enquanto segura; para ao soltar') },
                   { id: 'toggle', label: 'Toggle', help: tt('Press to start looping, press again to stop', 'Aperte para começar o loop, de novo para parar') },
                   { id: 'doubleTap', label: 'Double-tap', help: tt('Two quick taps; a single tap is ignored', 'Dois toques rápidos; toque único é ignorado') },
                   { id: 'hold', label: 'Hold (long-press)', help: tt('Fires once after ~0.6 s held; does not stop on release', 'Dispara uma vez após ~0,6 s segurando; não para ao soltar') },
@@ -3082,7 +3092,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
 
       {/* Assign Hotstring Dialog */}
       {showHotstringDialog && (
-        <DialogShell icon={<Type size={14} className="text-accent" />} title="Assign Hotstring" size="sm" onClose={() => setShowHotstringDialog(null)}
+        <DialogShell icon={<Type size={14} className="text-accent" />} title="Assign hotstring" size="sm" onClose={() => setShowHotstringDialog(null)}
           footerStart={profiles.find(p => p.name === showHotstringDialog)?.hotstring ? (
             <Button variant="destructiveText" size="md" onClick={() => { handleRemoveHotstring(showHotstringDialog!); setShowHotstringDialog(null); }}>Remove</Button>
           ) : undefined}
@@ -3171,7 +3181,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
         return (
           <DialogShell
             icon={<Upload size={14} style={{ color: 'var(--color-accent)' }} />}
-            title="Export Profiles"
+            title="Export profiles"
             // 460px: still deliberately narrower than the Import Preview's 640 (export is a
             // light picker, import is a review), but no longer the only dialog UNDER the
             // shell's 440 default while serving the app's longest list (~81 profiles with
@@ -3245,7 +3255,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                 className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg-surface cursor-pointer border-b border-border-subtle text-left"
               >
                 <CheckboxBox checked={allExportSelected} />
-                <span className="text-minor font-medium text-text-secondary">Select All</span>
+                <span className="text-minor font-medium text-text-secondary">Select all</span>
                 <span className="ml-auto text-caption text-text-tertiary tabular-nums">{selectedCount}/{visibleNames.length}</span>
               </button>
             </div>
@@ -3390,7 +3400,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
 
       {/* Create Folder Dialog */}
       {showCreateFolderDialog && (
-        <DialogShell icon={<FolderPlus size={14} className="text-accent" />} title="New Folder" size="sm" onClose={() => setShowCreateFolderDialog(false)}
+        <DialogShell icon={<FolderPlus size={14} className="text-accent" />} title="New folder" size="sm" onClose={() => setShowCreateFolderDialog(false)}
           footer={<DialogFooter secondary={{ label: 'Cancel', onClick: () => setShowCreateFolderDialog(false) }} primary={{ label: 'Create', onClick: confirmCreateFolder, disabled: !folderDialogName.trim() || createFolderNameTaken }} />}>
           <div className="p-4 flex flex-col">
             <input
@@ -3413,7 +3423,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                   <button
                     key={c}
                     onClick={() => setFolderDialogColor(c)}
-                    aria-label={`Colour ${c}`}
+                    aria-label={`Color ${c}`}
                     aria-pressed={folderDialogColor === c}
                     className="relative w-full aspect-square rounded motion-ok:transition-transform motion-ok:hover:scale-110"
                     style={{
@@ -3450,7 +3460,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
 
       {/* Rename Folder Dialog */}
       {showRenameFolderDialog && (
-        <DialogShell icon={<Pencil size={14} className="text-accent" />} title="Rename Folder" size="sm" onClose={() => setShowRenameFolderDialog(null)}
+        <DialogShell icon={<Pencil size={14} className="text-accent" />} title="Rename folder" size="sm" onClose={() => setShowRenameFolderDialog(null)}
           footer={<DialogFooter secondary={{ label: 'Cancel', onClick: () => setShowRenameFolderDialog(null) }} primary={{ label: 'Rename', onClick: confirmRenameFolder, disabled: !folderDialogName.trim() || renameFolderNameTaken }} />}>
           <div className="p-4 flex flex-col">
             <input

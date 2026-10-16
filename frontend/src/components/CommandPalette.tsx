@@ -136,7 +136,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
         title: 'ACTIONS',
         items: [
           {
-            id: 'copyactions', label: 'Copy as Table',
+            id: 'copyactions', label: 'Copy as table',
             // Deliberately UNGATED, and the reasoning is worth keeping because it nearly went the
             // other way. This writes the SYSTEM clipboard (Copy Diagnostics does too), and the
             // engine reads that clipboard mid-run, so copying during a run can change what a
@@ -151,20 +151,20 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
           {
             // Ctrl+V works but has no visible control anywhere, so this is the only
             // discoverable route.
-            id: 'pasteactions', label: 'Paste Actions',
+            id: 'pasteactions', label: 'Paste actions',
             ...gate(isClicker, runActive),
             icon: <ClipboardPaste size={14} className="text-text-secondary" />,
             onAction: () => { if (!sheetAllows()) return; send({ type: 'actions:paste', payload: { insertIndex: computeInsertIndex() } }); onClose(); },
           },
           {
-            id: 'convertrelative', label: 'Convert Coordinates to Relative',
+            id: 'convertrelative', label: 'Convert coordinates to relative',
             ...gate(isClicker, runActive),
             keywords: ['window relative', 'rebase', 'coordinates'],
             icon: <Replace size={14} className="text-text-secondary" />,
             onAction: () => { if (!sheetAllows()) return; send({ type: 'profile:convertCoordinates', payload: { direction: 'toRelative' } }); onClose(); },
           },
           {
-            id: 'convertabsolute', label: 'Convert Coordinates to Absolute',
+            id: 'convertabsolute', label: 'Convert coordinates to absolute',
             ...gate(isClicker, runActive),
             keywords: ['screen coordinates', 'rebase'],
             icon: <Replace size={14} className="text-text-secondary" />,
@@ -173,14 +173,14 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
           {
             // Convert the whole profile between paired (Down/Up) and combined (Keystroke/Click)
             // representations — the on-demand counterpart to the Combined Actions toggle.
-            id: 'converttocombined', label: 'Convert Actions to Combined',
+            id: 'converttocombined', label: 'Convert actions to combined',
             ...gate(isClicker, runActive),
             keywords: ['merge', 'keystroke', 'click'],
             icon: <Combine size={14} className="text-text-secondary" />,
             onAction: () => { if (!sheetAllows()) return; send({ type: 'actions:convertMode', payload: { direction: 'toCombined' } }); onClose(); },
           },
           {
-            id: 'converttopaired', label: 'Convert Actions to Paired',
+            id: 'converttopaired', label: 'Convert actions to paired',
             ...gate(isClicker, runActive),
             keywords: ['split', 'down up', 'separate'],
             icon: <Split size={14} className="text-text-secondary" />,
@@ -198,7 +198,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
         title: 'PROFILES',
         items: [
           {
-            id: 'reset', label: 'Reset Profile',
+            id: 'reset', label: 'Reset profile',
             // Deliberately NOT gated on isClicker, unlike the grid commands above. The backend
             // command is a settings reset ("Reset Settings", "reset all settings to their default
             // values and clear all actions") and it goes out of its way to keep working here:
@@ -216,7 +216,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
           },
           {
             // Right-click-menu-only otherwise, so it stays searchable by name.
-            id: 'duplicateprofile', label: 'Duplicate Profile',
+            id: 'duplicateprofile', label: 'Duplicate profile',
             keywords: ['copy profile', 'clone'],
             icon: <Files size={14} className="text-text-secondary" />,
             disabled: !activeProfile,
@@ -227,7 +227,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             // Icon, description and tags. Its only other door is right-click → hover "More" →
             // "Edit info…" — a submenu so hard to reach that a synthetic click cannot open it,
             // for the dialog that owns the description and the #tag search the sidebar runs on.
-            id: 'profileinfo', label: 'Edit Profile Info',
+            id: 'profileinfo', label: 'Edit profile info',
             keywords: ['description', 'tags', 'icon', 'emoji', 'metadata', 'descricao'],
             icon: <Info size={14} className="text-text-secondary" />,
             disabled: !activeProfile,
@@ -272,7 +272,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             // Opens %LocalAppData%\TrueReplayer\Logs in Explorer. Otherwise reachable only
             // from the tray menu — surfaced here so users/support can grab the session log
             // for diagnosing silent hotkey / replay issues without hunting for the folder.
-            id: 'openlogs', label: 'Open Logs Folder',
+            id: 'openlogs', label: 'Open logs folder',
             keywords: ['diagnostics', 'session log', 'support', 'troubleshoot'],
             icon: <ScrollText size={14} className="text-text-secondary" />,
             onAction: () => { send({ type: 'logs:openFolder', payload: {} }); onClose(); },
@@ -281,7 +281,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             // One block of text with what support asks for first (version, OS, WebView2, DPI,
             // mode, Profile Keys / remaps / automation state, profile count, elevation, log
             // folder). The backend gathers it and confirms with a toast.
-            id: 'copydiagnostics', label: 'Copy Diagnostics',
+            id: 'copydiagnostics', label: 'Copy diagnostics',
             keywords: ['support', 'version', 'bug report', 'system info', 'about'],
             icon: <ClipboardCopy size={14} className="text-text-secondary" />,
             onAction: () => { send({ type: 'diagnostics:copy', payload: {} }); onClose(); },
@@ -293,7 +293,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
         title: 'HELP',
         items: [
           {
-            id: 'openmanual', label: 'Open Manual',
+            id: 'openmanual', label: 'Open manual',
             keywords: ['help', 'docs', 'documentation', 'guide', 'manual', 'ajuda', 'guia'],
             icon: <BookOpen size={14} className="text-text-secondary" />,
             onAction: () => { send({ type: 'shell:openUrl', payload: { url: MANUAL_URL } }); onClose(); },
@@ -506,7 +506,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
               minimum for legible text (the old fontSize: 9 was flagged by the type audit). */}
           <span><span className="kbd">↑↓</span> navigate</span>
           <span><span className="kbd">↵</span> select</span>
-          <span><span className="kbd">esc</span> close</span>
+          <span><span className="kbd">Esc</span> close</span>
         </div>
       </div>
     </div>,

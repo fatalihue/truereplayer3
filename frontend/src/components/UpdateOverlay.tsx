@@ -241,7 +241,7 @@ export function UpdateOverlay() {
             {phase.step === 'available' && 'Update available'}
             {phase.step === 'downloading' && 'Downloading update'}
             {phase.step === 'installing' && `Updating to v${version}`}
-            {phase.step === 'complete' && 'Updated successfully!'}
+            {phase.step === 'complete' && 'Update complete'}
           </div>
           <div id={subtitleId} className="text-center text-[11px] text-text-tertiary mb-[18px]">
             {phase.step === 'available' && 'A new version of TrueReplayer is ready'}

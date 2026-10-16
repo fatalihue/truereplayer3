@@ -1956,7 +1956,7 @@ namespace TrueReplayer
             NativeMethods.MessageBoxW(hwnd,
                 "TrueReplayer's interface didn't finish loading, and restarting the app didn't help.\n\n" +
                 "The app is still running — right-click its tray icon and choose \"Reload UI\" to try " +
-                "again, or \"Open Logs Folder\" to see what failed.\n\n" +
+                "again, or \"Open logs folder\" to see what failed.\n\n" +
                 "If it keeps happening, allow-list TrueReplayer's install folder in your antivirus, " +
                 "then reinstall or repair the app." + logsLine,
                 "TrueReplayer", NativeMethods.MB_ICONERROR);

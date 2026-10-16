@@ -162,7 +162,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
   return (
     <DialogShell
       icon={<Download size={14} style={{ color: 'var(--color-accent)' }} />}
-      title="Import Profiles"
+      title="Import profiles"
       // max-h keeps the review list scrollable inside the card on short windows
       // (the profile list below is the flex-1 overflow-y-auto region).
       size="xl"

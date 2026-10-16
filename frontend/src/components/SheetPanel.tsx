@@ -2577,7 +2577,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
   const handleTestPixelMatch = useCallback(() => {
     const trimmedColor = pixelColor.trim();
     if (pixelX.trim() === '' || pixelY.trim() === '' || trimmedColor === '') {
-      setTestPixelResult({ matches: false, error: 'Set X, Y, and the target colour first.' });
+      setTestPixelResult({ matches: false, error: 'Set X, Y, and the target color first.' });
       return;
     }
     // The empty check above doesn't catch non-numeric input (e.g. "abc"): parseInt would
@@ -3165,7 +3165,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
 
           {/* KEY / SCROLL rows keep the chip grid: two options, one row, nothing to unfold. */}
           {!isWaitImage && !isBrowser && !isPause && !isClickHalf && showTypePicker && (
-          <Field label="Action Type">
+          <Field label="Action type">
             <div className={`grid gap-1.5 ${chipGridCols}`}>
               {visibleFamilyOptions.map(t => (
                 <button
@@ -3279,7 +3279,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 stops the run — both honored, so the knob renders. */}
             {carriesConditionProbe(actionType) && (
             <Field
-              label="On Probe Error"
+              label="On probe error"
             >
               <SegmentedControl<'TreatAsFalse' | 'Halt'>
                 ariaLabel="On probe error"
@@ -3332,7 +3332,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 if (p.windowTitle !== undefined) setWindowTitle(p.windowTitle);
                 if (p.titleMatchMode !== undefined) setWindowTitleMatchMode(p.titleMatchMode);
               }}
-              processLabel="Process Name"
+              processLabel="Process name"
               processHint={'Empty = match by title only.'}
               titleHint={'Case-insensitive. Fill at least one.'}
             />
@@ -3378,7 +3378,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
           {/* If Clipboard (ClipboardMatch) — branches on the clipboard's current TEXT. */}
           {isIfClipboard && (
           <>
-            <Field label="Match Type">
+            <Field label="Match type">
               <SegmentedControl<'contains' | 'equals' | 'regex'>
                 ariaLabel="Clipboard match type"
                 grow
@@ -3430,7 +3430,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
           {isIfVariable && (
           <>
             <Field
-              label="Variable Name"
+              label="Variable name"
             >
               <input
                 type="text"
@@ -3474,7 +3474,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
           {/* If Process running — matches a process by image name, window or not. */}
           {isIfProcess && (
             <Field
-              label="Process Name"
+              label="Process name"
               hint={'Matches even without a window.'}
             >
               <ProcessNameInput value={windowProcessName} onChange={setWindowProcessName} />
@@ -3555,7 +3555,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
           {isIfBrowser && (
           <>
             <Field
-              label="CSS Selector"
+              label="CSS selector"
               labelAdornment={selectorForTier ? (
                 // Same tier shield as the browser six-pack — pure display (the tier memo
                 // is computed unconditionally from the same key/textMatch/textMode state).
@@ -3652,7 +3652,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
             </Field>
             {waitMode === 'text-match' && (
               <Field
-                label="Text Pattern"
+                label="Text pattern"
                 hint={'Plain text = exact. Or text*=  text~=  text/regex/'}
               >
                 <input
@@ -3791,7 +3791,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
               />
               {isWaitText && (
                 <>
-                  <Field label="Wait Until">
+                  <Field label="Wait until">
                     <SegmentedControl<'appears' | 'disappears' | 'changes'>
                       ariaLabel="Wait until"
                       grow
@@ -3819,7 +3819,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                         ariaLabel="Timeout in milliseconds"
                       />
                     </Field>
-                    <Field label="On Timeout" className="flex-1">
+                    <Field label="On timeout" className="flex-1">
                       <SegmentedControl<'StopReplay' | 'Continue'>
                         ariaLabel="On timeout"
                         grow
@@ -3848,7 +3848,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
           <>
             {/* Thumbnail + Recapture + Test match — thumbnail is clickable to open the cropper
                 for fine-tuning the reference (no need to revisit the screen state). */}
-            <Field label="Reference Image">
+            <Field label="Reference image">
               <button
                 type="button"
                 onClick={() => action?.imageBase64 && setCropperOpen(true)}
@@ -3960,7 +3960,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 quiet the moment a region exists: this is a nudge toward a better setup, not a
                 scold to live with. */}
             <Field
-              label="Search Region"
+              label="Search region"
               hint={waitImageSearchRegion
                 ? undefined
                 // False positives lead: a wrong match somewhere else on the desktop makes the
@@ -3999,7 +3999,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
             {/* WAIT UNTIL — WaitImage only. IF rows route "wait for absence" via the
                 CONDITION section's Found / NOT Found toggle. */}
             {!hasConditionFields(actionType) && (
-            <Field label="Wait Until">
+            <Field label="Wait until">
               <SegmentedControl<'appears' | 'disappears'>
                 ariaLabel="Wait until"
                 grow
@@ -4033,7 +4033,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   ariaLabel="Timeout in milliseconds"
                 />
               </Field>
-              <Field label="On Timeout" className="flex-1">
+              <Field label="On timeout" className="flex-1">
                 <SegmentedControl<'StopReplay' | 'Continue'>
                   ariaLabel="On timeout"
                   grow
@@ -4148,7 +4148,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                     <div className="mt-1 text-caption opacity-80">
                       {isIfPixel
                         ? (testPixelResult.matches ? 'Negated: the condition reads false right now.' : 'Negated: the condition reads true right now.')
-                        : (testPixelResult.matches ? 'Colour still there: the wait for it to change goes on.' : 'Colour gone: the wait for it to change ends now.')}
+                        : (testPixelResult.matches ? 'Color still there: the wait for it to change goes on.' : 'Color gone: the wait for it to change ends now.')}
                     </div>
                   )}
                 </div>
@@ -4159,7 +4159,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 the user can also type or paste a hex code directly. Normalisation
                 (uppercase + leading #) happens on Save, not on every keystroke, so the
                 input stays predictable while editing. */}
-            <Field label="Target Colour">
+            <Field label="Target color">
               <div className="flex items-center gap-2.5">
                 {(() => {
                   // Six digits only — PixelColorService.ParseHex rejects three-digit shorthand, so
@@ -4190,7 +4190,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 who really want > 50 can still type it. */}
             <Field
               label="Tolerance (Per Channel)"
-              hint={'5–15 for compressed colours.'}
+              hint={'5–15 for compressed colors.'}
             >
               <Slider
                 value={parseInt(pixelTolerance, 10) || 0}
@@ -4206,7 +4206,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 same label as the WaitImage editor above. IF rows express the same
                 concept via the CONDITION section's Found / NOT Found toggle. */}
             {!hasConditionFields(actionType) && (
-            <Field label="Wait Until">
+            <Field label="Wait until">
               <SegmentedControl<'matches' | 'stopsMatching'>
                 ariaLabel="Wait until"
                 grow
@@ -4239,7 +4239,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   ariaLabel="Timeout in milliseconds"
                 />
               </Field>
-              <Field label="On Timeout" className="flex-1">
+              <Field label="On timeout" className="flex-1">
                 <SegmentedControl<'StopReplay' | 'Continue'>
                   ariaLabel="On timeout"
                   grow
@@ -4270,7 +4270,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
           {/* Pause Settings */}
           {isPause && (
           <>
-            <Field label="Resume Hotkey">
+            <Field label="Resume hotkey">
               {/* Same capture pattern as the KeyDown/KeyUp Key field (and the grid / Settings
                   hotkeys): focus → empty + "New key..." + accent pulse; Esc is a regular
                   captured key (users CAN bind Pause-resume to Escape); cancel is click-away
@@ -4357,7 +4357,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
             {/* Selector / URL */}
             <div>
               <label className="label-micro text-text-tertiary mb-1.5 flex items-center gap-1.5">
-                {isBrowserNavigate ? 'URL' : 'CSS Selector'}
+                {isBrowserNavigate ? 'URL' : 'CSS selector'}
                 {/* #2 — Tier shield indicator (only for non-Navigate selectors) */}
                 {!isBrowserNavigate && selectorForTier && (
                   <span
@@ -4374,7 +4374,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   type="text"
                   value={key}
                   onChange={(e) => { setKey(e.target.value); invalidatePickedAlternatives(); }}
-                  aria-label={isBrowserNavigate ? 'URL' : 'CSS Selector'}
+                  aria-label={isBrowserNavigate ? 'URL' : 'CSS selector'}
                   className="input-field flex-1"
                   placeholder={isBrowserNavigate ? 'https://example.com' : '.btn-save'}
                 />
@@ -4497,8 +4497,8 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 Wait Element ACTION type. */}
             {isBrowserNavigate && (
             <>
-              <Section title="After Navigation" />
-              <Field label="URL Pattern" hint={'Glob (*) or /regex/.'}>
+              <Section title="After navigation" />
+              <Field label="URL pattern" hint={'Glob (*) or /regex/.'}>
                 <input
                   type="text"
                   value={urlWaitPattern}
@@ -4507,7 +4507,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   placeholder="*/dashboard*"
                 />
               </Field>
-              <Field label="Ready Element">
+              <Field label="Ready element">
                 <input
                   type="text"
                   value={postNavigateSelector}
@@ -4529,7 +4529,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 extension presses them, and that repeat and pause work. */}
             {isBrowserType && (
             <Field
-              label="Text to Type"
+              label="Text to type"
               hint={'The extension presses the key tokens like Send Text does: {enter}, {tab:2}, {space}, {home}, {delay:500}…'}
             >
               <div className="min-h-8 bg-bg-input border border-border-default rounded focus-within:border-accent-solid text-ui font-mono">
@@ -4628,7 +4628,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
               {/* Match By FIRST (choose how, then type what — the mode-aware Option
                   placeholder below then teaches the expected format). */}
               <Field
-                label="Match By"
+                label="Match by"
                 hint={'Native <select> only.'}
               >
                 <SegmentedControl<'text' | 'value' | 'index'>
@@ -4679,7 +4679,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   style={calloutStyle('warn')}
                 >
                   <ShieldAlert size={13} className="shrink-0 mt-px" />
-                  <span>{'Text Pattern is empty — this Wait will time out.'}</span>
+                  <span>{'Text pattern is empty — this Wait will time out.'}</span>
                 </div>
               )}
             </Field>
@@ -4689,7 +4689,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 Halt stops the replay LOUDLY (the point of an assertion); Continue logs and
                 moves on. "Wait Condition" above uses "Is NOT present" instead of a Negate. */}
             {isBrowserAssert && (
-            <Field label="On Fail">
+            <Field label="On fail">
               <SegmentedControl<'Halt' | 'Continue' | 'StopReplay'>
                 ariaLabel="On assertion fail"
                 grow
@@ -4918,7 +4918,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
           {isSetVariable && (
             <>
               <Field
-                label="Variable Name"
+                label="Variable name"
                 hint={unusableRunStateName(key)
                   ? 'Letters, digits and _ only — skipped at replay as written.'
                   : 'Read it back with {var:name}.'}
@@ -4962,7 +4962,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 textColor={ocrTextColor} onTextColorChange={setOcrTextColor}
                 tolerance={ocrColorTolerance} onToleranceChange={setOcrColorTolerance}
                   />
-                  <Field label="Wait Up To" hint="0 = read once. Nothing read deletes the variable.">
+                  <Field label="Wait up to" hint="0 = read once. Nothing read deletes the variable.">
                     <NumberInput
                       value={Math.max(0, parseInt(conditionTimeout, 10) || 0)}
                       onChange={(n) => setConditionTimeout(String(n))}
@@ -5061,7 +5061,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
               />
             </Field>
             {/* Section header — the matcher trio reads as one "which window" block. */}
-            <Section title="Match Window" />
+            <Section title="Match window" />
             <WindowTargetFields
               value={{ processName: windowProcessName, windowTitle, titleMatchMode: windowTitleMatchMode }}
               onChange={(p) => {
@@ -5233,7 +5233,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   ariaLabel="Wait-for-window timeout in milliseconds"
                 />
               </Field>
-              <Field label="On Timeout" className="flex-1">
+              <Field label="On timeout" className="flex-1">
                 <SegmentedControl<'Halt' | 'Continue'>
                   ariaLabel="On timeout"
                   grow

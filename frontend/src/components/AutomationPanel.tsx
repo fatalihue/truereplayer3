@@ -214,7 +214,7 @@ function whyCannotFire(t: TriggerConfig): string | null {
       // which is exactly the case that used to arm and never fire.
       return /^#?[0-9A-Fa-f]{6}$/.test((t.pixelColor ?? '').trim())
         ? null
-        : 'Enter a 6-digit hex colour, like #FF0000 — shorthand such as #F00 is not accepted.';
+        : 'Enter a 6-digit hex color, like #FF0000 — shorthand such as #F00 is not accepted.';
     default:
       return null;   // ClipboardChanged is valid with its defaults
   }
@@ -1159,12 +1159,12 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                     <div className="flex items-center gap-1">
                       <span className="text-caption text-text-secondary">{'Delete?'}</span>
                       <span data-tip={saving ? tt('Saving…', 'Salvando…') : undefined}>
-                        <Button variant="destructive" size="sm" onClick={handleRemove} disabled={saving}>{'Yes'}</Button>
+                        <Button variant="destructive" size="sm" onClick={handleRemove} disabled={saving}>{'Delete'}</Button>
                       </span>
                       {/* autoFocus: the Trash button that opened this just unmounted. "No" is the
                           safe landing spot, and it hands the focus back to Trash (see trashRef). */}
                       <Button variant="ghost" size="sm" autoFocus
-                        onClick={() => { refocusTrashRef.current = true; setConfirmDelete(false); }}>{'No'}</Button>
+                        onClick={() => { refocusTrashRef.current = true; setConfirmDelete(false); }}>{'Cancel'}</Button>
                     </div>
                   ) : (
                     // Confirm rather than fire-and-forget: this deletes a captured reference
@@ -1762,7 +1762,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   {draft.conditionType !== 'ClipboardChanged' && (
                     <Field label="Re-trigger">
                       <SegmentedControl
-                        ariaLabel="Retrigger mode"
+                        ariaLabel="Re-trigger mode"
                         grow
                         value={draft.retrigger === 'level' ? 'level' : 'edge'}
                         onChange={(v) => patch({ retrigger: v })}

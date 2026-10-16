@@ -187,7 +187,9 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
             </div>
             {stats.drifting > 0 && (
               <Callout tone="error" className="mb-2" icon={<TriangleAlert size={12} />} still>
-                {`${stats.drifting} step(s) matched via a FALLBACK selector — the one you picked no longer matches. Re-pick them before the fallbacks drift too.`}
+                {stats.drifting === 1
+                  ? '1 step matched via a fallback selector — the one you picked no longer matches. Re-pick it before the fallback drifts too.'
+                  : `${stats.drifting} steps matched via a fallback selector — the ones you picked no longer match. Re-pick them before the fallbacks drift too.`}
               </Callout>
             )}
             <div className="space-y-px">

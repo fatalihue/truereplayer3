@@ -3761,7 +3761,7 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
                   className={cls}
                 >
                   <Code2 size={13} className="text-text-tertiary" />
-                  Copy Selector
+                  Copy selector
                 </button>
               );
             }
@@ -3780,7 +3780,7 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
                   className={cls}
                 >
                   <Code2 size={13} className="text-text-tertiary" />
-                  Copy Text
+                  Copy text
                 </button>
               );
             }
@@ -3816,7 +3816,7 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
                   className={cls}
                 >
                   <ExternalLink size={13} className="text-text-tertiary" />
-                  Open Profile
+                  Open profile
                 </button>
               );
             }
@@ -3985,7 +3985,7 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
                     className="menu-item text-text-primary"
                   >
                     <CheckCheck size={13} className="text-text-tertiary" />
-                    Select Similar
+                    Select similar
                   </button>
 
                   {/* ── Click tools ── Copy Coordinates · Focus click.
@@ -4034,7 +4034,7 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
                         className="menu-item text-text-primary"
                       >
                         <Crosshair size={13} className="text-text-tertiary" />
-                        Copy Coordinates
+                        Copy coordinates
                       </button>
                     );
                   })()}

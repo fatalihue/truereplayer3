@@ -3916,7 +3916,7 @@ namespace TrueReplayer
             SendMessage("update:error", new { message = $"Update postponed: {reason}" });
             SendMessage("alert:show", new
             {
-                message = $"An update is ready but was not installed because {reason}. It will be offered again once the app is idle — or apply it any time from Settings → Check for Updates.",
+                message = $"An update is ready but was not installed because {reason}. It will be offered again once the app is idle — or apply it any time from Settings → Check for updates.",
                 type = "info"
             });
         }
@@ -11217,7 +11217,7 @@ namespace TrueReplayer
             {
                 SendMessage("windowTarget:testResult", new {
                     matches = false,
-                    error = "Fill at least one of Process Name or Window Title to test.",
+                    error = "Fill at least one of Process name or Title to test.",
                     foregroundProcess = "",
                     foregroundTitle = ""
                 });
@@ -11346,7 +11346,7 @@ namespace TrueReplayer
 
             if (string.IsNullOrWhiteSpace(processName) && string.IsNullOrWhiteSpace(windowTitle))
             {
-                Fail("Fill Process Name or Window Title first.");
+                Fail("Fill Process name or Title first.");
                 return;
             }
 
@@ -11393,7 +11393,7 @@ namespace TrueReplayer
                 SendMessage("window:testProbeResult", new {
                     requestId,
                     found = false,
-                    error = "Fill at least one of Process Name or Window Title to test.",
+                    error = "Fill at least one of Process name or Title to test.",
                     matchProcess = "",
                     matchTitle = ""
                 });
@@ -11825,8 +11825,8 @@ namespace TrueReplayer
                 SendMessage("alert:show", new
                 {
                     message = relativeAfter
-                        ? $"\"{profileName}\" now reads its recorded X/Y relative to the folder's window. They were not converted — if its clicks land in the wrong place, load it and run \"Convert Coordinates to Relative\" (Ctrl+K)."
-                        : $"\"{profileName}\" now reads its recorded X/Y as screen positions. They were not converted — if its clicks land in the wrong place, load it and run \"Convert Coordinates to Absolute\" (Ctrl+K).",
+                        ? $"\"{profileName}\" now reads its recorded X/Y relative to the folder's window. They were not converted — if its clicks land in the wrong place, load it and run \"Convert coordinates to relative\" (Ctrl+K)."
+                        : $"\"{profileName}\" now reads its recorded X/Y as screen positions. They were not converted — if its clicks land in the wrong place, load it and run \"Convert coordinates to absolute\" (Ctrl+K).",
                     type = "info"
                 });
             }

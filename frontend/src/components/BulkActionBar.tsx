@@ -250,7 +250,7 @@ export function BulkActionBar({
               )}
             </span>
             <Button variant="primary" size="xs" onClick={handleConfirm}>
-              OK
+              Apply
             </Button>
             <button
               onClick={closeInput}

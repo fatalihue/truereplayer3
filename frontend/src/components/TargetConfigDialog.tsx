@@ -394,7 +394,7 @@ export function TargetConfigDialog({
       // footer is a sibling the toast can't cover, so the gate is explicit. Saving a flipped
       // Relative-Coordinates flag without converting silently reinterprets every stored X/Y.
       // The folder's member-space note gates it the same way, for the same reason.
-      footer={<DialogFooter secondary={{ label: 'Cancel', onClick: handleCancel }} primary={{ label: 'Set Target', onClick: () => handleSubmit(), disabled: submitDisabled || convertHint !== null || memberSpaceWarn,
+      footer={<DialogFooter secondary={{ label: 'Cancel', onClick: handleCancel }} primary={{ label: 'Set target', onClick: () => handleSubmit(), disabled: submitDisabled || convertHint !== null || memberSpaceWarn,
         tip: convertHint ? tt('Resolve the conversion prompt first', 'Resolva o aviso de conversão primeiro')
           : memberSpaceWarn ? tt("Read the note about this folder's profiles first", 'Leia o aviso sobre os perfis desta pasta primeiro')
             : undefined }} />}
@@ -415,7 +415,7 @@ export function TargetConfigDialog({
             }}
             onEdit={markEdited}
             titleError={regexError}
-            processLabel="Process Name"
+            processLabel="Process name"
           />
         </div>
 
@@ -511,12 +511,12 @@ export function TargetConfigDialog({
               ? tt("Inherits the folder's window target. Set a process or title above for its own.", 'Herda a janela-alvo da pasta. Defina um processo ou título acima para ter a própria.')
               : undefined}
           >
-            <span className={`text-minor ${relativeToggleDisabled ? 'text-text-disabled' : 'text-text-secondary'}`}>Relative Coordinates</span>
+            <span className={`text-minor ${relativeToggleDisabled ? 'text-text-disabled' : 'text-text-secondary'}`}>Relative coordinates</span>
             <Toggle
               isOn={relativeCoordinates}
               onChange={handleToggleRelativeCoordinates}
               disabled={relativeToggleDisabled}
-              ariaLabel="Relative Coordinates"
+              ariaLabel="Relative coordinates"
             />
           </div>
           {/* Migration hint — surfaced only when the user just toggled the flag AND there
@@ -613,20 +613,20 @@ export function TargetConfigDialog({
             <div aria-hidden className="absolute left-4 right-4 z-20" style={{ top: clickShield.top, height: clickShield.height }} />
           )}
           <div className="flex items-center justify-between">
-            <span className="text-minor text-text-secondary">Bring to Focus</span>
-            <Toggle isOn={bringToFocus} onChange={setBringToFocus} ariaLabel="Bring to Focus" />
+            <span className="text-minor text-text-secondary">Bring to focus</span>
+            <Toggle isOn={bringToFocus} onChange={setBringToFocus} ariaLabel="Bring to focus" />
           </div>
           {/* Restore Position/Size + Update Geometry apply to both profile and folder scopes —
               folder targets inherit these to every profile inside (unless that profile overrides
               them with its own target). Convert Coordinates is profile-only because it rewrites
               the actions of the active profile, not a property of the target itself. */}
           <div className="flex items-center justify-between">
-            <span className="text-minor text-text-secondary">Restore Position</span>
-            <Toggle isOn={restorePosition} onChange={setRestorePosition} ariaLabel="Restore Position" />
+            <span className="text-minor text-text-secondary">Restore position</span>
+            <Toggle isOn={restorePosition} onChange={setRestorePosition} ariaLabel="Restore position" />
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-minor text-text-secondary">Restore Size</span>
-            <Toggle isOn={restoreSize} onChange={setRestoreSize} ariaLabel="Restore Size" />
+            <span className="text-minor text-text-secondary">Restore size</span>
+            <Toggle isOn={restoreSize} onChange={setRestoreSize} ariaLabel="Restore size" />
           </div>
           {/* The secondary Button: its hover lifts to bg-surface. The hand-rolled one hovered to
               bg-bg-elevated — the colour of the dialog card it sits on, so it never visibly moved. */}
@@ -642,7 +642,7 @@ export function TargetConfigDialog({
               })}
               disabled={submitDisabled}
             >
-              Update Window Size &amp; Position
+              Update window size &amp; position
             </Button>
           )}
         </div>

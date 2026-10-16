@@ -473,7 +473,7 @@ namespace TrueReplayer.Services
             // in the tray, so their master switch must be reachable without restoring the UI.
             bool automationEnabled = AppSettingsManager.Load().AutomationEnabled;
             AppendMenu(hMenu, MF_STRING, 13, "Automations…");
-            AppendMenu(hMenu, MF_STRING | (automationEnabled ? MF_CHECKED : 0), 14, "Enable Automations");
+            AppendMenu(hMenu, MF_STRING | (automationEnabled ? MF_CHECKED : 0), 14, "Enable automations");
             // Key-remap kill switch — a bad remap can make typing painful, so the escape
             // hatch must be reachable by MOUSE alone, without the main window.
             bool remapsEnabled = RemapService.Current.Enabled;
@@ -487,7 +487,7 @@ namespace TrueReplayer.Services
             // AppendMenu(hMenu, MF_STRING | (isRunAsAdmin ? MF_CHECKED : 0), 7, "Run as Administrator");
             AppendMenu(hMenu, MF_STRING, 8, "Reload UI");
             AppendMenu(hMenu, MF_STRING, 9, "Open DevTools");
-            AppendMenu(hMenu, MF_STRING, 10, "Open Logs Folder");
+            AppendMenu(hMenu, MF_STRING, 10, "Open logs folder");
             AppendMenu(hMenu, MF_SEPARATOR, 0, null);
             AppendMenu(hMenu, MF_STRING, 2, "Exit");
 

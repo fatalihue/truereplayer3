@@ -389,7 +389,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   const [presetFilter, setPresetFilter] = useState<'all' | ThemeTag>('all');
   const [savePresetName, setSavePresetName] = useState('');
   const [saveMode, setSaveMode] = useState(false);        // Modified-bar inline save input open
-  const [exportName, setExportName] = useState('My Theme');
+  const [exportName, setExportName] = useState('My theme');
   const [recentColors, setRecentColors] = useState<string[]>([]);
   const [resetMenuOpen, setResetMenuOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -555,7 +555,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
 
   // ── Export handlers ──
   const handleExportFile = useCallback(() => {
-    const name = exportName.trim() || 'My Theme';
+    const name = exportName.trim() || 'My theme';
     const theme = exportTheme(name);
     const blob = new Blob([JSON.stringify(theme, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -567,7 +567,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   }, [exportTheme, exportName]);
 
   const handleCopyClipboard = useCallback(async () => {
-    const theme = exportTheme(exportName.trim() || 'My Theme');
+    const theme = exportTheme(exportName.trim() || 'My theme');
     try {
       await navigator.clipboard.writeText(JSON.stringify(theme, null, 2));
       setCopyError(false);
@@ -729,7 +729,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
             disabled={!hasOverrides}
             className="menu-item rounded text-text-secondary hover:text-text-primary disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            Color overrides
+            Reset color overrides
           </button>
           <button
             type="button"
@@ -749,7 +749,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   const footer = (
     <>
       <Button variant="ghost" size="md" onClick={() => setSurface('share')}>
-        <FileJson2 size={13} /> Import / Export
+        <FileJson2 size={13} /> Import / export
       </Button>
       {surface !== 'customize' && (
         <Button variant="secondary" size="md" onClick={() => setSurface('customize')}>
@@ -999,7 +999,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
             {/* Says WHY your own themes are still here under a filter that cannot classify them,
                 instead of leaving the list looking like the filter simply did not apply. */}
             <div className="label-micro text-text-tertiary mt-4 mb-1.5">
-              My Themes
+              My themes
               {presetFilter !== 'all' && presetFilter !== 'dark' && presetFilter !== 'light' && (
                 <span className="ml-1.5 normal-case tracking-normal text-text-disabled">(not categorised)</span>
               )}
@@ -1139,9 +1139,9 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
         </div>
 
         <div className="label-micro text-text-tertiary mt-4 mb-1">Fine-tune</div>
-        <SliderSetting label="Font Size" value={config.uiSettings.fontSize} min={10} max={18} unit="px" defaultValue={DEFAULT_UI_SETTINGS.fontSize} onChange={(v) => setUISetting('fontSize', v)} />
-        <SliderSetting label="Border Radius" value={config.uiSettings.borderRadius} min={0} max={16} unit="px" defaultValue={DEFAULT_UI_SETTINGS.borderRadius} onChange={(v) => setUISetting('borderRadius', v)} />
-        <SliderSetting label="Row Height" value={config.uiSettings.rowHeight} min={28} max={48} unit="px" defaultValue={DEFAULT_UI_SETTINGS.rowHeight} onChange={(v) => setUISetting('rowHeight', v)} />
+        <SliderSetting label="Font size" value={config.uiSettings.fontSize} min={10} max={18} unit="px" defaultValue={DEFAULT_UI_SETTINGS.fontSize} onChange={(v) => setUISetting('fontSize', v)} />
+        <SliderSetting label="Border radius" value={config.uiSettings.borderRadius} min={0} max={16} unit="px" defaultValue={DEFAULT_UI_SETTINGS.borderRadius} onChange={(v) => setUISetting('borderRadius', v)} />
+        <SliderSetting label="Row height" value={config.uiSettings.rowHeight} min={28} max={48} unit="px" defaultValue={DEFAULT_UI_SETTINGS.rowHeight} onChange={(v) => setUISetting('rowHeight', v)} />
         <SliderSetting label="Zoom" value={config.uiSettings.zoom} min={50} max={200} unit="%" defaultValue={DEFAULT_UI_SETTINGS.zoom} onChange={(v) => setUISetting('zoom', v)} />
 
         <div className="label-micro text-text-tertiary mt-4 mb-1">Font</div>
@@ -1200,15 +1200,15 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
           <button onClick={() => setSurface('gallery')} className="inline-flex items-center gap-1 text-minor text-text-secondary hover:text-text-primary transition-colors">
             <ChevronLeft size={14} /> Themes
           </button>
-          <span className="text-minor text-text-secondary">Import / Export</span>
+          <span className="text-minor text-text-secondary">Import / export</span>
         </div>
         <div className="p-4 space-y-5">
           <div>
             <div className="label-micro text-text-tertiary mb-2">Export current theme</div>
             <div className="flex gap-2 items-center">
-              <input type="text" value={exportName} onChange={(e) => setExportName(e.target.value)} placeholder="My Theme" aria-label="Theme name" className="input-field font-sans w-[240px] px-2.5" />
+              <input type="text" value={exportName} onChange={(e) => setExportName(e.target.value)} placeholder="My theme" aria-label="Theme name" className="input-field font-sans w-[240px] px-2.5" />
               <Button variant="secondary" onClick={handleExportFile}><Download size={13} /> Export to file</Button>
-              <Button variant="secondary" onClick={handleCopyClipboard}><Clipboard size={13} /> {copyError ? 'Copy failed' : copySuccess ? 'Copied!' : 'Copy to clipboard'}</Button>
+              <Button variant="secondary" onClick={handleCopyClipboard}><Clipboard size={13} /> {copyError ? 'Copy failed' : copySuccess ? 'Copied' : 'Copy to clipboard'}</Button>
             </div>
             <p className="mt-2 text-caption text-text-tertiary">One JSON with the base preset, your color overrides and appearance settings.</p>
           </div>
@@ -1263,7 +1263,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
 
     return (
       <div className="bg-bg-base border-l border-border-subtle p-3 select-none overflow-hidden flex flex-col min-h-0 [&_button]:pointer-events-none [&_input]:pointer-events-none">
-        <div className="label-micro text-text-tertiary mb-2 shrink-0">Live Preview</div>
+        <div className="label-micro text-text-tertiary mb-2 shrink-0">Live preview</div>
         {/* flex-1: the mock window fills the rail, so the taller panel shows more real rows
             instead of leaving dead space under a fixed-size mock. */}
         <div className="flex flex-col flex-1 min-h-0 border border-border-default overflow-hidden shadow-overlay" style={{ borderRadius: 'calc(var(--ui-border-radius) + 4px)' }}>

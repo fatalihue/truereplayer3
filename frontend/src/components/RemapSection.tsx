@@ -362,7 +362,7 @@ export function RemapSection({ draft }: {
       [settings.profileKeyToggleHotkey, 'the Profile Keys hotkey'],
       [settings.foregroundHotkey, 'the Foreground hotkey'],
       [settings.modeToggleHotkey, 'the Mode Toggle hotkey'],
-      [settings.captureSlotHotkey, 'the Capture Slot hotkey'],
+      [settings.captureSlotHotkey, 'the Capture slot hotkey'],
       [settings.copyScreenTextHotkey, 'the Copy Screen Text hotkey'],
     ] as [string, string][]).filter(([combo]) => !!combo).map(([combo, label]) => ({ label, combo })),
     ...profiles.filter((p) => !!p.hotkey).map((p) => ({ label: `profile "${p.name}"`, combo: p.hotkey as string })),
@@ -520,7 +520,7 @@ export function RemapSection({ draft }: {
 
       {remaps.entries.length === 0 && !addOpen && (
         <div className="text-caption text-text-tertiary leading-relaxed">
-          {'Nothing yet. A remap turns one key into another — CapsLock → Esc — or disables it.'}
+          {'Nothing yet. A remap turns one key into another — Caps → Esc — or disables it.'}
         </div>
       )}
 

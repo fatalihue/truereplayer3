@@ -5319,7 +5319,7 @@ namespace TrueReplayer.Services
                     $"of a DPI change (the window now reports {dpi} DPI / {pct}% scaling). Stored offsets are physical " +
                     $"pixels with no DPI stamp and are replayed as a plain translation, so every relative click is off " +
                     $"by about {Math.Abs(1.0 - scaleX) * 100:0}%. Move the target back to the display it was recorded " +
-                    "on, or re-record it here — Restore Size will NOT fix this, it only forces the same physical box " +
+                    "on, or re-record it here — Restore size will NOT fix this, it only forces the same physical box " +
                     "at the new scaling. Continuing — the run is NOT being stopped or rescaled.");
             }
             else
@@ -5328,7 +5328,7 @@ namespace TrueReplayer.Services
                     $"Relative coordinates may be stale: target window '{name}' is {liveW}x{liveH} but this profile " +
                     $"recorded it at {_lockWidth}x{_lockHeight} (window now reports {dpi} DPI / {pct}% scaling). Offsets " +
                     $"are replayed as a plain translation from the top-left, so coordinates anchored near the right or " +
-                    $"bottom edge are off by {liveW - _lockWidth}x{liveH - _lockHeight} px. Turn on Restore Size to pin " +
+                    $"bottom edge are off by {liveW - _lockWidth}x{liveH - _lockHeight} px. Turn on Restore size to pin " +
                     "the window back to its recorded size. Continuing — the run is NOT being stopped or rescaled.");
             }
         }

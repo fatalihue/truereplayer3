@@ -1052,14 +1052,14 @@ export function Toolbar(_props: ToolbarProps) {
           {/* Browser Actions */}
           <div className="relative" ref={browserMenuRef}>
             <button
-              aria-label="Browser Actions"
+              aria-label="Browser actions"
               data-popup-trigger
               aria-expanded={showBrowserMenu}
               tabIndex={-1}
               onClick={() => setShowBrowserMenu(!showBrowserMenu)}
               disabled={insertsDisabled}
               className={iconButtonClass('md', { active: showBrowserMenu })}
-              data-tip={clickerTip('Browser Actions', 'Ações de navegador')}
+              data-tip={clickerTip('Browser actions', 'Ações de navegador')}
             >
               <Globe size={16} />
               <ChevronDown size={10} className="opacity-80" />
@@ -1178,14 +1178,14 @@ export function Toolbar(_props: ToolbarProps) {
           {inRow('clearAll') && (
           <div className="relative" ref={clearMenuRef} data-tb-fold="clearAll">
             <button
-              aria-label="Clear All"
+              aria-label="Clear all"
               data-popup-trigger
               aria-expanded={showClearConfirm}
               tabIndex={-1}
               onClick={() => setShowClearConfirm(prev => !prev)}
               disabled={insertsDisabled || actions.length === 0}
               className={iconButtonClass('md', { tone: 'danger' })}
-              data-tip={clickerTip('Clear All', 'Limpar tudo')}
+              data-tip={clickerTip('Clear all', 'Limpar tudo')}
             >
               <Trash2 size={16} />
             </button>
@@ -1542,7 +1542,7 @@ export function Toolbar(_props: ToolbarProps) {
                       onClick={() => setClearArmed(true)}
                     >
                       <Trash2 size={13} className="text-recording-fg" />
-                      Clear All…
+                      Clear all…
                     </button>
                   ))}
                 </div>

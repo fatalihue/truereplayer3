@@ -1827,7 +1827,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
               }`}
             >
               <Trash2 size={12} className="shrink-0" />
-              {armedClear ? 'Really clear?' : 'Clear table…'}
+              {armedClear ? 'Confirm clear' : 'Clear table'}
             </button>
           </div>
         </div>
