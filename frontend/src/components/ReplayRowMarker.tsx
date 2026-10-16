@@ -81,10 +81,13 @@ export function ReplayRowMarker({ tbodyRef }: { tbodyRef: React.RefObject<HTMLTa
   }, []);
 
   if (!slot) return null;
+  // Named, not aria-hidden: the glyph REPLACES the row number (index.css hides it under
+  // tr[data-replay]), so a silent icon left the cell with nothing to read at all. role="img" +
+  // aria-label is also what keeps lucide from stamping its default aria-hidden on the svg.
   return createPortal(
     paused
-      ? <Pause size={10} className="inline-block translate-y-[-1px]" style={{ color: 'var(--color-action-pause-fg)' }} fill="currentColor" />
-      : <Play size={10} className="inline-block translate-y-[-1px]" style={{ color: 'var(--color-replay-fg)' }} fill="currentColor" />,
+      ? <Pause size={10} role="img" aria-label="Paused" className="inline-block translate-y-[-1px]" style={{ color: 'var(--color-action-pause-fg)' }} fill="currentColor" />
+      : <Play size={10} role="img" aria-label="Running" className="inline-block translate-y-[-1px]" style={{ color: 'var(--color-replay-fg)' }} fill="currentColor" />,
     slot,
   );
 }

@@ -45,6 +45,11 @@ export function Slider({ value, min, max, step = 1, onChange, suffix, disabled =
         // The unit rides INSIDE the field ("85 %"), like every delay in the Sheet — a "%"
         // hanging outside the box was the one unit in the panel that broke the convention.
         suffixInside={!!suffix}
+        // ...which needs a wider box than NumberInput's default w-14: of its 56 px the border,
+        // the 18 px spinner slot and the unit leave ~24 px, and "100" needs ~31 with the input's
+        // padding, so it read "10 %". w-18 fits three digits plus a one- or two-letter unit;
+        // the track (flex-1) gives up the difference, the row's 340 px does not change.
+        inputWidth={suffix ? 'w-18' : undefined}
         disabled={disabled}
         ariaLabel={ariaLabel}
       />

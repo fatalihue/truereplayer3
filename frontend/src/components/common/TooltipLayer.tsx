@@ -4,6 +4,19 @@ import { uiZoom, rectToLayout } from '../../utils/zoomSpace';
 
 type Pending = { text: string; rect: DOMRect; pos: string; mx: number; my: number };
 
+// A popup trigger whose popup is open — aria-expanded="true" on a trigger that opens a FLOATING
+// popup: a real ARIA menu (aria-haspopup="menu": a column ⋯, the Theme Editor's Reset) or a
+// disclosure popover marked data-popup-trigger (the Toolbar's Wait / Conditional / Browser / More
+// / Clear All — panels of buttons, not role=menu, so they must not claim aria-haspopup). Its tip
+// names what the open popup is already showing, and it lands ON that popup: the Clear All tip
+// used to sit over the confirm it had just opened. A plain inline disclosure (aria-expanded alone,
+// e.g. the Theme Editor's HSL toggle) keeps its tip — what it opens is nowhere near the tip.
+const isOpenPopupTrigger = (el: Element) => {
+  if (el.getAttribute('aria-expanded') !== 'true') return false;
+  const popup = el.getAttribute('aria-haspopup');
+  return (popup !== null && popup !== 'false') || el.hasAttribute('data-popup-trigger');
+};
+
 // Single global tooltip renderer for the whole app. Any element with a `data-tip="..."` attribute
 // shows a tooltip on hover, rendered as a body portal — so it's instant (no native-title ~1s lag),
 // never clipped by panel/modal overflow, wraps at a max width, and auto-positions with flip + clamp
@@ -26,9 +39,20 @@ export function TooltipLayer() {
     // anywhere in the document — every action-list update during a replay, every Lexical keystroke
     // (chip nodes are inserted and split) — and this can only ever matter while a tooltip is up,
     // which is a tiny fraction of the time.
+    //
+    // The same callback hides the tip of a trigger whose popup just opened by a path that was not
+    // a press (see isOpenPopupTrigger): opening a popup mounts its DOM, so the childList record
+    // arrives in the same commit that flipped aria-expanded.
     const observer = new MutationObserver(() => {
-      if (currentTarget.current && !currentTarget.current.isConnected) hide();
+      const t = currentTarget.current;
+      if (t && (!t.isConnected || isOpenPopupTrigger(t))) hide();
     });
+    // The anchor the pointer last pressed. A press hides the tip — whatever the click opens (a
+    // menu, a confirm, a dialog) must not wear it — and that anchor stays quiet until the pointer
+    // leaves it, as a native Windows tooltip does: mouseover fires again for every child the
+    // pointer crosses inside the anchor (icon → label), so without the latch the tip came
+    // straight back over the popup.
+    let pressed: Element | null = null;
     const hide = () => {
       observer.disconnect();
       currentTarget.current = null; setPending(null); setCoords(null);
@@ -43,6 +67,7 @@ export function TooltipLayer() {
       // value differently from the raw string the tip carries — a SendText payload draws its
       // `{Enter}` tokens as chips, so the two never compare equal even when nothing is hidden.
       if (el.hasAttribute('data-tip-reveal') && el.scrollWidth <= el.clientWidth) return;
+      if (isOpenPopupTrigger(el)) return;
       // Watch the DOM only while a tooltip is actually up (see the observer below for why it
       // exists). Re-observing an already-observing MutationObserver on the same target+options
       // is a no-op, so a hover moving straight from one anchor to the next is fine.
@@ -53,24 +78,31 @@ export function TooltipLayer() {
     };
     const onOver = (e: Event) => {
       const el = (e.target as HTMLElement)?.closest?.('[data-tip]') as HTMLElement | null;
-      if (el && el !== currentTarget.current) show(el, (e as MouseEvent).clientX, (e as MouseEvent).clientY);
+      if (el && el !== currentTarget.current && el !== pressed) show(el, (e as MouseEvent).clientX, (e as MouseEvent).clientY);
     };
     const onOut = (e: MouseEvent) => {
       const el = (e.target as HTMLElement)?.closest?.('[data-tip]');
-      if (!el || el !== currentTarget.current) return;
+      if (!el) return;
       const to = e.relatedTarget as Node | null;
       if (to && el.contains(to)) return; // still inside the same target
+      if (el === pressed) pressed = null;
+      if (el === currentTarget.current) hide();
+    };
+    const onDown = (e: PointerEvent) => {
+      pressed = (e.target as HTMLElement)?.closest?.('[data-tip]') ?? null;
       hide();
     };
     // capture phase + delegation so it works for every element, present or future.
     document.addEventListener('mouseover', onOver, true);
     document.addEventListener('mouseout', onOut, true);
+    document.addEventListener('pointerdown', onDown, true);
     // The anchor rect is captured at hover time, so a scroll would strand the tooltip — hide it.
     window.addEventListener('scroll', hide, true);
     window.addEventListener('blur', hide);
     return () => {
       document.removeEventListener('mouseover', onOver, true);
       document.removeEventListener('mouseout', onOut, true);
+      document.removeEventListener('pointerdown', onDown, true);
       window.removeEventListener('scroll', hide, true);
       window.removeEventListener('blur', hide);
       observer.disconnect();

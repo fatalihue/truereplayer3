@@ -23,15 +23,22 @@ export function Field({ label, labelAdornment, hint, hintTone, children, classNa
   className?: string;
 }) {
   // The caption has to NAME the control, which a <label> without htmlFor never did — every
-  // Field-wrapped control was nameless, or named only by its placeholder. A lone native
-  // input/textarea/select child gets aria-labelledby directly; anything else (NumberInput,
+  // Field-wrapped control was nameless, or named only by its placeholder. A native
+  // input/textarea/select as the first child gets aria-labelledby directly; anything else (NumberInput,
   // SegmentedControl, a row of controls) sits in a group named by the caption. The group is
   // display:contents so the Field's layout is exactly what it was.
+  //
+  // Decided on the FIRST child alone, never on how many there are. Counting flipped the Wait
+  // Condition field from the cloned <select> to the group the moment its trailing "Text Pattern
+  // is empty" warning mounted (picking "Text matches"), so React remounted the <select> under
+  // the user's hand and focus fell to <body>. Now the control keeps its slot and its key
+  // (Children.toArray keys by source position), and trailing siblings render beside it, unwrapped.
   const labelId = useId();
-  const only = Children.toArray(children);
-  const native = only.length === 1 && isValidElement<Record<string, unknown>>(only[0])
-    && typeof only[0].type === 'string' && ['input', 'textarea', 'select'].includes(only[0].type)
-    && !only[0].props['aria-label'] && !only[0].props['aria-labelledby'];
+  const kids = Children.toArray(children);
+  const first = kids[0];
+  const native = isValidElement<Record<string, unknown>>(first)
+    && typeof first.type === 'string' && ['input', 'textarea', 'select'].includes(first.type)
+    && !first.props['aria-label'] && !first.props['aria-labelledby'];
   return (
     <div className={className}>
       <div className="mb-1.5 flex items-center gap-1.5">
@@ -39,7 +46,7 @@ export function Field({ label, labelAdornment, hint, hintTone, children, classNa
         {labelAdornment}
       </div>
       {native
-        ? cloneElement(only[0] as React.ReactElement<Record<string, unknown>>, { 'aria-labelledby': labelId })
+        ? [cloneElement(first as React.ReactElement<Record<string, unknown>>, { 'aria-labelledby': labelId }), ...kids.slice(1)]
         : <div role="group" aria-labelledby={labelId} className="contents">{children}</div>}
       {hint && <div className={`text-caption ${hintTone === 'warn' ? 'text-warning-ink' : 'text-text-tertiary'} leading-snug mt-1`}>{hint}</div>}
     </div>

@@ -11,14 +11,14 @@ const iconMap: Record<ToastType, { Icon: React.ElementType; color: string }> = {
 
 // Clear of the bottom chrome BY CONSTRUCTION, not by luck. Measured against the running app:
 // the StatusBar is 26px, the ActionBar's top sits 72 layout px above the viewport bottom, and
-// the BulkActionBar (h-8 = 32) stacks on top of it whenever rows are selected — so 104 is the
-// worst case and this leaves 8px of air above it.
+// the BulkActionBar (34 px — raised from h-8 in 5bf9fa8 to fit its 28 px buttons) stacks on top
+// of it whenever rows are selected — so 106 is the worst case and this leaves 8px of air above it.
 //
 // It used to sit at bottom:40, which is inside the ActionBar: the toast landed squarely on
 // Save/Load, and a notification that eats the click the user was about to make is worse than
 // no notification. Bulk edits are exactly when toasts fire AND exactly when both of those bars
 // are on screen.
-const BOTTOM_CLEARANCE_PX = 112;
+const BOTTOM_CLEARANCE_PX = 114;
 
 export function Toast() {
   // The list comes from its own context so every other consumer of useToast (which only ever calls

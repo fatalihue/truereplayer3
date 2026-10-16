@@ -14,14 +14,20 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react';
  *                2026-09-04 sweep found the same action shipped as red text in one
  *                dialog and as a solid red fill in the next; the rule is now: solid
  *                when destroying IS the primary action, text when it is secondary.
+ *   test         soft accent tint — the Sheet's "check it against the live screen / tab"
+ *                button (Test match, Test read, Test action, Check now). One rank under
+ *                primary: it carries the accent because it is the one control in its
+ *                block that reaches into the world, while the solid fill stays Save's.
  *
  * Sizes: xs = the 28px action-bar rail tier; sm = the existing dialog-footer
  * metrics; md = the 32px control standard (Fluent medium — same height the
- * SheetPanel locked in 2.6.10, and what DialogFooter uses).
+ * SheetPanel locked in 2.6.10, and what DialogFooter uses); field = md's height
+ * with the in-form metrics (text-minor, px-2.5) for a button that sits among
+ * input-field rows — two of them share a 340px Sheet row without clipping.
  */
 
-type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'destructive' | 'destructiveText';
-type ButtonSize = 'xs' | 'sm' | 'md';
+type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'destructive' | 'destructiveText' | 'test';
+type ButtonSize = 'xs' | 'sm' | 'md' | 'field';
 
 // Pressed = one step dimmer (Fluent physics: fills darken on press, never
 // scale-transform — that reads web/mobile, not Windows).
@@ -41,6 +47,10 @@ export const BUTTON_VARIANT_CLASSES: Record<ButtonVariant, string> = {
   // -fg ink (hue mixed toward text-primary) so the text survives light presets; the hover
   // wash is the same recording-bg tint the danger IconButton uses.
   destructiveText: 'text-[color:var(--color-recording-fg)] enabled:hover:bg-recording-bg enabled:active:opacity-80',
+  // Seven hand-rolled copies in the Sheet had drifted (disabled at 60 % or 50 %, with and without
+  // the not-allowed cursor, one with no disabled look at all, hover ungated); this is their common
+  // look, with the disabled treatment every other variant shares and a pressed step added.
+  test: 'border border-accent-solid/40 bg-accent-solid/10 enabled:hover:bg-accent-solid/20 enabled:active:bg-accent-solid/25 text-accent-hover',
 };
 
 const SIZE_CLASSES: Record<ButtonSize, string> = {
@@ -51,6 +61,7 @@ const SIZE_CLASSES: Record<ButtonSize, string> = {
   xs: 'h-7 px-2.5 text-minor',
   sm: 'px-4 py-1.5 text-minor',
   md: 'h-8 px-4 text-ui',
+  field: 'h-8 px-2.5 text-minor',
 };
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {

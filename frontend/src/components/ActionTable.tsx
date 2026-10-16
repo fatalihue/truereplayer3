@@ -2138,6 +2138,8 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
   // selected" (0 === 0 would otherwise be true, giving a no-op deselect + a
   // wrong "Deselect all" tooltip on a fresh grid).
   const allSelected = actions.length > 0 && selectedIndices.size === actions.length;
+  // Read ONCE per render, not once per row inside the map below (the grid renders thousands).
+  const rowMotion = document.documentElement.getAttribute('data-animations') === 'true';
 
   return (
     <div
@@ -2244,7 +2246,9 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                     aria-label="Select all rows"
                     className="flex items-center justify-center cursor-pointer"
                   >
-                    <CheckboxBox checked={allSelected} />
+                    {/* Drawn mixed when aria-checked says mixed — the box was empty while the
+                        role told a screen reader "partially checked". */}
+                    <CheckboxBox checked={allSelected} indeterminate={!allSelected && selectedIndices.size > 0} />
                   </button>
                 </div>
               </th>
@@ -2284,8 +2288,8 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
               // physically parts to open space, matching the dnd-kit row-reorder
               // language. dropTarget is only ever set by the profile-drag flow.
               const profileShift = dropTarget !== null && idx >= dropTarget;
-              // Behind the animations toggle like the FLIP below, and on the motion tokens.
-              const rowMotion = document.documentElement.getAttribute('data-animations') === 'true';
+              // Behind the animations toggle like the FLIP below (rowMotion, read above the map),
+              // and on the motion tokens.
               const profileDragTransition = dropTarget !== null && rowMotion
                 ? 'transform var(--motion-base) var(--ease-enter)'
                 : undefined;
@@ -2452,7 +2456,11 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                             setElseIfPicker({ x: r.left, y: r.bottom + 2, ifRowIndex: chainOpener });
                           }}
                           disabled={buttonStates.recordingActive || buttonStates.replayActive}
-                          className="pointer-events-auto inline-flex items-center gap-1.5 px-2.5 py-0.5 text-caption font-medium rounded border border-dashed transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                          // Hover by class, not by onMouseEnter/Leave writing style.background behind
+                          // React's back (an inline value outranks every class, and the DOM no longer
+                          // matched the style prop). Transparent at rest is the button preflight; a
+                          // disabled chip does not light up, like the bulk bar's ghost recipe.
+                          className="pointer-events-auto inline-flex items-center gap-1.5 px-2.5 py-0.5 text-caption font-medium rounded border border-dashed transition-colors hover:bg-bg-elevated disabled:hover:bg-transparent disabled:opacity-40 disabled:cursor-not-allowed"
                           style={{
                             // Plain text-primary, NOT a mix toward the block hue. The old 72% mix
                             // was inherited from the W1 pill recipe, but a pill supplies its own
@@ -2463,10 +2471,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                             // stays on the dashed border, which carries no reading load.
                             color: 'var(--color-text-primary)',
                             borderColor: 'color-mix(in srgb, var(--row-block-color) 35%, transparent)',
-                            background: 'transparent',
                           }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-bg-elevated)'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                           data-add-else
                         >
                           <Plus size={11} />
@@ -2477,15 +2482,12 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                             type="button"
                             onClick={() => send({ type: 'actions:addElseBranch', payload: { ifRowIndex: chainOpener } })}
                             disabled={buttonStates.recordingActive || buttonStates.replayActive}
-                            className="pointer-events-auto inline-flex items-center gap-1.5 px-2.5 py-0.5 text-caption font-medium rounded border border-dashed transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                            className="pointer-events-auto inline-flex items-center gap-1.5 px-2.5 py-0.5 text-caption font-medium rounded border border-dashed transition-colors hover:bg-bg-elevated disabled:hover:bg-transparent disabled:opacity-40 disabled:cursor-not-allowed"
                             style={{
-                              // Same measured recipe as the sibling chip above.
+                              // Same measured recipe (and class hover) as the sibling chip above.
                               color: 'var(--color-text-primary)',
                               borderColor: 'color-mix(in srgb, var(--row-block-color) 35%, transparent)',
-                              background: 'transparent',
                             }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-bg-elevated)'; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                             data-add-else
                           >
                             <Plus size={11} />
@@ -2659,7 +2661,7 @@ export function ActionTable({ columnVisibility, onOpenSheet, onPickCoords, edito
                   </td>
 
                   {/* Row number — gives way to the program-counter glyph while the replay
-                      engine is ON this row (▶ running / ❚❚ paused-here), the second
+                      engine is ON this row (lucide Play running / Pause paused-here), the second
                       channel that keeps the executing row from reading as a selection.
 
                       Both halves are always rendered: the number carries data-rownum-value

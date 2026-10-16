@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, useImperativeHandle, lazy, Suspense, type Ref } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, RefreshCw, Crosshair, Copy, ClipboardPaste, ShieldCheck, ShieldAlert, ShieldQuestion, PlayCircle, Pipette, Check, X, Frame, FolderOpen, Maximize } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Crosshair, Copy, ClipboardPaste, ShieldCheck, ShieldAlert, ShieldQuestion, PlayCircle, Pipette, Check, X, Frame, FolderOpen } from 'lucide-react';
 import { ActionIcon } from './ActionTable';
 import { useBridge } from '../bridge/BridgeContext';
 import { useAppState } from '../state/AppStateContext';
@@ -37,6 +37,7 @@ import { Field, Section } from './sheet/Field';
 import { WindowTargetFields } from './WindowTargetFields';
 import { Slider } from './sheet/Slider';
 import { ScreenTextFields } from './sheet/ScreenTextFields';
+import { RESULT_CARD, SearchRegionRow, TOOL_BTN } from './sheet/probeAtoms';
 import { collectOcrEdits, OCR_DEFAULT_TOLERANCE } from './sheet/screenTextEdits';
 import { effectiveOperator, regexProblem } from '../utils/screenText';
 
@@ -193,7 +194,6 @@ function growTextarea(el: HTMLTextAreaElement) {
   const borders = el.offsetHeight - el.clientHeight;
   el.style.height = `${el.scrollHeight + borders}px`;
 }
-const RESULT_CARD = 'border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed callout-enter';
 
 // One axis of the Activate Window placement grid: a single-letter caption and a stepper, half a
 // row wide. Four of these make X/Y and W/H, so the caption alignment, the clamp and the disabled
@@ -3345,15 +3345,17 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
             {/* Exists-anywhere Test — reuses the ActivateWindow probe (window:testProbe) verbatim;
                 the two editors are mutually exclusive so they share the same probe state. */}
             <div>
-              <button
+              <Button
+                variant="test"
+                size="field"
                 onClick={handleTestWindowProbe}
                 data-probe
                 disabled={windowProbeRequestId !== null || (!windowProcessName.trim() && !windowTitle.trim())}
-                className="w-full h-8 flex items-center justify-center gap-1.5 px-2.5 rounded text-minor font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-hover transition-colors disabled:opacity-60"
+                className="w-full"
               >
                 <PlayCircle size={13} />
                 {windowProbeRequestId ? 'Testing…' : 'Test'}
-              </button>
+              </Button>
               {windowProbeResult && (
                 <div
                   className={`mt-1.5 ${RESULT_CARD}`}
@@ -3668,14 +3670,16 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 re-pick a selector that was fine. Runs the same instant probe the replay's If runs,
                 against the active tab. */}
             <div>
-              <button
+              <Button
+                variant="test"
+                size="field"
                 onClick={handleTestCondition}
                 disabled={condRequestId !== null}
-                className="w-full h-8 flex items-center justify-center gap-1.5 px-2.5 rounded text-minor font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-hover transition-colors disabled:opacity-60"
+                className="w-full"
               >
                 <PlayCircle size={13} />
                 {condRequestId ? 'Checking…' : 'Check now'}
-              </button>
+              </Button>
               {condResult && (
                 <div
                   className={`mt-1.5 ${RESULT_CARD}`}
@@ -3881,20 +3885,22 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                     if (refuseDuringRun()) return;
                     send({ type: 'waitimage:recapture', payload: { index: actionIndex } });
                   }}
-                  className="flex-1 flex items-center justify-center gap-1.5 h-8 px-2.5 rounded text-minor font-medium border border-border-default bg-bg-elevated hover:bg-bg-card text-text-secondary hover:text-text-primary transition-colors"
+                  className={`${TOOL_BTN} flex-1 justify-center`}
                 >
                   <RefreshCw size={12} />
                   Recapture
                 </button>
-                <button
+                <Button
+                  variant="test"
+                  size="field"
                   onClick={handleTestMatch}
                   data-probe
                   disabled={!action?.imagePath || testMatchRequestId != null}
-                  className="flex-1 flex items-center justify-center gap-1.5 h-8 px-2.5 rounded text-minor font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1"
                 >
                   <PlayCircle size={13} />
                   {testMatchRequestId != null ? 'Testing…' : 'Test match'}
-                </button>
+                </Button>
               </div>
               {/* Test match result — icon headline + mono only on the value spans (the
                   browser Test card dialect). Success also auto-sets the Search Region
@@ -3962,35 +3968,13 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 // the second argument, not the first.
                 : 'Whole screen can match the wrong thing — ~440 ms per check instead of ~4 ms.'}
             >
-              <div className="flex items-center gap-2.5">
-                <div className="flex-1 h-8 px-2 flex items-center text-caption font-mono bg-bg-input border border-border-default rounded text-text-secondary">
-                  {waitImageSearchRegion
-                    ? `${waitImageSearchRegion.x}, ${waitImageSearchRegion.y}  ·  ${waitImageSearchRegion.w} × ${waitImageSearchRegion.h}`
-                    : (
-                      <span className="flex items-center gap-1.5" style={{ color: 'var(--color-warning-ink)' }}>
-                        <Maximize size={11} className="shrink-0" />
-                        Full screen
-                      </span>
-                    )}
-                </div>
-                <button
-                  onClick={handleConfigureSearchRegion}
-                  className="h-8 px-2.5 flex items-center gap-1.5 rounded text-minor font-medium border border-border-default bg-bg-elevated hover:bg-bg-card text-text-secondary hover:text-text-primary transition-colors"
-                  data-tip={tt('Faster, fewer false positives.', 'Mais rápido, menos falsos positivos.')}
-                >
-                  <Frame size={12} />
-                  Configure
-                </button>
-                {waitImageSearchRegion && (
-                  <button
-                    aria-label="Clear search region"
-                    onClick={() => setWaitImageSearchRegion(null)}
-                    className="h-8 px-2 flex items-center rounded text-minor text-text-tertiary hover:text-[var(--color-recording-fg)] hover:bg-bg-card transition-colors"
-                  >
-                    <X size={12} />
-                  </button>
-                )}
-              </div>
+              <SearchRegionRow
+                region={waitImageSearchRegion}
+                onConfigure={handleConfigureSearchRegion}
+                onClear={() => setWaitImageSearchRegion(null)}
+                configureTip={tt('Faster, fewer false positives.', 'Mais rápido, menos falsos positivos.')}
+                clearLabel="Clear search region"
+              />
             </Field>
 
             {/* TOLERANCE — own row with helper text. Mirrors Pixel's tolerance section
@@ -4124,19 +4108,20 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   type="button"
                   onClick={handlePickPixelColor}
                   disabled={pickColorRequestId != null}
-                  className="flex-1 h-8 flex items-center justify-center gap-1.5 px-2.5 text-minor font-medium border border-border-default bg-bg-elevated hover:bg-bg-card text-text-secondary hover:text-text-primary rounded whitespace-nowrap transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className={`${TOOL_BTN} flex-1 justify-center whitespace-nowrap`}
                 >
                   <Pipette size={13} />
                   {pickColorRequestId != null ? 'Picking…' : 'Pick'}
                 </button>
-                <button
-                  type="button"
+                <Button
+                  variant="test"
+                  size="field"
                   onClick={handleTestPixelMatch}
-                  className="flex-1 h-8 flex items-center justify-center gap-1.5 px-2.5 text-minor font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-hover rounded whitespace-nowrap transition-colors"
+                  className="flex-1 whitespace-nowrap"
                 >
                   <PlayCircle size={13} />
                   Test match
-                </button>
+                </Button>
               </div>
               {testPixelResult && (
                 <div
@@ -4608,8 +4593,10 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 label="Paste"
                 title={tt('Instant, not key by key', 'Instantâneo, não tecla a tecla')}
               />
-              <div className="flex items-center gap-2">
-                <label className="text-minor text-text-secondary">Char delay</label>
+              {/* The panel's inline duration row (Hold, Times, Gap): label left, w-24 field right,
+                  and the label dims with the field — Paste types nothing key by key. */}
+              <div className="flex items-center justify-between gap-3">
+                <label className={`text-minor font-medium transition-colors ${typePaste ? 'text-text-tertiary' : 'text-text-secondary'}`}>Char delay</label>
                 <NumberInput
                   // typeDelay '' = no pause between characters. The engine used to pick a
                   // default from the text length; since 2.37.0 content.js reads a blank field
@@ -4624,7 +4611,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   placeholder="none"
                   thousands
                   suffix="ms" suffixInside
-                  inputWidth="w-16"
+                  inputWidth="w-24"
                   inputHeight="h-8"
                   ariaLabel="Char delay (ms)"
                 />
@@ -4720,14 +4707,16 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
             {/* Test action, then the timing pair (Timeout + Delay) directly below it, so the
                 cluster reads Test action -> Timeout -> Delay. */}
             <div>
-              <button
+              <Button
+                variant="test"
+                size="field"
                 onClick={handleTestAction}
                 disabled={testRequestId !== null}
-                className="w-full h-8 flex items-center justify-center gap-1.5 px-2.5 rounded text-minor font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-hover transition-colors disabled:opacity-60"
+                className="w-full"
               >
                 <PlayCircle size={13} />
                 {testRequestId ? 'Running…' : 'Test action'}
-              </button>
+              </Button>
               {testResult && (
                 <div
                   className={`mt-1.5 ${RESULT_CARD}`}
@@ -5003,7 +4992,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   onChange={(e) => setVariableValue(e.target.value)}
                   placeholder={variableMode === 'cycle' ? 'item 1\nitem 2\nitem 3' : variableMode === 'add' ? '1' : undefined}
                   spellCheck={false}
-                  className="w-full min-h-[3.25rem] px-2 py-1.5 text-ui font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid resize-y"
+                  className="textarea-field min-h-[3.25rem] text-ui font-mono resize-y"
                 />
               </Field>
               )}
@@ -5198,15 +5187,17 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
 
             {/* Test (exists-anywhere probe) + result card, then Timeout + On Timeout. */}
             <div>
-              <button
+              <Button
+                variant="test"
+                size="field"
                 onClick={handleTestWindowProbe}
                 data-probe
                 disabled={windowProbeRequestId !== null || (!windowProcessName.trim() && !windowTitle.trim())}
-                className="w-full h-8 flex items-center justify-center gap-1.5 px-2.5 rounded text-minor font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-hover transition-colors disabled:opacity-60"
+                className="w-full"
               >
                 <PlayCircle size={13} />
                 {windowProbeRequestId ? 'Testing…' : 'Test'}
-              </button>
+              </Button>
               {windowProbeResult && (
                 <div
                   className={`mt-1.5 ${RESULT_CARD}`}
@@ -5392,7 +5383,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                     type="button"
                     onClick={handlePickPosition}
                     disabled={pickPositionRequestId != null}
-                    className="flex-1 h-8 flex items-center justify-center gap-1.5 px-2.5 text-minor font-medium border border-border-default bg-bg-elevated hover:bg-bg-card text-text-secondary hover:text-text-primary rounded whitespace-nowrap transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className={`${TOOL_BTN} flex-1 justify-center whitespace-nowrap`}
                   >
                     <Crosshair size={13} />
                     {pickPositionRequestId != null ? 'Picking…' : 'Pick from screen'}
@@ -5601,7 +5592,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
               rows={2}
               ref={notesRef}
               onInput={(e) => growTextarea(e.currentTarget)}
-              className="w-full min-h-[3.25rem] max-h-40 px-2 py-1.5 text-minor bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid resize-none placeholder:text-text-tertiary"
+              className="textarea-field min-h-[3.25rem] max-h-40 text-minor"
               placeholder="Add a note…"
             />
           </Field>
@@ -5615,16 +5606,21 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
               "Esc again discards" in warning ink; armed by a click on another row, "Click again
               to discard"; armed by a list change from outside (paste, reorder, undo, a palette
               rewrite), "Repeat to discard". Every string is measured to fit the span unwrapped —
-              the buttons stay shrink-0 / nowrap so "Save" never wraps. */}
+              the buttons stay shrink-0 / nowrap so "Save" never wraps.
+              The TEXT is rendered only while it applies: hidden by opacity alone, a screen reader
+              read "Unsaved changes" on a clean panel, and the live region never announced
+              clean → dirty because only the opacity changed. The span stays mounted (flex-1 owns
+              the width, the h-8 buttons the height), so an empty span moves nothing. */}
           <span
             aria-live="polite"
             className={`flex-1 min-w-0 truncate text-caption transition-opacity duration-150 pointer-events-none ${armedBy ? 'text-warning-ink' : 'text-text-tertiary'}`}
             style={{ opacity: armedBy || hasUnsavedChanges ? 1 : 0 }}
           >
-            {armedBy === 'esc' ? 'Esc again discards'
-              : armedBy === 'switch' ? 'Click again to discard'
-                : armedBy === 'list' ? 'Repeat to discard'
-                  : 'Unsaved changes'}
+            {!(armedBy || hasUnsavedChanges) ? null
+              : armedBy === 'esc' ? 'Esc again discards'
+                : armedBy === 'switch' ? 'Click again to discard'
+                  : armedBy === 'list' ? 'Repeat to discard'
+                    : 'Unsaved changes'}
           </span>
           <div className="flex items-center gap-2 shrink-0">
             {/* Cancel is the explicit one-click discard; while there is something to lose its label

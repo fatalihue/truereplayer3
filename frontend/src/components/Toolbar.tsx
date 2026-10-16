@@ -809,7 +809,7 @@ export function Toolbar(_props: ToolbarProps) {
           <div className="relative" ref={waitMenuRef}>
             <button
               aria-label="Wait"
-              aria-haspopup="menu"
+              data-popup-trigger
               aria-expanded={showWaitMenu}
               tabIndex={-1}
               onClick={() => setShowWaitMenu(!showWaitMenu)}
@@ -911,7 +911,7 @@ export function Toolbar(_props: ToolbarProps) {
           <div className="relative" ref={conditionalMenuRef}>
             <button
               aria-label="Conditional"
-              aria-haspopup="menu"
+              data-popup-trigger
               aria-expanded={showConditionalMenu}
               tabIndex={-1}
               onClick={() => setShowConditionalMenu(!showConditionalMenu)}
@@ -1053,7 +1053,7 @@ export function Toolbar(_props: ToolbarProps) {
           <div className="relative" ref={browserMenuRef}>
             <button
               aria-label="Browser Actions"
-              aria-haspopup="menu"
+              data-popup-trigger
               aria-expanded={showBrowserMenu}
               tabIndex={-1}
               onClick={() => setShowBrowserMenu(!showBrowserMenu)}
@@ -1179,7 +1179,7 @@ export function Toolbar(_props: ToolbarProps) {
           <div className="relative" ref={clearMenuRef} data-tb-fold="clearAll">
             <button
               aria-label="Clear All"
-              aria-haspopup="dialog"
+              data-popup-trigger
               aria-expanded={showClearConfirm}
               tabIndex={-1}
               onClick={() => setShowClearConfirm(prev => !prev)}
@@ -1252,7 +1252,7 @@ export function Toolbar(_props: ToolbarProps) {
           <div className="relative" ref={moreMenuRef}>
             <button
               aria-label="More actions"
-              aria-haspopup="menu"
+              data-popup-trigger
               aria-expanded={showMoreMenu}
               tabIndex={-1}
               onClick={() => setShowMoreMenu(!showMoreMenu)}

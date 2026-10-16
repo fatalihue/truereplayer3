@@ -222,8 +222,8 @@ function SnippetEditForm({
         placeholder="Snippet text…"
         aria-label="Snippet text"
         rows={5}
-        // No textarea recipe yet; border-default at least, as the input above.
-        className="w-full px-2 py-1.5 text-caption font-mono text-text-primary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid resize-none placeholder:text-text-disabled"
+        // The field recipe's multi-line sibling, as the input above; the font stays this site's own.
+        className="textarea-field text-caption font-mono"
       />
       <div className="flex items-center gap-2">
         <Button variant="secondary" size="sm" onClick={onCancel}>

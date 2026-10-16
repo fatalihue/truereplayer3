@@ -613,7 +613,7 @@ export function RemapSection({ draft }: {
                 onClick={() => { stopCapture(); setMouseMenuOpen((o) => !o); }}
                 className={iconButtonClass('md', { active: mouseMenuOpen })}
                 aria-label="Mouse button or wheel as target"
-                aria-haspopup="menu"
+                data-popup-trigger
                 aria-expanded={mouseMenuOpen}
                 data-tip={tt('Mouse button or wheel as target', 'Botão do mouse ou roda como alvo')}
               >

@@ -168,7 +168,7 @@ export function ClickerPresetRow({ settings, width, lastMatched, pendingName }: 
           <button
             type="button"
             onClick={() => setOpen((o) => !o)}
-            aria-haspopup="menu"
+            data-popup-trigger
             aria-expanded={open}
             className="flex-1 min-w-0 h-full flex items-center justify-between gap-1 pl-2 pr-1 cursor-pointer"
           >

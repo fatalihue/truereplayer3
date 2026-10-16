@@ -358,10 +358,25 @@ html, body, #root {
   box-shadow: 0 0 0 1px var(--color-text-primary);
 }
 /* The action grid's scroll container is the grid's only tab stop and fills an overflow-hidden
-   parent, which clipped the ring above (it is drawn OUTSIDE the box) — keyboard focus on the grid
-   showed nothing. Draw it inside: the outline steps in by its own width, and the contrast halo
-   becomes an inset shadow under it (3 px, 2 of them covered by the outline). */
+   parent, which clipped the ring above (it is drawn OUTSIDE the box). Drawn INSIDE the scroller it
+   was still invisible where it mattered: the rows are position:relative and the sticky header is
+   z-10 with an opaque fill, so both painted over the scroller's own outline and inset shadow —
+   only the bottom and right edges showed, and only past the last row (the 2026-10-16 branch
+   review, measured in a replica; the earlier check had read the computed style, not the pixels).
+   So the ring is an overlay on the PARENT (relative, the grid's frame): a pseudo-element above the
+   rows and the header (z 11), never hit-testable. Same recipe as the global ring — 2 px accent
+   outline plus the text-primary contrast halo — stepped inside the frame. */
 [data-actions-grid]:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+:has(> [data-actions-grid]:focus-visible)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 11;
+  pointer-events: none;
+  outline: 2px solid var(--color-accent-solid);
   outline-offset: -2px;
   box-shadow: inset 0 0 0 3px var(--color-text-primary);
 }
@@ -626,17 +641,30 @@ html[data-animations="true"] .replay-btn-glow {
 }
 
 /* INSERTED-ROW flash — answers "where did the row I just added land?". Attribute + CSS, like
-   the replay marker: InsertedRowMarker.tsx sets data-inserted on the new rows and clears it on
-   animationend. Accent at 22 % plus the inset bar the executing row uses, decaying over 700 ms
-   on the enter curve. Gated on the animations toggle — with motion off the attribute is never
-   written. Specificity (0,2,3) outranks the row's bg-* utility and its hover variant, the same
-   reason the replay rules are written this way. */
-@keyframes row-inserted {
-  from { background-color: color-mix(in srgb, var(--color-accent) 22%, transparent); box-shadow: inset 3px 0 0 var(--color-accent-solid); }
-  to   { background-color: transparent; box-shadow: inset 3px 0 0 transparent; }
+   the replay marker: InsertedRowMarker.tsx writes data-inserted on the new rows. Accent at 22 %
+   plus the inset bar the executing row uses, decaying over 700 ms on the enter curve.
+
+   A TRANSITION, not @keyframes (SKILL §4: what fires fast or gets interrupted must be able to
+   turn back from the middle). "on" lands the tint with no transition; the marker flushes style
+   so that is the starting point; "fade" then hands the row back to its OWN background —
+   whatever it is by then (selected, block tint, hover, the replay mark). The keyframes ran to a
+   hard-coded transparent, pinned the row against hover for the whole 700 ms and snapped to the
+   real background at the end; now a pointer crossing the row mid-fade just retargets.
+
+   The fade's transition is !important on purpose: dnd-kit writes an inline
+   `transition: transform 0ms linear` on every row whenever the item list changes, and a
+   transition-property without background-color CANCELS the fade mid-way (an insert landing
+   while an earlier one still fades). Scoped to ~1 s on a just-inserted row; a sort slide that
+   started inside that second would jump instead. Gated on the animations toggle — with motion
+   off the attribute is never written. Specificity (0,2,3) outranks the row's bg-* utility, its
+   hover variant and the replay rules' (0,2,2). */
+html[data-animations="true"] tbody tr[data-inserted="on"] {
+  background-color: color-mix(in srgb, var(--color-accent) 22%, transparent);
+  box-shadow: inset 3px 0 0 var(--color-accent-solid);
+  transition: none;
 }
-html[data-animations="true"] tbody tr[data-inserted] {
-  animation: row-inserted 700ms var(--ease-enter) both;
+html[data-animations="true"] tbody tr[data-inserted="fade"] {
+  transition: background-color 700ms var(--ease-enter), box-shadow 700ms var(--ease-enter) !important;
 }
 
 /* RUN-DONE pulse — one green ring on the title-bar badge when a replay ends, so the end of a run
@@ -970,6 +998,14 @@ tbody tr[data-replay] [data-rownum-value] {
 }
 @utility input-inline {
   @apply w-full h-7 px-1.5 text-xs font-mono text-text-primary bg-bg-input border border-border-default rounded outline-none placeholder:text-text-tertiary focus:border-accent-solid disabled:opacity-50;
+}
+/* The multi-line sibling: input-field's shell (border, fill, accent border on focus, control
+   radius, px-2) with py-1.5 around the text block. No font on purpose — the call sites differ
+   (mono values in Set Variable and the snippet editor, sans prose in Notes) and which way that
+   goes is still an open decision (D3), so each site keeps its own. resize-none by default (Notes
+   auto-grows); add resize-y where the user drags the size. Height = rows / min-h at the site. */
+@utility textarea-field {
+  @apply w-full px-2 py-1.5 text-text-primary bg-bg-input border border-border-default rounded outline-none resize-none placeholder:text-text-tertiary focus:border-accent-solid disabled:opacity-50;
 }
 
 /* NumberInput (compact NumberBox): the native spinner must never show next to ours. */

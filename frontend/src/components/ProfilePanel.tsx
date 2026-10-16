@@ -98,6 +98,54 @@ const descTip = (d?: string | null): string => {
   return cutGlyphs(s, DESC_TIP_MAX);
 };
 
+// The panel's two searches — the list filter in the header strip and the Export dialog's filter —
+// on ONE recipe: the field recipe on the <input> itself (input-inline, 28 px, in the strip;
+// input-field, 32 px, in the dialog, the height ProfileSearchList's box has there) with the glyph
+// laid over its left padding and the clear button over its right. Each used to be a hand-rolled
+// bg-input box around a bare input, and the two had drifted: h-7 vs py-1.5 (30 px, off the
+// control scale), 13 vs 12 px glyphs, and only the dialog's showed where the focus was.
+function SearchBox({ tier, inputRef, value, onChange, placeholder, ariaLabel, clearLabel, icon, accent = false }: {
+  tier: 'inline' | 'field';
+  inputRef?: React.Ref<HTMLInputElement>;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  ariaLabel: string;
+  clearLabel: string;
+  /** Leading glyph, 13 px; the magnifier unless the caller has a mode to show. */
+  icon?: React.ReactNode;
+  /** Tints the resting border (the strip's "#tag" mode); the focus border still wins. */
+  accent?: boolean;
+}) {
+  return (
+    <div className="relative w-full">
+      <span aria-hidden="true" className="absolute left-2 top-1/2 -translate-y-1/2 flex pointer-events-none">
+        {icon ?? <Search size={13} className="text-text-disabled" />}
+      </span>
+      <input
+        ref={inputRef}
+        type="text"
+        placeholder={placeholder}
+        aria-label={ariaLabel}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        // pl-7 clears the glyph (8 px inset + 13 px + 8 px gap); pr-7 keeps the text out from
+        // under the clear button, reserved even while it is hidden so typing never reflows.
+        className={`${tier === 'inline' ? 'input-inline' : 'input-field'} font-sans text-minor pl-7 pr-7 transition-colors ${accent ? 'border-accent-solid/50' : ''}`}
+      />
+      {value && (
+        <button
+          aria-label={clearLabel}
+          onClick={() => onChange('')}
+          className="absolute right-2 top-1/2 -translate-y-1/2 flex text-text-disabled hover:text-text-secondary transition-colors"
+        >
+          <X size={12} />
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePanelProps) {
   const tt = useTt();
   const { profiles, profileOrder, actions, settings, buttonStates } = useAppState();
@@ -2158,34 +2206,18 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
 
         {/* Search — supports "#tag" prefix to filter by tag instead of name */}
         <div className="h-row px-1.5 flex items-center border-b border-border-subtle shrink-0">
-          <div className={`w-full h-7 flex items-center gap-2 px-2.5 bg-bg-input border rounded transition-colors ${
-            isTagSearch ? 'border-accent-solid/50' : 'border-border-default'
-          }`}>
-            {isTagSearch ? (
-              // Visual cue that tag mode is active — distinguishes #fps from "literal hash".
-              <Hash size={13} className="text-accent shrink-0" />
-            ) : (
-              <Search size={13} className="text-text-disabled shrink-0" />
-            )}
-            <input
-              ref={searchInputRef}
-              type="text"
-              placeholder="Search profiles…"
-              aria-label="Search profiles"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="bg-transparent text-minor text-text-primary placeholder:text-text-disabled outline-none flex-1 min-w-0"
-            />
-            {searchQuery && (
-              <button
-                aria-label="Clear search"
-                onClick={() => setSearchQuery('')}
-                className="text-text-disabled hover:text-text-secondary transition-colors shrink-0"
-              >
-                <X size={12} />
-              </button>
-            )}
-          </div>
+          <SearchBox
+            tier="inline"
+            inputRef={searchInputRef}
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search profiles…"
+            ariaLabel="Search profiles"
+            clearLabel="Clear search"
+            accent={isTagSearch}
+            // Visual cue that tag mode is active — distinguishes #fps from "literal hash".
+            icon={isTagSearch ? <Hash size={13} className="text-accent" /> : undefined}
+          />
         </div>
 
         {/* Profile List - Sectioned */}
@@ -2993,7 +3025,9 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               value={!hotkeyCapture || hotkeyCapture === '...' ? '' : hotkeyCapture}
               placeholder="New key…"
               aria-label="Hotkey"
-              className={`w-full h-8 px-2 text-ui font-mono bg-bg-input border border-accent-solid rounded text-center outline-none placeholder:text-accent-hover/50 ${
+              // The field recipe with the capture overrides: accent border at rest (the field is
+              // always listening), centred keycap text, accent placeholder.
+              className={`input-field border-accent-solid text-center placeholder:text-accent-hover/50 ${
                 !hotkeyCapture || hotkeyCapture === '...'
                   ? 'text-accent-hover motion-ok:animate-pulse'
                   : 'text-accent'
@@ -3060,7 +3094,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               placeholder="e.g. /id"
               aria-label="Hotstring"
               maxLength={32}
-              className="w-full h-8 px-2 text-ui font-mono text-accent bg-bg-input border border-accent-solid rounded outline-none"
+              className="input-field text-accent border-accent-solid"
             />
             <p className="text-caption text-text-tertiary mt-1.5">
               Min 2 characters.
@@ -3178,29 +3212,17 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               </>
             }
           >
-            {/* Search — focus ring + aria parity with ProfileSearchList, which this
-                hand-rolled field had drifted from. */}
+            {/* Search — the panel's search recipe at the dialog tier (32 px, ProfileSearchList's
+                height in the other dialogs). */}
             <div className="px-4 pt-3">
-              <div className="flex items-center gap-2 px-2.5 py-1.5 bg-bg-input border border-border-default rounded focus-within:border-accent-solid transition-colors">
-                <Search size={12} className="text-text-disabled shrink-0" />
-                <input
-                  type="text"
-                  placeholder="Filter profiles…"
-                  aria-label={'Filter profiles'}
-                  value={exportSearch}
-                  onChange={(e) => setExportSearch(e.target.value)}
-                  className="bg-transparent text-minor text-text-primary placeholder:text-text-disabled outline-none flex-1 min-w-0"
-                />
-                {exportSearch && (
-                  <button
-                    onClick={() => setExportSearch('')}
-                    aria-label={'Clear filter'}
-                    className="text-text-disabled hover:text-text-secondary transition-colors shrink-0"
-                  >
-                    <X size={11} />
-                  </button>
-                )}
-              </div>
+              <SearchBox
+                tier="field"
+                value={exportSearch}
+                onChange={setExportSearch}
+                placeholder="Filter profiles…"
+                ariaLabel="Filter profiles"
+                clearLabel="Clear filter"
+              />
             </div>
 
             {/* Select All (visible) */}

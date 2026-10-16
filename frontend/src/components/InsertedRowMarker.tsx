@@ -5,7 +5,7 @@ import { useAppState } from '../state/AppStateContext';
  * Flashes the rows that just landed in the grid — a paste, an insert from the toolbar, a
  * capture-first Wait Image, an undo that brings a row back — so "where did it go?" is answered
  * by the grid itself. Same doctrine as ReplayRowMarker: the flash is an attribute plus a CSS
- * animation (index.css, `tr[data-inserted]`), never render state, so it costs one querySelector
+ * transition (index.css, `tr[data-inserted]`), never render state, so it costs one querySelector
  * per NEW row and nothing per unchanged row.
  *
  * What does not flash, on purpose: the first fill of an empty grid and a profile switch (every
@@ -33,15 +33,33 @@ export function InsertedRowMarker({ tbodyRef }: { tbodyRef: React.RefObject<HTML
 
     const tbody = tbodyRef.current;
     if (!tbody) return;
+    const rows: HTMLTableRowElement[] = [];
     for (const i of fresh) {
       // data-row-index, not nth-child: the tbody also holds the "+ Add Else" ghost rows and the
       // drag drop-gap row (see ReplayRowMarker).
       const row = tbody.querySelector<HTMLTableRowElement>(`tr[data-row-index="${i}"]`);
-      if (!row) continue;
-      row.setAttribute('data-inserted', '');
-      const clear = () => row.removeAttribute('data-inserted');
-      row.addEventListener('animationend', clear, { once: true });
-      // animationend never fires in an occluded window (the DialogShell lesson) — a fallback
+      if (row) rows.push(row);
+    }
+    if (rows.length === 0) return;
+
+    // Two steps, because the flash is a transition (index.css says why): "on" paints the tint
+    // with no transition, a forced style read commits it as each row's starting value, and
+    // "fade" lets it decay. All "on" writes go first so the reads cost one style pass — the
+    // first read recalculates, the rest find the style already clean.
+    for (const row of rows) row.setAttribute('data-inserted', 'on');
+    for (const row of rows) void getComputedStyle(row).backgroundColor;
+    for (const row of rows) {
+      row.setAttribute('data-inserted', 'fade');
+      const clear = () => {
+        row.removeEventListener('transitionend', onEnd);
+        row.removeAttribute('data-inserted');
+      };
+      // transitionend bubbles: a cell's own hover transition must not end the row's fade.
+      const onEnd = (e: TransitionEvent) => {
+        if (e.target === row && e.propertyName === 'background-color') clear();
+      };
+      row.addEventListener('transitionend', onEnd);
+      // transitionend never fires in an occluded window (the DialogShell lesson) — a fallback
       // clears the mark so a hidden window cannot come back with a permanently flashed row.
       setTimeout(clear, 1000);
     }

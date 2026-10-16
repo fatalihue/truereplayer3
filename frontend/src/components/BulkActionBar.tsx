@@ -174,8 +174,14 @@ export function BulkActionBar({
   // bulk-bar-enter: small slide-up on appear (the old floating-bar bulk-bar-in
   // keyframe was orphaned when the bar became docked); gated on the Animations
   // toggle in index.css like every other entrance.
+  //
+  // 34 px is a FIXED band (28 px controls + 3 px air), not the grid row height it happens to
+  // equal by default: --ui-row-height is a user setting (28–48), and two neighbours count on this
+  // bar not moving — ActionTable's pb-9 scroll clearance and Toast's BOTTOM_CLEARANCE_PX.
+  // It floats over the grid (ActionTable mounts it absolute at the bottom), so it takes the
+  // overlay elevation token; the grid's overflow-hidden clips the part that would fall below.
   return (
-    <div className="bulk-bar-enter flex items-center h-[34px] px-3 border-t border-accent-solid/30 shrink-0 bg-[color-mix(in_srgb,var(--color-accent)_6%,var(--color-bg-card))] shadow-[0_-4px_12px_color-mix(in_srgb,var(--color-bg-base)_45%,transparent)]">
+    <div className="bulk-bar-enter flex items-center h-[34px] px-3 border-t border-accent-solid/30 shrink-0 bg-[color-mix(in_srgb,var(--color-accent)_6%,var(--color-bg-card))] shadow-overlay">
       {/* Left: selection info + clear. shrink-0 + whitespace-nowrap make sure the
           "N selected" text stays on one line even if the right-side button cluster
           grows enough to compress the flex layout — without these, narrow window

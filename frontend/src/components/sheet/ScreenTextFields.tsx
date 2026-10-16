@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, Frame, Maximize, Pipette, PlayCircle, X } from 'lucide-react';
+import { Check, Pipette, PlayCircle, X } from 'lucide-react';
 import { useBridge } from '../../bridge/BridgeContext';
 import { useTt } from '../../state/LanguageContext';
 import { SegmentedControl } from '../common/SegmentedControl';
 import { NumberInput } from '../common/NumberInput';
 import { FieldError } from '../common/FieldError';
 import { calloutStyle } from '../common/Callout';
+import { Button } from '../common/Button';
 import { Field } from './Field';
+import { RESULT_CARD, SearchRegionRow, TOOL_BTN } from './probeAtoms';
 import { parsesAsNumber, regexProblem } from '../../utils/screenText';
 
 // The screen-text (OCR) editor block shared by the three Sheet editors that read the screen:
@@ -50,8 +52,6 @@ interface TestReadResult {
   error?: string;
 }
 
-const RESULT_CARD = 'border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed callout-enter';
-const SECONDARY_BTN = 'h-8 px-2.5 flex items-center gap-1.5 rounded text-minor font-medium border border-border-default bg-bg-elevated hover:bg-bg-card text-text-secondary hover:text-text-primary transition-colors';
 const validHex = (s: string) => /^#?[0-9A-Fa-f]{6}$/.test(s.trim());
 const withHash = (s: string) => (s.trim().startsWith('#') ? s.trim() : '#' + s.trim());
 
@@ -151,36 +151,14 @@ export function ScreenTextFields(p: ScreenTextFieldsProps) {
         label="Search Region"
         hint={p.region ? undefined : 'Whole screen: ~0.5 s per read. Set a region.'}
       >
-        <div className="flex items-center gap-2.5">
-          <div className="flex-1 h-8 px-2 flex items-center text-caption font-mono bg-bg-input border border-border-default rounded text-text-secondary">
-            {p.region
-              ? `${p.region.x}, ${p.region.y}  ·  ${p.region.w} × ${p.region.h}`
-              : (
-                <span className="flex items-center gap-1.5" style={{ color: 'var(--color-warning-ink)' }}>
-                  <Maximize size={11} className="shrink-0" />
-                  Full screen
-                </span>
-              )}
-          </div>
-          <button
-            onClick={p.onConfigureRegion}
-            className={SECONDARY_BTN}
-            data-tip={tt('Faster, and reads only what you mean.', 'Mais rápido, e lê só o que você quer.')}
-          >
-            <Frame size={12} />
-            Configure
-          </button>
-          {p.region && (
-            <button
-              aria-label="Read the whole screen"
-              onClick={() => p.onRegionChange(null)}
-              className="h-8 px-2 flex items-center rounded text-minor text-text-tertiary hover:text-[var(--color-recording-fg)] hover:bg-bg-card transition-colors"
-              data-tip={tt('Read the whole screen', 'Ler a tela inteira')}
-            >
-              <X size={12} />
-            </button>
-          )}
-        </div>
+        <SearchRegionRow
+          region={p.region}
+          onConfigure={p.onConfigureRegion}
+          onClear={() => p.onRegionChange(null)}
+          configureTip={tt('Faster, and reads only what you mean.', 'Mais rápido, e lê só o que você quer.')}
+          clearLabel="Read the whole screen"
+          clearTip={tt('Read the whole screen', 'Ler a tela inteira')}
+        />
       </Field>
 
       <Field label="Read As">
@@ -264,7 +242,7 @@ export function ScreenTextFields(p: ScreenTextFieldsProps) {
             placeholder="Any"
             className="input-field flex-1 min-w-0"
           />
-          <button onClick={pickColor} disabled={pickId != null} className={`${SECONDARY_BTN} disabled:opacity-50`}>
+          <button onClick={pickColor} disabled={pickId != null} className={TOOL_BTN}>
             <Pipette size={12} />
             Pick
           </button>
@@ -299,15 +277,17 @@ export function ScreenTextFields(p: ScreenTextFieldsProps) {
       )}
 
       <div>
-        <button
+        <Button
+          variant="test"
+          size="field"
           onClick={runTest}
           data-probe
           disabled={testId != null}
-          className="w-full flex items-center justify-center gap-1.5 h-8 px-2.5 rounded text-minor font-medium border border-accent-solid/40 bg-accent-solid/10 hover:bg-accent-solid/20 text-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full"
         >
           <PlayCircle size={13} />
           {testId != null ? 'Reading…' : 'Test read'}
-        </button>
+        </Button>
         {result && !testId && (
           <div className={`mt-2 ${RESULT_CARD}`} style={calloutStyle(ok ? 'ok' : 'error')}>
             {result.error ? (
