@@ -2,12 +2,15 @@ import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, 
 import ReactDOM from 'react-dom';
 import {
   Table2, TriangleAlert, Repeat, Plus, Trash2, Wand2, Check, Copy,
-  MoreHorizontal, ClipboardPaste, FileUp, Search, X, Bell, ChevronRight, ArrowLeft, ArrowRight,
+  MoreHorizontal, ClipboardPaste, FileUp, Search, X, Bell, ChevronRight, ChevronUp, ChevronDown, ArrowLeft, ArrowRight,
 } from 'lucide-react';
 import { DialogShell  } from './common/DialogShell';
 import { Button } from './common/Button';
 import { SegmentedControl } from './common/SegmentedControl';
 import { tokenChipClass } from './common/chipStyles';
+import { Callout } from './common/Callout';
+import { iconButtonClass } from './common/IconButton';
+import { useDialogLayer } from './common/dialogLayer';
 import { CheckboxBox } from './Checkbox';
 import { useBridge } from '../bridge/BridgeContext';
 import { useAppState } from '../state/AppStateContext';
@@ -66,10 +69,13 @@ function nextColName(headers: string[]): string {
 function CellEditor({
   initial,
   multiline,
+  ariaLabel,
   onDone,
 }: {
   initial: string;
   multiline: boolean;
+  /** The editor's only name — it replaces the cell text, and nothing else labels it. */
+  ariaLabel: string;
   /** value=null → revert (no commit). nav: where to move the editor next. */
   onDone: (value: string | null, nav?: 'down' | 'right' | 'left') => void;
 }) {
@@ -86,6 +92,7 @@ function CellEditor({
       autoFocus
       rows={Math.min(4, val.split('\n').length)}
       value={val}
+      aria-label={ariaLabel}
       spellCheck={false}
       onChange={(e) => setVal(e.target.value)}
       onFocus={(e) => e.target.select()}
@@ -150,6 +157,46 @@ function HeaderMenu({
   const [armedDelete, setArmedDelete] = useState(false);
   const name = header.trim();
   const valid = name !== '' && VALID_HEADER.test(name);
+  // The menu is a portal at the end of <body>, outside the card. Without this mark DialogShell's
+  // Tab ring never saw it, and from the keyboard the menu opened with every item out of reach.
+  const dialogLayer = useDialogLayer();
+
+  // Into the menu once it is placed: until then it renders visibility:hidden, and focus() on a
+  // hidden element is a no-op. The first ENABLED item — Copy is off for an invalid name, and the
+  // column edits for a read-only grid; with nothing enabled the menu itself holds the focus, so
+  // Esc still reaches its handler.
+  const focusedRef = useRef(false);
+  useEffect(() => {
+    if (!pos || focusedRef.current) return;
+    focusedRef.current = true;
+    const first = popRef.current?.querySelector<HTMLElement>('button:not(:disabled)');
+    (first ?? popRef.current)?.focus({ preventScroll: true });
+  }, [pos]);
+
+  // Close and hand the focus back to the ⋯ that opened the menu — on Esc, Tab and after an item
+  // ran, never on an outside click (that click already put the focus where the user wanted it).
+  // An item that opens the header editor (Insert column) still ends in the editor: its autoFocus
+  // lands in the commit that follows this handler.
+  const closeToAnchor = () => {
+    onClose();
+    if (anchor.isConnected) anchor.focus({ preventScroll: true });
+  };
+  const onMenuKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    // Tab leaves the menu the way a menu button's does: closed, and moving on from the ⋯. No
+    // preventDefault — the browser's own Tab then steps away from the anchor just focused.
+    if (e.key === 'Tab') { closeToAnchor(); return; }
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Home' && e.key !== 'End') return;
+    e.preventDefault();
+    const items = Array.from(popRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled)') ?? []);
+    if (items.length === 0) return;
+    const at = items.indexOf(document.activeElement as HTMLElement);
+    const last = items.length - 1;
+    const next = e.key === 'Home' ? 0
+      : e.key === 'End' ? last
+      : e.key === 'ArrowDown' ? (at < 0 || at === last ? 0 : at + 1)
+      : (at <= 0 ? last : at - 1);
+    items[next].focus();
+  };
 
   useLayoutEffect(() => {
     if (!anchor || !popRef.current) return;
@@ -204,6 +251,7 @@ function HeaderMenu({
       e.preventDefault();
       e.stopPropagation();
       onClose();
+      if (anchor.isConnected) anchor.focus({ preventScroll: true });
     };
     document.addEventListener('mousedown', onMouseDown);
     document.addEventListener('keydown', onKey, true);
@@ -227,7 +275,12 @@ function HeaderMenu({
     <div
       ref={popRef}
       data-popover=""
+      data-dialog-layer={dialogLayer}
+      role="menu"
+      aria-label="Column options"
+      tabIndex={-1}
       onMouseDown={(e) => e.stopPropagation()}
+      onKeyDown={onMenuKeyDown}
       style={{
         position: 'fixed',
         ...visibilityStyle,
@@ -236,26 +289,27 @@ function HeaderMenu({
       }}
       className="menu-surface overflow-hidden py-1"
     >
-      <button type="button" className={itemCls} disabled={!valid} onClick={() => { onAction('copy'); onClose(); }}>
+      <button type="button" role="menuitem" className={itemCls} disabled={!valid} onClick={() => { onAction('copy'); closeToAnchor(); }}>
         <Copy size={13} className={iconCls} />
         <span className="font-mono truncate">{valid ? `Copy {row:${name}}` : 'Invalid token name'}</span>
       </button>
-      <div className="h-px bg-border-subtle my-1" />
-      <button type="button" className={itemCls} disabled={readOnly} onClick={() => { onAction('insert-left'); onClose(); }}>
+      <div role="separator" className="h-px bg-border-subtle my-1" />
+      <button type="button" role="menuitem" className={itemCls} disabled={readOnly} onClick={() => { onAction('insert-left'); closeToAnchor(); }}>
         <Plus size={13} className={iconCls} /> {'Insert column left'}
       </button>
-      <button type="button" className={itemCls} disabled={readOnly} onClick={() => { onAction('insert-right'); onClose(); }}>
+      <button type="button" role="menuitem" className={itemCls} disabled={readOnly} onClick={() => { onAction('insert-right'); closeToAnchor(); }}>
         <Plus size={13} className={iconCls} /> {'Insert column right'}
       </button>
-      <button type="button" className={itemCls} disabled={readOnly || colIndex === 0} onClick={() => { onAction('move-left'); onClose(); }}>
+      <button type="button" role="menuitem" className={itemCls} disabled={readOnly || colIndex === 0} onClick={() => { onAction('move-left'); closeToAnchor(); }}>
         <ArrowLeft size={13} className={iconCls} /> {'Move left'}
       </button>
-      <button type="button" className={itemCls} disabled={readOnly || colIndex === colCount - 1} onClick={() => { onAction('move-right'); onClose(); }}>
+      <button type="button" role="menuitem" className={itemCls} disabled={readOnly || colIndex === colCount - 1} onClick={() => { onAction('move-right'); closeToAnchor(); }}>
         <ArrowRight size={13} className={iconCls} /> {'Move right'}
       </button>
-      <div className="h-px bg-border-subtle my-1" />
+      <div role="separator" className="h-px bg-border-subtle my-1" />
       <button
         type="button"
+        role="menuitem"
         disabled={readOnly}
         // The armed colour rides on an inline style so it beats itemCls's text colour in every
         // state — the pointer is NECESSARILY on this item, since arming it took a click, so a
@@ -266,7 +320,7 @@ function HeaderMenu({
         onClick={() => {
           if (!armedDelete) { setArmedDelete(true); return; }
           onAction('delete');
-          onClose();
+          closeToAnchor();
         }}
       >
         <Trash2 size={13} className="shrink-0" style={armedDelete ? undefined : { color: 'var(--color-text-tertiary)' }} />
@@ -286,9 +340,11 @@ const GridRow = memo(function GridRow({
   r,
   colCount,
   editingCol,
+  editingHeader,
   readOnly,
   zebra,
   find,
+  currentMatch,
   onEdit,
   onCellDone,
   onDuplicate,
@@ -300,9 +356,13 @@ const GridRow = memo(function GridRow({
   r: number;
   colCount: number;
   editingCol: number | null;
+  /** Header of the column being edited in THIS row ('' everywhere else) — names the editor. */
+  editingHeader: string;
   readOnly: boolean;
   zebra: boolean;
   find: string;   // lowercased search term; empty = no highlight
+  /** The row the Find counter's "k/N" points at. */
+  currentMatch: boolean;
   onEdit: (r: number, c: number) => void;
   onCellDone: (r: number, c: number, value: string | null, nav?: 'down' | 'right' | 'left') => void;
   onDuplicate: (r: number) => void;
@@ -322,38 +382,56 @@ const GridRow = memo(function GridRow({
     >
       {/* Row number, and in cursor mode also the marker + the way to move it. TWO channels for
           the marker, never colour alone (a chevron AND the replay ink), so it survives the
-          themes where the two inks land close together. */}
+          themes where the two inks land close together. In cursor mode the number is a real
+          button: as a clickable <td> the cursor could only be moved with the mouse, and the
+          marked row was invisible to a screen reader (aria-current carries it now). */}
       <td
-        onClick={onSetCursor ? () => onSetCursor(r) : undefined}
         className={`sticky left-0 z-[5] bg-bg-surface shadow-[inset_-1px_0_0_var(--color-border-subtle)] text-caption tabular-nums text-right pr-2 select-none ${
-          onSetCursor ? 'cursor-pointer hover:text-text-primary' : ''
-        } ${isCursor ? 'font-semibold text-[color:var(--color-replay-fg)]' : 'text-text-tertiary'}`}
-        data-tip={onSetCursor
-          ? (isCursor
-              ? tt('Next run starts here', 'A próxima execução começa aqui')
-              : tt('Start the next run here', 'Começar a próxima execução aqui'))
-          : undefined}
+          isCursor ? 'font-semibold text-[color:var(--color-replay-fg)]' : 'text-text-tertiary'
+        }`}
       >
-        <span className="inline-flex items-center justify-end gap-0.5">
-          {isCursor && <ChevronRight size={9} className="shrink-0" />}
-          {r + 1}
-        </span>
+        {onSetCursor ? (
+          <button
+            type="button"
+            onClick={() => onSetCursor(r)}
+            aria-label={isCursor ? `Row ${r + 1}, next run starts here` : `Start the next run at row ${r + 1}`}
+            aria-current={isCursor ? 'true' : undefined}
+            // Fills the cell: the whole <td> used to be the click target.
+            className="w-full h-row inline-flex items-center justify-end gap-0.5 hover:text-text-primary"
+            data-tip={isCursor
+              ? tt('Next run starts here', 'A próxima execução começa aqui')
+              : tt('Start the next run here', 'Começar a próxima execução aqui')}
+          >
+            {isCursor && <ChevronRight size={9} className="shrink-0" />}
+            {r + 1}
+          </button>
+        ) : (
+          <span className="inline-flex items-center justify-end gap-0.5">
+            {r + 1}
+          </span>
+        )}
       </td>
       {Array.from({ length: colCount }, (_, c) => {
         const editing = editingCol === c;
         const matched = find !== '' && (row[c] ?? '').toLowerCase().includes(find);
+        // Every hit shares the tint; the hit the counter's "k/N" points at also gets a ring, so the
+        // current one is told apart by shape and not by a second shade of the same colour.
+        const hitCls = matched
+          ? `bg-[color-mix(in_srgb,var(--color-warning)_22%,transparent)]${currentMatch ? ' shadow-[inset_0_0_0_1px_var(--color-warning-ink)]' : ''}`
+          : '';
         return (
           <td
             key={c}
             onClick={() => { if (!readOnly && !editing) onEdit(r, c); }}
             className={`px-2 text-minor font-mono text-text-secondary whitespace-nowrap truncate align-middle ${
               readOnly ? '' : 'cursor-text'
-            } ${editing ? 'shadow-[inset_0_0_0_1.5px_var(--color-accent-solid)] bg-bg-input' : matched ? 'bg-[color-mix(in_srgb,var(--color-warning)_22%,transparent)]' : ''}`}
+            } ${editing ? 'shadow-[inset_0_0_0_1.5px_var(--color-accent-solid)] bg-bg-input' : hitCls}`}
           >
             {editing ? (
               <CellEditor
                 initial={row[c] ?? ''}
                 multiline
+                ariaLabel={`${editingHeader.trim() || `Column ${c + 1}`}, row ${r + 1}`}
                 onDone={(value, nav) => onCellDone(r, c, value, nav)}
               />
             ) : (
@@ -363,12 +441,18 @@ const GridRow = memo(function GridRow({
         );
       })}
       <td className="relative">
+        {/* Revealed by hover for the mouse and by the ROW holding focus for the keyboard (in
+            cursor mode the row number is a button, so Tab from it lands on these). display:none
+            at rest, NOT opacity-0: an invisible pill is still laid out, and two icon buttons on
+            each of 2,000 rows made opening the panel ~40 % slower (measured, 4× CPU throttle:
+            2.0 s → 2.8 s). Hidden, the browser skips them until a row asks. */}
         {!readOnly && (
-          <span className="absolute right-1 top-1/2 -translate-y-1/2 hidden group-hover:flex gap-0.5">
+          <span className="absolute right-1 top-1/2 -translate-y-1/2 hidden gap-0.5 group-hover:flex group-focus-within:flex">
             <button
               type="button"
               onClick={() => onDuplicate(r)}
-              className="w-6 h-6 flex items-center justify-center rounded bg-bg-elevated border border-border-subtle text-text-tertiary hover:text-text-primary transition-colors"
+              aria-label={`Duplicate row ${r + 1}`}
+              className={iconButtonClass('sm', { className: 'bg-bg-elevated border border-border-subtle' })}
               data-tip="Duplicate row"
             >
               <Copy size={11} />
@@ -376,7 +460,8 @@ const GridRow = memo(function GridRow({
             <button
               type="button"
               onClick={() => onDelete(r)}
-              className="w-6 h-6 flex items-center justify-center rounded bg-bg-elevated border border-border-subtle text-text-tertiary hover:text-[color:var(--color-recording-fg)] transition-colors"
+              aria-label={`Delete row ${r + 1}`}
+              className={iconButtonClass('sm', { tone: 'danger', className: 'bg-bg-elevated border border-border-subtle' })}
               data-tip="Delete row"
             >
               <Trash2 size={11} />
@@ -484,29 +569,71 @@ export function DataPanel({ onClose }: DataPanelProps) {
   // once a big paste has landed (Replace has no row cap; the grid only turns read-only past 2000).
   // Enter and the ✕ flush it, so a jump never runs on a term the user has already changed.
   const [findTerm, setFindTerm] = useState('');
+  // Which hit the "k/N" counter points at; -1 = none yet. A new term starts at -1, NOT at 0: 0 read
+  // "1/N" for a hit nothing had scrolled to, and the first Enter then stepped to the SECOND hit — so
+  // the first one was skipped whenever the user paused longer than the debounce before pressing
+  // Enter, and shown when they didn't.
+  const [findPos, setFindPos] = useState(-1);
   useEffect(() => {
-    const t = window.setTimeout(() => setFindTerm(find), 120);
+    if (find === findTerm) return; // also cancels the pending flush once Enter has applied the term
+    const t = window.setTimeout(() => {
+      setFindTerm(find);
+      if (find.trim().toLowerCase() !== findTerm.trim().toLowerCase()) setFindPos(-1);
+    }, 120);
     return () => window.clearTimeout(t);
-  }, [find]);
+  }, [find, findTerm]);
   const findLower = findTerm.trim().toLowerCase();
-  const [findPos, setFindPos] = useState(0);
   const matchRows = useMemo(() => {
     if (findLower === '') return [];
     const out: number[] = [];
     grid.rows.forEach((row, r) => { if (row.some(cell => cell.toLowerCase().includes(findLower))) out.push(r); });
     return out;
   }, [findLower, grid.rows]);
-  const jumpToMatch = (delta: number) => {
-    if (matchRows.length === 0) return;
-    const next = ((findPos + delta) % matchRows.length + matchRows.length) % matchRows.length;
-    setFindPos(next);
-    gridScrollRef.current?.querySelector(`[data-row="${matchRows[next]}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  // Instant, not smooth: the jump answers a key press, and keyboard actions don't animate in this
+  // app — the smooth scroll also ignored the Animations switch.
+  const scrollToRow = (r: number) => {
+    gridScrollRef.current?.querySelector(`[data-row="${r}"]`)?.scrollIntoView({ block: 'center' });
   };
-  // Keep the cursor in range: reset to 0 on a new term, and clamp when the grid mutates under a
-  // live search (a delete can shrink matchRows below findPos) so the "N/M" counter never reads out
-  // of range.
-  useEffect(() => { setFindPos(0); }, [findLower]);
-  useEffect(() => { setFindPos(p => Math.min(p, Math.max(0, matchRows.length - 1))); }, [matchRows.length]);
+  const jumpToMatch = (delta: 1 | -1) => {
+    const n = matchRows.length;
+    if (n === 0) return;
+    // From "no current hit" the first step lands on the first hit (Shift+Enter: on the last).
+    const next = findPos < 0 ? (delta > 0 ? 0 : n - 1) : ((findPos + delta) % n + n) % n;
+    setFindPos(next);
+    scrollToRow(matchRows[next]);
+  };
+  // Keep the cursor in range when the grid mutates under a live search (a delete can shrink
+  // matchRows below findPos) so the "k/N" counter never reads out of range.
+  useEffect(() => { setFindPos(p => Math.min(p, matchRows.length - 1)); }, [matchRows.length]);
+  // The row the counter points at — its matched cells carry the "current hit" ring.
+  const currentMatchRow = findPos >= 0 ? (matchRows[findPos] ?? -1) : -1;
+
+  // Where the focus goes when the one editor closes on its own keys. Enter past the last row, Tab
+  // past the last column, Esc, a header rename, or a window switch (the blur commits) unmount the
+  // focused textarea, and Chromium parks the focus on <body> — outside the card, where Esc,
+  // Ctrl+Enter and Ctrl+Z all went dead. DialogShell brings a lost focus back to the CARD 30 ms
+  // later; this lands first and lands closer: on the header that was just renamed, or on the grid
+  // (where Esc, Ctrl+Enter and Ctrl+Z answer again).
+  // One task LATER, not in the commit: a click on another control blurs the editor first, and the
+  // commit runs while Chromium is still mid-way through focusing what was clicked — activeElement
+  // reads <body> for that instant, and focusing the grid there CANCELLED the click's focus (the
+  // Find box took no caret, and a Ctrl+Z typed into it reverted the edit just committed). A tick
+  // later the click's focus has landed and the check declines.
+  const prevEditingRef = useRef<Editing>(null);
+  useEffect(() => {
+    const prev = prevEditingRef.current;
+    prevEditingRef.current = editing;
+    if (editing || !prev) return;
+    const t = setTimeout(() => {
+      if (document.activeElement !== document.body) return;
+      const header = prev.kind === 'header'
+        ? gridScrollRef.current?.querySelector<HTMLElement>(`[data-header-name="${prev.c}"]`)
+        : null;
+      (header ?? gridScrollRef.current)?.focus({ preventScroll: true });
+    }, 0);
+    return () => clearTimeout(t);
+  }, [editing]);
+
   const [escArmed, setEscArmed] = useState(false);
   const escArmedRef = useRef(false);
   const escTimer = useRef<number | undefined>(undefined);
@@ -830,12 +957,30 @@ export function DataPanel({ onClose }: DataPanelProps) {
   // re-encodes to the TAB-delimited TSV the surface parses; quoting is preserved by tokenizeTsvGrid.
   const csvInputRef = useRef<HTMLInputElement>(null);
   const importCsvFile = (file: File) => {
-    const reader = new FileReader();
-    // Every other FileReader in the app says so when the read fails (a file held by another
+    // Every other file read in the app says so when the read fails (a file held by another
     // process, a drive that went away); this one did nothing at all, so Import CSV looked broken.
-    reader.onerror = () => showToast(tt('Could not read that file.', 'Não foi possível ler esse arquivo.'), 'error');
-    reader.onload = () => {
-      const text = String(reader.result ?? '');
+    const readFailed = () => showToast(tt('Could not read that file.', 'Não foi possível ler esse arquivo.'), 'error');
+    file.arrayBuffer().then((buf) => {
+      // A BOM names the encoding outright — the rule FileReader.readAsText followed, and the one
+      // Excel's "Unicode Text" export (UTF-16 LE, tab-separated, .txt) depends on. Without one:
+      // UTF-8 first (strict, so a stray byte fails instead of turning into �), then Windows-1252 —
+      // Excel's plain "CSV" save on a Brazilian Windows is ANSI, and reading it as UTF-8 turned
+      // every accent into � ("João" came in as "Jo�o"). TextDecoder drops a BOM it matches.
+      const b = new Uint8Array(buf, 0, Math.min(3, buf.byteLength));
+      const bom = b[0] === 0xff && b[1] === 0xfe ? 'utf-16le'
+        : b[0] === 0xfe && b[1] === 0xff ? 'utf-16be'
+          : b[0] === 0xef && b[1] === 0xbb && b[2] === 0xbf ? 'utf-8'
+            : null;
+      let text: string;
+      if (bom) {
+        text = new TextDecoder(bom).decode(buf);
+      } else {
+        try {
+          text = new TextDecoder('utf-8', { fatal: true }).decode(buf);
+        } catch {
+          text = new TextDecoder('windows-1252').decode(buf);
+        }
+      }
       if (text.trim() === '') return;
       const grid = tokenizeTsvGrid(text, sniffDelimiter(text));
       prefillRef.current = '';
@@ -843,8 +988,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
       setPasteFirstRowHeader(true);
       setPasteText(encodeTsv(grid[0] ?? [], grid.slice(1)));
       setPasteOpen(true);
-    };
-    reader.readAsText(file);
+    }, readFailed);
   };
   const handlePasteModeChange = (m: PasteMode) => {
     // Switching to Append clears the box IFF it still equals the prefill —
@@ -866,6 +1010,23 @@ export function DataPanel({ onClose }: DataPanelProps) {
       const width = parsed.rows.reduce((m, r) => Math.max(m, r.length), headers.length);
       while (headers.length < width) headers.push(nextColName(headers));
       updateGrid(() => ({ ...parsed, headers }));
+    } else if (!pasteFirstRowHeader) {
+      // Append with no header line: by POSITION — pasted column i fills column i, and cells past
+      // the table's last column become new colN columns. Matching by name had only the synthesised
+      // col1…colN to go on, which a table with real column names never has, so every pasted
+      // column landed in a brand-new column and the appended rows were blank in every column the
+      // profile's tokens read. There was no way to append bare rows at all.
+      updateGrid((g) => {
+        const headers = [...g.headers];
+        const widest = parsed.rows.reduce((m, r) => Math.max(m, r.length), 0);
+        while (headers.length < widest) headers.push(nextColName(headers));
+        const newRows = parsed.rows.map((r) => {
+          const out = Array(headers.length).fill('');
+          r.forEach((cell, i) => { out[i] = cell; });
+          return out;
+        });
+        return { headers, rows: [...g.rows, ...newRows] };
+      });
     } else {
       // Append: map pasted columns onto existing headers by trimmed,
       // case-insensitive name (BuildRowDict semantics); unmatched pasted
@@ -1074,6 +1235,38 @@ export function DataPanel({ onClose }: DataPanelProps) {
     // costs no extra re-subscription — the listener is still attached once per pasteOpen/armedClear.
   }, [pasteOpen, armedClear, dirtyNow]);
 
+  // ── Body rows, memoised. GridRow's memo spares the rows' own re-render, but not the map that
+  // builds N elements and shallow-compares each one's props — and that map ran on EVERY render of
+  // this panel: each keystroke in the Find box and in the paste box (the grid stays mounted under
+  // it), each Copied flash, each Esc arm. O(rows) per keystroke, on a table Replace never caps.
+  // The deps are exactly what the props below read (row data, the column count, the edit target
+  // and its header, the read-only cap, the find term and current hit, cursor mode and row, and
+  // the handlers), so a row can never render from a stale input.
+  const editingCell = editing?.kind === 'cell' ? editing : null;
+  const editingCellHeader = editingCell ? (grid.headers[editingCell.c] ?? '') : '';
+  const colCount = grid.headers.length;
+  const bodyRows = useMemo(() => grid.rows.map((row, r) => (
+    <GridRow
+      key={r}
+      row={row}
+      r={r}
+      colCount={colCount}
+      editingCol={editingCell && editingCell.r === r ? editingCell.c : null}
+      editingHeader={editingCell && editingCell.r === r ? editingCellHeader : ''}
+      readOnly={readOnly}
+      zebra={r % 2 === 1}
+      find={findLower}
+      currentMatch={r === currentMatchRow}
+      onEdit={handleEdit}
+      onCellDone={handleCellDone}
+      onDuplicate={handleDuplicateRow}
+      onDelete={handleDeleteRow}
+      isCursor={!loopOverData && r === cursorRow}
+      onSetCursor={loopOverData ? null : handleSetCursor}
+    />
+  )), [grid.rows, colCount, editingCell, editingCellHeader, readOnly, findLower, currentMatchRow,
+    loopOverData, cursorRow, handleEdit, handleCellDone, handleDuplicateRow, handleDeleteRow, handleSetCursor]);
+
   // ── Status strip ──
   const stripLeft = (
     <span className="text-caption text-text-tertiary tabular-nums whitespace-nowrap">
@@ -1086,6 +1279,14 @@ export function DataPanel({ onClose }: DataPanelProps) {
     </span>
   );
   // Hint ladder — first match wins.
+  // The warning rungs of the ladder below, as plain text for the live region. Only these are
+  // announced: the editing hint and the cursor line change on every editor open/close and every
+  // run start, and a live strip read those out each time.
+  const stripWarning = willClear ? 'Saving now clears the stored table.'
+    : loopOverData && grid.rows.length === 0 ? 'No rows — replay won’t start.'
+      : escArmed ? 'Unsaved changes — press Esc again to discard.'
+        : readOnly ? 'Large table — grid is read-only; edit via Paste / bulk edit.'
+          : '';
   const stripRight = (() => {
     const cls = 'text-caption truncate';
     if (editing) return <span className={`${cls} text-text-tertiary`}>{'Enter commits · Alt+Enter line break · Esc reverts'}</span>;
@@ -1111,23 +1312,29 @@ export function DataPanel({ onClose }: DataPanelProps) {
           onKeyDown={(e) => {
             if (e.key !== 'Enter') return;
             if (find !== findTerm) {
-              // The term is still in the debounce: apply it now and show its first hit, the
-              // "1/N" the counter is about to read.
               setFindTerm(find);
               const lower = find.trim().toLowerCase();
-              const first = lower === '' ? -1 : grid.rows.findIndex((row) => row.some((cell) => cell.toLowerCase().includes(lower)));
-              if (first >= 0) gridScrollRef.current?.querySelector(`[data-row="${first}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-              return;
+              if (lower !== findLower) {
+                // The term is still in the debounce: apply it now and show its first hit, the
+                // "1/N" the counter is about to read.
+                const first = lower === '' ? -1 : grid.rows.findIndex((row) => row.some((cell) => cell.toLowerCase().includes(lower)));
+                setFindPos(first >= 0 ? 0 : -1);
+                if (first >= 0) scrollToRow(first);
+                return;
+              }
+              // Only spacing changed — the same search; step on from the current hit.
             }
             jumpToMatch(e.shiftKey ? -1 : 1);
           }}
           placeholder={'Find in table…'}
+          aria-label="Find in table"
           className="input-inline pl-7 pr-7 font-sans text-caption"
         />
         {find && (
           <button
             type="button"
-            onClick={() => { setFind(''); setFindTerm(''); }}
+            onClick={() => { setFind(''); setFindTerm(''); setFindPos(-1); }}
+            aria-label="Clear search"
             className="absolute right-1.5 text-text-disabled hover:text-text-secondary"
           >
             <X size={11} />
@@ -1139,9 +1346,25 @@ export function DataPanel({ onClose }: DataPanelProps) {
           <span>{matchRows.length === 0 ? 'No matches' : `${matchRows.length} row${matchRows.length === 1 ? '' : 's'}`}</span>
           {matchRows.length > 0 && (
             <>
-              <button type="button" onClick={() => jumpToMatch(-1)} className="px-1 hover:text-text-primary" data-tip={tt('Previous (Shift+Enter)', 'Anterior (Shift+Enter)')}>↑</button>
-              <button type="button" onClick={() => jumpToMatch(1)} className="px-1 hover:text-text-primary" data-tip={tt('Next (Enter)', 'Próximo (Enter)')}>↓</button>
-              <span>{findPos + 1}/{matchRows.length}</span>
+              <button
+                type="button"
+                onClick={() => jumpToMatch(-1)}
+                aria-label="Previous match"
+                className={iconButtonClass('sm')}
+                data-tip={tt('Previous (Shift+Enter)', 'Anterior (Shift+Enter)')}
+              >
+                <ChevronUp size={12} />
+              </button>
+              <button
+                type="button"
+                onClick={() => jumpToMatch(1)}
+                aria-label="Next match"
+                className={iconButtonClass('sm')}
+                data-tip={tt('Next (Enter)', 'Próximo (Enter)')}
+              >
+                <ChevronDown size={12} />
+              </button>
+              {findPos >= 0 && <span>{findPos + 1}/{matchRows.length}</span>}
             </>
           )}
         </span>
@@ -1210,8 +1433,11 @@ export function DataPanel({ onClose }: DataPanelProps) {
     >
       {/* Body — `relative` is load-bearing: the paste surface overlays inside it. */}
       <div className="relative flex flex-1 min-h-0">
-        {/* ── Hero column: header bar (counts + find) · grid · status strip (hints) ── */}
-        <div className="flex-1 min-w-0 flex flex-col">
+        {/* ── Hero column: header bar (counts + find) · grid · status strip (hints) ──
+            `inert` while the paste surface covers it (the rail below too): an overlay hides
+            controls from the eye, not from Tab — Shift+Tab from the surface walked into the
+            covered rail ("Clear table…", "Loop over data") where Space acted unseen. */}
+        <div className="flex-1 min-w-0 flex flex-col" inert={pasteOpen}>
           {!emptyGrid && (
             <div className="h-row shrink-0 px-3 flex items-center justify-between gap-3 bg-bg-card border-b border-border-subtle">
               {stripLeft}
@@ -1239,6 +1465,10 @@ export function DataPanel({ onClose }: DataPanelProps) {
               ref={gridScrollRef}
               tabIndex={-1}
               className="flex-1 min-h-0 overflow-auto bg-bg-surface outline-none"
+              // The row-number buttons are tab stops: Shift+Tab could park one under the sticky
+              // header, which Chromium will not scroll out from (it is still "inside" the
+              // scrollport). Same fix as ActionTable's grid.
+              style={{ scrollPaddingTop: 'var(--ui-row-height)' }}
             >
               <table
                 className="border-separate border-spacing-0"
@@ -1251,12 +1481,17 @@ export function DataPanel({ onClose }: DataPanelProps) {
                 </colgroup>
                 <thead>
                   <tr>
-                    <th
-                      onClick={() => copyToken('{row}', '__rownum')}
-                      className="sticky top-0 left-0 z-20 bg-bg-surface shadow-[inset_-1px_0_0_var(--color-border-subtle),inset_0_-1px_0_var(--color-border-subtle)] h-row text-caption text-text-tertiary text-right pr-2 select-none cursor-pointer"
-                      data-tip={tt('{row} — click to copy the token', '{row} — clique para copiar o token')}
-                    >
-                      {copiedKey === '__rownum' ? <Check size={11} className="inline text-[color:var(--color-replay-fg)]" /> : '#'}
+                    <th className="sticky top-0 left-0 z-20 bg-bg-surface shadow-[inset_-1px_0_0_var(--color-border-subtle),inset_0_-1px_0_var(--color-border-subtle)] h-row text-caption text-text-tertiary text-right pr-2 select-none">
+                      {/* A button, not a clickable <th>: copying {row} had no keyboard path. */}
+                      <button
+                        type="button"
+                        onClick={() => copyToken('{row}', '__rownum')}
+                        aria-label="# — copy {row} token"
+                        className="w-full h-row inline-flex items-center justify-end hover:text-text-primary"
+                        data-tip={tt('{row} — click to copy the token', '{row} — clique para copiar o token')}
+                      >
+                        {copiedKey === '__rownum' ? <Check size={11} className="text-[color:var(--color-replay-fg)]" /> : '#'}
+                      </button>
                     </th>
                     {grid.headers.map((h, c) => {
                       const meta = headerMeta[c];
@@ -1272,6 +1507,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
                             <CellEditor
                               initial={h}
                               multiline={false}
+                              ariaLabel="Column name"
                               onDone={(value) => handleHeaderDone(c, value)}
                             />
                           ) : (
@@ -1279,6 +1515,8 @@ export function DataPanel({ onClose }: DataPanelProps) {
                               {!meta.valid && <TriangleAlert size={11} className="shrink-0" />}
                               <button
                                 type="button"
+                                // Where the focus returns when this column's rename closes on a key.
+                                data-header-name={c}
                                 onClick={() => { if (!readOnly) setEditing({ kind: 'header', c }); }}
                                 className={`truncate ${meta.dup ? 'underline decoration-dotted decoration-warning-ink underline-offset-2' : ''} ${readOnly ? '' : 'cursor-text'}`}
                                 data-tip={meta.dup ? tt('Duplicate column — the last one wins', 'Coluna duplicada — a última vence') : undefined}
@@ -1287,7 +1525,14 @@ export function DataPanel({ onClose }: DataPanelProps) {
                               </button>
                               <button
                                 type="button"
-                                onClick={(e) => setHeaderMenu({ c, anchor: e.currentTarget })}
+                                onClick={(e) => {
+                                  // Read before the updater: React clears currentTarget once the
+                                  // handler returns. A second press on the open menu's ⋯ closes it.
+                                  const anchor = e.currentTarget;
+                                  setHeaderMenu((m) => (m?.c === c ? null : { c, anchor }));
+                                }}
+                                aria-haspopup="menu"
+                                aria-expanded={headerMenu?.c === c}
                                 aria-label="Column options"
                                 data-tip={tt('Column options', 'Opções da coluna')}
                                 // Hover-revealed for the mouse, but visible on keyboard focus too:
@@ -1306,7 +1551,8 @@ export function DataPanel({ onClose }: DataPanelProps) {
                         <button
                           type="button"
                           onClick={addColumn}
-                          className="w-6 h-6 flex items-center justify-center rounded text-text-tertiary hover:text-text-primary hover:bg-bg-card transition-colors"
+                          aria-label="Add column"
+                          className={iconButtonClass('sm')}
                           data-tip={tt('Add column', 'Adicionar coluna')}
                         >
                           <Plus size={12} />
@@ -1316,24 +1562,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {grid.rows.map((row, r) => (
-                    <GridRow
-                      key={r}
-                      row={row}
-                      r={r}
-                      colCount={grid.headers.length}
-                      editingCol={editing?.kind === 'cell' && editing.r === r ? editing.c : null}
-                      readOnly={readOnly}
-                      zebra={r % 2 === 1}
-                      find={findLower}
-                      onEdit={handleEdit}
-                      onCellDone={handleCellDone}
-                      onDuplicate={handleDuplicateRow}
-                      onDelete={handleDeleteRow}
-                      isCursor={!loopOverData && r === cursorRow}
-                      onSetCursor={loopOverData ? null : handleSetCursor}
-                    />
-                  ))}
+                  {bodyRows}
                   {!readOnly && (
                     <tr>
                       <td colSpan={grid.headers.length + 2}>
@@ -1352,14 +1581,18 @@ export function DataPanel({ onClose }: DataPanelProps) {
               </table>
             </div>
           )}
-          {/* Status strip — the hint ladder; the counts moved up to the header bar. */}
+          {/* Status strip — the hint ladder; the counts moved up to the header bar. Its WARNINGS
+              ("press Esc again to discard", "Saving now clears the stored table", "replay won't
+              start") go to an always-mounted live region beside it — without one a screen reader
+              heard none of them; with the whole strip live it also heard every editing hint. */}
           <div className="h-7 shrink-0 px-4 flex items-center justify-end gap-3 bg-bg-card border-t border-border-subtle">
             {stripRight}
+            <span role="status" className="sr-only">{stripWarning}</span>
           </div>
         </div>
 
-        {/* ── Rail ── */}
-        <div className="w-[300px] shrink-0 border-l border-border-subtle flex flex-col min-h-0 overflow-y-auto">
+        {/* ── Rail ── (inert under the paste surface, like the hero column) */}
+        <div className="w-[300px] shrink-0 border-l border-border-subtle flex flex-col min-h-0 overflow-y-auto" inert={pasteOpen}>
           {/* RUN */}
           <div className="label-micro text-text-tertiary px-3 pt-2.5 pb-1">Run</div>
           <button
@@ -1377,32 +1610,21 @@ export function DataPanel({ onClose }: DataPanelProps) {
             <span className="flex items-center gap-1.5"><Repeat size={13} /> Loop over data</span>
           </button>
           <div className="px-3 pt-1.5 pb-2">
+            {/* The live 3-state card, on the house Callout (it was three hand-copied versions of
+                its recipe). `still`: the card swaps with the toggle above and has always done so
+                without an entrance. */}
             {loopOverData && grid.rows.length > 0 ? (
-              <div
-                className="border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed"
-                style={{
-                  background: 'color-mix(in srgb, var(--color-replay) 8%, transparent)',
-                  borderColor: 'var(--color-replay-fg)',
-                  color: 'var(--color-replay-fg)',
-                }}
-              >
+              <Callout tone="ok" still>
                 {`${grid.rows.length} runs, one per row — overrides Loop count and WhilePressed/Toggle looping.`}
-              </div>
+              </Callout>
             ) : loopOverData ? (
-              <div
-                className="border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed"
-                style={{
-                  background: 'color-mix(in srgb, var(--color-recording) 8%, transparent)',
-                  borderColor: 'var(--color-recording-fg)',
-                  color: 'var(--color-recording-fg)',
-                }}
-              >
+              <Callout tone="error" still>
                 {'No rows — replay won’t start.'}
-              </div>
+              </Callout>
             ) : (
-              <div className="border-l-2 border-border-subtle rounded px-2.5 py-2 text-caption leading-relaxed text-text-tertiary">
+              <Callout still>
                 {'Each run uses the marked row, then advances (wrapping). Click a row number to move the cursor. The advance happens at start, so a stopped run has still consumed its row.'}
-              </div>
+              </Callout>
             )}
             {/* Lap notice — the cursor-mode counterpart of "On row error": it only means
                 anything while the cursor is advancing, and a 1-row table would "finish"
@@ -1505,7 +1727,8 @@ export function DataPanel({ onClose }: DataPanelProps) {
                             type="button"
                             onClick={() => fixHeader(c)}
                             disabled={readOnly}
-                            className="w-6 h-6 flex items-center justify-center rounded text-text-tertiary hover:text-text-primary hover:bg-bg-card transition-colors ml-auto shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                            aria-label={`Fix column name ${meta.name || `column ${c + 1}`}`}
+                            className={iconButtonClass('sm', { className: 'ml-auto' })}
                             data-tip={readOnly
                               ? tt('Not a valid token name ({ } : not allowed) — the grid is read-only, fix it via Paste / bulk edit',
                                    'Nome inválido para token ({ } : não podem) — a grade está só leitura, corrija pelo Paste / bulk edit')
@@ -1616,6 +1839,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
             onFirstRowHeaderChange={setPasteFirstRowHeader}
             parsed={pasteParsed}
             hasExistingTable={!emptyGrid}
+            existingHeaders={grid.headers}
             onBack={() => setPasteOpen(false)}
           />
         )}

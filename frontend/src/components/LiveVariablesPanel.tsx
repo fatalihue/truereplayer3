@@ -90,6 +90,7 @@ export function LiveVariablesHost() {
         <button
           type="button"
           onClick={() => window.dispatchEvent(new CustomEvent('cmd:livevars'))}
+          aria-label="Close Live Variables"
           className={iconButtonClass('sm')}>
           <X size={12} />
         </button>

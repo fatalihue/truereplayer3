@@ -14,7 +14,10 @@ export interface Grid {
 // tab, newline, or quote, so without this a multi-line message-body cell would be torn
 // across rows. Unquoted cells pass through verbatim (so values keep spaces).
 export function tokenizeTsvGrid(text: string, delim: string = '\t'): string[][] {
-  const src = text.replace(/\r\n/g, '\n');
+  // CRLF (Windows) AND a lone CR (Excel for Mac's "CSV (Macintosh)", classic Mac files) both end a
+  // line. Normalising only CRLF read a CR-only file as ONE row — every value became a header and
+  // the table had no data rows.
+  const src = text.replace(/\r\n?/g, '\n');
   const grid: string[][] = [];
   let row: string[] = [];
   let cell = '';
@@ -44,7 +47,9 @@ export function tokenizeTsvGrid(text: string, delim: string = '\t'): string[][] 
 // writes ';'). Whichever is most frequent on line 1 wins; defaults to tab when none appears. The
 // quote-unaware count is fine for a heuristic (a delimiter inside a quoted header is rare).
 export function sniffDelimiter(text: string): string {
-  const firstLine = text.replace(/\r\n/g, '\n').split('\n', 1)[0] ?? '';
+  // Same line-ending rule as tokenizeTsvGrid: without the lone CR, a CR-only file's "first line"
+  // was the whole file.
+  const firstLine = text.replace(/\r\n?/g, '\n').split('\n', 1)[0] ?? '';
   const counts: [string, number][] = [
     ['\t', (firstLine.match(/\t/g) || []).length],
     [';', (firstLine.match(/;/g) || []).length],

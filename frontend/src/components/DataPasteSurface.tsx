@@ -22,6 +22,8 @@ interface DataPasteSurfaceProps {
   parsed: Grid;
   /** Whether the panel currently has a table (labels the Replace-mode copy). */
   hasExistingTable: boolean;
+  /** The table's current columns: Append without a header row fills THESE by position. */
+  existingHeaders: string[];
   onBack: () => void;
 }
 
@@ -39,16 +41,24 @@ export function DataPasteSurface({
   onFirstRowHeaderChange,
   parsed,
   hasExistingTable,
+  existingHeaders,
   onBack,
 }: DataPasteSurfaceProps) {
   const tt = useTt();
-  const invalidHeaders = parsed.headers.filter((h) => h && !VALID_HEADER.test(h.trim()));
+  // Append with the header row off maps the pasted columns onto the table's columns BY POSITION
+  // (DataPanel's apply), so the preview has to show those — listing the synthesised col1…colN as
+  // new columns described a different outcome from the one Apply produces.
+  const byPosition = mode === 'append' && !firstRowHeader && existingHeaders.length > 0;
+  const shownHeaders = byPosition
+    ? Array.from({ length: Math.max(existingHeaders.length, parsed.headers.length) }, (_, i) => existingHeaders[i] ?? parsed.headers[i])
+    : parsed.headers;
+  const invalidHeaders = shownHeaders.filter((h) => h && !VALID_HEADER.test(h.trim()));
   // The two directions are different outcomes and each needs its own sentence: a short row is
   // padded with blanks, a LONG one carries cells the grid has no column for. Saying only the
   // first for both told the user their extra cells were missing, when in fact they were kept and
   // came back as a synthesised column on the next open.
-  const short = parsed.rows.some((r) => r.length < parsed.headers.length);
-  const long = parsed.rows.some((r) => r.length > parsed.headers.length);
+  const short = parsed.rows.some((r) => r.length < shownHeaders.length);
+  const long = parsed.rows.some((r) => r.length > shownHeaders.length);
 
   return (
     <div className="absolute inset-0 z-20 bg-bg-elevated flex flex-col">
@@ -83,21 +93,26 @@ export function DataPasteSurface({
                 {
                   value: 'append',
                   label: 'Append rows',
-                  tip: tt('Matches columns by name', 'Casa as colunas pelo nome'),
+                  tip: tt('Matches columns by name — by position when the first row isn’t the header',
+                          'Casa as colunas pelo nome — pela posição quando a primeira linha não é o cabeçalho'),
                 },
               ]}
               value={mode}
               onChange={onModeChange}
             />
           </div>
-          <div className="relative flex-1 min-h-0 dataloop-editor">
+          {/* The fill sits on the wrapper and the textarea is transparent — the Insert Text
+              recipe. The focus hairline is an inset shadow on the WRAPPER, and with the opaque
+              fill on the textarea the textarea painted over it: the box showed no focus at all. */}
+          <div className="relative flex-1 min-h-0 bg-bg-input dataloop-editor">
             <textarea
               value={text}
               onChange={(e) => onTextChange(e.target.value)}
               spellCheck={false}
               autoFocus
+              aria-label="Table data, tab-separated"
               placeholder={'cliente\tpedido\tvalor\nMaria\t1023\tR$ 89,90\nJoão\t1044\tR$ 149,00'}
-              className="w-full h-full font-mono text-minor bg-bg-input p-4 outline-none resize-none whitespace-pre overflow-auto text-text-primary placeholder:text-text-disabled"
+              className="w-full h-full font-mono text-minor bg-transparent p-4 outline-none resize-none whitespace-pre overflow-auto text-text-primary placeholder:text-text-disabled"
             />
           </div>
         </div>
@@ -110,23 +125,24 @@ export function DataPasteSurface({
             aria-checked={firstRowHeader}
             onClick={() => onFirstRowHeaderChange(!firstRowHeader)}
             className="flex items-center gap-2 text-minor text-text-secondary hover:text-text-primary transition-colors"
-            data-tip={tt(
-              'Off: columns become col1…colN and every line is data',
-              'Desligado: colunas viram col1…colN e toda linha é dado',
-            )}
+            data-tip={mode === 'append'
+              ? tt('Off: every line is data, filled into the columns by position',
+                   'Desligado: toda linha é dado, preenchida nas colunas pela posição')
+              : tt('Off: columns become col1…colN and every line is data',
+                   'Desligado: colunas viram col1…colN e toda linha é dado')}
           >
             <CheckboxBox checked={firstRowHeader} />
             {'First row is the header'}
           </button>
 
           <div className="text-caption text-text-tertiary tabular-nums">
-            {parsed.headers.length} {'columns'} · {parsed.rows.length} {'rows'}
+            {shownHeaders.length} {'columns'} · {parsed.rows.length} {'rows'}
           </div>
 
-          {parsed.headers.length > 0 && (
+          {shownHeaders.length > 0 && (
             <div className="flex flex-col gap-1">
-              <div className="label-micro text-text-tertiary">{'Columns'}</div>
-              {parsed.headers.map((h, i) => {
+              <div className="label-micro text-text-tertiary">{byPosition ? 'Fills by position' : 'Columns'}</div>
+              {shownHeaders.map((h, i) => {
                 const name = h.trim();
                 const ok = name !== '' && VALID_HEADER.test(name);
                 return (
@@ -145,9 +161,11 @@ export function DataPasteSurface({
             </div>
           )}
 
+          {/* The lucide glyph, not a "⚠" character (one icon family); text kept as it was. */}
           {invalidHeaders.length > 0 && (
-            <div className="text-caption text-text-tertiary leading-relaxed">
-              {'⚠ headers holding { } or : can’t be {row:…} tokens, but still save.'}
+            <div className="flex items-start gap-1.5 text-caption text-text-tertiary leading-relaxed">
+              <TriangleAlert size={11} className="text-warning-ink shrink-0 mt-1" />
+              <span>{'headers holding { } or : can’t be {row:…} tokens, but still save.'}</span>
             </div>
           )}
 
