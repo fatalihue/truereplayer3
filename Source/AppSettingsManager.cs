@@ -39,9 +39,12 @@ namespace TrueReplayer.Services
             public int LoopCount { get; set; } = 1;
             public bool LoopIntervalEnabled { get; set; } = false;
             public int LoopInterval { get; set; } = 200;
-            // Smooth mouse movement — interpolated cursor path so games that reject a single
-            // large "teleport" (e.g. Roblox) follow the cursor. See ActionReplayer.SmoothMovement.
-            public bool SmoothMovement { get; set; } = true;
+            // Smooth mouse movement (Game Mode) — interpolated cursor path so games that reject a
+            // single large "teleport" (e.g. Roblox) follow the cursor. See ActionReplayer.SmoothMovement.
+            // The default every profile without its own follows, OFF like RestoreCursor: a game
+            // profile turns it on for itself. A file written by an older build always carries the
+            // key (it serializes every field), so this only reaches a new install and Reset.
+            public bool SmoothMovement { get; set; } = false;
             // Cursor return at the end of a macro run — the default every profile without its own
             // follows. Off = today's behaviour. See ActionReplayer.RestoreCursorDefault.
             public bool RestoreCursor { get; set; } = false;

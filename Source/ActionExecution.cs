@@ -1564,11 +1564,11 @@ namespace TrueReplayer.Services
         // physical mouse. When SmoothMovement is on, SimulateMouse walks a straight path from
         // the current cursor to the target in steps of at most MoveStepPx pixels, pausing
         // MoveStepDelayMs between steps. MoveClickDelayMs is the gap before the click fires.
-        // When off, it jumps straight to the target (legacy behaviour). These are persisted in
+        // When off, it jumps straight to the target (the default). These are persisted in
         // appsettings.json and loaded into these statics by AppSettingsManager.ApplyGlobalSettings;
         // the UI edits them through the settings:change keys smoothMovement / moveStepPx /
         // moveStepDelay / moveClickDelay.
-        public static bool SmoothMovement = true;
+        public static bool SmoothMovement = false;
         // The RUN's own Game Mode — the loaded profile's explicit choice, or null when it never
         // set one. Effective = this ?? SmoothMovement, read per move, so a profile that follows
         // still sees the global flipped mid-run exactly as before. Per run, not a static:

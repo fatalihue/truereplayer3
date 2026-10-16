@@ -12,7 +12,9 @@ const defaultSettings = {
   enableLoop: false,
   loopInterval: '200',
   loopIntervalEnabled: false,
-  smoothMovement: true,
+  // Both off, matching AppSettings: Game Mode and Return cursor are the defaults profiles
+  // without their own follow, and a profile turns either on for itself.
+  smoothMovement: false,
   restoreCursor: false,
   moveStepPx: '20',
   moveStepDelay: '2',
