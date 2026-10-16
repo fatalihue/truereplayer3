@@ -5,9 +5,12 @@ interface ToggleProps {
   // 'sm' = the compact 28×16 switch used in the redesigned Settings panel; default
   // keeps the original 40×20 size for every other surface (dialogs, etc.).
   size?: 'default' | 'sm';
+  // The switch's name when no labelled group around it supplies one (a caption <span> beside
+  // it is not tied to it — a screen reader heard just "switch, off").
+  ariaLabel?: string;
 }
 
-export function Toggle({ isOn, onChange, disabled = false, size = 'default' }: ToggleProps) {
+export function Toggle({ isOn, onChange, disabled = false, size = 'default', ariaLabel }: ToggleProps) {
   const sm = size === 'sm';
   const track = sm ? 'w-7 h-4' : 'w-10 h-5';
   // Knob: 1px inset on every side inside the 1px border (track inner box is 26×14 for
@@ -23,6 +26,7 @@ export function Toggle({ isOn, onChange, disabled = false, size = 'default' }: T
       type="button"
       role="switch"
       aria-checked={isOn}
+      aria-label={ariaLabel}
       aria-disabled={disabled}
       disabled={disabled}
       onClick={() => !disabled && onChange(!isOn)}

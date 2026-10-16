@@ -216,6 +216,46 @@ export function DialogShell({
     if (card && !card.contains(document.activeElement)) card.focus();
   }, []);
 
+  // ...and give it back on the way out. The shell took the focus and never returned it, so every
+  // close left it on <body>: after the Image Cropper (a sibling of the Automation panel's shell),
+  // Import Preview or Import Result, the dialog underneath lost Esc and Tab walked into the app
+  // behind the scrim. Captured on the FIRST render, before any child autoFocus moves it. Only
+  // when the focus really is on <body> a tick later — a close that already put it somewhere
+  // (a stacked dialog, a field the caller focused) is left alone. Opener gone → the dialog below.
+  // Focus lost to <body> while open comes back to the card. A control that removes ITSELF when
+  // used — a menu item closing its menu, a clear-× that hides, a picker row, Customize swapping
+  // the column — takes the focus down with it and Chromium parks it on <body> (focusout with a
+  // null relatedTarget). Every key handler of this shell lives on the card, so from there Esc
+  // stopped closing and Tab walked out of the modal (2026-10-16 sweeps: Theme Editor, Insert
+  // Text, Window Target, Profile Info, Automation, Data Loop). A NATIVE document listener, not the
+  // card's onBlur: React switches its event system off during a commit, and a removal-blur happens
+  // inside one, so onBlur never saw it (probed). Only the topmost modal answers, and a little
+  // after the opener hand-back below, which wins when both apply. A blur toward anywhere real
+  // (another field, a stacked dialog, another window) leaves activeElement off <body>: ignored.
+  useEffect(() => {
+    const onFocusOut = (e: FocusEvent) => {
+      if (e.relatedTarget) return;
+      setTimeout(() => {
+        const card = cardRef.current;
+        if (!card?.isConnected || document.activeElement !== document.body) return;
+        const modals = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
+        if (modals[modals.length - 1] === card) card.focus({ preventScroll: true });
+      }, 30);
+    };
+    document.addEventListener('focusout', onFocusOut);
+    return () => document.removeEventListener('focusout', onFocusOut);
+  }, []);
+
+  const [opener] = useState(() => (document.activeElement instanceof HTMLElement ? document.activeElement : null));
+  useEffect(() => () => {
+    setTimeout(() => {
+      if (document.activeElement !== document.body) return;
+      if (opener?.isConnected && opener !== document.body) { opener.focus({ preventScroll: true }); return; }
+      const below = document.querySelectorAll<HTMLElement>('[role="dialog"][aria-modal="true"]');
+      below[below.length - 1]?.focus({ preventScroll: true });
+    }, 0);
+  }, [opener]);
+
   // Exit fallback — animationend never fires if the window is occluded/minimized
   // (Chromium pauses CSS animations) or data-animations flips mid-flight; without
   // this the dialog would strand in the leaving state.
@@ -269,6 +309,9 @@ export function DialogShell({
         }}
         onKeyDown={(e) => {
           if (e.key === 'Escape') {
+            // A field that already used its Esc (a name prompt cancelling itself) is not asking
+            // to close the dialog — the same rule the Tab branch below follows.
+            if (e.nativeEvent.defaultPrevented) return;
             e.preventDefault();
             e.stopPropagation();
             requestClose();

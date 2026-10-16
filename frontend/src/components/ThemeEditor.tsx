@@ -2,13 +2,14 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   Check, RotateCcw, Download, Upload, Clipboard, ClipboardPaste, Pipette,
   ChevronDown, ChevronRight, ChevronLeft, Dices, SlidersHorizontal, FileJson2,
-  Palette, Wand2, TriangleAlert, Undo2,
+  Palette, Wand2, TriangleAlert, Undo2, X, ArrowRight,
 } from 'lucide-react';
 import { NumberInput } from './common/NumberInput';
 import { Toggle } from './common/Toggle';
 import { DialogShell  } from './common/DialogShell';
 import { Button } from './common/Button';
 import { SegmentedControl } from './common/SegmentedControl';
+import { FieldError } from './common/FieldError';
 import {
   themes,
   DEFAULT_UI_SETTINGS,
@@ -22,6 +23,7 @@ import {
   pickInk,
   isLightColor,
   DEFAULT_THEME_ID,
+  makeCustomPresetId,
 } from '../themes';
 import type { ThemeColors, ExportedTheme, ThemeTag, CustomThemePreset, ThemeUISettings, ThemeConfig } from '../themes';
 import { useTheme } from '../state/ThemeContext';
@@ -143,6 +145,11 @@ function ColorRow({ label, value, overridden, check, hslOpen, onChange, onReset,
   // back over it mid-typing. Same shape as NumberInput's buffer: a complete value still applies live;
   // leaving the field shows the stored one again.
   const [hexDraft, setHexDraft] = useState<string | null>(null);
+  // The H/S/L the sliders stand on. Re-derived from the hex on every render, a slider pushed to an
+  // end lost the other two: at S=0 or L=0/100 every hue is the same grey, hexToHSL answers h=0,
+  // and dragging back out landed on red. Held while the hex is the one the sliders produced; a
+  // change from anywhere else (typing, the picker, Reset, a recent swatch) re-derives it.
+  const [hslHold, setHslHold] = useState<{ hex: string; h: number; s: number; l: number } | null>(null);
 
   return (
     <div
@@ -153,18 +160,21 @@ function ColorRow({ label, value, overridden, check, hslOpen, onChange, onReset,
       <div className="flex items-center gap-1.5">
         <span className="w-[96px] text-minor text-text-secondary shrink-0">{label}</span>
 
-        <label className="relative w-6 h-6 rounded border border-border-default cursor-pointer shrink-0 overflow-hidden">
+        {/* The native picker is an invisible overlay, so the swatch draws its focus instead. */}
+        <label className="relative w-6 h-6 rounded border border-border-default cursor-pointer shrink-0 overflow-hidden has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent-solid">
           <div className="absolute inset-0" style={{ backgroundColor: value }} />
           <input
             type="color"
             value={hexValue}
             onChange={(e) => onChange(e.target.value)}
+            aria-label={`${label} color`}
             className="absolute inset-0 opacity-0 cursor-pointer"
           />
         </label>
 
         <input
           type="text"
+          aria-label={`${label} hex`}
           value={hexDraft ?? hexValue}
           onFocus={() => setHexDraft(hexValue)}
           onBlur={() => setHexDraft(null)}
@@ -177,28 +187,36 @@ function ColorRow({ label, value, overridden, check, hslOpen, onChange, onReset,
         />
 
         {/* Icon cluster (fixed width so 2-col rows line up). Pipette + tune reveal on
-            hover; reset holds a reserved slot, visible only when overridden. */}
-        <span className="flex items-center gap-0.5 w-[62px] shrink-0">
+            hover — and on keyboard focus, or Tab landed on an invisible button; reset holds a
+            reserved slot, visible only when overridden. 24 px targets (the floor), 3 × 24 + gaps. */}
+        <span className="flex items-center gap-0.5 w-[76px] shrink-0">
           {HAS_EYEDROPPER && (
             <button
+              type="button"
               onClick={async () => { const p = await pickFromScreen(); if (p) onChange(p); }}
-              className="w-5 h-5 flex items-center justify-center rounded text-text-tertiary hover:text-accent hover:bg-bg-card opacity-0 group-hover:opacity-100 transition-opacity"
+              aria-label={`Pick ${label} color from screen`}
+              className="w-6 h-6 flex items-center justify-center rounded text-text-tertiary hover:text-accent hover:bg-bg-card opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
               data-tip={tt('Pick color from screen', 'Capturar cor da tela')}
             >
               <Pipette size={12} />
             </button>
           )}
           <button
+            type="button"
             onClick={onToggleHsl}
-            className={`w-5 h-5 flex items-center justify-center rounded hover:bg-bg-card transition-opacity ${hslOpen ? 'text-accent opacity-100' : 'text-text-tertiary hover:text-text-primary opacity-0 group-hover:opacity-100'}`}
+            aria-label={`${label} HSL sliders`}
+            aria-expanded={hslOpen}
+            className={`w-6 h-6 flex items-center justify-center rounded hover:bg-bg-card transition-opacity ${hslOpen ? 'text-accent opacity-100' : 'text-text-tertiary hover:text-text-primary opacity-0 group-hover:opacity-100 focus-visible:opacity-100'}`}
             data-tip={tt('HSL sliders', 'Controles HSL')}
           >
             <SlidersHorizontal size={11} />
           </button>
           {overridden && (
             <button
+              type="button"
               onClick={onReset}
-              className="w-5 h-5 flex items-center justify-center rounded text-text-tertiary hover:text-text-primary hover:bg-bg-card"
+              aria-label={`Reset ${label} to preset`}
+              className="w-6 h-6 flex items-center justify-center rounded text-text-tertiary hover:text-text-primary hover:bg-bg-card"
               data-tip={tt('Reset to preset', 'Voltar ao preset')}
             >
               <RotateCcw size={12} />
@@ -248,13 +266,17 @@ function ColorRow({ label, value, overridden, check, hslOpen, onChange, onReset,
       </div>
 
       {hslOpen && (() => {
-        const hsl = hexToHSL(hexValue);
-        const set = (h: number, s: number, l: number) => onChange(hslToHex(h, s, l));
+        const hsl = hslHold && hslHold.hex === hexValue.toLowerCase() ? hslHold : hexToHSL(hexValue);
+        const set = (h: number, s: number, l: number) => {
+          const hex = hslToHex(h, s, l);
+          setHslHold({ hex: toHex(hex).toLowerCase(), h, s, l });
+          onChange(hex);
+        };
         return (
           <div className="ml-[102px] mt-1 mb-1 pl-2 border-l border-border-subtle space-y-1">
-            <HSLSlider label="H" max={360} value={Math.round(hsl.h)} unit="°" gradient="linear-gradient(to right, hsl(0,80%,50%), hsl(60,80%,50%), hsl(120,80%,50%), hsl(180,80%,50%), hsl(240,80%,50%), hsl(300,80%,50%), hsl(360,80%,50%))" onChange={(v) => set(v, hsl.s, hsl.l)} />
-            <HSLSlider label="S" max={100} value={Math.round(hsl.s)} unit="%" gradient={`linear-gradient(to right, hsl(${hsl.h},0%,${hsl.l}%), hsl(${hsl.h},100%,${hsl.l}%))`} onChange={(v) => set(hsl.h, v, hsl.l)} />
-            <HSLSlider label="L" max={100} value={Math.round(hsl.l)} unit="%" gradient={`linear-gradient(to right, hsl(${hsl.h},${hsl.s}%,0%), hsl(${hsl.h},${hsl.s}%,50%), hsl(${hsl.h},${hsl.s}%,100%))`} onChange={(v) => set(hsl.h, hsl.s, v)} />
+            <HSLSlider label="H" name={`${label} hue`} max={360} value={Math.round(hsl.h)} unit="°" gradient="linear-gradient(to right, hsl(0,80%,50%), hsl(60,80%,50%), hsl(120,80%,50%), hsl(180,80%,50%), hsl(240,80%,50%), hsl(300,80%,50%), hsl(360,80%,50%))" onChange={(v) => set(v, hsl.s, hsl.l)} />
+            <HSLSlider label="S" name={`${label} saturation`} max={100} value={Math.round(hsl.s)} unit="%" gradient={`linear-gradient(to right, hsl(${hsl.h},0%,${hsl.l}%), hsl(${hsl.h},100%,${hsl.l}%))`} onChange={(v) => set(hsl.h, v, hsl.l)} />
+            <HSLSlider label="L" name={`${label} lightness`} max={100} value={Math.round(hsl.l)} unit="%" gradient={`linear-gradient(to right, hsl(${hsl.h},${hsl.s}%,0%), hsl(${hsl.h},${hsl.s}%,50%), hsl(${hsl.h},${hsl.s}%,100%))`} onChange={(v) => set(hsl.h, hsl.s, v)} />
           </div>
         );
       })()}
@@ -262,17 +284,18 @@ function ColorRow({ label, value, overridden, check, hslOpen, onChange, onReset,
   );
 }
 
-function HSLSlider({ label, value, max, unit, gradient, onChange }: {
-  label: string; value: number; max: number; unit: string; gradient: string; onChange: (v: number) => void;
+function HSLSlider({ label, name, value, max, unit, gradient, onChange }: {
+  label: string; name: string; value: number; max: number; unit: string; gradient: string; onChange: (v: number) => void;
 }) {
   return (
     <div className="flex items-center gap-2">
       <span className="font-mono text-caption text-text-tertiary w-3">{label}</span>
-      <div className="flex-1 relative h-3 rounded" style={{ background: gradient }}>
-        <input type="range" min={0} max={max} value={value} onChange={(e) => onChange(Number(e.target.value))} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+      {/* The range input is an invisible overlay: the track draws its focus. */}
+      <div className="flex-1 relative h-3 rounded has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent-solid" style={{ background: gradient }}>
+        <input type="range" min={0} max={max} value={value} aria-label={name} onChange={(e) => onChange(Number(e.target.value))} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
         <div className="absolute top-1/2 w-2.5 h-2.5 rounded-full bg-white border border-black/40 pointer-events-none" style={{ left: `${(value / max) * 100}%`, transform: 'translate(-50%, -50%)' }} />
       </div>
-      <span className="font-mono text-caption text-text-tertiary w-7 text-right">{value}{unit}</span>
+      <span className="font-mono text-caption text-text-tertiary w-7 text-right tabular-nums">{value}{unit}</span>
     </div>
   );
 }
@@ -310,15 +333,18 @@ function SliderSetting({ label, value, min, max, unit, defaultValue, onChange }:
   return (
     <div ref={containerRef} className="flex items-center gap-3 py-1" onMouseEnter={() => { hovering.current = true; }} onMouseLeave={() => { hovering.current = false; }}>
       <span className="text-minor text-text-secondary w-[100px]">{label}</span>
-      <div className="flex-1 relative">
-        <input type="range" min={min} max={max} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-full h-1.5 accent-accent-solid" />
+      {/* The "Default" tip lives on the track: the tick mark is pointer-events-none (it must not
+          eat the drag), and TooltipLayer finds tips from the hovered element, so on the tick it
+          could never show. */}
+      <div className="flex-1 relative" data-tip={defaultPct !== null ? tt(`Default: ${defaultValue}${unit}`, `Padrão: ${defaultValue}${unit}`) : undefined}>
+        <input type="range" min={min} max={max} value={value} aria-label={label} onChange={(e) => onChange(Number(e.target.value))} className="w-full h-1.5 accent-accent-solid" />
         {defaultPct !== null && (
-          <div className="absolute pointer-events-none" style={{ left: `${defaultPct}%`, top: '50%', transform: 'translate(-50%, -50%)' }} data-tip={tt(`Default: ${defaultValue}${unit}`, `Padrão: ${defaultValue}${unit}`)}>
+          <div className="absolute pointer-events-none" style={{ left: `${defaultPct}%`, top: '50%', transform: 'translate(-50%, -50%)' }}>
             <div className="w-0.5 h-2.5 bg-text-tertiary/60" />
           </div>
         )}
       </div>
-      <NumberInput value={value} onChange={onChange} min={min} max={max} suffix={unit} inputHeight="h-7" ariaLabel="Value" />
+      <NumberInput value={value} onChange={onChange} min={min} max={max} suffix={unit} inputHeight="h-7" ariaLabel={label} />
     </div>
   );
 }
@@ -369,6 +395,11 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const saveInputRef = useRef<HTMLInputElement>(null);
   const resetMenuRef = useRef<HTMLDivElement>(null);
+  const resetTriggerRef = useRef<HTMLButtonElement>(null);
+  const leftColumnRef = useRef<HTMLDivElement>(null);
+  // "Reset everything" resets the app language too, so the open state has to hold it: without it
+  // Revert restored the theme and left the language reset, and the button went dark as if done.
+  const openLanguage = useRef(language);
 
   // Snapshot of the theme as the editor found it. This dialog is a LIVE preview — every change is
   // written to the document and persisted within 200 ms — so there was no way back from an hour of
@@ -404,14 +435,16 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     // editor with the Windows follower on — the second click produced the same state, which is
     // exactly the stuck-button symptom the comment above says was eliminated. It still counts as
     // dirty in the one direction a restore CAN undo: turned on since the snapshot.
-    || (config.uiSettings.matchSystemTheme && !snap.uiSettings.matchSystemTheme);
+    || (config.uiSettings.matchSystemTheme && !snap.uiSettings.matchSystemTheme)
+    || language !== openLanguage.current;
   const revertToOpenState = useCallback(() => {
     const wasFollowing = openSnapshot.current!.uiSettings.matchSystemTheme;
     replaceConfig(openSnapshot.current!);
+    setLanguage(openLanguage.current);
     // Say what Revert could not restore, rather than leaving the user to find it in the Interface
     // tab. tt() in a toast is what the convention allows.
     if (wasFollowing) showToast(tt('Match Windows theme was turned off', 'Seguir o tema do Windows foi desligado'), 'info');
-  }, [replaceConfig, showToast, tt]);
+  }, [replaceConfig, setLanguage, showToast, tt]);
 
   const hasOverrides = Object.keys(config.colorOverrides).length > 0;
   // Same lookup order as resolveThemeColors, and for the same reason: a custom preset is not in
@@ -460,7 +493,11 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     [config.colorOverrides, fieldValue, fieldBase]);
 
   // Apply a raw #rrggbb to a field: theme keys preserve original alpha + go through the
-  // override store; ui keys store plain hex. Both feed the recent strip.
+  // override store; ui keys store plain hex. Both feed the recent strip — once the gesture
+  // settles: an HSL drag or a native-picker drag calls this on every tick, and pushing each tick
+  // filled the eight slots with the in-between shades of ONE drag, evicting the real picks.
+  const recentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (recentTimer.current) clearTimeout(recentTimer.current); }, []);
   const applyColor = useCallback((f: ColorField, rawHex: string) => {
     if (f.kind === 'theme') {
       const k = f.key as keyof ThemeColors;
@@ -468,7 +505,8 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     } else {
       setUISetting(f.key as keyof ThemeUISettings, rawHex as ThemeUISettings[keyof ThemeUISettings]);
     }
-    pushRecent(rawHex);
+    if (recentTimer.current) clearTimeout(recentTimer.current);
+    recentTimer.current = setTimeout(() => pushRecent(rawHex), 400);
   }, [setColorOverride, setUISetting, resolvedColors, pushRecent]);
 
   const resetColor = useCallback((f: ColorField) => {
@@ -488,15 +526,32 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   // own onKeyDown catches Esc (stopPropagation) instead of the keystroke bubbling to
   // DialogShell and closing the whole editor — mouse-open otherwise leaves focus on the
   // toggle button, outside the menu, so the Esc-swallow never fired.
+  // The first ENABLED item, not the container: the container is tabIndex -1, which the dialog's
+  // Tab ring skips, so Tab from it jumped past the items to the header Close.
   useEffect(() => {
     if (!resetMenuOpen) return;
-    resetMenuRef.current?.focus();
+    const first = resetMenuRef.current?.querySelector<HTMLButtonElement>('button:not([disabled])');
+    (first ?? resetMenuRef.current)?.focus();
     const onDown = () => setResetMenuOpen(false);
     window.addEventListener('mousedown', onDown);
     return () => window.removeEventListener('mousedown', onDown);
   }, [resetMenuOpen]);
+  // Keyboard closes hand the focus back to the trigger (the menu unmounts with it inside).
+  const closeResetMenu = () => { setResetMenuOpen(false); resetTriggerRef.current?.focus(); };
 
   useEffect(() => { if (saveMode) saveInputRef.current?.focus(); }, [saveMode]);
+
+  // A surface swap remounts the left column (key={surface}) and takes the focused door with it —
+  // Customize, Edit, ‹ Themes. Land on the new surface's first control instead of the card.
+  // Compared with the last surface, not a first-run flag: StrictMode runs the effect twice on
+  // mount, and a flag let the second run grab the search field on open.
+  const lastSurface = useRef(surface);
+  useEffect(() => {
+    if (lastSurface.current === surface) return;
+    lastSurface.current = surface;
+    const el = leftColumnRef.current?.querySelector<HTMLElement>('button:not([disabled]), input:not([disabled]), [tabindex="0"]');
+    el?.focus({ preventScroll: true });
+  }, [surface]);
 
   // ── Export handlers ──
   const handleExportFile = useCallback(() => {
@@ -564,11 +619,21 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   }, [doImport]);
 
   const doSaveAsPreset = useCallback(() => {
-    if (!savePresetName.trim()) return;
-    saveAsPreset(savePresetName.trim());
+    const name = savePresetName.trim();
+    if (!name) return;
+    // The id is a slug of the name and a same-id save REPLACES (that is how saving twice under one
+    // name updates). Two different names can slug alike — "Azul (v2)" / "Azul v2", "Café" / "Caf"
+    // — and the second save silently overwrote the first preset. Same name still updates.
+    const clash = customPresets.find(p => p.id === makeCustomPresetId(name) && p.name !== name);
+    if (clash) {
+      showToast(tt(`“${name}” would replace “${clash.name}” — pick another name.`,
+                   `“${name}” substituiria “${clash.name}” — escolha outro nome.`), 'error');
+      return;
+    }
+    saveAsPreset(name);
     setSavePresetName('');
     setSaveMode(false);
-  }, [savePresetName, saveAsPreset]);
+  }, [savePresetName, saveAsPreset, customPresets, showToast, tt]);
 
   // Recent-swatch click: apply to the currently open HSL row if any, else copy to clipboard.
   const openField = openHslKey ? ALL_FIELDS.find(f => f.key === openHslKey) : undefined;
@@ -630,7 +695,11 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   const footerHint = (
     <div className="relative" onMouseDown={(e) => e.stopPropagation()}>
       <button
+        ref={resetTriggerRef}
+        type="button"
         onClick={() => setResetMenuOpen(o => !o)}
+        aria-haspopup="menu"
+        aria-expanded={resetMenuOpen}
         className="inline-flex items-center gap-1.5 h-7 px-2 rounded text-minor text-text-secondary hover:text-text-primary hover:bg-bg-card transition-colors"
       >
         <RotateCcw size={12} /> Reset <ChevronDown size={11} />
@@ -639,18 +708,33 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
         <div
           ref={resetMenuRef}
           tabIndex={-1}
+          role="menu"
+          aria-label="Reset"
           className="absolute bottom-full left-0 mb-1 w-[220px] menu-surface p-1 z-10 outline-none"
-          onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setResetMenuOpen(false); } }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeResetMenu(); return; }
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+              e.preventDefault();
+              const items = Array.from(resetMenuRef.current?.querySelectorAll<HTMLButtonElement>('button:not([disabled])') ?? []);
+              if (!items.length) return;
+              const at = items.indexOf(document.activeElement as HTMLButtonElement);
+              items[(at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length].focus();
+            }
+          }}
         >
           <button
-            onClick={() => { clearAllOverrides(); setResetMenuOpen(false); }}
+            type="button"
+            role="menuitem"
+            onClick={() => { clearAllOverrides(); closeResetMenu(); }}
             disabled={!hasOverrides}
             className="menu-item rounded text-text-secondary hover:text-text-primary disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Color overrides
           </button>
           <button
-            onClick={() => { clearAllOverrides(); resetUISettings(); setLanguage(DEFAULT_LANGUAGE); setResetMenuOpen(false); }}
+            type="button"
+            role="menuitem"
+            onClick={() => { clearAllOverrides(); resetUISettings(); setLanguage(DEFAULT_LANGUAGE); closeResetMenu(); }}
             disabled={everythingAtDefault}
             className="menu-item rounded text-text-secondary hover:text-text-primary disabled:opacity-40 disabled:cursor-not-allowed"
           >
@@ -694,7 +778,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
       // Ignore backdrop clicks in the OS title-bar guard zone so hitting the
       // maximize/restore/close caption buttons doesn't dismiss the editor.
       scrimMouseDownGuard={(e) => e.clientY < 40}
-      footerHint={footerHint}
+      footerStart={footerHint}
       footer={footer}
     >
       {/* flex-1, not the old hardcoded h-[560px]: the card is `flex flex-col` and this is a
@@ -707,7 +791,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
           the mock needs to render at real font size. */}
       <div className="grid grid-cols-[1fr_minmax(320px,34%)] flex-1 min-h-0">
         {/* ── Left column ── */}
-        <div className="min-w-0 overflow-y-auto">
+        <div ref={leftColumnRef} className="min-w-0 overflow-y-auto">
           {/* key={surface} remounts on surface change so the gated slide keyframe re-fires. */}
           <div key={surface} className="theme-surface-slide">
             {surface === 'gallery' && renderGallery()}
@@ -760,7 +844,9 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
       return (
         <div key={theme.id} className="group/card relative">
           <button
+            type="button"
             onClick={() => selectPreset(theme.id)}
+            aria-pressed={isActive}
             className={`w-full flex flex-col rounded-shell overflow-hidden border transition-colors cursor-pointer ${
               isActive ? 'border-accent ring-1 ring-accent/30' : 'border-border-subtle hover:border-border-default'
             }`}
@@ -776,8 +862,10 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
           {/* Hover-revealed Customize shortcut on the active card. */}
           {isActive && (
             <button
+              type="button"
               onClick={() => setSurface('customize')}
-              className="absolute bottom-9 right-1 w-4 h-4 rounded bg-[color-mix(in_srgb,var(--color-bg-base)_70%,transparent)] text-[color:var(--color-text-primary)] opacity-0 group-hover/card:opacity-100 transition-opacity flex items-center justify-center"
+              aria-label="Customize this theme"
+              className="absolute bottom-9 right-1 w-4 h-4 rounded bg-[color-mix(in_srgb,var(--color-bg-base)_70%,transparent)] text-[color:var(--color-text-primary)] opacity-0 group-hover/card:opacity-100 focus-visible:opacity-100 transition-opacity flex items-center justify-center"
               data-tip={tt('Customize this theme', 'Personalizar este tema')}
             >
               <SlidersHorizontal size={10} />
@@ -785,10 +873,13 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
           )}
           {isCustom && (
             <button
+              type="button"
               onClick={(e) => { e.stopPropagation(); deleteCustomPreset(theme.id); }}
-              className="absolute top-1 right-1 w-5 h-5 rounded bg-bg-base/80 text-text-tertiary hover:text-recording-fg opacity-0 group-hover/card:opacity-100 transition-opacity flex items-center justify-center"
+              aria-label={`Delete preset ${theme.name}`}
+              data-tip={tt('Delete preset', 'Excluir preset')}
+              className="absolute top-1 right-1 w-5 h-5 rounded bg-bg-base/80 text-text-tertiary hover:text-recording-fg opacity-0 group-hover/card:opacity-100 focus-visible:opacity-100 transition-opacity flex items-center justify-center"
             >
-              <span className="text-sm leading-none">×</span>
+              <X size={12} />
             </button>
           )}
         </div>
@@ -805,23 +896,26 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
               value={presetSearch}
               onChange={(e) => setPresetSearch(e.target.value)}
               placeholder="Search themes…"
+              aria-label="Search themes"
               className="input-field font-sans pl-2.5 pr-7"
             />
             {presetSearch && (
-              <button onClick={() => setPresetSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary text-sm leading-none">×</button>
+              <button type="button" onClick={() => setPresetSearch('')} aria-label="Clear search" className="absolute right-1.5 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded text-text-tertiary hover:text-text-primary"><X size={12} /></button>
             )}
           </div>
           <button
+            type="button"
             onClick={() => { if (pool.length) selectPreset(pool[Math.floor(Math.random() * pool.length)].id); }}
             disabled={pool.length === 0}
+            aria-label="Random preset"
             className="w-8 h-8 flex items-center justify-center rounded text-text-secondary hover:text-text-primary hover:bg-bg-card disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             data-tip={pool.length === 0 ? tt('No other presets in this filter', 'Nenhum outro preset neste filtro') : tt('Random preset from this filter', 'Preset aleatório deste filtro')}
           >
             <Dices size={14} />
           </button>
-          <label className="relative w-8 h-8 rounded border border-border-default cursor-pointer overflow-hidden shrink-0" data-tip={tt(`Accent · ${currentAccentHex} — click to change`, `Destaque · ${currentAccentHex} — clique para mudar`)}>
+          <label className="relative w-8 h-8 rounded border border-border-default cursor-pointer overflow-hidden shrink-0 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent-solid" data-tip={tt(`Accent · ${currentAccentHex} — click to change`, `Destaque · ${currentAccentHex} — clique para mudar`)}>
             <div className="absolute inset-0" style={{ backgroundColor: currentAccentHex }} />
-            <input type="color" value={currentAccentHex} onChange={(e) => setAccentColor(e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer" />
+            <input type="color" value={currentAccentHex} onChange={(e) => setAccentColor(e.target.value)} aria-label="Accent color" className="absolute inset-0 opacity-0 cursor-pointer" />
           </label>
         </div>
 
@@ -832,7 +926,9 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
             return (
               <button
                 key={chip.id}
+                type="button"
                 onClick={() => setPresetFilter(chip.id)}
+                aria-pressed={on}
                 className={`h-6 px-2.5 rounded text-caption font-medium border transition-colors ${
                   on
                     ? 'text-accent border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)] bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)]'
@@ -855,8 +951,13 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
                 type="text"
                 value={savePresetName}
                 onChange={(e) => setSavePresetName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') doSaveAsPreset(); else if (e.key === 'Escape') { setSaveMode(false); setSavePresetName(''); } }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') doSaveAsPreset();
+                  // Contained: unhandled, this Esc bubbled to the shell and closed the whole editor.
+                  else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setSaveMode(false); setSavePresetName(''); }
+                }}
                 onBlur={() => { if (!savePresetName.trim()) setSaveMode(false); }}
+                aria-label="Preset name"
                 placeholder="Preset name…"
                 className="flex-1 h-6 px-2 text-minor text-text-primary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid"
               />
@@ -872,7 +973,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
               <button onClick={() => setSaveMode(true)} className="text-text-secondary hover:text-text-primary transition-colors">Save as preset…</button>
             )}
             <button onClick={clearAllOverrides} className="text-text-secondary hover:text-text-primary transition-colors">Reset</button>
-            <button onClick={() => setSurface('customize')} className="text-accent hover:text-accent-hover transition-colors">Edit →</button>
+            <button type="button" onClick={() => setSurface('customize')} className="inline-flex items-center gap-1 text-accent hover:text-accent-hover transition-colors">Edit <ArrowRight size={12} /></button>
           </div>
         )}
 
@@ -944,7 +1045,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
           const modified = section.fields.filter(fieldOverridden).length;
           return (
             <div key={section.title} className={si < COLOR_SECTIONS.length - 1 ? 'border-b border-border-subtle' : ''}>
-              <button onClick={() => toggleSection(section.title)} className="w-full h-8 px-4 flex items-center gap-2 hover:bg-bg-card/50 transition-colors">
+              <button type="button" onClick={() => toggleSection(section.title)} aria-expanded={!collapsed} className="w-full h-8 px-4 flex items-center gap-2 hover:bg-bg-card/50 transition-colors">
                 {collapsed ? <ChevronRight size={12} className="text-text-tertiary shrink-0" /> : <ChevronDown size={12} className="text-text-tertiary shrink-0" />}
                 <span className="text-minor font-medium text-text-primary">{section.title}</span>
                 {modified > 0 && <span className="text-caption text-accent">· {modified}</span>}
@@ -990,7 +1091,9 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
               {recentColors.map((c) => (
                 <button
                   key={c}
+                  type="button"
                   onClick={() => handleRecentClick(c)}
+                  aria-label={openField ? `Apply ${c} to ${openField.label}` : `Copy ${c}`}
                   className="w-4 h-4 rounded border border-border-default flex items-center justify-center"
                   style={{ backgroundColor: c }}
                   data-tip={openField ? tt(`Apply ${c} to ${openField.label}`, `Aplicar ${c} em ${openField.label}`) : copiedRecent === c ? tt(`${c} — copied!`, `${c} — copiado!`) : tt(`${c} — click to copy`, `${c} — clique para copiar`)}
@@ -1020,6 +1123,8 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
             return (
               <button
                 key={p.id}
+                type="button"
+                aria-pressed={isActive}
                 onClick={() => { setUISetting('fontSize', p.fontSize); setUISetting('rowHeight', p.rowHeight); setUISetting('borderRadius', p.borderRadius); }}
                 className="flex flex-col items-stretch gap-1.5 px-2 py-2 rounded transition-colors"
                 style={isActive ? { background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)' } : undefined}
@@ -1045,6 +1150,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
           <select
             value={MONO_FONTS.includes(config.uiSettings.fontMono) ? config.uiSettings.fontMono : '__custom'}
             onChange={(e) => { if (e.target.value !== '__custom') setUISetting('fontMono', e.target.value); }}
+            aria-label="Monospace font"
             className="flex-1 h-7 px-2 text-minor text-text-primary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid cursor-pointer"
           >
             {MONO_FONTS.map(f => <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>)}
@@ -1058,19 +1164,19 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
           <div className="flex flex-col">
             <span className="text-minor text-text-secondary">Match Windows theme</span>
           </div>
-          <Toggle isOn={config.uiSettings.matchSystemTheme} onChange={(v) => setUISetting('matchSystemTheme', v)} />
+          <Toggle isOn={config.uiSettings.matchSystemTheme} onChange={(v) => setUISetting('matchSystemTheme', v)} ariaLabel="Match Windows theme" />
         </div>
         {config.uiSettings.matchSystemTheme && (
           <div className="ml-3 pl-3 border-l border-border-subtle space-y-1.5 py-1">
             <div className="flex items-center gap-2">
               <span className="text-caption text-text-tertiary w-[100px]">Dark preset</span>
-              <select value={config.uiSettings.darkPresetId} onChange={(e) => setUISetting('darkPresetId', e.target.value)} className="flex-1 h-6 px-2 text-caption text-text-primary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid cursor-pointer">
+              <select value={config.uiSettings.darkPresetId} onChange={(e) => setUISetting('darkPresetId', e.target.value)} aria-label="Dark preset" className="flex-1 h-6 px-2 text-caption text-text-primary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid cursor-pointer">
                 {themes.filter(t => !getThemeTags(t.id).includes('light')).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-caption text-text-tertiary w-[100px]">Light preset</span>
-              <select value={config.uiSettings.lightPresetId} onChange={(e) => setUISetting('lightPresetId', e.target.value)} className="flex-1 h-6 px-2 text-caption text-text-primary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid cursor-pointer">
+              <select value={config.uiSettings.lightPresetId} onChange={(e) => setUISetting('lightPresetId', e.target.value)} aria-label="Light preset" className="flex-1 h-6 px-2 text-caption text-text-primary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid cursor-pointer">
                 {themes.filter(t => getThemeTags(t.id).includes('light')).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </div>
@@ -1080,7 +1186,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
           <div className="flex flex-col">
             <span className="text-minor text-text-secondary">Enable animations</span>
           </div>
-          <Toggle isOn={config.uiSettings.enableAnimations} onChange={(v) => setUISetting('enableAnimations', v)} />
+          <Toggle isOn={config.uiSettings.enableAnimations} onChange={(v) => setUISetting('enableAnimations', v)} ariaLabel="Enable animations" />
         </div>
       </div>
     );
@@ -1100,7 +1206,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
           <div>
             <div className="label-micro text-text-tertiary mb-2">Export current theme</div>
             <div className="flex gap-2 items-center">
-              <input type="text" value={exportName} onChange={(e) => setExportName(e.target.value)} placeholder="My Theme" className="input-field font-sans w-[240px] px-2.5" />
+              <input type="text" value={exportName} onChange={(e) => setExportName(e.target.value)} placeholder="My Theme" aria-label="Theme name" className="input-field font-sans w-[240px] px-2.5" />
               <Button variant="secondary" onClick={handleExportFile}><Download size={13} /> Export to file</Button>
               <Button variant="secondary" onClick={handleCopyClipboard}><Clipboard size={13} /> {copyError ? 'Copy failed' : copySuccess ? 'Copied!' : 'Copy to clipboard'}</Button>
             </div>
@@ -1113,9 +1219,10 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
               <input ref={fileInputRef} type="file" accept=".json" onChange={handleImportFile} className="hidden" />
               <Button variant="secondary" onClick={handlePasteClipboard}><ClipboardPaste size={13} /> Paste from clipboard</Button>
             </div>
-            <textarea value={importText} onChange={(e) => setImportText(e.target.value)} placeholder="Paste theme JSON here…" className="w-full h-28 px-3 py-2 text-minor font-mono text-text-primary bg-bg-input border border-border-default rounded resize-none outline-none focus:border-accent-solid" />
+            <textarea value={importText} onChange={(e) => setImportText(e.target.value)} placeholder="Paste theme JSON here…" aria-label="Theme JSON" className="w-full h-28 px-3 py-2 text-minor font-mono text-text-primary bg-bg-input border border-border-default rounded resize-none outline-none focus:border-accent-solid" />
             {importText && <Button variant="primary" className="mt-2" onClick={() => doImport(importText)}>Apply theme</Button>}
-            {importError && <p className="mt-2 text-minor text-recording-fg">{importError}</p>}
+            {/* Always mounted (aria-live): a <p> mounted with the error was never announced. */}
+            <FieldError show={!!importError} className="mt-2 text-minor text-recording-fg">{importError}</FieldError>
           </div>
         </div>
       </div>
