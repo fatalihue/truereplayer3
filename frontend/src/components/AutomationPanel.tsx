@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { TriangleAlert, Zap, Plus, Trash2, Pipette, Camera, Frame, X, ScanSearch, ScanText, Check, Play, Power, Crosshair } from 'lucide-react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { TriangleAlert, Zap, Plus, Trash2, Pipette, Camera, Frame, X, ScanSearch, ScanText, Check, Play, Power, Crosshair, Circle } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
 import { useAppState } from '../state/AppStateContext';
 import { useTt } from '../state/LanguageContext';
 import { DialogShell, DialogFooter  } from './common/DialogShell';
 import { Button } from './common/Button';
+import { IconButton, iconButtonClass } from './common/IconButton';
+import { Callout } from './common/Callout';
 import { Toggle } from './common/Toggle';
 import { IconToggle } from './common/IconToggle';
 import { SegmentedControl } from './common/SegmentedControl';
@@ -21,13 +23,13 @@ import { effectiveOperator, parsesAsNumber, regexProblem } from '../utils/screen
 
 // Day-pill order matches the backend bitmask convention (Sun = 1<<0, the If-Time one).
 const DAY_PILLS = [
-  { bit: 1 << 1, label: 'Mon' },
-  { bit: 1 << 2, label: 'Tue' },
-  { bit: 1 << 3, label: 'Wed' },
-  { bit: 1 << 4, label: 'Thu' },
-  { bit: 1 << 5, label: 'Fri' },
-  { bit: 1 << 6, label: 'Sat' },
-  { bit: 1 << 0, label: 'Sun' },
+  { bit: 1 << 1, label: 'Mon', name: 'Monday' },
+  { bit: 1 << 2, label: 'Tue', name: 'Tuesday' },
+  { bit: 1 << 3, label: 'Wed', name: 'Wednesday' },
+  { bit: 1 << 4, label: 'Thu', name: 'Thursday' },
+  { bit: 1 << 5, label: 'Fri', name: 'Friday' },
+  { bit: 1 << 6, label: 'Sat', name: 'Saturday' },
+  { bit: 1 << 0, label: 'Sun', name: 'Sunday' },
 ];
 
 const CONDITION_TYPES = [
@@ -275,6 +277,97 @@ function kindSummary(t: TriggerConfig): string {
   return `when ${c?.label ?? t.conditionType ?? '?'}` + within;
 }
 
+/** Why the coordinate was cleared when the anchor switch flipped. The state holds the KEY, not the
+ *  sentence: the line is visible text, which stays English (labels decision of 2026-09-04) — only
+ *  its tooltip goes through tt(). It used to store tt(en, pt), so the default PT-BR mode printed
+ *  one Portuguese line in the middle of an English form. */
+type AnchorNotice = 'toWindow' | 'toScreen';
+const ANCHOR_NOTICE: Record<AnchorNotice, { en: string; pt: string }> = {
+  toWindow: {
+    en: 'Coordinates cleared — they were screen coordinates. Pick again to store them relative to the window.',
+    pt: 'Coordenadas limpas — elas eram de tela. Pegue de novo para gravá-las relativas à janela.',
+  },
+  toScreen: {
+    en: 'Coordinates cleared — they were relative to the window. Pick again to store them as screen coordinates.',
+    pt: 'Coordenadas limpas — elas eram relativas à janela. Pegue de novo para gravá-las como coordenadas de tela.',
+  },
+};
+
+/** The two halves of an active-hours value, or two blanks when it is not a "from-to" pair (a bare
+ *  legacy "12:00" included — see the field below). */
+function splitHours(v: string | null): { from: string; to: string } {
+  const parts = (v ?? '').split('-');
+  return parts.length === 2 ? { from: parts[0].trim(), to: parts[1].trim() } : { from: '', to: '' };
+}
+const joinHours = (p: { from: string; to: string }) => (p.from && p.to ? `${p.from}-${p.to}` : null);
+
+/**
+ * Active hours — interval and condition only, because for a schedule TimeOfDay IS the fire time.
+ * Two start-and-end inputs rather than one free-text box: they can only ever produce the range form
+ * the backend accepts, which is what keeps a bare "12:00" from ever being written here. (That value
+ * is not hypothetical — profiles drafted as a schedule and switched to condition carry it, and the
+ * backend ignores a bare time precisely so those keep firing.)
+ *
+ * The halves live in LOCAL state. They used to be derived from TimeOfDay, which is null whenever
+ * either half is blank — and Chromium's time input reports '' the moment one segment is
+ * backspaced — so retyping the start blanked the END box too, Clear and the phase-lock warning
+ * vanished, and the end came back from a hidden ref only once the start was whole again. Now each
+ * box shows what is in it; TimeOfDay is written from the pair, and a half pair says, in the hint
+ * line, that the window is not in force yet.
+ */
+function ActiveHoursField({ value, onChange, phaseLock, phaseLockTip }: {
+  value: string | null;
+  onChange: (v: string | null) => void;
+  phaseLock: boolean;
+  phaseLockTip: string;
+}) {
+  const [pair, setPair] = useState(() => splitHours(value));
+  // An outside change (a re-seed from the store) re-reads the pair. This field's own writes come back
+  // as exactly the value the pair already implies, and must not blank the half being retyped.
+  // Adjusted during render (React's "previous value in state" pattern), not in an effect: no
+  // extra commit with a stale pair, and `seen` keeps a bare legacy "12:00" — which no pair ever
+  // implies — from re-reading on every render.
+  const [seen, setSeen] = useState(value);
+  if (value !== seen) {
+    setSeen(value);
+    if (value !== joinHours(pair)) setPair(splitHours(value));
+  }
+  const write = (next: { from: string; to: string }) => {
+    setPair(next);
+    const v = joinHours(next);
+    if (v !== value) onChange(v);
+  };
+  const half = !!pair.from !== !!pair.to;
+  return (
+    <Field
+      label="Active hours"
+      hint={half ? 'Fill in both times — until then it runs at any hour.' : 'Empty = always. An end before the start crosses midnight.'}
+      hintTone={half ? 'warn' : undefined}
+    >
+      <div className="flex items-center gap-2">
+        {/* Named one by one: the Field's caption names the GROUP, which cannot say which box is
+            the start and which the end. */}
+        <input type="time" className={`${inputCls} w-28`} value={pair.from} aria-label="Active hours start"
+          onChange={(e) => write({ from: e.target.value, to: pair.to })} />
+        <span className="text-minor text-text-tertiary">{'to'}</span>
+        <input type="time" className={`${inputCls} w-28`} value={pair.to} aria-label="Active hours end"
+          onChange={(e) => write({ from: pair.from, to: e.target.value })} />
+        {(pair.from || pair.to) && (
+          <Button variant="ghost" size="sm" onClick={() => write({ from: '', to: '' })}>
+            {'Clear'}
+          </Button>
+        )}
+      </div>
+      {/* Warning, not a Save block: whether it actually locks depends on the moment
+          the automation is armed, so refusing the pairing outright would reject
+          configurations that work. See phaseLockRisk. */}
+      <FieldError show={phaseLock} tip={phaseLockTip}>
+        {'Interval longer than the active hours — it may never fire. Shorten it or widen the hours.'}
+      </FieldError>
+    </Field>
+  );
+}
+
 export function AutomationPanel({ onClose }: { onClose: () => void }) {
   const { send, subscribe } = useBridge();
   const { automation, profiles } = useAppState();
@@ -290,8 +383,18 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
   const [newDraftProfile, setNewDraftProfile] = useState<string | null>(null);
   // Por que a coordenada foi limpa ao virar o interruptor de âncora. Some na próxima captura,
   // que é exatamente quando a frase deixa de ser verdadeira.
-  const [anchorSpaceNotice, setAnchorSpaceNotice] = useState<string | null>(null);
+  const [anchorSpaceNotice, setAnchorSpaceNotice] = useState<AnchorNotice | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  // Where the keyboard lands after an inline swap. Closing the Add picker or answering "No" to the
+  // delete confirm unmounts the control that had focus; DialogShell would catch it on the card, but
+  // the button that opened the swap is where the user was and where the next keystroke belongs.
+  // The Add slot is a wrapper ref because Button does not forward one.
+  const addSlotRef = useRef<HTMLDivElement>(null);
+  const refocusAddRef = useRef(false);
+  const trashRef = useRef<HTMLButtonElement>(null);
+  const refocusTrashRef = useRef(false);
+  // Ids for the rows' meta lines, which describe each row's name button.
+  const rowIdBase = useId();
   const seededForRef = useRef<string | null>(null);
   // Confirm gates. `confirmDelete` mirrors the action grid's Clear All popover; `pendingNav`
   // holds the navigation an unsaved draft is blocking (a row name, or 'close') until the user
@@ -309,6 +412,8 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
   const [pendingSave, setPendingSave] = useState<{ profile: string; at: number } | null>(null);
   // Result of a manual "Run now", shown next to the button. Cleared on selection change.
   const [testFireResult, setTestFireResult] = useState<{ ok: boolean; text: string } | null>(null);
+  // Save from the unsaved prompt, waiting for its echo before it navigates. See the effect below.
+  const [saveThenGo, setSaveThenGo] = useState(false);
 
   // Live status refresh while open: pushes are change-driven, so a quiet watcher's
   // nextDue countdown would go stale without a poll. 2 s is plenty.
@@ -409,8 +514,14 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
   // Commit a navigation, no questions asked. seededForRef is cleared so the seed effect re-runs
   // even when the destination equals the current selection (React bails out of a same-value
   // setState, which would otherwise leave the "discarded" draft on screen).
-  const go = (dest: NavDest) => {
+  // A callback (not a plain function) because the save-then-go effect calls it.
+  const go = useCallback((dest: NavDest) => {
     setPendingNav(null);
+    setSaveThenGo(false);
+    // An open delete confirm belongs to the row being left too. Left set, the remounted editor
+    // mounted ITS "No" (autoFocus took the focus) and the [selected] effect then unmounted it —
+    // the keyboard user switching rows landed on the panel card instead of the row they chose.
+    setConfirmDelete(false);
     // The flight belongs to the row being left. Carrying it over would arm the echo comparison
     // against a different automation's config — and a new draft, which has no stored entry to
     // compare against, would inherit a "saving" state it never asked for and sit there with a
@@ -422,7 +533,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
     setSelected(dest.name);
     setDraft(entryByProfile.get(dest.name) ? { ...entryByProfile.get(dest.name)!.trigger } : defaultTrigger());
     setDirty(false);
-  };
+  }, [onClose, entryByProfile]);
 
   const navigateTo = (dest: NavDest) => {
     // Once the prompt is up it owns the decision. Without this, DialogShell's Escape keeps
@@ -465,6 +576,19 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
     // newDraftProfile stays set until the automation:state echo lands — clearing it now
     // would drop the row from the list (entries doesn't have it yet) and blank the editor.
   };
+
+  // Save from the unsaved prompt. It used to be `handleSave(); go(dest);` in one tick, and go() drops
+  // the flight and replaces the draft before any echo can arrive — so a save the backend rolled back
+  // (locked .json, antivirus, full disk) took the edits with it, and a new draft was left in the
+  // list as "not saved yet", reopening as the defaults. Now the prompt stays up on "Saving…" and
+  // the navigation waits: the echo confirming the save clears the flight AND the unsaved work, and
+  // only then does it go. If the flight ends with the work still unsaved — the timeout's verdict —
+  // nothing moves: the prompt offers Save again, over a draft that is still intact.
+  useEffect(() => {
+    if (!saveThenGo || saving) return;
+    setSaveThenGo(false);
+    if (pendingNav && !hasUnsavedWork) go(pendingNav);
+  }, [saveThenGo, saving, pendingNav, hasUnsavedWork, go]);
 
   // New-draft handoff: once the backend echo carries the saved entry, the store row
   // replaces the local draft row.
@@ -511,10 +635,6 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
   const testMatchReqRef = useRef<string | null>(null);
   const textColorReqRef = useRef<string | null>(null);
   const testReadReqRef = useRef<string | null>(null);
-
-  // Remembers the last non-empty half of the active-hours pair, so clearing one input does not
-  // destroy the other and the sibling never has to invent 00:00 / 23:59.
-  const lastHoursRef = useRef({ from: '09:00', to: '18:00' });
 
   // Stable, so it runs on MOUNT and not on every render. As an inline arrow it was a new callback
   // each time, and the panel re-renders on the 2 s automation poll — which pulled focus back to
@@ -740,6 +860,32 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
   const selectedProfile = selected ? profiles.find((p) => p.name === selected) : undefined;
   const noTarget = selectedProfile ? !selectedProfile.hasEffectiveTarget : false;
 
+  // Result lines, built once: shown on screen AND mirrored into the live region (see there).
+  const testMatchText = testMatchResult
+    ? (testMatchResult.error
+      ? testMatchResult.error
+      : testMatchResult.found
+        ? `${'Found'} (${Math.round(testMatchResult.score * 100)}%) — ${'region snapped to it'}`
+        : `${'Not found on screen'} (${Math.round(testMatchResult.score * 100)}%)`)
+    : '';
+  const testReadText = testReadResult
+    ? (testReadResult.error
+      ? testReadResult.error
+      : `${testReadResult.ok ? 'Match' : 'No match'} — read: "${testReadResult.text || 'nothing'}"`)
+    : '';
+
+  // Inline swaps hand the focus back to the button that opened them (see addSlotRef).
+  useEffect(() => {
+    if (addOpen || !refocusAddRef.current) return;
+    refocusAddRef.current = false;
+    addSlotRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
+  }, [addOpen]);
+  useEffect(() => {
+    if (confirmDelete || !refocusTrashRef.current) return;
+    refocusTrashRef.current = false;
+    trashRef.current?.focus();
+  }, [confirmDelete]);
+
   return (
     <>
     <DialogShell
@@ -793,7 +939,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
       <div className="flex h-full min-h-0">
         {/* ── Left: automations list ── */}
         <div className="w-72 shrink-0 border-r border-border-subtle flex flex-col min-h-0">
-          <div className="p-2 border-b border-border-subtle">
+          <div ref={addSlotRef} className="p-2 border-b border-border-subtle">
             {addOpen ? (
               // Search-and-pick instead of a native <select>: the OS dropdown has no filter,
               // so choosing among ~80 profiles meant scrolling a wall of names. Same
@@ -804,14 +950,14 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   <span className="label-micro text-text-tertiary flex-1">
                     {'Pick a profile'}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => setAddOpen(false)}
-                    aria-label={'Cancel'}
-                    className="text-text-disabled hover:text-text-secondary transition-colors shrink-0"
+                  <IconButton
+                    size="sm"
+                    onClick={() => { refocusAddRef.current = true; setAddOpen(false); }}
+                    aria-label="Cancel"
+                    data-tip={tt('Cancel (Esc)', 'Cancelar (Esc)')}
                   >
                     <X size={12} />
-                  </button>
+                  </IconButton>
                 </div>
                 <ProfileSearchList
                   profiles={profilesWithoutTrigger}
@@ -825,7 +971,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                     navigateTo({ kind: 'row', name, asNewDraft: true });
                   }}
                   autoFocus
-                  onCancel={() => setAddOpen(false)}
+                  onCancel={() => { refocusAddRef.current = true; setAddOpen(false); }}
                   listMaxHeightClass="max-h-[220px]"
                   ariaLabel={'Profiles without an automation'}
                 />
@@ -843,7 +989,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                 {'No automations yet. One fires a profile on a timer, a schedule or a watched condition — no hotkey needed.'}
               </div>
             )}
-            {listProfiles.map((name) => {
+            {listProfiles.map((name, i) => {
               const entry = entryByProfile.get(name);
               const trig = name === newDraftProfile && !entry ? null : entry?.trigger;
               const isSel = selected === name;
@@ -860,51 +1006,63 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
               // perfectly healthy watcher.
               const showsCondition = entry?.trigger.kind === 'condition'
                 && entry.trigger.conditionType !== 'ClipboardChanged';
-              const dotTip = entry?.running
+              // [English, pt-BR]: the English half is the dot's accessible NAME (names stay English
+              // in every language), the localised one its tooltip.
+              const dotState: [string, string] = entry?.running
                 ? (showsCondition
                   ? (entry.conditionTrue
-                    ? tt('Watching · condition true now', 'Vigiando · condição verdadeira agora')
-                    : tt('Watching · condition false now', 'Vigiando · condição falsa agora'))
-                  : tt('Watching', 'Vigiando'))
+                    ? ['Watching · condition true now', 'Vigiando · condição verdadeira agora']
+                    : ['Watching · condition false now', 'Vigiando · condição falsa agora'])
+                  : ['Watching', 'Vigiando'])
                 : armed
                   ? (!automation.enabled
-                    ? tt('Armed · automations paused', 'Armada · automações pausadas')
+                    ? ['Armed · automations paused', 'Armada · automações pausadas']
                     : entry?.isDisabled
-                      ? tt('Armed · profile disabled', 'Armada · profile desativado')
-                      : tt('Armed · not watching (see the editor)', 'Armada · não vigia (veja o editor)'))
-                  : entry ? tt('Off', 'Desligada') : tt('Not saved yet', 'Ainda não salva');
+                      ? ['Armed · profile disabled', 'Armada · profile desativado']
+                      : ['Armed · not watching (see the editor)', 'Armada · não vigia (veja o editor)'])
+                  : entry ? ['Off', 'Desligada'] : ['Not saved yet', 'Ainda não salva'];
+              const dotTip = tt(dotState[0], dotState[1]);
+              const metaId = `${rowIdBase}-meta-${i}`;
               return (
+                // The row is a plain container that keeps the mouse behaviour (a click anywhere
+                // selects); the keyboard and screen-reader path is the NAME button. The row used
+                // to be role="button" itself, and a button's children are presentational — the
+                // arm switch nested inside it, the ONLY surface that arms an automation, was
+                // flattened out of the accessibility tree. Now the switch is a sibling of the
+                // button, and Enter/Space on the button click it, which bubbles here.
                 <div
                   key={name}
-                  role="button"
-                  tabIndex={0}
                   onClick={() => navigateTo({ kind: 'row', name, asNewDraft: false })}
-                  // Only when the ROW itself is focused — the same target guard the action grid
-                  // keeps. Without it the row swallowed Enter and Space aimed at the arm toggle
-                  // nested inside it, so the switch could not be operated from the keyboard at
-                  // all: aria-checked never moved, nothing was sent, and the row got selected
-                  // instead. The list toggle is the ONLY surface that arms an automation, which
-                  // the editor's own footer says, so that was the whole feature unreachable.
-                  onKeyDown={(e) => {
-                    if (e.target !== e.currentTarget) return;
-                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigateTo({ kind: 'row', name, asNewDraft: false }); }
-                  }}
                   className={`w-full text-left px-3 py-2 border-b border-border-subtle/60 transition-colors cursor-pointer ${
                     isSel ? 'bg-bg-elevated' : 'hover:bg-bg-elevated/50'
                   }`}
                 >
                   <div className="flex items-center gap-2">
+                    {/* The dot's state in words for assistive tech — the same text as its tooltip. */}
                     <span
+                      role="img"
+                      aria-label={dotState[0]}
                       className="w-2 h-2 rounded-full shrink-0"
                       style={{ background: dotColor, boxShadow: armed || entry?.running ? `0 0 0 3px color-mix(in srgb, ${dotColor} 20%, transparent)` : undefined }}
                       data-tip={dotTip}
                     />
-                    <span className="text-minor text-text-primary truncate flex-1">{name}</span>
+                    {/* cursor-pointer restated: preflight gives buttons cursor:default, which
+                        would override the row's pointer over the name. */}
+                    <button
+                      type="button"
+                      aria-current={isSel ? 'true' : undefined}
+                      aria-describedby={metaId}
+                      className="text-minor text-text-primary truncate flex-1 min-w-0 text-left cursor-pointer"
+                    >
+                      {name}
+                    </button>
                     {/* Unsaved marker — nothing in the list used to distinguish an edited row,
                         so a draft could be abandoned without ever looking abandoned. */}
                     {isSel && hasUnsavedWork && (
-                      <span className="text-caption text-accent-light shrink-0"
-                        data-tip={tt('Unsaved changes', 'Alterações não salvas')}>●</span>
+                      <span role="img" aria-label="Unsaved changes" className="shrink-0 flex text-accent-light"
+                        data-tip={tt('Unsaved changes', 'Alterações não salvas')}>
+                        <Circle size={7} fill="currentColor" />
+                      </span>
                     )}
                     {entry ? (
                       <span onClick={(e) => e.stopPropagation()}
@@ -912,17 +1070,19 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                           ? tt('Profile disabled — enable it in the sidebar', 'Profile desativado — reative na barra lateral')
                           : undefined}>
                         <Toggle size="sm" isOn={entry.trigger.armed} disabled={entry.isDisabled}
+                          ariaLabel={`Arm ${name}`}
                           onChange={(v) => send({ type: 'automation:setArmed', payload: { profile: name, armed: v } })} />
                       </span>
                     ) : (
-                      <span className="text-caption text-text-tertiary uppercase">{'new'}</span>
+                      <span className="label-micro text-text-tertiary">{'new'}</span>
                     )}
                   </div>
                   {/* One meta line: schedule · fires · last · next · result. */}
                   {/* The whole line on hover: it is `truncate` in a 248 px column, so the tail —
                       which is where the last result lands — is exactly what gets cut. */}
                   <div
-                    className="mt-0.5 pl-4 text-caption text-text-tertiary truncate"
+                    id={metaId}
+                    className="mt-0.5 pl-4 text-caption text-text-tertiary truncate tabular-nums"
                     data-tip={[
                       trig ? kindSummary(trig) : 'not saved yet',
                       entry && entry.fireCount > 0 ? `${entry.fireCount}× · ${fmtWhen(entry.lastFiredAt)}` : null,
@@ -957,6 +1117,19 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
             // one, i.e. a switch animating on a control the user never touched. draft and
             // selected live in this component, not in the subtree, so remounting is free.
             <div key={selected} className="flex flex-col gap-4 max-w-[520px]">
+              {/* What a screen reader must hear when it changes: the Run now / Test match / Test
+                  read answers, which arrive a bridge round trip after the click, and the
+                  "never fires" verdict, which is this form's validation. The visible lines mount
+                  and unmount with their state, and a live region that is born with its text is
+                  not announced — so they are mirrored here, into one region that is always
+                  mounted. One span each, so only the line that changed is read. sr-only is
+                  absolutely positioned: not a flex item, so it adds no gap to this column. */}
+              <div aria-live="polite" className="sr-only">
+                <span>{cannotFire ? `Never fires as configured. ${cannotFire}` : ''}</span>
+                <span>{testFireResult?.text ?? ''}</span>
+                <span>{testMatchText}</span>
+                <span>{testReadText}</span>
+              </div>
               <div className="flex items-center justify-between gap-2">
                 <div className="text-body font-medium text-text-primary truncate">{selected}</div>
                 <div className="flex items-center gap-1 shrink-0">
@@ -988,18 +1161,29 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                       <span data-tip={saving ? tt('Saving…', 'Salvando…') : undefined}>
                         <Button variant="destructive" size="sm" onClick={handleRemove} disabled={saving}>{'Yes'}</Button>
                       </span>
-                      <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>{'No'}</Button>
+                      {/* autoFocus: the Trash button that opened this just unmounted. "No" is the
+                          safe landing spot, and it hands the focus back to Trash (see trashRef). */}
+                      <Button variant="ghost" size="sm" autoFocus
+                        onClick={() => { refocusTrashRef.current = true; setConfirmDelete(false); }}>{'No'}</Button>
                     </div>
                   ) : (
                     // Confirm rather than fire-and-forget: this deletes a captured reference
                     // image, a hand-snapped ROI and a weekday mask with no undo. The action
                     // grid's Clear All already asks; a one-click destroy here was the outlier.
                     // Held for a save's flight, like Run now: see handleRemove.
-                    <span data-tip={saving ? tt('Saving…', 'Salvando…') : undefined}>
-                      <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(true)} disabled={saving}>
-                        <Trash2 size={12} />
-                      </Button>
-                    </span>
+                    // A raw <button> on the icon-button recipe rather than IconButton, because the
+                    // swap above needs a ref to hand the focus back to it.
+                    <button
+                      ref={trashRef}
+                      type="button"
+                      className={iconButtonClass('md', { tone: 'danger' })}
+                      onClick={() => setConfirmDelete(true)}
+                      disabled={saving}
+                      aria-label="Delete automation"
+                      data-tip={saving ? tt('Saving…', 'Salvando…') : tt('Delete automation', 'Excluir automação')}
+                    >
+                      <Trash2 size={12} />
+                    </button>
                   )}
                 </div>
               </div>
@@ -1024,52 +1208,34 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   further down instead of being promoted to a warning. */}
               {automation.enabled && !selectedEntry?.isDisabled && selectedEntry?.trigger.armed
                 && !selectedEntry.running && selectedEntry.lastResult && !cannotFire && (
-                <div className="rounded border px-3 py-2 text-caption leading-relaxed"
-                  style={{
-                    color: 'var(--color-warning-ink)',
-                    borderColor: 'color-mix(in srgb, var(--color-warning) 40%, transparent)',
-                    backgroundColor: 'color-mix(in srgb, var(--color-warning) 10%, transparent)',
-                  }}>
+                <Callout tone="warn">
                   {'Armed, but not watching. '}
                   {selectedEntry.lastResult}
-                </div>
+                </Callout>
               )}
 
               {/* Stated where it is fixable, and BEFORE it can be saved. A watcher whose
                   required field is blank probes false forever: it arms, reports Running, and
                   never fires, with nothing on screen to say why. */}
               {cannotFire && (
-                <div className="rounded border px-3 py-2 text-caption leading-relaxed"
-                  style={{
-                    color: 'var(--color-recording-fg)',
-                    borderColor: 'color-mix(in srgb, var(--color-recording) 40%, transparent)',
-                    backgroundColor: 'color-mix(in srgb, var(--color-recording) 10%, transparent)',
-                  }}>
+                <Callout tone="error">
                   {'Never fires as configured. '}
                   {cannotFire}
-                </div>
+                </Callout>
               )}
 
+              {/* `still`: facts about the PROFILE, there from the moment the row opens — not a
+                  reaction to anything done here, so no entrance fade. */}
               {selectedEntry?.isDisabled && (
-                <div className="rounded border px-3 py-2 text-caption leading-relaxed"
-                  style={{
-                    color: 'var(--color-recording-fg)',
-                    borderColor: 'color-mix(in srgb, var(--color-recording) 40%, transparent)',
-                    backgroundColor: 'color-mix(in srgb, var(--color-recording) 10%, transparent)',
-                  }}>
+                <Callout tone="error" still>
                   {'Profile disabled — its automation can’t run or be armed until you enable it in the sidebar.'}
-                </div>
+                </Callout>
               )}
 
               {noTarget && (
-                <div className="rounded border px-3 py-2 text-caption leading-relaxed"
-                  style={{
-                    color: 'var(--color-recording-fg)',
-                    borderColor: 'color-mix(in srgb, var(--color-recording) 40%, transparent)',
-                    backgroundColor: 'color-mix(in srgb, var(--color-recording) 10%, transparent)',
-                  }}>
+                <Callout tone="error" still>
                   {'No target window — it acts on whichever window is focused when it fires.'}
-                </div>
+                </Callout>
               )}
 
               <Field label="Trigger">
@@ -1112,54 +1278,15 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                 </Field>
               )}
 
-              {/* Active hours — interval and condition only, because for a schedule TimeOfDay IS
-                  the fire time. Two start-and-end inputs rather than one free-text box: they can
-                  only ever produce the range form the backend accepts, which is what keeps a bare
-                  "12:00" from ever being written here. (That value is not hypothetical — profiles
-                  drafted as a schedule and switched to condition carry it, and the backend ignores
-                  a bare time precisely so those keep firing.) */}
-              {draft.kind !== 'schedule' && (() => {
-                const parts = (draft.timeOfDay ?? '').split('-');
-                const from = parts.length === 2 ? parts[0].trim() : '';
-                const to = parts.length === 2 ? parts[1].trim() : '';
-                // Clearing ONE input must not throw the other away. The old form dropped the
-                // whole window the moment either half went blank, and the sibling then wrote a
-                // silent 00:00 / 23:59 fallback on the next keystroke — so backspacing the start
-                // and retyping it turned 09:00-18:00 into 10:00-23:59 without saying so. The
-                // remembered half survives an empty box until the pair is whole again.
-                const write = (f: string, t: string) => {
-                  lastHoursRef.current = { from: f || lastHoursRef.current.from, to: t || lastHoursRef.current.to };
-                  patch({ timeOfDay: f && t ? `${f}-${t}` : null });
-                };
-                return (
-                  <Field
-                    label="Active hours"
-                    hint={'Empty = always. An end before the start crosses midnight.'}
-                  >
-                    <div className="flex items-center gap-2">
-                      <input type="time" className={`${inputCls} w-28`} value={from}
-                        onChange={(e) => write(e.target.value, to || lastHoursRef.current.to)} />
-                      <span className="text-minor text-text-tertiary">{'to'}</span>
-                      <input type="time" className={`${inputCls} w-28`} value={to}
-                        onChange={(e) => write(from || lastHoursRef.current.from, e.target.value)} />
-                      {(from || to) && (
-                        <Button variant="ghost" size="sm" onClick={() => patch({ timeOfDay: null })}>
-                          {'Clear'}
-                        </Button>
-                      )}
-                    </div>
-                    {/* Warning, not a Save block: whether it actually locks depends on the moment
-                        the automation is armed, so refusing the pairing outright would reject
-                        configurations that work. See phaseLockRisk. */}
-                    <FieldError
-                      show={phaseLockRisk(draft)}
-                      tip={tt('This interval only ticks at a few times of day — all may fall outside the window', 'Este intervalo só bate em alguns horários — todos podem cair fora da janela')}
-                    >
-                      {'Interval longer than the active hours — it may never fire. Shorten it or widen the hours.'}
-                    </FieldError>
-                  </Field>
-                );
-              })()}
+              {/* Active hours — see ActiveHoursField for why the halves are local state. */}
+              {draft.kind !== 'schedule' && (
+                <ActiveHoursField
+                  value={draft.timeOfDay}
+                  onChange={(v) => patch({ timeOfDay: v })}
+                  phaseLock={phaseLockRisk(draft)}
+                  phaseLockTip={tt('This interval only ticks at a few times of day — all may fall outside the window', 'Este intervalo só bate em alguns horários — todos podem cair fora da janela')}
+                />
+              )}
 
               {draft.kind === 'schedule' && (
                 <>
@@ -1172,6 +1299,11 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                     />
                   </Field>
                   <Field label="Days" hint={'None = every day.'}>
+                    {/* The Sheet's If Time day chips, verbatim (SheetPanel's "Days"): the quiet ON
+                        state (accent at 12 % fill / 40 % border — the closed two-channel recipe; the
+                        solid accent fill this used was the design the owner turned down), state
+                        exposed as aria-pressed, and border-default, since border-subtle vanished on
+                        the light presets. */}
                     <div className="flex gap-1">
                       {DAY_PILLS.map((d) => {
                         const on = (draft.daysOfWeek & d.bit) !== 0;
@@ -1180,10 +1312,12 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                             key={d.label}
                             type="button"
                             onClick={() => patch({ daysOfWeek: draft.daysOfWeek ^ d.bit })}
-                            className={`h-7 px-2 rounded text-caption border transition-colors ${
+                            aria-pressed={on}
+                            aria-label={d.name}
+                            className={`w-8 h-8 rounded text-caption font-medium border transition-colors ${
                               on
-                                ? 'bg-accent-solid border-accent-solid text-[color:var(--color-accent-ink)]'
-                                : 'bg-bg-input border-border-subtle text-text-secondary hover:border-border-strong'
+                                ? 'text-accent border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)] bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)]'
+                                : 'text-text-tertiary border-border-default bg-bg-card hover:text-text-secondary'
                             }`}
                           >
                             {d.label}
@@ -1268,7 +1402,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                         }
                       />
                       <div className="flex items-center gap-2">
-                        <Toggle size="sm" isOn={draft.windowMatchForegroundOnly}
+                        <Toggle size="sm" isOn={draft.windowMatchForegroundOnly} ariaLabel="Foreground only"
                           onChange={(v) => patch({ windowMatchForegroundOnly: v })} />
                         <span className="text-minor text-text-secondary"
                           data-tip={tt('Must be in front, not just open', 'Precisa estar em primeiro plano, não só aberta')}>
@@ -1307,7 +1441,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   {(draft.conditionType === 'PixelColorMatch' || draft.conditionType === 'ImageFound' || draft.conditionType === 'ScreenText') && (
                     <>
                       <div className="flex items-center gap-2">
-                        <Toggle size="sm" isOn={draft.useRelativeCoordinates}
+                        <Toggle size="sm" isOn={draft.useRelativeCoordinates} ariaLabel="Relative to a window"
                           onChange={(v) => {
                             // This switch does not add a behaviour any more — it DECLARES which
                             // space the stored numbers are in, and nothing here can convert them:
@@ -1332,11 +1466,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                               ...(hadPoint ? { pixelX: 0, pixelY: 0 } : {}),
                               ...(hadRegion ? { searchRegion: null } : {}),
                             });
-                            setAnchorSpaceNotice(!visibleCleared ? null : v
-                              ? tt('Coordinates cleared — they were screen coordinates. Pick again to store them relative to the window.',
-                                   'Coordenadas limpas — elas eram de tela. Pegue de novo para gravá-las relativas à janela.')
-                              : tt('Coordinates cleared — they were relative to the window. Pick again to store them as screen coordinates.',
-                                   'Coordenadas limpas — elas eram relativas à janela. Pegue de novo para gravá-las como coordenadas de tela.'));
+                            setAnchorSpaceNotice(!visibleCleared ? null : v ? 'toWindow' : 'toScreen');
                           }} />
                         <span className="text-minor text-text-secondary"
                           data-tip={tt('Coordinates follow the window instead of the screen',
@@ -1380,10 +1510,17 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                     )}
 
                   {/* Por que a coordenada sumiu. Mora aqui e não num toast porque é uma afirmação
-                      sobre o CAMPO logo abaixo, e some sozinha na próxima captura. */}
-                  <FieldError show={!!anchorSpaceNotice} tip={anchorSpaceNotice ?? undefined}>
-                    {anchorSpaceNotice}
-                  </FieldError>
+                      sobre o CAMPO logo abaixo, e some sozinha na próxima captura.
+                      Only for the three types that HAVE coordinates: the line is always mounted
+                      (it reserves its height), and under Window/Process/File/Clipboard — where the
+                      notice can never appear — it left an empty line and two gaps of dead space
+                      before Re-trigger. */}
+                  {(draft.conditionType === 'PixelColorMatch' || draft.conditionType === 'ImageFound' || draft.conditionType === 'ScreenText') && (
+                    <FieldError show={!!anchorSpaceNotice}
+                      tip={anchorSpaceNotice ? tt(ANCHOR_NOTICE[anchorSpaceNotice].en, ANCHOR_NOTICE[anchorSpaceNotice].pt) : undefined}>
+                      {anchorSpaceNotice ? ANCHOR_NOTICE[anchorSpaceNotice].en : null}
+                    </FieldError>
+                  )}
 
                   {draft.conditionType === 'PixelColorMatch' && (
                     <>
@@ -1443,7 +1580,10 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                     <>
                       <Field label="Search region" hint={draft.searchRegion ? undefined : 'Required — reading the whole screen every check is too slow.'}>
                         <div className="flex items-center gap-2">
-                          <div className={`${inputCls} flex-1 flex items-center ${draft.searchRegion ? 'font-mono text-caption' : 'text-text-disabled italic'}`}>
+                          {/* No size of its own: inputCls's text-minor sorts after text-caption, so
+                              the caption this used to add never applied — 12 px, like the fields
+                              around it. Empty state in the recipe's placeholder ink, not disabled. */}
+                          <div className={`${inputCls} flex-1 flex items-center ${draft.searchRegion ? 'font-mono' : 'text-text-tertiary italic'}`}>
                             {draft.searchRegion
                               ? `${draft.searchRegion.x}, ${draft.searchRegion.y}  ·  ${draft.searchRegion.w} × ${draft.searchRegion.h}`
                               : 'Not set'}
@@ -1452,10 +1592,11 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                             <Frame size={12} /> {'Configure'}
                           </Button>
                           {draft.searchRegion && (
-                            <button type="button" onClick={() => patch({ searchRegion: null })}
-                              className="h-7 w-7 shrink-0 flex items-center justify-center rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors">
+                            <IconButton size="md" onClick={() => patch({ searchRegion: null })}
+                              aria-label="Clear search region"
+                              data-tip={tt('Clear search region', 'Limpar região de busca')}>
                               <X size={13} />
-                            </button>
+                            </IconButton>
                           )}
                         </div>
                       </Field>
@@ -1484,7 +1625,9 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                                 { value: 'lt', label: '<' },
                               ]}
                             />
+                            {/* Named on its own: the group caption "Compare" names the operator too. */}
                             <input className={`${inputCls} font-mono`} value={draft.conditionOperand ?? ''} placeholder="30"
+                              aria-label="Value to compare with"
                               onChange={(e) => patch({ conditionOperand: e.target.value })} />
                           </div>
                         </Field>
@@ -1516,10 +1659,11 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                             <Pipette size={12} /> Pick
                           </Button>
                           {draft.ocrTextColor && (
-                            <button type="button" onClick={() => patch({ ocrTextColor: null })}
-                              className="h-7 w-7 shrink-0 flex items-center justify-center rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors">
+                            <IconButton size="md" onClick={() => patch({ ocrTextColor: null })}
+                              aria-label="Clear text color"
+                              data-tip={tt('Clear text color', 'Limpar cor do texto')}>
                               <X size={13} />
-                            </button>
+                            </IconButton>
                           )}
                         </div>
                       </Field>
@@ -1531,11 +1675,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                       {testReadResult && (
                         <div className={`flex items-start gap-1.5 text-caption ${testReadResult.ok ? 'text-accent-light' : 'text-text-tertiary'}`}>
                           {testReadResult.ok ? <Check size={12} className="shrink-0 mt-px" /> : <X size={12} className="shrink-0 mt-px" />}
-                          <span className="break-words">
-                            {testReadResult.error
-                              ? testReadResult.error
-                              : `${testReadResult.ok ? 'Match' : 'No match'} — read: "${testReadResult.text || 'nothing'}"`}
-                          </span>
+                          <span className="break-words">{testReadText}</span>
                         </div>
                       )}
                     </>
@@ -1544,15 +1684,23 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   {draft.conditionType === 'ImageFound' && (
                     <>
                       <Field label="Reference image">
-                        <div
-                          onClick={() => draft.imageBase64 && setCropperOpen(true)}
-                          className={draft.imageBase64
-                            ? 'w-full rounded border border-border-subtle bg-bg-input p-1 cursor-pointer hover:border-accent-solid transition-colors'
-                            : `${inputCls} flex items-center text-text-tertiary truncate`}>
-                          {draft.imageBase64
-                            ? <img src={`data:image/png;base64,${draft.imageBase64}`} alt="" className="max-h-[120px] w-full object-contain" />
-                            : (draft.imagePath ?? 'none captured')}
-                        </div>
+                        {/* A real button: the thumbnail is the ONLY way into the cropper, and as a
+                            clickable div it had no keyboard path at all. */}
+                        {draft.imageBase64 ? (
+                          <button
+                            type="button"
+                            onClick={() => setCropperOpen(true)}
+                            aria-label="Crop reference image"
+                            data-tip={tt('Crop', 'Recortar')}
+                            className="block w-full rounded border border-border-subtle bg-bg-input p-1 cursor-pointer hover:border-accent-solid transition-colors"
+                          >
+                            <img src={`data:image/png;base64,${draft.imageBase64}`} alt="" className="max-h-[120px] w-full object-contain" />
+                          </button>
+                        ) : (
+                          <div className={`${inputCls} flex items-center text-text-tertiary truncate`}>
+                            {draft.imagePath ?? 'none captured'}
+                          </div>
+                        )}
                       </Field>
                       <div className="flex gap-2">
                         <Button variant="secondary" size="sm" onClick={captureImage}
@@ -1567,16 +1715,13 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                       {testMatchResult && (
                         <div className={`flex items-center gap-1.5 text-caption ${testMatchResult.found ? 'text-accent-light' : 'text-text-tertiary'}`}>
                           {testMatchResult.found ? <Check size={12} /> : <X size={12} />}
-                          {testMatchResult.error
-                            ? testMatchResult.error
-                            : testMatchResult.found
-                              ? `${'Found'} (${Math.round(testMatchResult.score * 100)}%) — ${'region snapped to it'}`
-                              : `${'Not found on screen'} (${Math.round(testMatchResult.score * 100)}%)`}
+                          {testMatchText}
                         </div>
                       )}
                       <Field label="Search region" hint={'Empty = full screen (slower, more false matches).'}>
                         <div className="flex items-center gap-2">
-                          <div className={`${inputCls} flex-1 flex items-center ${draft.searchRegion ? 'font-mono text-caption' : 'text-text-disabled italic'}`}>
+                          {/* Same box as the Text on screen region above — see the note there. */}
+                          <div className={`${inputCls} flex-1 flex items-center ${draft.searchRegion ? 'font-mono' : 'text-text-tertiary italic'}`}>
                             {draft.searchRegion
                               ? `${draft.searchRegion.x}, ${draft.searchRegion.y}  ·  ${draft.searchRegion.w} × ${draft.searchRegion.h}`
                               : 'Full screen (default)'}
@@ -1585,10 +1730,11 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                             <Frame size={12} /> {'Configure'}
                           </Button>
                           {draft.searchRegion && (
-                            <button type="button" onClick={() => patch({ searchRegion: null })}
-                              className="h-7 w-7 shrink-0 flex items-center justify-center rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors">
+                            <IconButton size="md" onClick={() => patch({ searchRegion: null })}
+                              aria-label="Clear search region"
+                              data-tip={tt('Clear search region', 'Limpar região de busca')}>
                               <X size={13} />
-                            </button>
+                            </IconButton>
                           )}
                         </div>
                       </Field>
@@ -1665,7 +1811,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
               </div>
 
               {selectedEntry && (selectedEntry.skippedBusy > 0 || selectedEntry.skippedDirty > 0 || selectedEntry.skippedModal > 0) && (
-                <div className="text-caption text-text-tertiary leading-relaxed">
+                <div className="text-caption text-text-tertiary leading-relaxed tabular-nums">
                   {'Skipped fires'}: {selectedEntry.skippedBusy} {'busy'} ·{' '}
                   {selectedEntry.skippedDirty} {'unsaved changes'} ·{' '}
                   {selectedEntry.skippedModal} {'dialog open'}
@@ -1677,7 +1823,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   and restore traffic doesn't trigger it — a copy the user made in that window is
                   swallowed with it, and used to be invisible. */}
               {selectedEntry && selectedEntry.skippedSuppressed > 0 && (
-                <div className="text-caption text-text-tertiary leading-relaxed">
+                <div className="text-caption text-text-tertiary leading-relaxed tabular-nums">
                   {'Clipboard changes ignored just after a replay'}: {selectedEntry.skippedSuppressed}
                 </div>
               )}
@@ -1720,19 +1866,28 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
         size="sm"
         zClass="z-[90]"
         onClose={() => setPendingNav(null)}
+        // Leaving the prompt (Esc, Keep editing) withdraws "save, THEN go": with animations on,
+        // pendingNav outlives the exit animation, and a save echo landing in that window still
+        // navigated — closing the panel the user had just chosen to stay in.
+        canClose={() => { setSaveThenGo(false); return true; }}
         footer={
           <DialogFooter
-            secondary={{ label: 'Keep editing', onClick: () => setPendingNav(null), autoFocus: true }}
-            extra={<Button variant="destructiveText" size="md" onClick={() => discardAndGo(pendingNav)}>Discard</Button>}
+            secondary={{ label: 'Keep editing', onClick: () => { setSaveThenGo(false); setPendingNav(null); }, autoFocus: true }}
+            /* Discard is held while the save is in the air: the write has been sent and cannot be
+               taken back, so "discard" could only lie about what lands on disk. */
+            extra={<Button variant="destructiveText" size="md" disabled={saveThenGo} onClick={() => discardAndGo(pendingNav)}>Discard</Button>}
             /* "Save", not "Save and continue": at 360 px the three buttons wanted 341 px of a
                326 px track and the primary hung 7 px outside the card. The twin prompt (Send
                Text's "Unsaved text") already says plain Save for the same three-way choice, and
-               "it also continues" is what the prompt is about — the tip says it outright. */
-            primary={canSave ? {
-              label: 'Save',
-              tip: tt('Save and go to where you clicked', 'Salvar e ir para onde você clicou'),
-              onClick: () => { const dest = pendingNav; handleSave(); go(dest); },
-            } : undefined}
+               "it also continues" is what the prompt is about — the tip says it outright.
+               The navigation itself waits for the echo — see the saveThenGo effect. */
+            primary={saveThenGo
+              ? { label: 'Saving…', disabled: true, onClick: () => {} }
+              : canSave ? {
+                label: 'Save',
+                tip: tt('Save and go to where you clicked', 'Salvar e ir para onde você clicou'),
+                onClick: () => { handleSave(); setSaveThenGo(true); },
+              } : undefined}
           />
         }
       >
