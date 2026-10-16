@@ -118,13 +118,18 @@ namespace TrueReplayer.Services
             lock (_resolveLock) _resolvedTag = null;
         }
 
-        /// <summary>Installed recognizer languages, tag + display name. Empty when none.</summary>
+        /// <summary>
+        /// Installed recognizer languages, tag + NATIVE name ("English (United States)", "Deutsch
+        /// (Deutschland)"). Not DisplayName: that one is in the Windows UI language, so on a pt-BR
+        /// Windows an installed en-US pack read "Inglês" while the same language offered but not
+        /// installed read "English" — one language, two names, depending on the pack. Empty when none.
+        /// </summary>
         public static IReadOnlyList<(string Tag, string Name)> AvailableLanguages()
         {
             try
             {
                 return OcrEngine.AvailableRecognizerLanguages
-                    .Select(l => (l.LanguageTag, l.DisplayName))
+                    .Select(l => (l.LanguageTag, l.NativeName))
                     .ToList();
             }
             catch (Exception ex)

@@ -21,11 +21,14 @@ export function ocrLanguageOptions(langs: OcrLanguage[]) {
 const sameTag = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
 // The picker's languages: the ones Settings always offers (Português, English — installable from
-// there when missing) first, then any other pack installed on this PC. An installed pack keeps
-// Windows' own display name. Both lists come from the C# side, so the offer has one source.
+// there when missing) first, then any other pack installed on this PC. An offered language keeps
+// the OFFERED name whether its pack is installed or not: taking Windows' name for an installed one
+// made the same language change name on install ("English" → "Inglês" on a pt-BR Windows, back
+// when the C# side sent DisplayName). The installed tag wins (Windows' casing). Both lists come
+// from the C# side, so the offer has one source.
 export function ocrPickerLanguages(offered: OcrLanguage[], available: OcrLanguage[]): OcrLanguage[] {
   return [
-    ...offered.map(o => available.find(a => sameTag(a.tag, o.tag)) ?? o),
+    ...offered.map(o => { const a = available.find(x => sameTag(x.tag, o.tag)); return a ? { tag: a.tag, name: o.name } : o; }),
     ...available.filter(a => !offered.some(o => sameTag(o.tag, a.tag))),
   ];
 }
