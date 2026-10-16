@@ -1680,36 +1680,38 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
   const profile = contextMenu ? profiles.find(p => p.name === contextMenu.profileName) : null;
 
   // ── Profile Row Renderer ──
+  // The keyboard face of a profile row lives on the NAME, not on the row (2026-10-16, the same
+  // fix as the folder header): the row holds the hotkey / hotstring / target chips, whose ✕ are
+  // real buttons, and a role="button" row made them interactive content nested inside a button —
+  // a screen reader reads the row as one control and the ✕ inside it as unreachable. The ROW
+  // keeps every mouse behaviour (click, drag, context menu); the name is the Tab stop with
+  // Enter/Space. onMouseDown preventDefault keeps a click from leaving the focus on the name, so
+  // a later stray Space/Enter cannot re-toggle the profile (the reason the old row blurred itself).
+  const rowNameProps = (p: ProfileEntry) => ({
+    role: 'button' as const,
+    tabIndex: 0,
+    'aria-current': p.isActive || undefined,
+    'aria-disabled': isClicker || runActive || undefined,
+    onMouseDown: (e: React.MouseEvent) => e.preventDefault(),
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      if (isClicker || runActive) return;
+      send({ type: 'profile:click', payload: { name: p.name } });
+    },
+  });
+
   const renderProfileRow = (p: ProfileEntry) => (
     <div
       key={p.name}
       data-drag-item={`profile:${p.name}`}
-      // Keyboard-reachable (Wave 4): rows were click-only divs, so Tab could
-      // never reach the sidebar. Enter/Space activate; the global focus ring
-      // provides the visible focus (unlayered rule beats the outline-none
-      // utility below, same mechanism as the dialog cards).
-      tabIndex={0}
-      role="button"
-      aria-current={p.isActive || undefined}
-      aria-disabled={isClicker || runActive || undefined}
       data-tip={isClicker ? tt('Macro mode only', 'Só no modo Macro') : undefined}
-      onKeyDown={(e) => {
-        if (e.key !== 'Enter' && e.key !== ' ') return;
-        e.preventDefault();
-        if (isClicker || runActive) return;
-        send({ type: 'profile:click', payload: { name: p.name } });
-      }}
       onMouseDown={(e) => handleProfileMouseDown(e, p.name)}
       onClick={(e) => {
         // Don't fire click if we were dragging
         if (dragActive.current) { e.preventDefault(); return; }
         if (isClicker || runActive) return; // activation gated — tooltip explains
         send({ type: 'profile:click', payload: { name: p.name } });
-        // Blur the ROW (currentTarget) after dispatching — e.target is usually a
-        // child span/img whose blur() is a no-op while the tabIndex=0 row itself
-        // holds focus, and a silently-focused row would let a later stray
-        // Space/Enter re-toggle the profile.
-        e.currentTarget.blur();
       }}
       onContextMenu={(e) => handleContextMenu(e, p.name)}
       // px-1.5 / gap-1 rather than px-2 / gap-1.5: 8 px reclaimed for the name, which is
@@ -1832,7 +1834,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             // is what hangs the description on the row, and most profiles are short — leaving
             // this branch out meant the description reached almost nobody. It also gets the
             // overflow tooltip the long branch has always had, for the narrow-column case.
-            return <span className={`${cls} flex-1 truncate`} data-name-cell data-full={p.name} data-desc={descTip(p.description)}>{p.name}</span>;
+            return <span {...rowNameProps(p)} className={`${cls} flex-1 truncate`} data-name-cell data-full={p.name} data-desc={descTip(p.description)}>{p.name}</span>;
           }
           // Split by CODE POINT, not UTF-16 unit: slice(-6) on a name ending in an emoji
           // would cut a surrogate pair in half and render two replacement glyphs.
@@ -1851,7 +1853,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             // length: after the gutter was tightened none of the 81 real names truncate, so
             // keying the tooltip off `length > 14` popped it on 23 rows that were showing
             // their name in full.
-            <span className={`${cls} flex-1 flex`} data-name-cell data-full={p.name} data-desc={descTip(p.description)}>
+            <span {...rowNameProps(p)} aria-label={p.name} className={`${cls} flex-1 flex`} data-name-cell data-full={p.name} data-desc={descTip(p.description)}>
               <span className="min-w-0 overflow-hidden text-ellipsis whitespace-pre">{head}</span>
               <span className="shrink-0 whitespace-pre">{tail}</span>
             </span>
