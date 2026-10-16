@@ -19,11 +19,16 @@ import {
   makeCustomPresetId,
   nativeDialogColors,
   CURRENT_THEME_CONFIG_VERSION,
+  animationModeFrom,
+  effectiveAnimations,
+  osReducesMotion,
 } from '../themes';
 
 interface ThemeContextValue {
   /** Current persisted config */
   config: ThemeConfig;
+  /** Windows asks for reduced motion right now (prefers-reduced-motion: reduce), tracked live. */
+  osReducedMotion: boolean;
   /** Base colors merged with overrides */
   resolvedColors: ThemeColors;
 
@@ -90,11 +95,24 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return () => mql.removeEventListener('change', sync);
   }, [config.uiSettings.matchSystemTheme, config.uiSettings.darkPresetId, config.uiSettings.lightPresetId]);
 
+  // The OS reduced-motion flag, LIVE: animationMode 'system' answers to it. Chromium (and so the
+  // WebView2) maps Windows' "Animation effects" setting onto prefers-reduced-motion and fires the
+  // change when the user flips it, with the app open.
+  const [osReducedMotion, setOsReducedMotion] = useState(osReducesMotion);
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const mql = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const sync = () => setOsReducedMotion(mql.matches);
+    sync();
+    mql.addEventListener('change', sync);
+    return () => mql.removeEventListener('change', sync);
+  }, []);
+
   // Apply theme to the DOM. Stays SYNCHRONOUS and undebounced — this is the live preview, and it
   // is one cssText write (see applyThemeConfig), so it is not what the split below is about.
   useEffect(() => {
-    applyThemeConfig(resolvedColors, config.uiSettings);
-  }, [config.uiSettings, resolvedColors]);
+    applyThemeConfig(resolvedColors, config.uiSettings, effectiveAnimations(config.uiSettings.animationMode, osReducedMotion));
+  }, [config.uiSettings, resolvedColors, osReducedMotion]);
 
   // Persist, and notify C# for native dialog styling — both DEBOUNCED.
   //
@@ -307,6 +325,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       uiSettings: {
         ...DEFAULT_UI_SETTINGS,
         ...theme.uiSettings,
+        // A file exported before the mode existed carries only the old boolean.
+        animationMode: animationModeFrom(theme.uiSettings),
+        enableAnimations: undefined,
         // An import is an explicit pick, exactly like selectPreset — and it has to turn the OS
         // follower OFF for the same reason, which selectPreset documents and this path used to
         // miss. The effect that follows prefers-color-scheme lists matchSystemTheme among its
@@ -323,6 +344,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<ThemeContextValue>(() => ({
     config,
+    osReducedMotion,
     resolvedColors,
     customPresets,
     selectPreset,
@@ -338,7 +360,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     saveAsPreset,
     deleteCustomPreset,
   }), [
-    config, resolvedColors, customPresets, selectPreset, replaceConfig, setColorOverride,
+    config, osReducedMotion, resolvedColors, customPresets, selectPreset, replaceConfig, setColorOverride,
     clearColorOverride, clearAllOverrides, setAccentColor,
     setUISetting, resetUISettings, exportTheme, importTheme,
     saveAsPreset, deleteCustomPreset,

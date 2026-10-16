@@ -282,7 +282,7 @@ export function PauseDialog({ initialKey, initialTimeoutMs, onConfirm, onClose }
             const active = captured && timeoutMs > 0 ? 0 : captured ? 1 : timeoutMs > 0 ? 2 : 3;
             return (
               <div
-                className="border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed grid"
+                className="border rounded px-2.5 py-2 text-caption leading-relaxed grid"
                 style={style}
               >
                 {/* A capture from the hook and the "skipped" refusal change this sentence without

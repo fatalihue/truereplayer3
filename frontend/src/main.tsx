@@ -23,10 +23,7 @@ import { applyThemeConfig, loadCustomPresets, loadThemeConfig, resolveThemeColor
 // transition is on would start the same cascade. ThemeProvider still owns the theme from here on;
 // its effect computes the same declaration, and applyThemeConfig skips the identical cssText.
 const bootTheme = loadThemeConfig()
-applyThemeConfig(
-  resolveThemeColors(bootTheme, loadCustomPresets()),
-  { ...bootTheme.uiSettings, enableAnimations: false },
-)
+applyThemeConfig(resolveThemeColors(bootTheme, loadCustomPresets()), bootTheme.uiSettings, false)
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -181,7 +181,7 @@ export function ClipboardModifierBody({
             placeholder="find"
             aria-label="Find"
             data-tip={tt('Every match, ignoring case. { } : not allowed.', 'Toda ocorrência, sem diferenciar maiúsculas. { } : não podem.')}
-            className="input-inline w-[92px]"
+            className="input-inline font-mono w-[92px]"
           />
           <span className="text-caption text-text-tertiary">→</span>
           <input
@@ -192,7 +192,7 @@ export function ClipboardModifierBody({
             placeholder="(nothing)"
             aria-label="Replace with"
             data-tip={tt('Empty deletes the match. { } : not allowed.', 'Vazio apaga a ocorrência. { } : não podem.')}
-            className="input-inline w-[92px]"
+            className="input-inline font-mono w-[92px]"
           />
         </div>
       </StepSection>
@@ -229,7 +229,7 @@ export function ClipboardModifierBody({
               'Cut here — the delimiter is dropped. Spaces and : allowed, { } not. Absent = empty result.',
               'Corta aqui — o delimitador é descartado. Espaços e : podem, { } não. Ausente = resultado vazio.',
             )}
-            className="input-inline w-[104px]"
+            className="input-inline font-mono w-[104px]"
           />
           <CheckRow
             checked={state.splitLast}
@@ -254,7 +254,7 @@ export function ClipboardModifierBody({
               'Strips leading digits + this text (e.g. "1x "). { } not allowed.',
               'Remove dígitos iniciais + este texto (ex.: "1x "). { } não podem.',
             )}
-            className="input-inline w-[104px]"
+            className="input-inline font-mono w-[104px]"
           />
         </div>
       </StepSection>
@@ -307,7 +307,7 @@ export function ClipboardModifierBody({
                 onChange={(e) => setState((s) => ({ ...s, linesSpec: e.target.value.replace(/[^0-9,]/g, '') }))}
                 disabled={state.listPick !== 'lines'}
                 placeholder="3,1,2"
-                className="input-inline w-[70px]"
+                className="input-inline font-mono w-[70px]"
               />
             }
           />
@@ -353,7 +353,7 @@ export function ClipboardModifierBody({
               'Joins lines with this — empty allowed. { } : not allowed.',
               'Une as linhas com isto — vazio permitido. { } : não podem.',
             )}
-            className="input-inline w-[70px]"
+            className="input-inline font-mono w-[70px]"
           />
         </div>
       </StepSection>
@@ -550,7 +550,7 @@ export function ClipboardModifierBody({
             placeholder="when empty"
             aria-label="Default text"
             data-tip={tt('Used when the result is empty. Spaces and : allowed, { } not.', 'Usado quando o resultado fica vazio. Espaços e : podem, { } não.')}
-            className="input-inline"
+            className="input-inline font-mono"
           />
         </div>
       </StepSection>
@@ -579,7 +579,7 @@ export function ClipboardModifierBody({
             what comes out, what gets written. It used to read Source → Token → Preview here. */}
         <div className="label-micro text-text-tertiary mb-0.5">Result</div>
         <div
-          className="font-mono text-caption px-2 py-0.5 mb-1.5 rounded border-l-2 whitespace-pre-wrap break-all min-h-[20px] max-h-[72px] overflow-auto"
+          className="font-mono text-caption px-2 py-0.5 mb-1.5 rounded border whitespace-pre-wrap break-all min-h-[20px] max-h-[72px] overflow-auto"
           style={{
             background: 'color-mix(in srgb, var(--color-replay) 8%, transparent)',
             borderColor: 'color-mix(in srgb, var(--color-replay) 50%, transparent)',

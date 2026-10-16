@@ -196,7 +196,7 @@ export function ScreenTextFields(p: ScreenTextFieldsProps) {
               value={p.operand}
               onChange={(e) => p.onOperandChange(e.target.value)}
               placeholder="30"
-              className="input-field w-full"
+              className="input-field font-mono w-full"
             />
             <FieldError show={!!operandError} className="text-caption text-recording-fg mt-1">{operandError}</FieldError>
           </Field>
@@ -222,7 +222,7 @@ export function ScreenTextFields(p: ScreenTextFieldsProps) {
               value={p.operand}
               onChange={(e) => p.onOperandChange(e.target.value)}
               placeholder={p.textOp === 'regex' ? '^Level \\d+' : 'Victory'}
-              className="input-field w-full"
+              className="input-field font-mono w-full"
             />
             <FieldError show={!!operandError} className="text-caption text-recording-fg mt-1">{operandError}</FieldError>
           </Field>
@@ -240,7 +240,7 @@ export function ScreenTextFields(p: ScreenTextFieldsProps) {
             value={p.textColor}
             onChange={(e) => p.onTextColorChange(e.target.value)}
             placeholder="Any"
-            className="input-field flex-1 min-w-0"
+            className="input-field font-mono flex-1 min-w-0"
           />
           <button onClick={pickColor} disabled={pickId != null} className={TOOL_BTN}>
             <Pipette size={12} />

@@ -173,7 +173,7 @@ export function ActionBar() {
               send({ type: 'recording:toggle', payload: { insertIndex } });
             }}
             disabled={!buttonStates.recordEnabled}
-            className={`${isRecording ? `${busyClass} record-btn-glow` : restingClass}`}
+            className={`${isRecording ? `${busyClass} record-btn-ring` : restingClass}`}
             style={isRecording ? undefined : restingStyle('var(--color-recording)', 'var(--color-recording-fg)')}
           >
             {isRecording
@@ -187,7 +187,7 @@ export function ActionBar() {
         <button
           onClick={handleReplay}
           disabled={!buttonStates.replayEnabled}
-          className={`${isReplaying ? `${busyClass} replay-btn-glow` : restingClass}`}
+          className={`${isReplaying ? `${busyClass} replay-btn-ring` : restingClass}`}
           style={isReplaying
             ? undefined
             : isClicker

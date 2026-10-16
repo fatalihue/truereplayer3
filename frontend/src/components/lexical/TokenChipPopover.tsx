@@ -998,7 +998,7 @@ function DateEditor({ token, onChange }: { token: string; onChange: (t: string) 
           onChange={(e) => { setFormat(e.target.value); emit(magnitude, back, unit, e.target.value); }}
           placeholder={DEFAULT_DATE_FORMAT[head]}
           spellCheck={false}
-          className="input-inline px-2 disabled:opacity-40"
+          className="input-inline font-mono px-2 disabled:opacity-40"
         />
         <div className="text-caption text-text-tertiary mt-1">.NET pattern. MM = month, mm = minutes.</div>
       </Section>

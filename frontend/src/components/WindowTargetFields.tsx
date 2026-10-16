@@ -190,7 +190,7 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
             onChange={(e) => edit({ processName: e.target.value })}
             placeholder="notepad.exe"
             spellCheck={false}
-            className="input-field pr-14"
+            className="input-field font-mono pr-14"
           />
           <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
             {value.processName && (

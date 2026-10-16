@@ -74,10 +74,43 @@ export interface ThemeUISettings {
   matchSystemTheme: boolean;
   darkPresetId: string;
   lightPresetId: string;
-  // Master toggle for UI transitions / micro-interactions. Stored here so users on
-  // low-end hardware or with reduced-motion preferences can switch them off
-  // independently of the theme palette.
-  enableAnimations: boolean;
+  // UI transitions / micro-interactions. 'system' (the default) follows the Windows "Animation
+  // effects" setting LIVE, through prefers-reduced-motion; 'on' and 'off' pin the choice. Owner
+  // decision 2026-10-16 (D4): the OS used to count only on the first run, seeding a boolean that
+  // nothing re-read — someone who turns effects off in Windows does it there, not in every app.
+  // See effectiveAnimations() and animationModeFrom() (the migration from the old boolean).
+  animationMode: AnimationMode;
+  /** Legacy (≤ 2.47.0) boolean, read ONLY by animationModeFrom() and then dropped. */
+  enableAnimations?: boolean;
+}
+
+export type AnimationMode = 'system' | 'on' | 'off';
+
+export const isAnimationMode = (v: unknown): v is AnimationMode => v === 'system' || v === 'on' || v === 'off';
+
+/**
+ * The mode a stored or imported uiSettings object means. A valid `animationMode` wins; without
+ * one it is a config from before the mode existed, where the old `enableAnimations` boolean
+ * stands in: `false` was a deliberate (or OS-seeded) "no animations" and stays Off; `true` or
+ * missing becomes System — identical behaviour for as long as Windows keeps its effects on.
+ */
+export function animationModeFrom(ui: unknown): AnimationMode {
+  const u = (ui && typeof ui === 'object' ? ui : {}) as Record<string, unknown>;
+  if (isAnimationMode(u.animationMode)) return u.animationMode;
+  return u.enableAnimations === false ? 'off' : 'system';
+}
+
+/** Whether animations run: the mode, with 'system' answered by the OS reduced-motion flag. */
+export function effectiveAnimations(mode: AnimationMode, osReducesMotion: boolean): boolean {
+  if (mode === 'on') return true;
+  if (mode === 'off') return false;
+  return !osReducesMotion;
+}
+
+/** The OS reduced-motion flag right now (false where matchMedia is unavailable). */
+export function osReducesMotion(): boolean {
+  return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
 export const DEFAULT_UI_SETTINGS: ThemeUISettings = {
@@ -171,7 +204,7 @@ export const DEFAULT_UI_SETTINGS: ThemeUISettings = {
   matchSystemTheme: false,
   darkPresetId: 'lavender-coal',
   lightPresetId: 'github-light',
-  enableAnimations: true,
+  animationMode: 'system',
 };
 
 // v7 = default monospace font Consolas → Cascadia Mono (2026-09-04 main-window polish).
@@ -1793,6 +1826,11 @@ export function loadThemeConfig(): ThemeConfig {
         }
       }
 
+      // Animations: the stored object, NOT the merge — DEFAULT_UI_SETTINGS already filled in
+      // 'system', which would hide an old `enableAnimations: false` from the migration.
+      merged.uiSettings.animationMode = animationModeFrom(parsed.uiSettings);
+      delete merged.uiSettings.enableAnimations;
+
       // Runs AFTER the migrations so a value a migration just wrote is checked too.
       const dropped = sanitizeStoredConfig(merged);
       if (dropped) console.warn(`[themes] Dropped ${dropped} unsafe colour value(s) from stored config`);
@@ -1826,16 +1864,9 @@ export function makeDefaultConfig(): ThemeConfig {
     version: CURRENT_THEME_CONFIG_VERSION,
     baseThemeId: DEFAULT_THEME_ID,
     colorOverrides: {},
-    uiSettings: {
-      ...DEFAULT_UI_SETTINGS,
-      // First run only (no stored config): seed the Animations toggle from the
-      // OS reduced-motion preference. A stored config always wins — the user
-      // can flip it back on in the Theme Editor at any time.
-      enableAnimations: typeof window !== 'undefined'
-        && window.matchMedia('(prefers-reduced-motion: reduce)').matches
-        ? false
-        : DEFAULT_UI_SETTINGS.enableAnimations,
-    },
+    // animationMode 'system' (the default) already follows the OS reduced-motion flag live, so a
+    // first run no longer needs to seed anything from it.
+    uiSettings: { ...DEFAULT_UI_SETTINGS },
   };
 }
 
@@ -1858,7 +1889,8 @@ export function resolveThemeColors(config: ThemeConfig, customPresets: ThemePres
 /** The declaration the last applyThemeConfig wrote to <html> — see the write guard there. */
 let lastAppliedCss = '';
 
-export function applyThemeConfig(colors: ThemeColors, uiSettings: ThemeUISettings) {
+/** `animations` is the EFFECTIVE flag (effectiveAnimations: the mode plus the OS), not the mode. */
+export function applyThemeConfig(colors: ThemeColors, uiSettings: ThemeUISettings, animations: boolean) {
   const root = document.documentElement;
 
   // Build the entire variable set as one cssText string, then assign once.
@@ -2061,12 +2093,12 @@ export function applyThemeConfig(colors: ThemeColors, uiSettings: ThemeUISetting
     root.style.colorScheme = isLightColor(colors['bg-base']) === true ? 'light' : 'dark';
   }
 
-  // Animations toggle — exposes a single data-attribute the CSS can hook into
+  // Animations — exposes a single data-attribute the CSS can hook into
   // (e.g. `html[data-animations="true"] .some-thing { transition: ... }`). Written only on a
   // change: the attribute is matched by a rule over every element, so each write restyles the
   // whole tree.
-  const animations = uiSettings.enableAnimations ? 'true' : 'false';
-  if (root.getAttribute('data-animations') !== animations) root.setAttribute('data-animations', animations);
+  const flag = animations ? 'true' : 'false';
+  if (root.getAttribute('data-animations') !== flag) root.setAttribute('data-animations', flag);
 }
 
 /**

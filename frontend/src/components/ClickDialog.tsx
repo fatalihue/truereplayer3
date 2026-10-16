@@ -707,7 +707,7 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
             : 1;
           return (
             <div
-              className="border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed grid"
+              className="border rounded px-2.5 py-2 text-caption leading-relaxed grid"
               style={style}
             >
               {/* The sentence (and the refusal it turns into) changes from a pick that happens off

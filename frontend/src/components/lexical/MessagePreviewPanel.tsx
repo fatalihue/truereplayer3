@@ -150,7 +150,7 @@ export function MessagePreviewPanel({ text, method, marksAdded = false, delivery
       </div>
       <div className="flex-1 min-h-0 overflow-auto px-3 pb-3">
         <div
-          className="text-minor leading-relaxed whitespace-pre-wrap break-words rounded border-l-2 px-2 py-1.5"
+          className="text-minor leading-relaxed whitespace-pre-wrap break-words rounded border px-2 py-1.5"
           style={{
             background: 'color-mix(in srgb, var(--color-replay) 8%, transparent)',
             borderColor: 'color-mix(in srgb, var(--color-replay) 40%, transparent)',

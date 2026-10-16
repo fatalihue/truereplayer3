@@ -392,7 +392,7 @@ export function KeystrokeCaptureDialog({
                   // The field primitive; bg-elevated stays because the pad around it is already
                   // bg-input, and the recipe's own fill would melt into it. Key ink + centred,
                   // like the hero caps it stands in for.
-                  className="input-field bg-bg-elevated text-center text-[color:var(--color-action-key-fg)]"
+                  className="input-field font-mono bg-bg-elevated text-center text-[color:var(--color-action-key-fg)]"
                 />
                 <div className="mt-2.5 text-caption text-text-tertiary leading-relaxed">
                   {mode === 'hold' ? (
@@ -646,7 +646,7 @@ export function KeystrokeCaptureDialog({
             const active = !answered ? 0 : mode === 'hold' ? 2 : 1;
             return (
               <div
-                className="border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed grid"
+                className="border rounded px-2.5 py-2 text-caption leading-relaxed grid"
                 style={calloutStyle('neutral', answered ? 'var(--color-action-key-fg)' : undefined)}
               >
                 {/* The key arrives from the native hook, not from anything the focus is on, so this

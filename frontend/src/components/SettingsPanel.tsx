@@ -483,6 +483,9 @@ function ComboInput({ value, onCommit, options, width = FIELD_W, editable = true
   width?: string;
   editable?: boolean;
 }) {
+  // D3 (2026-10-16): mono only for data. A field you TYPE into (the Rate) holds a value; a
+  // picker holds words — "Português (BR)" in mono ran into the chevron at 132 px.
+  const fontClass = editable ? 'font-mono' : 'font-sans';
   const [text, setText] = useState(value);
   const [open, setOpen] = useState(false);
   // The option the arrow keys are on while the menu is open (aria-activedescendant — the focus
@@ -596,7 +599,7 @@ function ComboInput({ value, onCommit, options, width = FIELD_W, editable = true
         onBlur={editable ? () => { focused.current = false; commitIfEdited(); setText(value); } : undefined}
         onKeyDown={onKeyDown}
         onClick={editable ? undefined : () => (open ? setOpen(false) : openMenu())}
-        className={`w-full h-7 px-2 text-ui font-mono text-text-primary bg-bg-input border border-border-default rounded text-center outline-none focus:border-accent-solid ${editable ? '' : 'cursor-pointer'}`}
+        className={`w-full h-7 px-2 text-ui ${fontClass} text-text-primary bg-bg-input border border-border-default rounded text-center outline-none focus:border-accent-solid ${editable ? '' : 'cursor-pointer'}`}
       />
       <button
         type="button"
@@ -626,7 +629,7 @@ function ComboInput({ value, onCommit, options, width = FIELD_W, editable = true
               onMouseDown={(e) => e.preventDefault()}
               onMouseEnter={() => setActive(i)}
               onClick={() => choose(o)}
-              className={`w-full px-2 py-1 text-center text-caption font-mono transition-colors ${
+              className={`w-full px-2 py-1 text-center text-caption ${fontClass} transition-colors ${
                 i === active ? 'bg-bg-elevated text-text-primary' : 'text-text-secondary'
               }`}
             >

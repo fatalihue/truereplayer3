@@ -21,6 +21,7 @@ import { Button } from './common/Button';
 import { useDismissOnOutside } from '../hooks/useDismissOnOutside';
 import { snapIndicesToBlocks, loopDepthAt } from '../utils/conditionalBlocks';
 import { useEditorClaim } from '../hooks/useEditorClaim';
+import { useRovingToolbar } from '../hooks/useRovingToolbar';
 
 export interface ColumnVisibility {
   action: boolean;
@@ -175,6 +176,9 @@ export function Toolbar(_props: ToolbarProps) {
   const clickerTip = (en: string, ptBr: string) =>
     isClicker ? tt('Macro mode only', 'Só no modo Macro') : tt(en, ptBr);
   const toolsRowRef = useRef<HTMLDivElement>(null);
+  // The row is ONE Tab stop with ←/→ inside (useRovingToolbar); the buttons keep tabIndex −1
+  // as props and the hook writes 0 on the current one.
+  const roving = useRovingToolbar(toolsRowRef);
   // Latest fit(), so the listeners below can be wired ONCE and still call the current closure.
   const fitRef = useRef<(() => void) | null>(null);
   const [overflowCount, setOverflowCount] = useState(0);
@@ -678,14 +682,16 @@ export function Toolbar(_props: ToolbarProps) {
           <ResponsiveProfileName name={toolbar.profileName} />
         </div>
 
-        {/* Right: tools — prevent focus on click so Space/Enter can't re-trigger.
+        {/* Right: tools — prevent focus on click so Space/Enter can't re-trigger (the row's
+            onMouseDown). For the keyboard the row is a toolbar: one Tab stop, ←/→ between the
+            tools, Home/End to the ends (useRovingToolbar).
             A previous redesign wrapped these in 5 boxed-group containers; the
             visual feedback was that the extra borders/padding read as busier
             than the flat row + thin dividers, without buying meaningful
             scannability. The clarity wins (icon swaps, deselect X, paste
             badge, destructive Trash, tooltip pass) all stay; only the
             grouping containers were rolled back. */}
-        <div ref={toolsRowRef} className="flex items-center gap-0.5 shrink-0" onMouseDown={(e) => e.preventDefault()}>
+        <div ref={toolsRowRef} role="toolbar" aria-label="Actions" className="flex items-center gap-0.5 shrink-0" onMouseDown={(e) => e.preventDefault()} onKeyDown={roving.onKeyDown} onFocus={roving.onFocus}>
           {/* Undo / Redo — through the SAME funnel as Ctrl+Z / Ctrl+Y (the cmd:undo / cmd:redo
               listeners above), so the two doors carry one gate: the run lockout, the modal stand-down
               and the Sheet's list guard. The buttons sent straight to the bridge and skipped all

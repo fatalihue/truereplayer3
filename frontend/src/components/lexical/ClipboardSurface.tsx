@@ -352,7 +352,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                   autoFocus
                   spellCheck={false}
                   placeholder="column"
-                  className="input-field"
+                  className="input-field font-mono"
                 />
               ) : head.kind === 'var' || head.kind === 'clip' || head.kind === 'env' ? (
                 <input
@@ -367,7 +367,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                   autoFocus
                   spellCheck={false}
                   placeholder={head.kind === 'env' ? 'USERNAME' : 'name'}
-                  className="input-field"
+                  className="input-field font-mono"
                 />
               ) : null /* the head-only kinds never reach this card (HEAD_ONLY above) */}
               <div className="text-caption text-text-tertiary mt-1 leading-snug">
@@ -431,7 +431,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                   placeholder="find"
                   aria-label="Find"
                   data-tip={tt('Every match, ignoring case. { } : not allowed.', 'Toda ocorrência, sem diferenciar maiúsculas. { } : não podem.')}
-                  className="input-field w-28"
+                  className="input-field font-mono w-28"
                 />
                 <span className="text-caption text-text-tertiary">→</span>
                 <input
@@ -442,7 +442,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                   placeholder="(nothing)"
                   aria-label="Replace with"
                   data-tip={tt('Empty deletes the match. { } : not allowed.', 'Vazio apaga a ocorrência. { } : não podem.')}
-                  className="input-field w-28"
+                  className="input-field font-mono w-28"
                 />
               </div>
             </div>
@@ -480,7 +480,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                     'Cut here — the delimiter is dropped. Spaces and : allowed, { } not.',
                     'Corta aqui — o delimitador é descartado. Espaços e : podem, { } não.',
                   )}
-                  className="input-field w-28"
+                  className="input-field font-mono w-28"
                 />
                 <CheckRow
                   checked={state.splitLast}
@@ -510,7 +510,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                     'Strips leading digits + this text (e.g. "1x "). { } not allowed.',
                     'Remove dígitos iniciais + este texto (ex.: "1x "). { } não podem.',
                   )}
-                  className="input-field w-28"
+                  className="input-field font-mono w-28"
                 />
               </div>
               {state.dropNumSuffix.length > 0 && (
@@ -571,7 +571,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                     'Comma-separated line numbers; repeats allowed',
                     'Números de linha separados por vírgula; repetição permitida',
                   )}
-                  className="input-field w-24"
+                  className="input-field font-mono w-24"
                 />
               </div>
               <div className="flex items-center gap-4 flex-wrap">
@@ -594,7 +594,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                     'Joins lines with this — empty allowed. { } : not allowed.',
                     'Une as linhas com isto — vazio permitido. { } : não podem.',
                   )}
-                  className="input-field w-24"
+                  className="input-field font-mono w-24"
                 />
               </div>
             </div>
@@ -762,7 +762,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
                 placeholder="when empty"
                 aria-label="Default text"
                 data-tip={tt('Used when the result is empty. Spaces and : allowed, { } not.', 'Usado quando o resultado fica vazio. Espaços e : podem, { } não.')}
-                className="input-field"
+                className="input-field font-mono"
               />
               {state.defaultText.length > 0 && (
                 <div className="text-caption text-text-tertiary leading-snug">
@@ -819,7 +819,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
           <div className="shrink-0 flex flex-col">
             <div className="label-micro text-text-tertiary mb-1 shrink-0">Result</div>
             <div
-              className="min-h-[64px] max-h-[calc(40vh/var(--ui-zoom))] font-mono text-caption px-2 py-1 rounded border-l-2 whitespace-pre-wrap break-all overflow-auto"
+              className="min-h-[64px] max-h-[calc(40vh/var(--ui-zoom))] font-mono text-caption px-2 py-1 rounded border whitespace-pre-wrap break-all overflow-auto"
               style={{
                 background: 'color-mix(in srgb, var(--color-replay) 8%, transparent)',
                 borderColor: 'color-mix(in srgb, var(--color-replay) 40%, transparent)',

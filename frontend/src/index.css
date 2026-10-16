@@ -618,19 +618,16 @@ html[data-animations="true"] .rec-badge-pulse {
   animation: rec-badge-pulse 1.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
-/* REC-mode glow on the primary "Pause" button (the record button while recording).
-   A soft outer glow in the recording red — complements the TitleBar badge (same red)
-   without repeating its expanding ring. Static when animations are off. */
-@keyframes record-btn-glow {
-  0%, 100% { box-shadow: 0 0 0 0 transparent; }
-  50%      { box-shadow: 0 0 14px 2px color-mix(in srgb, var(--color-recording) 60%, transparent); }
+/* REC-mode ring on the busy record button (it reads "Stop"/"Pause" while recording): a STATIC
+   2 px ring in the recording red. It replaced a 1.6 s infinite outer glow (owner decision,
+   2026-10-16): the house guideline bars glow, and two moving signals at once — the badge ring
+   above and this glow — was one too many. The TitleBar badge keeps its pulse; the button just
+   has to be unmistakable, and a ring in the mode colour is, with animations on or off. */
+.record-btn-ring {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-recording) 55%, transparent);
 }
 
-html[data-animations="true"] .record-btn-glow {
-  animation: record-btn-glow 1.6s ease-in-out infinite;
-}
-
-/* REPLAY-mode alert — mirrors the REC badge ring + button glow (so an active replay is just as
+/* REPLAY-mode alert — mirrors the REC badge ring + button ring (so an active replay is just as
    unmistakable) but in the replay accent (blue) to match the "Replaying" badge. */
 @keyframes replay-badge-pulse {
   from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 60%, transparent); }
@@ -639,12 +636,8 @@ html[data-animations="true"] .record-btn-glow {
 html[data-animations="true"] .replay-badge-pulse {
   animation: replay-badge-pulse 1.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
-@keyframes replay-btn-glow {
-  0%, 100% { box-shadow: 0 0 0 0 transparent; }
-  50%      { box-shadow: 0 0 14px 2px color-mix(in srgb, var(--color-accent) 60%, transparent); }
-}
-html[data-animations="true"] .replay-btn-glow {
-  animation: replay-btn-glow 1.6s ease-in-out infinite;
+.replay-btn-ring {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 55%, transparent);
 }
 
 /* INSERTED-ROW flash — answers "where did the row I just added land?". Attribute + CSS, like
@@ -998,18 +991,19 @@ tbody tr[data-replay] [data-rownum-value] {
 /* FORM INPUT — the one text-field recipe for sheets, dialogs and popovers. The 2026-09-04
    sweep counted four input heights (h-8 / h-7 / h-6 / h-5) and three font sizes for the same
    role; these are the two that remain: `input-field` 32 px for forms, `input-inline` 28 px for
-   popovers, the palette and inline rows. Mono by default because nearly every field here holds
-   a value (coordinates, paths, selectors); add font-sans at the call site for prose. */
+   popovers, the palette and inline rows. Sans by default; add font-mono at the call site for DATA —
+   numbers, coordinates, keys, paths, selectors, patterns, tokens (owner decision D3, 2026-10-16:
+   the old mono default put words such as "Português (BR)" in mono wherever a site forgot font-sans). */
 @utility input-field {
-  @apply w-full h-8 px-2 text-ui font-mono text-text-primary bg-bg-input border border-border-default rounded outline-none placeholder:text-text-tertiary focus:border-accent-solid disabled:opacity-50;
+  @apply w-full h-8 px-2 text-ui font-sans text-text-primary bg-bg-input border border-border-default rounded outline-none placeholder:text-text-tertiary focus:border-accent-solid disabled:opacity-50;
 }
 @utility input-inline {
-  @apply w-full h-7 px-1.5 text-xs font-mono text-text-primary bg-bg-input border border-border-default rounded outline-none placeholder:text-text-tertiary focus:border-accent-solid disabled:opacity-50;
+  @apply w-full h-7 px-1.5 text-xs font-sans text-text-primary bg-bg-input border border-border-default rounded outline-none placeholder:text-text-tertiary focus:border-accent-solid disabled:opacity-50;
 }
 /* The multi-line sibling: input-field's shell (border, fill, accent border on focus, control
-   radius, px-2) with py-1.5 around the text block. No font on purpose — the call sites differ
-   (mono values in Set Variable and the snippet editor, sans prose in Notes) and which way that
-   goes is still an open decision (D3), so each site keeps its own. resize-none by default (Notes
+   radius, px-2) with py-1.5 around the text block. No font of its own: each site already names
+   one by the D3 rule (mono for the values in Set Variable and the snippet editor, sans for the
+   prose in Notes). resize-none by default (Notes
    auto-grows); add resize-y where the user drags the size. Height = rows / min-h at the site. */
 @utility textarea-field {
   @apply w-full px-2 py-1.5 text-text-primary bg-bg-input border border-border-default rounded outline-none resize-none placeholder:text-text-tertiary focus:border-accent-solid disabled:opacity-50;

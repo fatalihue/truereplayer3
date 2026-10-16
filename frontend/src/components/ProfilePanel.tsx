@@ -3045,7 +3045,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               aria-label="Hotkey"
               // The field recipe with the capture overrides: accent border at rest (the field is
               // always listening), centred keycap text, accent placeholder.
-              className={`input-field border-accent-solid text-center placeholder:text-accent-hover/50 ${
+              className={`input-field font-mono border-accent-solid text-center placeholder:text-accent-hover/50 ${
                 !hotkeyCapture || hotkeyCapture === '...'
                   ? 'text-accent-hover motion-ok:animate-pulse'
                   : 'text-accent'
@@ -3112,7 +3112,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               placeholder="e.g. /id"
               aria-label="Hotstring"
               maxLength={32}
-              className="input-field text-accent border-accent-solid"
+              className="input-field font-mono text-accent border-accent-solid"
             />
             <p className="text-caption text-text-tertiary mt-1.5">
               Min 2 characters.

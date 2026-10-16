@@ -365,7 +365,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     setColorOverride, clearColorOverride, clearAllOverrides,
     setAccentColor, setUISetting, resetUISettings,
     exportTheme, importTheme,
-    saveAsPreset, deleteCustomPreset,
+    saveAsPreset, deleteCustomPreset, osReducedMotion,
   } = useTheme();
   const { language, setLanguage } = useLanguage();
 
@@ -1182,11 +1182,24 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
             </div>
           </div>
         )}
-        <div className="flex items-center justify-between py-1.5">
-          <div className="flex flex-col">
-            <span className="text-minor text-text-secondary">Enable animations</span>
+        {/* System follows Windows' "Animation effects" live (prefers-reduced-motion); On / Off pin
+            it (D4, 2026-10-16). The line under the label says what System is doing right now. */}
+        <div className="flex items-center justify-between gap-3 py-1.5">
+          <div className="flex flex-col min-w-0">
+            <span className="text-minor text-text-secondary">Animations</span>
+            {config.uiSettings.animationMode === 'system' && (
+              <span className="text-caption text-text-tertiary">
+                {osReducedMotion ? 'Windows has animation effects off' : 'Windows has animation effects on'}
+              </span>
+            )}
           </div>
-          <Toggle isOn={config.uiSettings.enableAnimations} onChange={(v) => setUISetting('enableAnimations', v)} ariaLabel="Enable animations" />
+          <SegmentedControl
+            options={[{ value: 'system', label: 'System' }, { value: 'on', label: 'On' }, { value: 'off', label: 'Off' }]}
+            value={config.uiSettings.animationMode}
+            onChange={(v) => setUISetting('animationMode', v)}
+            ariaLabel="Animations"
+            dense
+          />
         </div>
       </div>
     );

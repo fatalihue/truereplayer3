@@ -1,8 +1,13 @@
 import type { CSSProperties, ReactNode } from 'react';
 
 /**
- * THE inline note card: a left rail in the tone colour, an 8 % wash of the same colour, 11 px
- * text. Before this existed the sheet carried seven "test result" cards and five "warning"
+ * THE inline note card: a 1 px hairline all round in the tone colour (40 %), an 8 % wash of the
+ * same colour, 11 px text. It used to be a 2 px rail on the left only — the house guideline
+ * bars coloured side borders above 1 px, and a one-sided border under a rounded corner bends
+ * the end of the rail (owner decision, 2026-10-16). Every card that carries `calloutStyle()`
+ * takes `CALLOUT_CLASS` (or the RESULT_CARD alias) for the same shape.
+ *
+ * Before this existed the sheet carried seven "test result" cards and five "warning"
  * bands, each with its own `color-mix()` written inline (`resultCardStyle()`), the Run report
  * printed a failed step as three loose lines, and the Automation panel had a fourth recipe —
  * the 2026-09-04 sweep counted them. One component, five tones, plus `color` for the action
@@ -52,10 +57,15 @@ export interface CalloutProps {
   children: ReactNode;
 }
 
+/** The card's shape — pair it with `calloutStyle()` wherever a note is not the <Callout> itself. */
+export const CALLOUT_CLASS = 'border rounded px-2.5 py-2 text-caption leading-relaxed';
+
 export function calloutStyle(tone: CalloutTone = 'neutral', color?: string, ink?: string): CSSProperties {
   const rail = color ?? RAIL[tone];
   return {
-    borderColor: rail,
+    // A plain neutral note keeps the solid hairline: border-strong at 40 % would vanish into
+    // the card. Every hue (tone or family colour) is mixed down so the frame stays a hairline.
+    borderColor: !color && tone === 'neutral' ? 'var(--color-border-default)' : `color-mix(in srgb, ${rail} 40%, transparent)`,
     color: ink ?? color ?? INK[tone],
     background: `color-mix(in srgb, ${rail} 8%, transparent)`,
   };
@@ -65,7 +75,7 @@ export function Callout({ tone = 'neutral', color, ink, icon, still = false, rol
   return (
     <div
       role={role}
-      className={`border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed ${icon ? 'flex items-start gap-2' : ''} ${still ? '' : 'callout-enter'} ${className}`}
+      className={`${CALLOUT_CLASS} ${icon ? 'flex items-start gap-2' : ''} ${still ? '' : 'callout-enter'} ${className}`}
       style={calloutStyle(tone, color, ink)}
     >
       {icon && <span className="shrink-0 mt-[1px]">{icon}</span>}

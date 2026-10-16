@@ -3400,7 +3400,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 value={clipboardPattern}
                 onChange={(e) => setClipboardPattern(e.target.value)}
                 spellCheck={false}
-                className="input-field"
+                className="input-field font-mono"
               />
             </Field>
           </>
@@ -3438,7 +3438,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 onChange={(e) => setKey(e.target.value)}
                 placeholder="name"
                 spellCheck={false}
-                className="input-field"
+                className="input-field font-mono"
               />
             </Field>
             <Field label="Operator">
@@ -3465,7 +3465,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 value={conditionOperand}
                 onChange={(e) => setConditionOperand(e.target.value)}
                 spellCheck={false}
-                className="input-field"
+                className="input-field font-mono"
               />
             </Field>
           </>
@@ -3493,7 +3493,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 onChange={(e) => setFilePath(e.target.value)}
                 placeholder="C:\\flags\\go.txt"
                 spellCheck={false}
-                className="input-field"
+                className="input-field font-mono"
               />
             </Field>
           )}
@@ -3507,7 +3507,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   type="time"
                   value={timeStart}
                   onChange={(e) => setTimeStart(e.target.value)}
-                  className="input-field"
+                  className="input-field font-mono"
                 />
               </Field>
               <Field label="To" className="flex-1" hint={'Overnight OK (e.g. 22:00–02:00)'}>
@@ -3515,7 +3515,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   type="time"
                   value={timeEnd}
                   onChange={(e) => setTimeEnd(e.target.value)}
-                  className="input-field"
+                  className="input-field font-mono"
                 />
               </Field>
             </div>
@@ -3576,7 +3576,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   onChange={(e) => { setKey(e.target.value); setTextMatch(''); invalidatePickedAlternatives(); }}
                   placeholder=".btn-save"
                   spellCheck={false}
-                  className="input-field flex-1"
+                  className="input-field font-mono flex-1"
                 />
                 <button
                   onClick={() => {
@@ -3660,7 +3660,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   value={browserText}
                   onChange={(e) => setBrowserText(e.target.value)}
                   spellCheck={false}
-                  className="input-field"
+                  className="input-field font-mono"
                 />
               </Field>
             )}
@@ -3715,7 +3715,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
               so the otherwise-empty panel reads as intentional, not broken. */}
           {(isElse || isEndIf) && (
             <div
-              className="border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed"
+              className="border rounded px-2.5 py-2 text-caption leading-relaxed"
               style={calloutStyle('neutral', 'var(--color-action-if-fg)', 'var(--color-text-secondary)')}
             >
               {isElse
@@ -3729,7 +3729,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
           {(actionType === 'EndLoop' || actionType === 'BreakLoop'
             || actionType === 'ContinueLoop' || actionType === 'ForEachRow') && (
             <div
-              className="border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed"
+              className="border rounded px-2.5 py-2 text-caption leading-relaxed"
               style={calloutStyle('neutral', 'var(--color-action-loop-fg, var(--color-action-if-fg))', 'var(--color-text-secondary)')}
             >
               {actionType === 'EndLoop'
@@ -3746,7 +3746,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
               family (pause fallback) instead of the If teal. Delay + Notes still apply. */}
           {(actionType === 'Stop' || actionType === 'Return') && (
             <div
-              className="border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed"
+              className="border rounded px-2.5 py-2 text-caption leading-relaxed"
               style={calloutStyle('neutral', 'var(--color-action-flow-fg, var(--color-action-pause-fg))', 'var(--color-text-secondary)')}
             >
               {actionType === 'Stop'
@@ -4179,7 +4179,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   value={pixelColor}
                   onChange={(e) => setPixelColor(e.target.value)}
                   placeholder="#RRGGBB"
-                  className="input-field flex-1"
+                  className="input-field font-mono flex-1"
                 />
               </div>
             </Field>
@@ -4375,7 +4375,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   value={key}
                   onChange={(e) => { setKey(e.target.value); invalidatePickedAlternatives(); }}
                   aria-label={isBrowserNavigate ? 'URL' : 'CSS selector'}
-                  className="input-field flex-1"
+                  className="input-field font-mono flex-1"
                   placeholder={isBrowserNavigate ? 'https://example.com' : '.btn-save'}
                 />
                 {!isBrowserNavigate && (
@@ -4467,7 +4467,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   // like them.
                   onChange={(e) => { setTextMatch(e.target.value); invalidatePickedAlternatives(); }}
                   aria-label="Text match"
-                  className="input-field flex-1"
+                  className="input-field font-mono flex-1"
                   placeholder={textMode === 'regex' ? 'e.g. ^Sign in$' : 'e.g. Sign in'}
                 />
               </div>
@@ -4503,7 +4503,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   type="text"
                   value={urlWaitPattern}
                   onChange={(e) => setUrlWaitPattern(e.target.value)}
-                  className="input-field"
+                  className="input-field font-mono"
                   placeholder="*/dashboard*"
                 />
               </Field>
@@ -4512,7 +4512,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   type="text"
                   value={postNavigateSelector}
                   onChange={(e) => setPostNavigateSelector(e.target.value)}
-                  className="input-field"
+                  className="input-field font-mono"
                   placeholder="#app-ready"
                 />
               </Field>
@@ -4675,7 +4675,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   on a plain selector and the action times out silently. */}
               {waitMode === 'text-match' && !textMatch.trim() && (
                 <div
-                  className="mt-1.5 flex items-start gap-2 border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed"
+                  className="mt-1.5 flex items-start gap-2 border rounded px-2.5 py-2 text-caption leading-relaxed"
                   style={calloutStyle('warn')}
                 >
                   <ShieldAlert size={13} className="shrink-0 mt-px" />
@@ -4930,7 +4930,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   onChange={(e) => setKey(e.target.value.replace(RUN_STATE_NAME_OUTSIDE, ''))}
                   placeholder="name"
                   spellCheck={false}
-                  className="input-field"
+                  className="input-field font-mono"
                 />
               </Field>
               <Field label="Mode">
@@ -5031,7 +5031,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   onChange={(e) => setKey(e.target.value.replace(RUN_STATE_NAME_OUTSIDE, ''))}
                   placeholder={slotMode === 'clear' ? 'all slots' : '1'}
                   spellCheck={false}
-                  className="input-field"
+                  className="input-field font-mono"
                 />
               </Field>
             </>
@@ -5106,7 +5106,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   onChange={(e) => setLaunchPath(e.target.value)}
                   placeholder="notepad.exe · https://… · C:\path\app.exe"
                   spellCheck={false}
-                  className="input-field flex-1 min-w-0"
+                  className="input-field font-mono flex-1 min-w-0"
                 />
                 <button
                   type="button"
@@ -5125,7 +5125,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 onChange={(e) => setLaunchArgs(e.target.value)}
                 disabled={!launchPath.trim()}
                 spellCheck={false}
-                className="input-field"
+                className="input-field font-mono"
               />
             </Field>
             </>
@@ -5253,7 +5253,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                 left-rail card (no tint) — informational, not a warning. */}
             {profiles.find(p => p.name === activeProfile)?.hasEffectiveTarget && (
               <div
-                className="border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed"
+                className="border rounded px-2.5 py-2 text-caption leading-relaxed"
                 style={calloutStyle('neutral')}
               >
                 {'Clicks still follow the profile’s Window Target, not this window.'}

@@ -5,7 +5,7 @@ import { Frame, Maximize, X } from 'lucide-react';
 // editor's region row, verdict card and tool button; living here, the copies cannot drift apart.
 
 /** A probe's verdict card (found / not found). Pair with `calloutStyle(ok ? 'ok' : 'error')`. */
-export const RESULT_CARD = 'border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed callout-enter';
+export const RESULT_CARD = 'border rounded px-2.5 py-2 text-caption leading-relaxed callout-enter';
 
 /** The Sheet's neutral tool button — Configure, Pick, Recapture, Pick from screen. h-8 like
  *  every Sheet control; add `flex-1 justify-center` where it shares a row. The accent-tinted
