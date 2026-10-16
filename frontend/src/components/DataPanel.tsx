@@ -1619,7 +1619,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
                 without an entrance. */}
             {loopOverData && grid.rows.length > 0 ? (
               <Callout tone="ok" still>
-                {`${grid.rows.length} runs, one per row — overrides Loop count and WhilePressed/Toggle looping.`}
+                {`${grid.rows.length} ${grid.rows.length === 1 ? 'run' : 'runs'}, one per row — overrides the loop count and While pressed / Toggle looping.`}
               </Callout>
             ) : loopOverData ? (
               <Callout tone="error" still>
