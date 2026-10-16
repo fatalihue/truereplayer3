@@ -61,12 +61,16 @@ export function railInitials(name: string): string {
   if (lead && /\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(lead)) return lead;
   const numbered = /^(.*?\D)\s*(\d{1,3})$/.exec(trimmed);
   if (numbered && numbered[1].trim()) return `${firstIdentGrapheme(numbered[1].trim())}${numbered[2]}`.toUpperCase();
-  const words = trimmed
-    .replace(/([a-zà-ú])([A-ZÀ-Ú])/g, '$1 $2')
+  const toWords = (s: string) => s
     .split(/[\s\-_./]+/)
     // …and a token made only of punctuation is not a word. Without this "[WIP] Farm" splits into
     // "[WIP]" and "Farm" and takes the "[" as its first initial — the same defect one level down.
     .filter((w) => /\p{L}|\p{N}/u.test(w));
+  // The separators first; the camelCase seam only when they did not already give two words. Split
+  // on both at once, "WhatsApp Web" became Whats / App / Web and read "WA" — the same avatar as
+  // plain "WhatsApp", which is exactly the pair the doc above promises to tell apart.
+  let words = toWords(trimmed);
+  if (words.length < 2) words = toWords(trimmed.replace(/([a-zà-ú])([A-ZÀ-Ú])/g, '$1 $2'));
   if (words.length >= 2) {
     const second = words.slice(1).find((w) => glyphCount(w) >= 3) ?? words[1];
     return `${firstIdentGrapheme(words[0])}${firstIdentGrapheme(second)}`.toUpperCase();

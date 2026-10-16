@@ -91,11 +91,25 @@ export function rowBodyMs(a: ActionItem): number {
  * Neither is a guess the way a smooth move (distance-bound) or a wait (timeout-bound) is: both
  * are integers sitting on the row, already drawn in the Details column.
  */
+/**
+ * The rows the engine replays through ExecuteRepeated / ExecuteRepeatedCore (ActionExecution.cs:
+ * `case "Keystroke"`, the five clicks and the three *ClickHold) — the only ones Times and the gap
+ * apply to. Every other type runs once, whatever RepeatCount it carries: a HoldKey is a single
+ * down / delay / up, and a KeyDown or SendText that kept an old RepeatCount through a type change
+ * is not repeated either. RunProfile loops in its own handler with nothing between passes.
+ */
+const REPEATED_TYPES = new Set([
+  'Keystroke', 'LeftClick', 'RightClick', 'MiddleClick', 'DoubleClick', 'TripleClick',
+  'LeftClickHold', 'RightClickHold', 'MiddleClickHold',
+]);
+
 export function actionCostMs(a: ActionItem): number {
   const base = (a.delay > 0 ? a.delay : 0) + PER_ACTION_OVERHEAD_MS;
   const dwell = rowDwellMs(a);
   const body = rowBodyMs(a);
-  const repeats = Math.max(1, Math.min(999, a.repeatCount ?? 1));
+  // Only a repeated type multiplies: charging (N-1) gaps to a HoldKey × 5 or a KeyDown × 4 that
+  // the engine runs once invented time the run never spends (1150 ms for a 1 s HoldKey × 5).
+  const repeats = REPEATED_TYPES.has(a.actionType) ? Math.max(1, Math.min(999, a.repeatCount ?? 1)) : 1;
   if (repeats === 1) return base + dwell + body;
   // A HoldKey pays its dwell ONCE however high Times is. `case "HoldKey"` in the engine is a
   // single down / delay / up and never routes through ExecuteRepeated, so RepeatCount is inert

@@ -13,7 +13,9 @@ export interface ClickerStatsView {
 // Shared by the MEASURED rate (dashboard) and the TARGET rate (settings, status bar) so
 // the two can never format differently for the same number.
 export function formatRate(rate: number): string {
-  return rate >= 10 ? rate.toFixed(0) : rate.toFixed(1);
+  // Decided on the value AS ROUNDED to one decimal: 9.96 rounds to "10.0", the very ".0" this rule
+  // exists to drop, and a measured rate lands there (996 clicks in 100 s).
+  return Math.round(rate * 10) / 10 >= 10 ? rate.toFixed(0) : rate.toFixed(1);
 }
 
 /** "M:SS" — the one clock format every Clicker surface uses (elapsed, the Time limit, the ETA). */

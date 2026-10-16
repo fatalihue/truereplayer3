@@ -7,7 +7,9 @@ import type { ActionItem } from '../bridge/messageTypes';
 export type OcrTextOp = 'contains' | 'eq' | 'regex';
 export type OcrNumberOp = 'eq' | 'neq' | 'gt' | 'lt';
 
-export const isNumberMode = (readAs: string | null | undefined): boolean => readAs === 'number';
+// Case-insensitive, as the C# IsNumberMode (OrdinalIgnoreCase) — a hand-edited "Number" reads the
+// same on both sides.
+export const isNumberMode = (readAs: string | null | undefined): boolean => (readAs ?? '').toLowerCase() === 'number';
 
 /** An operator that does not fit the mode reads as the mode's default (Contains / =). */
 export function effectiveOperator(op: string | null | undefined, number: boolean): string {
@@ -47,7 +49,9 @@ export function readsScreenText(a: Pick<ActionItem, 'actionType' | 'conditionTyp
 export function regexProblem(pattern: string): string | null {
   // A token opens with a letter ({var:x}); a quantifier with a digit (\d{2}) is still judged.
   if (!pattern || /\{[A-Za-z]/.test(pattern)) return null;
-  if (/\(\?[imnsx-]*[:)]|\(\?>|\(\?\(|\(\?<\w+-\w*>|\\[AZzG]/.test(pattern)) return null;
+  // Inline options need at least ONE flag letter: with `*`, a plain non-capturing "(?:" matched as
+  // "options" and switched the check off for the whole pattern — "(?:Level (\d+)" passed unflagged.
+  if (/\(\?[imnsx-]+[:)]|\(\?>|\(\?\(|\(\?<\w+-\w*>|\\[AZzG]/.test(pattern)) return null;
   try { new RegExp(pattern, 'i'); return null; }
   catch { return 'This pattern does not compile'; }
 }

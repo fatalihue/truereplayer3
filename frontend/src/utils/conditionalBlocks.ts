@@ -122,6 +122,12 @@ export function snapIndicesToBlocks(indices: number[], actions: ActionItem[]): n
   const set = new Set(indices);
   const closerOf = buildCloserOf(actions);
   for (const sel of indices) {
+    // Only a MARKER needs its block: a body row never unbalances anything (the rule the grid
+    // states), so it stays granular even in a selection that also holds a marker. Expanding it too
+    // took its ENCLOSING block — [If, a, If, b, EndIf, c, EndIf] with a + the inner block selected
+    // came back as all seven rows, so a delete or a drag also removed the outer If…EndIf and the
+    // unselected `c`.
+    if (!STRUCTURAL.has(actions[sel]?.actionType ?? '')) continue;
     let bestOpen = -1;
     let bestClose = -1;
     for (const [openIdx, closeIdx] of closerOf) {

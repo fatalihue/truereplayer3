@@ -236,6 +236,9 @@ function custom(d: Date, format: string, locale: string, k: Clock = LOCAL): stri
       continue;
     }
     if (c === '/' || c === ':') { out += c; i++; continue; }   // TokenCulture pins both separators
+    // 'K' is a ONE-character token in .NET: "KK" prints the offset twice. Grouped into a run like
+    // the counted letters, it printed once and the two sides disagreed.
+    if (c === 'K') { out += specifier(d, 'K', 1, locale, k) ?? 'K'; i++; continue; }
     let j = i;
     while (j < format.length && format[j] === c) j++;
     const piece = specifier(d, c, j - i, locale, k);

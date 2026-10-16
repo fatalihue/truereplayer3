@@ -10,6 +10,8 @@
  * Returns null for "unbounded", which no estimate can put a number on.
  */
 
+import { tryParseInt32 } from './int32';
+
 export interface PassFacts {
   /** The data table drives the run (loop over data ON with rows present). */
   perRow: boolean;
@@ -29,10 +31,14 @@ export function replayPasses(f: PassFacts): number | null {
   if (f.perRow) return f.rowCount > 0 ? f.rowCount : null;
   if (f.forcedInfinite) return null;
   if (!f.loopEnabled) return 1;
-  const n = Number.parseInt(f.loopCount, 10);
+  // The engine's parse (StartReplay: int.TryParse), not parseInt: parseInt read "12abc" as 12,
+  // "3.5" as 3 and an out-of-Int32 count as itself, where the engine fails the parse and runs ONE
+  // pass. Only a hand-edited profile carries such a value (the UI clamps 1–999), but the estimate
+  // should not promise twelve passes the run will not make.
+  const n = tryParseInt32(f.loopCount);
   // count 0 means "forever" to the engine, and a blank or broken field falls back to one pass —
   // the same reading the chip makes, so the two cannot disagree.
-  if (!Number.isFinite(n) || n < 0) return 1;
+  if (n === null || n < 0) return 1;
   return n === 0 ? null : n;
 }
 
