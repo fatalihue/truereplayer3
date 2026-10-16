@@ -1,13 +1,15 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useId } from 'react';
 import { Hourglass } from 'lucide-react';
 import { NumberInput } from './common/NumberInput';
 import { DialogShell, DialogFooter  } from './common/DialogShell';
 import { KeyCaps } from './common/KeyCaps';
 import { DurationChips, TIMEOUT_PRESETS } from './common/DurationChips';
+import { calloutStyle } from './common/Callout';
 import { useBridge } from '../bridge/BridgeContext';
 import { useLanguage } from '../state/LanguageContext';
 import { useWindowFocused } from '../hooks/useWindowFocused';
 import { formatMs } from '../utils/displayUtils';
+import { AnnounceOnChange } from './common/AnnounceOnChange';
 
 interface PauseDialogProps {
   /**
@@ -63,6 +65,8 @@ const MAX_PAUSE_TIMEOUT_MS = 86_400_000;
 export function PauseDialog({ initialKey, initialTimeoutMs, onConfirm, onClose }: PauseDialogProps) {
   const { language } = useLanguage();
   const isEditing = initialKey !== undefined;
+  // Caption → field tie: a click on "Timeout" lands in the field (and pauses capture with it).
+  const timeoutId = useId();
 
   // Captured resume hotkey. null = none configured (empty pad). Seed from the
   // edited row; an empty initialKey collapses to null so the pad shows its prompt.
@@ -163,8 +167,11 @@ export function PauseDialog({ initialKey, initialTimeoutMs, onConfirm, onClose }
         // key). Outside input focus the backend hook grabs Enter as the bound key
         // and forwards it via hotkey:captured — so no confirm here. Esc is owned
         // by DialogShell.
+        // The EVENT TARGET, not document.activeElement: NumberInput blurs itself on Enter (to
+        // commit) before this card handler runs, so the focus is already on <body> here and the
+        // old check never saw an input — Enter in Timeout did not confirm.
         if (e.key === 'Enter') {
-          const focusedTag = (document.activeElement as HTMLElement | null)?.tagName;
+          const focusedTag = (e.target as HTMLElement | null)?.tagName;
           if (focusedTag === 'INPUT' && canConfirm) {
             e.preventDefault();
             e.stopPropagation();
@@ -203,7 +210,9 @@ export function PauseDialog({ initialKey, initialTimeoutMs, onConfirm, onClose }
                   <button
                     type="button"
                     onClick={() => setCaptured(null)}
-                    className="self-center mt-2.5 text-caption text-text-tertiary hover:text-text-secondary underline underline-offset-2"
+                    // min-h-6: the 24 px target floor. The pad's min-h-[140px] still holds its
+                    // height with the taller button in it, so nothing moves on capture.
+                    className="self-center mt-2.5 min-h-6 text-caption text-text-tertiary hover:text-text-secondary underline underline-offset-2"
                   >
                     Clear
                   </button>
@@ -217,8 +226,9 @@ export function PauseDialog({ initialKey, initialTimeoutMs, onConfirm, onClose }
               resumes only via the captured hotkey above. */}
           <div className="flex flex-col gap-2.5">
             <div className="flex items-center justify-between gap-3">
-              <label className="text-minor font-medium text-text-secondary">Timeout</label>
+              <label htmlFor={timeoutId} className="text-minor font-medium text-text-secondary">Timeout</label>
               <NumberInput
+                id={timeoutId}
                 value={timeoutMs}
                 onChange={setTimeoutMs}
                 min={0}
@@ -246,7 +256,12 @@ export function PauseDialog({ initialKey, initialTimeoutMs, onConfirm, onClose }
               case is a config error (the engine skips such a Pause) → recording
               tone, and Add/Save stays disabled. */}
           {(() => {
-            const tone = canConfirm ? 'var(--color-action-pause-fg)' : 'var(--color-recording)';
+            // The shared callout recipe. The broken state takes the 'error' TONE — red rail,
+            // recording-fg ink — rather than painting the raw recording hue as the text colour,
+            // which is what the hand-written style here used to do.
+            const style = canConfirm
+              ? calloutStyle('neutral', 'var(--color-action-pause-fg)')
+              : calloutStyle('error');
             // All four sentences are ALWAYS rendered, stacked in one grid cell with only the
             // live one visible, so the strip is as tall as its tallest message in every state
             // and the dialog never changes height. The warning wraps to two lines where
@@ -266,12 +281,12 @@ export function PauseDialog({ initialKey, initialTimeoutMs, onConfirm, onClose }
             return (
               <div
                 className="border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed grid"
-                style={{
-                  background: `color-mix(in srgb, ${tone} 8%, transparent)`,
-                  borderColor: tone,
-                  color: tone,
-                }}
+                style={style}
               >
+                {/* A capture from the hook and the "skipped" refusal change this sentence without
+                    the focus moving, so they are announced — on the state change only, not on
+                    every digit typed into Timeout (see AnnounceOnChange). */}
+                <AnnounceOnChange when={`${active}|${captured ?? ''}`} text={messages[active]} />
                 {messages.map((m, i) => (
                   <span
                     key={i}

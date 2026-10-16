@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useId } from 'react';
 import { Keyboard } from 'lucide-react';
 import { NumberInput } from './common/NumberInput';
 import { DialogShell, DialogFooter  } from './common/DialogShell';
@@ -14,6 +14,7 @@ import { useBridge } from '../bridge/BridgeContext';
 import { useLanguage, useTt } from '../state/LanguageContext';
 import { formatMs } from '../utils/displayUtils';
 import { useWindowFocused } from '../hooks/useWindowFocused';
+import { AnnounceOnChange } from './common/AnnounceOnChange';
 
 /**
  * Unified "Send Keystroke" dialog. One capture pad + a Press/Hold mode toggle covers
@@ -45,6 +46,15 @@ import { useWindowFocused } from '../hooks/useWindowFocused';
 /** Human-readable label for the chip. */
 function keystrokeDisplay(keystroke: string): string {
   return keystroke.replace(/\bVK_93\b/, 'Menu');
+}
+
+/** The same combo in keycap spelling (PgDn, Esc, Del…) for the semantics strip, so the sentence
+ *  names the keys exactly as the hero caps above it draw them. Split and re-joined by the caps'
+ *  own rule, so a literal "+" key survives. Display only — the payload keeps the canonical names. */
+function keystrokeSentence(keystroke: string): string {
+  // Guarded: splitCombo reads an empty string as the lone "+" key.
+  if (!keystroke) return '';
+  return splitCombo(keystrokeDisplay(keystroke)).map(compactKey).join('+');
 }
 
 // ── Constants (match the C# clamps) ──
@@ -106,6 +116,11 @@ export function KeystrokeCaptureDialog({
   const tt = useTt();
   // For the semantics strip's durations — same locale grouping the chips and the grid use.
   const { language } = useLanguage();
+  // Caption → field ties, so a click on a row's caption lands in its field (and pauses capture,
+  // through the same focusin the field itself fires).
+  const timesId = useId();
+  const gapId = useId();
+  const holdId = useId();
 
   // `isEditing` flips Esc behaviour and the button label. Decoupled from mode so
   // we can edit a Keystroke row, switch to Hold, and save — converting the row's
@@ -326,8 +341,12 @@ export function KeystrokeCaptureDialog({
         // Enter is captured as the "Enter" hotkey by the backend hook and arrives
         // via 'hotkey:captured', so we deliberately do NOT confirm on it here.
         // Esc is owned by DialogShell.
+        //
+        // The EVENT TARGET, not document.activeElement: NumberInput blurs itself on Enter (to
+        // commit) before this card handler runs, so by now the focus is on <body> and the check
+        // read "not an input" for Times / Gap / Hold — Enter there never confirmed.
         if (e.key === 'Enter') {
-          const focusedTag = (document.activeElement as HTMLElement | null)?.tagName;
+          const focusedTag = (e.target as HTMLElement | null)?.tagName;
           if (focusedTag === 'INPUT' && captured !== null) {
             e.preventDefault();
             e.stopPropagation();
@@ -367,7 +386,13 @@ export function KeystrokeCaptureDialog({
                   onChange={(e) => setCaptured(e.target.value || null)}
                   placeholder="F5 · Ctrl+S · {var:name}"
                   spellCheck={false}
-                  className="w-full h-9 px-2 text-body font-mono bg-bg-elevated border border-border-default rounded text-[color:var(--color-action-key-fg)] text-center outline-none focus:border-accent-solid"
+                  // Named: the KEY caption above is a plain span, so without this the field was
+                  // announced by its placeholder alone.
+                  aria-label="Key"
+                  // The field primitive; bg-elevated stays because the pad around it is already
+                  // bg-input, and the recipe's own fill would melt into it. Key ink + centred,
+                  // like the hero caps it stands in for.
+                  className="input-field bg-bg-elevated text-center text-[color:var(--color-action-key-fg)]"
                 />
                 <div className="mt-2.5 text-caption text-text-tertiary leading-relaxed">
                   {mode === 'hold' ? (
@@ -405,7 +430,9 @@ export function KeystrokeCaptureDialog({
           <button
             type="button"
             onClick={() => setManualEntry(v => !v)}
-            className="self-center mt-0.5 text-caption text-text-secondary hover:text-text-primary underline decoration-dotted transition-colors"
+            // min-h-6: the 24 px target floor (the bare caption line is 16 px). Same in both
+            // labels, so the card height does not move when it flips.
+            className="self-center mt-0.5 min-h-6 text-caption text-text-secondary hover:text-text-primary underline decoration-dotted transition-colors"
           >
             {manualEntry ? 'Back to key capture' : 'Type manually · {var} tokens'}
           </button>
@@ -451,16 +478,20 @@ export function KeystrokeCaptureDialog({
             >
               <div className="flex items-center justify-between gap-3">
                 <label
+                  htmlFor={timesId}
                   className="text-minor font-medium text-text-secondary"
                 >Times to repeat</label>
                 <NumberInput
+                  id={timesId}
                   value={repeat}
                   onChange={(n) => setRepeat(clampRepeat(n))}
                   min={1}
                   max={MAX_REPEAT}
                   inputWidth="w-24"
                   ghostSuffix="ms"
-                  ariaLabel="Repeat count"
+                  // The visible caption, word for word: a name that does not contain what the
+                  // screen shows ("Repeat count" did not) cannot be spoken by voice control.
+                  ariaLabel="Times to repeat"
                 />
               </div>
 
@@ -469,11 +500,13 @@ export function KeystrokeCaptureDialog({
                   jump in height when the user increments Times. */}
               <div className="flex items-center justify-between gap-3">
                 <label
+                  htmlFor={gapId}
                   className={`text-minor font-medium transition-colors ${repeat > 1 ? 'text-text-secondary' : 'text-text-tertiary'}`}
                 >
                   Gap between presses
                 </label>
                 <NumberInput
+                  id={gapId}
                   value={repeatDelay}
                   onChange={(n) => setRepeatDelay(clampDelay(n))}
                   min={0}
@@ -497,7 +530,10 @@ export function KeystrokeCaptureDialog({
                   type="button"
                   onClick={() => setJitterOn(v => !v)}
                   disabled={repeat <= 1}
-                  aria-pressed={jitterOn}
+                  // A checkbox, as drawn — and checked exactly when the box is: with Times = 1
+                  // the box shows empty, and aria-pressed={jitterOn} said "on" over it.
+                  role="checkbox"
+                  aria-checked={jitterOn && repeat > 1}
                   className="flex items-center gap-1.5 disabled:cursor-not-allowed"
                   data-tip={tt('Random ±% on each gap — less robotic.', 'Variação ±% aleatória em cada intervalo — menos robótico.')}
                 >
@@ -527,12 +563,14 @@ export function KeystrokeCaptureDialog({
             >
               <div className="flex items-center justify-between gap-3">
                 <label
+                  htmlFor={holdId}
                   className="text-minor font-medium text-text-secondary"
                 >Hold duration</label>
                 {/* Step is dynamic (stepFor returns 1000 once we're at/above 1s, 100
                     below it). NumberInput's step is constant per render, so we recompute
                     via the parent's clamp on each change. */}
                 <NumberInput
+                  id={holdId}
                   value={holdMs}
                   onChange={(n) => setHoldMs(clampHold(n))}
                   min={MIN_HOLD_MS}
@@ -593,7 +631,7 @@ export function KeystrokeCaptureDialog({
               take the card's height with it. */}
           {(() => {
             const answered = !!captured?.trim();
-            const shown = keystrokeDisplay(captured?.trim() ?? '');
+            const shown = keystrokeSentence(captured?.trim() ?? '');
             const n = clampRepeat(repeat);
             // Middot before the burst for the same reason the click dialog uses one: the value in
             // front of it can contain punctuation of its own.
@@ -603,7 +641,7 @@ export function KeystrokeCaptureDialog({
               `Presses ${shown}${times}.`,
               // Says the STRIPPED key, because that is what a hold sends — the warning band above
               // explains why, and these two must never disagree about which key is held.
-              `Holds ${keystrokeDisplay(heldKey)} for ${formatMs(clampHold(holdMs), language)} ms.`,
+              `Holds ${keystrokeSentence(heldKey)} for ${formatMs(clampHold(holdMs), language)} ms.`,
             ];
             const active = !answered ? 0 : mode === 'hold' ? 2 : 1;
             return (
@@ -611,6 +649,10 @@ export function KeystrokeCaptureDialog({
                 className="border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed grid"
                 style={calloutStyle('neutral', answered ? 'var(--color-action-key-fg)' : undefined)}
               >
+                {/* The key arrives from the native hook, not from anything the focus is on, so this
+                    is where a screen reader hears it — on the state change only (a key typed into
+                    the manual field is already heard there, so it is not part of the trigger). */}
+                <AnnounceOnChange when={`${active}|${manualEntry ? '' : (captured ?? '')}`} text={messages[active]} />
                 {messages.map((m, i) => (
                   <span
                     key={i}

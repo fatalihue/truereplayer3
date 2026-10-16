@@ -22,8 +22,13 @@ export function KeyCaps({ combo, fg }: KeyCapsProps) {
     <div className="inline-flex items-center justify-center self-center gap-1 flex-wrap">
       {parts.map((part, i) => (
         <span key={`${part}-${i}`} className="inline-flex items-center gap-1">
+          {/* The keycap's lower edge is a 3 px bottom BORDER, not a hard offset shadow (the
+              guideline allows only shadow-overlay / shadow-dialog). Same 3 px of edge as the old
+              1 px border + 2 px shadow, and the same 28 px box: 1 + 3 + 18 + 3 + 3 = 1 + 4 + 18
+              + 4 + 1. The padding is 3 px on BOTH sides (a measured value, hence arbitrary): 4 / 2
+              kept the box but sat the glyph 1 px low on the cap face. */}
           <kbd
-            className="inline-block px-2.5 py-1 bg-bg-elevated border border-border-default rounded font-mono text-body font-semibold shadow-[0_2px_0_var(--color-border-default)]"
+            className="inline-block px-2.5 py-[3px] bg-bg-elevated border border-b-3 border-border-default rounded font-mono text-body font-semibold"
             style={{ color: fg }}
           >
             {part}

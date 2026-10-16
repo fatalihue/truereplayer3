@@ -57,8 +57,10 @@ interface DurationChipsProps {
 // Shared by the ladder cells and the ∞ row so the two can never drift in tint or border.
 // 12% / 40% — the one intensity shared with Toggle, IconToggle and the enable chips
 // (see chipStyles.ts). Was 10% / 30%, the last drift left.
+// min-h-6: py-0.5 around an 11/16 caption made a 22 px chip, under the 24 px target floor. The
+// same in every state, so a consumer's height still never moves when a chip lights up.
 const chipClass = (active: boolean) =>
-  `px-2 py-0.5 rounded text-caption border transition-colors ${
+  `min-h-6 px-2 py-0.5 rounded text-caption border transition-colors ${
     active
       ? 'text-accent border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)] bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)]'
       : 'text-text-tertiary border-border-subtle bg-bg-card hover:text-text-secondary hover:bg-bg-input'
@@ -77,6 +79,8 @@ export function DurationChips({ presets, value, onSelect, infinityTip }: Duratio
             key={ms}
             type="button"
             onClick={() => onSelect(ms)}
+            // The lit chip is the current value; say so, not just tint it.
+            aria-pressed={value === ms}
             className={`${chipClass(value === ms)} font-mono tabular-nums text-center whitespace-nowrap`}
           >
             {`${formatMs(ms, language)} ms`}
@@ -87,6 +91,7 @@ export function DurationChips({ presets, value, onSelect, infinityTip }: Duratio
         <button
           type="button"
           onClick={() => onSelect(0)}
+          aria-pressed={value === 0}
           data-tip={infinityTip}
           // Full width and labelled: the glyph alone never said what it did. Label stays
           // English like every other control label — the translated explanation is the tip.

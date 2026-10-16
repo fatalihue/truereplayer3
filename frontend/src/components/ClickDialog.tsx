@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, useId } from 'react';
 import { Mouse, Crosshair } from 'lucide-react';
 import { NumberInput } from './common/NumberInput';
+import { Button } from './common/Button';
 import { DialogShell, DialogFooter } from './common/DialogShell';
 import { DurationChips, DURATION_PRESETS } from './common/DurationChips';
 import { SegmentedControl } from './common/SegmentedControl';
@@ -10,6 +11,7 @@ import { useBridge } from '../bridge/BridgeContext';
 import { useLanguage, useTt } from '../state/LanguageContext';
 import { formatMs } from '../utils/displayUtils';
 import { MIN_HOLD_MS, MAX_HOLD_MS, DEFAULT_HOLD_MS, DEFAULT_CLICK_GAP_MS, DEFAULT_MULTICLICK_GAP_MS } from '../utils/actionCost';
+import { AnnounceOnChange } from './common/AnnounceOnChange';
 
 export type ClickButton = 'Left' | 'Right' | 'Middle';
 export type ClickActionType =
@@ -103,6 +105,10 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
   const { language } = useLanguage();
   const tt = useTt();
   const { send, subscribe } = useBridge();
+  // Caption → field ties, so a click on "Times" / "Gap" / "Hold" lands in its field.
+  const timesId = useId();
+  const gapId = useId();
+  const holdId = useId();
 
   const [mode, setMode] = useState<Mode>('click');
   const [button, setButton] = useState<ClickButton>('Left');
@@ -255,6 +261,20 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
       : { actionType, ...where });
   };
 
+  // Enter confirms ONE TICK LATE, through a ref to the latest handleConfirm. A field the user
+  // just emptied commits on its own Enter — NumberInput blurs, the blur runs onClear — but that
+  // update lands after this keydown's handler has already been picked from the previous render,
+  // so a synchronous confirm read the OLD point: clear X, press Enter, and the row still went in
+  // at the old X (or, for the release, as a drag the fields no longer showed). Deferred, the
+  // confirm sees the cleared axis and refuses like the Add button would. One timer at a time, so
+  // a held Enter's auto-repeat cannot queue a second insert behind the first.
+  const confirmRef = useRef(handleConfirm);
+  useLayoutEffect(() => { confirmRef.current = handleConfirm; });
+  const enterTimerRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (enterTimerRef.current != null) window.clearTimeout(enterTimerRef.current);
+  }, []);
+
   const holdLabel = `${formatMs(clampHold(holdMs), language)} ms`;
   // Carries its OWN preposition: "at 300, 400" needs one and "wherever the mouse is" does not,
   // and a fixed "at " prefix outside produced "at wherever the mouse is".
@@ -288,13 +308,18 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
     const complete = x != null && y != null;
     return (
       <div className="flex items-stretch gap-1.5">
-        <button
-          type="button"
+        <Button
+          variant="secondary"
+          // size sm for its text-minor, plus h-8 (md would bring text-ui, which outranks
+          // text-minor in the CSS order). The old px-2.5 is kept with `!`: sm's own px-4 sorts
+          // after a plain px-2.5 and would win, adding 12 px to the nowrap label's minimum width
+          // (it overflowed sooner at the larger theme fonts). Width is flex-1.
+          size="sm"
           // Wrapped, not passed by reference: handlePick takes the target, and a bare
           // onClick={handlePick} would hand it the MouseEvent as that argument.
           onClick={() => handlePick(target)}
           disabled={inert || pickRequestId != null}
-          className="flex-1 h-8 flex items-center justify-center gap-1.5 px-2.5 text-minor font-medium border border-border-default bg-bg-elevated hover:bg-bg-card text-text-secondary hover:text-text-primary rounded whitespace-nowrap transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-1 h-8 whitespace-nowrap px-2.5!"
         >
           <Crosshair size={13} />
           {/* The label names the ACTION, in all three states. The empty release slot used to read
@@ -306,7 +331,7 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
               the em-dash placeholder in X and Y and by the live strip below; getting BACK to it is
               the "Clear it?" link's job, not this button's. */}
           {pickRequestId != null ? 'Picking…' : complete ? 'Pick again' : 'Pick from screen'}
-        </button>
+        </Button>
         <span className="flex items-center gap-1.5 shrink-0">
           <span className="label-micro text-text-tertiary">X</span>
           <NumberInput
@@ -354,11 +379,16 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
         primary={{ label: 'Add', onClick: handleConfirm, disabled: !canConfirm }}
       />}
       onCardKeyDown={(e) => {
-        if (e.key === 'Enter' && canConfirm) {
-          e.preventDefault();
-          e.stopPropagation();
-          handleConfirm();
-        }
+        if (e.key !== 'Enter') return;
+        // Contained whether or not it confirms: canConfirm here is the previous render's, so it
+        // cannot decide — the deferred handleConfirm re-checks it against the committed state.
+        e.preventDefault();
+        e.stopPropagation();
+        if (enterTimerRef.current != null) return;
+        enterTimerRef.current = window.setTimeout(() => {
+          enterTimerRef.current = null;
+          confirmRef.current();
+        }, 0);
       }}
     >
       <div className="px-5 py-5 flex flex-col gap-4">
@@ -501,8 +531,9 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
             <Section title="Repeat" />
 
             <div className="flex items-center justify-between gap-3">
-              <label className="text-minor font-medium text-text-secondary">Times</label>
+              <label htmlFor={timesId} className="text-minor font-medium text-text-secondary">Times</label>
               <NumberInput
+                id={timesId}
                 value={repeat}
                 onChange={(n) => setRepeat(clampRepeat(n))}
                 min={1}
@@ -518,10 +549,11 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
             {/* Gap stays visible but dims when Times = 1 — it communicates that the field exists
                 for repeat-flavoured clicks without making the dialog jump when Times changes. */}
             <div className="flex items-center justify-between gap-3">
-              <label className={`text-minor font-medium transition-colors ${repeat > 1 ? 'text-text-secondary' : 'text-text-tertiary'}`}>
+              <label htmlFor={gapId} className={`text-minor font-medium transition-colors ${repeat > 1 ? 'text-text-secondary' : 'text-text-tertiary'}`}>
                 Gap
               </label>
               <NumberInput
+                id={gapId}
                 value={gapMs}
                 onChange={(n) => setGapMs(clampGap(n))}
                 min={0}
@@ -549,8 +581,9 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
             aria-hidden={effectiveMode !== 'hold'}
           >
             <div className="flex items-center justify-between gap-3">
-              <label className="text-minor font-medium text-text-secondary">Hold</label>
+              <label htmlFor={holdId} className="text-minor font-medium text-text-secondary">Hold</label>
               <NumberInput
+                id={holdId}
                 value={holdMs}
                 onChange={(n) => setHoldMs(clampHold(n))}
                 min={MIN_HOLD_MS}
@@ -587,12 +620,16 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
                 readings on one line: the empty default, the drag, and the half-filled refusal
                 that Add is currently blocked on. Visible text, so English — tt() is for tooltips
                 and toasts, and this line was carrying a bilingual string it should never have had. */}
+            {/* No disabled opacity: disabled is the RESTING state of this line, and the sentence it
+                then carries is the only explanation of an empty release — at 40 % over tertiary ink
+                it measured ~1.6:1, unreadable. Inert reads from the missing hover and cursor
+                instead. min-h-6 is the 24 px target floor, constant in every state. */}
             <button
               type="button"
               onClick={() => { setReleaseX(null); setReleaseY(null); }}
               disabled={releaseX == null && releaseY == null}
-              className={`self-start text-caption leading-relaxed disabled:opacity-40 disabled:cursor-default transition-colors ${
-                releaseHalfFilled ? 'text-warning-ink' : 'text-text-tertiary hover:text-text-secondary'
+              className={`self-start min-h-6 text-caption leading-relaxed disabled:cursor-default transition-colors ${
+                releaseHalfFilled ? 'text-warning-ink' : 'text-text-tertiary enabled:hover:text-text-secondary'
               }`}
             >
               {releaseHalfFilled
@@ -635,9 +672,12 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
             colour once it can be answered, and red kept for the one state that really is broken —
             half a release point, which Add refuses. */}
         {(() => {
-          const tone = canConfirm
-            ? 'var(--color-action-mouse-fg)'
-            : releaseHalfFilled ? 'var(--color-recording)' : undefined;
+          // The broken state goes through the 'error' TONE, not a recording colour override: an
+          // override paints rail AND ink, and the raw hue as 11 px text is the one thing the
+          // -fg rung exists to prevent — the tone keeps the red rail and inks with recording-fg.
+          const style = canConfirm
+            ? calloutStyle('neutral', 'var(--color-action-mouse-fg)')
+            : calloutStyle(releaseHalfFilled ? 'error' : 'neutral');
           // The middot is load-bearing: a picked point already contains a comma, so
           // "at 300, 400 5×, 600 ms apart" ran the coordinate and the burst together.
           const times = clampRepeat(repeat) > 1 ? ` · ${clampRepeat(repeat)}×, ${formatMs(clampGap(gapMs), language)} ms apart` : '';
@@ -668,8 +708,12 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
           return (
             <div
               className="border-l-2 rounded px-2.5 py-2 text-caption leading-relaxed grid"
-              style={calloutStyle('neutral', tone)}
+              style={style}
             >
+              {/* The sentence (and the refusal it turns into) changes from a pick that happens off
+                  screen, so it is announced — when the state moves, not on every digit of X, Y,
+                  Times or Gap (see AnnounceOnChange). */}
+              <AnnounceOnChange when={active} text={messages[active]} />
               {messages.map((m, i) => (
                 <span
                   key={i}

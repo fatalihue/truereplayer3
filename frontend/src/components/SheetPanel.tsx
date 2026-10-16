@@ -2182,7 +2182,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
     if (actionIndex == null) return;
     const onDocKeyDown = (e: KeyboardEvent) => {
       // A modal opened FROM the sheet owns the keyboard while it is up. The sheet's own root is
-      // not a dialog — only DialogShell's card carries role="dialog" — so this one test hands
+      // not a dialog — only DialogShell's card (and the update splash) carries role="dialog" — so this one test hands
       // every such overlay its keys back. Without it, Ctrl+S inside the image cropper saved the
       // row with the OLD image and closed the sheet, throwing the crop away: the cropper moved to
       // DialogShell in this delta, and DialogShell only stops Escape and Tab, while the wrapper
@@ -5492,7 +5492,10 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   type="button"
                   onClick={() => setJitterOn(v => !v)}
                   disabled={repeatCount <= 1}
-                  aria-pressed={jitterOn}
+                  // A checkbox, as drawn — and checked exactly when the box is: with Times = 1
+                  // the box shows empty, and aria-pressed={jitterOn} said "on" over it.
+                  role="checkbox"
+                  aria-checked={jitterOn && repeatCount > 1}
                   className="flex items-center gap-1.5 disabled:cursor-not-allowed"
                   data-tip={tt('Random ±% on each gap — less robotic.', 'Variação ±% aleatória em cada intervalo — menos robótico.')}
                 >
@@ -5529,7 +5532,10 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   type="button"
                   onClick={() => setPosJitterOn(v => !v)}
                   disabled={repeatCount <= 1 || atCursor}
-                  aria-pressed={posJitterOn && !atCursor}
+                  // A checkbox, like the Gap jitter row above, and checked exactly when its box is
+                  // drawn checked: aria-pressed said "pressed" over an empty box at Times = 1.
+                  role="checkbox"
+                  aria-checked={posJitterOn && repeatCount > 1 && !atCursor}
                   className="flex items-center gap-1.5 disabled:cursor-not-allowed"
                   data-tip={atCursor
                     ? tt('Not at cursor — the scatter would move the cursor it reads',

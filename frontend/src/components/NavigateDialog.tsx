@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useId } from 'react';
 import { Globe } from 'lucide-react';
 import { Checkbox } from './Checkbox';
 import { DialogShell, DialogFooter  } from './common/DialogShell';
@@ -12,6 +12,7 @@ export function NavigateDialog({ onConfirm, onClose }: NavigateDialogProps) {
   const [url, setUrl] = useState('');
   const [newTab, setNewTab] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const hintId = useId();
 
   // Focus the URL input on mount so the user can type immediately. Runs after
   // DialogShell's own card-focus effect (child effects fire before the parent's),
@@ -55,7 +56,14 @@ export function NavigateDialog({ onConfirm, onClose }: NavigateDialogProps) {
           spellCheck={false}
           autoCorrect="off"
           autoCapitalize="off"
-          className="w-full h-9 px-3 text-body text-text-primary bg-bg-input border border-border-subtle rounded outline-none focus:border-accent-solid placeholder:text-text-disabled transition-colors"
+          // Named and described: the placeholder was its only label, and the https:// rule
+          // below it was not tied to it.
+          aria-label="URL"
+          aria-describedby={hintId}
+          // The field primitive (32 px, border-default — the hand-rolled border-subtle one
+          // faded out on light presets). font-sans keeps today's face: whether input-field's
+          // mono default fits a URL is the open D3 question, not this fix's to settle.
+          className="input-field font-sans"
         />
 
         <Checkbox
@@ -64,7 +72,7 @@ export function NavigateDialog({ onConfirm, onClose }: NavigateDialogProps) {
           label="Open in new tab"
         />
 
-        <p className="text-caption text-text-tertiary">
+        <p id={hintId} className="text-caption text-text-tertiary">
           https:// is added if omitted.
         </p>
       </div>
