@@ -65,6 +65,9 @@ function AskInputDialog({ label, options, onSubmit, onCancel }: AskInputDialogPr
             ref={inputRef}
             value={value}
             onChange={(e) => setValue(e.target.value)}
+            // The prompt above is a plain <p>; without this the run-blocking field was announced
+            // as a bare "edit text" with nothing saying what it asks for.
+            aria-label={label}
             className="input-field font-sans"
           />
         )}

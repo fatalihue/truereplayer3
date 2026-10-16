@@ -5,6 +5,7 @@ import { useTt } from '../state/LanguageContext';
 import { NumberInput } from './common/NumberInput';
 import { DialogShell, DialogFooter  } from './common/DialogShell';
 import { ProfileSearchList } from './common/ProfileSearchList';
+import { Checkbox } from './Checkbox';
 
 export interface RunProfileDialogProps {
   /** What the dialog is DOING — drives the title and the confirm label. Required, and
@@ -118,7 +119,7 @@ export function RunProfileDialog({ mode, initial, excludeProfileName, onConfirm,
                 so picking one of ~80 profiles meant scrolling a wall of names. Same
                 type-to-narrow behaviour as the Profiles panel and the export dialog. */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-caption uppercase tracking-wide font-semibold text-text-tertiary">
+              <label className="label-micro text-text-tertiary">
                 Profile to run
               </label>
               <ProfileSearchList
@@ -132,7 +133,7 @@ export function RunProfileDialog({ mode, initial, excludeProfileName, onConfirm,
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-caption uppercase tracking-wide font-semibold text-text-tertiary">
+              <label className="label-micro text-text-tertiary">
                 Repeat
               </label>
               {/* REAL disabled on the input, not only a dimmed wrapper. `pointer-events-none`
@@ -161,17 +162,16 @@ export function RunProfileDialog({ mode, initial, excludeProfileName, onConfirm,
               </div>
             </div>
 
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={runOverData}
-                onChange={(e) => setRunOverData(e.target.checked)}
-              />
-              <span className="text-minor text-text-primary"
-                data-tip={tt("Once per row of the called profile's table. Overrides Repeat.", 'Uma vez por linha da tabela do perfil chamado. Substitui o Repeat.')}>
-                Run once per data row
-              </span>
-            </label>
+            {/* The themed Checkbox, not a native box (which paints white on the dark presets).
+                Its `title` lands as data-tip on the focusable button itself, so the explanation
+                sits on the control the keyboard reaches rather than on a caption span beside it. */}
+            <Checkbox
+              checked={runOverData}
+              onChange={setRunOverData}
+              label="Run once per data row"
+              title={tt("Once per row of the called profile's table. Overrides Repeat.", 'Uma vez por linha da tabela do perfil chamado. Substitui o Repeat.')}
+              className="self-start"
+            />
 
             <div className="text-caption text-text-tertiary leading-relaxed bg-bg-card border border-border-subtle rounded px-2.5 py-2">
               {'Runs the called profile’s actions inline; its own Loops/Interval are ignored (use Repeat). Disabled profiles are skipped; max 5 levels deep.'}

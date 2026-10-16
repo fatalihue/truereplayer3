@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppWindow } from 'lucide-react';
+import { AppWindow, Check, X } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
 import { useAppState } from '../state/AppStateContext';
 import { useTt } from '../state/LanguageContext';
@@ -199,6 +199,10 @@ export function TargetConfigDialog({
   const raiseClickShield = useCallback(() => {
     const el = floatingCardRef.current;
     if (!el) return;
+    // Every caller is about to unmount the card, and a press on Convert / Skip / Got it left the
+    // focus inside it. Hand it to the dialog card first, while the card still exists, rather than
+    // letting it fall to <body> and be rescued from there.
+    if (el.contains(document.activeElement)) el.closest<HTMLElement>('[role="dialog"]')?.focus();
     // offsetTop/offsetHeight are layout units, the same space the pad's style is written in.
     setClickShield({ top: el.offsetTop, height: el.offsetHeight });
     window.clearTimeout(shieldTimerRef.current);
@@ -363,8 +367,8 @@ export function TargetConfigDialog({
   // consistent across the app, and it does not change the NAME.
   const header = isProfile ? 'Window Target' : 'Folder Window Target';
   const description = isProfile
-    ? <>Configure target window for <span className="text-text-primary font-medium">'{targetLabel}'</span></>
-    : <>Configure target for all profiles in <span className="text-text-primary font-medium">'{targetLabel}'</span>. Profiles with their own target override this.</>;
+    ? <>Configure target window for <span className="text-text-primary font-medium">‘{targetLabel}’</span></>
+    : <>Configure target for all profiles in <span className="text-text-primary font-medium">‘{targetLabel}’</span>. Profiles with their own target override this.</>;
 
   return (
     <DialogShell
@@ -418,7 +422,7 @@ export function TargetConfigDialog({
         {/* Test Match — checks current fields against whichever window the user has open behind
             the modal. The TR window itself is excluded server-side so the test reports against
             the "real" foreground. The button itself doubles as the result chip: idle = neutral
-            border, success = green tint with "✓ Matches — chrome.exe", failure / error = red.
+            border, success = green tint with a check and "Matches — chrome.exe", failure / error = red.
             Reverts to idle ~3.5 s after the result arrives (see the testResult useEffect).
             Keeps the row to a single 28 px line — no separate slot growing the dialog. */}
         <button
@@ -450,10 +454,15 @@ export function TargetConfigDialog({
                 ? testResult.error || !testResult.matches
                   ? 'bg-recording/10 text-recording-fg border-recording/30 hover:bg-recording/15'
                   : 'bg-replay/10 text-replay-fg border-replay/30 hover:bg-replay/15'
-                : 'text-text-secondary border-border-default hover:bg-bg-elevated'
+                // Wash, not bg-bg-elevated: the dialog card IS bg-bg-elevated, so that hover
+                // painted the button the colour it already had. `enabled:` because a data-tip
+                // keeps pointer events alive on the disabled button.
+                : 'text-text-secondary border-border-default enabled:hover:bg-wash-hover'
           }`}
         >
-          <div className="truncate">
+          {/* Live, because the verdict replaces the label in place: the keyboard stays on the
+              button and nothing else would tell a screen reader the test came back. */}
+          <div className="truncate" aria-live="polite">
             {testInFlight ? (
               'Testing…'
             ) : testResult ? (
@@ -461,7 +470,12 @@ export function TargetConfigDialog({
                 testResult.error
               ) : (
                 <>
-                  <span className="font-semibold">{testResult.matches ? '✓ Matches' : '✗ No match'}</span>
+                  <span className="font-semibold">
+                    {testResult.matches
+                      ? <Check size={12} aria-hidden="true" className="inline align-middle mr-1" />
+                      : <X size={12} aria-hidden="true" className="inline align-middle mr-1" />}
+                    {testResult.matches ? 'Matches' : 'No match'}
+                  </span>
                   {testResult.foregroundProcess && (
                     <>
                       {' — '}
@@ -502,6 +516,7 @@ export function TargetConfigDialog({
               isOn={relativeCoordinates}
               onChange={handleToggleRelativeCoordinates}
               disabled={relativeToggleDisabled}
+              ariaLabel="Relative Coordinates"
             />
           </div>
           {/* Migration hint — surfaced only when the user just toggled the flag AND there
@@ -514,7 +529,9 @@ export function TargetConfigDialog({
             // the dialog — the inline hint used to push every row down and resize the
             // box). Opaque card + shadow so it reads as a layer on top. No timeout —
             // stays until the user converts or skips, same actions as the old hint.
-            <div ref={floatingCardRef} className="absolute bottom-3 left-4 right-4 flex items-start gap-2 px-3 py-2 text-caption text-warning-ink bg-bg-card border border-warning-ink/35 rounded-overlay shadow-overlay z-20">
+            // role=status: the card appears because of a toggle the keyboard is still on, and it
+            // holds Set Target until answered — a screen reader has to hear that it arrived.
+            <div ref={floatingCardRef} role="status" className="absolute bottom-3 left-4 right-4 flex items-start gap-2 px-3 py-2 text-caption text-warning-ink bg-bg-card border border-warning-ink/35 rounded-overlay shadow-overlay z-20">
               <span className="flex-1 leading-snug">
                 {hintCanConvert ? (
                   <>
@@ -525,11 +542,13 @@ export function TargetConfigDialog({
                   </>
                 ) : (
                   <>
-                    '{targetLabel}' is no longer the loaded profile, so its actions can't be converted from here.
+                    ‘{targetLabel}’ is no longer the loaded profile, so its actions can't be converted from here.
                     Load it to convert, or Skip to save the setting without converting.
                   </>
                 )}
               </span>
+              {/* The house Button at its 28 px tier: the hand-rolled pair was ~20 px tall, under the
+                  24 px click floor, and a third recipe for the same primary/quiet split. */}
               <div className="flex gap-1 shrink-0">
                 {/* Two effective modes for this button:
                     - convertAlsoApplies: target fields were edited AND non-empty → fold
@@ -544,7 +563,9 @@ export function TargetConfigDialog({
                 {/* Both kinds now wait for the backend's windowTarget:applyConvertCompleted before the
                     hint goes: the plain Convert used to dismiss on SEND, so a refusal (window not
                     found, profile swapped out) took the hint away with nothing converted. */}
-                <button
+                <Button
+                  variant="primary"
+                  size="xs"
                   onClick={() => {
                     if (applying || !onConvertCoordinates) return;
                     applyingKindRef.current = convertAlsoApplies ? 'apply' : 'convert';
@@ -556,34 +577,36 @@ export function TargetConfigDialog({
                   }}
                   disabled={applying || runActive || !hintCanConvert}
                   data-tip={runActive ? tt('Not while a run is active', 'Não durante uma execução') : undefined}
-                  className="px-2 py-0.5 text-caption font-medium text-text-primary bg-accent-solid/30 hover:bg-accent-solid/50 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {convertAlsoApplies ? 'Apply target & convert' : 'Convert'}
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="xs"
                   onClick={() => { raiseClickShield(); setConvertHint(null); setConvertHintDismissed(true); }}
-                  className="px-1.5 py-0.5 text-caption text-text-tertiary hover:text-text-primary transition-colors"
                 >
                   Skip
-                </button>
+                </Button>
               </div>
             </div>
           )}
           {memberSpaceWarn && (
             // Same floating card as the hint above (the two never meet: the hint needs
             // onConvertCoordinates, which only the profile scope passes).
-            <div ref={floatingCardRef} className="absolute bottom-3 left-4 right-4 flex items-start gap-2 px-3 py-2 text-caption text-warning-ink bg-bg-card border border-warning-ink/35 rounded-overlay shadow-overlay z-20">
+            <div ref={floatingCardRef} role="status" className="absolute bottom-3 left-4 right-4 flex items-start gap-2 px-3 py-2 text-caption text-warning-ink bg-bg-card border border-warning-ink/35 rounded-overlay shadow-overlay z-20">
               <span className="flex-1 leading-snug">
                 {inheritingMemberCount} profile{inheritingMemberCount === 1 ? '' : 's'} in this folder use{inheritingMemberCount === 1 ? 's' : ''} its target, with X/Y set for {initial.relativeCoordinates ? 'relative' : 'absolute'} coords.
                 They are not converted — if a profile's clicks land in the wrong place, load it and run
-                "Convert Coordinates to {initial.relativeCoordinates ? 'Absolute' : 'Relative'}" (Ctrl+K).
+                “Convert Coordinates to {initial.relativeCoordinates ? 'Absolute' : 'Relative'}” (Ctrl+K).
               </span>
-              <button
+              <Button
+                variant="primary"
+                size="xs"
+                className="shrink-0"
                 onClick={() => { raiseClickShield(); setMemberSpaceWarn(false); setMemberSpaceWarnRead(true); }}
-                className="shrink-0 px-2 py-0.5 text-caption font-medium text-text-primary bg-accent-solid/30 hover:bg-accent-solid/50 rounded transition-colors"
               >
                 Got it
-              </button>
+              </Button>
             </div>
           )}
           {clickShield && (
@@ -591,7 +614,7 @@ export function TargetConfigDialog({
           )}
           <div className="flex items-center justify-between">
             <span className="text-minor text-text-secondary">Bring to Focus</span>
-            <Toggle isOn={bringToFocus} onChange={setBringToFocus} />
+            <Toggle isOn={bringToFocus} onChange={setBringToFocus} ariaLabel="Bring to Focus" />
           </div>
           {/* Restore Position/Size + Update Geometry apply to both profile and folder scopes —
               folder targets inherit these to every profile inside (unless that profile overrides
@@ -599,24 +622,28 @@ export function TargetConfigDialog({
               the actions of the active profile, not a property of the target itself. */}
           <div className="flex items-center justify-between">
             <span className="text-minor text-text-secondary">Restore Position</span>
-            <Toggle isOn={restorePosition} onChange={setRestorePosition} />
+            <Toggle isOn={restorePosition} onChange={setRestorePosition} ariaLabel="Restore Position" />
           </div>
           <div className="flex items-center justify-between">
             <span className="text-minor text-text-secondary">Restore Size</span>
-            <Toggle isOn={restoreSize} onChange={setRestoreSize} />
+            <Toggle isOn={restoreSize} onChange={setRestoreSize} ariaLabel="Restore Size" />
           </div>
+          {/* The secondary Button: its hover lifts to bg-surface. The hand-rolled one hovered to
+              bg-bg-elevated — the colour of the dialog card it sits on, so it never visibly moved. */}
           {onUpdateGeometry && (
-            <button
+            <Button
+              variant="secondary"
+              size="xs"
+              className="w-full"
               onClick={() => onUpdateGeometry({
                 processName: processName.trim(),
                 windowTitle: windowTitle.trim(),
                 titleMatchMode,
               })}
               disabled={submitDisabled}
-              className="w-full h-7 text-caption text-text-secondary border border-border-default rounded hover:bg-bg-elevated transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Update Window Size &amp; Position
-            </button>
+            </Button>
           )}
         </div>
 

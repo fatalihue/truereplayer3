@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, useEffect, useLayoutEffect, useId, type ReactNode } from 'react';
-import { Search, SearchX, X } from 'lucide-react';
+import { Check, Search, SearchX, X } from 'lucide-react';
 
 
 export interface ProfileSearchListProps {
@@ -311,6 +311,10 @@ export function ProfileSearchList({
               >
                 <span className="text-minor truncate flex-1 min-w-0">{name}</span>
                 {renderMeta?.(name)}
+                {/* Second channel for the picked row: the accent tint alone collapses toward the
+                    hover/highlight fill on the low-contrast presets. 12 px sits inside the text's
+                    16 px line, so the row keeps its height whether or not it is the selected one. */}
+                {isSelected && <Check size={12} className="shrink-0" aria-hidden="true" />}
               </button>
             );
           })

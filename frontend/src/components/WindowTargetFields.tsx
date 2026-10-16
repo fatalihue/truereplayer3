@@ -85,6 +85,14 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
   const [filter, setFilter] = useState('');
   const [isDetecting, setIsDetecting] = useState(false);
 
+  // Where the keyboard goes when something it was on disappears: the picker's filter and rows
+  // unmount when the picker closes, and each clear-× unmounts itself once its field is empty.
+  // The host's shell would only rescue the focus to its card; these put it back on the control
+  // the user was working with.
+  const processInputRef = useRef<HTMLInputElement>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  const pickerButtonRef = useRef<HTMLButtonElement>(null);
+
   // The subscribe callback below must call the LATEST onChange/onEdit, not the ones captured on
   // first render (a host that passes inline callbacks re-creates them each render). Route through
   // refs so the subscription can depend only on [subscribe] and never go stale.
@@ -159,6 +167,7 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
       if (showPicker) {
         e.stopPropagation();
         setShowPicker(false);
+        pickerButtonRef.current?.focus();
       } else if (isDetecting) {
         e.stopPropagation();
         stopDetection();
@@ -168,31 +177,34 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
     return () => window.removeEventListener('keydown', handler, true);
   }, [showPicker, isDetecting, stopDetection]);
 
-  const inputCls = 'w-full h-8 px-2 text-ui font-mono bg-bg-input border border-border-default rounded text-text-primary outline-none focus:border-accent-solid';
-
   return (
     <>
       <Field label={processLabel} hint={processHint}>
         <div className="relative">
+          {/* `input-field` is the recipe this used to spell out by hand; it stays mono, as both
+              fields always were (D3 is still open). */}
           <input
+            ref={processInputRef}
             type="text"
             value={value.processName}
             onChange={(e) => edit({ processName: e.target.value })}
             placeholder="notepad.exe"
             spellCheck={false}
-            className={inputCls + ' pr-14'}
+            className="input-field pr-14"
           />
           <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
             {value.processName && (
               <button
                 type="button"
-                onClick={() => edit({ processName: '' })}
+                onClick={() => { edit({ processName: '' }); processInputRef.current?.focus(); }}
+                aria-label="Clear process"
                 className="p-1 text-text-disabled hover:text-text-secondary transition-colors"
               >
                 <X size={12} />
               </button>
             )}
             <button
+              ref={pickerButtonRef}
               type="button"
               onClick={() => {
                 const next = !showPicker;
@@ -200,6 +212,8 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
                 // Lazy fetch — first open enumerates. Re-opens reuse the cache.
                 if (next && processList === null) send({ type: 'process:list', payload: {} });
               }}
+              aria-label="Pick a running process"
+              aria-expanded={showPicker}
               className={`p-1 transition-colors ${showPicker ? 'text-accent' : 'text-text-tertiary hover:text-text-secondary'}`}
             >
               <ChevronDown size={14} />
@@ -213,6 +227,7 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
                 onChange={(e) => setFilter(e.target.value)}
                 autoFocus
                 placeholder={'Filter…'}
+                aria-label="Filter processes"
                 className="w-full h-7 px-2 text-caption text-text-primary bg-bg-input border-b border-border-subtle outline-none"
               />
               <div className="overflow-y-auto flex-1">
@@ -234,6 +249,7 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
                         edit({ processName: p.name });
                         setShowPicker(false);
                         setFilter('');
+                        pickerButtonRef.current?.focus();
                       }}
                       className="w-full text-left px-2 py-1 text-caption hover:bg-bg-elevated transition-colors"
                     >
@@ -267,17 +283,19 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
       >
         <div className="relative">
           <input
+            ref={titleInputRef}
             type="text"
             value={value.windowTitle}
             onChange={(e) => edit({ windowTitle: e.target.value })}
             placeholder={value.titleMatchMode === 'regex' ? 'e.g. (Chrome|Firefox)' : ''}
             spellCheck={false}
-            className={inputCls + (value.windowTitle ? ' pr-7' : '') + (shownTitleError ? ' border-recording/60 focus:border-recording' : '')}
+            className={'input-field' + (value.windowTitle ? ' pr-7' : '') + (shownTitleError ? ' border-recording/60 focus:border-recording' : '')}
           />
           {value.windowTitle && (
             <button
               type="button"
-              onClick={() => edit({ windowTitle: '' })}
+              onClick={() => { edit({ windowTitle: '' }); titleInputRef.current?.focus(); }}
+              aria-label="Clear title"
               className="absolute right-2 top-1/2 -translate-y-1/2 text-text-disabled hover:text-text-secondary transition-colors"
             >
               <X size={12} />

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useId } from 'react';
 import { Info, Smile, Hash, X, AlertTriangle } from 'lucide-react';
 import EmojiPicker, { Theme as EmojiTheme, EmojiStyle } from 'emoji-picker-react';
 import { DialogShell, DialogFooter  } from './common/DialogShell';
@@ -98,6 +98,17 @@ export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogPro
 
   const tagInputRef = useRef<HTMLInputElement>(null);
   const descRef = useRef<HTMLTextAreaElement>(null);
+  /** The emoji picker's opener — where the keyboard goes back to when the picker (or Clear)
+   *  disappears with the focus on it. */
+  const iconButtonRef = useRef<HTMLButtonElement>(null);
+  // Ids that tie each caption to its control (a <label> without htmlFor named nothing: the
+  // description was named only by its placeholder, the tag field by nothing once a chip existed)
+  // and that let the tag combobox point at its highlighted suggestion.
+  const fieldId = useId();
+  const descId = `${fieldId}-desc`;
+  const tagInputId = `${fieldId}-tag`;
+  const tagListId = `${fieldId}-tag-list`;
+  const tagOptionId = (i: number) => `${fieldId}-tag-opt-${i}`;
   /** Where the keyboard was when the discard prompt opened, so "Keep editing" can put it back. */
   const returnFocusRef = useRef<HTMLElement | null>(null);
 
@@ -172,6 +183,10 @@ export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogPro
     () => allTags.filter(t => !tags.includes(t.tag)).slice(0, TOP_TAG_CHIPS),
     [allTags, tags],
   );
+
+  // The one condition the dropdown renders under — the combobox's aria-expanded and
+  // aria-activedescendant read it too, so they can never point into a list that is not there.
+  const suggestionsOpen = showTagSuggestions && suggestions.length > 0;
 
   // The arrow keys move within a list that the draft reshapes, so the highlight has to go home
   // whenever the list can have changed — otherwise index 3 of the old list commits a tag the
@@ -250,6 +265,14 @@ export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogPro
   );
 
   const handleSave = () => {
+    // The hold the disabled Save button shows, for the two paths that do not go through it
+    // (Ctrl+Enter and the discard prompt's Save). Since the textarea stopped slicing, a too-long
+    // description can be EDITED and still be over the cap — sending it would let the backend's
+    // own 500-char cut drop the tail in silence.
+    if (descTooLong) {
+      requestAnimationFrame(() => descRef.current?.focus());
+      return;
+    }
     // A tag typed but never confirmed is still work the user did — committing it here is why
     // `dirty` can ignore the draft. Computed locally because setTags would not have flushed.
     // A draft the tag rules would REFUSE stops the save instead: it used to be dropped in silence
@@ -308,6 +331,8 @@ export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogPro
         e.preventDefault();
         e.stopPropagation();
         setShowEmojiPicker(false);
+        // The picker focuses its own search on open, so the keyboard is inside what is closing.
+        iconButtonRef.current?.focus();
       }
     };
     document.addEventListener('keydown', onEsc, true);
@@ -419,39 +444,52 @@ const keepEditing = () => {
                   yet), so a bare number was taking half of the app's most prominent row to say
                   something no one can act on. Among the other read-only facts it reads as one. */}
               <div className="flex flex-col gap-1">
-                <label className="text-caption text-text-tertiary uppercase tracking-wide">Icon</label>
+                <label className="label-micro text-text-tertiary">Icon</label>
                 <div className="flex items-center gap-3">
+                  {/* Named explicitly: with no icon set its only content is the Smile glyph, and
+                      with one set it would be announced as the bare emoji. */}
                   <button
+                    ref={iconButtonRef}
                     type="button"
                     onClick={() => setShowEmojiPicker(v => !v)}
+                    aria-label="Choose icon"
+                    aria-expanded={showEmojiPicker}
                     className="w-12 h-12 flex items-center justify-center text-2xl bg-bg-input border border-border-subtle rounded hover:border-accent-solid transition-colors"
                   >
                     {iconEmoji || <Smile size={18} className="text-text-tertiary" />}
                   </button>
                   {iconEmoji && (
-                    <button
-                      type="button"
-                      onClick={() => setIconEmoji(null)}
-                      className="text-caption text-text-tertiary hover:text-text-primary transition-colors"
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      // Clear unmounts itself, so the keyboard goes to the icon button beside it.
+                      onClick={() => { setIconEmoji(null); iconButtonRef.current?.focus(); }}
                     >
                       Clear
-                    </button>
+                    </Button>
                   )}
                 </div>
               </div>
 
               {/* Description */}
               <div className="flex flex-col gap-1">
-                <label className="text-caption text-text-tertiary uppercase tracking-wide">Description</label>
+                <label htmlFor={descId} className="label-micro text-text-tertiary">Description</label>
+                {/* The cap is `maxLength`, not a slice in onChange. A slice ran on EVERY change, so on
+                    a description loaded over the cap (the case the message below asks the user to
+                    trim) the first keystroke — a Backspace included — cut everything past 500 at
+                    once. maxLength only refuses to GROW the text: an over-long value can still be
+                    edited down, and a paste is cut at the cap. */}
                 <textarea
                   ref={descRef}
+                  id={descId}
                   value={description}
-                  onChange={(e) => setDescription(e.target.value.slice(0, MAX_DESCRIPTION))}
+                  onChange={(e) => setDescription(e.target.value)}
+                  maxLength={MAX_DESCRIPTION}
                   placeholder="What does this profile do?"
                   rows={4}
                   className="w-full px-3 py-2 text-minor text-text-primary bg-bg-input border border-border-subtle rounded outline-none focus:border-accent-solid placeholder:text-text-disabled transition-colors resize-none"
                 />
-                <div className={`text-caption text-right ${descTooLong ? 'text-recording-fg' : 'text-text-tertiary'}`}>
+                <div className={`text-caption text-right tabular-nums ${descTooLong ? 'text-recording-fg' : 'text-text-tertiary'}`}>
                   {description.length} / {MAX_DESCRIPTION}
                 </div>
                 {/* A description longer than the cap can only come from a file written elsewhere —
@@ -467,7 +505,7 @@ const keepEditing = () => {
 
               {/* Tags */}
               <div className="flex flex-col gap-1 relative">
-                <label className="text-caption text-text-tertiary uppercase tracking-wide">Tags</label>
+                <label htmlFor={tagInputId} className="label-micro text-text-tertiary">Tags</label>
                 <div className="flex flex-wrap gap-1 px-2 py-2 bg-bg-input border border-border-subtle rounded focus-within:border-accent-solid transition-colors">
                   {tags.map(t => (
                     <span
@@ -478,7 +516,10 @@ const keepEditing = () => {
                       {t}
                       <button
                         type="button"
-                        onClick={() => removeTag(t)}
+                        // The × leaves with its chip, so the keyboard goes back to the tag field.
+                        // A frame later: at the cap the field is disabled until this removal renders.
+                        onClick={() => { removeTag(t); requestAnimationFrame(() => tagInputRef.current?.focus()); }}
+                        aria-label={`Remove tag ${t}`}
                         className="hover:text-warning-ink transition-colors"
                       >
                         <X size={10} />
@@ -487,6 +528,7 @@ const keepEditing = () => {
                   ))}
                   <input
                     ref={tagInputRef}
+                    id={tagInputId}
                     type="text"
                     value={tagDraft}
                     onChange={(e) => { setTagDraft(e.target.value.toLowerCase()); setTagError(null); }}
@@ -496,8 +538,13 @@ const keepEditing = () => {
                     placeholder={tags.length === 0 ? 'Add a tag…' : ''}
                     disabled={tags.length >= MAX_TAGS}
                     role="combobox"
-                    aria-expanded={showTagSuggestions && suggestions.length > 0}
-                    aria-controls="tag-suggestions"
+                    aria-expanded={suggestionsOpen}
+                    aria-controls={tagListId}
+                    // The arrow keys move a highlight the focus never follows (it stays in this
+                    // field), so this is the only way a screen reader learns which row is on.
+                    aria-activedescendant={suggestionsOpen && activeSuggestion >= 0 && activeSuggestion < suggestions.length
+                      ? tagOptionId(activeSuggestion)
+                      : undefined}
                     // Same VERTICAL box as a chip — text size, py and a transparent border — so the
                     // row is one chip tall whether or not any chip is in it. Without this the box
                     // jumped 7 px the moment the first tag landed, which re-centres the card in
@@ -541,7 +588,10 @@ const keepEditing = () => {
                       type="button"
                       onClick={() => commitTag(t.tag)}
                       disabled={tags.length >= MAX_TAGS}
-                      data-tip={tt(`Used by ${t.count} profiles`, `Usada em ${t.count} profiles`)}
+                      data-tip={tt(
+                        `Used by ${t.count} ${t.count === 1 ? 'profile' : 'profiles'}`,
+                        `Usada em ${t.count} ${t.count === 1 ? 'perfil' : 'perfis'}`,
+                      )}
                       className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-caption rounded border border-border-subtle text-text-secondary hover:border-accent-solid hover:text-text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       <Hash size={9} className="text-text-tertiary" />{t.tag}
@@ -552,9 +602,9 @@ const keepEditing = () => {
                 </div>
 
                 {/* Autocomplete dropdown */}
-                {showTagSuggestions && suggestions.length > 0 && (
+                {suggestionsOpen && (
                   <div
-                    id="tag-suggestions"
+                    id={tagListId}
                     role="listbox"
                     // The pointer leaving the list gives the keyboard its choice back. Hovering a
                     // row sets activeSuggestion, and the highlight stayed behind after the mouse
@@ -567,6 +617,7 @@ const keepEditing = () => {
                     {suggestions.map((s, i) => (
                       <button
                         key={s.tag}
+                        id={tagOptionId(i)}
                         type="button"
                         role="option"
                         aria-selected={i === activeSuggestion}
@@ -600,7 +651,7 @@ const keepEditing = () => {
                   when unset: a block that drops rows for a profile without a hotkey would make two
                   profiles' dialogs different heights for no reason the reader can see. */}
               <div className="pt-2 border-t border-border-subtle">
-                <div className="text-caption text-text-tertiary uppercase tracking-wide mb-2">Contents</div>
+                <div className="label-micro text-text-tertiary mb-2">Contents</div>
                 <div className="grid grid-cols-2 gap-3">
                   <ReadOnlyField label="Actions" value={entry?.actionCount != null ? String(entry.actionCount) : '—'} />
                   <ReadOnlyField label="Hotkey" value={entry?.hotkey ? splitCombo(entry.hotkey).map(compactKey).join(' + ') : '—'} />
@@ -625,7 +676,7 @@ const keepEditing = () => {
 
               {/* ── History ── */}
               <div className="pt-2 border-t border-border-subtle">
-                <div className="text-caption text-text-tertiary uppercase tracking-wide mb-2">History</div>
+                <div className="label-micro text-text-tertiary mb-2">History</div>
                 <div className="grid grid-cols-2 gap-3">
                   <ReadOnlyField label="Created" value={formatDateLong(original?.createdAt)} />
                   <ReadOnlyField label="Updated" value={formatDateLong(original?.updatedAt)} />
@@ -655,11 +706,15 @@ const keepEditing = () => {
             which enumerates the card only — keeps the picker's search field reachable. `top` is
             the header (49 px) plus the icon row; Esc is handled by this dialog's own listener. */}
         {showEmojiPicker && (
-          <div className="absolute left-4 right-4 top-[7.5rem] z-30 border border-border-subtle rounded overflow-hidden bg-bg-card shadow-[var(--shadow-dialog)]">
+          // A popover, so the overlay role's radius and shadow (it had the control radius and the
+          // dialog's shadow).
+          <div className="absolute left-4 right-4 top-[7.5rem] z-30 border border-border-subtle rounded-overlay overflow-hidden bg-bg-card shadow-overlay">
             <EmojiPicker
               onEmojiClick={(emojiData) => {
                 setIconEmoji(emojiData.emoji);
                 setShowEmojiPicker(false);
+                // The clicked emoji leaves with the picker; the keyboard goes back to the opener.
+                iconButtonRef.current?.focus();
               }}
               theme={pickerTheme}
               emojiStyle={EmojiStyle.NATIVE}
@@ -709,7 +764,7 @@ function targetLabel(procName?: string | null, windowTitle?: string | null, has?
 function ReadOnlyField({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="flex flex-col gap-0.5 min-w-0">
-      <label className="text-caption text-text-tertiary uppercase tracking-wide">{label}</label>
+      <label className="label-micro text-text-tertiary">{label}</label>
       <span className="text-minor text-text-secondary truncate" data-tip={value.length > 28 ? value : undefined}>{value}</span>
       {hint && <span className="text-caption text-text-tertiary truncate" data-tip={hint}>{hint}</span>}
     </div>
