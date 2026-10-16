@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useContext, useId, createContext } from 'react';
+import { useState, useEffect, useRef, useCallback, useContext, useId, useMemo, createContext } from 'react';
 import { Timer, TimerReset, Mic, Zap, Monitor, Check, ChevronDown, ChevronRight, ChevronsLeft, ChevronsRight, MousePointerClick, MousePointer2, Palette, Gamepad2, AlertTriangle, Power, BellRing, X, ArrowLeftRight, Crosshair, Hourglass, SlidersHorizontal, RotateCcw, ScanText, Frame } from 'lucide-react';
 import { APP_VERSION } from '../appVersion';
 import { RemapSection, type RemapDraft } from './RemapSection';
@@ -18,10 +18,18 @@ import { chipOn, chipOff, chipDotOn, chipDotOff } from './common/chipStyles';
 import { formatMs } from '../utils/displayUtils';
 import { CLICK_HOLD_MAX_MS, CLICK_PERIOD_FLOOR_MS, delayForCps, effectiveCps, formatRate, holdCapsRate, maxCps } from '../utils/clickerFormat';
 
+// The row a control sits in, published by SettingRow: its label text and the label element's id.
+// A control takes the row's label as its OWN accessible name. The labelled group around the
+// controls only gave a screen reader context on the way in — the switch, the chip's field and the
+// picker still computed an empty name, which is what an audit of Chromium's accessibility tree
+// counted (13 nameless controls on the main window, 2026-10-16).
+const RowLabelContext = createContext<{ id: string; label: string } | null>(null);
+
 // Compact 28×16 switch — the redesigned Settings panel uses the smaller size for every
 // on/off control; other surfaces (dialogs) keep the default 40×20 Toggle.
-function CompactToggle(props: { isOn: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
-  return <Toggle {...props} size="sm" />;
+function CompactToggle(props: { isOn: boolean; onChange: (v: boolean) => void; disabled?: boolean; ariaLabel?: string }) {
+  const row = useContext(RowLabelContext);
+  return <Toggle {...props} size="sm" ariaLabel={props.ariaLabel ?? row?.label} />;
 }
 
 // A per-profile run setting that FOLLOWS the app default until the profile picks its own — Game
@@ -31,13 +39,15 @@ function CompactToggle(props: { isOn: boolean; onChange: (v: boolean) => void; d
 // state flips: a muted "Default" while it follows; while it holds its own value, ↺ sends null
 // (follows again; unsaved until Ctrl+S, like the switch). The ↺ wears the switch's own footprint
 // (28×16, a pill) so the two read as a pair. Without a profile the switch IS the default.
-function ProfileOverrideToggle({ scoped, own, effective, onChange, tip }: {
+function ProfileOverrideToggle({ scoped, own, effective, onChange, tip, name }: {
   scoped: boolean;
   own: boolean | null;
   effective: boolean;
   onChange: (v: boolean | null) => void;
   // The switch's own tooltip — for a host (a Section header) that carries no data-tip of its own.
   tip?: string;
+  // The switch's name: a Section header is no SettingRow, so there is no row label to take.
+  name: string;
 }) {
   const tt = useTt();
   return (
@@ -61,7 +71,7 @@ function ProfileOverrideToggle({ scoped, own, effective, onChange, tip }: {
         </span>
       )}
       <span className="flex items-center" data-tip={tip || undefined} data-tip-pos="left">
-        <CompactToggle isOn={effective} onChange={onChange} />
+        <CompactToggle isOn={effective} onChange={onChange} ariaLabel={name} />
       </span>
     </span>
   );
@@ -187,6 +197,7 @@ function EnableChip({ value, isOn, unit, format, min, max, width, offDisplay, ow
   onEnterActivate?: (v: string) => void;
 }) {
   const { language } = useLanguage();
+  const row = useContext(RowLabelContext);
   const [local, setLocal] = useState(value);
   const [isFocused, setIsFocused] = useState(false);
   // What the field held when it took the focus, and whose it was. commit() runs on EVERY blur, and
@@ -241,7 +252,7 @@ function EnableChip({ value, isOn, unit, format, min, max, width, offDisplay, ow
         // the state lived. The row's group supplies the subject ("Delay").
         role="switch"
         aria-checked={isOn}
-        aria-label="Enabled"
+        aria-label={row ? `${row.label} enabled` : 'Enabled'}
         className="h-full pl-2 pr-1.5 flex items-center shrink-0 cursor-pointer transition-colors hover:bg-wash-hover"
       >
         <span
@@ -252,6 +263,7 @@ function EnableChip({ value, isOn, unit, format, min, max, width, offDisplay, ow
       <input
         type="text"
         inputMode="numeric"
+        aria-labelledby={row?.id}
         value={display}
         // Digits only, ALWAYS. This used to run only when `format` was set, and it kept the
         // minus sign — so four of the five clicker fields accepted "-5"/"abc" verbatim and
@@ -284,6 +296,7 @@ function ValueField({ value, unit, min, max, onCommitValue }: {
   max?: number;
   onCommitValue: (v: string) => void;
 }) {
+  const row = useContext(RowLabelContext);
   const [local, setLocal] = useState(value);
   const focused = useRef(false);
   useEffect(() => { if (!focused.current) setLocal(value); }, [value]);
@@ -302,6 +315,7 @@ function ValueField({ value, unit, min, max, onCommitValue }: {
     <div className={`${FIELD_W} h-7 flex items-center gap-1.5 px-2 rounded border border-border-default bg-bg-input focus-within:border-accent-solid`}>
       <input
         type="text"
+        aria-labelledby={row?.id}
         value={local}
         onChange={(e) => setLocal(e.target.value)}
         onFocus={() => { focused.current = true; }}
@@ -419,6 +433,7 @@ function SettingRow({ label, labelSuffix, tooltip, children, danger }: {
   // and picker in the panel was nameless ("switch, off" with no subject). The controls sit in a
   // group named by the label, so the layout below is unchanged. Before the early return: a hook.
   const labelId = useId();
+  const rowLabel = useMemo(() => ({ id: labelId, label }), [labelId, label]);
   // Hide when the "Filter settings" query doesn't match this row's label.
   if (filter && !label.toLowerCase().includes(filter)) return null;
   // Tooltip via the global TooltipLayer (data-tip) — pos="left" so it opens into the work area
@@ -445,7 +460,7 @@ function SettingRow({ label, labelSuffix, tooltip, children, danger }: {
         {labelSuffix}
       </span>
       <div role="group" aria-labelledby={labelId} className="flex items-center gap-2.5 shrink-0">
-        {children}
+        <RowLabelContext.Provider value={rowLabel}>{children}</RowLabelContext.Provider>
       </div>
     </div>
   );
@@ -476,6 +491,7 @@ function ComboInput({ value, onCommit, options, width = FIELD_W, editable = true
   // Tooltips could be focused but never changed without a mouse.
   const [active, setActive] = useState(-1);
   const listId = useId();
+  const row = useContext(RowLabelContext);
   const wrapRef = useRef<HTMLDivElement>(null);
   const focused = useRef(false);
   // The text when the field took the focus. The blur commits only a CHANGE: the Rate field shows a
@@ -551,6 +567,7 @@ function ComboInput({ value, onCommit, options, width = FIELD_W, editable = true
       <input
         type="text"
         role="combobox"
+        aria-labelledby={row?.id}
         aria-expanded={open}
         aria-haspopup="listbox"
         aria-controls={open ? listId : undefined}
@@ -835,6 +852,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
               <select
                 value={unit}
                 onChange={(e) => onUnitChange(e.target.value as 'ms' | 'cps')}
+                aria-label="Rate unit"
                 className="w-6 h-7 text-center text-caption text-text-secondary bg-bg-input border border-border-default rounded outline-none focus:border-accent-solid font-mono cursor-pointer appearance-none shrink-0"
               >
                 <option value="cps">/s</option>
@@ -1128,6 +1146,7 @@ function HotkeyInput({ value, settingKey, onChange, width = FIELD_W }: {
   const { send, subscribe } = useBridge();
   const { showToast } = useToast();
   const tt = useTt();
+  const row = useContext(RowLabelContext);
   const [localValue, setLocalValue] = useState(value);
   const [isFocused, setIsFocused] = useState(false);
   // Idle-cancel timer — without an explicit Esc-to-cancel rule (so users can capture
@@ -1260,9 +1279,11 @@ function HotkeyInput({ value, settingKey, onChange, width = FIELD_W }: {
       onBlur={() => { setIsFocused(false); setLocalValue(value); send({ type: 'hotkey:capture', payload: { enabled: false, ownerId: ownerIdRef.current } }); disarmCaptureTimer(); }}
       // Armed, the name says what the field is waiting for (it used to keep announcing the stored
       // combo over the visible "New key…"), and aria-pressed carries the armed state itself.
-      aria-label={isFocused
-        ? (localValue ? `New hotkey: ${localValue}` : 'Press the new hotkey')
-        : (value ? `Hotkey: ${value}` : 'Set hotkey')}
+      // Prefixed with the row's label: six of these sit in one column, and "Hotkey: Pause" alone
+      // did not say WHICH hotkey it is.
+      aria-label={`${row ? `${row.label} — ` : ''}${isFocused
+        ? (localValue ? `new hotkey: ${localValue}` : 'press the new hotkey')
+        : (value ? `hotkey: ${value}` : 'set hotkey')}`}
       aria-pressed={isFocused}
       className={`min-w-[100px] h-7 px-1.5 flex items-center justify-center rounded border transition-colors cursor-pointer outline-none ${
         isFocused
@@ -1305,7 +1326,7 @@ function HotkeyInput({ value, settingKey, onChange, width = FIELD_W }: {
           type="button"
           onClick={() => onChange(settingKey, '')}
           className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-[opacity,color,background-color]"
-          aria-label="Clear hotkey"
+          aria-label={row ? `Clear ${row.label} hotkey` : 'Clear hotkey'}
         >
           <X size={11} />
         </button>
@@ -1777,6 +1798,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                   own={profileLoop.restoreCursor}
                   effective={restoreCursorOn}
                   onChange={(v) => changeSetting('profileRestoreCursor', v)}
+                name="Return cursor"
                   tip={!profileLoop.scoped
                     ? tt('Cursor goes back to where it was when the run started. Default for profiles without their own.',
                          'O cursor volta para onde estava quando o run começou. Padrão dos perfis sem o seu.')
@@ -1813,6 +1835,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                   own={profileLoop.gameMode}
                   effective={gameModeOn}
                   onChange={(v) => changeSetting('profileGameMode', v)}
+                  name="Game Mode"
                   tip={!profileLoop.scoped
                     ? tt('Cursor walks a path so games accept the move. Default for profiles without their own; off = instant jump.',
                          'O cursor percorre um caminho para jogos aceitarem o movimento. Padrão dos perfis sem o seu; off = salto instantâneo.')
