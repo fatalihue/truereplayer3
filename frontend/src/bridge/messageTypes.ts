@@ -205,6 +205,21 @@ export interface SelectorAlternative {
   description: string;
 }
 
+// Settings → App → Screen Text: the OCR packs (see ocr:languagesResult). The bridge serializes
+// with WhenWritingNull, so a null tag arrives as an ABSENT key — read them by truthiness.
+export interface OcrLanguage {
+  tag: string;
+  name: string;
+}
+export interface OcrLanguagesPayload {
+  available: OcrLanguage[];
+  offered: OcrLanguage[];
+  auto?: string | null;
+  effective?: string | null;
+  installing?: string | null;
+  pendingRestart: string[];
+}
+
 // #3 — Test action result returned by the bridge
 export interface BrowserTestResult {
   requestId: string;
@@ -501,7 +516,7 @@ export interface SettingsState {
   // Capture-selection → clipboard slot ({clip:1}…{clip:9}). Empty = disabled (the default).
   captureSlotHotkey: string;
   // Copy screen text (OCR → clipboard): '' = disabled. Region '' = drag each time, or 'x,y,w,h'
-  // (absolute) = always read that region. ocrLanguage '' = Auto.
+  // (absolute) = always read that region. ocrLanguage '' = Auto; 'pt-BR' is the default.
   copyScreenTextHotkey: string;
   copyScreenTextRegion: string;
   ocrLanguage: string;
@@ -962,7 +977,12 @@ export type IncomingMessage =
   | { type: 'browser:testConditionResult'; payload: { requestId: string; satisfied: boolean; raw: boolean; connected: boolean } }
   | { type: 'browser:extensionOutdated'; payload: { currentVersion: string; expectedVersion: string } }
   | { type: 'ocr:testReadResult'; payload: { requestId: string; text?: string; matched?: boolean | null; number?: string | null; x?: number; y?: number; w?: number; h?: number; elapsedMs?: number; variant?: string; language?: string; previewBase64?: string | null; error?: string } }
-  | { type: 'ocr:languagesResult'; payload: { available: { tag: string; name: string }[]; auto: string | null } }
+  // available = the packs installed on this PC; offered = the ones Settings always lists and can
+  // install (Português, English); effective = the tag a read uses for the current pick (null = no
+  // OCR at all); installing = the tag being installed now; pendingRestart = installed, but this
+  // process's engine does not list it until the app restarts.
+  | { type: 'ocr:languagesResult'; payload: OcrLanguagesPayload }
+  | { type: 'ocr:installResult'; payload: { tag: string; ok: boolean; canceled: boolean; restartApp: boolean; restartWindows: boolean; error?: string | null } }
   | { type: 'image:testMatchResult'; payload: { requestId: string; found: boolean; score: number; x: number; y: number; w: number; h: number; error?: string } }
   | { type: 'waitimage:searchRegionSet'; payload: { requestId: string; cancelled: boolean; x?: number; y?: number; w?: number; h?: number } }
   // clicker:areaSet / clicker:pointSet used to live here. Removed with their emitters: the
@@ -1279,6 +1299,7 @@ export type OutgoingMessage =
   | { type: 'waitimage:cropReference'; payload: { index: number; x: number; y: number; w: number; h: number } }
   | { type: 'ocr:testRead'; payload: { requestId: string; searchRegion?: { x: number; y: number; w: number; h: number }; absolute?: boolean; anchor?: { processName: string; windowTitle: string; titleMatchMode: string }; readAs?: string | null; operator?: string | null; operand?: string; match?: boolean; textColor?: string | null; tolerance?: number } }
   | { type: 'ocr:languages'; payload: Record<string, never> }
+  | { type: 'ocr:installLanguage'; payload: { tag: string } }
   | { type: 'ocr:configureHotkeyRegion'; payload: Record<string, never> }
   | { type: 'image:testMatch'; payload: { requestId: string; imagePath: string; confidence: number; searchRegion?: { x: number; y: number; w: number; h: number }; absolute?: boolean; anchor?: { processName: string; windowTitle: string; titleMatchMode: string }; profile?: string } }
   | { type: 'mouse:pickPosition'; payload: { requestId: string } }

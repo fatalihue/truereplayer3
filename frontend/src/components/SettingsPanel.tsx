@@ -13,7 +13,8 @@ import { SegmentedControl } from './common/SegmentedControl';
 import { iconButtonClass } from './common/IconButton';
 import { KbdTag } from './common/KbdTag';
 import { ClickerPresetRow, type PendingPresetName } from './ClickerPresetRow';
-import type { SettingsState } from '../bridge/messageTypes';
+import type { OcrLanguagesPayload, SettingsState } from '../bridge/messageTypes';
+import { ocrLanguageNote, ocrLanguageOptions, ocrPickerLanguages } from '../utils/ocrLanguages';
 import { chipOn, chipOff, chipDotOn, chipDotOff } from './common/chipStyles';
 import { formatMs } from '../utils/displayUtils';
 import { CLICK_HOLD_MAX_MS, CLICK_PERIOD_FLOOR_MS, delayForCps, effectiveCps, formatRate, holdCapsRate, maxCps } from '../utils/clickerFormat';
@@ -83,23 +84,6 @@ function ProfileOverrideToggle({ scoped, own, effective, onChange, tip, name }: 
 // ~86px at 12px Consolas) ONLY because HotkeyInput uses px-1.5 padding (88px content box —
 // see the comment there); together with the reserved scrollbar gutter no row label wraps.
 const FIELD_W = 'w-[100px]';
-
-// OCR language picker labels. Windows' display names carry the region ("English (United
-// States)", 176 px) and never fit a settings field, so a pack shows its bare language name —
-// "Português", "English" — and the region subtag joins it only when two installed packs share
-// that name ("English (US)" + "English (GB)"), the one case where the region tells them apart.
-// The full tag would not do: "English (en-US)" is 115 px against the field's ~92 px of text.
-function ocrLanguageOptions(langs: { tag: string; name: string }[]) {
-  // Full-width parentheses too: Windows names Chinese "中文(中华人民共和国)".
-  const base = (n: string) => n.replace(/\s*[(（].*[)）]\s*$/, '').trim() || n;
-  const count = new Map<string, number>();
-  for (const l of langs) count.set(base(l.name), (count.get(base(l.name)) ?? 0) + 1);
-  return langs.map(l => {
-    const b = base(l.name);
-    const region = l.tag.split('-').slice(1).join('-') || l.tag;
-    return { value: l.tag, label: (count.get(b) ?? 0) > 1 ? `${b} (${region})` : b };
-  });
-}
 
 // Upper bounds for the timing / scatter fields — typing past these snaps back to the cap on
 // commit (blur/Enter). A typo-guard (stops an accidental extra zero making a macro appear to
@@ -341,6 +325,39 @@ function PathStepZeroNote({ step }: { step: string }) {
   return (
     <div className="px-2.5 pb-1 text-caption text-text-tertiary text-right">
       {'No walk — single jump'}
+    </div>
+  );
+}
+
+// Annotation under the OCR Language row — same shape and placement as PathStepZeroNote, in the
+// warning ink while the pick is missing (a read silently using another language is the thing worth
+// saying), tertiary while it is being installed or waits for a restart. Install sends the pick to
+// the C# side, which adds the Windows pack elevated; one install at a time, so the button waits
+// while any pack installs.
+function OcrLanguageNoteLine({ pick, langs, onInstall }: { pick: string; langs: OcrLanguagesPayload; onInstall: (tag: string) => void }) {
+  const tt = useTt();
+  const note = ocrLanguageNote(pick, langs);
+  if (!note) return null;
+  const install = note.kind === 'missing' ? note.install : null;
+  const name = install ? (ocrLanguageOptions(ocrPickerLanguages(langs.offered, langs.available)).find(o => o.value === install.tag)?.label ?? install.tag) : '';
+  return (
+    <div className={`px-2.5 pb-1 flex items-baseline justify-end gap-2 text-caption text-right ${note.kind === 'missing' ? 'text-warning-ink' : 'text-text-tertiary'}`}>
+      {/* truncate: a longer pack name ("English (US)" beside an "English (GB)") must not wrap the line. */}
+      <span role="status" className="min-w-0 truncate">{note.text}</span>
+      {install && (
+        <button
+          type="button"
+          onClick={() => onInstall(install.tag)}
+          disabled={!!langs.installing}
+          aria-label={`Install ${name} text recognition`}
+          data-tip-pos="left"
+          data-tip={tt('Adds the Windows OCR pack for this language. Windows asks for permission; the download comes from Windows Update.',
+                       'Adiciona o pacote de OCR do Windows para este idioma. O Windows pede permissão; o download vem do Windows Update.')}
+          className="shrink-0 text-accent-solid hover:underline disabled:opacity-50 disabled:no-underline"
+        >
+          Install
+        </button>
+      )}
     </div>
   );
 }
@@ -1423,8 +1440,12 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
   // const [query, setQuery] = useState('');
 
   // OCR recognizer languages installed on THIS PC — asked for whenever the App tab opens, since a
-  // language pack can be added while the app runs.
-  const [ocrLangs, setOcrLangs] = useState<{ available: { tag: string; name: string }[]; auto: string | null } | null>(null);
+  // language pack can be added while the app runs. Also pushed by the C# side after a pick and
+  // around an install, so the note under the picker follows both.
+  const [ocrLangs, setOcrLangs] = useState<OcrLanguagesPayload | null>(null);
+  // The install result's toast names the language; the subscription below outlives renders.
+  const ocrLangsRef = useRef<OcrLanguagesPayload | null>(null);
+  useEffect(() => { ocrLangsRef.current = ocrLangs; }, [ocrLangs]);
   useEffect(() => {
     if (activeTab === 'app') send({ type: 'ocr:languages', payload: {} });
   }, [activeTab, send]);
@@ -1432,11 +1453,31 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
   useEffect(() => {
     return subscribe((msg) => {
       if (msg.type === 'ocr:languagesResult') setOcrLangs(msg.payload);
+      if (msg.type === 'ocr:installResult') {
+        const r = msg.payload;
+        const langs = ocrLangsRef.current;
+        const opt = langs && ocrLanguageOptions(ocrPickerLanguages(langs.offered, langs.available)).find(o => o.value.toLowerCase() === r.tag.toLowerCase());
+        const name = opt?.label ?? r.tag;
+        if (r.ok) {
+          showToast(r.restartApp
+            ? tt(`${name} text recognition installed — restart TrueReplayer to use it.`, `Reconhecimento de texto em ${name} instalado — reinicie o TrueReplayer para usar.`)
+            : r.restartWindows
+              ? tt(`${name} text recognition installed — restart Windows to finish.`, `Reconhecimento de texto em ${name} instalado — reinicie o Windows para concluir.`)
+              : tt(`${name} text recognition installed.`, `Reconhecimento de texto em ${name} instalado.`),
+            'success');
+        } else if (r.canceled) {
+          showToast(tt('Install canceled — Windows needs your permission to add the pack.',
+                       'Instalação cancelada — o Windows precisa da sua permissão para adicionar o pacote.'), 'info');
+        } else {
+          showToast(tt(`Couldn't install ${name} text recognition: ${r.error ?? 'unknown error'}`,
+                       `Não foi possível instalar o reconhecimento de texto em ${name}: ${r.error ?? 'erro desconhecido'}`), 'error');
+        }
+      }
       if (msg.type === 'update:available') setUpdateStatus('idle');
       if (msg.type === 'update:none') setUpdateStatus('up-to-date');
       if (msg.type === 'update:error') setUpdateStatus('error');
     });
-  }, [subscribe]);
+  }, [subscribe, showToast, tt]);
 
   // Switching mode in EITHER direction used to jump to the Profile tab (see
   // FOCUS_PROFILE_ON_MODE_SWITCH). Edge-only: fires on an actual macro↔clicker toggle (a
@@ -2149,34 +2190,31 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
               </SettingRow>
             </Section>
 
-            {/* Screen Text — the OCR engine's language (Windows OCR packs installed on this PC).
-                Auto = the user's profile languages. Read by Wait for Text, the Screen Text
-                condition, Set Variable's Screen mode, the watcher and the Copy screen text hotkey. */}
+            {/* Screen Text — the OCR engine's language. Português by default; Português and
+                English are always listed (installable from here when this PC lacks the pack),
+                then any other pack installed; Auto = the user's profile languages. Read by Wait
+                for Text, the Screen Text condition, Set Variable's Screen mode, the watcher and
+                the Copy screen text hotkey. */}
             <Section title="Screen Text">
               <SettingRow
                 label="Language"
-                tooltip={tt('Text recognition language — the Windows OCR packs on this PC. Add more in Windows Settings → Language.', 'Idioma do reconhecimento de texto — os pacotes de OCR do Windows neste PC. Adicione mais em Configurações do Windows → Idioma.')}
+                tooltip={tt('Text recognition language. Português by default; a language this PC lacks installs from here.', 'Idioma do reconhecimento de texto. Português por padrão; um idioma que falta neste PC instala por aqui.')}
               >
-                {ocrLangs && ocrLangs.available.length === 0 ? (
-                  <span className="text-ui text-warning-ink" data-tip-pos="left"
-                    data-tip={tt('Windows Settings → Time & language → Language & region → add a language with "Optical character recognition".', 'Configurações do Windows → Hora e idioma → Idioma e região → adicione um idioma com "Reconhecimento óptico de caracteres".')}>
-                    None installed
-                  </span>
-                ) : (
-                  <ComboInput
-                    value={settings.ocrLanguage ?? ''}
-                    onCommit={(v) => changeSetting('ocrLanguage', v)}
-                    options={[
-                      { value: '', label: ocrLangs?.auto ? `Auto (${ocrLangs.auto})` : 'Auto' },
-                      ...ocrLanguageOptions(ocrLangs?.available ?? []),
-                    ]}
-                    // 118, not the 132 of Tooltips: "Language" needs 56 px of label, and the
-                    // short names fit where Windows' full ones never did.
-                    width="w-[118px]"
-                    editable={false}
-                  />
-                )}
+                <ComboInput
+                  value={settings.ocrLanguage ?? ''}
+                  onCommit={(v) => changeSetting('ocrLanguage', v)}
+                  options={[
+                    ...ocrLanguageOptions(ocrLangs ? ocrPickerLanguages(ocrLangs.offered, ocrLangs.available) : []),
+                    { value: '', label: ocrLangs?.auto ? `Auto (${ocrLangs.auto})` : 'Auto' },
+                  ]}
+                  // 118, not the 132 of Tooltips: "Language" needs 56 px of label, and the
+                  // short names fit where Windows' full ones never did.
+                  width="w-[118px]"
+                  editable={false}
+                />
               </SettingRow>
+              {ocrLangs && <OcrLanguageNoteLine pick={settings.ocrLanguage ?? ''} langs={ocrLangs}
+                onInstall={(tag) => send({ type: 'ocr:installLanguage', payload: { tag } })} />}
             </Section>
 
             {/* Interface — how the UI looks & speaks. Theme & layout opens the

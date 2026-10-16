@@ -1020,6 +1020,7 @@ namespace TrueReplayer
                     case "image:testMatch": _ = HandleTestMatchAsync(payload); break;
                     case "ocr:testRead": _ = HandleOcrTestReadAsync(payload); break;
                     case "ocr:languages": HandleOcrLanguages(); break;
+                    case "ocr:installLanguage": _ = HandleOcrInstallLanguageAsync(payload); break;
                     case "ocr:configureHotkeyRegion": _ = HandleConfigureCopyScreenTextRegionAsync(); break;
                     case "mouse:pickPosition": _ = HandleMousePickPositionAsync(payload); break;
                     case "pixel:pickColor": _ = HandlePixelColorPickAsync(payload); break;
@@ -7706,10 +7707,51 @@ namespace TrueReplayer
             }
         }
 
+        // Settings → App → Screen Text → Install. One install at a time; its tag rides every
+        // ocr:languagesResult, so a panel reopened mid-install still says so. A pack Windows reports
+        // installed that this process's engine does not list yet waits for an app restart
+        // (pendingRestart) — dropped again as soon as the engine lists it. UI thread only.
+        private string? _ocrInstalling;
+        private readonly HashSet<string> _ocrPendingRestart = new(StringComparer.OrdinalIgnoreCase);
+
         private void HandleOcrLanguages()
         {
-            var langs = OcrService.AvailableLanguages().Select(l => new { tag = l.Tag, name = l.Name }).ToList();
-            SendMessage("ocr:languagesResult", new { available = langs, auto = OcrService.AutoLanguageTag() });
+            // A pack added while the app runs (here or in Windows Settings) is seen from now on.
+            OcrService.InvalidateLanguage();
+            var available = OcrService.AvailableLanguages();
+            foreach (var l in available) _ocrPendingRestart.Remove(l.Tag);
+            SendMessage("ocr:languagesResult", new
+            {
+                available = available.Select(l => new { tag = l.Tag, name = l.Name }).ToList(),
+                offered = OcrService.OfferedLanguages.Select(l => new { tag = l.Tag, name = l.Name }).ToList(),
+                auto = OcrService.AutoLanguageTag(),
+                effective = OcrService.EffectiveLanguageTag(),
+                installing = _ocrInstalling,
+                pendingRestart = _ocrPendingRestart.ToList(),
+            });
+        }
+
+        private async Task HandleOcrInstallLanguageAsync(JsonElement payload)
+        {
+            string tag = payload.TryGetProperty("tag", out var tEl) && tEl.ValueKind == JsonValueKind.String ? (tEl.GetString() ?? "") : "";
+            if (_ocrInstalling != null) { HandleOcrLanguages(); return; }
+            _ocrInstalling = tag;
+            HandleOcrLanguages();
+            OcrService.InstallResult result;
+            try { result = await OcrService.InstallLanguageAsync(tag); }
+            catch (Exception ex) { result = new OcrService.InstallResult(false, Error: ex.Message); }
+            finally { _ocrInstalling = null; }
+            if (result.Ok && result.RestartApp) _ocrPendingRestart.Add(tag);
+            SendMessage("ocr:installResult", new
+            {
+                tag,
+                ok = result.Ok,
+                canceled = result.Canceled,
+                restartApp = result.RestartApp,
+                restartWindows = result.RestartWindows,
+                error = result.Error,
+            });
+            HandleOcrLanguages();
         }
 
         // Settings → Keys → "Text Region": pick the fixed region the Copy screen text hotkey reads.
@@ -13636,6 +13678,8 @@ namespace TrueReplayer
                     break;
                 case "ocrLanguage":
                     OcrService.PreferredLanguage = valueElement.GetString() ?? "";
+                    // The Settings note says which pack a read will use; that changed with the pick.
+                    HandleOcrLanguages();
                     break;
                 case "runAsAdmin":
                     {

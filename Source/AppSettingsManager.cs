@@ -131,8 +131,9 @@ namespace TrueReplayer.Services
             // "x,y,w,h" (absolute) = always read that region.
             public string CopyScreenTextHotkey { get; set; } = HotkeyDefaults.CopyScreenText;
             public string CopyScreenTextRegion { get; set; } = "";
-            // OCR recognizer language tag. "" = Auto (the user's profile languages).
-            public string OcrLanguage { get; set; } = "";
+            // OCR recognizer language tag. "" = Auto (the user's profile languages). Português by
+            // default (OcrService.DefaultLanguage); a file from an older build keeps the "" it wrote.
+            public string OcrLanguage { get; set; } = OcrService.DefaultLanguage;
             public bool ProfileKeyEnabled { get; set; } = true;
             public bool BrowserSelectorEnabled { get; set; } = true;
             // Automation master switch — armed per-profile triggers only run while this is on.

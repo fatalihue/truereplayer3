@@ -73,6 +73,20 @@ namespace TrueReplayer.Services
 
         private const string BoosterLabel = "Value:";
 
+        /// <summary>The language a new install (and Reset) reads with — AppSettings.OcrLanguage's default.</summary>
+        public const string DefaultLanguage = "pt-BR";
+
+        /// <summary>
+        /// The languages Settings always lists, installed or not: Português (the default) and English
+        /// (what most game and app UIs are written in). Also the only packs <see cref="InstallLanguageAsync"/>
+        /// adds — any other installed pack is listed as Windows reports it.
+        /// </summary>
+        public static readonly IReadOnlyList<(string Tag, string Name)> OfferedLanguages = new[]
+        {
+            ("pt-BR", "Português (Brasil)"),
+            ("en-US", "English (United States)"),
+        };
+
         /// <summary>Settings → App → Screen text. "" = Auto (the user's profile languages).</summary>
         public static string PreferredLanguage
         {
@@ -82,16 +96,27 @@ namespace TrueReplayer.Services
                 var v = value ?? "";
                 if (v == _preferredLanguage) return;
                 _preferredLanguage = v;
-                _resolvedTag = null; // re-resolve on next use; the pools stay keyed by tag
+                InvalidateLanguage(); // re-resolve on next use; the pools stay keyed by tag
             }
         }
-        private static string _preferredLanguage = "";
+        private static string _preferredLanguage = DefaultLanguage;
         private static string? _resolvedTag;
         private static readonly object _resolveLock = new();
         private static readonly ConcurrentDictionary<string, ConcurrentBag<OcrEngine>> _pools = new(StringComparer.OrdinalIgnoreCase);
 
         public const string NoLanguageMessage =
-            "No OCR language installed. Windows Settings → Time & language → Language & region → add a language with \"Optical character recognition\".";
+            "No OCR language installed. Settings → App → Screen Text → Install, or Windows Settings → Time & language → Language & region → add a language with \"Optical character recognition\".";
+
+        /// <summary>
+        /// Drops the resolved tag so the next read asks Windows again. The resolution is cached for the
+        /// watcher's sake (it reads every tick), which also means a pack added while the app runs was
+        /// never picked up: the Settings tab calls this whenever it lists the languages, and so does a
+        /// finished install.
+        /// </summary>
+        public static void InvalidateLanguage()
+        {
+            lock (_resolveLock) _resolvedTag = null;
+        }
 
         /// <summary>Installed recognizer languages, tag + display name. Empty when none.</summary>
         public static IReadOnlyList<(string Tag, string Name)> AvailableLanguages()
@@ -121,29 +146,106 @@ namespace TrueReplayer.Services
             catch { return null; }
         }
 
+        /// <summary>
+        /// The tag a read uses right now: the chosen pack when it is installed, else Auto (null = no
+        /// OCR language at all). Never cached and never throws — the Settings note reads it, so the
+        /// panel says exactly what a read will do, from the same rule <see cref="ResolveTag"/> applies.
+        /// </summary>
+        public static string? EffectiveLanguageTag() => Resolve(_preferredLanguage, log: false);
+
+        private static string? Resolve(string preferred, bool log)
+        {
+            if (!string.IsNullOrWhiteSpace(preferred))
+            {
+                try
+                {
+                    if (OcrEngine.IsLanguageSupported(new Windows.Globalization.Language(preferred)))
+                        return preferred;
+                    if (log) DiagnosticLog.Warn($"[OCR] language '{preferred}' is not installed — using Auto");
+                }
+                catch { /* malformed tag → Auto */ }
+            }
+            return AutoLanguageTag();
+        }
+
         private static string ResolveTag()
         {
             lock (_resolveLock)
             {
                 if (_resolvedTag != null) return _resolvedTag;
-                string? tag = null;
-                if (!string.IsNullOrWhiteSpace(_preferredLanguage))
-                {
-                    try
-                    {
-                        if (OcrEngine.IsLanguageSupported(new Windows.Globalization.Language(_preferredLanguage)))
-                            tag = _preferredLanguage;
-                        else
-                            DiagnosticLog.Warn($"[OCR] language '{_preferredLanguage}' is not installed — using Auto");
-                    }
-                    catch { /* malformed tag → Auto */ }
-                }
-                tag ??= AutoLanguageTag();
+                var tag = Resolve(_preferredLanguage, log: true);
                 if (tag == null) throw new OcrUnavailableException(NoLanguageMessage);
                 _resolvedTag = tag;
                 return tag;
             }
         }
+
+        /// <summary>What an install ended with. <see cref="RestartApp"/>: Windows says it is installed
+        /// but this process's engine does not list it yet. <see cref="Error"/> is shown as is.</summary>
+        public sealed record InstallResult(bool Ok, bool Canceled = false, bool RestartApp = false, bool RestartWindows = false, string? Error = null);
+
+        /// <summary>
+        /// Adds the Windows OCR pack for <paramref name="tag"/>, one of <see cref="OfferedLanguages"/>:
+        /// the optional capability Language.OCR~~~tag~0.0.1.0, through DISM. Only the OCR pack — the
+        /// language does not join the user's language list, so no keyboard layout appears. DISM needs
+        /// admin, so it runs elevated: Windows asks (UAC) unless TrueReplayer already is. The pack comes
+        /// from Windows Update; a PC with no route to it (offline, a WSUS policy without Features on
+        /// Demand) fails with DISM's own code, which the message carries.
+        /// </summary>
+        public static Task<InstallResult> InstallLanguageAsync(string tag) => Task.Run(async () =>
+        {
+            var offered = OfferedLanguages.FirstOrDefault(l => string.Equals(l.Tag, tag, StringComparison.OrdinalIgnoreCase));
+            if (offered.Tag == null) return new InstallResult(false, Error: $"'{tag}' is not a language TrueReplayer installs.");
+            string capability = $"Language.OCR~~~{offered.Tag}~0.0.1.0";
+            var psi = new ProcessStartInfo
+            {
+                FileName = Path.Combine(Environment.SystemDirectory, "dism.exe"),
+                Arguments = $"/Online /Add-Capability /CapabilityName:{capability} /NoRestart /Quiet",
+                // ShellExecute is what carries the runas verb; it also blocks this thread while the
+                // UAC prompt is up, which is why the whole install runs on the pool.
+                UseShellExecute = true,
+                Verb = "runas",
+                WindowStyle = ProcessWindowStyle.Hidden,
+            };
+            DiagnosticLog.Info($"[OCR] installing {capability}");
+            int code;
+            try
+            {
+                using var p = Process.Start(psi);
+                if (p == null) return new InstallResult(false, Error: "DISM did not start.");
+                // An elevated DISM cannot be killed from here; on a timeout it is only no longer waited on.
+                using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(20));
+                await p.WaitForExitAsync(cts.Token);
+                code = p.ExitCode;
+            }
+            catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223) // ERROR_CANCELLED: UAC declined
+            {
+                DiagnosticLog.Info("[OCR] install canceled at the permission prompt");
+                return new InstallResult(false, Canceled: true);
+            }
+            catch (OperationCanceledException)
+            {
+                DiagnosticLog.Warn($"[OCR] {capability}: DISM still running after 20 minutes — no longer waiting");
+                return new InstallResult(false, Error: "Windows is still installing after 20 minutes. Check again later in Settings.");
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Error($"[OCR] {capability}: DISM could not start", ex);
+                return new InstallResult(false, Error: ex.Message);
+            }
+
+            const int RebootRequired = 3010; // ERROR_SUCCESS_REBOOT_REQUIRED
+            if (code != 0 && code != RebootRequired)
+            {
+                DiagnosticLog.Warn($"[OCR] {capability}: DISM exit 0x{(uint)code:X8}");
+                return new InstallResult(false, Error: $"Windows could not add the pack (DISM 0x{(uint)code:X8}).");
+            }
+            InvalidateLanguage();
+            bool listed = false;
+            try { listed = OcrEngine.IsLanguageSupported(new Windows.Globalization.Language(offered.Tag)); } catch { }
+            DiagnosticLog.Info($"[OCR] {capability} installed (exit {code}); engine lists it: {listed}");
+            return new InstallResult(true, RestartApp: !listed, RestartWindows: code == RebootRequired);
+        });
 
         private static OcrEngine Rent(out string tag)
         {

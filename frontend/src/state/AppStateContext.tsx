@@ -69,7 +69,8 @@ const defaultSettings = {
   // Mirrors AppSettings.CopyScreenTextHotkey (HotkeyDefaults.CopyScreenText).
   copyScreenTextHotkey: 'Win+F12',
   copyScreenTextRegion: '',
-  ocrLanguage: '',
+  // Mirrors AppSettings.OcrLanguage (OcrService.DefaultLanguage); '' = Auto.
+  ocrLanguage: 'pt-BR',
   alwaysOnTop: false,
   minimizeToTray: true,
   runOnStartup: true,
