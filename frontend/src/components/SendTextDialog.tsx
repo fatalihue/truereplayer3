@@ -235,7 +235,7 @@ function SnippetEditForm({
           onClick={() => canSave && onSave(name, text)}
           disabled={!canSave}
         >
-          Save
+          Save snippet
         </Button>
       </div>
     </div>
@@ -1074,7 +1074,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
     <>
     <DialogShell
       icon={<Type size={14} style={{ color: 'var(--color-action-sendtext-fg)' }} />}
-      title={mode === 'add' ? 'Insert Text' : 'Edit Text'}
+      title={mode === 'add' ? 'Insert text' : 'Edit text'}
       titleMeta={mode === 'edit' && actionIndex != null ? `Action #${actionIndex + 1}` : undefined}
       size="full"
       onClose={onClose}
@@ -1145,7 +1145,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                 "Cancel" in the surface footer and cross-faded accent into grey. */}
             <Button variant="secondary" size="md" onClick={requestClose}>Cancel</Button>
             <Button variant="primary" size="md" onClick={handleConfirm} disabled={!text.trim()} data-tip={needsTextTip}>
-              {mode === 'add' ? 'Add' : 'Save'}
+              {mode === 'add' ? 'Add text' : 'Save text'}
             </Button>
           </React.Fragment>
         )
@@ -1443,7 +1443,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                         onClick={handleSaveSnippet}
                         disabled={!snippetName.trim() || !text.trim()}
                       >
-                        Save
+                        Save snippet
                       </Button>
                     </div>
                   </div>
@@ -1526,7 +1526,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
                               since autoFocus only acts on mount. */}
                           {deletingSnippetId === s.id ? (
                             <React.Fragment key="confirm">
-                              <span className="text-caption text-recording-fg mr-1 shrink-0">Delete?</span>
+                              <span className="text-caption text-recording-fg mr-1 shrink-0">Delete snippet?</span>
                               {/* The armed confirm keeps a red fill AT REST — iconButtonClass's danger
                                   tone is red only on hover, and an armed delete has to read as armed
                                   before the pointer gets there. Same sm rung (24 px), tokens only. */}
@@ -1638,7 +1638,7 @@ export function SendTextDialog({ mode, initialText = '', initialHtml = null, ini
             extra={<Button variant="destructiveText" size="md" onClick={() => { setConfirmDiscard(false); onClose(); }}>Discard</Button>}
             /* Repeats the footer's own gate and label so it cannot fire handleConfirm's early-return
                branch on a whitespace-only payload. */
-            primary={{ label: mode === 'add' ? 'Add' : 'Save', onClick: () => { setConfirmDiscard(false); handleConfirm(); }, disabled: !text.trim() }}
+            primary={{ label: mode === 'add' ? 'Add text' : 'Save text', onClick: () => { setConfirmDiscard(false); handleConfirm(); }, disabled: !text.trim() }}
           />
         }
       >

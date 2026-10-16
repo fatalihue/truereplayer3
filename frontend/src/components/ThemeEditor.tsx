@@ -592,7 +592,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
       setImportText('');
       setSurface('gallery');
     } catch {
-      setImportError('Invalid JSON.');
+      setImportError('Invalid JSON: paste the whole exported theme.');
     }
   }, [importTheme]);
 

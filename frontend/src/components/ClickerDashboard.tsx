@@ -252,8 +252,8 @@ export function ClickerDashboard() {
             }}
           >
             <PauseIcon size={28} style={{ color: 'var(--color-action-pause-fg)' }} fill="currentColor" />
-            <div className="text-subtitle font-display font-semibold tracking-wider" style={{ color: 'var(--color-action-pause-fg)' }}>
-              PAUSED
+            <div className="text-subtitle font-display font-semibold" style={{ color: 'var(--color-action-pause-fg)' }}>
+              Paused
             </div>
             {/* The clicker fires OnReplayPaused("", 0), so both of these are always falsy for
                 a clicker pause and this line never rendered — the overlay showed PAUSED and a

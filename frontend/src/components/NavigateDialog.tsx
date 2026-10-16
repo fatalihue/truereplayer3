@@ -35,7 +35,7 @@ export function NavigateDialog({ onConfirm, onClose }: NavigateDialogProps) {
       // typed URL — dismissal is Esc or Cancel only.
       closeOnBackdrop={false}
       footerHint="Enter confirms · Esc cancels"
-      footer={<DialogFooter secondary={{ label: 'Cancel', onClick: onClose }} primary={{ label: 'Add', onClick: handleConfirm, disabled: !url.trim() }} />}
+      footer={<DialogFooter secondary={{ label: 'Cancel', onClick: onClose }} primary={{ label: 'Add URL', onClick: handleConfirm, disabled: !url.trim() }} />}
       onCardKeyDown={(e) => {
         // Enter confirms from anywhere in the card (the URL input is the only
         // text field). Esc is owned by DialogShell.

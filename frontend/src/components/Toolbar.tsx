@@ -735,12 +735,12 @@ export function Toolbar(_props: ToolbarProps) {
           {/* Send Keystroke — unified keyboard insert (Press 1×, Press N×, or
               Hold for X ms; mode toggle lives inside the dialog). */}
           <button
-            aria-label="Send Keystroke"
+            aria-label="Send keystroke"
             tabIndex={-1}
             onClick={() => setShowKeystrokeCapture(true)}
             disabled={insertsDisabled}
             className={iconButtonClass('md')}
-            data-tip={clickerTip('Send Keystroke', 'Enviar tecla')}
+            data-tip={clickerTip('Send keystroke', 'Enviar tecla')}
             data-tb-unit
           >
             <Keyboard size={16} />
@@ -752,7 +752,7 @@ export function Toolbar(_props: ToolbarProps) {
               wait, branch and loop but not CLICK: the only sources of a click row were the
               recorder and "Pick from screen" on a row that already was one. */}
           <button
-            aria-label="Insert Click"
+            aria-label="Insert click"
             tabIndex={-1}
             onClick={() => setShowClickDialog(true)}
             disabled={insertsDisabled}
@@ -760,7 +760,7 @@ export function Toolbar(_props: ToolbarProps) {
             // Names what the dialog holds, like the Wait button's tip does for its two probes.
             // An icon-only button's tooltip is its ONLY label, and "Insert Click" undersold a
             // dialog that also writes a hold, a multi-click and — since the Form control — a drag.
-            data-tip={clickerTip('Insert Click (single, double, hold, drag)', 'Inserir clique (simples, duplo, segurar, arrasto)')}
+            data-tip={clickerTip('Insert click (single, double, hold, drag)', 'Inserir clique (simples, duplo, segurar, arrasto)')}
           >
             <Mouse size={16} />
           </button>
@@ -1081,7 +1081,7 @@ export function Toolbar(_props: ToolbarProps) {
                   { type: 'BrowserSelectOption', label: 'Select Option' },
                   { type: 'BrowserWaitElement', label: 'Wait Element' },
                   { type: 'BrowserAssert', label: 'Assert Element' },
-                  { type: 'BrowserNavigate', label: 'Open URL' },
+                  { type: 'BrowserNavigate', label: 'Open URL…' },
                 ] as const).map((item) => (
                   <button
                     key={item.type}
@@ -1274,7 +1274,7 @@ export function Toolbar(_props: ToolbarProps) {
                     onClick={() => { setShowRunProfileDialog(true); setShowMoreMenu(false); }}
                   >
                     <Repeat2 size={13} className="text-text-tertiary" />
-                    Run Profile
+                    Run Profile…
                   </button>
                   {/* Copy to Slot — captures the focused app's selection (synthetic Ctrl+C) into a
                       named clipboard slot, read back with {clip:name}. Pattern A: inserts an empty

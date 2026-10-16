@@ -1157,7 +1157,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                   </span>
                   {confirmDelete ? (
                     <div className="flex items-center gap-1">
-                      <span className="text-caption text-text-secondary">{'Delete?'}</span>
+                      <span className="text-caption text-text-secondary">{'Delete automation?'}</span>
                       <span data-tip={saving ? tt('Saving…', 'Salvando…') : undefined}>
                         <Button variant="destructive" size="sm" onClick={handleRemove} disabled={saving}>{'Delete'}</Button>
                       </span>

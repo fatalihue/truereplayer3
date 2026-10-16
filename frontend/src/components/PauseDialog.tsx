@@ -152,7 +152,7 @@ export function PauseDialog({ initialKey, initialTimeoutMs, onConfirm, onClose }
   return (
     <DialogShell
       icon={<Hourglass size={14} style={{ color: 'var(--color-action-pause-fg)' }} />}
-      title={isEditing ? 'Edit Pause' : 'Insert Pause'}
+      title={isEditing ? 'Edit pause' : 'Insert pause'}
       onClose={onClose}
       // Capture dialog: a stray click outside must not discard a configured
       // hotkey/timeout — dismissal is Esc or Cancel only.
@@ -162,7 +162,7 @@ export function PauseDialog({ initialKey, initialTimeoutMs, onConfirm, onClose }
       footerHint={captured
         ? 'Press another key to replace'
         : ''}
-      footer={<DialogFooter secondary={{ label: 'Cancel', onClick: onClose }} primary={{ label: isEditing ? 'Save' : 'Add', onClick: handleConfirm, disabled: !canConfirm }} />}
+      footer={<DialogFooter secondary={{ label: 'Cancel', onClick: onClose }} primary={{ label: isEditing ? 'Save pause' : 'Add pause', onClick: handleConfirm, disabled: !canConfirm }} />}
       onCardKeyDown={(e) => {
         // Enter confirms ONLY while a numeric input is focused (in that state the
         // backend capture is suspended, so Enter isn't doubling as a captured

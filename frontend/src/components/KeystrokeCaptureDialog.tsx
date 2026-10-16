@@ -314,8 +314,8 @@ export function KeystrokeCaptureDialog({
 
   // Title flips by intent: edit vs insert, then by mode.
   const title = isEditing
-    ? (mode === 'hold' ? 'Edit Hold Key' : 'Edit Keystroke')
-    : 'Send Keystroke';
+    ? (mode === 'hold' ? 'Edit Hold Key' : 'Edit keystroke')
+    : 'Send keystroke';
 
   return (
     <DialogShell
@@ -333,7 +333,7 @@ export function KeystrokeCaptureDialog({
         : captured
           ? 'Press another combo to replace'
           : ''}
-      footer={<DialogFooter secondary={{ label: 'Cancel', onClick: onClose }} primary={{ label: isEditing ? 'Save' : 'Add', onClick: handleConfirm, disabled: !captured?.trim() || (mode === 'hold' && !heldKey.trim()) }} />}
+      footer={<DialogFooter secondary={{ label: 'Cancel', onClick: onClose }} primary={{ label: mode === 'hold' ? (isEditing ? 'Save Hold Key' : 'Add Hold Key') : (isEditing ? 'Save keystroke' : 'Add keystroke'), onClick: handleConfirm, disabled: !captured?.trim() || (mode === 'hold' && !heldKey.trim()) }} />}
       onCardKeyDown={(e) => {
         // Enter confirms ONLY when a numeric input is focused — in that state the
         // backend capture is paused (handleFocusIn in the capture effect) so the

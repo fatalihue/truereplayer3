@@ -466,8 +466,8 @@ namespace TrueReplayer.Services
             AppendMenu(hMenu, MF_STRING, 1, "Restore");
             AppendMenu(hMenu, MF_SEPARATOR, 0, null);
             // Mode switch — mirrors the in-app Macro/Clicker toggle and the ScrollLock hotkey.
-            AppendMenu(hMenu, MF_STRING | (!isClicker ? MF_CHECKED : 0), 11, "Macro Mode");
-            AppendMenu(hMenu, MF_STRING | (isClicker ? MF_CHECKED : 0), 12, "Clicker Mode");
+            AppendMenu(hMenu, MF_STRING | (!isClicker ? MF_CHECKED : 0), 11, "Macro mode");
+            AppendMenu(hMenu, MF_STRING | (isClicker ? MF_CHECKED : 0), 12, "Clicker mode");
             AppendMenu(hMenu, MF_SEPARATOR, 0, null);
             // Automation daemon controls — the armed watchers keep running while the app sits
             // in the tray, so their master switch must be reachable without restoring the UI.

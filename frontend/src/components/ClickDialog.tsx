@@ -369,14 +369,14 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
   return (
     <DialogShell
       icon={<Mouse size={14} style={{ color: 'var(--color-action-mouse-fg)' }} />}
-      title="Insert Click"
+      title="Insert click"
       onClose={onClose}
       // A stray click outside must not discard a point the user went to the screen to pick —
       // the one input here that costs real effort to produce again.
       closeOnBackdrop={false}
       footer={<DialogFooter
         secondary={{ label: 'Cancel', onClick: onClose }}
-        primary={{ label: 'Add', onClick: handleConfirm, disabled: !canConfirm }}
+        primary={{ label: 'Add click', onClick: handleConfirm, disabled: !canConfirm }}
       />}
       onCardKeyDown={(e) => {
         if (e.key !== 'Enter') return;

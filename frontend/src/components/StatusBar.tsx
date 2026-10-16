@@ -282,7 +282,7 @@ export function StatusBar() {
               return (
                 <span className="flex items-center gap-2" style={{ color: 'var(--color-action-pause-fg)' }}>
                   <PauseIcon size={11} className="shrink-0" fill="currentColor" />
-                  <span className="font-medium">PAUSED</span>
+                  <span className="font-medium">Paused</span>
                   <span className="text-text-secondary">— resumes at</span>
                   <span className="font-semibold text-text-primary">{Math.ceil(clickerStats.countdownMs / 1000)} s</span>
                   <button
@@ -338,7 +338,7 @@ export function StatusBar() {
                   <PauseIcon size={10} className="shrink-0" style={{ color: 'var(--color-action-pause-fg)' }} fill="currentColor" />
                   <span className="text-caption font-medium whitespace-nowrap" style={{ color: 'var(--color-action-pause-fg)' }}>
                     {/* Keycap spelling (PgUp, Ctrl + F9), the same the Keys tab shows for this key. */}
-                    PAUSED{settings.cursorClickPauseHotkey && ` — ${formatKeyCombo(settings.cursorClickPauseHotkey)}`}
+                    Paused{settings.cursorClickPauseHotkey && ` — ${formatKeyCombo(settings.cursorClickPauseHotkey)}`}
                   </span>
                   <button
                     onClick={() => send({ type: 'replay:resume', payload: {} })}
@@ -472,7 +472,7 @@ export function StatusBar() {
                   <div className="w-px h-3 bg-border-subtle shrink-0" />
                   <PauseIcon size={10} className="shrink-0" style={{ color: 'var(--color-action-pause-fg)' }} fill="currentColor" />
                   <span className="text-caption font-medium whitespace-nowrap" style={{ color: 'var(--color-action-pause-fg)' }}>
-                    PAUSED
+                    Paused
                     {pauseState.hotkey && ` — Press ${formatKeyCombo(pauseState.hotkey)}`}
                     {pauseState.hotkey && pauseState.timeoutMs > 0 ? ' or ' : pauseState.timeoutMs > 0 ? ' — ' : ''}
                     {pauseState.timeoutMs > 0 && `wait ${pauseRemainingSec}s`}
