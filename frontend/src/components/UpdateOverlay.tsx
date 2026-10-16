@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId, useRef } from 'react';
 import { Download } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
 import { Button } from './common/Button';
@@ -128,6 +128,40 @@ export function UpdateOverlay() {
     }
   }, [phase]);
 
+  // The splash is a modal: it covers the whole app, so it owns the keyboard while it is up. The
+  // card carries role="dialog" aria-modal — which is also what isModalDialogOpen() reads, so
+  // Ctrl+K and the grid shortcuts stand down under it (Ctrl+K used to open the palette invisibly
+  // BELOW the splash, with the focus and Enter in it). Only while shown: hidden renders nothing.
+  //
+  // Focus: the CARD, in every phase, so keys never land on the app behind — never the button. The
+  // 'available' splash is often UNASKED: the backend raises it on its own when a run or recording
+  // ends with unsaved work (MaybeResumeDeferredUpdate) and from the startup check. Focused, the
+  // button took the Enter/Space the user was already typing: one key started update:apply, whose
+  // native "Save before updating?" defaults to Save, and a second one saved, installed and
+  // restarted. One Tab from the card reaches the button. Re-run per phase — a focused control can
+  // unmount when the download starts. Whatever had the focus before the splash gets it back if
+  // the splash goes away again (update:none / update:error).
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const visible = phase.step !== 'hidden';
+  useEffect(() => {
+    if (visible) {
+      const was = document.activeElement;
+      returnFocusRef.current = was instanceof HTMLElement && was !== document.body ? was : null;
+      return;
+    }
+    const back = returnFocusRef.current;
+    returnFocusRef.current = null;
+    if (back?.isConnected && (!document.activeElement || document.activeElement === document.body)) back.focus();
+  }, [visible]);
+  useEffect(() => {
+    if (phase.step === 'hidden') return;
+    const card = cardRef.current;
+    if (card && !card.contains(document.activeElement)) card.focus();
+  }, [phase.step]);
+  const titleId = useId();
+  const subtitleId = useId();
+
   if (phase.step === 'hidden') return null;
 
   const handleAccept = () => {
@@ -149,14 +183,32 @@ export function UpdateOverlay() {
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center">
-      {/* Backdrop — the app's strong scrim token plus a blur, the same smoke the dialogs use. */}
+      {/* Backdrop — the app's strong scrim token plus a blur, the same smoke the dialogs use.
+          A press on it must not pull the focus out of the card onto <body> (DialogShell's rule). */}
       <div
         className="absolute inset-0 backdrop-blur-xl update-fade-in"
         style={{ background: 'var(--color-scrim-strong)' }}
+        onMouseDown={(e) => e.preventDefault()}
       />
 
-      {/* Card */}
-      <div className="relative w-[88%] max-w-[420px] rounded-dialog border border-border-default bg-bg-elevated shadow-dialog px-7 pt-7 pb-6 update-card-in">
+      {/* Card — the modal (see the focus effect above). Tab stays inside: there is at most one
+          control, and with none the card itself holds the focus. No Esc: the splash has no
+          dismiss — an apply that stops for any reason takes it down with update:error. */}
+      <div
+        ref={cardRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={subtitleId}
+        tabIndex={-1}
+        onKeyDown={(e) => {
+          if (e.key !== 'Tab') return;
+          e.preventDefault();
+          const card = cardRef.current;
+          (card?.querySelector<HTMLElement>('button') ?? card)?.focus();
+        }}
+        className="relative w-[88%] max-w-[420px] rounded-dialog border border-border-default bg-bg-elevated shadow-dialog px-7 pt-7 pb-6 update-card-in"
+      >
         {/* App icon */}
         <div className="relative w-14 h-14 mx-auto mb-3.5">
           <img
@@ -182,18 +234,21 @@ export function UpdateOverlay() {
           )}
         </div>
 
-        {/* Title + subtitle */}
-        <div className={`text-center text-[17px] font-semibold font-display tracking-tight mb-1 ${isComplete || isInstalling ? 'text-[color:var(--color-replay-fg)]' : 'text-text-primary'}`}>
-          {phase.step === 'available' && 'Update available'}
-          {phase.step === 'downloading' && 'Downloading update'}
-          {phase.step === 'installing' && `Updating to v${version}`}
-          {phase.step === 'complete' && 'Updated successfully!'}
-        </div>
-        <div className="text-center text-[11px] text-text-tertiary mb-[18px]">
-          {phase.step === 'available' && 'A new version of TrueReplayer is ready'}
-          {phase.step === 'downloading' && 'Do not close the app'}
-          {phase.step === 'installing' && 'Closing TrueReplayer…'}
-          {phase.step === 'complete' && 'You are now on the latest version'}
+        {/* Title + subtitle — one polite live region, so each phase (downloading → updating →
+            done) is spoken as it lands; the percent below is left out of it on purpose. */}
+        <div aria-live="polite" aria-atomic="true">
+          <div id={titleId} className={`text-center text-[17px] font-semibold font-display tracking-tight mb-1 ${isComplete || isInstalling ? 'text-[color:var(--color-replay-fg)]' : 'text-text-primary'}`}>
+            {phase.step === 'available' && 'Update available'}
+            {phase.step === 'downloading' && 'Downloading update'}
+            {phase.step === 'installing' && `Updating to v${version}`}
+            {phase.step === 'complete' && 'Updated successfully!'}
+          </div>
+          <div id={subtitleId} className="text-center text-[11px] text-text-tertiary mb-[18px]">
+            {phase.step === 'available' && 'A new version of TrueReplayer is ready'}
+            {phase.step === 'downloading' && 'Do not close the app'}
+            {phase.step === 'installing' && 'Closing TrueReplayer…'}
+            {phase.step === 'complete' && 'You are now on the latest version'}
+          </div>
         </div>
 
         {/* Version tiles (current ➜ new), or a single tile on the 'complete' phase. */}
@@ -236,7 +291,14 @@ export function UpdateOverlay() {
         {(phase.step === 'downloading' || phase.step === 'installing') && (
           <>
             <div className="mb-3">
-              <div className="w-full h-1.5 rounded-full overflow-hidden bg-[color-mix(in_srgb,var(--color-text-primary)_12%,transparent)]">
+              <div
+                role="progressbar"
+                aria-label="Update progress"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={phase.step === 'downloading' ? phase.percent : 100}
+                className="w-full h-1.5 rounded-full overflow-hidden bg-[color-mix(in_srgb,var(--color-text-primary)_12%,transparent)]"
+              >
                 <div
                   className={`h-full rounded-full bg-accent-solid transition-[width] duration-300 ${phase.step === 'installing' ? 'update-install-pulse' : ''}`}
                   style={{ width: phase.step === 'downloading' ? `${phase.percent}%` : '100%' }}

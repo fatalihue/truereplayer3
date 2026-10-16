@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
 import { AlertCircle, X } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
+import { useTt } from '../state/LanguageContext';
+import { IconButton } from './common/IconButton';
 
 export function ExtensionUpdateBanner() {
   const { subscribe } = useBridge();
+  const tt = useTt();
   const [outdated, setOutdated] = useState<{ current: string; expected: string } | null>(null);
   const [dismissed, setDismissed] = useState(false);
 
@@ -57,12 +60,16 @@ export function ExtensionUpdateBanner() {
         </span>
         &mdash; Reload in chrome://extensions
       </span>
-      <button
+      {/* The house icon button (it had no name at all, and a softer ink than every other one).
+          The tooltip says what the X alone cannot: it comes back if the versions change. */}
+      <IconButton
+        size="sm"
         onClick={() => setDismissed(true)}
-        className="p-1 rounded hover:bg-bg-elevated text-text-disabled hover:text-text-secondary transition-colors"
+        aria-label="Dismiss"
+        data-tip={tt('Hide until the versions change', 'Ocultar até as versões mudarem')}
       >
         <X size={14} />
-      </button>
+      </IconButton>
     </div>
   );
 }

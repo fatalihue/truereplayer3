@@ -65,15 +65,22 @@ function Tally({ color, n, label }: { color: string; n: number; label: string })
   );
 }
 
+// The icon is the row's only statement of its status, so it is named for assistive tech —
+// lucide renders icons aria-hidden, and a row read as "3 Click 45 ms" said nothing about whether
+// the step passed. Same words as the summary tallies.
 function StatusIcon({ status }: { status: RunStep['status'] }) {
-  if (status === 'failed') return <XCircle size={13} style={{ color: 'var(--color-recording-fg)' }} />;
-  if (status === 'skipped') return <MinusCircle size={13} className="text-text-disabled" />;
+  if (status === 'failed') return <XCircle size={13} role="img" aria-label="failed" style={{ color: 'var(--color-recording-fg)' }} />;
+  if (status === 'skipped') return <MinusCircle size={13} role="img" aria-label="skipped" className="text-text-disabled" />;
   // In flight — the step is filed on START, so this is reachable whenever the report is opened
   // during a run. A dashed OUTLINE, not a tinted tick: the difference from a pass has to survive
   // on the presets where hue is weakest, so it is carried by shape first and colour second.
-  if (status === 'running') return <CircleDashed size={13} className="text-text-tertiary" />;
-  return <CheckCircle2 size={13} style={{ color: 'var(--color-replay-fg)' }} />;
+  if (status === 'running') return <CircleDashed size={13} role="img" aria-label="in progress" className="text-text-tertiary" />;
+  return <CheckCircle2 size={13} role="img" aria-label="ok" style={{ color: 'var(--color-replay-fg)' }} />;
 }
+
+// The detail lines (page, fallback tier, failure card) hang under the step's text: 52 px clears
+// the row-number column (w-7 + gap-2) and the status icon. One constant for the three of them.
+const STEP_DETAIL_INDENT = 'ml-13';
 
 /**
  * Last-run diagnostic timeline. Exists for one question: "my browser macro worked yesterday and
@@ -233,21 +240,22 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
                       "no element matched" reads completely differently once you can see the run
                       was on a login page. So a failure always names its page. */}
                   {s.tabUrl && (s.status === 'failed' || stats.pages.length > 1) && (
-                    <div className="ml-[52px] mt-0.5 text-caption font-mono text-text-tertiary truncate" data-tip={s.tabUrl} data-tip-reveal>
+                    <div className={`${STEP_DETAIL_INDENT} mt-0.5 text-caption font-mono text-text-tertiary truncate`} data-tip={s.tabUrl} data-tip-reveal>
                       {s.tabUrl}
                     </div>
                   )}
 
                   {s.matchedTier && (
-                    <div className="ml-[52px] mt-0.5 text-caption leading-snug" style={{ color: 'var(--color-recording-fg)' }}>
-                      {'matched via fallback'} <b>tier {s.matchedTier}</b>
+                    <div className={`${STEP_DETAIL_INDENT} mt-0.5 text-caption leading-snug`} style={{ color: 'var(--color-recording-fg)' }}>
+                      {/* A span, not <b>: preflight gives <b> `bolder` = 700, off the 400/500/600 scale. */}
+                      {'matched via fallback'} <span className="font-semibold">tier {s.matchedTier}</span>
                       {s.matchedSelector && <span className="font-mono"> · {s.matchedSelector}</span>}
                     </div>
                   )}
 
                   {/* The failed step gets the same card a failed probe gets in the sheet. */}
                   {s.status === 'failed' && (
-                    <Callout tone="error" className="ml-[52px] mt-1" still>
+                    <Callout tone="error" className={`${STEP_DETAIL_INDENT} mt-1`} still>
                       {s.errorCode && <div className="font-mono text-caption tracking-wide opacity-80">{s.errorCode}</div>}
                       <div>{explainCode(s.errorCode) ?? s.errorMessage}</div>
                       {s.tip && <div className="mt-0.5 text-text-secondary">{s.tip}</div>}

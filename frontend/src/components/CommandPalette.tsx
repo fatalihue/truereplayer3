@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, useId } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Search, RotateCcw, RefreshCw,
@@ -319,29 +319,45 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     [filteredGroups]
   );
 
-  // Keyboard nav
+  // Keyboard nav. WINDOW, CAPTURE phase, and every key it uses stops there. It was a bubbling
+  // document listener, and the Sheet's Esc listener sits on the same node, registered earlier
+  // (the palette opens from inside the sheet), so it ran FIRST: one Esc meant for the palette
+  // closed a clean sheet under it, or armed "Esc again discards" on a dirty one — the next Esc
+  // then threw the edits away. Capture on window runs before any document listener.
+  // Only keys aimed at the palette are its own: its subtree, or nowhere (a click on the card's
+  // padding parks focus on <body>). A modal raised OVER it — the update splash — keeps its keys.
+  // Tab stays in the input: the rows are not tab stops (see the row below), and the input is
+  // where the highlight is driven from — Tab used to walk into the rows and out to the app
+  // behind the scrim, and Enter then ran the HIGHLIGHTED row, not the one Tab had focused.
+  const rootRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!isOpen) return;
     const handler = (e: KeyboardEvent) => {
+      const target = e.target as Node | null;
+      const ours = !target || target === document || target === document.body
+        || target === document.documentElement || !!rootRef.current?.contains(target);
+      if (!ours) return;
       if (e.key === 'Escape') {
-        e.preventDefault();
         onClose();
       } else if (e.key === 'ArrowDown') {
-        e.preventDefault();
         // Math.max(0, ...) guards the empty-list case: when flatItems is empty,
         // length - 1 is -1, which would otherwise leave focusedIndex at an invalid -1.
         setFocusedIndex(prev => Math.max(0, Math.min(prev + 1, flatItems.length - 1)));
       } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
         setFocusedIndex(prev => Math.max(prev - 1, 0));
       } else if (e.key === 'Enter') {
-        e.preventDefault();
         const item = flatItems[focusedIndex];
         if (item && !item.disabled) item.onAction();
+      } else if (e.key === 'Tab') {
+        inputRef.current?.focus();
+      } else {
+        return;
       }
+      e.preventDefault();
+      e.stopPropagation();
     };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
   }, [isOpen, onClose, flatItems, focusedIndex]);
 
   // Reset focus when filter changes
@@ -359,12 +375,20 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     el?.scrollIntoView({ block: 'nearest' });
   }, [focusedIndex]);
 
+  // Combobox + listbox ids: the input points at the highlighted row (aria-activedescendant), so a
+  // screen reader follows the arrows while the focus never leaves the input.
+  const baseId = useId();
+  const listId = `${baseId}-list`;
+  const optionId = (id: string) => `${baseId}-opt-${id}`;
+
   if (!isOpen) return null;
 
   let flatIndex = -1;
+  const activeItem = flatItems[focusedIndex];
 
   return createPortal(
     <div
+      ref={rootRef}
       className="fixed inset-0 z-[100] flex items-start justify-center pt-[calc(15vh/var(--ui-zoom))] bg-scrim-strong"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
@@ -380,6 +404,12 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
           <input
             ref={inputRef}
             type="text"
+            role="combobox"
+            aria-label="Search commands"
+            aria-expanded={true}
+            aria-controls={listId}
+            aria-autocomplete="list"
+            aria-activedescendant={activeItem ? optionId(activeItem.id) : undefined}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Type a command or search…"
@@ -405,9 +435,12 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
               No results found
             </div>
           )}
+          <div id={listId} role="listbox" aria-label="Commands">
           {filteredGroups.map(group => (
-            <div key={group.id}>
-              <div className="px-3 py-1.5 label-micro text-text-tertiary">
+            <div key={group.id} role="group" aria-labelledby={`${baseId}-grp-${group.id}`}>
+              {/* Names the group for assistive tech through aria-labelledby; hidden from the
+                  listbox itself, where only options belong. */}
+              <div id={`${baseId}-grp-${group.id}`} aria-hidden="true" className="px-3 py-1.5 label-micro text-text-tertiary">
                 {group.title}
               </div>
               {group.items.map(item => {
@@ -418,32 +451,44 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
                 return (
                   <button
                     key={item.id}
+                    id={optionId(item.id)}
+                    type="button"
+                    role="option"
+                    aria-selected={isFocused}
+                    // Not a tab stop, and a press does not take the focus: it stays in the input,
+                    // which drives the highlight (see the keyboard handler above).
+                    tabIndex={-1}
+                    onMouseDown={(e) => e.preventDefault()}
                     onClick={isDisabled ? undefined : item.onAction}
                     onMouseEnter={() => setFocusedIndex(idx)}
                     data-cmd-focused={isFocused ? 'true' : undefined}
                     disabled={isDisabled}
-                    data-tip={isDisabled ? item.disabledHint : undefined}
                     // menu-item (the menus' own recipe: 32 px, 12 px, elevated hover); the keyboard
                     // focus paints the hover look, and a disabled item explains itself at the right.
                     className={`menu-item gap-2 ${
                       isDisabled
-                        ? 'opacity-40 cursor-not-allowed'
+                        ? 'cursor-not-allowed'
                         : isFocused
                           ? 'bg-bg-elevated text-text-primary'
                           : 'text-text-secondary hover:text-text-primary'
                     }`}
                     style={{ borderRadius: 'var(--ui-border-radius)' }}
                   >
-                    {item.icon}
-                    <span className="flex-1 text-left">{item.label}</span>
+                    {/* A disabled row dims its icon and label only. The opacity used to sit on the
+                        whole button, on top of the hint's own disabled ink, so the one line that
+                        says WHY ("Macro mode only") rendered near 1.3:1. The hint is the visible
+                        reason, so it carries no tooltip repeating it. */}
+                    <span className={`flex items-center shrink-0 ${isDisabled ? 'opacity-40' : ''}`}>{item.icon}</span>
+                    <span className={`flex-1 text-left ${isDisabled ? 'opacity-40' : ''}`}>{item.label}</span>
                     {isDisabled && item.disabledHint && (
-                      <span className="text-caption text-text-disabled italic">{item.disabledHint}</span>
+                      <span className="text-caption text-text-tertiary italic">{item.disabledHint}</span>
                     )}
                   </button>
                 );
               })}
             </div>
           ))}
+          </div>
         </div>
 
         {/* Footer */}

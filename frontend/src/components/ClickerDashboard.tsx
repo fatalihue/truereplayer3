@@ -101,6 +101,8 @@ export function ClickerDashboard() {
   // both limits. The rate used to be 1000 / (delay + gap): with a 200 ms hold it printed 10/s
   // for a run the engine delivers at ~5/s.
   const summary = describeClickerConfig(settings);
+  const startKey = settings.cursorClickStartHotkey;
+  const pauseKey = settings.cursorClickPauseHotkey;
 
   return (
     // Standard theme surface (same as the macro ActionTable) — no purple glass gradient or
@@ -121,8 +123,9 @@ export function ClickerDashboard() {
         >
           {counting ? countdownSec : clickerStats.count.toLocaleString()}
         </div>
+        {/* label-micro: the app's one caps style (it was a private caption + uppercase + 0.2em). */}
         <div
-          className="text-caption uppercase tracking-[0.2em] mt-2 flex items-center gap-2"
+          className="label-micro mt-2 flex items-center gap-2"
           style={{ color: 'var(--color-clicker-fg)', opacity: 0.7 }}
         >
           {counting ? 'starting in' : 'clicks'}
@@ -196,22 +199,35 @@ export function ClickerDashboard() {
       {/* KbdTag, not a raw <kbd>: it spells the key the way the keycap does (PgDn, not
           PageDown) and splits a combo into one cap per key — the same rendering the Keys tab
           uses for these two settings, so the dashboard and the panel name the key alike. */}
+      {/* Either key can be cleared in Settings (the backend stores ""), and KbdTag then renders
+          nothing — the line read "Press to run again". Without a key the sentence names the
+          ActionBar button instead (it reads Stop while a run is live, Click when idle). */}
       <div className="text-caption text-text-tertiary flex items-center gap-1.5">
         {counting ? (
-          <>
-            {'Move the mouse to the target —'}
-            <KbdTag combo={settings.cursorClickStartHotkey} accent />
-            {'or Stop cancels'}
-          </>
+          startKey ? (
+            <>
+              {'Move the mouse to the target —'}
+              <KbdTag combo={startKey} accent />
+              {'or Stop cancels'}
+            </>
+          ) : (
+            'Move the mouse to the target — Stop cancels'
+          )
         ) : (
           <>
-            {'Press'}
-            <KbdTag combo={settings.cursorClickStartHotkey} accent />
-            {isReplaying ? 'to stop' : 'to run again'}
-            {isReplaying && (
+            {startKey ? (
+              <>
+                {'Press'}
+                <KbdTag combo={startKey} accent />
+                {isReplaying ? 'to stop' : 'to run again'}
+              </>
+            ) : (
+              isReplaying ? 'Stop ends the run' : 'The Click button runs it again'
+            )}
+            {isReplaying && pauseKey && (
               <>
                 <span className="opacity-40">·</span>
-                <KbdTag combo={settings.cursorClickPauseHotkey} accent />
+                <KbdTag combo={pauseKey} accent />
                 {'to pause'}
               </>
             )}
@@ -221,10 +237,11 @@ export function ClickerDashboard() {
 
       {pauseState.isPaused && (
         <div
-          className="absolute inset-0 flex items-center justify-center backdrop-blur-sm"
+          className="absolute inset-0 flex items-center justify-center"
           // Dim toward the theme's own base, not to black. This is an in-panel state overlay
-          // on a themed surface, not a modal over the whole app (DialogShell's bg-black/50
-          // stays as it is) — and a black wash over the 11 light presets read as a bug.
+          // on a themed surface, not a modal over the whole app — and a black wash over the
+          // light presets read as a bug. No blur: the 82 % wash already dims the numbers, and
+          // blur as decoration is off the house list.
           style={{ background: 'color-mix(in srgb, var(--color-bg-base) 82%, transparent)' }}
         >
           <div
@@ -235,7 +252,7 @@ export function ClickerDashboard() {
             }}
           >
             <PauseIcon size={28} style={{ color: 'var(--color-action-pause-fg)' }} fill="currentColor" />
-            <div className="text-[16px] font-semibold tracking-wider" style={{ color: 'var(--color-action-pause-fg)' }}>
+            <div className="text-subtitle font-display font-semibold tracking-wider" style={{ color: 'var(--color-action-pause-fg)' }}>
               PAUSED
             </div>
             {/* The clicker fires OnReplayPaused("", 0), so both of these are always falsy for
@@ -251,12 +268,14 @@ export function ClickerDashboard() {
                   {pauseState.hotkey && pauseState.timeoutMs > 0 ? 'or' : ''}
                   {pauseState.timeoutMs > 0 && <>{'wait'}<span className="font-mono">{pauseRemainingSec}s</span></>}
                 </>
-              ) : (
+              ) : pauseKey ? (
                 <>
                   {'Press'}
-                  <KbdTag combo={settings.cursorClickPauseHotkey} accent />
+                  <KbdTag combo={pauseKey} accent />
                   {'or click Resume'}
                 </>
+              ) : (
+                'Click Resume'
               )}
             </div>
             <button
@@ -285,10 +304,10 @@ function StatCell({ value, label, dim = false }: { value: string; label: string;
       <div className={`${value.length > 7 ? 'text-[14px]' : 'text-[18px]'} font-mono font-semibold text-text-primary tabular-nums leading-tight`}>
         {value}
       </div>
-      {/* text-caption (11px) = the type-ramp floor for meaningful text; tracking
-          eased 0.15em→0.12em so the absolute letterspacing (~1.3px) matches the
-          old 9px look and the label doesn't spread in these narrow cells. */}
-      <div className="text-caption uppercase tracking-[0.12em] text-text-tertiary mt-1">
+      {/* label-micro (11px / 600 / caps): the app's one caps style, in place of a private
+          caption + uppercase + 0.12em. Its 0.06em tracking keeps the label tight in these
+          narrow cells. */}
+      <div className="label-micro text-text-tertiary mt-1">
         {label}
       </div>
     </div>

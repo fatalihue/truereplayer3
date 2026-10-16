@@ -1,6 +1,7 @@
 /**
- * A DialogShell modal is up — its card is the app's only role="dialog" aria-modal="true" element
- * (the Sheet and the command palette are not modal dialogs).
+ * A modal is up — a DialogShell card, or the update splash while it shows: the only two
+ * role="dialog" aria-modal="true" elements (the Sheet and the command palette are not modal
+ * dialogs).
  *
  * While one is, it owns the keyboard: the app-level shortcuts that change the action list (the
  * Toolbar's Ctrl+V, Alt+↑/↓ and the Ctrl+Z/Y funnel) and Ctrl+K stand down. Those listeners sit
