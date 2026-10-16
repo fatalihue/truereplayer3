@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Crop } from 'lucide-react';
 import { useTt } from '../state/LanguageContext';
 import { uiZoom } from '../utils/zoomSpace';
@@ -28,6 +28,11 @@ const MAX_DISPLAY_W = 900;
 const MAX_DISPLAY_H = 600;
 /** Never squeeze the working area below this, however short the window gets. */
 const MIN_DISPLAY_H = 220;
+/** Same floor for the width, for the 200 % zoom on the minimum window. */
+const MIN_DISPLAY_W = 220;
+/** Horizontal chrome in LAYOUT px: the shell's default max-width gutter (24, DialogShell's
+ *  `max-w-[calc(100vw/var(--ui-zoom)-24px)]`), the body's p-4 (32) and the card border (2). */
+const CHROME_W = 58;
 /** Share of the window height the card may occupy — mirrors the card's own max-h. */
 const CARD_VH = 0.9;
 /** Fallback chrome (header + footer + the body's padding, readout and gap) until it is measured
@@ -41,6 +46,81 @@ const ACCENT_RGBA = 'color-mix(in srgb, var(--color-accent) 65%, transparent)';
 // The four dimming panes outside the crop: the app's strong scrim token (dark on every theme,
 // like the dialogs' smoke), so the kept region reads as the lit one.
 const DIM = 'var(--color-scrim-strong)';
+
+/** Arrow key → unit direction for the keyboard path (Arrow moves, Ctrl+Arrow resizes). */
+const ARROW_DELTA: Record<string, [number, number]> = {
+  ArrowLeft: [-1, 0],
+  ArrowRight: [1, 0],
+  ArrowUp: [0, -1],
+  ArrowDown: [0, 1],
+};
+
+function clamp(v: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, v));
+}
+
+/**
+ * The crop after moving `mode`'s edge(s) by (dx, dy) image px from `start`, clamped to the image
+ * and to MIN_SIZE. ONE function for both doors — the mouse drag and the arrow keys — so the keyboard
+ * can never reach a rectangle the handles could not.
+ */
+function applyCropMode(
+  mode: DragMode,
+  start: CropRect,
+  dx: number,
+  dy: number,
+  natural: { w: number; h: number },
+): CropRect {
+  let { x, y, w, h } = start;
+  const right = start.x + start.w;
+  const bottom = start.y + start.h;
+  switch (mode) {
+    case 'move':
+      x = clamp(x + dx, 0, natural.w - w);
+      y = clamp(y + dy, 0, natural.h - h);
+      break;
+    case 'nw':
+      x = clamp(start.x + dx, 0, right - MIN_SIZE);
+      y = clamp(start.y + dy, 0, bottom - MIN_SIZE);
+      w = right - x;
+      h = bottom - y;
+      break;
+    case 'n':
+      y = clamp(start.y + dy, 0, bottom - MIN_SIZE);
+      h = bottom - y;
+      break;
+    case 'ne':
+      y = clamp(start.y + dy, 0, bottom - MIN_SIZE);
+      h = bottom - y;
+      w = clamp(start.w + dx, MIN_SIZE, natural.w - x);
+      break;
+    case 'w':
+      x = clamp(start.x + dx, 0, right - MIN_SIZE);
+      w = right - x;
+      break;
+    case 'e':
+      w = clamp(start.w + dx, MIN_SIZE, natural.w - x);
+      break;
+    case 'sw':
+      x = clamp(start.x + dx, 0, right - MIN_SIZE);
+      w = right - x;
+      h = clamp(start.h + dy, MIN_SIZE, natural.h - y);
+      break;
+    case 's':
+      h = clamp(start.h + dy, MIN_SIZE, natural.h - y);
+      break;
+    case 'se':
+      w = clamp(start.w + dx, MIN_SIZE, natural.w - x);
+      h = clamp(start.h + dy, MIN_SIZE, natural.h - y);
+      break;
+  }
+  return {
+    x: Math.round(x),
+    y: Math.round(y),
+    w: Math.round(w),
+    h: Math.round(h),
+  };
+}
 
 // Modal cropper for tightening an existing reference image. Operates purely in image-pixel
 // coordinates (the parent persists those via the bridge); display scaling is calculated
@@ -73,13 +153,22 @@ export function ImageCropper({ imageBase64, onSave, onCancel }: ImageCropperProp
   // `vh` ignores the ancestor `zoom`, so the card's own max-h resolves to layout px that the
   // zoom then shrinks: dividing here is what makes 90vh mean 90 % of the window rather than
   // 90 % × zoom ([[gotcha-zoom-coordinate-spaces]] — measure VISUAL, write LAYOUT).
+  //
+  // The WIDTH comes from the window the same way. A fixed 900 was the same bug on the other axis:
+  // a wide reference is scaled UP to 900, and above ~105 % zoom on the minimum window that is wider
+  // than the shell's max-width clamp — the centred row then overflowed on BOTH sides, and the
+  // left strip with the W/NW/SW handles sat where no scroll can reach (negative overflow).
   const [chromeH, setChromeH] = useState(CHROME_H_FALLBACK);
   const [maxDisplayH, setMaxDisplayH] = useState(MAX_DISPLAY_H);
+  const [maxDisplayW, setMaxDisplayW] = useState(MAX_DISPLAY_W);
   const bodyRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const read = () => {
-      const cardH = (window.innerHeight * CARD_VH) / uiZoom();
+      const zoom = uiZoom();
+      const cardH = (window.innerHeight * CARD_VH) / zoom;
       setMaxDisplayH(Math.max(MIN_DISPLAY_H, Math.round(Math.min(MAX_DISPLAY_H, cardH - chromeH))));
+      // floor, not round: a half pixel over the clamp is enough to bring the sideways scroller back.
+      setMaxDisplayW(Math.max(MIN_DISPLAY_W, Math.floor(Math.min(MAX_DISPLAY_W, window.innerWidth / zoom - CHROME_W))));
     };
     read();
     window.addEventListener('resize', read);
@@ -99,29 +188,26 @@ export function ImageCropper({ imageBase64, onSave, onCancel }: ImageCropperProp
     const measured = card.offsetHeight - img.offsetHeight;
     // Only when it actually moved — this runs after a render that the height it feeds decides.
     if (measured > 0 && Math.abs(measured - chromeH) > 1) setChromeH(measured);
-  }, [natural, maxDisplayH, chromeH]);
+  }, [natural, maxDisplayH, maxDisplayW, chromeH]);
 
-  // Always fit the image into the MAX_W × available-H box while preserving aspect ratio. Small
-  // reference images get scaled UP so the handles are easy to grab; big ones get scaled
+  // Always fit the image into the available-W × available-H box while preserving aspect ratio.
+  // Small reference images get scaled UP so the handles are easy to grab; big ones get scaled
   // DOWN to fit. The crop rect stays in image-pixel coords; only its display position
   // scales by `display.scale`.
   const display = useMemo(() => {
     if (!natural) return null;
-    const scale = Math.min(MAX_DISPLAY_W / natural.w, maxDisplayH / natural.h);
+    const scale = Math.min(maxDisplayW / natural.w, maxDisplayH / natural.h);
     return {
       width: natural.w * scale,
       height: natural.h * scale,
       scale,
     };
-  }, [natural, maxDisplayH]);
+  }, [natural, maxDisplayW, maxDisplayH]);
   const displayScale = display?.scale ?? 1;
 
   // Global mousemove/mouseup so the drag survives even if the cursor briefly leaves the
   // handle while dragging fast.
   useEffect(() => {
-    function clamp(v: number, min: number, max: number) {
-      return Math.max(min, Math.min(max, v));
-    }
     // Crop updates are coalesced to ONE run per frame, same doctrine as the ProfilePanel
     // drags: raw mousemove arrives at the mouse's polling rate (125-1000 Hz for the mice this
     // app targets) and each run does the coordinate conversion plus a setCrop that re-renders
@@ -142,71 +228,61 @@ export function ImageCropper({ imageBase64, onSave, onCancel }: ImageCropperProp
       // and dispCrop's outputs are written straight back as layout lengths.
       const dx = (p.x - d.startX) / (displayScale * d.zoom);
       const dy = (p.y - d.startY) / (displayScale * d.zoom);
-      let { x, y, w, h } = d.startCrop;
-      const right = d.startCrop.x + d.startCrop.w;
-      const bottom = d.startCrop.y + d.startCrop.h;
-      switch (d.mode) {
-        case 'move':
-          x = clamp(x + dx, 0, natural.w - w);
-          y = clamp(y + dy, 0, natural.h - h);
-          break;
-        case 'nw':
-          x = clamp(d.startCrop.x + dx, 0, right - MIN_SIZE);
-          y = clamp(d.startCrop.y + dy, 0, bottom - MIN_SIZE);
-          w = right - x;
-          h = bottom - y;
-          break;
-        case 'n':
-          y = clamp(d.startCrop.y + dy, 0, bottom - MIN_SIZE);
-          h = bottom - y;
-          break;
-        case 'ne':
-          y = clamp(d.startCrop.y + dy, 0, bottom - MIN_SIZE);
-          h = bottom - y;
-          w = clamp(d.startCrop.w + dx, MIN_SIZE, natural.w - x);
-          break;
-        case 'w':
-          x = clamp(d.startCrop.x + dx, 0, right - MIN_SIZE);
-          w = right - x;
-          break;
-        case 'e':
-          w = clamp(d.startCrop.w + dx, MIN_SIZE, natural.w - x);
-          break;
-        case 'sw':
-          x = clamp(d.startCrop.x + dx, 0, right - MIN_SIZE);
-          w = right - x;
-          h = clamp(d.startCrop.h + dy, MIN_SIZE, natural.h - y);
-          break;
-        case 's':
-          h = clamp(d.startCrop.h + dy, MIN_SIZE, natural.h - y);
-          break;
-        case 'se':
-          w = clamp(d.startCrop.w + dx, MIN_SIZE, natural.w - x);
-          h = clamp(d.startCrop.h + dy, MIN_SIZE, natural.h - y);
-          break;
+      setCrop(applyCropMode(d.mode, d.startCrop, dx, dy, natural));
+    };
+    // Ending a drag applies the frame still queued BEFORE letting go: clearing first made that
+    // flush find no drag and drop the last stretch of movement, so the crop stopped short of
+    // where the button was released.
+    const endDrag = () => {
+      if (!dragRef.current) return;
+      if (moveRaf !== null) {
+        cancelAnimationFrame(moveRaf);
+        flushMove();
       }
-      setCrop({
-        x: Math.round(x),
-        y: Math.round(y),
-        w: Math.round(w),
-        h: Math.round(h),
-      });
+      pendingPos = null;
+      dragRef.current = null;
     };
     const onMove = (e: MouseEvent) => {
+      // Idle hover is not a drag: no frame to schedule.
+      if (!dragRef.current) return;
+      // No button held means the mouseup went somewhere else — Alt+Tab or a focus steal mid-drag
+      // takes it with the window. Without this the crop kept following the bare cursor until the
+      // next click. This move's position is not part of the drag, so it is not applied.
+      if (e.buttons === 0) {
+        endDrag();
+        return;
+      }
       pendingPos = { x: e.clientX, y: e.clientY };
       if (moveRaf === null) moveRaf = requestAnimationFrame(flushMove);
     };
-    const onUp = () => {
-      dragRef.current = null;
-    };
     document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
+    document.addEventListener('mouseup', endDrag);
+    // Losing the window ends the drag too (guideline: drags handle blur), so coming back does not
+    // find a rectangle still glued to the pointer.
+    window.addEventListener('blur', endDrag);
     return () => {
       document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
+      document.removeEventListener('mouseup', endDrag);
+      window.removeEventListener('blur', endDrag);
       if (moveRaf !== null) cancelAnimationFrame(moveRaf);
     };
   }, [natural, displayScale]);
+
+  // The keyboard door (the drag was the only one, so "Save crop" — which needs a crop smaller than
+  // the image — could never be enabled without a mouse). Arrow moves the rect, Ctrl+Arrow resizes it
+  // from the bottom-right edge, Shift makes either step 10 px. Steps are IMAGE px, the unit of the
+  // size readout. Same clamps as the handles (applyCropMode).
+  const [rectFocused, setRectFocused] = useState(false);
+  const keysHintId = useId();
+  const onCropKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const dir = ARROW_DELTA[e.key];
+    if (!dir || !natural || e.altKey || e.metaKey) return;
+    // Also stops the body scroller from scrolling under the arrow.
+    e.preventDefault();
+    const step = e.shiftKey ? 10 : 1;
+    const mode: DragMode = e.ctrlKey ? 'se' : 'move';
+    setCrop(prev => applyCropMode(mode, prev, dir[0] * step, dir[1] * step, natural));
+  };
 
   const startDrag = (mode: DragMode) => (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -242,7 +318,8 @@ export function ImageCropper({ imageBase64, onSave, onCancel }: ImageCropperProp
     height: HANDLE_PX,
     background: 'var(--color-accent-solid)',
     boxShadow: '0 0 0 2px var(--color-bg-elevated)',
-    borderRadius: 2,
+    // The control radius (a handle is a grab control), not an ad-hoc 2 px.
+    borderRadius: 'var(--radius-control)',
   };
   const half = HANDLE_PX / 2;
 
@@ -259,7 +336,16 @@ export function ImageCropper({ imageBase64, onSave, onCancel }: ImageCropperProp
       onClose={onCancel}
       // A crop in progress must not be thrown away by a stray click outside the card.
       closeOnBackdrop={false}
-      footerHint="Drag the handles to resize · drag inside to move"
+      // Two hints stacked in ONE grid cell: the mouse one by default, the keys while the crop rect
+      // holds keyboard focus (the mouse never focuses it — its mousedown is preventDefault-ed). Both
+      // stay mounted, so the footer keeps the taller one's height and focusing the rect never
+      // re-flows the card ([[feedback-dialog-height-fixed]]).
+      footerHint={
+        <span className="inline-grid">
+          <span className={rectFocused ? 'invisible' : undefined} style={{ gridArea: '1 / 1' }}>Drag the handles to resize · drag inside to move</span>
+          <span id={keysHintId} className={rectFocused ? undefined : 'invisible'} style={{ gridArea: '1 / 1' }}>Arrows move · Ctrl+arrows resize · Shift ×10</span>
+        </span>
+      }
       footer={
         <DialogFooter
           secondary={{ label: 'Cancel', onClick: onCancel }}
@@ -283,7 +369,8 @@ export function ImageCropper({ imageBase64, onSave, onCancel }: ImageCropperProp
           {natural ? (
             <>
               <span className="px-1.5 py-0.5 rounded bg-bg-input border border-border-subtle text-text-secondary">{crop.w} × {crop.h}</span>
-              <span className="text-text-disabled">/ {natural.w} × {natural.h}</span>
+              {/* Tertiary, not disabled: this is live information, not an unavailable control. */}
+              <span className="text-text-tertiary">/ {natural.w} × {natural.h}</span>
             </>
           ) : 'Loading…'}
         </div>
@@ -329,9 +416,14 @@ export function ImageCropper({ imageBase64, onSave, onCancel }: ImageCropperProp
                 }}
               />
 
-              {/* Crop rect — draggable to move, with 8 resize handles. */}
+              {/* Crop rect — draggable to move, with 8 resize handles; also the keyboard's tab
+                  stop (arrows, see onCropKeyDown). The global :focus-visible ring marks it. */}
               <div
                 className="absolute"
+                tabIndex={0}
+                role="group"
+                aria-label="Crop region"
+                aria-describedby={keysHintId}
                 style={{
                   left: dispCrop.left,
                   top: dispCrop.top,
@@ -341,6 +433,9 @@ export function ImageCropper({ imageBase64, onSave, onCancel }: ImageCropperProp
                   cursor: 'move',
                 }}
                 onMouseDown={startDrag('move')}
+                onKeyDown={onCropKeyDown}
+                onFocus={() => setRectFocused(true)}
+                onBlur={() => setRectFocused(false)}
               >
                 <div style={{ ...handleStyle, left: -half, top: -half, cursor: 'nw-resize' }} onMouseDown={startDrag('nw')} />
                 <div style={{ ...handleStyle, left: '50%', top: -half, marginLeft: -half, cursor: 'n-resize' }} onMouseDown={startDrag('n')} />

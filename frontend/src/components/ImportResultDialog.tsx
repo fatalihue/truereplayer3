@@ -39,7 +39,9 @@ export function ImportResultDialog({ result, onClose }: ImportResultDialogProps)
         {result.importedNames.length > 0 && (
           <section>
             <div className="font-medium text-text-primary flex items-center gap-1.5">
-              <Check size={12} style={{ color: 'var(--color-replay)' }} />
+              {/* The derived -fg ink, not the raw hue: raw --color-replay measured 1.3–1.9:1
+                  on the light presets. */}
+              <Check size={12} style={{ color: 'var(--color-replay-fg)' }} />
               Imported ({result.imported})
             </div>
             <ul className="mt-1 space-y-0.5 text-text-secondary">
@@ -49,7 +51,7 @@ export function ImportResultDialog({ result, onClose }: ImportResultDialogProps)
                   <li key={n} className="truncate">
                     {n}
                     {from !== undefined && (
-                      <span className="text-text-tertiary"> — renamed (&quot;{from}&quot; was taken)</span>
+                      <span className="text-text-tertiary"> — renamed (“{from}” was taken)</span>
                     )}
                   </li>
                 );

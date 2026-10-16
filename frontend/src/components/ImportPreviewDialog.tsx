@@ -172,12 +172,16 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
       // dozen profiles would discard the selection + conflict choices. The user
       // dismisses via the Cancel button, Esc, or completing the import.
       closeOnBackdrop={false}
+      // tabular-nums on the counts here and on the button: they change on every checkbox, and
+      // proportional digits made the hint and the button label shuffle sideways as they ticked.
       footerHint={
-        skipResolvedCount > 0
-          ? <>{effectiveImportCount} will be imported · {skipResolvedCount} skipped</>
-          : <>{effectiveImportCount} of {compatibleCount} will be imported</>
+        <span className="tabular-nums">
+          {skipResolvedCount > 0
+            ? <>{effectiveImportCount} will be imported · {skipResolvedCount} skipped</>
+            : <>{effectiveImportCount} of {compatibleCount} will be imported</>}
+        </span>
       }
-      footer={<DialogFooter secondary={{ label: 'Cancel', onClick: onCancel }} primary={{ label: `Import Selected (${effectiveImportCount})`, onClick: handleConfirm, disabled: effectiveImportCount === 0 }} />}
+      footer={<DialogFooter secondary={{ label: 'Cancel', onClick: onCancel }} primary={{ label: `Import Selected (${effectiveImportCount})`, onClick: handleConfirm, disabled: effectiveImportCount === 0, className: 'tabular-nums' }} />}
       // No Enter rule (unchanged from the hand-rolled version); this handler only
       // preserves the old scrim-level stopPropagation so keystrokes typed while
       // reviewing don't leak to app-level shortcut handlers. Esc is owned by the
@@ -224,17 +228,20 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
         </div>
 
         {/* Select-all — the Export dialog's row idiom (CheckboxBox + count), replacing
-            the hover-only "Select all / Clear" text links. */}
+            the hover-only "Select all / Clear" text links. The box is aria-hidden, so the
+            row itself carries the checkbox role and its checked / mixed state. */}
         <div className="px-4 py-1.5 border-b border-border-subtle">
           <button
             type="button"
+            role="checkbox"
+            aria-checked={allSelected ? true : selectedCount > 0 ? 'mixed' : false}
             onClick={() => toggleAll(!allSelected)}
             disabled={compatibleCount === 0}
             className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg-surface cursor-pointer text-left disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <CheckboxBox checked={allSelected} indeterminate={selectedCount > 0 && !allSelected} />
             <span className="text-minor font-medium text-text-secondary">Select all</span>
-            <span className="ml-auto text-caption text-text-tertiary">{selectedCount}/{compatibleCount}</span>
+            <span className="ml-auto text-caption text-text-tertiary tabular-nums">{selectedCount}/{compatibleCount}</span>
           </button>
         </div>
 
@@ -264,9 +271,12 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
             return (
               <div
                 key={i}
-                className={`flex items-start gap-3 px-3 py-2.5 rounded border transition-colors ${
+                // No hover tint: the card is not a click target (only its Checkbox toggles, and the
+                // conflict control lives inside it), so lighting it up promised a click that did
+                // nothing.
+                className={`flex items-start gap-3 px-3 py-2.5 rounded border ${
                   p.compatible
-                    ? 'border-border-subtle bg-bg-card hover:bg-bg-surface'
+                    ? 'border-border-subtle bg-bg-card'
                     : ''
                 }`}
                 // Incompatible card: the border carries the read, the 6% tint does not.
@@ -293,6 +303,8 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
                   <Checkbox
                     checked={isChecked && p.compatible}
                     disabled={!p.compatible}
+                    // Box-only, so it needs a name: the row's profile name.
+                    ariaLabel={p.name}
                     title={!p.compatible
                       ? tt(`Requires TrueReplayer ${p.appMinVersion} or newer`, `Requer TrueReplayer ${p.appMinVersion} ou mais novo`)
                       : undefined}
@@ -318,7 +330,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
                     </span>
                     {p.updatedAt && (
                       <span
-                        className="ml-auto shrink-0 text-caption text-text-disabled"
+                        className="ml-auto shrink-0 text-caption text-text-tertiary"
                         data-tip={p.createdAt ? tt(`Created ${formatDate(p.createdAt)}`, `Criado em ${formatDate(p.createdAt)}`) : undefined}
                       >
                         Updated {formatRelative(p.updatedAt)}
@@ -386,7 +398,9 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
 
                   {/* Run Profile dependency chips: bundled here / calls your existing
                       profile / nothing to call. The glyph is the second channel — the
-                      text color alone died on the presets where the hues converge. */}
+                      text color alone died on the presets where the hues converge.
+                      Sans, not mono: these are profile NAMES, the same ones the row's own
+                      title shows in sans — mono is for data and tokens only. */}
                   {p.dependencies && p.dependencies.length > 0 && (
                     <div className="mt-1 flex flex-wrap items-center gap-1">
                       <span className="text-caption text-text-tertiary">Runs:</span>
@@ -397,7 +411,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
                         return (
                           <span
                             key={d.name}
-                            className="text-caption px-1.5 py-0.5 rounded border font-mono inline-flex items-center gap-1"
+                            className="text-caption px-1.5 py-0.5 rounded border inline-flex items-center gap-1"
                             data-tip={
                               d.status === 'inEnvelope'
                                 ? tt('Bundled — imported alongside', 'Incluído — importado junto')
