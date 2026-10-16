@@ -2169,13 +2169,9 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
 
   return (
     <div
-      // data-grid-frame: the SUBJECT of the focus-ring :has() rule in index.css — named so the rule
-      // is not `*:has(...)`, which makes every element a candidate on every DOM change.
-      data-grid-frame
       className="relative flex-1 bg-bg-surface overflow-hidden flex flex-col outline-none"
-      // -1: click-focusable for the bubbled Delete/Ctrl+A/Escape handling below,
-      // but OUT of the tab order — the inner scroll container (tabIndex=0, the
-      // keyboard-navigation target) is the grid's single tab stop.
+      // -1: click-focusable for the bubbled Delete/Ctrl+A/Escape handling below. (Tab moves no
+      // focus anywhere — App.tsx — so the inner scroll container is reached by a click too.)
       tabIndex={-1}
       onKeyDown={handleKeyDown}
       // Reset the post-drag click-suppression flag at the START of every new pointer
@@ -2208,8 +2204,9 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
       <div
         ref={scrollRef}
         data-actions-grid
-        // Focusable: the container is the keyboard-navigation target (Tab reaches
-        // it; Arrows/Space/Enter act on the row cursor — see handleGridKeyDown).
+        // Focusable: the container is the keyboard-navigation target (a click focuses
+        // it; Arrows/Space/Enter act on the row cursor — see handleGridKeyDown). No
+        // focus ring (index.css): the row selection is what the keys show.
         tabIndex={0}
         role="region"
         aria-label="Recorded actions"

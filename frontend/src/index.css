@@ -357,31 +357,13 @@ html, body, #root {
      (WCAG 1.4.11 non-text contrast). */
   box-shadow: 0 0 0 1px var(--color-text-primary);
 }
-/* The action grid's scroll container is the grid's only tab stop and fills an overflow-hidden
-   parent, which clipped the ring above (it is drawn OUTSIDE the box). Drawn INSIDE the scroller it
-   was still invisible where it mattered: the rows are position:relative and the sticky header is
-   z-10 with an opaque fill, so both painted over the scroller's own outline and inset shadow —
-   only the bottom and right edges showed, and only past the last row (the 2026-10-16 branch
-   review, measured in a replica; the earlier check had read the computed style, not the pixels).
-   So the ring is an overlay on the PARENT (relative, the grid's frame): a pseudo-element above the
-   rows and the header (z 11), never hit-testable. Same recipe as the global ring — 2 px accent
-   outline plus the text-primary contrast halo — stepped inside the frame. */
+/* The action grid shows NO focus ring (owner, 2026-10-16). It takes the focus on a click, and
+   Chromium turns :focus-visible on at the next key — Esc, an arrow, Delete — so the whole grid
+   lit up as "selected" on the keys the grid is for. The row selection is the grid's feedback.
+   (2.48.0 drew a ring overlay on the grid's frame; it is gone, and so is its :has() rule.) */
 [data-actions-grid]:focus-visible {
   outline: none;
   box-shadow: none;
-}
-/* The subject is NAMED ([data-grid-frame], ActionTable's root): a bare `:has(...)` is `*:has(...)`,
-   which makes every element of the app a :has candidate the style engine re-checks on each DOM
-   change — measured as part of the extra style time on a Settings tab switch. */
-[data-grid-frame]:has(> [data-actions-grid]:focus-visible)::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 11;
-  pointer-events: none;
-  outline: 2px solid var(--color-accent-solid);
-  outline-offset: -2px;
-  box-shadow: inset 0 0 0 3px var(--color-text-primary);
 }
 /* Ring exemptions — text-entry surfaces carry their own border-focused
    treatment (a second ring doubles up), range sliders keep the ring (their

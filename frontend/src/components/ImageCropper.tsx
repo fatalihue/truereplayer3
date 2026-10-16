@@ -273,6 +273,7 @@ export function ImageCropper({ imageBase64, onSave, onCancel }: ImageCropperProp
   // from the bottom-right edge, Shift makes either step 10 px. Steps are IMAGE px, the unit of the
   // size readout. Same clamps as the handles (applyCropMode).
   const [rectFocused, setRectFocused] = useState(false);
+  const rectRef = useRef<HTMLDivElement>(null);
   const keysHintId = useId();
   const onCropKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     const dir = ARROW_DELTA[e.key];
@@ -287,6 +288,10 @@ export function ImageCropper({ imageBase64, onSave, onCancel }: ImageCropperProp
   const startDrag = (mode: DragMode) => (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    // The preventDefault above also cancels the focus a press would give the rect, and Tab moves
+    // no focus (App.tsx): without this the arrows below were unreachable. A press on the rect or
+    // any handle hands it the keyboard, and the hint line switches to the arrow keys.
+    rectRef.current?.focus({ preventScroll: true });
     dragRef.current = {
       mode,
       startX: e.clientX,
@@ -416,9 +421,10 @@ export function ImageCropper({ imageBase64, onSave, onCancel }: ImageCropperProp
                 }}
               />
 
-              {/* Crop rect — draggable to move, with 8 resize handles; also the keyboard's tab
-                  stop (arrows, see onCropKeyDown). The global :focus-visible ring marks it. */}
+              {/* Crop rect — draggable to move, with 8 resize handles; a press on it takes the
+                  keyboard (arrows, see onCropKeyDown and startDrag). */}
               <div
+                ref={rectRef}
                 className="absolute"
                 tabIndex={0}
                 role="group"

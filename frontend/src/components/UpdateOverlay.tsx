@@ -191,8 +191,8 @@ export function UpdateOverlay() {
         onMouseDown={(e) => e.preventDefault()}
       />
 
-      {/* Card — the modal (see the focus effect above). Tab stays inside: there is at most one
-          control, and with none the card itself holds the focus. No Esc: the splash has no
+      {/* Card — the modal (see the focus effect above). Tab moves nothing anywhere in the app
+          (App.tsx), so the focus the effect gives the card stays there. No Esc: the splash has no
           dismiss — an apply that stops for any reason takes it down with update:error. */}
       <div
         ref={cardRef}
@@ -201,12 +201,6 @@ export function UpdateOverlay() {
         aria-labelledby={titleId}
         aria-describedby={subtitleId}
         tabIndex={-1}
-        onKeyDown={(e) => {
-          if (e.key !== 'Tab') return;
-          e.preventDefault();
-          const card = cardRef.current;
-          (card?.querySelector<HTMLElement>('button') ?? card)?.focus();
-        }}
         className="relative w-[88%] max-w-[420px] rounded-dialog border border-border-default bg-bg-elevated shadow-dialog px-7 pt-7 pb-6 update-card-in"
       >
         {/* App icon */}

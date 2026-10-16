@@ -214,6 +214,20 @@ function AppShell() {
     });
   }, [subscribe, setShowAutomation, showToast, tt]);
 
+  // Tab never moves the focus (owner, 2026-10-16: it got in the way more than it helped — a stray
+  // Tab walked the focus, and its ring, around the window). Capture phase on window, so it runs
+  // before every React handler: the browser's own focus step is cancelled everywhere, and the
+  // focus traps that drive Tab by hand (DialogShell) bail on defaultPrevented. NOT stopped: a
+  // component that gives Tab a meaning of its own still gets the key — the grid's inline edit
+  // commits on it, a Data table cell commits and moves right, Edit info's tag field takes the tag.
+  useEffect(() => {
+    const blockTab = (e: KeyboardEvent) => {
+      if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && !e.metaKey) e.preventDefault();
+    };
+    window.addEventListener('keydown', blockTab, true);
+    return () => window.removeEventListener('keydown', blockTab, true);
+  }, []);
+
   // Global keyboard handler: Ctrl+K for command palette, Ctrl+S to save profile,
   // Ctrl+Z/Y for undo/redo + block UI interaction keys.
   // Bridge-bound actions (save/undo/redo) fire as custom events; Toolbar (which has
@@ -282,11 +296,7 @@ function AppShell() {
       );
       if (interactive) return;
 
-      // Tab from <body> is pure focus NAVIGATION — it never actuates anything —
-      // and only idle flows reach this point (the run-active gate above), so it
-      // passes through. This is what makes keyboard entry into the UI possible.
-      if (e.key === 'Tab') return;
-
+      // (Tab is already cancelled app-wide by the capture listener above.)
       // Block Space, Enter, arrows from interacting with UI elements
       if ([' ', 'Enter', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
         e.preventDefault();

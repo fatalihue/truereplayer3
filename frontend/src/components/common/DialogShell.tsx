@@ -319,7 +319,9 @@ export function DialogShell({
           }
           // Focus trap — Tab cycles within the card. Without this, Tab walks out
           // into the app behind the scrim, where Space/Enter can actuate
-          // background controls through a modal.
+          // background controls through a modal. INERT while App.tsx cancels Tab app-wide
+          // (2026-10-16): every Tab arrives defaultPrevented and the check below returns. Kept
+          // for the day Tab navigation comes back — without it, that day reopens the walk-out.
           //
           // The card AND the layers its content floats over it: a chip popover and the name prompt
           // are portals at the end of <body> — outside the card's DOM, inside its React tree, which
