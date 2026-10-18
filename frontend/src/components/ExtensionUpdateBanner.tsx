@@ -59,6 +59,16 @@ export function ExtensionUpdateBanner() {
           v{outdated.expected}
         </span>
         &mdash; Reload in chrome://extensions
+        {/* The way to the folder and the steps, for a user who loaded it from somewhere else
+            or never knew where it came from. */}
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new CustomEvent('cmd:extensionhelp'))}
+          className="ml-1.5 underline underline-offset-2 hover:text-text-primary transition-colors"
+          data-tip={tt('Copy the extension folder and see how to load it', 'Copiar a pasta da extensão e ver como carregá-la')}
+        >
+          How?
+        </button>
       </span>
       {/* The house icon button (it had no name at all, and a softer ink than every other one).
           The tooltip says what the X alone cannot: it comes back if the versions change. */}

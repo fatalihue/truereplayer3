@@ -56,6 +56,29 @@ const LAST_WORD_MS = 3000;
 // really in crosshair mode went on eating every click. latestPickId answers a cancel that names no
 // pick (the editor closing). A service worker restarted since the pick has lost both; the cancel
 // then falls back to the active tab, as it always did.
+/**
+ * The app updated and asks for a different extension version. The folder this was loaded from is
+ * the one next to TrueReplayer.exe, and an update rewrites its files under the same path — so the
+ * new extension is already on disk and a reload is all it takes.
+ *
+ * Once per app-requested version: reloadedFor remembers it, so a folder that really IS another
+ * version (a copy the user loaded from somewhere else) reloads one time and then stays put
+ * instead of reloading on every connect. Skipped while recording or picking, which a reload would
+ * tear down; the next handshake (every reconnect) tries again.
+ *
+ * Open tabs are left alone on purpose. Their content scripts are orphaned by the reload and an
+ * action aimed at one fails with "Reload that tab", but refreshing the user's pages unasked is a
+ * worse side effect — the popup's own Reload button refreshes them because the user asked.
+ */
+function reloadForAppVersion(expected) {
+  if (typeof expected !== 'string' || !expected) return;
+  if (isRecording || pickTabs.size > 0) return;
+  chrome.storage.local.get('reloadedFor', (state) => {
+    if (state && state.reloadedFor === expected) return;
+    chrome.storage.local.set({ reloadedFor: expected }, () => chrome.runtime.reload());
+  });
+}
+
 const pickTabs = new Map();
 let latestPickId = null;
 
@@ -89,6 +112,7 @@ function connect() {
           // Send our version back to TrueReplayer
           sendToNative({ type: 'browser:extensionVersion', version: current });
           updateBadge();
+          if (isOutdated) reloadForAppVersion(expected);
           break;
         }
 

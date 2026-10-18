@@ -113,7 +113,17 @@ namespace TrueReplayer.Services
         // such braces as private sentinels (ActionReplayer.ResolveBrowserTypeTextAsync) and the
         // content script turns them back into '{' / '}' after splitting out its key chips, so a
         // clipboard or variable holding "{enter}" no longer presses Enter.
-        public const string ExpectedExtensionVersion = "1.4.25";
+        // 1.4.26 = the extension reloads ITSELF when the app's handshake names a version it is not.
+        // The files on disk are already the new ones (Velopack swaps current\ under the same path),
+        // so a reload is all an update needs; reloadedFor in storage keeps a folder that really is
+        // older — another copy loaded by hand — from reloading on every connect.
+        public const string ExpectedExtensionVersion = "1.4.26";
+
+        // The folder the user loads in chrome://extensions. Next to the exe on purpose: Velopack
+        // installs to %LocalAppData%\TrueReplayer\current\ and swaps that folder's contents on an
+        // update without moving it, so this path survives every update and needs no copy anywhere
+        // else. A dev build points at its own bin\ copy, which the csproj refreshes on each build.
+        public static string ExtensionDirectory => Path.Combine(AppContext.BaseDirectory, "ChromeExtension");
 
         // The extension that knows the sentinels above. An older one would type the control
         // character itself, so ExecuteBrowserCommandAsync hands it real braces (and the old re-read).

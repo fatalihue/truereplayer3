@@ -603,6 +603,14 @@ namespace TrueReplayer
                     bridge?.SendMessage("automation:open", new { });
                 });
             };
+            TrayIconService.OnOpenExtensionHelp = () =>
+            {
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    windowEventManager?.BringToForeground();
+                    bridge?.SendMessage("extension:openHelp", new { });
+                });
+            };
             TrayIconService.OnToggleAutomations = () =>
             {
                 DispatcherQueue.TryEnqueue(() =>

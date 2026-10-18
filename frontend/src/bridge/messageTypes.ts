@@ -881,6 +881,11 @@ export type IncomingMessage =
   | { type: 'automation:state'; payload: AutomationState }
   // Tray "Automations…" clicked — restore + open the Automation panel.
   | { type: 'automation:open'; payload: Record<string, never> }
+  // Tray "Browser extension…" clicked — restore + open the Browser extension dialog.
+  | { type: 'extension:openHelp'; payload: Record<string, never> }
+  // Reply to extension:help. path = the folder to load unpacked (already on the clipboard when
+  // copied is true); exists = false only on a broken install, where the folder is missing.
+  | { type: 'extension:help'; payload: { path: string; exists: boolean; copied: boolean; connected: boolean } }
   | { type: 'replay:report'; payload: RunReport }
   // Reply to automation:captureImage (region overlay). imagePath is the saved PNG's
   // per-profile relative path, ready to store on the trigger config.
@@ -1321,6 +1326,10 @@ export type OutgoingMessage =
   | { type: 'update:check'; payload: Record<string, never> }
   | { type: 'update:apply'; payload: Record<string, never> }
   | { type: 'logs:openFolder'; payload: Record<string, never> }
+  // The Browser extension dialog: help copies the extension folder's path to the clipboard and
+  // answers with extension:help; openFolder shows that folder in Explorer.
+  | { type: 'extension:help'; payload: Record<string, never> }
+  | { type: 'extension:openFolder'; payload: Record<string, never> }
   // Open an https URL in the default browser. The backend allow-lists the host (the project's
   // own pages only), so this is a door to the manual, not a general launcher.
   | { type: 'shell:openUrl'; payload: { url: string } }

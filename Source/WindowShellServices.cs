@@ -445,6 +445,8 @@ namespace TrueReplayer.Services
         /// Restore the window + open the Automation panel (daemon usage: everything armed
         /// lives in the tray; this is the one-click way back to the manager).
         public static Action? OnOpenAutomations { get; set; }
+        /// Restore the window + open the Browser extension dialog (folder path, load steps).
+        public static Action? OnOpenExtensionHelp { get; set; }
         /// Flip the global automation master switch (persist-immediately handled by MainWindow).
         public static Action? OnToggleAutomations { get; set; }
 
@@ -479,6 +481,7 @@ namespace TrueReplayer.Services
             bool remapsEnabled = RemapService.Current.Enabled;
             AppendMenu(hMenu, MF_STRING | (remapsEnabled ? MF_CHECKED : 0), 15, "Enable Key Remaps");
             AppendMenu(hMenu, MF_SEPARATOR, 0, null);
+            AppendMenu(hMenu, MF_STRING, 16, "Browser extension…");
             // ── Window category — temporarily disabled (kept for easy restore).
             // AppendMenu(hMenu, MF_STRING | (isAlwaysOnTop ? MF_CHECKED : 0), 5, "Always On Top");
             // AppendMenu(hMenu, MF_STRING | (isMinimizeToTray ? MF_CHECKED : 0), 6, "System Tray");
@@ -561,6 +564,10 @@ namespace TrueReplayer.Services
                 // Settings toggle mirrors) rides the same callback MainWindow wires.
                 RemapService.SetEnabled(!remapsEnabled);
                 OnTraySettingChanged?.Invoke();
+            }
+            else if (cmd == 16)
+            {
+                OnOpenExtensionHelp?.Invoke();
             }
             else if (cmd == 8)
             {

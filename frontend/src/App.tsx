@@ -38,6 +38,7 @@ const ThemeEditor = lazy(() => import('./components/ThemeEditor').then(m => ({ d
 const DataPanel = lazy(() => import('./components/DataPanel').then(m => ({ default: m.DataPanel })));
 const AutomationPanel = lazy(() => import('./components/AutomationPanel').then(m => ({ default: m.AutomationPanel })));
 const RunReportPanel = lazy(() => import('./components/RunReportPanel').then(m => ({ default: m.RunReportPanel })));
+const ExtensionHelpDialog = lazy(() => import('./components/ExtensionHelpDialog').then(m => ({ default: m.ExtensionHelpDialog })));
 
 // Renders null — this component exists solely to isolate the useTheme() subscription. The zoom
 // setting is the only theme-derived value the shell logic needs, and subscribing AppShell
@@ -213,6 +214,24 @@ function AppShell() {
       setShowAutomation(true);
     });
   }, [subscribe, setShowAutomation, showToast, tt]);
+
+  // Browser extension dialog: the status bar's "Extension disconnected", the banner and the
+  // palette fire cmd:extensionhelp; the tray's "Browser extension…" arrives as a backend push and
+  // OPENS (never toggles), under the same modal guard as Automations above.
+  const [showExtensionHelp, setShowExtensionHelp] = useCommandToggle('cmd:extensionhelp');
+  const showExtensionHelpRef = useRef(showExtensionHelp);
+  showExtensionHelpRef.current = showExtensionHelp;
+  useEffect(() => {
+    return subscribe((msg) => {
+      if (msg.type !== 'extension:openHelp' || showExtensionHelpRef.current) return;
+      if (isModalDialogOpen()) {
+        showToast(tt('Close the open dialog first, then open Browser extension again.',
+          'Feche o diálogo aberto primeiro e abra Extensão do navegador de novo.'), 'info');
+        return;
+      }
+      setShowExtensionHelp(true);
+    });
+  }, [subscribe, setShowExtensionHelp, showToast, tt]);
 
   // Tab never moves the focus (owner, 2026-10-16: it got in the way more than it helped — a stray
   // Tab walked the focus, and its ring, around the window). Capture phase on window, so it runs
@@ -524,6 +543,7 @@ function AppShell() {
         {showDataEditor && <DataPanel onClose={() => setShowDataEditor(false)} />}
         {showAutomation && <AutomationPanel onClose={() => setShowAutomation(false)} />}
         {showRunReport && <RunReportPanel onClose={() => setShowRunReport(false)} />}
+        {showExtensionHelp && <ExtensionHelpDialog onClose={() => setShowExtensionHelp(false)} />}
       </Suspense>
       <UpdateOverlay />
       <AskInputHost />

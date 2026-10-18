@@ -518,31 +518,40 @@ export function StatusBar() {
           this is a sub-frame condition, and guessing "connected" there would be a lie the one
           time it mattered. Two channels on the failure (icon AND label), never colour alone —
           the replay/recording hues already prove colour alone doesn't survive 37 themes. */}
+      {/* Both states are buttons that open the Browser extension dialog (folder path on the
+          clipboard + the three Load-unpacked steps) — the failure is where the user reaches for
+          help, and the quiet icon stays the door back to the folder once it works. */}
       {settings.browserSelectorEnabled && browserConnection !== 'unknown' && (
         browserConnection === 'connected' ? (
-          <Chrome
-            size={11}
-            className="shrink-0 ml-3 text-text-disabled"
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent('cmd:extensionhelp'))}
+            className="flex items-center h-6 px-1 ml-2 shrink-0 rounded text-text-disabled hover:text-text-secondary hover:bg-bg-elevated transition-colors"
             // Icon-only, so the tooltip is its ONLY label — the case the tooltip policy keeps.
+            aria-label={tt('Chrome extension connected', 'Extensão do Chrome conectada')}
             data-tip={tt('Chrome extension connected', 'Extensão do Chrome conectada')}
-          />
+          >
+            <Chrome size={11} />
+          </button>
         ) : (
-          <span
-            className="flex items-center gap-1.5 shrink-0 ml-3 text-caption font-medium whitespace-nowrap"
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent('cmd:extensionhelp'))}
+            className="flex items-center gap-1.5 h-6 px-1 ml-2 shrink-0 rounded text-caption font-medium whitespace-nowrap hover:bg-bg-elevated transition-colors"
             // --color-warning-ink, not raw --color-warning: the ink rung is the one mixed
             // toward the theme's text to clear 4.5:1, and this is TEXT on the bar's surface.
             style={{ color: 'var(--color-warning-ink)' }}
             // Kept even though the label already reads "Extension disconnected": what the tooltip
             // adds is the CONSEQUENCE the label can't fit — that conditions fail silently rather
-            // than loudly — plus what to do about it.
+            // than loudly — plus what a click does about it.
             data-tip={tt(
-              'Browser actions fail and browser conditions read as "not found". Open Chrome with the extension enabled.',
-              'Ações de browser falham e condições de browser leem "não encontrado". Abra o Chrome com a extensão ativa.',
+              'Browser actions fail and browser conditions read as "not found". Click to connect the extension.',
+              'Ações de browser falham e condições de browser leem "não encontrado". Clique para conectar a extensão.',
             )}
           >
             <Unplug size={11} className="shrink-0" />
             Extension disconnected
-          </span>
+          </button>
         )
       )}
 

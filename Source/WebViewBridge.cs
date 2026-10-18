@@ -1110,6 +1110,8 @@ namespace TrueReplayer
                         }
                         catch (Exception ex) { DiagnosticLog.Error("logs:openFolder failed", ex); }
                         break;
+                    case "extension:help": HandleExtensionHelp(); break;
+                    case "extension:openFolder": HandleExtensionOpenFolder(); break;
                     case "clipboard:read": _ = HandleClipboardRead(); break;
                     case "shell:openUrl": HandleShellOpenUrl(payload); break;
                     case "diagnostics:copy": HandleDiagnosticsCopy(); break;
@@ -4495,6 +4497,57 @@ namespace TrueReplayer
                 DiagnosticLog.Error("diagnostics:copy failed", ex);
                 SendMessage("alert:show", new { message = "Could not copy diagnostics" });
             }
+        }
+
+        // The Browser extension dialog asks for this when it opens: the folder to load in
+        // chrome://extensions, already on the clipboard. Copied HERE rather than with
+        // navigator.clipboard so the tray's entry works the same — the window it just restored
+        // may not have document focus yet, and the web clipboard refuses a page without it.
+        private void HandleExtensionHelp()
+        {
+            var dir = BrowserBridgeService.ExtensionDirectory;
+            bool exists = System.IO.Directory.Exists(dir);
+            bool copied = false;
+            if (exists)
+            {
+                try
+                {
+                    ClipboardService.CopyText(dir);
+                    copied = true;
+                }
+                catch (Exception ex)
+                {
+                    // A clipboard held by another process throws; the dialog still shows the path.
+                    DiagnosticLog.Warn($"extension:help — clipboard copy failed: {ex.Message}");
+                }
+            }
+            else
+            {
+                DiagnosticLog.Warn($"extension:help — extension folder missing: {dir}");
+            }
+            // connected seeds the dialog's headline: the UI's own connection hook starts at
+            // 'unknown' in a freshly mounted component and only learns the state on the next edge.
+            SendMessage("extension:help", new { path = dir, exists, copied, connected = browserBridge?.IsConnected ?? false });
+        }
+
+        private void HandleExtensionOpenFolder()
+        {
+            try
+            {
+                var dir = BrowserBridgeService.ExtensionDirectory;
+                if (!System.IO.Directory.Exists(dir))
+                {
+                    DiagnosticLog.Warn($"extension:openFolder — extension folder missing: {dir}");
+                    return;
+                }
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "explorer.exe",
+                    Arguments = $"\"{dir}\"",
+                    UseShellExecute = true,
+                });
+            }
+            catch (Exception ex) { DiagnosticLog.Error("extension:openFolder failed", ex); }
         }
 
         private void HandleActionsCopy()

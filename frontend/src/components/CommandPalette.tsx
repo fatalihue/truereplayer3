@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import {
   Search, RotateCcw, RefreshCw,
   ClipboardPaste, ClipboardCopy, Files, Replace, Table2,
-  Combine, Split, ScrollText, Activity, ListChecks, BookOpen, Info,
+  Combine, Split, ScrollText, Activity, ListChecks, BookOpen, Info, Chrome,
 } from 'lucide-react';
 import { useAppState } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
@@ -297,6 +297,14 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             keywords: ['help', 'docs', 'documentation', 'guide', 'manual', 'ajuda', 'guia'],
             icon: <BookOpen size={14} className="text-text-secondary" />,
             onAction: () => { send({ type: 'shell:openUrl', payload: { url: MANUAL_URL } }); onClose(); },
+          },
+          {
+            // Copies the extension folder's path and shows the Load-unpacked steps — the same
+            // dialog as the status bar's "Extension disconnected" and the tray's item.
+            id: 'extensionhelp', label: 'Connect browser extension',
+            keywords: ['chrome', 'edge', 'brave', 'extension', 'extensão', 'unpacked', 'folder', 'install', 'disconnected'],
+            icon: <Chrome size={14} className="text-text-secondary" />,
+            onAction: () => { openAfterClose('cmd:extensionhelp'); },
           },
         ],
       },
