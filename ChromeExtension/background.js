@@ -64,17 +64,22 @@ const LAST_WORD_MS = 3000;
  * Once per app-requested version: reloadedFor remembers it, so a folder that really IS another
  * version (a copy the user loaded from somewhere else) reloads one time and then stays put
  * instead of reloading on every connect. Skipped while recording or picking, which a reload would
- * tear down; the next handshake (every reconnect) tries again.
+ * tear down; the next handshake (every reconnect) tries again. The app re-syncs recording BEFORE
+ * it sends the expected version, so isRecording is already true here on a reconnect mid-recording.
+ *
+ * notReloading runs on every path that keeps this worker alive (it reports the version instead).
  *
  * Open tabs are left alone on purpose. Their content scripts are orphaned by the reload and an
  * action aimed at one fails with "Reload that tab", but refreshing the user's pages unasked is a
  * worse side effect — the popup's own Reload button refreshes them because the user asked.
  */
-function reloadForAppVersion(expected) {
-  if (typeof expected !== 'string' || !expected) return;
-  if (isRecording || pickTabs.size > 0) return;
+function reloadForAppVersion(expected, notReloading) {
+  if (typeof expected !== 'string' || !expected || isRecording || pickTabs.size > 0) {
+    notReloading();
+    return;
+  }
   chrome.storage.local.get('reloadedFor', (state) => {
-    if (state && state.reloadedFor === expected) return;
+    if (state && state.reloadedFor === expected) { notReloading(); return; }
     chrome.storage.local.set({ reloadedFor: expected }, () => chrome.runtime.reload());
   });
 }
@@ -109,10 +114,13 @@ function connect() {
           const expected = msg.version;
           const current = chrome.runtime.getManifest().version;
           isOutdated = expected !== current;
-          // Send our version back to TrueReplayer
-          sendToNative({ type: 'browser:extensionVersion', version: current });
           updateBadge();
-          if (isOutdated) reloadForAppVersion(expected);
+          // Send our version back to TrueReplayer — unless this worker is about to reload for the
+          // app's version: reporting the old one first flashed the app's "reload the extension"
+          // banner for the second the reload takes, and the new worker reports the right one.
+          const reportVersion = () => sendToNative({ type: 'browser:extensionVersion', version: current });
+          if (isOutdated) reloadForAppVersion(expected, reportVersion);
+          else reportVersion();
           break;
         }
 

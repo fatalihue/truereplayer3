@@ -216,11 +216,17 @@ function AppShell() {
   }, [subscribe, setShowAutomation, showToast, tt]);
 
   // Browser extension dialog: the status bar's "Extension disconnected", the banner and the
-  // palette fire cmd:extensionhelp; the tray's "Browser extension…" arrives as a backend push and
-  // OPENS (never toggles), under the same modal guard as Automations above.
-  const [showExtensionHelp, setShowExtensionHelp] = useCommandToggle('cmd:extensionhelp');
+  // palette fire cmd:extensionhelp; the tray's "Browser extension…" arrives as a backend push.
+  // Every door OPENS, none toggles — the palette is not aria-modal, so the tray can open the
+  // dialog under it, and a toggle picked from that palette would have closed it again.
+  const [showExtensionHelp, setShowExtensionHelp] = useState(false);
   const showExtensionHelpRef = useRef(showExtensionHelp);
   showExtensionHelpRef.current = showExtensionHelp;
+  useEffect(() => {
+    const open = () => setShowExtensionHelp(true);
+    window.addEventListener('cmd:extensionhelp', open);
+    return () => window.removeEventListener('cmd:extensionhelp', open);
+  }, []);
   useEffect(() => {
     return subscribe((msg) => {
       if (msg.type !== 'extension:openHelp' || showExtensionHelpRef.current) return;

@@ -27,9 +27,10 @@ export function ExtensionHelpDialog({ onClose }: { onClose: () => void }) {
   const tt = useTt();
   const [reply, setReply] = useState<HelpReply | null>(null);
   // Live: the headline turns to "connected" the moment the user finishes loading it in Chrome.
-  // A freshly mounted hook sits at 'unknown' until the next edge, so the reply seeds it.
+  // A freshly mounted hook sits at 'unknown' until the next edge, so the reply seeds it; with
+  // neither yet (the first frames), null — no headline rather than a wrong "Connect…".
   const live = useBrowserConnection();
-  const connected = live === 'unknown' ? reply?.connected === true : live === 'connected';
+  const connected = live !== 'unknown' ? live === 'connected' : reply ? reply.connected : null;
 
   useEffect(() => {
     const unsubscribe = subscribe((msg) => {
@@ -71,7 +72,11 @@ export function ExtensionHelpDialog({ onClose }: { onClose: () => void }) {
     >
       <div className="px-4 py-4 space-y-3 text-minor">
         {/* Two channels on the state, never colour alone — the status bar's own rule. */}
-        <div className="flex items-center gap-1.5 font-medium text-text-primary">
+        <div
+          className="flex items-center gap-1.5 font-medium text-text-primary"
+          // Holds its line while the state is unknown, so the steps below do not jump.
+          style={connected === null ? { visibility: 'hidden' } : undefined}
+        >
           {connected
             ? <Check size={12} className="shrink-0" style={{ color: 'var(--color-replay-fg)' }} />
             : <Unplug size={12} className="shrink-0" style={{ color: 'var(--color-warning-ink)' }} />}

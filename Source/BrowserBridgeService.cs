@@ -248,14 +248,18 @@ namespace TrueReplayer.Services
                     // Send immediate heartbeat so NativeHost's watchdog doesn't timeout
                     try { _writer.WriteLine("{\"type\":\"heartbeat\"}"); } catch { }
 
-                    // Send expected extension version for update check
-                    try { SendMessage(new { type = "bridge:expectedVersion", version = ExpectedExtensionVersion }); } catch { }
-
-                    // Re-sync recording mode if it was active before reconnection
+                    // Re-sync recording mode if it was active before reconnection. BEFORE the
+                    // expected version, not after: from 1.4.26 a version mismatch reloads the
+                    // extension unless it is recording, and a fresh port (or a fresh service worker)
+                    // starts with isRecording false — sent second, the guard read false every time
+                    // and a recording in progress lost its content scripts to the reload.
                     if (IsRecordingMode)
                     {
                         try { SendMessage(new { type = "browser:setRecording", enabled = true }); } catch { }
                     }
+
+                    // Send expected extension version for update check
+                    try { SendMessage(new { type = "bridge:expectedVersion", version = ExpectedExtensionVersion }); } catch { }
 
                     // Run message reader and heartbeat sender concurrently
                     using var sessionCts = CancellationTokenSource.CreateLinkedTokenSource(token);
