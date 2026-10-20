@@ -451,6 +451,19 @@ namespace TrueReplayer.Interop
         [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
         public static extern bool GetUserObjectInformation(IntPtr hObj, int nIndex, System.Text.StringBuilder? pvInfo, uint nLength, out uint lpnLengthNeeded);
 
+        // When this session last received input, from ANY device, physical or injected, in
+        // GetTickCount (32-bit) time. Tells the hook watchdog whether there was input its hooks
+        // should have seen.
+        [StructLayout(LayoutKind.Sequential)]
+        public struct LASTINPUTINFO
+        {
+            public uint cbSize;
+            public uint dwTime;
+        }
+
+        [DllImport("user32.dll")]
+        public static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
+
         // Session change notifications (lock/unlock, console or remote reconnect), delivered to the
         // main window as WM_WTSSESSION_CHANGE with the event in wParam.
         public const int WM_WTSSESSION_CHANGE = 0x02B1;

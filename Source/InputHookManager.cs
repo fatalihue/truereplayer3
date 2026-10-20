@@ -1110,6 +1110,13 @@ namespace TrueReplayer
         // flagged LLKHF_INJECTED, which is precisely why every gate in this file already ignores
         // it, and why the probe is invisible to recording, hotkeys, remaps and hotstrings alike.
         //
+        // It asks only when Windows saw input the hook did not. Asking an idle machine every 30 s
+        // was not invisible: the mouse probe is a real move, so a fullscreen video in a browser
+        // showed its controls and cursor every 30 s, and every probe reset the session's idle
+        // timer, so the screen saver and display-off never came. A hook only dies while input is
+        // arriving (the callback overran on an event), and GetLastInputInfo records input from any
+        // device, so "input newer than this hook's last beat" is the moment a dead hook matters.
+        //
         // START() ALONE CANNOT RECOVER. Both installs are guarded by `if (id == IntPtr.Zero)` and
         // the removed hook's handle is still sitting in that field, so Start() on a dead hook is a
         // no-op. Recovery zeroes the dead hook's id first — and resets that hook's key state, so it
@@ -1151,6 +1158,16 @@ namespace TrueReplayer
         // user is typing.
         private const int WatchdogQuietMs = 20_000;
         private const int WatchdogProbeWaitMs = 250;
+        // How much newer than a hook's last beat the session's last input must be to count as
+        // input that hook missed. GetLastInputInfo is stamped before the hook callback runs, so for
+        // a live hook the beat is the later of the two; the margin only absorbs tick granularity.
+        private const int WatchdogMissedInputMs = 1_000;
+
+        // The session's last input as of the end of the previous probe — that input was the
+        // probe's own, and must not read as evidence for the next tick. Without it the keyboard
+        // probe would be "input the mouse hook missed" and the two arms would wake each other
+        // forever.
+        private static long _probeInputMark;
         // Two, not one. The callback runs on the UI thread, so a single unanswered probe can just
         // mean that thread was busy for a moment; two misses 30 s apart is a dead hook.
         private const int WatchdogStrikesToReinstall = 2;
@@ -1214,16 +1231,27 @@ namespace TrueReplayer
             long now = Environment.TickCount64;
             long kbBefore = System.Threading.Volatile.Read(ref _keyboardBeat);
             long msBefore = System.Threading.Volatile.Read(ref _mouseBeat);
-            bool kbQuiet = now - kbBefore >= WatchdogQuietMs && !_keyboardProbeOff;
-            bool msQuiet = now - msBefore >= WatchdogQuietMs && !_mouseProbeOff;
+            bool kbIdle = now - kbBefore >= WatchdogQuietMs && !_keyboardProbeOff;
+            bool msIdle = now - msBefore >= WatchdogQuietMs && !_mouseProbeOff;
             // Recent real traffic is a better answer than any probe could be.
-            if (!kbQuiet) _keyboardStrikes = 0;
-            if (!msQuiet) _mouseStrikes = 0;
+            if (!kbIdle) _keyboardStrikes = 0;
+            if (!msIdle) _mouseStrikes = 0;
+
+            // A quiet hook is probed only when the session had input after that hook's last beat
+            // (and after the previous probe's own input) — or when its last probe went unanswered,
+            // so the strike that would reinstall it is never left waiting on the user. An idle
+            // machine is not evidence, and is not disturbed. Strikes are kept, not reset, while
+            // there is no evidence: no input proves nothing either way.
+            long lastInput = LastSessionInputTick(now);
+            long seen = System.Threading.Volatile.Read(ref _probeInputMark);
+            bool kbQuiet = kbIdle && (_keyboardStrikes > 0 || lastInput - Math.Max(kbBefore, seen) > WatchdogMissedInputMs);
+            bool msQuiet = msIdle && (_mouseStrikes > 0 || lastInput - Math.Max(msBefore, seen) > WatchdogMissedInputMs);
             if (!kbQuiet && !msQuiet) return;
 
             if (kbQuiet) SendKeyboardProbe();
             if (msQuiet) SendMouseProbe();
             System.Threading.Thread.Sleep(WatchdogProbeWaitMs);
+            System.Threading.Volatile.Write(ref _probeInputMark, LastSessionInputTick(Environment.TickCount64));
 
             bool kbDead = kbQuiet && System.Threading.Volatile.Read(ref _keyboardBeat) == kbBefore;
             bool msDead = msQuiet && System.Threading.Volatile.Read(ref _mouseBeat) == msBefore;
@@ -1249,8 +1277,20 @@ namespace TrueReplayer
             {
                 _watchdogProved = true;
                 TrueReplayer.Services.DiagnosticLog.Info(
-                    $"Hook watchdog: liveness probe answered ({(kbQuiet ? "keyboard ok" : "keyboard busy")}, {(msQuiet ? "mouse ok" : "mouse busy")}).");
+                    $"Hook watchdog: liveness probe answered ({(kbQuiet ? "keyboard ok" : "keyboard not probed")}, {(msQuiet ? "mouse ok" : "mouse not probed")}).");
             }
+        }
+
+        // The session's last input on the TickCount64 clock. GetLastInputInfo stamps 32-bit
+        // GetTickCount time, so the age is taken in unsigned 32-bit arithmetic (correct across the
+        // 49.7-day wrap) and subtracted from now. A failed call reads as input right now: the
+        // watchdog then probes as it did before it had this gate, rather than going blind.
+        private static long LastSessionInputTick(long now)
+        {
+            var info = new NativeMethods.LASTINPUTINFO { cbSize = (uint)Marshal.SizeOf<NativeMethods.LASTINPUTINFO>() };
+            if (!NativeMethods.GetLastInputInfo(ref info)) return now;
+            uint age = unchecked((uint)Environment.TickCount - info.dwTime);
+            return now - age;
         }
 
         private static void ReinstallHooks(bool keyboardDead, bool mouseDead)
@@ -1477,10 +1517,10 @@ namespace TrueReplayer
         // filtered event is not a probe.
         //
         // The pair nets to zero, so the cursor ends exactly where it started; the SetCursorPos
-        // below only exists for the case where the second move is itself dropped. The visible cost
-        // is a 1-px excursion lasting microseconds, and only ever on a machine whose mouse has not
-        // moved for twenty seconds — any real movement answers the question for free and skips the
-        // probe entirely.
+        // below only exists for the case where the second move is itself dropped. It is still a
+        // real move to whatever window is under the cursor (a fullscreen player shows its controls),
+        // which is why it is only sent when the session had input the mouse hook did not see — any
+        // real movement answers the question for free and skips the probe entirely.
         private static void SendMouseProbe()
         {
             NativeMethods.GetCursorPos(out var before);
