@@ -13,6 +13,7 @@ import { SegmentedControl } from './common/SegmentedControl';
 import { iconButtonClass } from './common/IconButton';
 import { KbdTag } from './common/KbdTag';
 import { ClickerPresetRow, type PendingPresetName } from './ClickerPresetRow';
+import { useClicker, type ClickerSettingKey } from '../logic/useClicker';
 import type { OcrLanguagesPayload, SettingsState } from '../bridge/messageTypes';
 import { ocrLanguageNote, ocrLanguageOptions, ocrPickerLanguages } from '../utils/ocrLanguages';
 import { chipOn, chipOff, chipDotOn, chipDotOff } from './common/chipStyles';
@@ -667,11 +668,10 @@ function ComboInput({ value, onCommit, options, width = FIELD_W, editable = true
 // Takes the whole settings slice rather than 22 mirrored props: every new Clicker setting used
 // to touch four places in this file (prop, type, destructure, call site) before it did anything.
 // The local names below are the ones the body always used, so it reads as before.
-function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, lastPresetName, pendingPresetName }: {
+function ClickerSection({ unit, onUnitChange, settings, seedUndo, lastPresetName, pendingPresetName }: {
   unit: 'ms' | 'cps';
   onUnitChange: (u: 'ms' | 'cps') => void;
   settings: SettingsState;
-  onChange: (key: string, value: string | boolean | number | object | null) => void;
   /** Owned by SettingsPanel — this component is remounted by a tab switch and by the collapse. */
   seedUndo: React.MutableRefObject<Record<string, string | null>>;
   /** Owned by SettingsPanel for the same reason: the last preset name that matched, so the
@@ -700,7 +700,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
     cursorClickUseMaxDuration: useMaxDuration,
     cursorClickGameMove: gameMove,
   } = settings;
-  const { send } = useBridge();
+  const clicker = useClicker();
   const tt = useTt();
   // Unit toggle for the Rate row: 'ms' shows the raw delay; '/s' shows the clicks per second
   // the engine will actually produce. Backend always stores ms — the toggle is display-only.
@@ -728,17 +728,17 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
   // the stray value on disk. We remember what was there before the seed, and restore it only if
   // the field still holds exactly what we wrote — any edit of the user's clears the memory, so
   // their value is never touched.
-  const seedOnEnable = (key: string, current: string, seed: string) => {
+  const seedOnEnable = (key: ClickerSettingKey, current: string, seed: string) => {
     seedUndo.current[key] = current;
-    onChange(key, seed);
+    clicker.set(key, seed);
   };
-  const unseedOnDisable = (key: string, current: string, seed: string) => {
+  const unseedOnDisable = (key: ClickerSettingKey, current: string, seed: string) => {
     const prev = seedUndo.current[key];
-    if (prev != null && current === seed) onChange(key, prev);
+    if (prev != null && current === seed) clicker.set(key, prev);
     seedUndo.current[key] = null;
   };
   /** The user typed in this field: their value now, so a later toggle-off must not overwrite it. */
-  const forgetSeed = (key: string) => { seedUndo.current[key] = null; };
+  const forgetSeed = (key: ClickerSettingKey) => { seedUndo.current[key] = null; };
 
   // Position is switched OFF by doors that are not its own dot: Area's and Fixed's dots (the mutex
   // in setClickMode) and the backend, which disarms it when an area or point pick lands. Only the
@@ -753,9 +753,9 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
     positionWasOn.current = usePositionJitter;
     if (!was || usePositionJitter) return;
     const prev = seedUndo.current.cursorClickPositionJitter;
-    if (prev != null && positionJitter === POSITION_SEED) onChange('cursorClickPositionJitter', prev);
+    if (prev != null && positionJitter === POSITION_SEED) clicker.set('cursorClickPositionJitter', prev);
     seedUndo.current.cursorClickPositionJitter = null;
-  }, [usePositionJitter, positionJitter, seedUndo, onChange]);
+  }, [usePositionJitter, positionJitter, seedUndo, clicker]);
 
   // The two values that make the ENGINE's period differ from the raw delay. The interval
   // is added to every cycle (in Clicker mode one iteration is one click, so it is not a
@@ -800,21 +800,13 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
     }
     setFloorClampedAt(ms !== requestedMs ? ms : null);
     setLocalDelayMs(ms);              // optimistic — keeps the input stable on next render
-    onChange('cursorClickDelay', String(ms));
+    clicker.set('cursorClickDelay', String(ms));
   };
 
   // Turn a toggle ON if it isn't already — used by row-input onEnter to auto-activate the
   // companion switch when the user types a value (matches the Execution panel's affordance).
-  const activateIfOff = (currentlyOn: boolean, settingKey: string) => {
-    if (!currentlyOn) onChange(settingKey, true);
-  };
-
-  // The three mutually-exclusive "where the click lands" modes. Enabling one turns the
-  // other two off; they all write the same axis so only one may be active.
-  const CLICK_MODE_KEYS = ['cursorClickUsePositionJitter', 'cursorClickUseArea', 'cursorClickUseFixed'];
-  const setClickMode = (key: string, enable: boolean) => {
-    onChange(key, enable);
-    if (enable) CLICK_MODE_KEYS.forEach((k) => { if (k !== key) onChange(k, false); });
+  const activateIfOff = (currentlyOn: boolean, settingKey: ClickerSettingKey) => {
+    if (!currentlyOn) clicker.set(settingKey, true);
   };
 
   return (
@@ -840,7 +832,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
             <ComboInput
               editable={false}
               value={button}
-              onCommit={(v) => onChange('cursorClickButton', v)}
+              onCommit={(v) => clicker.set('cursorClickButton', v)}
               options={[
                 { value: 'Left', label: 'Left' },
                 { value: 'Right', label: 'Right' },
@@ -915,16 +907,16 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
               value={positionJitter}
               isOn={usePositionJitter}
               min={0} max={MAX_POSITION_PX}
-              onCommitValue={(v) => { forgetSeed('cursorClickPositionJitter'); onChange('cursorClickPositionJitter', v); }}
+              onCommitValue={(v) => { forgetSeed('cursorClickPositionJitter'); clicker.set('cursorClickPositionJitter', v); }}
               onToggle={(v) => {
-                setClickMode('cursorClickUsePositionJitter', v);
+                clicker.setTargetMode('cursorClickUsePositionJitter', v);
                 // Seed a visible scatter when switching ON from the 1 px default: ±1 px is
                 // imperceptible, so the switch looked dead. Same seed-on-enable the Clicks
                 // chip uses (0 → 100). A value the user typed (≥ 2) is left alone.
                 if (v && (parseInt(positionJitter, 10) || 0) < 2) seedOnEnable('cursorClickPositionJitter', positionJitter, POSITION_SEED);
                 else if (!v) unseedOnDisable('cursorClickPositionJitter', positionJitter, POSITION_SEED);
               }}
-              onEnterActivate={() => setClickMode('cursorClickUsePositionJitter', true)}
+              onEnterActivate={() => clicker.setTargetMode('cursorClickUsePositionJitter', true)}
             />
           </SettingRow>
           {/* Click area — chip-shaped: the dot toggles useArea (mutually exclusive with
@@ -939,15 +931,8 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
             >
               <button
                 type="button"
-                // Arming Area with no box drawn is a state the engine ignores and the backend
-                // normalises away the moment a preset is applied — so a preset saved from it came
-                // back as "Custom" against itself. The dot can no longer produce it: with no box,
-                // turning it on opens the picker, and the backend arms the mode on a successful
-                // draw (Esc leaves everything as it was).
-                onClick={() => {
-                  if (!useArea && !area) send({ type: 'clicker:configureArea', payload: {} });
-                  else setClickMode('cursorClickUseArea', !useArea);
-                }}
+                // With no box drawn, arming opens the picker instead (see toggleArea).
+                onClick={clicker.toggleArea}
                 role="switch"
                 aria-checked={useArea}
                 aria-label="Use area"
@@ -961,7 +946,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
                 />
               </button>
               <button
-                onClick={() => send({ type: 'clicker:configureArea', payload: {} })}
+                onClick={clicker.pickArea}
                 className={`flex-1 min-w-0 h-full flex items-center justify-end font-mono cursor-pointer hover:underline ${area ? 'pr-1' : 'pr-2'}`}
                 // pos="left" opens the tip into the work area (like the SettingRow labels)
                 // instead of the default auto placement that lands on top of the field.
@@ -980,8 +965,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    onChange('cursorClickUseArea', false);
-                    onChange('cursorClickArea', null);
+                    clicker.clearArea();
                   }}
                   aria-label="Clear area"
                   className="shrink-0 h-full px-1 flex items-center text-text-tertiary hover:text-text-primary transition-colors"
@@ -1006,7 +990,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
             >
               <button
                 type="button"
-                onClick={() => setClickMode('cursorClickUseFixed', !useFixed)}
+                onClick={() => clicker.setTargetMode('cursorClickUseFixed', !useFixed)}
                 role="switch"
                 aria-checked={useFixed}
                 aria-label="Use fixed point"
@@ -1020,7 +1004,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
                 />
               </button>
               <button
-                onClick={() => send({ type: 'clicker:configurePoint', payload: {} })}
+                onClick={clicker.pickPoint}
                 className={`flex-1 min-w-0 h-full flex items-center justify-end font-mono cursor-pointer hover:underline ${fixedPoint ? 'pr-1' : 'pr-2'}`}
                 // pos="left" — same as the Area chip / SettingRow labels; opens into the work
                 // area instead of on top of the field.
@@ -1038,7 +1022,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
                   onClick={(e) => {
                     // Clear the point only — keep useFixed on, reverting to lock-on-start.
                     e.stopPropagation();
-                    onChange('cursorClickFixedPoint', null);
+                    clicker.clearPoint();
                   }}
                   aria-label="Clear fixed point"
                   className="shrink-0 h-full px-1 flex items-center text-text-tertiary hover:text-text-primary transition-colors"
@@ -1065,9 +1049,9 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
                  used — the chip used to display "0" beside a tooltip promising "0 = forever"
                  while the backend quietly substituted a single click. */
               offDisplay="∞"
-              onCommitValue={(v) => { forgetSeed('cursorClickLoops'); onChange('cursorClickLoops', v); }}
+              onCommitValue={(v) => { forgetSeed('cursorClickLoops'); clicker.set('cursorClickLoops', v); }}
               onToggle={(v) => {
-                onChange('cursorClickUseLoops', v);
+                clicker.set('cursorClickUseLoops', v);
                 // Seed a real limit when switching ON. Toggling the dot never runs commit(),
                 // so a stored "0" would otherwise mean "limit enabled" and still run forever
                 // — with the chip now showing 0. Same seed-on-enable pattern the SheetPanel
@@ -1088,9 +1072,9 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
               offDisplay="∞"
               onCommitValue={(v) => {
                 const s = Math.max(1, Math.min(86400, parseInt(v, 10) || 60));
-                onChange('cursorClickMaxDuration', String(s * 1000));
+                clicker.set('cursorClickMaxDuration', String(s * 1000));
               }}
-              onToggle={(v) => onChange('cursorClickUseMaxDuration', v)}
+              onToggle={(v) => clicker.set('cursorClickUseMaxDuration', v)}
               onEnterActivate={() => activateIfOff(useMaxDuration, 'cursorClickUseMaxDuration')}
             />
           </SettingRow>
@@ -1115,9 +1099,9 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
               value={rateJitter}
               isOn={useRateJitter}
               unit="%" min={0} max={100}
-              onCommitValue={(v) => { forgetSeed('cursorClickDelayJitter'); onChange('cursorClickDelayJitter', v); }}
+              onCommitValue={(v) => { forgetSeed('cursorClickDelayJitter'); clicker.set('cursorClickDelayJitter', v); }}
               onToggle={(v) => {
-                onChange('cursorClickUseJitter', v);
+                clicker.set('cursorClickUseJitter', v);
                 // Same seed-on-enable as Position: ±1 % of a 100 ms period is ±1 ms, nothing a
                 // human or a detector would notice. 10 % was the original intended seed.
                 if (v && (parseInt(rateJitter, 10) || 0) < 2) seedOnEnable('cursorClickDelayJitter', rateJitter, '10');
@@ -1131,7 +1115,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
               that the hold lives inside the period, raising it does not change the rate until
               it becomes the ceiling — and the ≈ note under Rate says so when it does. */}
           <SettingRow label="Hold" tooltip={tt('Press duration. 50–200 ms for apps that miss short clicks.', 'Duração do pressionar. 50–200 ms para apps que perdem cliques curtos.')}>
-            <ValueField value={hold} unit="ms" min={0} max={CLICK_HOLD_MAX_MS} onCommitValue={(v) => onChange('cursorClickHold', v)} />
+            <ValueField value={hold} unit="ms" min={0} max={CLICK_HOLD_MAX_MS} onCommitValue={(v) => clicker.set('cursorClickHold', v)} />
           </SettingRow>
           {/* "Gap", not "Interval": in Clicker mode one iteration is one click, so this is not
               a pause between bursts — it is added to every click's period. */}
@@ -1140,8 +1124,8 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
               value={interval}
               isOn={useInterval}
               unit="ms" format min={0} max={MAX_DELAY_MS}
-              onCommitValue={(v) => onChange('cursorClickInterval', v)}
-              onToggle={(v) => onChange('cursorClickUseInterval', v)}
+              onCommitValue={(v) => clicker.set('cursorClickInterval', v)}
+              onToggle={(v) => clicker.set('cursorClickUseInterval', v)}
               onEnterActivate={() => activateIfOff(useInterval, 'cursorClickUseInterval')}
             />
           </SettingRow>
@@ -1153,7 +1137,7 @@ function ClickerSection({ unit, onUnitChange, settings, onChange, seedUndo, last
               rendered in Clicker mode, so a user could not have seen what was silencing this. */}
           <SettingRow label="Game move" tooltip={tt('Walks the cursor instead of teleporting, for games like Roblox. Costs a few ms per click.', 'Move o cursor por um caminho em vez de teletransportar, para jogos como Roblox. Custa alguns ms por clique.')}>
             <div className={`${FIELD_W} flex justify-end`}>
-              <CompactToggle isOn={gameMove} onChange={(v) => onChange('cursorClickGameMove', v)} />
+              <CompactToggle isOn={gameMove} onChange={(v) => clicker.set('cursorClickGameMove', v)} />
             </div>
           </SettingRow>
           <GameMoveNote
@@ -1759,7 +1743,6 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                 unit={clickerUnit}
                 onUnitChange={setClickerUnit}
                 settings={settings}
-                onChange={changeSetting}
                 seedUndo={seedUndoRef}
                 lastPresetName={lastPresetNameRef}
                 pendingPresetName={pendingPresetNameRef}

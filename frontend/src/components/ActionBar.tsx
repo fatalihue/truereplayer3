@@ -6,6 +6,7 @@ import { useAppState, useClickerLive } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
 import { useRecording } from '../logic/useRecording';
 import { useReplay } from '../logic/useReplay';
+import { useClicker } from '../logic/useClicker';
 import { useTt } from '../state/LanguageContext';
 import { chipOn, chipOff } from './common/chipStyles';
 
@@ -43,15 +44,11 @@ export function ActionBar() {
   const { send } = useBridge();
   const recording = useRecording();
   const replay = useReplay();
+  const clicker = useClicker();
   const tt = useTt();
   const isClicker = settings.useCursorClick;
   const isReplaying = buttonStates.replayActive;
   const isRecording = buttonStates.recordingActive;
-
-  const setMode = (clicker: boolean) => {
-    if (clicker === isClicker) return;
-    send({ type: 'settings:change', payload: { key: 'useCursorClick', value: clicker } });
-  };
 
   // ── Loop chip ── (LoopChip, below: the only part of the bar that reads the live run slice)
   const activeEntry = activeProfile ? profiles.find(p => p.name === activeProfile) : undefined;
@@ -120,7 +117,7 @@ export function ActionBar() {
           ariaLabel="Execution mode"
           dense
           value={isClicker ? 'clicker' : 'macro'}
-          onChange={(v) => setMode(v === 'clicker')}
+          onChange={(v) => clicker.setMode(v === 'clicker')}
           options={[
             {
               value: 'macro',

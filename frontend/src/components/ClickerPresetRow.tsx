@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Check, X } from 'lucide-react';
-import type { ClickerPreset, ClickerPresetFields, SettingsState } from '../bridge/messageTypes';
-import { useBridge } from '../bridge/BridgeContext';
+import type { SettingsState } from '../bridge/messageTypes';
+import { useClicker, matchingPreset } from '../logic/useClicker';
 import { useToast } from '../state/ToastContext';
 import { useTt } from '../state/LanguageContext';
 import { chipOn, chipOff } from './common/chipStyles';
@@ -13,25 +13,11 @@ import { chipOn, chipOff } from './common/chipStyles';
  * Area with the right button for another) retypes every field each time.
  *
  * The chip names the preset that MATCHES the current settings field by field ("Custom" when
- * none does, "None" when there are none), so editing any knob visibly leaves the preset — no
- * "active" flag to keep in sync on either side. Picking a preset applies it; "Save current
- * as…" turns the chip into a name field; ✕ beside a preset deletes it. All three round-trip
- * through the bridge (clicker:savePreset / applyPreset / deletePreset) and come back as
- * settings:loaded, which is what repaints this.
+ * none does, "None" when there are none — matchingPreset in logic/useClicker). Picking a preset
+ * applies it; "Save current as…" turns the chip into a name field; ✕ beside a preset deletes it.
+ * All three round-trip through the bridge and come back as settings:loaded, which is what
+ * repaints this.
  */
-const PRESET_KEYS: (keyof ClickerPresetFields)[] = [
-  'cursorClickButton', 'cursorClickDelay', 'cursorClickDelayJitter', 'cursorClickUseJitter', 'cursorClickHold',
-  'cursorClickPositionJitter', 'cursorClickUsePositionJitter', 'cursorClickUseArea', 'cursorClickArea',
-  'cursorClickUseFixed', 'cursorClickFixedPoint', 'cursorClickLoops', 'cursorClickUseLoops',
-  'cursorClickInterval', 'cursorClickUseInterval', 'cursorClickMaxDuration', 'cursorClickUseMaxDuration',
-  'cursorClickGameMove',
-];
-
-// The bridge omits null-valued keys, so a cleared area/point arrives as `undefined` on one side
-// and `null` on the other — normalise before comparing.
-function sameSetup(p: ClickerPreset, s: SettingsState): boolean {
-  return PRESET_KEYS.every((k) => JSON.stringify(p[k] ?? null) === JSON.stringify(s[k] ?? null));
-}
 
 /** A name being typed into "Save current as…", kept across this row's remounts (see pendingName). */
 export interface PendingPresetName { name: string; openedWith: string }
@@ -49,21 +35,21 @@ export function ClickerPresetRow({ settings, width, lastMatched, pendingName }: 
    *  word. The row comes back naming, with the text, and without stealing the focus. */
   pendingName: React.MutableRefObject<PendingPresetName | null>;
 }) {
-  const { send } = useBridge();
+  const clicker = useClicker();
   const { showToast } = useToast();
   const tt = useTt();
   const presets = settings.cursorClickPresets ?? [];
   // ✕ deletes at once (no confirm, the row is a menu), so the delete carries a 10 s Undo — the
   // same window ProfilePanel gives its metadata removals. The backend keeps the deleted preset.
   const deletePreset = (name: string) => {
-    send({ type: 'clicker:deletePreset', payload: { name } });
+    clicker.deletePreset(name);
     showToast(tt(`Deleted preset "${name}"`, `Preset "${name}" excluído`), {
       type: 'success',
       duration: 10000,
-      action: { label: 'Undo', onClick: () => send({ type: 'clicker:undoDeletePreset', payload: { name } }) },
+      action: { label: 'Undo', onClick: () => clicker.undoDeletePreset(name) },
     });
   };
-  const active = presets.find((p) => sameSetup(p, settings)) ?? null;
+  const active = matchingPreset(settings);
   const [open, setOpen] = useState(false);
   // Read once, by the initializers; the mount effect below marks the slot consumed.
   const restored = pendingName.current;
@@ -142,7 +128,7 @@ export function ClickerPresetRow({ settings, width, lastMatched, pendingName }: 
 
   const commitName = () => {
     const trimmed = name.trim();
-    if (trimmed) send({ type: 'clicker:savePreset', payload: { name: trimmed } });
+    if (trimmed) clicker.savePreset(trimmed);
     setNaming(false);
     setName('');
   };
@@ -198,7 +184,7 @@ export function ClickerPresetRow({ settings, width, lastMatched, pendingName }: 
               <button
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => { send({ type: 'clicker:applyPreset', payload: { name: p.name } }); setOpen(false); }}
+                onClick={() => { clicker.applyPreset(p.name); setOpen(false); }}
                 aria-current={active?.name === p.name || undefined}
                 className="flex-1 min-w-0 flex items-center gap-1 px-2 py-1 text-left text-caption text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors"
               >
