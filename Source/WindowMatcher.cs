@@ -135,7 +135,10 @@ namespace TrueReplayer.Helpers
             {
                 var buf = titleBuffer ?? new StringBuilder(512);
                 buf.Clear();
-                NativeMethods.GetWindowText(hwnd, buf, buf.Capacity);
+                // InternalGetWindowText, not GetWindowText: the input hooks call this from their
+                // own thread, and GetWindowText on one of THIS process's windows (the user pressing
+                // a hotkey with TrueReplayer in front) sends WM_GETTEXT to the UI thread and waits.
+                NativeMethods.InternalGetWindowText(hwnd, buf, buf.Capacity);
                 string title = buf.ToString();
 
                 if (IsRegexMode(target))

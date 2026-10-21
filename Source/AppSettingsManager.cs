@@ -358,6 +358,19 @@ namespace TrueReplayer.Services
             }
         }
 
+        /// <summary>
+        /// Makes <paramref name="profile"/> the current one with the global settings already on it.
+        /// The order matters: the input hooks read UserProfile.Current from their own thread, and
+        /// publishing first left a window — while Load() read appsettings.json from disk — in which
+        /// a key press saw the class defaults: Profile Keys on, and the factory Record and Replay
+        /// keys, whatever the user had set.
+        /// </summary>
+        public static void ActivateProfile(UserProfile profile)
+        {
+            ApplyGlobalSettings(profile);
+            UserProfile.Current = profile;
+        }
+
         public static void ApplyGlobalSettings(UserProfile profile)
         {
             var s = Load();
@@ -372,8 +385,8 @@ namespace TrueReplayer.Services
             profile.UseCustomDelay = s.UseCustomDelay;
             profile.CustomDelay = s.CustomDelay;
             // Loop/Interval are NOT stamped here. They used to be — which is why removing
-            // [JsonIgnore] from UserProfile.LoopCount alone was a no-op: this method runs after
-            // EVERY `UserProfile.Current = profile` (9 sites), so the global overwrote the value
+            // [JsonIgnore] from UserProfile.LoopCount alone was a no-op: this method runs on
+            // EVERY profile activation (ActivateProfile), so the global overwrote the value
             // that had just been read off disk. The profile's own values now survive activation;
             // the "No Profile" fallback lives in the WebViewBridge mirrors (see BuildLoopConfig).
             // Smooth-movement settings live on ActionReplayer statics (global runtime config),

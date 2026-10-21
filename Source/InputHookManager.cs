@@ -13,11 +13,15 @@ namespace TrueReplayer
 {
     public static class InputHookManager
     {
-        public static event Action<string, int, int, bool, int>? OnMouseEvent;
-        // (keyName, isDown, isPassThroughFeed). The third term distinguishes "the hook is handing
-        // this key to the foreground app and the recorder should write it down" from "the user
-        // pressed this key" — see PassThroughRecordsDown. Only a real key event is a gesture.
-        public static event Action<string, bool, bool>? OnKeyEvent;
+        // (button, x, y, isDown, scrollDelta, ticks). Both recording events end with the event's
+        // Environment.TickCount64, stamped here on the hook thread: the subscriber records on the UI
+        // thread, and a delay or a double-click measured from when the UI thread got round to it
+        // would carry however long that thread was busy.
+        public static event Action<string, int, int, bool, int, long>? OnMouseEvent;
+        // (keyName, isDown, isPassThroughFeed, ticks). The third term distinguishes "the hook is
+        // handing this key to the foreground app and the recorder should write it down" from "the
+        // user pressed this key" — see PassThroughRecordsDown. Only a real key event is a gesture.
+        public static event Action<string, bool, bool, long>? OnKeyEvent;
         public static event Action<string>? OnHotkeyPressed;
 
         /// <summary>
@@ -128,7 +132,7 @@ namespace TrueReplayer
         /// insertion point mid-recording. A feed means "write this down", never "the user made a
         /// gesture".
         /// </summary>
-        private static void PassThroughRecordsDown(string keyName) => OnKeyEvent?.Invoke(keyName, true, true);
+        private static void PassThroughRecordsDown(string keyName) => OnKeyEvent?.Invoke(keyName, true, true, Environment.TickCount64);
 
         /// <summary>
         /// Fire a hotkey whose key-down this hook is SWALLOWING, and claim its key-up.
@@ -303,14 +307,19 @@ namespace TrueReplayer
         /// user is still holding Ctrl would print a strand that is simply a hold. Cross-checking
         /// makes every line it prints a real defect.
         ///
-        /// Read WITHOUT a lock, and that is deliberate rather than sloppy: both low-level hooks
-        /// pump on the UI thread (see <see cref="_activeRemapDowns"/>), and the one caller — the
-        /// armed-profiles summary in ProfileController — publishes an ObservableCollection on that
-        /// same thread a few lines earlier. That call site already sits inside a try/catch that
-        /// degrades to a log line, so even a future off-thread caller costs a diagnostic, never a
-        /// crash. Adding a lock here would put one on the hook's hot path to serve a log string.
+        /// Read ON the hook thread, which owns the set, rather than under a lock: a lock would put
+        /// one on the hook's hot path to serve a log string. The one caller — the armed-profiles
+        /// summary in ProfileController, on the UI thread — waits up to half a second for the
+        /// answer and gets an empty list if the hook thread is busy; it already sits inside a
+        /// try/catch that degrades to a log line.
         /// </summary>
         public static List<string> SnapshotStrandedKeys()
+        {
+            List<string> stranded = new();
+            return RunOnHookThread(() => stranded = SnapshotStrandedKeysOnHookThread(), 500) ? stranded : new List<string>();
+        }
+
+        private static List<string> SnapshotStrandedKeysOnHookThread()
         {
             var stranded = new List<string>();
             foreach (int vk in _vkCodesCurrentlyDown)
@@ -371,7 +380,7 @@ namespace TrueReplayer
         // Pairing: the TARGET chosen at DOWN time, consumed at UP — a config change or a window
         // switch mid-hold must release the SAME thing it pressed (else it stays stuck down).
         // RemapTarget.Disable here also encodes "a hotkey consumed the logical key": swallow the
-        // repeats, release nothing. Hook-thread-only (both LL hooks pump on the UI thread).
+        // repeats, release nothing. Hook-thread-only (both LL hooks pump on the hook thread).
         private static readonly Dictionary<int, RemapTarget> _activeRemapDowns = new();
         // TO vks WE mirrored into _vkCodesCurrentlyDown — so releasing a remap never removes
         // an entry the user's PHYSICAL key put there (CapsLock→A while A is physically held),
@@ -456,7 +465,7 @@ namespace TrueReplayer
         // Mouse-side targets go out through SendInput's MOUSE path: a button flag with WHICH
         // side button in mouseData, or one wheel notch. Injected, therefore LLMHF_INJECTED, so the
         // mouse hook's trigger path ignores them exactly as it ignores replayed clicks.
-        // True for the duration of our own mouse SendInput. Both hooks are installed from the UI
+        // True for the duration of our own mouse SendInput. Both hooks are installed from the hook
         // thread and this runs inside their callbacks, so the injected event re-enters
         // MouseHookCallbackCore synchronously and this flag is still up when it arrives. The
         // keyboard hook has a blanket LLKHF_INJECTED gate; the mouse hook does not (third-party
@@ -740,7 +749,7 @@ namespace TrueReplayer
 
         // DoubleTap: last swallowed tap, keyed by composed key + monotonic tick. A second tap
         // of the SAME combo within the window fires; anything else restarts the window.
-        // Hook-thread-only state (both hooks pump on the same UI thread).
+        // Hook-thread-only state (both hooks pump on the same hook thread).
         private const int DoubleTapWindowMs = 400;
         private static string? _lastTapKey = null;
         private static long _lastTapTicks = 0;
@@ -863,9 +872,13 @@ namespace TrueReplayer
         // Manual resume from UI button — fires the same callback the hotkey would.
         public static void TriggerReplayPauseListener() => _pauseResumeCallback?.Invoke();
 
-        public static string? LastTriggerHotkey { get; set; }
+        // Volatile: the hook thread writes it right before raising OnHotkeyPressed, and the replay
+        // start reads it on the UI thread.
+        public static string? LastTriggerHotkey { get => _lastTriggerHotkey; set => _lastTriggerHotkey = value; }
+        private static volatile string? _lastTriggerHotkey;
 
-        public static bool IgnoreProfileHotkeys { get; set; } = false;
+        public static bool IgnoreProfileHotkeys { get => _ignoreProfileHotkeys; set => _ignoreProfileHotkeys = value; }
+        private static volatile bool _ignoreProfileHotkeys;
 
         /// When true, suppresses ALL hotkey matching and key/mouse event recording.
         /// Used when a UI dialog/modal is active (SendText, Rename, Hotkey Capture, ContentDialogs).
@@ -1014,9 +1027,124 @@ namespace TrueReplayer
         /// so the OS-level click pairs (open popup + pick option) don't end up in the macro grid
         /// alongside the BrowserSelectOption action that already captures the semantic event.
         /// Cleared on change / blur / 15 s safety timeout — see WebViewBridge SelectInteraction*.
-        public static bool SuppressMouseRecording { get; set; } = false;
+        // Volatile: written by the bridge on the UI thread, read by the mouse hook on its own.
+        public static bool SuppressMouseRecording { get => _suppressMouseRecording; set => _suppressMouseRecording = value; }
+        private static volatile bool _suppressMouseRecording;
+
+        #region Hook thread
+
+        // The low-level hooks run on a thread of their own.
+        //
+        // Windows calls a low-level hook on the thread that installed it, through that thread's
+        // message loop, and the whole system's keyboard and mouse wait for the answer. The hooks
+        // used to be installed from the MainWindow ctor, so they pumped on the UI thread, and every
+        // moment that thread spent elsewhere — loading a profile, serialising the action list for
+        // the WebView, a ContentDialog — was a moment the user's mouse stood still. Measured on
+        // 21-10-2026 (2.49.1) with a probe hook chained in front of ours: idle, the wait was 0.07 ms
+        // at the median, but switching to a 1,000-step macro held the system's mouse for up to
+        // 20 ms, six events above a frame in under a minute. A thread that does nothing else answers
+        // at once, and never comes near LowLevelHooksTimeout (see the watchdog below).
+        //
+        // Ownership did not change, only the owner. Everything the callbacks keep — held keys,
+        // remap pairings, swallowed side buttons, the hotstring buffer, the double-tap window — is
+        // still touched by ONE thread and still needs no locks; that thread is now this one. Code
+        // elsewhere that has to reset that state never touches it: it hands the work over
+        // (RunOnHookThread / PostToHookThread), and the work runs in order with the callbacks.
+        //
+        // This thread never waits on the UI thread. What the callbacks tell the UI goes through the
+        // subscribers' DispatcherQueue.TryEnqueue, and nothing here may call into a window of this
+        // process: GetWindowText on one is a SendMessage to the UI thread (hence
+        // NativeMethods.InternalGetWindowText in the window matching).
+        private static System.Threading.Thread? _hookThread;
+        private static volatile uint _hookThreadId;
+        private static readonly object _hookThreadLock = new();
+        private static readonly System.Collections.Concurrent.ConcurrentQueue<Action> _hookWork = new();
+        // WM_APP range, posted with no window: the loop runs the queued work when it sees it.
+        private const uint WM_HOOK_WORK = 0x8000 + 0x2A1;
+
+        private static bool OnHookThread => _hookThreadId != 0 && NativeMethods.GetCurrentThreadId() == _hookThreadId;
+
+        private static void EnsureHookThread()
+        {
+            lock (_hookThreadLock)
+            {
+                if (_hookThread != null) return;
+                // Not disposed, here or in RunOnHookThread: Wait can return while the other thread
+                // is still inside Set, and Dispose is not safe concurrently with it.
+                var ready = new System.Threading.ManualResetEventSlim();
+                var thread = new System.Threading.Thread(() => HookThreadMain(ready))
+                {
+                    Name = "TrueReplayer input hooks",
+                    IsBackground = true,
+                    // Input that waits on this thread is the whole system's input.
+                    Priority = System.Threading.ThreadPriority.Highest,
+                };
+                thread.Start();
+                ready.Wait();
+                _hookThread = thread;
+            }
+        }
+
+        private static void HookThreadMain(System.Threading.ManualResetEventSlim ready)
+        {
+            _hookThreadId = NativeMethods.GetCurrentThreadId();
+            // A thread has no message queue until it calls something that needs one, and a post
+            // to a thread without a queue fails. PeekMessage creates it before anyone can post.
+            NativeMethods.PeekMessage(out _, IntPtr.Zero, 0, 0, NativeMethods.PM_NOREMOVE);
+            ready.Set();
+            while (NativeMethods.GetMessage(out var msg, IntPtr.Zero, 0, 0) > 0)
+            {
+                if (msg.hwnd == IntPtr.Zero && msg.message == WM_HOOK_WORK) { RunHookWork(); continue; }
+                NativeMethods.TranslateMessage(ref msg);
+                NativeMethods.DispatchMessage(ref msg);
+            }
+        }
+
+        private static void RunHookWork()
+        {
+            while (_hookWork.TryDequeue(out var work))
+            {
+                try { work(); }
+                catch (Exception ex) { try { TrueReplayer.Services.DiagnosticLog.Error("Input hook thread: queued work threw", ex); } catch { } }
+            }
+        }
+
+        /// <summary>Runs <paramref name="work"/> on the hook thread, in order with the hook callbacks. Inline when already there.</summary>
+        private static void PostToHookThread(Action work)
+        {
+            if (OnHookThread) { work(); return; }
+            EnsureHookThread();
+            _hookWork.Enqueue(work);
+            if (!NativeMethods.PostThreadMessage(_hookThreadId, WM_HOOK_WORK, IntPtr.Zero, IntPtr.Zero))
+                TrueReplayer.Services.DiagnosticLog.Error($"Input hook thread refused queued work (PostThreadMessage error {Marshal.GetLastWin32Error()}).");
+        }
+
+        /// <summary>
+        /// <see cref="PostToHookThread"/>, waiting up to <paramref name="timeoutMs"/> for it to finish.
+        /// A timeout is logged and returns false; the work still runs when the thread reaches it.
+        /// Only for callers that need the work DONE before they go on — the rest post.
+        /// </summary>
+        private static bool RunOnHookThread(Action work, int timeoutMs)
+        {
+            if (OnHookThread) { work(); return true; }
+            var done = new System.Threading.ManualResetEventSlim();
+            PostToHookThread(() => { try { work(); } finally { done.Set(); } });
+            if (done.Wait(timeoutMs)) return true;
+            TrueReplayer.Services.DiagnosticLog.Warn($"Input hook thread did not finish a request within {timeoutMs} ms.");
+            return false;
+        }
+
+        #endregion
 
         public static void Start()
+        {
+            // Installed FROM the hook thread: a low-level hook is called on the thread that
+            // installed it. Waited for, so the hooks are live when Start returns, as before.
+            RunOnHookThread(InstallHooks, 5000);
+            ArmWatchdog();
+        }
+
+        private static void InstallHooks()
         {
             // SetWindowsHookEx returns IntPtr.Zero on failure (e.g. another LL hook hogging the
             // chain, or a desktop-isolation restriction). Without these checks a failed install is
@@ -1037,7 +1165,6 @@ namespace TrueReplayer
                     TrueReplayer.Services.DiagnosticLog.Error(
                         $"SetKeyboardHook failed — keyboard hook not installed (all hotkeys/hotstrings/recording disabled). Win32 error {Marshal.GetLastWin32Error()}.");
             }
-            ArmWatchdog();
         }
 
         public static void Stop()
@@ -1046,7 +1173,13 @@ namespace TrueReplayer
             // behind it would reinstall the hooks the app is trying to let go of. (The watchdog's
             // own recovery no longer comes through here — see ReinstallDeadHooks.)
             _watchdogArmed = false;
+            // The unhook and the reset run where the hooks and their state live. Waited for: the
+            // shutdown that calls this must not exit with a remapped key still injected down.
+            RunOnHookThread(StopOnHookThread, 2000);
+        }
 
+        private static void StopOnHookThread()
+        {
             if (_mouseHookId != IntPtr.Zero)
             {
                 // UnhookWindowsHookEx returns false if the handle was already invalid or the
@@ -1148,11 +1281,6 @@ namespace TrueReplayer
         private static bool _keyboardProbeOff, _mouseProbeOff;
         private const int MaxReinstallsWithoutProof = 3;
 
-        // The thread the hooks were installed from. A low-level hook's callback is delivered to
-        // the installing thread and needs its message pump, so a reinstall from the timer thread
-        // would produce a handle that never fires — worse than the dead hook it replaced.
-        private static Microsoft.UI.Dispatching.DispatcherQueue? _installDispatcher;
-
         private const int WatchdogIntervalMs = 30_000;
         // Below this, the hook has DEMONSTRABLY run — no probe needed, and no injection while the
         // user is typing.
@@ -1168,8 +1296,9 @@ namespace TrueReplayer
         // probe would be "input the mouse hook missed" and the two arms would wake each other
         // forever.
         private static long _probeInputMark;
-        // Two, not one. The callback runs on the UI thread, so a single unanswered probe can just
-        // mean that thread was busy for a moment; two misses 30 s apart is a dead hook.
+        // Two, not one. A single unanswered probe can mean the hook thread was held for a moment
+        // past the probe's 250 ms — by the machine, if not by this app; two misses 30 s apart is a
+        // dead hook.
         private const int WatchdogStrikesToReinstall = 2;
 
         // VK_NONAME — defined by Windows as a key with no name and no meaning. Nothing maps it,
@@ -1178,11 +1307,6 @@ namespace TrueReplayer
 
         private static void ArmWatchdog()
         {
-            _installDispatcher ??= Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
-            if (_installDispatcher == null)
-                TrueReplayer.Services.DiagnosticLog.Warn(
-                    "Hook watchdog armed without a UI dispatcher — a dead hook will be reported but cannot be reinstalled.");
-
             long now = Environment.TickCount64;
             System.Threading.Volatile.Write(ref _keyboardBeat, now);
             System.Threading.Volatile.Write(ref _mouseBeat, now);
@@ -1325,14 +1449,10 @@ namespace TrueReplayer
                 $"Hook watchdog: the {which} stopped answering — Windows dropped it (low-level hook timeout). " +
                 "Reinstalling. Hotkeys, hotstrings and recording were dead until now.");
 
-            var dispatcher = _installDispatcher;
-            if (dispatcher == null)
-            {
-                TrueReplayer.Services.DiagnosticLog.Error("Hook watchdog: no UI dispatcher to reinstall from — restart the app to recover.");
-                return;
-            }
-            // On the installing thread, and only the hook that died. See ReinstallDeadHooks.
-            bool queued = dispatcher.TryEnqueue(() =>
+            // On the hook thread, and only the hook that died. A low-level hook is called on the
+            // thread that installed it, so a reinstall from this timer thread would produce a handle
+            // that never fires — worse than the dead hook it replaced. See ReinstallDeadHooks.
+            PostToHookThread(() =>
             {
                 try
                 {
@@ -1343,8 +1463,6 @@ namespace TrueReplayer
                 }
                 catch (Exception ex) { TrueReplayer.Services.DiagnosticLog.Error("Hook watchdog reinstall threw", ex); }
             });
-            if (!queued)
-                TrueReplayer.Services.DiagnosticLog.Error("Hook watchdog: the UI thread refused the reinstall — restart the app to recover.");
         }
 
         /// <summary>
@@ -1398,7 +1516,7 @@ namespace TrueReplayer
         /// be trusted to arrive. A confirmed WhilePressed hold is STOPPED — PROFILE_STOP, as its
         /// release would have sent — never silently dropped: dropping it is what left a forced-
         /// infinite run with nothing that could end it. OnRelease and Hold pairs are cancelled
-        /// unfired. UI thread (the hooks' thread).
+        /// unfired. Hook thread.
         /// </summary>
         private static void ResolveTriggerPairs(bool mouse)
         {
@@ -1467,9 +1585,9 @@ namespace TrueReplayer
         /// Ctrl) stayed down in the app in front, and a WhilePressed run kept going with its key long
         /// released. Both devices are reset the way a reinstall resets a dead one; the remap releases
         /// land now that SendInput reaches this desktop again. Called on the UI thread from the main
-        /// window's WM_WTSSESSION_CHANGE.
+        /// window's WM_WTSSESSION_CHANGE, and handed to the hook thread, which owns that state.
         /// </summary>
-        public static void ResetAfterSessionReturn()
+        public static void ResetAfterSessionReturn() => PostToHookThread(() =>
         {
             ResetKeyboardSession();
             ResetMouseSession();
@@ -1478,7 +1596,7 @@ namespace TrueReplayer
             _keyboardStrikes = 0;
             _mouseStrikes = 0;
             TrueReplayer.Services.DiagnosticLog.Info("Session returned to this desktop — held-key state reset (keys released on the secure desktop are never seen by the hooks).");
-        }
+        });
 
         // True when the normal desktop has the input. OpenInputDesktop is refused for the secure
         // desktop (lock screen, UAC, Ctrl+Alt+Del); a desktop that opens but is not "Default" is the
@@ -1544,7 +1662,9 @@ namespace TrueReplayer
         public static void RegisterProfileHotstrings(Dictionary<string, HotstringConfig> hotstrings)
         {
             ProfileHotstrings = hotstrings;
-            _hotstringBufferLen = 0;
+            // The buffer belongs to the hook thread; the reset goes there, behind any key it is
+            // already handling.
+            PostToHookThread(() => _hotstringBufferLen = 0);
         }
 
         public static void RegisterProfileTriggerModes(Dictionary<string, TriggerMode> modes)
@@ -1789,7 +1909,8 @@ namespace TrueReplayer
             try
             {
                 var title = new StringBuilder(256);
-                NativeMethods.GetWindowText(hwnd, title, title.Capacity);
+                // Never GetWindowText from the hook thread — see NativeMethods.InternalGetWindowText.
+                NativeMethods.InternalGetWindowText(hwnd, title, title.Capacity);
                 NativeMethods.GetWindowThreadProcessId(hwnd, out uint pid);
                 string proc = "?";
                 IntPtr h = NativeMethods.OpenProcess(NativeMethods.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
@@ -2278,7 +2399,7 @@ namespace TrueReplayer
                     bool ourInjection = _injectingRemapMouse && (hookStruct.flags & 0x1) != 0;
 
                     if (!skipRecording && !ourInjection)
-                        OnMouseEvent?.Invoke(button, hookStruct.pt.x, hookStruct.pt.y, isDown, scrollDelta);
+                        OnMouseEvent?.Invoke(button, hookStruct.pt.x, hookStruct.pt.y, isDown, scrollDelta, Environment.TickCount64);
                 }
             }
             else if ((int)wParam == NativeMethods.WM_XBUTTONUP)
@@ -3729,7 +3850,7 @@ namespace TrueReplayer
                 {
                     if (!(isProfileKey && !UserProfile.Current.ProfileKeyEnabled && MainController.Instance != null && !MainController.Instance.IsRecording()))
                     {
-                        OnKeyEvent?.Invoke(keyName, isDown, false);
+                        OnKeyEvent?.Invoke(keyName, isDown, false, Environment.TickCount64);
                     }
                 }
             }

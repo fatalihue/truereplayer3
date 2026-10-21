@@ -30,10 +30,10 @@ namespace TrueReplayer.Helpers
         ///
         /// Both directions must agree or a name cannot round-trip, so they share this one
         /// authority: idThread 0 = the CALLING thread's layout. The callers that matter are the
-        /// UI thread and the hook callbacks, which are the same thread here (SetWindowsHookEx
-        /// was called from the MainWindow ctor, so the LL hooks pump on the UI thread), and that
-        /// thread's layout is the one the user is actually switching with Alt+Shift. It is also
-        /// two P/Invokes cheaper per keystroke than asking the foreground window.
+        /// UI thread and the hook callbacks (which used to pump on the UI thread and now have a
+        /// thread of their own — see InputHookManager), and the UI thread's layout is the one the
+        /// user is actually switching with Alt+Shift. It is also two P/Invokes cheaper per
+        /// keystroke than asking the foreground window.
         ///
         /// "The calling thread" stopped being good enough once a pool thread became a caller: the
         /// replay resolves every recorded key name here (TryResolveVirtualKeyCode) from its own
@@ -41,8 +41,9 @@ namespace TrueReplayer.Helpers
         /// one the user switched to with Alt+Shift. A name recorded as "ç" on ABNT2 then resolved on
         /// a US default — a different physical key, or "Key press skipped". So the authority is now
         /// the UI thread BY ID (bound once by <see cref="BindUiThread"/> from the MainWindow ctor),
-        /// asked from whichever thread calls. On the UI thread and the hook callbacks that is the
-        /// same answer GetKeyboardLayout(0) gave; everywhere else it is the one that named the key.
+        /// asked from whichever thread calls. On the UI thread that is the same answer
+        /// GetKeyboardLayout(0) gives; everywhere else — the hook thread included — it is the one
+        /// that named the key.
         /// Unbound (before the window exists) it falls back to the calling thread, as before.
         /// </summary>
         public static IntPtr ActiveLayout => NativeMethods.GetKeyboardLayout(_uiThreadId);

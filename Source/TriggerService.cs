@@ -2101,10 +2101,10 @@ namespace TrueReplayer.Services
         //
         // But serialized on _saveLock, not on _lock. The write goes through MoveWithRetry, whose
         // backoff sleeps up to 3.81 s while antivirus or OneDrive holds the file, and _lock is what
-        // Reload, GetStatus and GetStatsFor take on the UI thread — the thread that pumps both
-        // low-level input hooks. Holding _lock across that ladder froze the UI thread behind a pool
-        // thread's disk retry, and a hook that overruns LowLevelHooksTimeout is removed by Windows
-        // in silence. _lock now covers only the copy, which is microseconds. Order is always
+        // Reload, GetStatus and GetStatsFor take on the UI thread. Holding _lock across that ladder
+        // froze the UI thread behind a pool thread's disk retry (back when that thread also pumped
+        // the low-level input hooks, a hook overrunning LowLevelHooksTimeout, which Windows removes
+        // in silence). _lock now covers only the copy, which is microseconds. Order is always
         // _saveLock then _lock, and nothing that holds _lock ever reaches this method.
         private readonly object _saveLock = new();
 

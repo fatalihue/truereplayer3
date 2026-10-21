@@ -145,7 +145,7 @@ namespace TrueReplayer.Interop
         }
 
         // SetLastError=true so a failed hook install (returns IntPtr.Zero) surfaces a meaningful
-        // Marshal.GetLastWin32Error() in InputHookManager.Start()'s diagnostic logging.
+        // Marshal.GetLastWin32Error() in InputHookManager.InstallHooks()'s diagnostic logging.
         [DllImport("user32.dll", SetLastError = true)]
         public static extern IntPtr SetWindowsHookEx(int idHook, LowLevelMouseProc lpfn, IntPtr hMod, uint dwThreadId);
 
@@ -160,6 +160,38 @@ namespace TrueReplayer.Interop
 
         [DllImport("kernel32.dll")]
         public static extern IntPtr GetModuleHandle(string lpModuleName);
+
+        // ── The message loop of InputHookManager's hook thread ──
+        // A low-level hook is called on the thread that installed it, through that thread's
+        // message loop, so the thread that owns the hooks pumps with these.
+        public const uint PM_NOREMOVE = 0x0000;
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct MSG
+        {
+            public IntPtr hwnd;
+            public uint message;
+            public IntPtr wParam;
+            public IntPtr lParam;
+            public uint time;
+            public POINT pt;
+            public uint lPrivate;
+        }
+
+        [DllImport("user32.dll")]
+        public static extern int GetMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
+
+        [DllImport("user32.dll")]
+        public static extern bool PeekMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax, uint wRemoveMsg);
+
+        [DllImport("user32.dll")]
+        public static extern bool TranslateMessage(ref MSG lpMsg);
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr DispatchMessage(ref MSG lpMsg);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool PostThreadMessage(uint idThread, uint msg, IntPtr wParam, IntPtr lParam);
 
         [DllImport("user32.dll", SetLastError = true)]
         public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
@@ -225,6 +257,14 @@ namespace TrueReplayer.Interop
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         public static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder lpString, int nMaxCount);
+
+        // The caption Windows keeps for the window, read WITHOUT sending WM_GETTEXT. GetWindowText
+        // sends that message when the window belongs to this process, and from any thread but the
+        // window's own that is a blocking SendMessage — from the input-hook thread, a wait on the
+        // UI thread inside a low-level hook. For another process's window the two read the same
+        // stored caption; for ours, DefWindowProc answers WM_GETTEXT from that same caption.
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+        public static extern int InternalGetWindowText(IntPtr hWnd, System.Text.StringBuilder pString, int cchMaxCount);
 
         [DllImport("user32.dll")]
         public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);

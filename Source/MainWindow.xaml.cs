@@ -770,8 +770,7 @@ namespace TrueReplayer
                 var defaultProfile = await SettingsManager.LoadProfileAsync();
                 if (defaultProfile != null)
                 {
-                    UserProfile.Current = defaultProfile;
-                    AppSettingsManager.ApplyGlobalSettings(UserProfile.Current);
+                    AppSettingsManager.ActivateProfile(defaultProfile);
                     bridge.ApplyProfile(defaultProfile);
                     bridge.PushProfileLoop();
                 }
@@ -1093,7 +1092,10 @@ namespace TrueReplayer
 
         private void SetupInputHooks()
         {
-            InputHookManager.Start();
+            // InputHookManager.Start() is at the END: the hooks run on a thread of their own, so
+            // an event can arrive the moment they are installed, and every handler below must be
+            // subscribed by then — a hotkey swallowed with no OnHotkeyPressed handler is a key
+            // press that did nothing.
 
             // Profile hotkey was pressed but its target window isn't running anywhere on
             // the system. Surface a toast so the user knows why nothing happened — the
@@ -1454,16 +1456,32 @@ namespace TrueReplayer
                 });
             };
 
-            InputHookManager.OnMouseEvent += (button, x, y, isDown, scrollDelta) =>
+            // The two recording events arrive on the hook thread (InputHookManager, "Hook thread")
+            // and are handled HERE, on the UI thread: the recorder writes the Actions collection,
+            // whose CollectionChanged handlers renumber the rows and push them to the WebView —
+            // work that used to run inside the low-level hook while the system's input waited.
+            // TryEnqueue keeps them in order, and each carries the tick the hook stamped, so a
+            // delay or a double-click is measured from the event, not from when the queue drained.
+            InputHookManager.OnMouseEvent += (button, x, y, isDown, scrollDelta, ticks) =>
             {
+                // Read on the hook thread too, so a click outside a recording queues nothing.
                 if (!mainController.IsRecording()) return;
-                actionRecorder.RecordMouseAction(button, x, y, isDown, scrollDelta);
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    if (!mainController.IsRecording()) return;
+                    actionRecorder.RecordMouseAction(button, x, y, isDown, scrollDelta, ticks);
+                });
             };
 
             // Pairs the Escape KeyUp with a cancel-gesture Escape KeyDown so the orphan up
-            // doesn't leak into the recording. Mutated only on the (serialized) hook thread.
+            // doesn't leak into the recording. Mutated only on the UI thread, in queue order.
             bool suppressNextEscapeUp = false;
-            InputHookManager.OnKeyEvent += (key, isDown, isPassThroughFeed) =>
+            InputHookManager.OnKeyEvent += (key, isDown, isPassThroughFeed, ticks) =>
+                DispatcherQueue.TryEnqueue(() => HandleHookKeyEvent(key, isDown, isPassThroughFeed, ticks));
+
+            // Every key is queued, recording or not: Escape also cancels insert mode, which can be
+            // armed before a recording starts.
+            void HandleHookKeyEvent(string key, bool isDown, bool isPassThroughFeed, long ticks)
             {
                 // A pass-through FEED is not a gesture: it means "the foreground app is getting
                 // this key, write it into the recording". The Escape branch below cancels insert
@@ -1496,8 +1514,10 @@ namespace TrueReplayer
                 }
 
                 if (!mainController.IsRecording()) return;
-                actionRecorder.RecordKeyboardAction(key, isDown);
-            };
+                actionRecorder.RecordKeyboardAction(key, isDown, ticks);
+            }
+
+            InputHookManager.Start();
         }
 
         /// <summary>
@@ -1590,8 +1610,7 @@ namespace TrueReplayer
             bool effectiveRelCoords = profileController.HasOwnWindowTarget(profileName)
                 ? profile.UseRelativeCoordinates
                 : profileController.GetEffectiveRelativeCoordinates(profileName);
-            UserProfile.Current = profile;
-            AppSettingsManager.ApplyGlobalSettings(UserProfile.Current);
+            AppSettingsManager.ActivateProfile(profile);
             // Apply effective folder-inherited values
             UserProfile.Current.UseRelativeCoordinates = effectiveRelCoords;
             UserProfile.Current.BringToFocus = profileController.GetEffectiveBringToFocus(profileName);

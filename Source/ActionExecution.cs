@@ -22,7 +22,9 @@ namespace TrueReplayer.Services
         private readonly Action<string>? onStatusChanged;
         private readonly Action<string, bool>? onButtonStateChanged; // (text, isRecording)
 
-        public bool IsRecording { get; private set; }
+        // Volatile: written on the UI thread, read by the input hooks on their own thread.
+        public bool IsRecording { get => _isRecording; private set => _isRecording = value; }
+        private volatile bool _isRecording;
 
         /// <summary>
         /// When the CURRENT recording session began, in UTC. DateTime.MaxValue while not recording,
@@ -149,7 +151,9 @@ namespace TrueReplayer.Services
             return map;
         }
 
-        public bool IsReplaying { get; private set; }
+        // Volatile: written on the UI thread, read by the input hooks on their own thread.
+        public bool IsReplaying { get => _isReplaying; private set => _isReplaying = value; }
+        private volatile bool _isReplaying;
 
         public ReplayService(
             ObservableCollection<ActionItem> actions,
@@ -177,8 +181,8 @@ namespace TrueReplayer.Services
                 dispatcherQueue.TryEnqueue(() =>
                 {
                     // O(1) instead of the O(n) reference scan actions.IndexOf did — this runs for
-                    // EVERY executed action, on the thread that also owns the input hooks and the
-                    // WebView, so a long macro on loop was spending millions of comparisons there.
+                    // EVERY executed action, on the UI thread, which also owns the WebView, so a
+                    // long macro on loop was spending millions of comparisons there.
                     // "Not in the grid" is load-bearing and preserved: RunProfile executes rows from
                     // a sub-profile that are absent from `actions`, and the miss is what suppresses
                     // their highlight. ActionItem declares no Equals override, so a reference-keyed
@@ -1249,6 +1253,12 @@ namespace TrueReplayer.Services
 
         public bool IsRecording => _isRecording;
 
+        // The Environment.TickCount64 of the event being recorded, stamped by the input hook on its
+        // own thread. Every "now" in the recorder is this: the event reaches the recorder through
+        // the UI thread's queue, and the clock at THAT moment would add however long the queue
+        // waited to a delay, or push a fast double-click past the system's double-click time.
+        private long _eventTicks;
+
         private int GetDelayForNewAction()
         {
             if (_useCustomDelayFunc())
@@ -1257,7 +1267,7 @@ namespace TrueReplayer.Services
             }
             else
             {
-                long now = Environment.TickCount64;
+                long now = _eventTicks;
                 int delay;
                 if (_lastActionTicks.HasValue)
                 {
@@ -1272,9 +1282,11 @@ namespace TrueReplayer.Services
             }
         }
 
-        public void RecordKeyboardAction(string key, bool isDown)
+        /// <param name="eventTicks">The event's Environment.TickCount64; 0 = now.</param>
+        public void RecordKeyboardAction(string key, bool isDown, long eventTicks = 0)
         {
             if (!_isRecording || !RecordKeyboard) return;
+            _eventTicks = eventTicks != 0 ? eventTicks : Environment.TickCount64;
             if (RecordCombined) { RecordKeyboardCombined(key, isDown); return; }
 
             // ── Paired mode (legacy, unchanged) ──
@@ -1349,9 +1361,11 @@ namespace TrueReplayer.Services
             return string.Join("+", parts);
         }
 
-        public void RecordMouseAction(string button, int x, int y, bool isDown, int scrollDelta = 0)
+        /// <param name="eventTicks">The event's Environment.TickCount64; 0 = now.</param>
+        public void RecordMouseAction(string button, int x, int y, bool isDown, int scrollDelta = 0, long eventTicks = 0)
         {
             if (!_isRecording) return;
+            _eventTicks = eventTicks != 0 ? eventTicks : Environment.TickCount64;
 
             bool isScroll = button == "Scroll";
             if ((isScroll && !RecordScroll) || (!isScroll && !RecordMouse)) return;
@@ -1423,7 +1437,7 @@ namespace TrueReplayer.Services
                     && ReferenceEquals(_lastCombinedLeftClick, _lastAdded)
                     && _lastCombinedLeftClick.ActionType is "LeftClick" or "DoubleClick")
                 {
-                    long nowMs = Environment.TickCount64;
+                    long nowMs = _eventTicks;
                     // SM_CX/CYDOUBLECLK are the FULL rectangle dimensions, but the distance check
                     // measures the offset of this click from the rectangle's centre — the PREVIOUS
                     // click of the chain — so the tolerance is HALF the metric per axis. Max(2, …)
@@ -1529,7 +1543,7 @@ namespace TrueReplayer.Services
                     _lastCombinedLeftClick = clickAction;
                     _lastClickScreenX = x;
                     _lastClickScreenY = y;
-                    _lastClickTickMs = Environment.TickCount64;
+                    _lastClickTickMs = _eventTicks;
                 }
                 else
                 {
@@ -2475,10 +2489,10 @@ namespace TrueReplayer.Services
                 // Bring to Focus + Restore Position / Restore Size, through the same code a
                 // sub-profile entry uses (ApplyWindowContextAsync — full activation stack,
                 // best-effort: a refused switch doesn't block the run), on a POOL thread. This
-                // point still runs on the thread that called StartAsync, the UI thread, which is
-                // also the one pumping the low-level keyboard/mouse hooks; the activation and the
-                // move wait on the target's own thread, and against a busy or frozen target that
-                // froze the hooks with them — every key and click on the machine queued behind
+                // point still runs on the thread that called StartAsync, the UI thread; the
+                // activation and the move wait on the target's own thread, and against a busy or
+                // frozen target that froze the UI thread with them. While the low-level hooks still
+                // pumped on that thread, it froze every key and click on the machine too, behind
                 // LowLevelHooksTimeout, and the Stop hotkey, which arrives through that hook,
                 // could not stop the run it was stuck in. This copy also used to be a hand-kept
                 // twin of ApplyWindowContextAsync, and the root run had fallen behind it: no

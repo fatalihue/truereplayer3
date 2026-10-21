@@ -123,22 +123,33 @@ namespace TrueReplayer.Controllers
         private long lastRecordingToggleTicks;
         private long lastReplayToggleTicks;
 
+        // The claim is stamped by the input hook on its own thread (at the swallow) and again by
+        // the hotkey dispatch on the UI thread, and redeemed by the hook: two fields, two writers,
+        // so a reader could pair one stamp's key with the other's time.
+        private readonly object hotkeyStampLock = new();
+
         public void SetLastHotkeyPressed(string key)
         {
-            hotkeyJustPressed = key;
-            hotkeyPressTicks = Environment.TickCount64;
+            lock (hotkeyStampLock)
+            {
+                hotkeyJustPressed = key;
+                hotkeyPressTicks = Environment.TickCount64;
+            }
         }
 
         public bool IsHotkeyKeyUpSuppressed(string key)
         {
-            if (hotkeyJustPressed != key) return false;
-            if (Environment.TickCount64 - hotkeyPressTicks >= HotkeyKeyUpSuppressMs) return false;
-            // ONE key-down claims ONE key-up. Consuming the stamp is what lets the window be long
-            // enough to cover a held key without also swallowing the up of a later, unrelated press
-            // of the same key: a claim that is never redeemed expires, a claim that is redeemed is
-            // gone immediately.
-            hotkeyJustPressed = null;
-            return true;
+            lock (hotkeyStampLock)
+            {
+                if (hotkeyJustPressed != key) return false;
+                if (Environment.TickCount64 - hotkeyPressTicks >= HotkeyKeyUpSuppressMs) return false;
+                // ONE key-down claims ONE key-up. Consuming the stamp is what lets the window be long
+                // enough to cover a held key without also swallowing the up of a later, unrelated press
+                // of the same key: a claim that is never redeemed expires, a claim that is redeemed is
+                // gone immediately.
+                hotkeyJustPressed = null;
+                return true;
+            }
         }
 
         public bool ShouldSuppressDuplicateRecordingHotkey()

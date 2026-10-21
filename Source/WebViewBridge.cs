@@ -1473,8 +1473,9 @@ namespace TrueReplayer
         /// for a plain collection change.
         ///
         /// Split out from <see cref="PushActionsUpdate"/> for the recording path. Adding one
-        /// recorded action fires OnActionsChanged synchronously INSIDE the low-level hook callback,
-        /// and the data table it used to drag along reads UserProfile.Current.Data — which no
+        /// recorded action fires OnActionsChanged once per recorded event (it used to fire INSIDE
+        /// the low-level hook callback; the recorder now runs on the UI thread, queued by the
+        /// hook), and the data table it used to drag along reads UserProfile.Current.Data — which no
         /// action add, delete or reorder can touch. It rode on actions:updated only so a profile
         /// SWITCH would refresh the Data panel, and every switch path (ApplyProfile, the deselect
         /// branch) calls PushActionsUpdate explicitly after detaching this handler, so it keeps
@@ -9301,8 +9302,7 @@ namespace TrueReplayer
             if (profile != null)
             {
                 var entry = profileController.ProfileEntries.FirstOrDefault(p => p.Name == name);
-                UserProfile.Current = profile;
-                AppSettingsManager.ApplyGlobalSettings(UserProfile.Current);
+                AppSettingsManager.ActivateProfile(profile);
                 CurrentProfileName = name;
                 CurrentProfilePath = entry?.FilePath;
                 HasUnsavedChanges = false;
@@ -9422,8 +9422,7 @@ namespace TrueReplayer
                 if (loaded != null)
                 {
                     var entry = profileController.ProfileEntries.FirstOrDefault(p => p.Name == profileName);
-                    UserProfile.Current = loaded;
-                    AppSettingsManager.ApplyGlobalSettings(UserProfile.Current);
+                    AppSettingsManager.ActivateProfile(loaded);
                     CurrentProfileName = profileName;
                     CurrentProfilePath = entry?.FilePath;
                     HasUnsavedChanges = false;
@@ -12529,8 +12528,7 @@ namespace TrueReplayer
                         if (reloaded != null)
                         {
                             var entry = profileController.ProfileEntries.FirstOrDefault(p => p.Name == CurrentProfileName);
-                            UserProfile.Current = reloaded;
-                            AppSettingsManager.ApplyGlobalSettings(UserProfile.Current);
+                            AppSettingsManager.ActivateProfile(reloaded);
                             CurrentProfilePath = entry?.FilePath;
                             HasUnsavedChanges = false;
                             UserProfile.Current.UseRelativeCoordinates = profileController.GetEffectiveRelativeCoordinates(CurrentProfileName);
@@ -13915,8 +13913,8 @@ namespace TrueReplayer
                 HasUnsavedChanges = true;
 
             // Not PushActionsUpdate: a collection change cannot alter the data table, and this
-            // handler runs inside the input-hook callback on every recorded action. See
-            // PushActionListOnly for who is responsible for the data table instead.
+            // handler runs on every recorded action. See PushActionListOnly for who is
+            // responsible for the data table instead.
             PushActionListOnly();
         }
 

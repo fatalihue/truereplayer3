@@ -583,8 +583,7 @@ namespace TrueReplayer.Controllers
                         OnAlert?.Invoke(FormatBlockFixupToast(name, blockFix));
                     }
 
-                    UserProfile.Current = profile;
-                    AppSettingsManager.ApplyGlobalSettings(UserProfile.Current);
+                    AppSettingsManager.ActivateProfile(profile);
                     UserProfile.Current.LastProfileDirectory = Path.GetDirectoryName(path)!;
                     return path;
                 }
@@ -725,8 +724,7 @@ namespace TrueReplayer.Controllers
 
         public void ResetProfile()
         {
-            UserProfile.Current = UserProfile.Default;
-            AppSettingsManager.ApplyGlobalSettings(UserProfile.Current);
+            AppSettingsManager.ActivateProfile(UserProfile.Default);
             UpdateProfileColors(null);
         }
 
