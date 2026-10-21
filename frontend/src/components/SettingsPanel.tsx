@@ -14,6 +14,7 @@ import { iconButtonClass } from './common/IconButton';
 import { KbdTag } from './common/KbdTag';
 import { ClickerPresetRow, type PendingPresetName } from './ClickerPresetRow';
 import { useClicker, type ClickerSettingKey } from '../logic/useClicker';
+import { useRemaps } from '../logic/useRemaps';
 import type { OcrLanguagesPayload, SettingsState } from '../bridge/messageTypes';
 import { ocrLanguageNote, ocrLanguageOptions, ocrPickerLanguages } from '../utils/ocrLanguages';
 import { chipOn, chipOff, chipDotOn, chipDotOff } from './common/chipStyles';
@@ -1395,6 +1396,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
   const { language, setLanguage } = useLanguage();
   const tt = useTt();
   const { send, subscribe } = useBridge();
+  const remapCmds = useRemaps();
   const selectionRef = useSelectionRef();
   // Enter on the Delay chip writes the grid — it bulk-updates the SELECTED rows. Every other route
   // that writes the grid during a run was closed this release; this one sits in Settings, so it
@@ -2083,7 +2085,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
               >
                 <CompactToggle
                   isOn={settings.remaps.enabled}
-                  onChange={(v) => send({ type: 'remap:save', payload: { enabled: v, remaps: settings.remaps.entries } })}
+                  onChange={remapCmds.setEnabled}
                 />
               </SettingRow>
               <RemapSection draft={remapDraftRef} />

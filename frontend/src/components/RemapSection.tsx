@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { X, Plus, ArrowRight, Ban, Mouse, AppWindow, Download, Upload, Check } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
 import type { RemapEntryDto } from '../bridge/messageTypes';
+import { useRemaps, remapKeyProblem } from '../logic/useRemaps';
 import { useAppState } from '../state/AppStateContext';
 import { useTt } from '../state/LanguageContext';
 import { Button } from './common/Button';
@@ -153,7 +154,10 @@ export function RemapSection({ draft }: {
   draft?: React.MutableRefObject<RemapDraft | null>;
 }) {
   const tt = useTt();
+  // The key capture (hotkey:capture / hotkey:captured) still talks to the bridge here; it moves to
+  // a hook with the other capture consumers.
   const { send, subscribe } = useBridge();
+  const remapCmds = useRemaps();
   const { settings, profiles } = useAppState();
   const remaps = settings.remaps;
 
@@ -210,15 +214,9 @@ export function RemapSection({ draft }: {
       // never meant to set.
       if (msg.payload.owner && msg.payload.owner !== 'remap-add') return;
       const combo = msg.payload.combo;
-      if (combo.includes('+')) {
-        setCaptureError('Single keys only — combos are not remappable.');
-        return;
-      }
-      // A wheel tick is a fine TARGET (one notch per press) but has no press/release to be
-      // a SOURCE of. Side buttons are valid on both sides since 2026-09-05: as a target they
-      // go out through SendInput's mouse path.
-      if (capturingRef.current === 'from' && (combo === 'ScrollUp' || combo === 'ScrollDown')) {
-        setCaptureError('The scroll wheel can be a target, not a source.');
+      const problem = remapKeyProblem(combo, capturingRef.current);
+      if (problem) {
+        setCaptureError(problem);
         return;
       }
       if (capturingRef.current === 'from') setFromKey(combo);
@@ -285,8 +283,7 @@ export function RemapSection({ draft }: {
     };
   }, [mouseMenuOpen]);
 
-  const saveList = (entries: RemapEntry[], enabled = remaps.enabled) =>
-    send({ type: 'remap:save', payload: { enabled, remaps: entries } });
+  const saveList = (entries: RemapEntry[]) => remapCmds.save(entries);
 
   const resetForm = () => {
     setFromKey('');
@@ -510,7 +507,7 @@ export function RemapSection({ draft }: {
               <span className="text-caption font-mono opacity-80 break-words">{remaps.loadFailureDetail}</span>
             )}
             <div>
-              <Button variant="secondary" size="sm" onClick={() => send({ type: 'remap:overwriteUnreadable', payload: {} })}>
+              <Button variant="secondary" size="sm" onClick={remapCmds.overwriteUnreadable}>
                 Replace remaps.json
               </Button>
             </div>

@@ -12,7 +12,7 @@ import { Callout } from './common/Callout';
 import { iconButtonClass } from './common/IconButton';
 import { useDialogLayer } from './common/dialogLayer';
 import { CheckboxBox } from './Checkbox';
-import { useBridge } from '../bridge/BridgeContext';
+import { useDataLoop } from '../logic/useDataLoop';
 import { useAppState } from '../state/AppStateContext';
 import { useTt } from '../state/LanguageContext';
 import { useToast } from '../state/ToastContext';
@@ -476,7 +476,7 @@ const GridRow = memo(function GridRow({
 type Editing = { kind: 'cell'; r: number; c: number } | { kind: 'header'; c: number } | null;
 
 export function DataPanel({ onClose }: DataPanelProps) {
-  const { send } = useBridge();
+  const dataLoop = useDataLoop();
   const { dataTable, actions, activeProfile, profiles, settings, buttonStates } = useAppState();
   const { showToast } = useToast();
   const isClicker = settings.useCursorClick;
@@ -655,7 +655,7 @@ export function DataPanel({ onClose }: DataPanelProps) {
   useEffect(() => {
     if (seededRef.current) return;
     seededRef.current = true;
-    send({ type: 'data:request', payload: {} });
+    dataLoop.request();
     const headers = [...dataTable.headers];
     const rows = dataTable.rows.map((r) => [...r]);
     // Never truncate data: if any stored row is wider than the headers, extend
@@ -719,18 +719,14 @@ export function DataPanel({ onClose }: DataPanelProps) {
   const cursorRow = Math.max(0, dataTable.cursorRow ?? 0);
   // Park the cursor on a row. Allowed even in the read-only (row-cap) state: this is not an edit
   // to the table, and a big list is exactly where re-walking from row 1 hurts most.
-  // The cursor points into the SAVED table: the backend checks the row against it and ignores
-  // anything past its end on purpose (HandleActionsResetRow). A row added here and not saved yet
-  // is past that end, so the click did nothing and nothing said why — it says why now.
-  const savedRowCount = dataTable.rows.length;
+  // A row added here and not saved yet is refused (see setCursor): the click used to do nothing
+  // and nothing said why — it says why now.
   const handleSetCursor = useCallback((r: number) => {
-    if (r >= savedRowCount) {
+    if (!dataLoop.setCursor(r)) {
       showToast(tt(`Row ${r + 1} isn't saved yet — save the table, then move the cursor there.`,
                    `A linha ${r + 1} ainda não foi salva — salve a tabela e depois mova o cursor para ela.`), 'info');
-      return;
     }
-    send({ type: 'actions:resetRow', payload: { row: r } });
-  }, [send, savedRowCount, showToast, tt]);
+  }, [dataLoop, showToast, tt]);
 
   const headerMeta = useMemo(() => {
     const seen = new Map<string, number>();
@@ -1126,16 +1122,8 @@ export function DataPanel({ onClose }: DataPanelProps) {
     // toast for a no-op save would be noise.
     if (refuseWrite()) return;
     const g = gridRef.current;
-    const rows = [...g.rows];
-    // Parity with the old parseTsv: trailing all-empty rows are dropped; kept
-    // rows are padded to the header count so the wire shape is rectangular.
-    while (rows.length && rows[rows.length - 1].every((c) => c.trim() === '')) rows.pop();
-    const padded = rows.map((r) => {
-      const row = [...r];
-      while (row.length < g.headers.length) row.push('');
-      return row.slice(0, Math.max(g.headers.length, row.length));
-    });
-    send({ type: 'data:save', payload: { headers: g.headers, rows: padded, loopOverData: loopRef.current, onRowError: onRowErrorRef.current, notifyOnLapComplete: notifyLapRef.current } });
+    // Trailing empty rows dropped and the rest padded to the headers (rowsToSave).
+    dataLoop.save({ headers: g.headers, rows: g.rows, loopOverData: loopRef.current, onRowError: onRowErrorRef.current, notifyOnLapComplete: notifyLapRef.current });
     onClose();
   };
 
