@@ -1,6 +1,7 @@
 import { useState, useEffect, useId, useRef } from 'react';
 import { Download } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
+import { useAppActions } from '../logic/useSettings';
 import { Button } from './common/Button';
 
 type Phase =
@@ -29,7 +30,8 @@ const UPDATE_OVERLAY_ENABLED = true;
  * in index.css like the dialogs' own.
  */
 export function UpdateOverlay() {
-  const { send, subscribe } = useBridge();
+  const { subscribe } = useBridge();
+  const appActions = useAppActions();
   const [phase, setPhase] = useState<Phase>({ step: 'hidden' });
 
   useEffect(() => {
@@ -172,7 +174,7 @@ export function UpdateOverlay() {
       version: phase.version,
       currentVersion: phase.currentVersion,
     });
-    send({ type: 'update:apply', payload: {} });
+    appActions.applyUpdate();
   };
 
   // After the 'hidden' early-return above, every remaining phase carries version metadata.

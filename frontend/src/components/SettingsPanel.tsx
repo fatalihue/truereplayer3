@@ -16,6 +16,7 @@ import { ClickerPresetRow, type PendingPresetName } from './ClickerPresetRow';
 import { useClicker, type ClickerSettingKey } from '../logic/useClicker';
 import { useRemaps } from '../logic/useRemaps';
 import { useAutomations } from '../logic/useAutomations';
+import { useSettings, useOcrLanguages } from '../logic/useSettings';
 import type { OcrLanguagesPayload, SettingsState } from '../bridge/messageTypes';
 import { ocrLanguageNote, ocrLanguageOptions, ocrPickerLanguages } from '../utils/ocrLanguages';
 import { chipOn, chipOff, chipDotOn, chipDotOff } from './common/chipStyles';
@@ -1399,6 +1400,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
   const { send, subscribe } = useBridge();
   const remapCmds = useRemaps();
   const automationCmds = useAutomations();
+  const settingsCmds = useSettings();
   const selectionRef = useSelectionRef();
   // Enter on the Delay chip writes the grid — it bulk-updates the SELECTED rows. Every other route
   // that writes the grid during a run was closed this release; this one sits in Settings, so it
@@ -1427,20 +1429,15 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
   // FilterContext.Provider wrapper in the tab content, and re-add `Search` to the lucide import.
   // const [query, setQuery] = useState('');
 
-  // OCR recognizer languages installed on THIS PC — asked for whenever the App tab opens, since a
-  // language pack can be added while the app runs. Also pushed by the C# side after a pick and
-  // around an install, so the note under the picker follows both.
-  const [ocrLangs, setOcrLangs] = useState<OcrLanguagesPayload | null>(null);
+  // OCR recognizer languages installed on THIS PC — asked for whenever the App tab opens (see the
+  // hook), so the note under the picker follows a pick and an install too.
+  const ocrLangs = useOcrLanguages(activeTab === 'app');
   // The install result's toast names the language; the subscription below outlives renders.
   const ocrLangsRef = useRef<OcrLanguagesPayload | null>(null);
   useEffect(() => { ocrLangsRef.current = ocrLangs; }, [ocrLangs]);
-  useEffect(() => {
-    if (activeTab === 'app') send({ type: 'ocr:languages', payload: {} });
-  }, [activeTab, send]);
 
   useEffect(() => {
     return subscribe((msg) => {
-      if (msg.type === 'ocr:languagesResult') setOcrLangs(msg.payload);
       if (msg.type === 'ocr:installResult') {
         const r = msg.payload;
         const langs = ocrLangsRef.current;
@@ -1493,13 +1490,8 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
     if (FOCUS_PROFILE_ON_RUN_START && runStarted && activeTab !== 'profile') setActiveTab('profile');
   }, [runActive, activeTab]);
 
-  const changeSetting = (key: string, value: string | boolean | number | object | null) => {
-    send({ type: 'settings:change', payload: { key, value } });
-  };
-
-  const changeHotkey = (settingKey: string, hotkey: string) => {
-    send({ type: 'settings:change', payload: { key: settingKey, value: hotkey } });
-  };
+  const changeSetting = settingsCmds.change;
+  const changeHotkey = settingsCmds.change;
 
   // ── Collapsed rail → expand straight into a section ──
   // Clicking a rail icon expands the panel on the right tab with the target
@@ -2024,7 +2016,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                       <button
                         type="button"
                         disabled={off}
-                        onClick={() => send({ type: 'ocr:configureHotkeyRegion', payload: {} })}
+                        onClick={settingsCmds.pickCopyScreenTextRegion}
                         className="flex-1 min-w-0 h-full flex items-center justify-between gap-1 px-2 cursor-pointer disabled:cursor-not-allowed hover:underline disabled:no-underline"
                         data-tip-pos="left"
                         data-tip={off
@@ -2101,13 +2093,13 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
               <SettingRow label="Always on top">
                 <CompactToggle
                   isOn={settings.alwaysOnTop}
-                  onChange={(v) => send({ type: 'window:alwaysOnTop', payload: { enabled: v } })}
+                  onChange={settingsCmds.setAlwaysOnTop}
                 />
               </SettingRow>
               <SettingRow label="System tray">
                 <CompactToggle
                   isOn={settings.minimizeToTray}
-                  onChange={(v) => send({ type: 'window:minimizeToTray', payload: { enabled: v } })}
+                  onChange={settingsCmds.setMinimizeToTray}
                 />
               </SettingRow>
             </Section>
@@ -2117,18 +2109,13 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
               <SettingRow label="Run on startup">
                 <CompactToggle
                   isOn={settings.runOnStartup}
-                  onChange={(v) => {
-                    send({ type: 'window:runOnStartup', payload: { enabled: v } });
-                    if (!v && settings.startMinimized) {
-                      send({ type: 'window:startMinimized', payload: { enabled: false } });
-                    }
-                  }}
+                  onChange={settingsCmds.setRunOnStartup}
                 />
               </SettingRow>
               <SettingRow label="Startup minimized">
                 <CompactToggle
                   isOn={settings.startMinimized}
-                  onChange={(v) => send({ type: 'window:startMinimized', payload: { enabled: v } })}
+                  onChange={settingsCmds.setStartMinimized}
                   disabled={!settings.runOnStartup}
                 />
               </SettingRow>
@@ -2146,13 +2133,13 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
               <SettingRow label="Flash on replay end">
                 <CompactToggle
                   isOn={settings.runEndFlash}
-                  onChange={(v) => send({ type: 'window:runEndFlash', payload: { enabled: v } })}
+                  onChange={settingsCmds.setRunEndFlash}
                 />
               </SettingRow>
               <SettingRow label="Sound on replay end">
                 <CompactToggle
                   isOn={settings.runEndSound}
-                  onChange={(v) => send({ type: 'window:runEndSound', payload: { enabled: v } })}
+                  onChange={settingsCmds.setRunEndSound}
                 />
               </SettingRow>
             </Section>
@@ -2201,7 +2188,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                 />
               </SettingRow>
               {ocrLangs && <OcrLanguageNoteLine pick={settings.ocrLanguage ?? ''} langs={ocrLangs}
-                onInstall={(tag) => send({ type: 'ocr:installLanguage', payload: { tag } })} />}
+                onInstall={settingsCmds.installOcrLanguage} />}
             </Section>
 
             {/* Interface — how the UI looks & speaks. Theme & layout opens the
@@ -2242,7 +2229,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
           <button
             onClick={() => {
               setUpdateStatus('checking');
-              send({ type: 'update:check', payload: {} });
+              settingsCmds.checkForUpdate();
             }}
             disabled={updateStatus === 'checking'}
             className="inline-flex items-center gap-1 hover:text-accent-solid hover:underline transition-colors disabled:opacity-50 disabled:no-underline"

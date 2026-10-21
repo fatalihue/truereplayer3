@@ -1,16 +1,8 @@
-import { useEffect, useState } from 'react';
 import { Chrome, Check, Unplug } from 'lucide-react';
-import { useBridge } from '../bridge/BridgeContext';
+import { useAppActions, useExtensionHelp } from '../logic/useSettings';
 import { useBrowserConnection } from '../hooks/useBrowserConnection';
 import { useTt } from '../state/LanguageContext';
 import { DialogShell, DialogFooter } from './common/DialogShell';
-
-interface HelpReply {
-  path: string;
-  exists: boolean;
-  copied: boolean;
-  connected: boolean;
-}
 
 /**
  * Browser extension — where the extension lives and how to load it, one click from the status
@@ -23,25 +15,15 @@ interface HelpReply {
  * when the app's handshake names a newer version.
  */
 export function ExtensionHelpDialog({ onClose }: { onClose: () => void }) {
-  const { send, subscribe } = useBridge();
   const tt = useTt();
-  const [reply, setReply] = useState<HelpReply | null>(null);
+  // Opening the dialog asks, and asking copies the folder's path (see the hook).
+  const reply = useExtensionHelp();
+  const appActions = useAppActions();
   // Live: the headline turns to "connected" the moment the user finishes loading it in Chrome.
   // A freshly mounted hook sits at 'unknown' until the next edge, so the reply seeds it; with
   // neither yet (the first frames), null — no headline rather than a wrong "Connect…".
   const live = useBrowserConnection();
   const connected = live !== 'unknown' ? live === 'connected' : reply ? reply.connected : null;
-
-  useEffect(() => {
-    const unsubscribe = subscribe((msg) => {
-      if (msg.type !== 'extension:help') return;
-      const p = msg.payload;
-      if (typeof p?.path !== 'string') return;
-      setReply({ path: p.path, exists: p.exists === true, copied: p.copied === true, connected: p.connected === true });
-    });
-    send({ type: 'extension:help', payload: {} });
-    return unsubscribe;
-  }, [send, subscribe]);
 
   const steps = [
     tt('Open chrome://extensions (Edge: edge://extensions, Brave: brave://extensions).',
@@ -63,7 +45,7 @@ export function ExtensionHelpDialog({ onClose }: { onClose: () => void }) {
           secondary={{ label: 'Close', onClick: requestClose }}
           primary={{
             label: 'Open folder',
-            onClick: () => send({ type: 'extension:openFolder', payload: {} }),
+            onClick: appActions.openExtensionFolder,
             disabled: !reply?.exists,
             autoFocus: true,
           }}

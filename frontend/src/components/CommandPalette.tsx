@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useAppState } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
+import { useAppActions } from '../logic/useSettings';
 import { useSelectionRef } from '../state/SelectionContext';
 import { useSheetGuard } from '../state/SheetGuardContext';
 import { useToast } from '../state/ToastContext';
@@ -57,6 +58,7 @@ const MANUAL_URL = 'https://fatalihue.github.io/TrueReplayer-releases/manual.htm
 export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   const { activeProfile, settings, actions, buttonStates } = useAppState();
   const { send } = useBridge();
+  const appActions = useAppActions();
   const selectionRef = useSelectionRef();
   const [query, setQuery] = useState('');
 
@@ -266,7 +268,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             id: 'reloadui', label: 'Reload UI',
             keywords: ['refresh', 'stuck', 'frozen'],
             icon: <RefreshCw size={14} className="text-text-secondary" />,
-            onAction: () => { if (!sheetAllows()) return; send({ type: 'window:reloadUI', payload: {} }); onClose(); },
+            onAction: () => { if (!sheetAllows()) return; appActions.reloadUI(); onClose(); },
           },
           {
             // Opens %LocalAppData%\TrueReplayer\Logs in Explorer. Otherwise reachable only
@@ -275,7 +277,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             id: 'openlogs', label: 'Open logs folder',
             keywords: ['diagnostics', 'session log', 'support', 'troubleshoot'],
             icon: <ScrollText size={14} className="text-text-secondary" />,
-            onAction: () => { send({ type: 'logs:openFolder', payload: {} }); onClose(); },
+            onAction: () => { appActions.openLogsFolder(); onClose(); },
           },
           {
             // One block of text with what support asks for first (version, OS, WebView2, DPI,
@@ -284,7 +286,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             id: 'copydiagnostics', label: 'Copy diagnostics',
             keywords: ['support', 'version', 'bug report', 'system info', 'about'],
             icon: <ClipboardCopy size={14} className="text-text-secondary" />,
-            onAction: () => { send({ type: 'diagnostics:copy', payload: {} }); onClose(); },
+            onAction: () => { appActions.copyDiagnostics(); onClose(); },
           },
         ],
       },
@@ -296,7 +298,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             id: 'openmanual', label: 'Open manual',
             keywords: ['help', 'docs', 'documentation', 'guide', 'manual', 'ajuda', 'guia'],
             icon: <BookOpen size={14} className="text-text-secondary" />,
-            onAction: () => { send({ type: 'shell:openUrl', payload: { url: MANUAL_URL } }); onClose(); },
+            onAction: () => { appActions.openUrl(MANUAL_URL); onClose(); },
           },
           {
             // Copies the extension folder's path and shows the Load-unpacked steps — the same
@@ -312,7 +314,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     // Narrow deps to the exact settings field read above so unrelated settings changes
     // (hotkeys, loop config, movement knobs) don't rebuild every command group.
   }, [
-    activeProfile, send, onClose, openAfterClose, computeInsertIndex, sheetAllows,
+    activeProfile, send, appActions, onClose, openAfterClose, computeInsertIndex, sheetAllows,
     settings.useCursorClick,
     // The two BOOLEAN fields, never the buttonStates object: it is republished on several
     // unrelated events, and depending on the object would rebuild every group each time.
