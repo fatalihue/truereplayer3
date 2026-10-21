@@ -7,6 +7,7 @@ import { Button } from './common/Button';
 import { splitCombo } from './common/KbdTag';
 import { compactKey } from '../utils/keyNames';
 import { useBridge } from '../bridge/BridgeContext';
+import { useMacro } from '../logic/useMacro';
 import { useAppState } from '../state/AppStateContext';
 import { useTt } from '../state/LanguageContext';
 import { useToast } from '../state/ToastContext';
@@ -70,7 +71,8 @@ type TagReject = 'invalid' | 'duplicate' | 'full';
  * Send Text and Automation editors use.
  */
 export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogProps) {
-  const { send, subscribe } = useBridge();
+  const { subscribe } = useBridge();
+  const macro = useMacro();
   const { profiles, profileOrder } = useAppState();
   const tt = useTt();
   const { showToast } = useToast();
@@ -122,9 +124,8 @@ export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogPro
   // Fetch metadata + tag list on mount. Re-fetches if the profile name changes
   // (caller usually unmounts/remounts, but guard for hot-reload).
   useEffect(() => {
-    send({ type: 'profile:getMetadata', payload: { name: profileName } });
-    send({ type: 'profile:listTags', payload: {} });
-  }, [profileName, send]);
+    macro.requestInfo(profileName);
+  }, [profileName, macro]);
 
   // Subscribe to bridge replies — handles both the metadata and the tag list.
   useEffect(() => {
@@ -314,7 +315,7 @@ export function ProfileInfoDialog({ profileName, onClose }: ProfileInfoDialogPro
     }
 
     if (Object.keys(payload).length > 1) {
-      send({ type: 'profile:setMetadata', payload });
+      macro.setInfo(payload);
     }
     onClose();
   };

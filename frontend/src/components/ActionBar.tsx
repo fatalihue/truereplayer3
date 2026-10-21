@@ -3,7 +3,7 @@ import { Circle, Play, Square, Save, FolderOpen, MousePointerClick, List } from 
 import { SegmentedControl } from './common/SegmentedControl';
 import { Button, BUTTON_VARIANT_CLASSES } from './common/Button';
 import { useAppState, useClickerLive } from '../state/AppStateContext';
-import { useBridge } from '../bridge/BridgeContext';
+import { useMacro } from '../logic/useMacro';
 import { useRecording } from '../logic/useRecording';
 import { useReplay } from '../logic/useReplay';
 import { useClicker } from '../logic/useClicker';
@@ -41,7 +41,7 @@ const RAIL_PRIMARY =
 
 export function ActionBar() {
   const { buttonStates, settings, profileLoop, profiles, activeProfile, dataTable } = useAppState();
-  const { send } = useBridge();
+  const macro = useMacro();
   const recording = useRecording();
   const replay = useReplay();
   const clicker = useClicker();
@@ -215,7 +215,7 @@ export function ActionBar() {
         <Button
           variant="ghost"
           size="xs"
-          onClick={() => send({ type: 'profile:save', payload: {} })}
+          onClick={macro.save}
           disabled={isClicker}
           data-tip={isClicker ? clickerTip : undefined}
         >
@@ -225,7 +225,7 @@ export function ActionBar() {
         <Button
           variant="ghost"
           size="xs"
-          onClick={() => send({ type: 'profile:load', payload: {} })}
+          onClick={macro.load}
           disabled={isClicker}
           data-tip={isClicker ? clickerTip : undefined}
         >

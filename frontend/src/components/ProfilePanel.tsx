@@ -5,6 +5,7 @@ import { useAppState } from '../state/AppStateContext';
 import { railInitials, glyphCount, cutGlyphs } from '../utils/profileInitials';
 import { carriesConditionProbe } from '../utils/conditionalBlocks';
 import { useBridge } from '../bridge/BridgeContext';
+import { useMacro } from '../logic/useMacro';
 import { KbdTag, splitCombo } from './common/KbdTag';
 import { compactKey } from '../utils/keyNames';
 import { RemovableChip } from './common/RemovableChip';
@@ -198,6 +199,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
     return n;
   }, 0), [actions]);
   const { send, subscribe } = useBridge();
+  const macro = useMacro();
   // Stable refcount slot for hotkey:capture — assign-hotkey dialog can be triggered
   // while Settings has its hotkey field focused (modal-over-modal isn't blocked at the
   // route layer), and without a per-mount slot, closing one would disable the backend
@@ -465,7 +467,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
   const [showInfoDialog, setShowInfoDialog] = useState<string | null>(null);
 
   const handleImportClick = () => {
-    send({ type: 'profile:import', payload: {} });
+    macro.startImport();
   };
 
   // Listen for the preview message and route through the warning if needed; the
@@ -489,7 +491,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
 
   const handleSecurityContinue = (dontShowAgain: boolean) => {
     if (dontShowAgain) {
-      send({ type: 'settings:acknowledgeImportWarning', payload: {} });
+      macro.acknowledgeImportWarning();
     }
     setSecurityWarningOpen(false);
     if (pendingPreview) {
@@ -503,7 +505,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
     // parsed envelope doesn't linger in memory until the next import overwrites it.
     setSecurityWarningOpen(false);
     setPendingPreview(null);
-    send({ type: 'profile:cancelImport', payload: {} });
+    macro.cancelImport();
   };
 
   const handlePreviewConfirm = (
@@ -511,10 +513,10 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
     conflictResolutions: Record<string, ImportConflictResolution>
   ) => {
     if (selectedNames.length > 0) {
-      send({ type: 'profile:confirmImport', payload: { selectedNames, conflictResolutions } });
+      macro.confirmImport(selectedNames, conflictResolutions);
     } else {
       // Empty selection with confirm clicked is effectively a cancel — clear server side too.
-      send({ type: 'profile:cancelImport', payload: {} });
+      macro.cancelImport();
     }
     setImportPreview(null);
   };
@@ -522,7 +524,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
   const handlePreviewCancel = () => {
     // Mirror handleSecurityCancel for the second possible dismissal point.
     setImportPreview(null);
-    send({ type: 'profile:cancelImport', payload: {} });
+    macro.cancelImport();
   };
 
   const handleShowInfo = (name: string) => {
@@ -618,7 +620,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
       // includeDependencies is ALWAYS true — a chain exported without its sub-profiles arrives
       // broken and fails silently at replay, so it is never a user choice. A no-op when the
       // selection calls nothing.
-      send({ type: 'profile:export', payload: { names: selectedNames, includeOrganization: includeExportOrg, includeDependencies: true } });
+      macro.exportMacros(selectedNames, includeExportOrg);
     }
     setShowExportDialog(false);
   };
@@ -682,12 +684,12 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
 
   const handleDuplicate = (name: string) => {
     setContextMenu(null);
-    send({ type: 'profile:duplicate', payload: { name } });
+    macro.duplicate(name);
   };
 
   const handleToggleDisable = (name: string) => {
     setContextMenu(null);
-    send({ type: 'profile:toggleDisable', payload: { name } });
+    macro.toggleDisabled(name);
   };
 
   const handleDelete = (name: string) => {
@@ -697,21 +699,21 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
 
   const confirmDelete = () => {
     if (showDeleteConfirm) {
-      send({ type: 'profile:delete', payload: { name: showDeleteConfirm } });
+      macro.remove(showDeleteConfirm);
     }
     setShowDeleteConfirm(null);
   };
 
   const handleOpenFolder = (name: string) => {
     setContextMenu(null);
-    send({ type: 'profile:openFolder', payload: { name } });
+    macro.openFolder(name);
   };
 
   // Header-button variant: opens the Profiles directory itself without selecting any file.
   // Works even when no profile is loaded — the user might be looking to manually drop a
   // .json in there, browse what's saved, or back things up.
   const handleOpenProfilesFolder = () => {
-    send({ type: 'profile:openFolder', payload: {} });
+    macro.openFolder();
   };
 
   const handleAssignHotkey = (name: string) => {
@@ -735,14 +737,14 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
     const prev = profiles.find(p => p.name === name);
     const prevHotkey = prev?.hotkey ?? null;
     const prevMode = prev?.triggerMode ?? 'onPress';
-    send({ type: 'profile:removeHotkey', payload: { name } });
+    macro.removeHotkey(name);
     if (prevHotkey) {
       showToast(tt(`Removed hotkey ${prevHotkey} from "${name}"`, `Hotkey ${prevHotkey} removido de "${name}"`), {
         type: 'success',
         duration: 10000, // longer undo window for destructive metadata removals (user request)
         action: {
           label: 'Undo',
-          onClick: () => send({ type: 'profile:assignHotkey', payload: { name, hotkey: prevHotkey, mode: prevMode } }),
+          onClick: () => macro.assignHotkey(name, prevHotkey, prevMode),
         },
       });
     }
@@ -762,14 +764,14 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
     const prev = profiles.find(p => p.name === name);
     const prevSeq = prev?.hotstring ?? null;
     const prevInstant = prev?.hotstringInstant ?? true;
-    send({ type: 'profile:removeHotstring', payload: { name } });
+    macro.removeHotstring(name);
     if (prevSeq) {
       showToast(tt(`Removed hotstring "${prevSeq}" from "${name}"`, `Hotstring "${prevSeq}" removido de "${name}"`), {
         type: 'success',
         duration: 10000,
         action: {
           label: 'Undo',
-          onClick: () => send({ type: 'profile:assignHotstring', payload: { name, sequence: prevSeq, instant: prevInstant } }),
+          onClick: () => macro.assignHotstring(name, prevSeq, prevInstant),
         },
       });
     }
@@ -778,10 +780,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
   const confirmHotstring = () => {
     const seq = hotstringValue.trim().toLowerCase();
     if (showHotstringDialog && seq.length >= 2) {
-      send({
-        type: 'profile:assignHotstring',
-        payload: { name: showHotstringDialog, sequence: seq, instant: hotstringInstant }
-      });
+      macro.assignHotstring(showHotstringDialog, seq, hotstringInstant);
       // Closed optimistically, like confirmHotkey and for its reason: waiting on profiles:updated
       // alone left the dialog — and the global hotkey suppression it holds — stuck open on the
       // paths that never push it. Every refusal on the backend speaks through alert:show (a
@@ -816,9 +815,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
         duration: 10000,
         action: {
           label: 'Undo',
-          onClick: () => send({
-            type: 'profile:setFolderWindowTarget',
-            payload: {
+          onClick: () => macro.setFolderWindowTarget({
               folderName: r.folderName,
               processName: r.processName,
               windowTitle: r.windowTitle,
@@ -831,15 +828,14 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               windowY: r.windowY,
               windowWidth: r.windowWidth,
               windowHeight: r.windowHeight,
-            },
-          }),
+            }),
         },
       });
     });
-  }, [subscribe, send, showToast, tt]);
+  }, [subscribe, macro, showToast, tt]);
   const handleRemoveFolderWindowTarget = (folderName: string) => {
     pendingFolderRemovalsRef.current.add(folderName);
-    send({ type: 'profile:removeFolderWindowTarget', payload: { folderName } });
+    macro.removeFolderWindowTarget(folderName);
   };
 
   // Pending window-target removals: stash the prev values keyed by name. When the backend
@@ -870,9 +866,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
         duration: 10000,
         action: {
           label: 'Undo',
-          onClick: () => send({
-            type: 'profile:setWindowTarget',
-            payload: {
+          onClick: () => macro.setWindowTarget({
               name,
               processName: prev.processName,
               windowTitle: prev.windowTitle,
@@ -885,15 +879,14 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               // not carry geometry). Without it a profile that was not the active one came back
               // with Restore Position/Size on over 0,0,0,0 — switches that did nothing.
               windowX, windowY, windowWidth, windowHeight,
-            },
-          }),
+            }),
         },
       });
     });
     // `tt` is a dep: it's memoised on [language], and this effect closes over it for the toast.
     // Without it the subscription would freeze tt at the mount-time language and a later language
     // switch would render the "Removed window target" Undo toast in the previous language.
-  }, [subscribe, send, showToast, tt]);
+  }, [subscribe, macro, showToast, tt]);
 
   const handleRemoveWindowTarget = (name: string) => {
     setContextMenu(null);
@@ -906,7 +899,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
     if (!hadOwn) {
       // No own target → backend won't change anything → no confirmation event coming.
       // Still send for symmetry (handler is a no-op when nothing to remove).
-      send({ type: 'profile:removeWindowTarget', payload: { name } });
+      macro.removeWindowTarget(name);
       return;
     }
     const prevProcess = prev?.windowTargetProcessName ?? '';
@@ -922,7 +915,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
       restorePosition: prev?.restorePosition ?? false,
       restoreSize: prev?.restoreSize ?? false,
     });
-    send({ type: 'profile:removeWindowTarget', payload: { name } });
+    macro.removeWindowTarget(name);
   };
 
   // Runs the actual removal once the confirmation dialog is accepted. The
@@ -939,7 +932,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
 
   const confirmHotkey = () => {
     if (showHotkeyDialog && hotkeyCapture && hotkeyCapture !== '...') {
-      send({ type: 'profile:assignHotkey', payload: { name: showHotkeyDialog, hotkey: hotkeyCapture, mode: hotkeyTriggerMode } });
+      macro.assignHotkey(showHotkeyDialog, hotkeyCapture, hotkeyTriggerMode);
       // Close optimistically rather than waiting solely on profiles:updated. The backend
       // doesn't push that message on every path (e.g. a profile that fails to load), which
       // previously left the dialog stuck open with no feedback. On a hotkey conflict the
@@ -996,7 +989,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
     // Block duplicate names client-side (mirrors the backend File.Exists guard, case-insensitive
     // like the Windows file system) so the dialog stays open for a quick fix.
     if (profiles.some(p => p.name.toLowerCase() === name.toLowerCase())) return;
-    send({ type: 'profile:create', payload: { name, folder: createFolder || undefined } });
+    macro.create(name, createFolder);
     setShowCreateDialog(false);
   };
 
@@ -1008,7 +1001,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
     }
     // Block collisions with OTHER profiles client-side (mirrors the backend); keep dialog open.
     if (profiles.some(p => p.name !== showRenameDialog && p.name.toLowerCase() === newName.toLowerCase())) return;
-    send({ type: 'profile:rename', payload: { oldName: showRenameDialog, newName } });
+    macro.rename(showRenameDialog, newName);
     setShowRenameDialog(null);
   };
 
@@ -1034,7 +1027,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
     // Block duplicate names client-side (mirrors the backend guard) so the dialog stays open
     // for a quick fix instead of closing and surfacing a toast after the round-trip.
     if ((profileOrder?.folders ?? []).some(f => f.name.toLowerCase() === name.toLowerCase())) return;
-    send({ type: 'profile:createFolder', payload: { name, color: folderDialogColor } });
+    macro.createFolder(name, folderDialogColor);
     setShowCreateFolderDialog(false);
   };
 
@@ -1052,7 +1045,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
     }
     // Block collisions with OTHER folders client-side (mirrors the backend); keep the dialog open.
     if ((profileOrder?.folders ?? []).some(f => f.name !== showRenameFolderDialog && f.name.toLowerCase() === newName.toLowerCase())) return;
-    send({ type: 'profile:renameFolder', payload: { oldName: showRenameFolderDialog, newName } });
+    macro.renameFolder(showRenameFolderDialog, newName);
     setShowRenameFolderDialog(null);
   };
 
@@ -1066,33 +1059,33 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
 
   const handleDeleteFolder = (folderName: string) => {
     setFolderContextMenu(null);
-    send({ type: 'profile:deleteFolder', payload: { name: folderName } });
+    macro.deleteFolder(folderName);
   };
 
   const handleSetFolderColor = (folderName: string, color: string) => {
-    send({ type: 'profile:setFolderColor', payload: { name: folderName, color } });
+    macro.setFolderColor(folderName, color);
     setShowFolderColorPicker(null);
     setFolderContextMenu(null);
   };
 
   const handleToggleFolderCollapse = (folderName: string) => {
-    send({ type: 'profile:toggleFolderCollapse', payload: { name: folderName } });
+    macro.toggleFolderCollapsed(folderName);
   };
 
   const handlePinProfile = (name: string) => {
     setContextMenu(null);
-    send({ type: 'profile:pin', payload: { name } });
+    macro.pin(name);
   };
 
   const handleUnpinProfile = (name: string) => {
     setContextMenu(null);
-    send({ type: 'profile:unpin', payload: { name } });
+    macro.unpin(name);
   };
 
   const handleMoveToFolder = (profileName: string, folderName: string | null) => {
     setContextMenu(null);
     setShowMoveToFolderMenu(null);
-    send({ type: 'profile:moveToFolder', payload: { profileName, folderName } });
+    macro.moveToFolder(profileName, folderName);
   };
 
   const handleFolderContextMenu = (e: React.MouseEvent, folderName: string) => {
@@ -1479,7 +1472,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
         const currentFolder = getProfileFolder(dragProfile);
         if (currentFolder !== targetFolder) {
           snapshotDragItems('[data-drag-item^="profile:"]');
-          send({ type: 'profile:moveToFolder', payload: { profileName: dragProfile, folderName: targetFolder } });
+          macro.moveToFolder(dragProfile, targetFolder);
         }
       } else if (wasActive && dragProfile) {
         // Not over a folder/ungrouped zone — did we drop on the actions grid? If so, hand off
@@ -1536,7 +1529,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
         autoScrollRaf.current = null;
       }
     };
-  }, [dragProfile, dropTarget, send, snapshotDragItems, maybeKickAutoScroll, getProfileFolder]);
+  }, [dragProfile, dropTarget, macro, snapshotDragItems, maybeKickAutoScroll, getProfileFolder]);
 
   // ── Folder Drag & Drop (reorder folders) ──
   const folderDragStartPos = useRef<{ x: number; y: number } | null>(null);
@@ -1618,7 +1611,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
           const toIdx = dropFolderIndex > fromIdx ? dropFolderIndex - 1 : dropFolderIndex;
           folders.splice(toIdx, 0, moved);
           snapshotDragItems('[data-drag-item^="folder:"]');
-          send({ type: 'profile:reorder', payload: { folders } });
+          macro.reorder(folders);
         }
       }
       document.body.style.cursor = '';
@@ -1667,7 +1660,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
         autoScrollRaf.current = null;
       }
     };
-  }, [dragFolder, dropFolderIndex, profileOrder, send, snapshotDragItems, maybeKickAutoScroll, folderDragActive]);
+  }, [dragFolder, dropFolderIndex, profileOrder, macro, snapshotDragItems, maybeKickAutoScroll, folderDragActive]);
 
   const handleDialogKeyDown = (e: React.KeyboardEvent, onConfirm: () => void) => {
     if (e.key === 'Enter') {
@@ -1697,7 +1690,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
       if (e.key !== 'Enter' && e.key !== ' ') return;
       e.preventDefault();
       if (isClicker || runActive) return;
-      send({ type: 'profile:click', payload: { name: p.name } });
+      macro.click(p.name);
     },
   });
 
@@ -1711,7 +1704,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
         // Don't fire click if we were dragging
         if (dragActive.current) { e.preventDefault(); return; }
         if (isClicker || runActive) return; // activation gated — tooltip explains
-        send({ type: 'profile:click', payload: { name: p.name } });
+        macro.click(p.name);
       }}
       onContextMenu={(e) => handleContextMenu(e, p.name)}
       // px-1.5 / gap-1 rather than px-2 / gap-1.5: 8 px reclaimed for the name, which is
@@ -2041,7 +2034,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                           // too, which is the gate with the technical reason behind it.
                           onClick={(e) => {
                             if (isClicker || runActive) return;
-                            send({ type: 'profile:click', payload: { name: p.name } });
+                            macro.click(p.name);
                             (e.currentTarget as HTMLElement).blur();
                           }}
                           onContextMenu={(e) => handleContextMenu(e, p.name)}
@@ -2187,7 +2180,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               return (
                 <button
                   aria-label={anyExpanded ? 'Collapse all folders' : 'Expand all folders'}
-                  onClick={() => send({ type: 'profile:setAllFoldersCollapsed', payload: { collapsed: anyExpanded } })}
+                  onClick={() => macro.setAllFoldersCollapsed(anyExpanded)}
                   disabled={folders.length === 0}
                   className={iconButtonClass('sm')}
                   data-tip={anyExpanded
@@ -2893,7 +2886,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               keeps Pin / Disable in its own State block. */}
           <button
             onClick={() => {
-              send({ type: 'profile:toggleFolderDisable', payload: { name: folderContextMenu.folderName } });
+              macro.toggleFolderDisabled(folderContextMenu.folderName);
               setFolderContextMenu(null);
             }}
             className="menu-item text-text-primary"
@@ -3509,9 +3502,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             inheritedFromFolder={!hasOwnTarget && !!folder}
             initial={initial}
             onSubmit={(payload, opts) => {
-              send({
-                type: 'profile:setWindowTarget',
-                payload: {
+              macro.setWindowTarget({
                   name,
                   processName: payload.processName,
                   windowTitle: payload.windowTitle,
@@ -3524,8 +3515,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                   // Forwarded from the "Apply target & convert" path so the backend
                   // chains ExecuteConvertCoordinates after the save completes.
                   convertDirection: payload.convertDirection,
-                },
-              });
+                });
               // Apply target & convert wants the toast to land while the dialog is still
               // visible — opts.keepOpen carries that intent. Plain Set Target / Remove
               // close the dialog as before.
@@ -3536,24 +3526,18 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               setShowWindowTargetDialog(null);
             }}
             onCancel={() => setShowWindowTargetDialog(null)}
-            onUpdateGeometry={(fields) => send({
-              type: 'profile:updateWindowSize',
-              payload: {
+            onUpdateGeometry={(fields) => macro.updateWindowSize({
                 name,
                 // Lets the user capture geometry BEFORE saving the target — backend uses these
                 // overrides to locate the window if the saved target is stale or empty.
                 processName: fields.processName || undefined,
                 windowTitle: fields.windowTitle || undefined,
                 titleMatchMode: fields.titleMatchMode,
-              },
-            })}
+              })}
             /* The name makes the backend refuse when this dialog's profile is no longer the loaded
                one (an automation or a profile hotkey swapped it while the dialog was open) — it
                would otherwise convert whoever is loaded now — and answer the dialog either way. */
-            onConvertCoordinates={(direction) => send({
-              type: 'profile:convertCoordinates',
-              payload: { direction, name },
-            })}
+            onConvertCoordinates={(direction) => macro.convertCoordinates(direction, name)}
             /* convertibleActionCount is derived from the LOADED profile's actions, and the backend
                convert rewrites the loaded profile — but this dialog opens for ANY right-clicked
                row. Feeding the loaded profile's count into another profile's dialog showed the
@@ -3598,9 +3582,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
             initial={initial}
             inheritingMemberCount={inheritingMemberCount}
             onSubmit={(payload) => {
-              send({
-                type: 'profile:setFolderWindowTarget',
-                payload: {
+              macro.setFolderWindowTarget({
                   folderName,
                   processName: payload.processName,
                   windowTitle: payload.windowTitle,
@@ -3609,8 +3591,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
                   bringToFocus: payload.bringToFocus,
                   restorePosition: payload.restorePosition,
                   restoreSize: payload.restoreSize,
-                },
-              });
+                });
               setShowFolderTargetDialog(null);
             }}
             onRemove={() => {
@@ -3620,15 +3601,12 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
               setShowFolderTargetDialog(null);
             }}
             onCancel={() => setShowFolderTargetDialog(null)}
-            onUpdateGeometry={(fields) => send({
-              type: 'profile:updateWindowSize',
-              payload: {
+            onUpdateGeometry={(fields) => macro.updateWindowSize({
                 folderName,
                 processName: fields.processName || undefined,
                 windowTitle: fields.windowTitle || undefined,
                 titleMatchMode: fields.titleMatchMode,
-              },
-            })}
+              })}
           />
         );
       })()}

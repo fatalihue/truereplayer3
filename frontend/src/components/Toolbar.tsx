@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useLayoutEffect, lazy, Suspense } from 're
 import { Trash2, Undo2, Redo2, Type, Mouse, MoreHorizontal, ScanSearch, Pipette, Keyboard, Globe, Repeat2, Hourglass, X, GitBranch, ScanEye, Braces, AppWindow, Clipboard, ClipboardCopy, ChevronDown, ChevronRight, Dice5, ScanText, Cpu, FileCheck, Clock, Table2, ShieldCheck, CircleStop, CornerDownLeft, IterationCw, ArrowRightFromLine, SkipForward } from 'lucide-react';
 import { useAppState } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
+import { useMacro } from '../logic/useMacro';
 import { useSelectionRef } from '../state/SelectionContext';
 import { useSheetGuard } from '../state/SheetGuardContext';
 import { isModalDialogOpen } from '../utils/modalDialog';
@@ -141,6 +142,7 @@ const isCollapsed = (count: number, k: OverflowKey) => count > OVERFLOW_ORDER.in
 export function Toolbar(_props: ToolbarProps) {
   const { toolbar, buttonStates, actions, activeProfile, settings, dataTable } = useAppState();
   const { send } = useBridge();
+  const macro = useMacro();
   const tt = useTt();
   const { showToast } = useToast();
   // Clicker-mode coherence: the macro action list is invisible in Clicker mode,
@@ -483,7 +485,7 @@ export function Toolbar(_props: ToolbarProps) {
                      'Perfis estão indisponíveis no modo Clicker — mude para Macro para salvar.'), 'error');
         return;
       }
-      send({ type: 'profile:save', payload: {} });
+      macro.save();
     };
     // An undo re-seeds an open Sheet from the store like any other list change, so it asks the
     // sheet first — App's Ctrl+Z/Y only skips text fields, and the sheet is mostly buttons.
@@ -500,7 +502,7 @@ export function Toolbar(_props: ToolbarProps) {
       window.removeEventListener('cmd:undo', onUndo);
       window.removeEventListener('cmd:redo', onRedo);
     };
-  }, [send, showToast, tt, sheetGuard]);
+  }, [send, macro, showToast, tt, sheetGuard]);
 
   // Outside-press + Escape dismissal for the three insert dropdowns in the row (More has its own
   // call above; its Loop/Assert submenus live inside its panel, so a click in them is not
@@ -664,7 +666,7 @@ export function Toolbar(_props: ToolbarProps) {
               aria-label="Deselect profile"
               data-tip={tt('Deselect profile', 'Desselecionar perfil')}
               tabIndex={-1}
-              onClick={() => send({ type: 'profile:click', payload: { name: activeProfile } })}
+              onClick={() => macro.click(activeProfile)}
               disabled={insertsDisabled}
               // -ml-[13px] pulls the icon LEFT into the toolbar's own px-4 padding so the
               // X's vertical line matches the checkbox column center in the table below

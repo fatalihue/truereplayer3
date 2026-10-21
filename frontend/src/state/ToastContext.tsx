@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { useBridge } from '../bridge/BridgeContext';
+import { useMacro } from '../logic/useMacro';
 
 export type ToastType = 'success' | 'error' | 'info';
 
@@ -59,7 +60,8 @@ function inferType(message: string): ToastType {
 }
 
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const { subscribe, send } = useBridge();
+  const { subscribe } = useBridge();
+  const macro = useMacro();
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   // Track auto-dismiss timers so they can be cancelled on manual dismiss and on unmount —
   // otherwise a pending timer (up to 8s for errors) fires setToasts after the provider is gone.
@@ -164,11 +166,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           // A partial export reports data loss — never render it success-green.
           type: hasDisclosures ? 'info' : 'success',
           duration: hasDisclosures ? 8000 : undefined,
-          action: { label: 'Show in folder', onClick: () => send({ type: 'file:revealExport', payload: { exportId: p.exportId } }) },
+          action: { label: 'Show in folder', onClick: () => macro.revealExport(p.exportId) },
         });
       }
     });
-  }, [subscribe, showToast, send]);
+  }, [subscribe, showToast, macro]);
 
   // Never invalidates: every member is a stable useCallback.
   const api = useMemo(

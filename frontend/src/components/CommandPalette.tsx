@@ -8,6 +8,7 @@ import {
 import { useAppState } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
 import { useAppActions } from '../logic/useSettings';
+import { useMacro } from '../logic/useMacro';
 import { useSelectionRef } from '../state/SelectionContext';
 import { useSheetGuard } from '../state/SheetGuardContext';
 import { useToast } from '../state/ToastContext';
@@ -59,6 +60,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   const { activeProfile, settings, actions, buttonStates } = useAppState();
   const { send } = useBridge();
   const appActions = useAppActions();
+  const macro = useMacro();
   const selectionRef = useSelectionRef();
   const [query, setQuery] = useState('');
 
@@ -163,14 +165,14 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             ...gate(isClicker, runActive),
             keywords: ['window relative', 'rebase', 'coordinates'],
             icon: <Replace size={14} className="text-text-secondary" />,
-            onAction: () => { if (!sheetAllows()) return; send({ type: 'profile:convertCoordinates', payload: { direction: 'toRelative' } }); onClose(); },
+            onAction: () => { if (!sheetAllows()) return; macro.convertCoordinates('toRelative'); onClose(); },
           },
           {
             id: 'convertabsolute', label: 'Convert coordinates to absolute',
             ...gate(isClicker, runActive),
             keywords: ['screen coordinates', 'rebase'],
             icon: <Replace size={14} className="text-text-secondary" />,
-            onAction: () => { if (!sheetAllows()) return; send({ type: 'profile:convertCoordinates', payload: { direction: 'toAbsolute' } }); onClose(); },
+            onAction: () => { if (!sheetAllows()) return; macro.convertCoordinates('toAbsolute'); onClose(); },
           },
           {
             // Convert the whole profile between paired (Down/Up) and combined (Keystroke/Click)
@@ -214,7 +216,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             disabled: runActive, disabledHint: runHint,
             keywords: ['clear', 'start over', 'blank'],
             icon: <RotateCcw size={14} className="text-text-secondary" />,
-            onAction: () => { if (!sheetAllows()) return; send({ type: 'profile:reset', payload: {} }); onClose(); },
+            onAction: () => { if (!sheetAllows()) return; macro.reset(); onClose(); },
           },
           {
             // Right-click-menu-only otherwise, so it stays searchable by name.
@@ -223,7 +225,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             icon: <Files size={14} className="text-text-secondary" />,
             disabled: !activeProfile,
             disabledHint: 'Select a profile first',
-            onAction: () => { if (activeProfile) { send({ type: 'profile:duplicate', payload: { name: activeProfile } }); onClose(); } },
+            onAction: () => { if (activeProfile) { macro.duplicate(activeProfile); onClose(); } },
           },
           {
             // Icon, description and tags. Its only other door is right-click → hover "More" →
@@ -314,7 +316,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     // Narrow deps to the exact settings field read above so unrelated settings changes
     // (hotkeys, loop config, movement knobs) don't rebuild every command group.
   }, [
-    activeProfile, send, appActions, onClose, openAfterClose, computeInsertIndex, sheetAllows,
+    activeProfile, send, appActions, macro, onClose, openAfterClose, computeInsertIndex, sheetAllows,
     settings.useCursorClick,
     // The two BOOLEAN fields, never the buttonStates object: it is republished on several
     // unrelated events, and depending on the object would rebuild every group each time.

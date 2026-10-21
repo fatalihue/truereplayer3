@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppWindow, Check, X } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
+import { useMacro } from '../logic/useMacro';
 import { useAppState } from '../state/AppStateContext';
 import { useTt } from '../state/LanguageContext';
 import { Toggle } from './common/Toggle';
@@ -86,7 +87,8 @@ export function TargetConfigDialog({
   convertibleActionCount = 0,
   inheritingMemberCount = 0,
 }: TargetConfigDialogProps) {
-  const { send, subscribe } = useBridge();
+  const { subscribe } = useBridge();
+  const macro = useMacro();
   const tt = useTt();
   const { buttonStates } = useAppState();
   // Convert rewrites X/Y in place on the actions a live run is replaying, and the replayer froze
@@ -437,13 +439,10 @@ export function TargetConfigDialog({
             testInFlightStartRef.current = Date.now();
             setTestResult(null);
             setTestInFlight(true);
-            send({
-              type: 'profile:testWindowMatch',
-              payload: {
-                processName: processName.trim(),
-                windowTitle: windowTitle.trim(),
-                titleMatchMode,
-              },
+            macro.testWindowMatch({
+              processName: processName.trim(),
+              windowTitle: windowTitle.trim(),
+              titleMatchMode,
             });
           }}
           disabled={(!processName.trim() && !windowTitle.trim()) || regexError !== null}

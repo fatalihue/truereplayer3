@@ -13,6 +13,7 @@ import { useAppState } from '../state/AppStateContext';
 import { ReplayRowMarker } from './ReplayRowMarker';
 import { InsertedRowMarker } from './InsertedRowMarker';
 import { useBridge } from '../bridge/BridgeContext';
+import { useMacro } from '../logic/useMacro';
 import { useTt, useLanguage } from '../state/LanguageContext';
 import type { Language } from '../state/LanguageContext';
 import { useSelectionRef } from '../state/SelectionContext';
@@ -677,6 +678,7 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
   // them. ReplayRowMarker owns it instead: it marks the row with data-replay and index.css
   // paints it, at a cost that no longer scales with row count.
   const { send } = useBridge();
+  const macro = useMacro();
   const tt = useTt();
   const { language } = useLanguage();
   const selectionRef = useSelectionRef();
@@ -3810,7 +3812,7 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
                 <button
                   onMouseEnter={onMouse}
                   onClick={() => {
-                    send({ type: 'profile:click', payload: { name: row.key } });
+                    macro.click(row.key);
                     closeContextMenu();
                   }}
                   className={cls}
