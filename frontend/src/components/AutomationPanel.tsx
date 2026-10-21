@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { TriangleAlert, Zap, Plus, Trash2, Pipette, Camera, Frame, X, ScanSearch, ScanText, Check, Play, Power, Crosshair, Circle } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
 import { useAppState } from '../state/AppStateContext';
+import { useAutomations, useAutomationRefresh, isCropAnswer } from '../logic/useAutomations';
 import { useTt } from '../state/LanguageContext';
 import { DialogShell, DialogFooter  } from './common/DialogShell';
 import { Button } from './common/Button';
@@ -369,7 +370,10 @@ function ActiveHoursField({ value, onChange, phaseLock, phaseLockTip }: {
 }
 
 export function AutomationPanel({ onClose }: { onClose: () => void }) {
+  // send/subscribe stay for the screen tools shared with the step editors (pixel, region, image
+  // and text tests); the automation's own commands go through useAutomations.
   const { send, subscribe } = useBridge();
+  const automations = useAutomations();
   const { automation, profiles } = useAppState();
   const tt = useTt();
 
@@ -415,13 +419,8 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
   // Save from the unsaved prompt, waiting for its echo before it navigates. See the effect below.
   const [saveThenGo, setSaveThenGo] = useState(false);
 
-  // Live status refresh while open: pushes are change-driven, so a quiet watcher's
-  // nextDue countdown would go stale without a poll. 2 s is plenty.
-  useEffect(() => {
-    send({ type: 'automation:request', payload: {} });
-    const id = window.setInterval(() => send({ type: 'automation:request', payload: {} }), 2000);
-    return () => window.clearInterval(id);
-  }, [send]);
+  // Live status refresh while open (a 2 s poll; see the hook).
+  useAutomationRefresh();
 
   const entries = automation.entries;
   const entryByProfile = useMemo(() => {
@@ -555,13 +554,8 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
 
   const handleSave = () => {
     if (!selected || !draft) return;
-    // Armed is NOT an editor field — the list toggle is the sole arming surface
-    // (automation:setArmed persists immediately). Sending the seeded draft.armed here
-    // would silently revert a list-toggle made after the draft was seeded.
-    const armed = entryByProfile.get(selected)?.trigger.armed ?? false;
-    // imageBase64 is display-only (the on-disk PNG is the source) — the backend never parses it, so
-    // send null instead of round-tripping the large derived blob across the bridge on every save.
-    send({ type: 'automation:save', payload: { profile: selected, trigger: { ...draft, imageBase64: null, armed } } });
+    // Armed comes from the list toggle, not the draft (see save).
+    automations.save(selected, draft);
     // Deliberately NOT clearing `dirty` here. The save can fail on the backend — a locked .json,
     // antivirus, a full disk — and it rolls back and toasts. Clearing optimistically then left the
     // panel claiming success: Save disabled (nothing dirty, so no way to retry without touching a
@@ -607,7 +601,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
     if (newDraftProfile === selected) {
       setNewDraftProfile(null);
     } else {
-      send({ type: 'automation:save', payload: { profile: selected, trigger: null } });
+      automations.remove(selected);
     }
     setConfirmDelete(false);
     setDirty(false);
@@ -622,10 +616,8 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
   const testFireReqRef = useRef<string | null>(null);
   const runNow = () => {
     if (!selected) return;
-    const id = `autofire-${Date.now()}`;
-    testFireReqRef.current = id;
     setTestFireResult(null);
-    send({ type: 'automation:testFire', payload: { requestId: id, profile: selected } });
+    testFireReqRef.current = automations.testFire(selected);
   };
 
   // ── Pick-from-screen round-trips (pixel color + image capture) ──
@@ -655,7 +647,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
           // A new/cropped reference makes any test-match badge stale → drop it. A fresh CAPTURE (not a
           // crop of the same image, which keeps its location) may point at a different target, so also
           // clear the snapped ROI — otherwise the daemon would search the new image inside the old box.
-          const wasCrop = msg.payload.requestId.startsWith('autocrop-');
+          const wasCrop = isCropAnswer(msg.payload.requestId);
           setTestMatchResult(null);
           patch({ imagePath: msg.payload.imagePath, imageBase64: msg.payload.imageBase64 ?? null, ...(wasCrop ? {} : { searchRegion: null }) });
         }
@@ -801,9 +793,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
   };
   const captureImage = () => {
     if (!selected) return;
-    const id = `autoimg-${Date.now()}`;
-    captureReqRef.current = id;
-    send({ type: 'automation:captureImage', payload: { requestId: id, profile: selected } });
+    captureReqRef.current = automations.captureImage(selected);
   };
   const configureRegion = () => {
     if (!selected) return;
@@ -817,9 +807,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
   // path + thumbnail), so reuse captureReqRef to match it. rect is image-pixel coords from the cropper.
   const cropReference = (rect: { x: number; y: number; w: number; h: number }) => {
     if (!selected || !draft?.imagePath) { setCropperOpen(false); return; }
-    const id = `autocrop-${Date.now()}`;
-    captureReqRef.current = id;
-    send({ type: 'automation:cropReference', payload: { requestId: id, profile: selected, imagePath: draft.imagePath, ...rect } });
+    captureReqRef.current = automations.cropReference(selected, draft.imagePath, rect);
     setCropperOpen(false);
   };
   const testMatch = () => {
@@ -920,7 +908,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
               the Power glyph says what it gates, which a generic switch can't. */}
           <div className="flex items-center gap-2 mr-auto">
             <IconToggle isOn={automation.enabled} icon={Power} ariaLabel="Automations enabled"
-              onChange={(v) => send({ type: 'automation:setEnabled', payload: { enabled: v } })} />
+              onChange={automations.setEnabled} />
             <span className="text-minor text-text-secondary">Automations enabled</span>
           </div>
           <Button variant="secondary" size="md" onClick={() => navigateTo({ kind: 'close' })}>Close</Button>
@@ -1071,7 +1059,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                           : undefined}>
                         <Toggle size="sm" isOn={entry.trigger.armed} disabled={entry.isDisabled}
                           ariaLabel={`Arm ${name}`}
-                          onChange={(v) => send({ type: 'automation:setArmed', payload: { profile: name, armed: v } })} />
+                          onChange={(v) => automations.setArmed(name, v)} />
                       </span>
                     ) : (
                       <span className="label-micro text-text-tertiary">{'new'}</span>
@@ -1838,7 +1826,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
                 || selectedEntry.skippedSuppressed > 0) && (
                 <div className="pt-1">
                   <Button variant="ghost" size="sm"
-                    onClick={() => send({ type: 'automation:resetCounters', payload: { profile: selectedEntry.profile } })}>
+                    onClick={() => automations.resetCounters(selectedEntry.profile)}>
                     {'Reset counters'}
                   </Button>
                 </div>
