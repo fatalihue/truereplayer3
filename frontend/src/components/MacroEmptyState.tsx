@@ -1,6 +1,6 @@
 import { List, Circle, Type } from 'lucide-react';
 import { useAppState } from '../state/AppStateContext';
-import { useBridge } from '../bridge/BridgeContext';
+import { useRecording } from '../logic/useRecording';
 import { Button } from './common/Button';
 import { KbdTag } from './common/KbdTag';
 
@@ -13,7 +13,7 @@ import { KbdTag } from './common/KbdTag';
 // mirrored ClickerEmptyState read as a stain on the grid).
 export function MacroEmptyState() {
   const { settings, status, buttonStates } = useAppState();
-  const { send } = useBridge();
+  const recording = useRecording();
   const isRecording = status === 'recording';
 
   return (
@@ -44,7 +44,7 @@ export function MacroEmptyState() {
             variant="secondary"
             size="xs"
             disabled={!buttonStates.recordEnabled}
-            onClick={() => send({ type: 'recording:toggle', payload: { insertIndex: 0 } })}
+            onClick={() => recording.toggleAt(0)}
           >
             <Circle size={10} fill="currentColor" style={{ color: 'var(--color-recording-fg)' }} />
             Start recording

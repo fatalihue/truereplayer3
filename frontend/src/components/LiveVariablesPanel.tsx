@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Activity, X } from 'lucide-react';
 import { iconButtonClass } from './common/IconButton';
-import { useBridge } from '../bridge/BridgeContext';
 import { useAppState } from '../state/AppStateContext';
+import { useRunState } from '../logic/useReplay';
 
 
 // ── Live Variables pane ──────────────────────────────────────────────────────
@@ -16,14 +16,6 @@ import { useAppState } from '../state/AppStateContext';
 // editors) and persisted in localStorage so it survives restarts.
 
 const STORAGE_KEY = 'tr-livevars';
-
-type Snapshot = {
-  variables: Record<string, string>;
-  slots: Record<string, string>;
-  rowData: Record<string, string> | null;
-};
-
-const EMPTY: Snapshot = { variables: {}, slots: {}, rowData: null };
 
 // One value row: mono token name, single-line ellipsized value, full value on
 // hover (capped — a captured selection can be huge and the tip layer isn't a
@@ -44,10 +36,11 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 export function LiveVariablesHost() {
-  const { send, subscribe } = useBridge();
   const { status } = useAppState();
   const [enabled, setEnabled] = useState(() => localStorage.getItem(STORAGE_KEY) === '1');
-  const [snap, setSnap] = useState<Snapshot>(EMPTY);
+  // Asks for the current snapshot on open: pushes only happen on writes, and the pane may open
+  // long after the last one.
+  const snap = useRunState(enabled);
 
   // Toggle via CustomEvent so any surface (Command Palette today) can flip it
   // without prop-drilling — the Theme/Data editor pattern.
@@ -62,16 +55,6 @@ export function LiveVariablesHost() {
     window.addEventListener('cmd:livevars', handler);
     return () => window.removeEventListener('cmd:livevars', handler);
   }, []);
-
-  useEffect(() => subscribe((m) => {
-    if (m.type === 'replay:variables') setSnap(m.payload);
-  }), [subscribe]);
-
-  // On open, ask for the current snapshot — pushes only happen on writes, and
-  // the pane may open long after the last one.
-  useEffect(() => {
-    if (enabled) send({ type: 'replay:variablesRequest', payload: {} });
-  }, [enabled, send]);
 
   if (!enabled) return null;
 

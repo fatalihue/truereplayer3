@@ -1,9 +1,9 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useMemo } from 'react';
 import { ListChecks, CheckCircle2, CircleDashed, XCircle, MinusCircle, TriangleAlert, RefreshCw, Repeat } from 'lucide-react';
-import { useBridge } from '../bridge/BridgeContext';
+import { useRunReport } from '../logic/useReplay';
 import { DialogShell, DialogFooter  } from './common/DialogShell';
 import { Callout } from './common/Callout';
-import type { RunReport, RunStep } from '../bridge/messageTypes';
+import type { RunStep } from '../bridge/messageTypes';
 import { runDurationMs } from '../utils/runReportStats';
 
 // Structured codes the extension emits (content.js mkError) plus the two the native bridge
@@ -90,15 +90,7 @@ const STEP_DETAIL_INDENT = 'ml-13';
  * Read-only and last-run-only. It is a debugging aid for the run you just watched, not a log.
  */
 export function RunReportPanel({ onClose }: { onClose: () => void }) {
-  const { send, subscribe } = useBridge();
-  const [report, setReport] = useState<RunReport | null>(null);
-
-  useEffect(() => {
-    send({ type: 'replay:reportRequest', payload: {} });
-    return subscribe((msg) => {
-      if (msg.type === 'replay:report') setReport(msg.payload);
-    });
-  }, [send, subscribe]);
+  const { report, refresh } = useRunReport();
 
   // Memoised because `?? []` builds a NEW array on every render, which made the stats useMemo
   // below recompute every time regardless of whether the report actually changed.
@@ -148,7 +140,7 @@ export function RunReportPanel({ onClose }: { onClose: () => void }) {
       zClass="z-(--z-dialog-raised)"
       onClose={onClose}
       showClose
-      footer={<DialogFooter secondary={{ label: <><RefreshCw size={12} /> Refresh</>, onClick: () => send({ type: 'replay:reportRequest', payload: {} }) }} primary={{ label: 'Close', onClick: onClose }} />}
+      footer={<DialogFooter secondary={{ label: <><RefreshCw size={12} /> Refresh</>, onClick: refresh }} primary={{ label: 'Close', onClick: onClose }} />}
     >
       {/* flex-1 min-h-0, not h-full: the card is `flex flex-col` and this is a direct flex item,
           so an intrinsic height ignores the space the header and footer leave over (DialogShell:38). */}

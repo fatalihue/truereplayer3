@@ -4,7 +4,8 @@ import { SegmentedControl } from './common/SegmentedControl';
 import { Button, BUTTON_VARIANT_CLASSES } from './common/Button';
 import { useAppState, useClickerLive } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
-import { useSelectionRef } from '../state/SelectionContext';
+import { useRecording } from '../logic/useRecording';
+import { useReplay } from '../logic/useReplay';
 import { useTt } from '../state/LanguageContext';
 import { chipOn, chipOff } from './common/chipStyles';
 
@@ -38,20 +39,14 @@ const RAIL_PRIMARY =
   'text-minor font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
 
 export function ActionBar() {
-  const { buttonStates, settings, actions, profileLoop, profiles, activeProfile, dataTable } = useAppState();
+  const { buttonStates, settings, profileLoop, profiles, activeProfile, dataTable } = useAppState();
   const { send } = useBridge();
-  const selectionRef = useSelectionRef();
+  const recording = useRecording();
+  const replay = useReplay();
   const tt = useTt();
   const isClicker = settings.useCursorClick;
   const isReplaying = buttonStates.replayActive;
   const isRecording = buttonStates.recordingActive;
-
-  const handleReplay = () => {
-    // Empty payload on purpose — the backend resolves the loop settings itself. Sending
-    // React's `settings` slice back is what made this button run the previous profile's
-    // count: no profile-activation path refreshes that slice.
-    send({ type: 'replay:toggle', payload: {} });
-  };
 
   const setMode = (clicker: boolean) => {
     if (clicker === isClicker) return;
@@ -164,14 +159,7 @@ export function ActionBar() {
             affordance), which lets Click land in exactly this slot. */}
         {!isClicker && (
           <button
-            onClick={() => {
-              const sel = selectionRef.current;
-              // Match the toolbar's add-action behaviour: insert BEFORE the first selected
-              // row (so the selected row flows downward past the new actions), or append
-              // to the end when nothing is selected.
-              const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
-              send({ type: 'recording:toggle', payload: { insertIndex } });
-            }}
+            onClick={recording.toggle}
             disabled={!buttonStates.recordEnabled}
             className={`${isRecording ? `${busyClass} record-btn-ring` : restingClass}`}
             style={isRecording ? undefined : restingStyle('var(--color-recording)', 'var(--color-recording-fg)')}
@@ -185,7 +173,7 @@ export function ActionBar() {
 
         {/* Replay/Click button — one physical button for both modes. */}
         <button
-          onClick={handleReplay}
+          onClick={replay.toggle}
           disabled={!buttonStates.replayEnabled}
           className={`${isReplaying ? `${busyClass} replay-btn-ring` : restingClass}`}
           style={isReplaying

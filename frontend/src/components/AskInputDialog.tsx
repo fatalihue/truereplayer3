@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Keyboard } from 'lucide-react';
 import { DialogShell, DialogFooter  } from './common/DialogShell';
-import { useBridge } from '../bridge/BridgeContext';
+import { useAskInput } from '../logic/useReplay';
 
 
 /**
@@ -77,36 +77,20 @@ function AskInputDialog({ label, options, onSubmit, onCancel }: AskInputDialogPr
 }
 
 /**
- * Global host mounted once (App overlays): subscribes to the Ask-Input bridge messages and renders
- * the modal for the current pending request. inputDismiss (Stop mid-prompt — backend already
- * resolved the await) just clears the UI without sending a result.
+ * Global host mounted once (App overlays): renders the modal for the pending request of an Ask
+ * input step (logic/useReplay). Stop mid-prompt clears it without sending a result.
  */
 export function AskInputHost() {
-  const { send, subscribe } = useBridge();
-  const [req, setReq] = useState<{ requestId: string; label: string; options: string[] | null } | null>(null);
-
-  useEffect(() => subscribe((m) => {
-    if (m.type === 'replay:inputRequest') {
-      setReq(m.payload);
-    } else if (m.type === 'replay:inputDismiss') {
-      setReq((cur) => (cur && cur.requestId === m.payload.requestId ? null : cur));
-    }
-  }), [subscribe]);
-
-  if (!req) return null;
-
-  const finish = (value: string, cancelled: boolean) => {
-    send({ type: 'replay:inputResult', payload: { requestId: req.requestId, value, cancelled } });
-    setReq(null);
-  };
+  const { request, submit, cancel } = useAskInput();
+  if (!request) return null;
 
   return (
     <AskInputDialog
-      key={req.requestId}
-      label={req.label}
-      options={req.options}
-      onSubmit={(v) => finish(v, false)}
-      onCancel={() => finish('', true)}
+      key={request.requestId}
+      label={request.label}
+      options={request.options}
+      onSubmit={submit}
+      onCancel={cancel}
     />
   );
 }

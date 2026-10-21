@@ -1,42 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Play, Pause as PauseIcon, MousePointerClick, Folder, List, Gauge, Clock, Repeat, Unplug, Chrome, Timer, CheckCircle2, XCircle, AlertTriangle, Square } from 'lucide-react';
 import { useAppState, useClickerLive, useHighlightedAction } from '../state/AppStateContext';
-import { useBridge } from '../bridge/BridgeContext';
+import { useReplay, useLastRun } from '../logic/useReplay';
 import { usePauseTick } from '../hooks/usePauseTick';
 import { useBrowserConnection } from '../hooks/useBrowserConnection';
 import { useTt, useLanguage } from '../state/LanguageContext';
-import type { RunReport } from '../bridge/messageTypes';
 import { skippedRowMask } from '../utils/conditionalBlocks';
 import { lastRunKind, lastRunLabel, type LastRunKind } from '../utils/lastRunChip';
-import { runDurationMs } from '../utils/runReportStats';
 import { replayPasses, estimateAllPassesMs } from '../utils/replayPasses';
 import { describeClickerConfig, formatClickerStats, formatRate } from '../utils/clickerFormat';
 import { formatKeyCombo } from '../utils/displayUtils';
 import { actionCostMs } from '../utils/actionCost';
 import { APP_VERSION } from '../appVersion';
-
-// What the bar keeps of the last finished run: enough to say "18/18 in 12.4 s" or "stopped at
-// step 7" beside the profile it belongs to, and to open the full report on click. Derived from the
-// replay:report the backend pushes on its own at the end of every run (WebViewBridge, the
-// ready-after-replaying edge), so no new message and nothing polled.
-interface LastRunSummary {
-  profile: string;
-  total: number;
-  ok: number;
-  /** Set only when the run actually HALTED on that step. A failure the Data-loop's skip policy
-   *  absorbed leaves this null — the run carried on to the end — and is reported by failedCount. */
-  failedRow: number | null;
-  /** Profile the halting step belongs to — rows restart at 1 inside every RunProfile sub-call. */
-  failedProfile: string | null;
-  /** Steps that failed, however the run ended. Non-zero with a null failedRow means "finished,
-   *  but some rows did not". */
-  failedCount: number;
-  durationMs: number;
-  /** Whether the duration came from the engine's own clock. A report from a build without the
-   *  field falls back to the sum of step costs, which is the old, smaller number. */
-  durationIsWallClock: boolean;
-  outcome: 'completed' | 'stopped' | 'failed' | null;
-}
 
 // Per-action cost, the hold dwell and the × N gaps all live in utils/actionCost, next to the
 // defaults the engine falls back to. The floor stays a floor — smooth mouse moves
@@ -93,41 +68,9 @@ export function StatusBar() {
   const browserConnection = useBrowserConnection();
   const tt = useTt();
   const { language } = useLanguage();
-  const { send, subscribe } = useBridge();
-
-  // Last finished run, from the automatic end-of-run report push. A report requested mid-run
-  // carries a 'running' step and is not a finished run; skipped rows count for neither side.
-  const [lastRun, setLastRun] = useState<LastRunSummary | null>(null);
-  useEffect(() => subscribe((msg) => {
-    if (msg.type !== 'replay:report') return;
-    const r = msg.payload as RunReport;
-    if (!r.startedAt || r.steps.length === 0 || r.steps.some(s => s.status === 'running')) return;
-    const counted = r.steps.filter(s => s.status !== 'skipped');
-    const failures = r.steps.filter(s => s.status === 'failed');
-    // A failure only HALTED the run when nothing ran after it. Under the Data loop's skip policy
-    // the engine faults the row and carries on, so the old "first failed step" reading printed
-    // "stopped at step N" for a run that went all the way through.
-    const lastIdx = r.steps.length - 1;
-    const halted = failures.length > 0 && r.steps[lastIdx].status === 'failed';
-    const dur = runDurationMs(r, r.steps);
-    setLastRun({
-      profile: r.steps[0].profile || r.profile,
-      total: counted.length,
-      ok: counted.filter(s => s.status === 'ok').length,
-      failedRow: halted ? failures[failures.length - 1].row : null,
-      // A chain halts in the DEEPEST frame, so the last failure's row counts lines in a
-      // sub-profile — a number that often does not exist in the grid on screen. Carry the profile
-      // so the label can say which one it means.
-      failedProfile: halted ? (failures[failures.length - 1].profile ?? null) : null,
-      failedCount: failures.length,
-      // The engine's own clock when the build provides it; the step sum is the legacy fallback.
-      // One reader, shared with the Run report — the two used to print different numbers for the
-      // same execution, one click apart.
-      durationMs: dur.totalMs,
-      durationIsWallClock: dur.wallClock,
-      outcome: r.outcome ?? null,
-    });
-  }), [subscribe]);
+  const replay = useReplay();
+  // Last finished run, from the automatic end-of-run report push (logic/useReplay).
+  const lastRun = useLastRun();
 
   // The delays added up plus a per-action floor — the number the grid can promise before a run.
   // Rows the engine will skip are left out: `if (action.IsSkipped) continue;` happens BEFORE the
@@ -286,7 +229,7 @@ export function StatusBar() {
                   <span className="text-text-secondary">— resumes at</span>
                   <span className="font-semibold text-text-primary">{Math.ceil(clickerStats.countdownMs / 1000)} s</span>
                   <button
-                    onClick={() => send({ type: 'replay:resume', payload: {} })}
+                    onClick={replay.resume}
                     className="h-6 px-2 flex items-center text-caption font-medium rounded border border-border-default text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors shrink-0"
                   >
                     Resume
@@ -341,7 +284,7 @@ export function StatusBar() {
                     Paused{settings.cursorClickPauseHotkey && ` — ${formatKeyCombo(settings.cursorClickPauseHotkey)}`}
                   </span>
                   <button
-                    onClick={() => send({ type: 'replay:resume', payload: {} })}
+                    onClick={replay.resume}
                     className="h-6 px-2 flex items-center text-caption font-medium rounded border border-border-default text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors shrink-0"
                   >
                     Resume
@@ -478,7 +421,7 @@ export function StatusBar() {
                     {pauseState.timeoutMs > 0 && `wait ${pauseRemainingSec}s`}
                   </span>
                   <button
-                    onClick={() => send({ type: 'replay:resume', payload: {} })}
+                    onClick={replay.resume}
                     className="h-6 px-2 flex items-center text-caption font-medium rounded border border-border-default text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors shrink-0"
                   >
                     Resume

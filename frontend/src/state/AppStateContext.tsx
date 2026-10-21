@@ -1,4 +1,4 @@
-import { createContext, useContext, useReducer, useEffect } from 'react';
+import { createContext, useContext, useReducer, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { useBridge } from '../bridge/BridgeContext';
 import type { AppState, ClickerLiveState, IncomingMessage } from '../bridge/messageTypes';
@@ -382,6 +382,7 @@ function highlightReducer(state: number | null, message: IncomingMessage): numbe
 }
 
 const AppStateContext = createContext<AppState>(initialState);
+const GetAppStateContext = createContext<() => AppState>(() => initialState);
 const ClickerLiveContext = createContext<ClickerLiveState>(initialClickerLive);
 const HighlightContext = createContext<number | null>(null);
 
@@ -390,6 +391,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appStateReducer, initialState);
   const [live, dispatchLive] = useReducer(clickerLiveReducer, initialClickerLiveInternal);
   const [highlight, dispatchHighlight] = useReducer(highlightReducer, null);
+
+  // The committed state, for code that runs on a click rather than during render: the commands in
+  // logic/ read it when they fire instead of subscribing their component to every change. Kept
+  // current in a layout effect, so a handler never sees a state the screen has not shown yet.
+  const stateRef = useRef(state);
+  useLayoutEffect(() => { stateRef.current = state; }, [state]);
+  const getState = useCallback(() => stateRef.current, []);
 
   useEffect(() => {
     return subscribe((message) => {
@@ -404,18 +412,29 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [subscribe]);
 
   return (
-    <AppStateContext.Provider value={state}>
-      <ClickerLiveContext.Provider value={live}>
-        <HighlightContext.Provider value={highlight}>
-          {children}
-        </HighlightContext.Provider>
-      </ClickerLiveContext.Provider>
-    </AppStateContext.Provider>
+    <GetAppStateContext.Provider value={getState}>
+      <AppStateContext.Provider value={state}>
+        <ClickerLiveContext.Provider value={live}>
+          <HighlightContext.Provider value={highlight}>
+            {children}
+          </HighlightContext.Provider>
+        </ClickerLiveContext.Provider>
+      </AppStateContext.Provider>
+    </GetAppStateContext.Provider>
   );
 }
 
 export function useAppState() {
   return useContext(AppStateContext);
+}
+
+/**
+ * Reads the state at the moment it is called, without subscribing: for event handlers and the
+ * commands in logic/. The getter itself never changes identity. During render use useAppState —
+ * a value read here would not re-render when it changes.
+ */
+export function useGetAppState(): () => AppState {
+  return useContext(GetAppStateContext);
 }
 
 /**

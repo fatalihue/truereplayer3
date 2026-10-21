@@ -1,6 +1,7 @@
 import { Pause as PauseIcon, Check, Square, AlertTriangle } from 'lucide-react';
 import { useAppState, useClickerLive } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
+import { useReplay } from '../logic/useReplay';
 import { usePauseTick } from '../hooks/usePauseTick';
 import { describeClickerConfig, formatClickerStats, formatClock, formatEta } from '../utils/clickerFormat';
 import { KbdTag } from './common/KbdTag';
@@ -18,6 +19,7 @@ export function ClickerDashboard() {
   // AppState is what stops every other panel re-rendering at that cadence.
   const { clickerStats } = useClickerLive();
   const { send } = useBridge();
+  const replay = useReplay();
   usePauseTick(pauseState);
 
   const isReplaying = status === 'replaying';
@@ -279,7 +281,7 @@ export function ClickerDashboard() {
               )}
             </div>
             <button
-              onClick={() => send({ type: 'replay:resume', payload: {} })}
+              onClick={replay.resume}
               className="px-3 py-1 text-minor leading-[inherit] font-medium rounded border border-border-default text-text-primary hover:bg-bg-elevated transition-colors"
             >
               Resume

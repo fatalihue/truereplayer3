@@ -5,7 +5,7 @@ import { normalizeToken, splitTokenSegments } from './tokenNormalize';
 import type { DeliveryFacts } from '../../utils/sendTextStatus';
 import { useAppState } from '../../state/AppStateContext';
 import { useClipboardContent } from './useClipboardContent';
-import { useRunStateSnapshot } from './useRunStateSnapshot';
+import { useRunState } from '../../logic/useReplay';
 import { resolveMessagePreview, type PendingReason, type PreviewPiece } from './messagePreview';
 import type { SendMethod } from '../../utils/sendTextTypes';
 
@@ -92,7 +92,7 @@ export function MessagePreviewPanel({ text, method, marksAdded = false, delivery
   const tt = useTt();
   const { clipRaw, clipReady } = useClipboardContent();
   const { dataTable } = useAppState();
-  const runState = useRunStateSnapshot(true);
+  const runState = useRunState(true);
 
   const pieces = useMemo<PreviewPiece[]>(() => resolveMessagePreview(text, {
     clipRaw,

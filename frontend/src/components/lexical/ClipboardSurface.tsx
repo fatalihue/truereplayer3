@@ -31,7 +31,7 @@ import {
   type Split,
   type TransformState,
 } from './clipboardModifiers';
-import { useRunStateSnapshot, lookupRunState } from './useRunStateSnapshot';
+import { useRunState, lookupRunState } from '../../logic/useReplay';
 import { useAppState } from '../../state/AppStateContext';
 
 // The surface is the ONE place a modifier chain is built, so its title names the SOURCE the
@@ -142,7 +142,7 @@ interface ClipboardSurfaceProps {
 export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onBack, onReset, originalToken }: ClipboardSurfaceProps) {
   const tt = useTt();
   const { clipRaw, clipReady, refresh } = useClipboardContent();
-  const runState = useRunStateSnapshot(head.kind === 'clip' || head.kind === 'var');
+  const runState = useRunState(head.kind === 'clip' || head.kind === 'var');
   const { dataTable } = useAppState();
   // While editable, the rebuilt token is correct — it is what an edit will write. While READ-ONLY
   // it is not: rebuilding is exactly what this surface is refusing to do, so show what the user has.
