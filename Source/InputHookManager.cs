@@ -851,13 +851,15 @@ namespace TrueReplayer
         private static volatile bool _isReplayingAction = false;
         public static bool IsReplayingAction { get => _isReplayingAction; set => _isReplayingAction = value; }
 
-        // Single-use hotkey listener for Pause action: when ExecutePause is awaiting, the registered
-        // hotkey resumes replay. Volatile so the hook thread sees writes from the replay thread
-        // immediately. Cleared in finally block of ExecutePause.
+        // Single-use listener for Pause action: while ExecutePause is awaiting, the callback resumes
+        // replay — fired by the registered hotkey, or by the Resume button (TriggerReplayPauseListener).
+        // A timeout-only Pause registers with a null hotkey, so only the button can fire it. Volatile
+        // so the hook thread sees writes from the replay thread immediately. Cleared in finally block
+        // of ExecutePause.
         private static volatile string? _pauseResumeHotkey;
         private static volatile Action? _pauseResumeCallback;
 
-        public static void SetReplayPauseListener(string hotkey, Action onPress)
+        public static void SetReplayPauseListener(string? hotkey, Action onPress)
         {
             _pauseResumeHotkey = hotkey;
             _pauseResumeCallback = onPress;

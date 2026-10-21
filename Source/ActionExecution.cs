@@ -9970,9 +9970,10 @@ namespace TrueReplayer.Services
         }
 
         /// <summary>
-        /// Pauses replay until either the configured resume hotkey is pressed, or the timeout
-        /// expires, or the replay is cancelled. The hotkey is suppressed (not sent to the target
-        /// app). If both fields are empty/zero, this is a no-op so the replay continues immediately.
+        /// Pauses replay until the configured resume hotkey is pressed, the Resume button is
+        /// clicked, the timeout expires, or the replay is cancelled. The hotkey is suppressed (not
+        /// sent to the target app). If both fields are empty/zero, this is a no-op so the replay
+        /// continues immediately.
         /// </summary>
         private async Task ExecutePause(ActionItem action, CancellationToken token)
         {
@@ -9982,10 +9983,13 @@ namespace TrueReplayer.Services
 
             var resumeTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-            dispatcherQueue.TryEnqueue(() => OnReplayPaused?.Invoke(hotkey ?? "", timeoutMs));
+            // Registered even without a hotkey: the status bar shows Resume for every Pause, and the
+            // button fires this same callback (replay:resume → ManualResume). Gating it on the hotkey
+            // left a timeout-only Pause deaf to the button. Registered before the UI hears of the
+            // pause, so a Resume can never arrive ahead of its listener.
+            InputHookManager.SetReplayPauseListener(hotkey, () => resumeTcs.TrySetResult(true));
 
-            if (hotkey != null)
-                InputHookManager.SetReplayPauseListener(hotkey, () => resumeTcs.TrySetResult(true));
+            dispatcherQueue.TryEnqueue(() => OnReplayPaused?.Invoke(hotkey ?? "", timeoutMs));
 
             // Time spent sitting in a Pause action is not time the macro took. The status bar's
             // live clock already subtracts it, so the duration the run REPORTS has to subtract it
