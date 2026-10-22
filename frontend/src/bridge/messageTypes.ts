@@ -1011,6 +1011,7 @@ export type IncomingMessage =
   | { type: 'ocr:languagesResult'; payload: OcrLanguagesPayload }
   | { type: 'examples:listResult'; payload: { examples: ExampleInfo[] } }
   | { type: 'examples:useResult'; payload: ExampleUseResult }
+  | { type: 'profile:reverted'; payload: { ok: boolean; name?: string; error?: string } }
   | { type: 'ocr:installResult'; payload: { tag: string; ok: boolean; canceled: boolean; restartApp: boolean; restartWindows: boolean; error?: string | null } }
   | { type: 'image:testMatchResult'; payload: { requestId: string; found: boolean; score: number; x: number; y: number; w: number; h: number; error?: string } }
   | { type: 'waitimage:searchRegionSet'; payload: { requestId: string; cancelled: boolean; x?: number; y?: number; w?: number; h?: number } }
@@ -1128,6 +1129,9 @@ export type OutgoingMessage =
   | { type: 'profile:click'; payload: { name: string } }
   // Opens a macro and never closes the open one (D1); opening the open macro does nothing.
   | { type: 'profile:open'; payload: { name: string } }
+  // "Revert to when I opened it": the open macro's file goes back to the copy taken when it was
+  // opened, and the macro reopens from it. The page confirms; there is no native dialog.
+  | { type: 'profile:revert'; payload: Record<string, never> }
   | { type: 'profile:create'; payload: { name: string; folder?: string } }
   | { type: 'profile:rename'; payload: { oldName: string; newName: string } }
   | { type: 'profile:duplicate'; payload: { name: string } }

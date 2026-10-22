@@ -216,7 +216,45 @@ namespace TrueReplayer
                     ResetCurrentProfileWindowContext();
             }
         }
-        public string? CurrentProfilePath { get; set; }
+        // The open macro's file. Pointing it at a NEW file also takes the "Revert to when I opened
+        // it" copy (profile:revert): that file's text at that moment, before any edit made while it
+        // is open can reach the disk. Every open path sets it — click, profile:open, create, load,
+        // the import reload, a hotkey or automation that swaps the macro — so none can forget the
+        // copy. Setting the SAME file again keeps it: a hotkey that runs the open macro reloads it
+        // from disk, and that is not a new open. null (closing, reset) drops it, and a rename moves
+        // the file under the open macro with the copy kept (MoveOpenProfileFile).
+        private string? _currentProfilePath;
+        private string? _openedCopy;
+        public string? CurrentProfilePath
+        {
+            get => _currentProfilePath;
+            set
+            {
+                bool sameFile = value != null && _currentProfilePath != null
+                    && string.Equals(Path.GetFullPath(value), Path.GetFullPath(_currentProfilePath), StringComparison.OrdinalIgnoreCase);
+                _currentProfilePath = value;
+                if (value == null) _openedCopy = null;
+                else if (!sameFile || _openedCopy == null) _openedCopy = ReadOpenedCopy(value);
+            }
+        }
+
+        private static string? ReadOpenedCopy(string path)
+        {
+            try { return File.Exists(path) ? File.ReadAllText(path) : null; }
+            catch (Exception ex)
+            {
+                Services.DiagnosticLog.Warn($"[Revert] Could not keep the opened copy of {Path.GetFileName(path)}: {ex.Message}");
+                return null;
+            }
+        }
+
+        // A rename moves the open macro's file without reopening it, so the revert copy stays.
+        private void MoveOpenProfileFile(string newPath)
+        {
+            var copy = _openedCopy;
+            CurrentProfilePath = newPath;
+            _openedCopy = copy;
+        }
 
         // Every write that sets the flag (and every loop edit, MarkLoopEdited) also advances
         // _dirtyGeneration. A save that awaits I/O compares the number before and after: an edit
@@ -1032,6 +1070,7 @@ namespace TrueReplayer
                     case "browser:testCondition": _ = HandleBrowserTestCondition(payload); break;
                     case "profile:click": HandleProfileClick(payload); break;
                     case "profile:open": HandleProfileOpen(payload); break;
+                    case "profile:revert": HandleProfileRevert(); break;
                     case "profile:create": HandleProfileCreate(payload); break;
                     case "profile:rename": HandleProfileRename(payload); break;
                     case "profile:duplicate": HandleProfileDuplicate(payload); break;
@@ -9323,30 +9362,7 @@ namespace TrueReplayer
             }
             if (profile != null)
             {
-                var entry = profileController.ProfileEntries.FirstOrDefault(p => p.Name == name);
-                AppSettingsManager.ActivateProfile(profile);
-                CurrentProfileName = name;
-                CurrentProfilePath = entry?.FilePath;
-                HasUnsavedChanges = false;
-                // Sync cached entry with loaded profile data
-                if (entry != null)
-                {
-                    entry.UseRelativeCoordinates = profile.UseRelativeCoordinates;
-                    entry.BringToFocus = profile.BringToFocus;
-                }
-                // Apply effective values (profile's own > folder-inherited)
-                UserProfile.Current.UseRelativeCoordinates = profileController.GetEffectiveRelativeCoordinates(name);
-                UserProfile.Current.BringToFocus = profileController.GetEffectiveBringToFocus(name);
-                ApplyProfile(profile);
-                profileController.UpdateProfileColors(name);
-                // The new profile's loop settings. ApplyProfile only pushes actions + button
-                // states, so without this the panel keeps rendering the PREVIOUS profile's
-                // number. The edit flag is reset explicitly — it is not tied to profile identity
-                // on the React side and would otherwise stay dirty across the swap.
-                ClearLoopEdit();
-                PushProfileLoop();
-                PushProfilesUpdate();
-                TrayIconService.UpdateTrayIcon();
+                ActivateLoadedProfile(name, profile);
             }
             else
             {
@@ -9359,6 +9375,81 @@ namespace TrueReplayer
                 catch (Exception ex) { Services.DiagnosticLog.Error("Profile list refresh after a failed open failed", ex); }
                 PushProfilesUpdate();
             }
+        }
+
+        // A profile just read from disk becomes the open macro: the grid, the run settings and the
+        // sidebar follow it. Shared by opening and by profile:revert, which reopens the same macro.
+        private void ActivateLoadedProfile(string name, UserProfile profile)
+        {
+            var entry = profileController.ProfileEntries.FirstOrDefault(p => p.Name == name);
+            AppSettingsManager.ActivateProfile(profile);
+            CurrentProfileName = name;
+            CurrentProfilePath = entry?.FilePath;
+            HasUnsavedChanges = false;
+            // Sync cached entry with loaded profile data
+            if (entry != null)
+            {
+                entry.UseRelativeCoordinates = profile.UseRelativeCoordinates;
+                entry.BringToFocus = profile.BringToFocus;
+            }
+            // Apply effective values (profile's own > folder-inherited)
+            UserProfile.Current.UseRelativeCoordinates = profileController.GetEffectiveRelativeCoordinates(name);
+            UserProfile.Current.BringToFocus = profileController.GetEffectiveBringToFocus(name);
+            ApplyProfile(profile);
+            profileController.UpdateProfileColors(name);
+            // The new profile's loop settings. ApplyProfile only pushes actions + button
+            // states, so without this the panel keeps rendering the PREVIOUS profile's
+            // number. The edit flag is reset explicitly — it is not tied to profile identity
+            // on the React side and would otherwise stay dirty across the swap.
+            ClearLoopEdit();
+            PushProfileLoop();
+            PushProfilesUpdate();
+            TrayIconService.UpdateTrayIcon();
+        }
+
+        // profile:revert — "Revert to when I opened it": writes the open macro's file back to the
+        // copy CurrentProfilePath took when it was opened, and reopens the macro from it. The page
+        // asks first, so there is no native dialog, and the edits made since are dropped on purpose
+        // — the edit history with them, as on any open. The copy stays: a second revert lands on
+        // the same state. Answers profile:reverted.
+        private async void HandleProfileRevert()
+        {
+            if (recordingService.IsRecording || replayService.IsReplaying)
+            {
+                RefuseRevert("Stop the recording or replay before reverting the macro.");
+                return;
+            }
+            string name = CurrentProfileName;
+            string? path = CurrentProfilePath;
+            string? copy = _openedCopy;
+            if (name == "No Profile" || path == null || copy == null)
+            {
+                RefuseRevert("There is no open macro to revert.");
+                return;
+            }
+            try
+            {
+                await FileHelper.WriteAllTextAtomicAsync(path, copy);
+                // Hotkey, hotstring, window target and automation live in the file too: the list and
+                // the automation daemon re-read them from what is now on disk.
+                await profileController.RefreshProfileListAsync(true);
+                var profile = await profileController.LoadProfileByNameAsync(name)
+                    ?? throw new InvalidOperationException("its file could not be read back");
+                ActivateLoadedProfile(name, profile);
+                ResyncAutomationDaemon();
+                SendMessage("profile:reverted", new { ok = true, name });
+            }
+            catch (Exception ex)
+            {
+                Services.DiagnosticLog.Error($"Reverting '{name}' failed", ex);
+                RefuseRevert($"Could not revert \"{name}\": {ex.Message}");
+            }
+        }
+
+        private void RefuseRevert(string message)
+        {
+            SendMessage("alert:show", new { message });
+            SendMessage("profile:reverted", new { ok = false, error = message });
         }
 
         // Delegates to the shared validator (single owner for this security/data-loss check —
@@ -9663,7 +9754,7 @@ namespace TrueReplayer
                 if (CurrentProfileName == oldName)
                 {
                     CurrentProfileName = actualNewName;
-                    CurrentProfilePath = newFilePath;
+                    MoveOpenProfileFile(newFilePath);
                     // A rename keeps the same loaded profile — and so must a pending, unsaved
                     // loop edit. Re-stamp the edit's owner name instead of clearing it, or the
                     // name check in HasUnsavedLoopChange would silently drop the user's value.
@@ -9763,7 +9854,7 @@ namespace TrueReplayer
             if (CurrentProfileName == oldName)
             {
                 CurrentProfileName = newName;
-                CurrentProfilePath = newPath;
+                MoveOpenProfileFile(newPath);
                 RetargetLoopEdit(newName);
                 profileController.UpdateProfileColors(newName);
                 PushToolbarUpdate();

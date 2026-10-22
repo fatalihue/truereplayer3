@@ -21,6 +21,11 @@ export function useMacro() {
     click: (name: string) => send({ type: 'profile:click', payload: { name } }),
     /** Opens a macro and never closes the open one (D1). Opening the macro already open does nothing. */
     open: (name: string) => send({ type: 'profile:open', payload: { name } }),
+    /**
+     * "Revert to when I opened it": the open macro goes back to its file as it was when opened,
+     * and the edits since (with their undo history) are dropped. Answers profile:reverted.
+     */
+    revert: () => send({ type: 'profile:revert', payload: {} }),
     save: () => send({ type: 'profile:save', payload: {} }),
     load: () => send({ type: 'profile:load', payload: {} }),
     /** Resets the app's settings to the defaults, after a native confirmation — and clears the steps. useSettings().resetAll is the reset that keeps them (D23). */
