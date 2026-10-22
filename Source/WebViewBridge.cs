@@ -259,7 +259,7 @@ namespace TrueReplayer
         // Every write that sets the flag (and every loop edit, MarkLoopEdited) also advances
         // _dirtyGeneration. A save that awaits I/O compares the number before and after: an edit
         // that landed DURING the write is not in the file, so its flag must survive the save that
-        // raced it (see HandleProfileSave).
+        // raced it (see HandleProfileSave). With save as you go on, it also restarts the countdown.
         private bool _hasUnsavedChanges;
         private long _dirtyGeneration;
         public bool HasUnsavedChanges
@@ -268,7 +268,11 @@ namespace TrueReplayer
             set
             {
                 _hasUnsavedChanges = value;
-                if (value) _dirtyGeneration++;
+                if (value)
+                {
+                    _dirtyGeneration++;
+                    ScheduleAutoSave();
+                }
             }
         }
 
@@ -837,6 +841,8 @@ namespace TrueReplayer
 
             // Watch for actions collection changes
             actions.CollectionChanged += OnActionsChanged;
+            // Save as you go follows the other writers of the open macro's file (see OnProfileFileWritten).
+            SettingsManager.ProfileWritten += OnProfileFileWritten;
 
             // Seed bridge state from saved global settings
             var saved = AppSettingsManager.Load();
@@ -988,6 +994,7 @@ namespace TrueReplayer
                 switch (type)
                 {
                     case "ui:ready": HandleUIReady(); break;
+                    case "ui:capabilities": HandleUICapabilities(payload); break;
                     case "recording:toggle": HandleRecordingToggle(payload); break;
                     case "replay:toggle": HandleReplayToggle(); break;
                     case "replay:resume": HandleReplayResume(payload); break;
@@ -2981,6 +2988,7 @@ namespace TrueReplayer
             _hasUnsavedLoopChange = true;
             _loopEditProfile = CurrentProfileName;
             _dirtyGeneration++; // an edit a save in flight has not written — see HasUnsavedChanges
+            ScheduleAutoSave();
         }
         public void ClearLoopEdit()
         {
@@ -3427,6 +3435,189 @@ namespace TrueReplayer
             });
         }
 
+        // ── Save as you go (ui:capabilities { autoSave }) ──
+        // The new shell has no Save to forget: the open macro's file follows its edits about
+        // AutoSaveDelayMs after the last one, and right away before anything leaves the grid or
+        // reads the file — a switch, a load, a create, an export or an update (all through
+        // CheckUnsavedChangesAsync), closing the window, a run, a rename (FlushAutoSaveAsync). The
+        // write is the Overwrite branch of HandleProfileSave without its question. Off until the
+        // page asks for it, and ui:ready turns it off again, so the shell of today, which never
+        // asks, keeps every prompt it has. "No Profile" has no file to write to: its edits stay
+        // behind the same prompts as before, and so does a write that failed.
+        private const int AutoSaveDelayMs = 800;
+        public bool AutoSaveEnabled { get; private set; }
+        private DispatcherQueueTimer? _autoSaveTimer;
+        // The write in flight and the object it is writing. The timer, Ctrl+S and every flush
+        // share it, so two writes of the file never overlap, and a flush that arrives mid-write
+        // waits for it instead of reading flags the write is about to clear.
+        private Task<bool>? _autoSaveWrite;
+        private UserProfile? _autoSaveSnapshot;
+        private DateTime _autoSaveLandedAt = DateTime.MinValue;
+        // > 0 while something puts the open macro's file back or replaces it (a revert, an import
+        // over it): a write of ours landing then would undo it. The timer waits; a flush says no.
+        private int _autoSaveHolds;
+        // Only the first failure of a streak raises a toast; the rest are logged.
+        private bool _autoSaveFailing;
+
+        /// <summary>The open macro saves itself: the page asked for it, and there is a file to write to.</summary>
+        public bool SavesAsYouGo => AutoSaveEnabled && CurrentProfileName != "No Profile" && CurrentProfilePath != null;
+
+        // ui:capabilities — what the new shell asks of the engine beyond today's behaviour, sent
+        // right after ui:ready. A missing or false key is today's behaviour.
+        private void HandleUICapabilities(JsonElement payload)
+        {
+            AutoSaveEnabled = payload.ValueKind == JsonValueKind.Object
+                && payload.TryGetProperty("autoSave", out var autoSave) && autoSave.ValueKind == JsonValueKind.True;
+            if (AutoSaveEnabled) ScheduleAutoSave(); // an edit made before the page asked
+            else _autoSaveTimer?.Stop();
+        }
+
+        // Restarts the countdown. Both writers of the dirty state call it: the HasUnsavedChanges
+        // setter and MarkLoopEdited.
+        private void ScheduleAutoSave()
+        {
+            if (!AutoSaveEnabled || _disposed) return;
+            if (!dispatcherQueue.HasThreadAccess)
+            {
+                dispatcherQueue.TryEnqueue(ScheduleAutoSave);
+                return;
+            }
+            if (_autoSaveTimer == null)
+            {
+                _autoSaveTimer = dispatcherQueue.CreateTimer();
+                _autoSaveTimer.Interval = TimeSpan.FromMilliseconds(AutoSaveDelayMs);
+                _autoSaveTimer.IsRepeating = false;
+                _autoSaveTimer.Tick += OnAutoSaveTick;
+            }
+            _autoSaveTimer.Stop();
+            _autoSaveTimer.Start();
+        }
+
+        private void OnAutoSaveTick(DispatcherQueueTimer timer, object _)
+        {
+            if (!AutoSaveEnabled || _disposed) return;
+            // A take still adding rows, a hold, or a write already in flight: look again later.
+            if (recordingService.IsRecording || _autoSaveHolds > 0 || _autoSaveWrite is { IsCompleted: false })
+            {
+                timer.Start();
+                return;
+            }
+            if (SavesAsYouGo && (HasUnsavedLoopChange || HasUnsavedActionWork)) _ = StartAutoSaveWrite();
+        }
+
+        private Task<bool> StartAutoSaveWrite() =>
+            _autoSaveWrite is { IsCompleted: false } running ? running : (_autoSaveWrite = WriteOpenProfileAsync());
+
+        /// <summary>
+        /// Writes now what the open macro has not written yet. True when nothing is left unsaved
+        /// afterwards, so the caller goes on with nothing to ask. False under "No Profile", when the
+        /// write fails, during a hold, or when edits keep landing mid-write: the caller's own prompt
+        /// still guards the work.
+        /// </summary>
+        public async Task<bool> FlushAutoSaveAsync()
+        {
+            // An edit that lands during a write is not in the file, and the next round writes it.
+            for (int round = 0; round < 3; round++)
+            {
+                if (_autoSaveWrite is { IsCompleted: false } running) await running;
+                if (!HasUnsavedLoopChange && !HasUnsavedActionWork) return true;
+                if (!SavesAsYouGo || _autoSaveHolds > 0) return false;
+                _autoSaveTimer?.Stop();
+                if (!await StartAutoSaveWrite()) return false;
+            }
+            return !HasUnsavedLoopChange && !HasUnsavedActionWork;
+        }
+
+        /// <summary>FlushAutoSaveAsync without waiting, after a run started: it replays the grid, not the file.</summary>
+        public void FlushAutoSaveInBackground()
+        {
+            if (AutoSaveEnabled) _ = FlushAutoSaveAsync();
+        }
+
+        // For a caller about to move, delete, put back or replace the open macro's file: stops the
+        // countdown and lets the write in flight land first. Pending edits are left as they are.
+        private async Task SettleAutoSaveAsync()
+        {
+            _autoSaveTimer?.Stop();
+            if (_autoSaveWrite is { IsCompleted: false } running) await running;
+        }
+
+        // The Overwrite branch of HandleProfileSave without its question, and without re-reading
+        // every profile afterwards: NoteSavedByApp brings this macro's list entry up to date.
+        private async Task<bool> WriteOpenProfileAsync()
+        {
+            // Who is being saved, and the edit count, frozen before the write — HandleProfileSave
+            // says why: the await yields, and another macro can be opened meanwhile.
+            string name = CurrentProfileName;
+            string? path = CurrentProfilePath;
+            if (name == "No Profile" || path == null) return false;
+            long generation = _dirtyGeneration;
+            UserProfile profile;
+            try
+            {
+                profile = CreateProfileForSave();
+                _autoSaveSnapshot = profile;
+                await SettingsManager.SaveProfileAsync(path, profile);
+            }
+            catch (Exception ex)
+            {
+                Services.DiagnosticLog.Error($"Save as you go of '{name}' failed", ex);
+                if (!_autoSaveFailing)
+                    SendMessage("alert:show", new { message = $"Could not save \"{name}\": {ex.Message}" });
+                _autoSaveFailing = true;
+                SendMessage("profile:saved", new { ok = false, name, error = ex.Message });
+                return false;
+            }
+            _autoSaveFailing = false;
+            _autoSaveLandedAt = DateTime.UtcNow;
+            profileController.NoteSavedByApp(name, profile);
+            if (CurrentProfileName == name && CurrentProfilePath == path)
+            {
+                // As in HandleProfileSave: the dates go onto the live object, and an edit that
+                // landed during the write keeps its flags (its own countdown is already running).
+                UserProfile.Current.UpdatedAt = profile.UpdatedAt;
+                UserProfile.Current.CreatedAt = profile.CreatedAt;
+                if (_dirtyGeneration == generation)
+                {
+                    HasUnsavedChanges = false;
+                    ClearLoopEdit();
+                }
+            }
+            SendMessage("profile:saved", new { ok = true, name, at = profile.UpdatedAt });
+            PushProfileLoop();
+            PushProfilesUpdate();
+            return true;
+        }
+
+        // Another writer put the open macro's file on disk: a hotkey, the data table, a window
+        // target, the info. Each of them reads the file, changes its own field, writes it back and
+        // mirrors the field into UserProfile.Current. When one of our writes landed between its read
+        // and its write, it wrote the old steps back; when its write landed before ours, ours was
+        // built before its mirror. Either way memory is right and the file may not be, so the whole
+        // state is written again after the usual pause. Outside that window there is nothing to fix.
+        private void OnProfileFileWritten(string path, UserProfile written)
+        {
+            try
+            {
+                if (!dispatcherQueue.HasThreadAccess)
+                {
+                    dispatcherQueue.TryEnqueue(() => OnProfileFileWritten(path, written));
+                    return;
+                }
+                if (!SavesAsYouGo || ReferenceEquals(written, _autoSaveSnapshot)) return;
+                bool ourWriteNearby = _autoSaveWrite is { IsCompleted: false }
+                    || DateTime.UtcNow - _autoSaveLandedAt < TimeSpan.FromSeconds(2);
+                if (!ourWriteNearby) return;
+                if (!string.Equals(Path.GetFullPath(path), Path.GetFullPath(CurrentProfilePath!), StringComparison.OrdinalIgnoreCase)) return;
+                HasUnsavedChanges = true;
+            }
+            catch (Exception ex)
+            {
+                // Raised from inside the other writer's save: never let it fail that save.
+                Services.DiagnosticLog.Warn($"[SaveAsYouGo] Could not follow a write of {Path.GetFileName(path)}: {ex.Message}");
+            }
+        }
+
         /// <summary>
         /// Checks for unsaved changes and prompts Save/Discard/Cancel.
         /// Returns true if the caller should proceed, false to cancel.
@@ -3434,6 +3625,11 @@ namespace TrueReplayer
         /// <param name="beforeWhat">Completes "Save before ___?" — see ShowUnsavedChangesDialogAsync.</param>
         private async Task<bool> CheckUnsavedChangesAsync(string beforeWhat = "continuing")
         {
+            // Save as you go: what the countdown has not written yet is written now, and there is
+            // nothing to ask. Without a file to write to, or when the write fails, the prompt below
+            // still guards the work.
+            if (AutoSaveEnabled && await FlushAutoSaveAsync()) return true;
+
             // A pending Loops/Interval edit counts as unsaved work on its OWN — including on a
             // profile with zero actions. Without this, editing the loop count and clicking another
             // profile discarded the value with no dialog at all.
@@ -3643,6 +3839,11 @@ namespace TrueReplayer
             // is gone, and its scope would keep every hotkey suppressed until some stray click
             // outside the app answered it.
             if (_isDetectingWindow) StopWindowDetection();
+            // What the old tree asked of the engine goes with it too: the page that just loaded
+            // says again what it wants (ui:capabilities), and the shell of today asks for nothing.
+            // Edits still pending stay dirty, behind the usual prompts.
+            AutoSaveEnabled = false;
+            _autoSaveTimer?.Stop();
 
             // React sends ui:ready the instant it mounts, which on a cold start beats the startup
             // profile load. state:init REPLACES the frontend store wholesale (AppStateContext
@@ -4152,6 +4353,9 @@ namespace TrueReplayer
                     // Nothing is re-armed here on purpose: the package stays staged, so the next
                     // check (startup, or the Settings button) applies it without downloading
                     // again, and one detection can never fan out into repeated transfers.
+                    // Save as you go writes an edit made during the transfer instead of
+                    // postponing for it: this restart was asked for.
+                    if (AutoSaveEnabled) await FlushAutoSaveAsync();
                     if (EvaluateUpdateGate(out var lateReason) != UpdateGate.Clear)
                     {
                         ReportUpdatePostponed(lateReason);
@@ -4463,6 +4667,9 @@ namespace TrueReplayer
             }
 
             mainController.ToggleReplay(loopEnabled, loopCount, intervalEnabled, intervalText, ResolveGameMode(), ResolveRestoreCursor(), useVariation, variationPercent, effRelCoords, effTarget, effBringFocus, effW, effH, effGX, effGY, effRestorePos, effRestoreSz);
+            // Save as you go: a run writes what is pending, after the start so the first step does
+            // not wait for the disk.
+            FlushAutoSaveInBackground();
         }
 
         private void HandleActionsClear()
@@ -9427,8 +9634,12 @@ namespace TrueReplayer
                 RefuseRevert("There is no open macro to revert.");
                 return;
             }
+            // Save as you go must not write the edits back over the copy: the write in flight
+            // lands first, and none starts until the macro is open again from the copy.
+            _autoSaveHolds++;
             try
             {
+                await SettleAutoSaveAsync();
                 await FileHelper.WriteAllTextAtomicAsync(path, copy);
                 // Hotkey, hotstring, window target and automation live in the file too: the list and
                 // the automation daemon re-read them from what is now on disk.
@@ -9443,6 +9654,10 @@ namespace TrueReplayer
             {
                 Services.DiagnosticLog.Error($"Reverting '{name}' failed", ex);
                 RefuseRevert($"Could not revert \"{name}\": {ex.Message}");
+            }
+            finally
+            {
+                _autoSaveHolds--;
             }
         }
 
@@ -9723,6 +9938,10 @@ namespace TrueReplayer
                 SendMessage("alert:show", new { message = "Invalid profile name." });
                 return;
             }
+            // Save as you go: the open macro's pending edit goes to its file before the file moves —
+            // a write still in flight when it moved would land under the old name, a second copy of
+            // the macro. Nothing awaits between here and the move.
+            if (AutoSaveEnabled && CurrentProfileName == oldName) await FlushAutoSaveAsync();
 
             var entry = profileController.ProfileEntries.FirstOrDefault(p => p.Name == oldName);
             if (entry == null) return;
@@ -10088,6 +10307,10 @@ namespace TrueReplayer
 
             try
             {
+                // Save as you go: a write of this macro still in flight would put the file back
+                // after the delete. Nothing awaits between here and DropToNoProfile, so no new one
+                // can start.
+                if (CurrentProfileName == name) await SettleAutoSaveAsync();
                 if (File.Exists(entry.FilePath))
                     File.Delete(entry.FilePath);
 
@@ -12596,8 +12819,14 @@ namespace TrueReplayer
                 return;
             }
 
+            // An import may write over the open macro's file and reopen it from there (below). Save as
+            // you go must not put the grid back over it in between: hold it until the reopen.
+            bool overOpenMacro = CurrentProfileName != "No Profile"
+                && selectedNames.Any(n => string.Equals(n, CurrentProfileName, StringComparison.OrdinalIgnoreCase));
+            if (overOpenMacro) _autoSaveHolds++;
             try
             {
+                if (overOpenMacro) await SettleAutoSaveAsync();
                 var (imported, skipped, hasOrganization, imageFailureNames, writtenNames, adoptedFolderTargets, keptLocalFolderTargets, renamedPairs) = await profileController.ConfirmImportAsync(
                     _pendingImportEnvelope, selectedNames, conflictResolutions);
                 // Names dropped at the bridge guard above never entered ConfirmImportAsync, so add
@@ -12731,6 +12960,7 @@ namespace TrueReplayer
             {
                 _pendingImportEnvelope = null;
                 _pendingImportFileName = null;
+                if (overOpenMacro) _autoSaveHolds--;
             }
         }
 
@@ -12991,6 +13221,16 @@ namespace TrueReplayer
             // UnhandledException net — Save pressed, nothing written, nothing said.
             try
             {
+                if (SavesAsYouGo)
+                {
+                    // Save as you go: Ctrl+S writes now, pending or not, with no Overwrite question
+                    // (the open macro has one file), and answers profile:saved like the countdown.
+                    // The write pushes the loop chip and the list itself. During a hold the file is
+                    // about to be put back, and there is nothing to write.
+                    await SettleAutoSaveAsync();
+                    if (_autoSaveHolds == 0) await StartAutoSaveWrite();
+                    return;
+                }
                 if (CurrentProfilePath != null)
                 {
                     var choice = await profileController.ShowSaveOverwriteDialogAsync(CurrentProfileName);
@@ -14133,6 +14373,9 @@ namespace TrueReplayer
             if (_disposed) return;
             _disposed = true;
             actions.CollectionChanged -= OnActionsChanged;
+            SettingsManager.ProfileWritten -= OnProfileFileWritten;
+            _autoSaveTimer?.Stop();
+            _autoSaveTimer = null;
 
             // Unsubscribe every browserBridge event so the BrowserBridgeService doesn't hold
             // delegates that capture `this` (the now-disposed WebViewBridge). Without these,

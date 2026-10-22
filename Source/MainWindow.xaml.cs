@@ -1005,6 +1005,10 @@ namespace TrueReplayer
                 return false;
             }
 
+            // Save as you go writes what is still pending, and the prompt below has nothing to ask.
+            // Without a file, or when the write fails, it asks as before.
+            if (bridge is { AutoSaveEnabled: true }) await bridge.FlushAutoSaveAsync();
+
             bool canClose;
             // A pending Loops/Interval edit is unsaved work by itself. Same two readers as
             // WebViewBridge.CheckUnsavedChangesAsync — see HasUnsavedActionWork for the grid half.
@@ -1399,6 +1403,8 @@ namespace TrueReplayer
                                 effGY,
                                 effRestorePos,
                                 effRestoreSz);
+                            // Save as you go, as the Replay button does (WebViewBridge.HandleReplayToggle).
+                            bridge?.FlushAutoSaveInBackground();
                         }
                     }
                     else if (key.StartsWith(ProfilePrefix) || key.StartsWith(ProfileHoldPrefix) || key.StartsWith(ProfileTogglePrefix))
@@ -1535,6 +1541,11 @@ namespace TrueReplayer
         private async Task<TriggerFireResult> RunProfileTriggerAsync(
             string profileName, bool forceInfiniteLoop, bool isWhilePressedHold, string? hotkeyKey, bool startOnly)
         {
+            // Save as you go: the open macro's pending edit reaches its file before anything reads
+            // the disk. The fired macro may be that one, and the swap below replaces the grid either
+            // way, which without this drops the edit with no word.
+            if (bridge is { AutoSaveEnabled: true }) await bridge.FlushAutoSaveAsync();
+
             var profile = await profileController.LoadProfileByNameAsync(profileName);
 
             // Race guard for WhilePressed: user may have already released the key
@@ -1593,9 +1604,11 @@ namespace TrueReplayer
                 if (Services.AutomationGuard.BlockedReason() != null)
                     return TriggerFireResult.SkippedModal;
                 // The same reader as the switch prompt and the close guard (see
-                // HasUnsavedActionWork): the gates must agree on what "unsaved" means.
+                // HasUnsavedActionWork): the gates must agree on what "unsaved" means. With save as
+                // you go the edit landed during the load above and is on its way to the file, so
+                // this is a retriable "not yet", not the terminal skip.
                 if (bridge.HasUnsavedActionWork)
-                    return TriggerFireResult.SkippedDirty;
+                    return bridge.SavesAsYouGo ? TriggerFireResult.SkippedBusy : TriggerFireResult.SkippedDirty;
             }
 
             var entry = profileController.ProfileEntries.FirstOrDefault(p => p.Name == profileName);
@@ -1756,6 +1769,9 @@ namespace TrueReplayer
                     // inside RunProfileTriggerAsync too — its profile-load await yields the
                     // dispatcher, so these gates can flip in the window. HasUnsavedActionWork, not
                     // the bare flag: the prompt that would rescue the edit reads the same thing.
+                    // Save as you go writes the edit first, and the fire goes ahead; what stays is
+                    // what it cannot write (No Profile, a failed write).
+                    if (bridge.HasUnsavedActionWork && bridge.AutoSaveEnabled) await bridge.FlushAutoSaveAsync();
                     if (bridge.HasUnsavedActionWork)
                     {
                         tcs.TrySetResult(TriggerFireResult.SkippedDirty);

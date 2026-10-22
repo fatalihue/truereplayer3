@@ -1,6 +1,6 @@
 import { createContext, useContext, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
-import type { OutgoingMessage, IncomingMessage } from './messageTypes';
+import type { OutgoingMessage, IncomingMessage, EngineCapabilities } from './messageTypes';
 
 interface WebView2API {
   postMessage: (message: unknown) => void;
@@ -25,8 +25,14 @@ interface BridgeContextValue {
 
 const BridgeContext = createContext<BridgeContextValue | null>(null);
 
-export function BridgeProvider({ children }: { children: ReactNode }) {
+/**
+ * capabilities: what this shell asks of the engine beyond today's behaviour, sent right after
+ * ui:ready — the order matters, since ui:ready resets them. Read once, at mount, like ui:ready
+ * itself. The shell of today passes none, so the engine keeps every prompt it has.
+ */
+export function BridgeProvider({ children, capabilities }: { children: ReactNode; capabilities?: EngineCapabilities }) {
   const handlersRef = useRef<Set<MessageHandler>>(new Set());
+  const capabilitiesRef = useRef(capabilities);
 
   const send = useCallback((message: OutgoingMessage) => {
     if (window.chrome?.webview) {
@@ -83,9 +89,12 @@ export function BridgeProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Send ui:ready once the bridge is initialized
+  // Send ui:ready once the bridge is initialized. Here and not in a child: effects run children
+  // first, so a capabilities message sent from inside the tree would reach the engine before the
+  // ui:ready that resets it.
   useEffect(() => {
     send({ type: 'ui:ready', payload: {} });
+    if (capabilitiesRef.current) send({ type: 'ui:capabilities', payload: capabilitiesRef.current });
   }, [send]);
 
   // Both members are stable useCallbacks, so memoising makes the context value permanently stable —

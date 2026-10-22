@@ -61,6 +61,13 @@ namespace TrueReplayer.Services
             return Path.Combine(profileDir, "profile.json");
         }
 
+        /// <summary>
+        /// Raised after every profile file this method wrote, with the path and the object written.
+        /// The bridge's save as you go follows the other writers of the open profile's file through
+        /// it (WebViewBridge.OnProfileFileWritten). Raised on the writer's own thread.
+        /// </summary>
+        public static event Action<string, UserProfile>? ProfileWritten;
+
         public static async Task SaveProfileAsync(string? filePath, UserProfile profile)
         {
             if (string.IsNullOrWhiteSpace(filePath))
@@ -95,6 +102,7 @@ namespace TrueReplayer.Services
                 // survives the save unchanged.
                 profile.Actions = originalActions;
             }
+            ProfileWritten?.Invoke(filePath, profile);
         }
 
         /// <summary>

@@ -26,6 +26,11 @@ export function useMacro() {
      * and the edits since (with their undo history) are dropped. Answers profile:reverted.
      */
     revert: () => send({ type: 'profile:revert', payload: {} }),
+    /**
+     * Saves the open macro. Today it asks Overwrite / Save as New first; with save as you go
+     * (BridgeProvider's capabilities) it writes at once and answers profile:saved. With no macro
+     * open it is Save As, either way.
+     */
     save: () => send({ type: 'profile:save', payload: {} }),
     load: () => send({ type: 'profile:load', payload: {} }),
     /** Resets the app's settings to the defaults, after a native confirmation — and clears the steps. useSettings().resetAll is the reset that keeps them (D23). */

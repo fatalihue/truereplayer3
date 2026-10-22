@@ -1012,6 +1012,10 @@ export type IncomingMessage =
   | { type: 'examples:listResult'; payload: { examples: ExampleInfo[] } }
   | { type: 'examples:useResult'; payload: ExampleUseResult }
   | { type: 'profile:reverted'; payload: { ok: boolean; name?: string; error?: string } }
+  // Save as you go (ui:capabilities { autoSave }): the open macro's file was written — after the
+  // pause that follows an edit, on Ctrl+S, or right before a switch, a run or the window closing.
+  // at is the UpdatedAt the file now carries; ok false names the error, and the edits stay pending.
+  | { type: 'profile:saved'; payload: { ok: boolean; name: string; at?: string; error?: string } }
   | { type: 'ocr:installResult'; payload: { tag: string; ok: boolean; canceled: boolean; restartApp: boolean; restartWindows: boolean; error?: string | null } }
   | { type: 'image:testMatchResult'; payload: { requestId: string; found: boolean; score: number; x: number; y: number; w: number; h: number; error?: string } }
   | { type: 'waitimage:searchRegionSet'; payload: { requestId: string; cancelled: boolean; x?: number; y?: number; w?: number; h?: number } }
@@ -1075,8 +1079,18 @@ export type IncomingMessage =
 /** Who holds an editor:pendingEdits claim — AutomationGuard keeps one stamp per owner. */
 export type EditorClaimOwner = 'sheet' | 'row-dialog' | 'insert-dialog' | 'data-panel' | 'automation-panel';
 
+/**
+ * What a shell asks of the engine beyond today's behaviour (ui:capabilities, right after ui:ready).
+ * A missing key is today's behaviour, and every ui:ready puts the engine back to it.
+ * autoSave: the open macro saves as you go, with no unsaved-changes prompts (profile:saved).
+ */
+export interface EngineCapabilities {
+  autoSave?: boolean;
+}
+
 export type OutgoingMessage =
   | { type: 'ui:ready'; payload: Record<string, never> }
+  | { type: 'ui:capabilities'; payload: EngineCapabilities }
   | { type: 'data:request'; payload: Record<string, never> }
   // cursorRow is RUNTIME state, not table content: it is never saved with the profile, so the
   // save payload is the table minus it. Moving the cursor goes through actions:resetRow.

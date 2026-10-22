@@ -722,6 +722,26 @@ namespace TrueReplayer.Controllers
             entry.RestoreSize = saved.RestoreSize;
         }
 
+        /// <summary>
+        /// The list entry after the app wrote the OPEN profile's own state to its file (the bridge's
+        /// save as you go), without re-reading every profile: the dates, the step count, the
+        /// profiles its RunProfile steps call and the window flags. The rest of what the file holds
+        /// (hotkey, hotstring, window target, automation, info) has handlers that write it to disk
+        /// themselves and refresh the list, so the entry already says the same. The write is marked
+        /// as the app's own, so the watcher does not reload the list for it either.
+        /// </summary>
+        public void NoteSavedByApp(string profileName, UserProfile saved)
+        {
+            MarkOwnWrite();
+            var entry = ProfileEntries.FirstOrDefault(p => p.Name == profileName);
+            if (entry == null) return;
+            entry.CreatedAt = saved.CreatedAt;
+            entry.UpdatedAt = saved.UpdatedAt;
+            entry.ActionCount = saved.Actions.Count;
+            (entry.RunProfileTargets, entry.RunOverDataTargets) = RunTargetsOf(saved.Actions);
+            MirrorSavedWindowFlags(profileName, saved);
+        }
+
         public void ResetProfile()
         {
             AppSettingsManager.ActivateProfile(UserProfile.Default);
@@ -1026,29 +1046,7 @@ namespace TrueReplayer.Controllers
                     && (!string.IsNullOrEmpty(profile.TargetWindow.ProcessName)
                         || !string.IsNullOrEmpty(profile.TargetWindow.WindowTitle));
 
-                // RunProfile refs this profile calls — free to collect here (the actions are
-                // already loaded) and lets the Export dialog disclose which sub-profiles ride
-                // along with a selection. Trimmed + non-empty + distinct ORDINAL, so a
-                // case-differing ref stays a separate entry and resolves on its own, matching
-                // the Ordinal lookup ExpandWithRunProfileDependenciesAsync uses when it
-                // actually bundles them.
-                var runRefs = profile.Actions
-                    .Where(a => string.Equals(a.ActionType, "RunProfile", StringComparison.OrdinalIgnoreCase))
-                    .Select(a => a.Key?.Trim())
-                    .Where(k => !string.IsNullOrEmpty(k))
-                    .Select(k => k!)
-                    .Distinct(StringComparer.Ordinal)
-                    .ToList();
-                // The over-data subset, for the called profile's Data panel (see
-                // ProfileEntry.RunOverDataTargets). Same trimming and Ordinal distinct as above.
-                var overDataRefs = profile.Actions
-                    .Where(a => string.Equals(a.ActionType, "RunProfile", StringComparison.OrdinalIgnoreCase)
-                        && a.RunOverData == true)
-                    .Select(a => a.Key?.Trim())
-                    .Where(k => !string.IsNullOrEmpty(k))
-                    .Select(k => k!)
-                    .Distinct(StringComparer.Ordinal)
-                    .ToList();
+                var (runRefs, overDataRefs) = RunTargetsOf(profile.Actions);
 
                 var entry = new ProfileEntry
                 {
@@ -1082,10 +1080,8 @@ namespace TrueReplayer.Controllers
                     UpdatedAt = profile.UpdatedAt,
                     AppMinVersion = profile.AppMinVersion,
                     ActionCount = profile.Actions.Count,
-                    // null (not an empty list) when the profile calls nothing — keeps the
-                    // profiles:updated payload lean for the common no-RunProfile case.
-                    RunProfileTargets = runRefs.Count > 0 ? runRefs : null,
-                    RunOverDataTargets = overDataRefs.Count > 0 ? overDataRefs : null
+                    RunProfileTargets = runRefs,
+                    RunOverDataTargets = overDataRefs
                 };
 
                 // Collect referenced PNG filenames for orphan-cleanup at startup.
@@ -1130,6 +1126,31 @@ namespace TrueReplayer.Controllers
                 DiagnosticLog.Error($"Profile load failed: '{name}' ({Path.GetFileName(file)})", ex);
                 return new ProfileLoadResult { Name = name, Failed = true };
             }
+        }
+
+        /// <summary>
+        /// The profiles a list of steps calls through RunProfile, and the over-data subset of them
+        /// (for the called profile's Data panel, see ProfileEntry.RunOverDataTargets). The Export
+        /// dialog discloses the first list as the sub-profiles that ride along with a selection.
+        /// Trimmed, non-empty and distinct ORDINAL, so a case-differing ref stays a separate entry
+        /// and resolves on its own, matching the Ordinal lookup ExpandWithRunProfileDependenciesAsync
+        /// uses when it actually bundles them. null (not an empty list) when nothing is called,
+        /// which keeps the profiles:updated payload lean for the common case.
+        /// </summary>
+        private static (List<string>? Runs, List<string>? OverData) RunTargetsOf(IEnumerable<ActionItem> actions)
+        {
+            static List<string>? Keys(IEnumerable<ActionItem> rows)
+            {
+                var keys = rows
+                    .Select(a => a.Key?.Trim())
+                    .Where(k => !string.IsNullOrEmpty(k))
+                    .Select(k => k!)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
+                return keys.Count > 0 ? keys : null;
+            }
+            var runs = actions.Where(a => string.Equals(a.ActionType, "RunProfile", StringComparison.OrdinalIgnoreCase)).ToList();
+            return (Keys(runs), Keys(runs.Where(a => a.RunOverData == true)));
         }
 
         /// <summary>
@@ -1222,14 +1243,10 @@ namespace TrueReplayer.Controllers
 
         public async Task RefreshProfileListAsync(bool suppressWatcher = false)
         {
-            if (suppressWatcher)
-            {
-                // Read BEFORE the load: every write that finished before this refresh — the
-                // caller's own, whose echo the window exists to swallow — is part of it, and
-                // anything that lands after it is not.
-                _suppressedFolderState = ProfileFolderState();
-                suppressWatcherUntil = DateTime.UtcNow.AddSeconds(2);
-            }
+            // Read BEFORE the load: every write that finished before this refresh — the caller's
+            // own, whose echo the window exists to swallow — is part of it, and anything that lands
+            // after it is not.
+            if (suppressWatcher) MarkOwnWrite();
 
             await LoadProfileListAsync();
 
@@ -1361,6 +1378,14 @@ namespace TrueReplayer.Controllers
             {
                 return "unreadable:" + Guid.NewGuid().ToString("N");
             }
+        }
+
+        // Marks the writes the app has just finished as its own: for the next 2 s the watcher skips
+        // a reload that would find the folder exactly as it is now (see OnProfileFolderChanged).
+        private void MarkOwnWrite()
+        {
+            _suppressedFolderState = ProfileFolderState();
+            suppressWatcherUntil = DateTime.UtcNow.AddSeconds(2);
         }
 
         #endregion // Profile List Management
