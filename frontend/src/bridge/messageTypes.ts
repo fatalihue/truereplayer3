@@ -1083,9 +1083,12 @@ export type EditorClaimOwner = 'sheet' | 'row-dialog' | 'insert-dialog' | 'data-
  * What a shell asks of the engine beyond today's behaviour (ui:capabilities, right after ui:ready).
  * A missing key is today's behaviour, and every ui:ready puts the engine back to it.
  * autoSave: the open macro saves as you go, with no unsaved-changes prompts (profile:saved).
+ * extendedUndo: Ctrl+Z (actions:undo) also undoes the open macro's own settings — run settings, Data
+ * Loop table, automation, info, hotkey, hotstring and window target — in one history with its steps.
  */
 export interface EngineCapabilities {
   autoSave?: boolean;
+  extendedUndo?: boolean;
 }
 
 export type OutgoingMessage =

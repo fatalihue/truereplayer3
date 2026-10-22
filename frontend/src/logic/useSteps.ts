@@ -101,6 +101,7 @@ export function useSteps() {
       copy: cmd('actions:copy'),
       copyInternal: cmd('actions:copyInternal'),
       paste: cmd('actions:paste'),
+      /** The open macro's history: its steps, and with extendedUndo (BridgeProvider) its own settings too. */
       undo: cmd('actions:undo'),
       redo: cmd('actions:redo'),
     };

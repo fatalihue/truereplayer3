@@ -36,8 +36,117 @@ namespace TrueReplayer
         };
 
         // Undo/Redo history. An entry is the action list as JSON and, for a coordinate conversion
-        // only, the window context that list's coordinates belong to.
-        private sealed record UndoEntry(string Actions, CoordinateSpace? Space = null);
+        // only, the window context that list's coordinates belong to. With the wider undo it can
+        // instead be one part of the open macro's own settings (Part, with Actions null). At is
+        // when the entry was pushed, for merging a burst of edits of the same part.
+        private sealed record UndoEntry(string? Actions, CoordinateSpace? Space = null, MacroPart? Part = null)
+        {
+            public DateTime At { get; init; } = DateTime.UtcNow;
+        }
+
+        /// <summary>
+        /// One part of the open macro's own settings as it stood at one moment, for the wider undo
+        /// (ui:capabilities { extendedUndo }). Value equality is the test for an edit that changed
+        /// nothing, so lists and objects are held as their JSON.
+        /// </summary>
+        private abstract record MacroPart
+        {
+            /// <summary>Puts this state on a profile: the open macro's, or the copy read from its file.</summary>
+            public abstract void CopyTo(UserProfile p);
+            /// <summary>The same part as it stands on <paramref name="p"/>.</summary>
+            public abstract MacroPart Read(UserProfile p);
+
+            protected static string? Json<T>(T? value) where T : class =>
+                value == null ? null : JsonSerializer.Serialize(value);
+            protected static T? FromJson<T>(string? json) where T : class =>
+                json == null ? null : JsonSerializer.Deserialize<T>(json);
+        }
+
+        // Loops, Interval, Game Mode and Return cursor: in memory, written with the macro's next save.
+        private sealed record RunPart(bool EnableLoop, int LoopCount, bool IntervalEnabled, int Interval, bool? GameMode, bool? RestoreCursor) : MacroPart
+        {
+            public static RunPart Of(UserProfile p) => new(p.EnableLoop, p.LoopCount, p.LoopIntervalEnabled, p.LoopInterval, p.GameMode, p.RestoreCursor);
+            public override MacroPart Read(UserProfile p) => Of(p);
+            public override void CopyTo(UserProfile p)
+            {
+                p.EnableLoop = EnableLoop;
+                p.LoopCount = LoopCount;
+                p.LoopIntervalEnabled = IntervalEnabled;
+                p.LoopInterval = Interval;
+                p.GameMode = GameMode;
+                p.RestoreCursor = RestoreCursor;
+            }
+        }
+
+        // The Data Loop table.
+        private sealed record DataPart(string? Table) : MacroPart
+        {
+            public static DataPart Of(UserProfile p) => new(Json(p.Data));
+            public override MacroPart Read(UserProfile p) => Of(p);
+            public override void CopyTo(UserProfile p) => p.Data = FromJson<ProfileDataTable>(Table);
+        }
+
+        // The automation (trigger and whether it is armed).
+        private sealed record TriggerPart(string? Trigger) : MacroPart
+        {
+            public static TriggerPart Of(UserProfile p) => new(Json(p.Triggers));
+            public override MacroPart Read(UserProfile p) => Of(p);
+            public override void CopyTo(UserProfile p) => p.Triggers = Config();
+            public ProfileTriggerConfig? Config() => FromJson<ProfileTriggerConfig>(Trigger);
+        }
+
+        // Description, tags, icon and version.
+        private sealed record InfoPart(string? Description, string? Tags, string? IconEmoji, int Version) : MacroPart
+        {
+            public static InfoPart Of(UserProfile p) => new(p.Description, Json(p.Tags), p.IconEmoji, p.ProfileVersion);
+            public override MacroPart Read(UserProfile p) => Of(p);
+            public override void CopyTo(UserProfile p)
+            {
+                p.Description = Description;
+                p.Tags = FromJson<List<string>>(Tags);
+                p.IconEmoji = IconEmoji;
+                p.ProfileVersion = Version;
+            }
+        }
+
+        // The hotkey and how it fires.
+        private sealed record HotkeyPart(string? Hotkey, Models.TriggerMode Mode) : MacroPart
+        {
+            public static HotkeyPart Of(UserProfile p) => new(p.CustomHotkey, p.TriggerMode);
+            public override MacroPart Read(UserProfile p) => Of(p);
+            public override void CopyTo(UserProfile p)
+            {
+                p.CustomHotkey = Hotkey;
+                p.TriggerMode = Mode;
+            }
+        }
+
+        private sealed record HotstringPart(string? Hotstring) : MacroPart
+        {
+            public static HotstringPart Of(UserProfile p) => new(Json(p.CustomHotstring));
+            public override MacroPart Read(UserProfile p) => Of(p);
+            public override void CopyTo(UserProfile p) => p.CustomHotstring = FromJson<Models.HotstringConfig>(Hotstring);
+        }
+
+        // The macro's own window target, its four flags and the captured rect, as its file holds them.
+        private sealed record TargetPart(string? Target, bool Relative, bool BringToFocus, bool RestorePosition, bool RestoreSize, int X, int Y, int Width, int Height) : MacroPart
+        {
+            public static TargetPart Of(UserProfile p) => new(Json(p.TargetWindow), p.UseRelativeCoordinates, p.BringToFocus, p.RestorePosition, p.RestoreSize,
+                p.WindowX, p.WindowY, p.WindowWidth, p.WindowHeight);
+            public override MacroPart Read(UserProfile p) => Of(p);
+            public override void CopyTo(UserProfile p)
+            {
+                p.TargetWindow = FromJson<WindowTarget>(Target);
+                p.UseRelativeCoordinates = Relative;
+                p.BringToFocus = BringToFocus;
+                p.RestorePosition = RestorePosition;
+                p.RestoreSize = RestoreSize;
+                p.WindowX = X;
+                p.WindowY = Y;
+                p.WindowWidth = Width;
+                p.WindowHeight = Height;
+            }
+        }
 
         /// <summary>
         /// What Convert to Relative/Absolute rewrites OUTSIDE the action list: the flag naming the
@@ -1659,12 +1768,14 @@ namespace TrueReplayer
                     NotifyOnLapComplete = notifyOnLapComplete,
                 };
 
+            var name = CurrentProfileName;
+            var before = DataPart.Of(UserProfile.Current);
             UserProfile.Current.Data = table;
+            RecordPartEdit(name, before, DataPart.Of(UserProfile.Current));
 
             // Persist immediately when the profile exists on disk (same pattern as the other
             // profile-level settings). A brand-new unsaved profile ("No Profile" / no path)
             // keeps the table in memory + marks unsaved so the first Save writes it.
-            var name = CurrentProfileName;
             if (name != "No Profile")
             {
                 var profile = await profileController.LoadProfileByNameAsync(name);
@@ -2010,7 +2121,9 @@ namespace TrueReplayer
                     ? ParseTriggerConfig(tEl)
                     : null;
                 PreserveArmed(trigger, profileController.ProfileEntries.FirstOrDefault(p => p.Name == name)?.Triggers);
+                var before = TriggerPart.Of(UserProfile.Current);
                 await PersistTriggerAsync(name, trigger);
+                RecordPartEdit(name, before, TriggerPart.Of(UserProfile.Current));
             }
             catch (Exception ex)
             {
@@ -2030,7 +2143,9 @@ namespace TrueReplayer
                 if (entry?.Triggers == null) return;
                 var updated = entry.Triggers.Clone();
                 updated.Armed = armed;
+                var before = TriggerPart.Of(UserProfile.Current);
                 await PersistTriggerAsync(name, updated);
+                RecordPartEdit(name, before, TriggerPart.Of(UserProfile.Current));
             }
             catch (Exception ex)
             {
@@ -2417,9 +2532,12 @@ namespace TrueReplayer
         /// PushUndoState with the snapshot taken EARLIER — for a handler that has to apply the edit
         /// before it can tell whether anything changed (see HandleActionsEdit).
         /// </summary>
-        private void PushUndoSnapshot(string snapshot, CoordinateSpace? space = null)
+        private void PushUndoSnapshot(string snapshot, CoordinateSpace? space = null) =>
+            PushUndoEntry(new UndoEntry(snapshot, space));
+
+        private void PushUndoEntry(UndoEntry entry)
         {
-            _undoStack.Push(new UndoEntry(snapshot, space));
+            _undoStack.Push(entry);
             if (_undoStack.Count > MaxHistory)
             {
                 var temp = new Stack<UndoEntry>(_undoStack.Reverse().Skip(_undoStack.Count - MaxHistory));
@@ -2430,33 +2548,159 @@ namespace TrueReplayer
             mainController.UpdateButtonStates();
         }
 
-        private void HandleUndo()
+        // ── Wider undo (ui:capabilities { extendedUndo }) ──
+        // Today the history holds the step list only. With the new shell's capability an edit of the
+        // open macro's own settings is a step of the same history: its run settings, its Data Loop
+        // table, its automation, its info, its hotkey and hotstring, and its window target. The
+        // entry carries only the part that changed, as it was before; undo puts that part back the
+        // way its editor writes it, and the part as it stands goes to the other stack. Edits of the
+        // same part less than PartMergeMs apart are one step (typing in a cell or a field). Off until
+        // the page asks for it; ui:ready turns it off and drops the part entries, so the shell of
+        // today keeps a history of steps only. Another macro's settings (an automation edited from
+        // the Automations page) are not in the open macro's history.
+        public bool ExtendedUndoEnabled { get; private set; }
+        private const int PartMergeMs = 1000;
+        // Undo and redo run one after another: putting a part back awaits its file, and the next
+        // Ctrl+Z must see the state that one left. With steps only, each one finishes on the spot.
+        private Task _historyQueue = Task.CompletedTask;
+
+        /// <summary>
+        /// Records an edit of one part of the open macro: <paramref name="before"/> as it stood,
+        /// <paramref name="after"/> as the edit left it. Nothing for another macro, without the
+        /// capability, or for an edit that changed nothing.
+        /// </summary>
+        private void RecordPartEdit(string name, MacroPart before, MacroPart after)
         {
-            if (_undoStack.Count == 0) return;
-            var entry = _undoStack.Pop();
+            if (!ExtendedUndoEnabled || name != CurrentProfileName || name == "No Profile" || before == after) return;
+            var now = DateTime.UtcNow;
+            if (_undoStack.TryPeek(out var top) && top.Part?.GetType() == before.GetType()
+                && (now - top.At).TotalMilliseconds < PartMergeMs)
+            {
+                // Same part again within the burst: one step, which still goes back to where the
+                // burst started. A new edit still ends whatever redo was waiting.
+                _undoStack.Pop();
+                _undoStack.Push(top with { At = now });
+                _redoStack.Clear();
+                mainController.UpdateButtonStates();
+                return;
+            }
+            PushUndoEntry(new UndoEntry(null, Part: before) { At = now });
+        }
+
+        // The part entries leave with the page that asked for them.
+        private void DropPartEntries()
+        {
+            Keep(_undoStack);
+            Keep(_redoStack);
+            mainController.UpdateButtonStates();
+
+            static void Keep(Stack<UndoEntry> stack)
+            {
+                var steps = stack.Where(e => e.Part == null).Reverse().ToArray(); // bottom first
+                stack.Clear();
+                foreach (var e in steps) stack.Push(e);
+            }
+        }
+
+        private void HandleUndo() => QueueHistory(() => StepHistoryAsync(_undoStack, _redoStack));
+        private void HandleRedo() => QueueHistory(() => StepHistoryAsync(_redoStack, _undoStack));
+
+        private void QueueHistory(Func<Task> step)
+        {
+            var previous = _historyQueue;
+            _historyQueue = After(previous, step);
+
+            static async Task After(Task previous, Func<Task> step)
+            {
+                try { await previous; } catch { /* reported where it failed */ }
+                try { await step(); }
+                catch (Exception ex) { Services.DiagnosticLog.Error("Undo/redo failed", ex); }
+            }
+        }
+
+        private async Task StepHistoryAsync(Stack<UndoEntry> from, Stack<UndoEntry> to)
+        {
+            if (from.Count == 0) return;
+            var entry = from.Pop();
+            if (entry.Part is { } part)
+            {
+                // Never a merge target (MinValue): an edit right after a redo is a step of its own.
+                to.Push(new UndoEntry(null, Part: part.Read(UserProfile.Current)) { At = DateTime.MinValue });
+                mainController.UpdateButtonStates();
+                try
+                {
+                    await ApplyPartAsync(part);
+                }
+                catch (Exception ex)
+                {
+                    Services.DiagnosticLog.Error("Putting a macro setting back failed", ex);
+                    SendMessage("alert:show", new { message = $"Could not undo: {ex.Message}" });
+                }
+                return;
+            }
             // The state being left goes to the other stack in the same shape: redoing a conversion
             // has to put the converted coordinates back together with the space they were
             // converted into.
-            _redoStack.Push(new UndoEntry(JsonSerializer.Serialize(actions, JsonOptions),
+            to.Push(new UndoEntry(JsonSerializer.Serialize(actions, JsonOptions),
                 entry.Space != null ? CoordinateSpace.Capture(UserProfile.Current) : null));
-            RestoreFromHistory(entry);
-            mainController.UpdateButtonStates();
-        }
-
-        private void HandleRedo()
-        {
-            if (_redoStack.Count == 0) return;
-            var entry = _redoStack.Pop();
-            _undoStack.Push(new UndoEntry(JsonSerializer.Serialize(actions, JsonOptions),
-                entry.Space != null ? CoordinateSpace.Capture(UserProfile.Current) : null));
-            RestoreFromHistory(entry);
-            mainController.UpdateButtonStates();
-        }
-
-        private void RestoreFromHistory(UndoEntry entry)
-        {
-            if (RestoreActionsFromSnapshot(entry.Actions))
+            if (RestoreActionsFromSnapshot(entry.Actions!))
                 entry.Space?.ApplyTo(UserProfile.Current);
+            mainController.UpdateButtonStates();
+        }
+
+        // Puts one part of the open macro back the way its own editor writes it.
+        private async Task ApplyPartAsync(MacroPart part)
+        {
+            string name = CurrentProfileName;
+            if (name == "No Profile") return;
+            switch (part)
+            {
+                case RunPart:
+                    // As settings:change does: in memory, written with the macro's next save.
+                    part.CopyTo(UserProfile.Current);
+                    MarkLoopEdited();
+                    PushProfileLoop();
+                    break;
+                case TriggerPart trigger:
+                    await PersistTriggerAsync(name, trigger.Config());
+                    break;
+                case DataPart:
+                    // As data:save does: in memory first, then into the file.
+                    part.CopyTo(UserProfile.Current);
+                    await WritePartToFileAsync(name, part);
+                    PushDataTable();
+                    break;
+                default:
+                    // Info, hotkey, hotstring and window target: their editors write the file, mirror
+                    // the open macro and re-read the list, which re-arms hotkeys, hotstrings and targets.
+                    if (!await WritePartToFileAsync(name, part)) break;
+                    if (CurrentProfileName == name) part.CopyTo(UserProfile.Current);
+                    await profileController.RefreshProfileListAsync(true);
+                    if (part is TargetPart && CurrentProfileName == name)
+                    {
+                        // As opening the macro does: the coordinate and focus flags in effect, which a
+                        // folder's target decides for a macro without one of its own.
+                        UserProfile.Current.UseRelativeCoordinates = profileController.GetEffectiveRelativeCoordinates(name);
+                        UserProfile.Current.BringToFocus = profileController.GetEffectiveBringToFocus(name);
+                    }
+                    foreach (var message in profileController.GetAndClearHotkeyCollisions())
+                        SendMessage("alert:show", new { message });
+                    PushProfilesUpdate();
+                    break;
+            }
+        }
+
+        // Reads the macro's file, puts the part on it and writes it back, like the editors do.
+        private async Task<bool> WritePartToFileAsync(string name, MacroPart part)
+        {
+            var profile = await profileController.LoadProfileByNameAsync(name);
+            if (profile == null)
+            {
+                ReportProfileGone(name);
+                return false;
+            }
+            part.CopyTo(profile);
+            return await profileController.SaveProfileByNameAsync(name, profile);
         }
 
         /// <summary>
@@ -2475,7 +2719,7 @@ namespace TrueReplayer
                 var items = stack.ToArray(); // top first
                 stack.Clear();
                 for (int i = items.Length - 1; i >= 0; i--)
-                    stack.Push(items[i] with { Actions = Rewrite(items[i].Actions) });
+                    stack.Push(items[i].Actions is { } list ? items[i] with { Actions = Rewrite(list) } : items[i]);
             }
 
             string Rewrite(string snapshot)
@@ -3470,6 +3714,11 @@ namespace TrueReplayer
                 && payload.TryGetProperty("autoSave", out var autoSave) && autoSave.ValueKind == JsonValueKind.True;
             if (AutoSaveEnabled) ScheduleAutoSave(); // an edit made before the page asked
             else _autoSaveTimer?.Stop();
+
+            bool extendedUndo = payload.ValueKind == JsonValueKind.Object
+                && payload.TryGetProperty("extendedUndo", out var undo) && undo.ValueKind == JsonValueKind.True;
+            if (ExtendedUndoEnabled && !extendedUndo) DropPartEntries();
+            ExtendedUndoEnabled = extendedUndo;
         }
 
         // Restarts the countdown. Both writers of the dirty state call it: the HasUnsavedChanges
@@ -3844,6 +4093,11 @@ namespace TrueReplayer
             // Edits still pending stay dirty, behind the usual prompts.
             AutoSaveEnabled = false;
             _autoSaveTimer?.Stop();
+            if (ExtendedUndoEnabled)
+            {
+                ExtendedUndoEnabled = false;
+                DropPartEntries();
+            }
 
             // React sends ui:ready the instant it mounts, which on a cold start beats the startup
             // profile load. state:init REPLACES the frontend store wholesale (AppStateContext
@@ -10397,6 +10651,7 @@ namespace TrueReplayer
                 if (profile == null) ReportProfileGone(name);
                 else
                 {
+                    var before = HotkeyPart.Of(profile);
                     profile.CustomHotkey = hotkey;
                     if (newMode.HasValue) profile.TriggerMode = newMode.Value;
                     // Nothing written (the profile left the list meanwhile — the save said so):
@@ -10407,6 +10662,7 @@ namespace TrueReplayer
                         UserProfile.Current.CustomHotkey = hotkey;
                         if (newMode.HasValue) UserProfile.Current.TriggerMode = newMode.Value;
                     }
+                    RecordPartEdit(name, before, HotkeyPart.Of(profile));
                     await profileController.RefreshProfileListAsync(true);
                     var map = profileController.GetProfileHotkeys();
                     InputHookManager.RegisterProfileHotkeys(map);
@@ -10439,10 +10695,12 @@ namespace TrueReplayer
                 if (profile == null) ReportProfileGone(name);
                 else
                 {
+                    var before = HotkeyPart.Of(profile);
                     profile.CustomHotkey = null;
                     if (!await profileController.SaveProfileByNameAsync(name, profile)) return;
                     if (CurrentProfileName == name)
                         UserProfile.Current.CustomHotkey = null;
+                    RecordPartEdit(name, before, HotkeyPart.Of(profile));
                     await profileController.RefreshProfileListAsync(true);
                     var map = profileController.GetProfileHotkeys();
                     InputHookManager.RegisterProfileHotkeys(map);
@@ -10486,10 +10744,12 @@ namespace TrueReplayer
                 if (profile == null) ReportProfileGone(name);
                 else
                 {
+                    var before = HotstringPart.Of(profile);
                     profile.CustomHotstring = new Models.HotstringConfig { Sequence = sequence, Instant = instant };
                     if (!await profileController.SaveProfileByNameAsync(name, profile)) return;
                     if (CurrentProfileName == name)
                         UserProfile.Current.CustomHotstring = profile.CustomHotstring;
+                    RecordPartEdit(name, before, HotstringPart.Of(profile));
                     await profileController.RefreshProfileListAsync(true);
                     var hotstringMap = profileController.GetProfileHotstrings();
                     InputHookManager.RegisterProfileHotstrings(hotstringMap);
@@ -10514,10 +10774,12 @@ namespace TrueReplayer
                 if (profile == null) ReportProfileGone(name);
                 else
                 {
+                    var before = HotstringPart.Of(profile);
                     profile.CustomHotstring = null;
                     if (!await profileController.SaveProfileByNameAsync(name, profile)) return;
                     if (CurrentProfileName == name)
                         UserProfile.Current.CustomHotstring = null;
+                    RecordPartEdit(name, before, HotstringPart.Of(profile));
                     await profileController.RefreshProfileListAsync(true);
                     var hotstringMap = profileController.GetProfileHotstrings();
                     InputHookManager.RegisterProfileHotstrings(hotstringMap);
@@ -10762,6 +11024,7 @@ namespace TrueReplayer
             if (profile == null) ReportProfileGone(name);
             else
             {
+                var before = TargetPart.Of(profile);
                 // When keepInheritedTarget is true the profile has no target of its own and the
                 // user is just toggling flags on top of the folder-inherited target. Persisting
                 // those flags would create dormant overrides: GetEffectiveBringToFocus and
@@ -10821,6 +11084,7 @@ namespace TrueReplayer
                     // discarded somebody else's unsaved actions, taking the close-time guard
                     // (MainWindow.xaml.cs) and the automation daemon's SkippedDirty gate with it.
                 }
+                RecordPartEdit(name, before, TargetPart.Of(profile));
                 await profileController.RefreshProfileListAsync(true);
                 InputHookManager.RegisterProfileWindowTargets(profileController.GetProfileWindowTargets(), profileController.GetBringToFocusProfiles());
                 PushProfilesUpdate();
@@ -10915,6 +11179,10 @@ namespace TrueReplayer
                 var removedGeometry = CurrentProfileName == name
                     ? (X: UserProfile.Current.WindowX, Y: UserProfile.Current.WindowY, Width: UserProfile.Current.WindowWidth, Height: UserProfile.Current.WindowHeight)
                     : (X: profile.WindowX, Y: profile.WindowY, Width: profile.WindowWidth, Height: profile.WindowHeight);
+                var before = TargetPart.Of(profile) with
+                {
+                    X = removedGeometry.X, Y = removedGeometry.Y, Width = removedGeometry.Width, Height = removedGeometry.Height,
+                };
                 profile.TargetWindow = null;
                 profile.UseRelativeCoordinates = false;
                 profile.BringToFocus = false;
@@ -10927,6 +11195,7 @@ namespace TrueReplayer
                 if (!await profileController.SaveProfileByNameAsync(name, profile)) return;
                 if (CurrentProfileName == name)
                     ResetCurrentProfileWindowContext();
+                RecordPartEdit(name, before, TargetPart.Of(profile));
                 await profileController.RefreshProfileListAsync(true);
                 InputHookManager.RegisterProfileWindowTargets(profileController.GetProfileWindowTargets(), profileController.GetBringToFocusProfiles());
                 PushProfilesUpdate();
@@ -11324,6 +11593,8 @@ namespace TrueReplayer
 
             string saveName = !string.IsNullOrEmpty(targetProfileName) ? targetProfileName : CurrentProfileName;
 
+            // The open macro's rect as it stood, for the wider undo: its live rect is the fresher one.
+            var openRect = (X: UserProfile.Current.WindowX, Y: UserProfile.Current.WindowY, Width: UserProfile.Current.WindowWidth, Height: UserProfile.Current.WindowHeight);
             if (saveName == CurrentProfileName && CurrentProfileName != "No Profile")
             {
                 UserProfile.Current.WindowWidth = w;
@@ -11338,11 +11609,13 @@ namespace TrueReplayer
                 var profile = await profileController.LoadProfileByNameAsync(saveName);
                 if (profile != null)
                 {
+                    var before = TargetPart.Of(profile) with { X = openRect.X, Y = openRect.Y, Width = openRect.Width, Height = openRect.Height };
                     profile.WindowWidth = w;
                     profile.WindowHeight = hgt;
                     profile.WindowX = rect.Left;
                     profile.WindowY = rect.Top;
-                    await profileController.SaveProfileByNameAsync(saveName, profile);
+                    if (await profileController.SaveProfileByNameAsync(saveName, profile))
+                        RecordPartEdit(saveName, before, TargetPart.Of(profile));
                 }
             }
             else
@@ -13127,6 +13400,7 @@ namespace TrueReplayer
             // Said, not dropped: the Info dialog closes on Save without waiting, so a profile that
             // vanished while it was open took the user's edits with it and nothing said so.
             if (profile == null) { ReportProfileGone(name); return; }
+            var before = InfoPart.Of(profile);
 
             if (hasDescription)
                 profile.Description = string.IsNullOrEmpty(descriptionValue) ? null : descriptionValue;
@@ -13147,6 +13421,7 @@ namespace TrueReplayer
                 if (hasTags) UserProfile.Current.Tags = profile.Tags;
                 if (hasIconEmoji) UserProfile.Current.IconEmoji = profile.IconEmoji;
             }
+            RecordPartEdit(name, before, InfoPart.Of(profile));
             await profileController.RefreshProfileListAsync(true);
             PushProfilesUpdate();
         }
@@ -13157,6 +13432,7 @@ namespace TrueReplayer
             if (string.IsNullOrEmpty(name)) return;
             var profile = await profileController.LoadProfileByNameAsync(name);
             if (profile == null) return;
+            var before = InfoPart.Of(profile);
             // Defensively guard against overflow on absurd values. Wraps at int.MaxValue,
             // which no human will ever reach but better than crashing.
             profile.ProfileVersion = profile.ProfileVersion < int.MaxValue ? profile.ProfileVersion + 1 : 1;
@@ -13164,6 +13440,7 @@ namespace TrueReplayer
             // Same mirror as HandleProfileSetMetadata, for the same reason: without it the next
             // grid Save carries the stale number from Current and un-bumps the version.
             if (name == CurrentProfileName) UserProfile.Current.ProfileVersion = profile.ProfileVersion;
+            RecordPartEdit(name, before, InfoPart.Of(profile));
             await profileController.RefreshProfileListAsync(true);
             PushProfilesUpdate();
             SendMessage("profile:versionBumped", new { name, newVersion = profile.ProfileVersion });
@@ -13608,6 +13885,7 @@ namespace TrueReplayer
         {
             bool scoped = CurrentProfileName != "No Profile";
             var p = UserProfile.Current;
+            var before = RunPart.Of(p); // for the wider undo
             // Whether the loaded profile's value actually moved. The chips commit on blur, and a
             // focus-and-leave without typing re-sent the value already there — which still marked
             // the profile edited: the unsaved dot lit, and the switch prompt, the close guard and
@@ -13688,7 +13966,11 @@ namespace TrueReplayer
                 // Loops row sitting next to an Interval row that waits for Ctrl+S would be the
                 // worst of both. HasUnsavedLoopChange (not HasUnsavedChanges) so an armed
                 // automation keeps firing — see the flag's declaration.
-                if (changed) MarkLoopEdited();
+                if (changed)
+                {
+                    MarkLoopEdited();
+                    RecordPartEdit(CurrentProfileName, before, RunPart.Of(p));
+                }
             }
             else
             {
