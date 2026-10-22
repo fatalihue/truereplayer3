@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useBridge } from '../../bridge/BridgeContext';
+import { useBridge } from '../bridge/BridgeContext';
 
 // Reads the current clipboard text via the bridge once on mount. Used by both
 // clipboard-related popovers (insert and chip-edit) so the live preview reflects

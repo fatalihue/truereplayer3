@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, Pipette, PlayCircle, X } from 'lucide-react';
 import { useBridge } from '../../bridge/BridgeContext';
+import { useEditorTools, newRequestId } from '../../logic/useEditorTools';
 import { useTt } from '../../state/LanguageContext';
 import { SegmentedControl } from '../common/SegmentedControl';
 import { NumberInput } from '../common/NumberInput';
@@ -56,7 +57,8 @@ const validHex = (s: string) => /^#?[0-9A-Fa-f]{6}$/.test(s.trim());
 const withHash = (s: string) => (s.trim().startsWith('#') ? s.trim() : '#' + s.trim());
 
 export function ScreenTextFields(p: ScreenTextFieldsProps) {
-  const { send, subscribe } = useBridge();
+  const { subscribe } = useBridge();
+  const tools = useEditorTools();
   const tt = useTt();
   const [testId, setTestId] = useState<string | null>(null);
   const [result, setResult] = useState<TestReadResult | null>(null);
@@ -111,22 +113,19 @@ export function ScreenTextFields(p: ScreenTextFieldsProps) {
     : null;
 
   const runTest = () => {
-    const requestId = Math.random().toString(36).slice(2, 10);
+    const requestId = newRequestId();
     setTestId(requestId);
     setResult(null);
-    send({
-      type: 'ocr:testRead',
-      payload: {
-        requestId,
-        searchRegion: p.region ?? undefined,
-        readAs: number ? 'number' : null,
-        operator: number ? p.numberOp : p.textOp,
-        operand: p.operand,
-        match: showMatcher && p.operand !== '',
-        textColor: validHex(p.textColor) ? withHash(p.textColor) : null,
-        // 0 is a real tolerance (exact colour only) and the save keeps it; || 70 tested it as 70.
-        tolerance: (() => { const t = Number.parseInt(p.tolerance, 10); return Number.isFinite(t) ? Math.min(255, Math.max(0, t)) : 70; })(),
-      },
+    tools.testScreenText({
+      requestId,
+      searchRegion: p.region ?? undefined,
+      readAs: number ? 'number' : null,
+      operator: number ? p.numberOp : p.textOp,
+      operand: p.operand,
+      match: showMatcher && p.operand !== '',
+      textColor: validHex(p.textColor) ? withHash(p.textColor) : null,
+      // 0 is a real tolerance (exact colour only) and the save keeps it; || 70 tested it as 70.
+      tolerance: (() => { const t = Number.parseInt(p.tolerance, 10); return Number.isFinite(t) ? Math.min(255, Math.max(0, t)) : 70; })(),
     });
     if (timerRef.current) window.clearTimeout(timerRef.current);
     timerRef.current = window.setTimeout(() => {
@@ -137,9 +136,9 @@ export function ScreenTextFields(p: ScreenTextFieldsProps) {
   };
 
   const pickColor = () => {
-    const requestId = Math.random().toString(36).slice(2, 10);
+    const requestId = newRequestId();
     setPickId(requestId);
-    send({ type: 'pixel:pickColor', payload: { requestId } });
+    tools.pickColor({ requestId });
   };
 
   const firstLine = (result?.text ?? '').split('\n')[0]?.trim() ?? '';

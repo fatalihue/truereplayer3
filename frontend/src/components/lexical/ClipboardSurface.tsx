@@ -9,7 +9,7 @@ import { ArgInput, CheckRow as PopoverCheckRow, type CheckRowProps } from './pop
 
 // Inline (not full-width) so the Lines / Clean up rows keep wrapping side by side.
 const CheckRow = (props: CheckRowProps) => <PopoverCheckRow {...props} className="" />;
-import { useClipboardContent } from './useClipboardContent';
+import { useClipboardContent } from '../../logic/useClipboardContent';
 import {
   applyTransformPreview,
   previewIsRuntimeDependent,

@@ -8,6 +8,7 @@ import { SegmentedControl } from './common/SegmentedControl';
 import { calloutStyle } from './common/Callout';
 import { Section } from './sheet/Field';
 import { useBridge } from '../bridge/BridgeContext';
+import { useEditorTools, newRequestId } from '../logic/useEditorTools';
 import { useLanguage, useTt } from '../state/LanguageContext';
 import { formatMs } from '../utils/displayUtils';
 import { MIN_HOLD_MS, MAX_HOLD_MS, DEFAULT_HOLD_MS, DEFAULT_CLICK_GAP_MS, DEFAULT_MULTICLICK_GAP_MS } from '../utils/actionCost';
@@ -104,7 +105,8 @@ type Form = 'combined' | 'paired';
 export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
   const { language } = useLanguage();
   const tt = useTt();
-  const { send, subscribe } = useBridge();
+  const { subscribe } = useBridge();
+  const tools = useEditorTools();
   // Caption → field ties, so a click on "Times" / "Gap" / "Hold" lands in its field.
   const timesId = useId();
   const gapId = useId();
@@ -205,11 +207,11 @@ export function ClickDialog({ onConfirm, onClose }: ClickDialogProps) {
   }, [subscribe]);
 
   const handlePick = useCallback((target: 'press' | 'release' = 'press') => {
-    const requestId = Math.random().toString(36).slice(2, 10);
+    const requestId = newRequestId();
     pickTargetRef.current = target;
     setPickRequestId(requestId);
-    send({ type: 'mouse:pickPosition', payload: { requestId } });
-  }, [send]);
+    tools.pickPosition({ requestId });
+  }, [tools]);
 
   // Switching the click count moves the gap to the NEW type's default when it is still sitting
   // on the OLD one — untouched means "I want the default", and 30 ms between double-clicks

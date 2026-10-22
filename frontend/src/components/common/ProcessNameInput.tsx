@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, ChevronDown } from 'lucide-react';
 import { useBridge } from '../../bridge/BridgeContext';
+import { useEditorTools } from '../../logic/useEditorTools';
 
 
 /**
@@ -23,7 +24,8 @@ export function ProcessNameInput({
   onChange: (name: string) => void;
   placeholder?: string;
 }) {
-  const { send, subscribe } = useBridge();
+  const { subscribe } = useBridge();
+  const tools = useEditorTools();
 
   const [processList, setProcessList] = useState<{ name: string; title: string }[] | null>(null);
   const [showPicker, setShowPicker] = useState(false);
@@ -85,7 +87,7 @@ export function ProcessNameInput({
             const next = !showPicker;
             setShowPicker(next);
             // Lazy fetch — first open enumerates. Re-opens reuse the cache.
-            if (next && processList === null) send({ type: 'process:list', payload: {} });
+            if (next && processList === null) tools.listProcesses({});
           }}
           aria-label={'Pick a running process'}
           className={`p-1 transition-colors ${showPicker ? 'text-accent' : 'text-text-tertiary hover:text-text-secondary'}`}

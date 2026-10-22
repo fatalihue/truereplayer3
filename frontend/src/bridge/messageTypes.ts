@@ -1357,7 +1357,7 @@ export type OutgoingMessage =
   // `owner` keeps the Sheet's claim and the row dialogs' claim apart, so one editor closing does
   // not release the other's (AutomationGuard holds one stamp per owner).
   // One claim per owner (AutomationGuard): the Sheet, the grid's row editors, the Toolbar's insert
-  // dialogs, the Data table and the Automations panel. Sent through hooks/useEditorClaim.
+  // dialogs, the Data table and the Automations panel. Sent through logic/useEditorClaim.
   | { type: 'editor:pendingEdits'; payload: { pending: boolean; owner: EditorClaimOwner } }
   // Zero one automation's fire/skip tallies. The interval anchor (lastFiredAt) and the schedule's
   // double-fire guard are kept — they are state, not history.

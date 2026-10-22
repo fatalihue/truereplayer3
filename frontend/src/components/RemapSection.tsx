@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { X, Plus, ArrowRight, Ban, Mouse, AppWindow, Download, Upload, Check } from 'lucide-react';
-import { useBridge } from '../bridge/BridgeContext';
+import { useKeyCapture } from '../logic/useKeyCapture';
 import type { RemapEntryDto } from '../bridge/messageTypes';
 import { useRemaps, remapKeyProblem } from '../logic/useRemaps';
 import { useAppState } from '../state/AppStateContext';
@@ -156,7 +156,7 @@ export function RemapSection({ draft }: {
   const tt = useTt();
   // The key capture (hotkey:capture / hotkey:captured) still talks to the bridge here; it moves to
   // a hook with the other capture consumers.
-  const { send, subscribe } = useBridge();
+  const keyCapture = useKeyCapture();
   const remapCmds = useRemaps();
   const { settings, profiles } = useAppState();
   const remaps = settings.remaps;
@@ -191,7 +191,7 @@ export function RemapSection({ draft }: {
 
   const stopCapture = () => {
     if (capturingRef.current) {
-      send({ type: 'hotkey:capture', payload: { enabled: false, ownerId: 'remap-add' } });
+      keyCapture.release('remap-add');
     }
     setCapturing(null);
   };
@@ -200,20 +200,18 @@ export function RemapSection({ draft }: {
     setCaptureError(null);
     setMouseMenuOpen(false);
     if (!capturingRef.current) {
-      send({ type: 'hotkey:capture', payload: { enabled: true, ownerId: 'remap-add' } });
+      keyCapture.arm('remap-add');
     }
     setCapturing(side);
   };
 
   useEffect(() => {
-    return subscribe((msg) => {
-      if (msg.type !== 'hotkey:captured' || !capturingRef.current) return;
-      // Owner filter: this chip is the app's only NON-modal capture consumer — a hotkey
-      // dialog opened while the chip is armed registers LATER and is the intended
-      // recipient of the broadcast; stealing it would pre-fill a remap key the user
-      // never meant to set.
-      if (msg.payload.owner && msg.payload.owner !== 'remap-add') return;
-      const combo = msg.payload.combo;
+    // Owner filter: this chip is the app's only NON-modal capture consumer — a hotkey
+    // dialog opened while the chip is armed registers LATER and is the intended
+    // recipient of the broadcast; stealing it would pre-fill a remap key the user
+    // never meant to set.
+    return keyCapture.listen('remap-add', (combo) => {
+      if (!capturingRef.current) return;
       const problem = remapKeyProblem(combo, capturingRef.current);
       if (problem) {
         setCaptureError(problem);
@@ -224,7 +222,7 @@ export function RemapSection({ draft }: {
       stopCapture();
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subscribe]);
+  }, [keyCapture]);
 
   // Leaving the section (panel collapse/unmount) must release the global capture.
   useEffect(() => () => stopCapture(), []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -247,7 +245,7 @@ export function RemapSection({ draft }: {
       document.removeEventListener('mousedown', onOutside, true);
       document.removeEventListener('focusin', onOutside, true);
     };
-    // stopCapture reads refs, the stable send and a state setter — current from any render.
+    // stopCapture reads refs, the stable keyCapture and a state setter — current from any render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [capturing]);
 

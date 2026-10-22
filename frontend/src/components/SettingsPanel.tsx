@@ -6,6 +6,7 @@ import { useLanguage, useTt } from '../state/LanguageContext';
 // `Search` import removed with the disabled Settings filter — re-add it to revive the filter.
 import { useAppState } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
+import { useKeyCapture, isPureModifier } from '../logic/useKeyCapture';
 import { useSteps } from '../logic/useSteps';
 import { useSelectionRef } from '../state/SelectionContext';
 import { useToast } from '../state/ToastContext';
@@ -1161,7 +1162,7 @@ function HotkeyInput({ value, settingKey, onChange, width = FIELD_W }: {
   onChange: (key: string, hotkey: string) => void;
   width?: string;
 }) {
-  const { send, subscribe } = useBridge();
+  const keyCapture = useKeyCapture();
   const { showToast } = useToast();
   const tt = useTt();
   const row = useContext(RowLabelContext);
@@ -1212,11 +1213,11 @@ function HotkeyInput({ value, settingKey, onChange, width = FIELD_W }: {
     // Captured at effect time, not read in the cleanup: the id is assigned at mount and never
     // reassigned, so this is behaviour-identical, and it keeps the release addressed to the
     // owner this effect actually registered.
-    const ownerId = ownerIdRef.current;
+    const ownerId = ownerIdRef.current!;
     return () => {
-      send({ type: 'hotkey:capture', payload: { enabled: false, ownerId } });
+      keyCapture.release(ownerId);
     };
-  }, [send]);
+  }, [keyCapture]);
 
   useEffect(() => {
     if (!isFocused) setLocalValue(value);
@@ -1228,9 +1229,7 @@ function HotkeyInput({ value, settingKey, onChange, width = FIELD_W }: {
   // auto-commit behaviour).
   useEffect(() => {
     if (!isFocused) return;
-    return subscribe((msg) => {
-      if (msg.type !== 'hotkey:captured') return;
-      const combo = msg.payload?.combo;
+    return keyCapture.listen(null, (combo) => {
       // Compile-time narrowing types combo as string, but a malformed backend
       // message could deliver a non-string/empty payload at runtime — without
       // this guard it would be set as the field value and committed, and the
@@ -1252,15 +1251,13 @@ function HotkeyInput({ value, settingKey, onChange, width = FIELD_W }: {
       setLocalValue(combo);
       armCaptureTimer();
       // A pure modifier press ("Win", "Ctrl") shouldn't commit — wait for the real key.
-      const isPureModifier = combo === 'Win' || combo === 'Ctrl' || combo === 'Alt' || combo === 'Shift'
-        || /^(Win|Ctrl|Alt|Shift)(\+(Win|Ctrl|Alt|Shift))*$/.test(combo);
-      if (!isPureModifier) {
+      if (!isPureModifier(combo)) {
         onChange(settingKey, combo);
         disarmCaptureTimer();
         inputRef.current?.blur();
       }
     });
-  }, [isFocused, subscribe, settingKey, onChange, armCaptureTimer, disarmCaptureTimer, showToast, tt]);
+  }, [isFocused, keyCapture, settingKey, onChange, armCaptureTimer, disarmCaptureTimer, showToast, tt]);
 
   // Unified "capture mode" UX — same as the grid Key column edit and the SheetPanel /
   // ProfilePanel hotkey inputs. While focused, the field shows the live combo (or empty +
@@ -1273,7 +1270,7 @@ function HotkeyInput({ value, settingKey, onChange, width = FIELD_W }: {
   const armCapture = () => {
     setIsFocused(true);
     setLocalValue('');
-    send({ type: 'hotkey:capture', payload: { enabled: true, ownerId: ownerIdRef.current } });
+    keyCapture.arm(ownerIdRef.current!);
     armCaptureTimer();
   };
   // Idle: the stored combo as keycaps (one .kbd cap per key, accent tone, PgUp / PgDn
@@ -1294,7 +1291,7 @@ function HotkeyInput({ value, settingKey, onChange, width = FIELD_W }: {
           armCapture();
         }
       }}
-      onBlur={() => { setIsFocused(false); setLocalValue(value); send({ type: 'hotkey:capture', payload: { enabled: false, ownerId: ownerIdRef.current } }); disarmCaptureTimer(); }}
+      onBlur={() => { setIsFocused(false); setLocalValue(value); keyCapture.release(ownerIdRef.current!); disarmCaptureTimer(); }}
       // Armed, the name says what the field is waiting for (it used to keep announcing the stored
       // combo over the visible "New key…"), and aria-pressed carries the armed state itself.
       // Prefixed with the row's label: six of these sit in one column, and "Hotkey: Pause" alone

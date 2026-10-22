@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { TriangleAlert, Zap, Plus, Trash2, Pipette, Camera, Frame, X, ScanSearch, ScanText, Check, Play, Power, Crosshair, Circle } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
+import { useEditorTools } from '../logic/useEditorTools';
 import { useAppState } from '../state/AppStateContext';
 import { useAutomations, useAutomationRefresh, isCropAnswer } from '../logic/useAutomations';
 import { useTt } from '../state/LanguageContext';
@@ -18,7 +19,7 @@ import { FieldError } from './common/FieldError';
 import { WindowTargetFields } from './WindowTargetFields';
 import { ImageCropper } from './ImageCropper';
 import { rangeParts, phaseLockRisk } from '../utils/activeHours';
-import { useEditorClaim } from '../hooks/useEditorClaim';
+import { useEditorClaim } from '../logic/useEditorClaim';
 import type { AutomationEntry, TriggerConfig } from '../bridge/messageTypes';
 import { effectiveOperator, isNumberMode, parsesAsNumber, regexProblem } from '../utils/screenText';
 
@@ -370,9 +371,11 @@ function ActiveHoursField({ value, onChange, phaseLock, phaseLockTip }: {
 }
 
 export function AutomationPanel({ onClose }: { onClose: () => void }) {
-  // send/subscribe stay for the screen tools shared with the step editors (pixel, region, image
-  // and text tests); the automation's own commands go through useAutomations.
-  const { send, subscribe } = useBridge();
+  // The screen tools shared with the step editors (pixel, region, image and text tests) go out
+  // through useEditorTools and their replies come back through subscribe; the automation's own
+  // commands go through useAutomations.
+  const { subscribe } = useBridge();
+  const tools = useEditorTools();
   const automations = useAutomations();
   const { automation, profiles } = useAppState();
   const tt = useTt();
@@ -789,7 +792,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
     pickReqRef.current = id;
     // absolute: watcher coords are virtual-screen — the profile-relative translation
     // the If/WaitPixel editors want would store coords the daemon samples wrongly.
-    send({ type: 'pixel:pickColor', payload: { requestId: id, absolute: true, ...anchorPayload() } });
+    tools.pickColor({ requestId: id, absolute: true, ...anchorPayload() });
   };
   const captureImage = () => {
     if (!selected) return;
@@ -801,7 +804,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
     regionReqRef.current = id;
     // absolute: watcher ROI is virtual-screen coords (the backend skips the rel-coords round-trip).
     const r = draft?.searchRegion;
-    send({ type: 'waitimage:configureSearchRegion', payload: { requestId: id, absolute: true, ...anchorPayload(), ...(r ? { x: r.x, y: r.y, w: r.w, h: r.h } : {}) } });
+    tools.configureSearchRegion({ requestId: id, absolute: true, ...anchorPayload(), ...(r ? { x: r.x, y: r.y, w: r.w, h: r.h } : {}) });
   };
   // Crop the current reference tighter — the backend replies over automation:imageCaptured (new
   // path + thumbnail), so reuse captureReqRef to match it. rect is image-pixel coords from the cropper.
@@ -818,13 +821,13 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
     // absolute + profile: the test image lives under the trigger's profile and its coords are
     // virtual-screen (the backend skips the rel-coords round-trip and reports absolute).
     const r = draft.searchRegion;
-    send({ type: 'image:testMatch', payload: { requestId: id, absolute: true, ...anchorPayload(), profile: selected, imagePath: draft.imagePath, confidence: draft.imageConfidence || 0.8, ...(r ? { searchRegion: r } : {}) } });
+    tools.testImage({ requestId: id, absolute: true, ...anchorPayload(), profile: selected, imagePath: draft.imagePath, confidence: draft.imageConfidence || 0.8, ...(r ? { searchRegion: r } : {}) });
   };
 
   const pickTextColor = () => {
     const id = `autotextcolor-${Date.now()}`;
     textColorReqRef.current = id;
-    send({ type: 'pixel:pickColor', payload: { requestId: id } });
+    tools.pickColor({ requestId: id });
   };
   const testRead = () => {
     if (!draft) return;
@@ -833,7 +836,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
     setTestReadResult(null);
     const number = isNumberMode(draft.ocrReadAs);
     const r = draft.searchRegion;
-    send({ type: 'ocr:testRead', payload: {
+    tools.testScreenText({
       requestId: id, absolute: true, ...anchorPayload(), ...(r ? { searchRegion: r } : {}),
       readAs: number ? 'number' : null,
       operator: effectiveOperator(draft.conditionOperator, number),
@@ -841,7 +844,7 @@ export function AutomationPanel({ onClose }: { onClose: () => void }) {
       match: true,
       textColor: /^#?[0-9A-Fa-f]{6}$/.test((draft.ocrTextColor ?? '').trim()) ? draft.ocrTextColor : null,
       tolerance: draft.ocrColorTolerance ?? 70,
-    } });
+    });
   };
 
   const selectedEntry = selected ? entryByProfile.get(selected) : undefined;

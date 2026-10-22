@@ -5,6 +5,7 @@ import { useAppState } from '../state/AppStateContext';
 import { railInitials, glyphCount, cutGlyphs } from '../utils/profileInitials';
 import { carriesConditionProbe } from '../utils/conditionalBlocks';
 import { useBridge } from '../bridge/BridgeContext';
+import { useKeyCapture } from '../logic/useKeyCapture';
 import { useMacro } from '../logic/useMacro';
 import { KbdTag, splitCombo } from './common/KbdTag';
 import { compactKey } from '../utils/keyNames';
@@ -198,7 +199,8 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
       && typeof a.pixelX === 'number' && typeof a.pixelY === 'number') return n + 1;
     return n;
   }, 0), [actions]);
-  const { send, subscribe } = useBridge();
+  const { subscribe } = useBridge();
+  const keyCapture = useKeyCapture();
   const macro = useMacro();
   // Stable refcount slot for hotkey:capture — assign-hotkey dialog can be triggered
   // while Settings has its hotkey field focused (modal-over-modal isn't blocked at the
@@ -726,7 +728,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
     // Capture mode (not just suppress): the backend low-level hook composes each keydown
     // and emits it via 'hotkey:captured'. Without this, the WebView2 JS layer never sees
     // Win+letter combos because the Windows Shell intercepts them at OS level first.
-    send({ type: 'hotkey:capture', payload: { enabled: true, ownerId: captureOwnerIdRef.current } });
+    keyCapture.arm(captureOwnerIdRef.current);
   };
 
   const handleRemoveHotkey = (name: string) => {
@@ -756,7 +758,7 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
     setHotstringValue(existing?.hotstring ?? '');
     setHotstringInstant(existing?.hotstring ? existing.hotstringInstant : true);
     setShowHotstringDialog(name);
-    send({ type: 'hotkey:suppress', payload: { enabled: true } });
+    keyCapture.suppress(true);
   };
 
   const handleRemoveHotstring = (name: string) => {
@@ -942,33 +944,29 @@ export function ProfilePanel({ collapsed = false, onToggleCollapse }: ProfilePan
     }
   };
 
-  // Disable backend capture mode when hotkey dialog closes. `send` is a stable useCallback
-  // from BridgeContext (deps []), so listing it here doesn't cause extra re-runs — only
+  // Disable backend capture mode when hotkey dialog closes. `keyCapture` is memoized over the
+  // bridge's stable functions, so listing it here doesn't cause extra re-runs — only
   // silences exhaustive-deps without changing behaviour.
   useEffect(() => {
     if (!showHotkeyDialog) {
-      send({ type: 'hotkey:capture', payload: { enabled: false, ownerId: captureOwnerIdRef.current } });
+      keyCapture.release(captureOwnerIdRef.current);
     }
-  }, [showHotkeyDialog, send]);
+  }, [showHotkeyDialog, keyCapture]);
 
   // While the hotkey dialog is open, the backend hook composes every keypress and
   // emits the combo here. The JS layer never sees Win+letter combos directly (Shell
   // intercepts), so the backend round-trip is the only way to capture them.
   useEffect(() => {
     if (!showHotkeyDialog) return;
-    return subscribe((msg) => {
-      if (msg.type === 'hotkey:captured') {
-        setHotkeyCapture(msg.payload.combo);
-      }
-    });
-  }, [showHotkeyDialog, subscribe]);
+    return keyCapture.listen(null, setHotkeyCapture);
+  }, [showHotkeyDialog, keyCapture]);
 
-  // Suppress global hotkeys while hotstring dialog is open. `send` is stable (see note above).
+  // Suppress global hotkeys while hotstring dialog is open. `keyCapture` is stable (see note above).
   useEffect(() => {
     if (!showHotstringDialog) {
-      send({ type: 'hotkey:suppress', payload: { enabled: false } });
+      keyCapture.suppress(false);
     }
-  }, [showHotstringDialog, send]);
+  }, [showHotstringDialog, keyCapture]);
 
   // Auto-close hotstring dialog when profile list updates
   useEffect(() => {

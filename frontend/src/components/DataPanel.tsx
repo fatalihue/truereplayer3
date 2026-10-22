@@ -20,7 +20,7 @@ import { DataPasteSurface, type PasteMode } from './DataPasteSurface';
 import { parseTsv, encodeTsv, deepEqualGrid, tokenizeTsvGrid, sniffDelimiter, type Grid } from '../lib/tsv';
 import { scanRowTokenUsage, orphanHead } from '../lib/rowTokenUsage';
 import { uiZoom, rectToLayout, viewportInLayout } from '../utils/zoomSpace';
-import { useEditorClaim } from '../hooks/useEditorClaim';
+import { useEditorClaim } from '../logic/useEditorClaim';
 
 interface DataPanelProps {
   onClose: () => void;

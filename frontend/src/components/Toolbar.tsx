@@ -22,7 +22,7 @@ import { iconButtonClass } from './common/IconButton';
 import { Button } from './common/Button';
 import { useDismissOnOutside } from '../hooks/useDismissOnOutside';
 import { snapIndicesToBlocks, loopDepthAt } from '../utils/conditionalBlocks';
-import { useEditorClaim } from '../hooks/useEditorClaim';
+import { useEditorClaim } from '../logic/useEditorClaim';
 import { useRovingToolbar } from '../hooks/useRovingToolbar';
 
 export interface ColumnVisibility {

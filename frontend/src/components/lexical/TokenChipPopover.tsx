@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import ReactDOM from 'react-dom';
 import { Trash2 } from 'lucide-react';
 import { ClipboardModifierBody } from './ClipboardModifierBody';
-import { useClipboardContent } from './useClipboardContent';
+import { useClipboardContent } from '../../logic/useClipboardContent';
 import {
   buildClipboardToken,
   buildRowToken,

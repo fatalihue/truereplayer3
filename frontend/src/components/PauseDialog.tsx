@@ -5,7 +5,7 @@ import { DialogShell, DialogFooter  } from './common/DialogShell';
 import { KeyCaps } from './common/KeyCaps';
 import { DurationChips, TIMEOUT_PRESETS } from './common/DurationChips';
 import { calloutStyle } from './common/Callout';
-import { useBridge } from '../bridge/BridgeContext';
+import { useKeyCapture, keepRealCombo } from '../logic/useKeyCapture';
 import { useLanguage } from '../state/LanguageContext';
 import { useWindowFocused } from '../hooks/useWindowFocused';
 import { formatMs } from '../utils/displayUtils';
@@ -81,7 +81,7 @@ export function PauseDialog({ initialKey, initialTimeoutMs, onConfirm, onClose }
   // same backend HashSet entry (see InputHookManager.RegisterCapture). Keeps a
   // sibling capture consumer from stomping this dialog's slot on cleanup.
   const ownerIdRef = useRef(`pause-dialog-${crypto.randomUUID()}`);
-  const { send, subscribe } = useBridge();
+  const keyCapture = useKeyCapture();
   // Display-only — the capture gate itself lives in InputHookManager.CaptureHotkeyMode.
   const windowFocused = useWindowFocused();
 
@@ -102,41 +102,36 @@ export function PauseDialog({ initialKey, initialTimeoutMs, onConfirm, onClose }
   useEffect(() => {
     // Read the ref ONCE here rather than in the cleanup — see KeystrokeCaptureDialog.
     const ownerId = ownerIdRef.current;
-    send({ type: 'hotkey:capture', payload: { enabled: true, ownerId } });
-    const isPureModifier = (combo: string) =>
-      /^(Win|Ctrl|Alt|Shift)(\+(Win|Ctrl|Alt|Shift))*$/.test(combo);
+    keyCapture.arm(ownerId);
 
-    const unsub = subscribe((msg) => {
-      if (msg.type !== 'hotkey:captured') return;
-      // Addressed to the most recently registered capture owner — another consumer that armed
-      // after this dialog gets the key, not this one (RemapSection filters the same way).
-      if (msg.payload.owner && msg.payload.owner !== ownerId) return;
-      const combo = msg.payload.combo;
+    // Addressed to the most recently registered capture owner — another consumer that armed
+    // after this dialog gets the key, not this one (RemapSection filters the same way).
+    const unsub = keyCapture.listen(ownerId, (combo) => {
       // Don't clobber an already-captured combo with a bare modifier press — the
       // user is likely holding modifiers while reaching for the next real key.
-      setCaptured((prev) => (prev !== null && isPureModifier(combo) ? prev : combo));
+      setCaptured((prev) => keepRealCombo(prev, combo));
     });
 
     const handleFocusIn = (e: FocusEvent) => {
       if ((e.target as HTMLElement)?.tagName === 'INPUT') {
-        send({ type: 'hotkey:capture', payload: { enabled: false, ownerId } });
+        keyCapture.release(ownerId);
       }
     };
     const handleFocusOut = (e: FocusEvent) => {
       if ((e.target as HTMLElement)?.tagName === 'INPUT') {
-        send({ type: 'hotkey:capture', payload: { enabled: true, ownerId } });
+        keyCapture.arm(ownerId);
       }
     };
     document.addEventListener('focusin', handleFocusIn);
     document.addEventListener('focusout', handleFocusOut);
 
     return () => {
-      send({ type: 'hotkey:capture', payload: { enabled: false, ownerId } });
+      keyCapture.release(ownerId);
       document.removeEventListener('focusin', handleFocusIn);
       document.removeEventListener('focusout', handleFocusOut);
       unsub();
     };
-  }, [send, subscribe]);
+  }, [keyCapture]);
 
   const canConfirm = !!captured || timeoutMs > 0;
 

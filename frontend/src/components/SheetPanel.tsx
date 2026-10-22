@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { ArrowLeft, RefreshCw, Crosshair, Copy, ClipboardPaste, ShieldCheck, ShieldAlert, ShieldQuestion, PlayCircle, Pipette, Check, X, Frame, FolderOpen } from 'lucide-react';
 import { ActionIcon } from './ActionTable';
 import { useBridge } from '../bridge/BridgeContext';
+import { useEditorTools, newRequestId } from '../logic/useEditorTools';
+import { useKeyCapture, useSingleKeyCapture, isPureModifier } from '../logic/useKeyCapture';
 import { useSteps } from '../logic/useSteps';
 import { useAppState } from '../state/AppStateContext';
 import { carriesConditionProbe, hasConditionFields } from '../utils/conditionalBlocks';
@@ -31,8 +33,7 @@ const LexicalTokenEditor = lazy(() => import('./lexical/LexicalTokenEditor').the
 import type { LexicalEditorHandle } from './lexical/LexicalTokenEditor';
 import { getDisplayKey, isClickHold, CLICK_FAMILY_TYPES, clickFormOf, NO_COORD_TYPES } from '../utils/displayUtils';
 import { MIN_HOLD_MS, MAX_HOLD_MS, DEFAULT_HOLD_MS, DEFAULT_CLICK_GAP_MS, CLICK_COORD_TOLERANCE_PX, clickDefaultGap, rowDwellMs } from '../utils/actionCost';
-import { useEditorClaim } from '../hooks/useEditorClaim';
-import { useSingleKeyCapture } from '../hooks/useSingleKeyCapture';
+import { useEditorClaim } from '../logic/useEditorClaim';
 import { parseCoordPair } from '../utils/coordPair';
 import { Field, Section } from './sheet/Field';
 import { WindowTargetFields } from './WindowTargetFields';
@@ -304,7 +305,9 @@ const TIER_META: Record<'S' | 'A' | 'B' | 'C', { color: string; label: string; l
 
 export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, onExited, seedCoords, onSeedConsumed, ref }: SheetPanelProps) {
   const { actions, profiles, activeProfile, buttonStates } = useAppState();
-  const { send, subscribe } = useBridge();
+  const { subscribe } = useBridge();
+  const tools = useEditorTools();
+  const keyCapture = useKeyCapture();
   const steps = useSteps();
   const tt = useTt();
   // Hoisted to sit beside tt(): handleSave is declared far above the guard machinery that used to
@@ -1959,27 +1962,24 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
     // Captured at effect time, not read in the cleanup — see SettingsPanel.
     const ownerId = captureOwnerIdRef.current;
     return () => {
-      send({ type: 'hotkey:capture', payload: { enabled: false, ownerId } });
+      keyCapture.release(ownerId);
     };
-  }, [send]);
+  }, [keyCapture]);
 
   // Pause-resume hotkey capture: while the field is focused, the backend low-level
   // hook composes every keypress (including Win+letter combos the WebView2 JS layer
   // never sees) and forwards them here. Commit on first non-pure-modifier combo.
   useEffect(() => {
     if (!pauseHotkeyFocused) return;
-    return subscribe((msg) => {
-      if (msg.type !== 'hotkey:captured') return;
-      const combo = msg.payload.combo;
+    return keyCapture.listen(null, (combo) => {
       setKey(combo);
       armKeyCaptureTimer();
-      const isPureModifier = /^(Win|Ctrl|Alt|Shift)(\+(Win|Ctrl|Alt|Shift))*$/.test(combo);
-      if (!isPureModifier) {
+      if (!isPureModifier(combo)) {
         disarmKeyCaptureTimer();
         keyFieldRef.current?.blur();
       }
     });
-  }, [pauseHotkeyFocused, subscribe, armKeyCaptureTimer, disarmKeyCaptureTimer]);
+  }, [pauseHotkeyFocused, keyCapture, armKeyCaptureTimer, disarmKeyCaptureTimer]);
 
   // The KeyDown/KeyUp key comes from the hook — the grid's inline key editor's capture, so the
   // two spell a key the way recording does (a modifier alone included: a KeyDown Ctrl is
@@ -2213,7 +2213,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
       // TrueReplayer editor has focus. Consume the press so the panel doesn't also close.
       if (pickElementRequestIdRef.current) {
         e.preventDefault();
-        send({ type: 'browser:cancelPick', payload: {} });
+        tools.cancelPick({});
         setPickElementRequestId(null);
         setIsPicking(false);
         return;
@@ -2231,7 +2231,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
     };
     document.addEventListener('keydown', onDocKeyDown);
     return () => document.removeEventListener('keydown', onDocKeyDown);
-  }, [actionIndex, onClose, send, armGuard, noteDiscard, showToast]);
+  }, [actionIndex, onClose, tools, armGuard, noteDiscard, showToast]);
 
   // Reset the capture state whenever the panel switches to a different action (including
   // closing — actionIndex going null). Without this, focusing the field, closing the
@@ -2264,8 +2264,8 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
     // Browser element pick — drop the in-flight pick when the action changes (mirrors the
     // pickPosition / pickColor resets above). Clearing the id makes any late browser:pickResult
     // stale (the handler's id guard drops it), and we ask the extension to tear down its overlay
-    // so a leftover pick can't land on the newly-opened action. send is stable from useBridge.
-    if (pickElementRequestIdRef.current) send({ type: 'browser:cancelPick', payload: {} });
+    // so a leftover pick can't land on the newly-opened action. tools is stable (memoized over the bridge).
+    if (pickElementRequestIdRef.current) tools.cancelPick({});
     setPickElementRequestId(null);
     setIsPicking(false);
     // The round-trips correlated by a plain REF (no request-id state of their own) need the
@@ -2282,7 +2282,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
     browseLaunchReqRef.current = null;
     captureGeoReqRef.current = null;
     searchRegionRequestIdRef.current = null;
-  }, [actionIndex, disarmKeyCaptureTimer, clearTestTimeout, clearTestPixelTimeout, send]);
+  }, [actionIndex, disarmKeyCaptureTimer, clearTestTimeout, clearTestPixelTimeout, tools]);
 
   // Unmount cleanup — any pending timers must be torn down so they don't fire against
   // refs to gone DOM nodes (would warn in React strict-mode dev, harmless in prod but
@@ -2339,7 +2339,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
     // available on purpose — inspecting is exactly what someone does while watching a run.
     if (refuseDuringRun()) return;
     if (actionIndex == null || !action) return;
-    const requestId = Math.random().toString(36).slice(2, 10);
+    const requestId = newRequestId();
     setTestRequestId(requestId);
     setTestResult(null);
     const effectiveKey = effectiveSelector;
@@ -2381,38 +2381,35 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
       });
     }, timeoutMs + 5000 + typeBudgetMs);
 
-    send({
-      type: 'browser:testAction',
-      payload: {
-        requestId,
-        actionType,
-        key: effectiveKey,
-        browserText,
-        newTab,
-        timeout: Math.round(timeoutMs),
-        waitMode: waitMode === 'appears' ? null : waitMode,
-        urlWaitPattern: urlWaitPattern || null,
-        postNavigateSelector: postNavigateSelector || null,
-        typeAppend,
-        typePaste,
-        typeDelay: tdParsed != null && !isNaN(tdParsed) ? tdParsed : null,
-        // BrowserSelectOption — forward the match mode so Test Action picks the same
-        // option the actual replay would. Without this, value/index modes silently fell
-        // back to text on the test path.
-        selectMatchMode: actionType === 'BrowserSelectOption' ? selectMatchMode : null,
-        // The ranked fallbacks the replay would try. Without them the test evaluates ONE
-        // candidate, so an action whose primary selector has drifted but which the replay
-        // still saves via a tier-B fallback failed the test with "Element not found — try
-        // Pick again", sending the user to re-pick something that works.
-        alternatives: alternatives.length > 0 ? alternatives : null,
-      },
+    tools.testBrowserAction({
+      requestId,
+      actionType,
+      key: effectiveKey,
+      browserText,
+      newTab,
+      timeout: Math.round(timeoutMs),
+      waitMode: waitMode === 'appears' ? null : waitMode,
+      urlWaitPattern: urlWaitPattern || null,
+      postNavigateSelector: postNavigateSelector || null,
+      typeAppend,
+      typePaste,
+      typeDelay: tdParsed != null && !isNaN(tdParsed) ? tdParsed : null,
+      // BrowserSelectOption — forward the match mode so Test Action picks the same
+      // option the actual replay would. Without this, value/index modes silently fell
+      // back to text on the test path.
+      selectMatchMode: actionType === 'BrowserSelectOption' ? selectMatchMode : null,
+      // The ranked fallbacks the replay would try. Without them the test evaluates ONE
+      // candidate, so an action whose primary selector has drifted but which the replay
+      // still saves via a tier-B fallback failed the test with "Element not found — try
+      // Pick again", sending the user to re-pick something that works.
+      alternatives: alternatives.length > 0 ? alternatives : null,
     });
-  }, [actionIndex, action, actionType, effectiveSelector, timeout, browserText, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, alternatives, send, clearTestTimeout, refuseDuringRun]);
+  }, [actionIndex, action, actionType, effectiveSelector, timeout, browserText, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, alternatives, tools, clearTestTimeout, refuseDuringRun]);
 
   // If-Browser-Element — "is this condition true right now?". Uses the same instant probe the
   // replay's If uses (timeout=0, single evaluation, no wait loop), against the ACTIVE tab.
   const handleTestCondition = useCallback(() => {
-    const requestId = Math.random().toString(36).slice(2, 10);
+    const requestId = newRequestId();
     // Freeze the question being asked. Flipping Negate after a check must not silently re-label
     // a stale answer as the opposite branch.
     condNegateAskedRef.current = conditionNegate;
@@ -2431,24 +2428,21 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
       });
     }, 6000);
 
-    send({
-      type: 'browser:testCondition',
-      payload: {
-        requestId,
-        key: effectiveKey,
-        waitMode: waitMode || 'appears',
-        browserText: browserText || null,
-        conditionNegate,
-        alternatives: alternatives.length > 0 ? alternatives : null,
-      },
+    tools.testBrowserCondition({
+      requestId,
+      key: effectiveKey,
+      waitMode: waitMode || 'appears',
+      browserText: browserText || null,
+      conditionNegate,
+      alternatives: alternatives.length > 0 ? alternatives : null,
     });
-  }, [effectiveSelector, waitMode, browserText, conditionNegate, alternatives, send, clearCondTimeout]);
+  }, [effectiveSelector, waitMode, browserText, conditionNegate, alternatives, tools, clearCondTimeout]);
 
   // ActivateWindow — exists-anywhere probe: "would this action find the window right
   // now?". Same matcher semantics the replay uses (".exe" auto-append, self-excluded).
   // Local OS query, answers immediately — no safety timeout needed.
   const handleTestWindowProbe = useCallback(() => {
-    const requestId = Math.random().toString(36).slice(2, 10);
+    const requestId = newRequestId();
     setWindowProbeRequestId(requestId);
     setWindowProbeResult(null);
     // The two fields that change what the replay looks for: an If-Window with "foreground only"
@@ -2456,28 +2450,25 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
     // them the probe said "Found" where the condition reads false, or where the action finds no
     // window and runs its Launch path.
     const isActivate = actionType === 'ActivateWindow';
-    send({
-      type: 'window:testProbe',
-      payload: {
-        requestId, processName: windowProcessName, windowTitle, titleMatchMode: windowTitleMatchMode,
-        foregroundOnly: !isActivate && windowMatchForegroundOnly,
-        matchIndex: isActivate ? Math.max(1, parseInt(matchIndex, 10) || 1) : 1,
-      },
+    tools.testWindow({
+      requestId, processName: windowProcessName, windowTitle, titleMatchMode: windowTitleMatchMode,
+      foregroundOnly: !isActivate && windowMatchForegroundOnly,
+      matchIndex: isActivate ? Math.max(1, parseInt(matchIndex, 10) || 1) : 1,
     });
-  }, [actionType, windowProcessName, windowTitle, windowTitleMatchMode, windowMatchForegroundOnly, matchIndex, send]);
+  }, [actionType, windowProcessName, windowTitle, windowTitleMatchMode, windowMatchForegroundOnly, matchIndex, tools]);
 
   // ActivateWindow Launch "Browse…" — opens a native file picker; the chosen full path lands in
   // launchPath via the dialog:pickFileResult subscription above.
   const handleBrowseLaunch = useCallback(() => {
-    const requestId = Math.random().toString(36).slice(2, 10);
+    const requestId = newRequestId();
     browseLaunchReqRef.current = requestId;
-    send({ type: 'dialog:pickFile', payload: { requestId, kind: 'executable' } });
-  }, [send]);
+    tools.pickFile({ requestId, kind: 'executable' });
+  }, [tools]);
 
   // ActivateWindow placement "Capture" — reads the matched window's CURRENT rect and seeds the
   // X/Y/W/H fields, so the user positions the window by hand once and saves it.
   const handleCaptureGeometry = useCallback(() => {
-    const requestId = Math.random().toString(36).slice(2, 10);
+    const requestId = newRequestId();
     captureGeoReqRef.current = requestId;
     setCaptureGeoRequestId(requestId);
     setCaptureGeoError(null);
@@ -2485,17 +2476,14 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
     // fills four numbers that nothing uses, which reads as a no-op. Never turns one OFF: a
     // deliberate position-only setup stays position-only.
     if (!restorePosition && !restoreSize) { setRestorePosition(true); setRestoreSize(true); }
-    send({
-      type: 'window:captureGeometry',
-      payload: { requestId, processName: windowProcessName, windowTitle, titleMatchMode: windowTitleMatchMode },
-    });
-  }, [windowProcessName, windowTitle, windowTitleMatchMode, restorePosition, restoreSize, send]);
+    tools.captureWindowGeometry({ requestId, processName: windowProcessName, windowTitle, titleMatchMode: windowTitleMatchMode });
+  }, [windowProcessName, windowTitle, windowTitleMatchMode, restorePosition, restoreSize, tools]);
 
   // WaitImage: capture screen now and report best confidence + matched rect against the reference
   // image. Doesn't run the replay — pure calibration helper.
   const handleTestMatch = useCallback(() => {
     if (!action || !action.imagePath) return;
-    const requestId = Math.random().toString(36).slice(2, 10);
+    const requestId = newRequestId();
     setTestMatchRequestId(requestId);
     setTestMatchResult(null);
     const conf = Math.min(100, Math.max(10, parseInt(confidence, 10) || 80)) / 100;
@@ -2508,16 +2496,13 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
         return null;
       });
     }, 8000);
-    send({
-      type: 'image:testMatch',
-      payload: {
-        requestId,
-        imagePath: action.imagePath,
-        confidence: conf,
-        searchRegion: waitImageSearchRegion ?? undefined,
-      },
+    tools.testImage({
+      requestId,
+      imagePath: action.imagePath,
+      confidence: conf,
+      searchRegion: waitImageSearchRegion ?? undefined,
     });
-  }, [action, confidence, waitImageSearchRegion, send, clearTestMatchTimeout]);
+  }, [action, confidence, waitImageSearchRegion, tools, clearTestMatchTimeout]);
 
   // WaitImage: launch the screen overlay in region-only mode so the user can draw an ROI.
   // Result arrives via the 'waitimage:searchRegionSet' message handled above. When a region
@@ -2528,16 +2513,13 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
     // SuppressAllHotkeys — and while that is true NO hotkey matches, including the one that stops
     // the replay. A full-screen overlay over the screen the macro is driving, and no way to stop it.
     if (refuseDuringRun()) return;
-    const requestId = Math.random().toString(36).slice(2, 10);
+    const requestId = newRequestId();
     searchRegionRequestIdRef.current = requestId;
     const r = waitImageSearchRegion;
-    send({
-      type: 'waitimage:configureSearchRegion',
-      payload: r
+    tools.configureSearchRegion(r
         ? { requestId, x: r.x, y: r.y, w: r.w, h: r.h }
-        : { requestId },
-    });
-  }, [send, waitImageSearchRegion, refuseDuringRun]);
+        : { requestId });
+  }, [tools, waitImageSearchRegion, refuseDuringRun]);
 
   // Crop save: send the rect (image-pixel coords) to the backend, which clones the existing
   // PNG and updates action.ImagePath. The new imageBase64 arrives via the next actions:updated
@@ -2547,27 +2529,27 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
     // The second write door, and it was open: the backend pushes an undo state and re-points
     // ImagePath on the live row — under a run where Ctrl+Z is already refused.
     if (refuseDuringRun()) return;
-    send({ type: 'waitimage:cropReference', payload: { index: actionIndex, ...rect } });
+    tools.cropImage({ index: actionIndex, ...rect });
     setCropperOpen(false);
-  }, [actionIndex, send, refuseDuringRun]);
+  }, [actionIndex, tools, refuseDuringRun]);
 
   // Pick position: minimise the app, show the screen-overlay in pointPick mode, the next
   // click anywhere on screen fills X/Y. Much faster than typing or re-recording the action
   // just to nudge a coord.
   const handlePickPosition = useCallback(() => {
-    const requestId = Math.random().toString(36).slice(2, 10);
+    const requestId = newRequestId();
     setPickPositionRequestId(requestId);
-    send({ type: 'mouse:pickPosition', payload: { requestId } });
-  }, [send]);
+    tools.pickPosition({ requestId });
+  }, [tools]);
 
   // WaitPixelColor — eyedropper. Minimises the app, opens the screen overlay in
   // pointPick mode, fills X/Y + colour from the click in one shot. The reply lands
   // in the 'pixel:colorPicked' handler above which writes back through setters.
   const handlePickPixelColor = useCallback(() => {
-    const requestId = Math.random().toString(36).slice(2, 10);
+    const requestId = newRequestId();
     setPickColorRequestId(requestId);
-    send({ type: 'pixel:pickColor', payload: { requestId } });
-  }, [send]);
+    tools.pickColor({ requestId });
+  }, [tools]);
 
   // WaitPixelColor — sanity-check the current config against the LIVE screen pixel
   // (no capture). Shows "✅ Matches" or "❌ Got #2B2B2B vs #FF5733 ± 10" inline so
@@ -2588,7 +2570,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
       setTestPixelResult({ matches: false, error: 'X and Y must be numbers.' });
       return;
     }
-    const requestId = Math.random().toString(36).slice(2, 10);
+    const requestId = newRequestId();
     setTestPixelRequestId(requestId);
     setTestPixelResult(null);
     clearTestPixelTimeout();
@@ -2601,17 +2583,14 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
       });
     }, 5000);
     const hex = trimmedColor.startsWith('#') ? trimmedColor : '#' + trimmedColor;
-    send({
-      type: 'pixel:testMatch',
-      payload: {
-        requestId,
-        x: testX,
-        y: testY,
-        hex,
-        tolerance: parseInt(pixelTolerance, 10) || 0,
-      },
+    tools.testPixel({
+      requestId,
+      x: testX,
+      y: testY,
+      hex,
+      tolerance: parseInt(pixelTolerance, 10) || 0,
     });
-  }, [pixelX, pixelY, pixelColor, pixelTolerance, send, clearTestPixelTimeout]);
+  }, [pixelX, pixelY, pixelColor, pixelTolerance, tools, clearTestPixelTimeout]);
 
   // Copy/Paste X,Y — supports the common workflow of picking a position on one click half
   // (e.g. LeftClickDown) and reusing it on the matching half (LeftClickUp) without picking
@@ -3583,11 +3562,11 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                     // recorded click; while replaying, the page belongs to the macro. Every other
                     // door this sheet has onto the screen refuses the same way.
                     if (refuseDuringRun()) return;
-                    const requestId = Math.random().toString(36).slice(2, 10);
+                    const requestId = newRequestId();
                     setPickElementRequestId(requestId);
                     setIsPicking(true);
                     setShowAlternatives(false);
-                    send({ type: 'browser:pickElement', payload: { requestId } });
+                    tools.pickElement({ requestId });
                   }}
                   disabled={isPicking}
                   aria-label="Pick element"
@@ -3882,7 +3861,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                     // Same exclusive overlay as Configure search region: it minimises the window
                     // and kills the stop hotkey for as long as it is up. Never during a run.
                     if (refuseDuringRun()) return;
-                    send({ type: 'waitimage:recapture', payload: { index: actionIndex } });
+                    tools.recaptureImage({ index: actionIndex });
                   }}
                   className={`${TOOL_BTN} flex-1 justify-center`}
                 >
@@ -4289,19 +4268,19 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   if (pauseHotkeyFocused) return;
                   setPauseHotkeyFocused(true);
                   armKeyCaptureTimer();
-                  send({ type: 'hotkey:capture', payload: { enabled: true, ownerId: captureOwnerIdRef.current } });
+                  keyCapture.arm(captureOwnerIdRef.current);
                 }}
                 onKeyDown={(e) => {
                   if (pauseHotkeyFocused || (e.key !== 'Enter' && e.key !== ' ')) return;
                   e.preventDefault();
                   setPauseHotkeyFocused(true);
                   armKeyCaptureTimer();
-                  send({ type: 'hotkey:capture', payload: { enabled: true, ownerId: captureOwnerIdRef.current } });
+                  keyCapture.arm(captureOwnerIdRef.current);
                 }}
                 onBlur={() => {
                   setPauseHotkeyFocused(false);
                   disarmKeyCaptureTimer();
-                  send({ type: 'hotkey:capture', payload: { enabled: false, ownerId: captureOwnerIdRef.current } });
+                  keyCapture.release(captureOwnerIdRef.current);
                 }}
                 className={`w-full h-8 px-2 text-ui font-mono bg-bg-input border rounded outline-none cursor-pointer placeholder:text-accent-hover/50 ${
                   pauseHotkeyFocused
@@ -4381,11 +4360,11 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
                   <button
                     onClick={() => {
                       if (refuseDuringRun()) return; // same refusal as the other pick button
-                      const requestId = Math.random().toString(36).slice(2, 10);
+                      const requestId = newRequestId();
                       setPickElementRequestId(requestId);
                       setIsPicking(true);
                       setShowAlternatives(false);
-                      send({ type: 'browser:pickElement', payload: { requestId } });
+                      tools.pickElement({ requestId });
                     }}
                     disabled={isPicking}
                     aria-label="Pick element"

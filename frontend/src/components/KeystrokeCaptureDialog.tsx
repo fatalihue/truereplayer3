@@ -10,7 +10,7 @@ import { CheckboxBox } from './Checkbox';
 import { DurationChips, DURATION_PRESETS } from './common/DurationChips';
 import { calloutStyle } from './common/Callout';
 import { MIN_HOLD_MS, MAX_HOLD_MS, DEFAULT_HOLD_MS } from '../utils/actionCost';
-import { useBridge } from '../bridge/BridgeContext';
+import { useKeyCapture, keepRealCombo } from '../logic/useKeyCapture';
 import { useLanguage, useTt } from '../state/LanguageContext';
 import { formatMs } from '../utils/displayUtils';
 import { useWindowFocused } from '../hooks/useWindowFocused';
@@ -198,7 +198,7 @@ export function KeystrokeCaptureDialog({
   // enable/disable target the same slot, and a sibling consumer (Settings hotkey
   // field, Pause dialog) can't accidentally turn the hook off via shared state.
   const ownerIdRef = useRef(`keystroke-capture-${crypto.randomUUID()}`);
-  const { send, subscribe } = useBridge();
+  const keyCapture = useKeyCapture();
   // Display-only — the capture gate itself lives in InputHookManager.CaptureHotkeyMode.
   const windowFocused = useWindowFocused();
 
@@ -222,49 +222,41 @@ export function KeystrokeCaptureDialog({
     // never reassigned, so this is behaviour-identical — but a ref read inside cleanup is
     // the shape that releases the WRONG owner the day someone does make it reassignable.
     const ownerId = ownerIdRef.current;
-    send({ type: 'hotkey:capture', payload: { enabled: !manualEntry, ownerId } });
-    const isPureModifier = (combo: string) =>
-      /^(Win|Ctrl|Alt|Shift)(\+(Win|Ctrl|Alt|Shift))*$/.test(combo);
+    keyCapture.set(ownerId, !manualEntry);
 
-    const unsub = subscribe((msg) => {
-      if (msg.type !== 'hotkey:captured') return;
-      // Addressed to the most recently registered capture owner — another consumer that armed
-      // after this dialog gets the key, not this one (RemapSection filters the same way).
-      if (msg.payload.owner && msg.payload.owner !== ownerId) return;
+    // Addressed to the most recently registered capture owner — another consumer that armed
+    // after this dialog gets the key, not this one (RemapSection filters the same way).
+    const unsub = keyCapture.listen(ownerId, (combo) => {
       // Manual mode owns the value — a key pressed while the manual input is NOT
       // focused (capture re-armed by focusout) must not clobber the typed text.
       if (manualEntryRef.current) return;
-      const combo = msg.payload.combo;
-      setCaptured((prev) => {
-        // Don't overwrite an already-captured combo with a bare modifier press —
-        // user is probably holding modifiers for the next combo.
-        if (prev !== null && isPureModifier(combo)) return prev;
-        return combo;
-      });
+      // Don't overwrite an already-captured combo with a bare modifier press —
+      // user is probably holding modifiers for the next combo.
+      setCaptured((prev) => keepRealCombo(prev, combo));
     });
 
     const handleFocusIn = (e: FocusEvent) => {
       if ((e.target as HTMLElement)?.tagName === 'INPUT') {
-        send({ type: 'hotkey:capture', payload: { enabled: false, ownerId } });
+        keyCapture.release(ownerId);
       }
     };
     const handleFocusOut = (e: FocusEvent) => {
       // Never re-arm on blur while manual mode is on — the hook must stay off for
       // the whole manual session, not just while the text input has focus.
       if ((e.target as HTMLElement)?.tagName === 'INPUT' && !manualEntryRef.current) {
-        send({ type: 'hotkey:capture', payload: { enabled: true, ownerId } });
+        keyCapture.arm(ownerId);
       }
     };
     document.addEventListener('focusin', handleFocusIn);
     document.addEventListener('focusout', handleFocusOut);
 
     return () => {
-      send({ type: 'hotkey:capture', payload: { enabled: false, ownerId } });
+      keyCapture.release(ownerId);
       document.removeEventListener('focusin', handleFocusIn);
       document.removeEventListener('focusout', handleFocusOut);
       unsub();
     };
-  }, [send, subscribe, manualEntry]);
+  }, [keyCapture, manualEntry]);
 
   // Clamp helpers — applied on commit (handleConfirm) and on +/− spinner clicks.
   // Free-form typing is allowed to fall below the lower bound in transient states

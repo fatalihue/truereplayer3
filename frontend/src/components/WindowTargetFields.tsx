@@ -1,6 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { X, ChevronDown } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
+import { useEditorTools } from '../logic/useEditorTools';
 import { useTt } from '../state/LanguageContext';
 import { Field } from './sheet/Field';
 import { SegmentedControl } from './common/SegmentedControl';
@@ -56,7 +57,8 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
   processHint,
   titleHint,
 }, ref) {
-  const { send, subscribe } = useBridge();
+  const { subscribe } = useBridge();
+  const tools = useEditorTools();
   const tt = useTt();
 
   // Regex-mode sanity check, computed HERE rather than left to each host.
@@ -115,12 +117,12 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
   // while we're still waiting for the target click, unmount stops it so it doesn't leak. Set on
   // the START, not on the backend's answer: a host that closes in between still owes the stop.
   const armedRef = useRef(false);
-  const sendRef = useRef(send);
-  sendRef.current = send;
+  const toolsRef = useRef(tools);
+  toolsRef.current = tools;
 
   const startDetection = useCallback(() => {
     armedRef.current = true;
-    sendRef.current({ type: 'profile:detectWindow', payload: { requestId: requestIdRef.current!, enabled: true } });
+    toolsRef.current.detectWindow({ requestId: requestIdRef.current!, enabled: true });
   }, []);
   // Cancel our detection NOW. A stop naming another instance's request is ignored by the backend,
   // so this can never end a detection someone else started.
@@ -128,13 +130,13 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
     if (!armedRef.current) return;
     armedRef.current = false;
     setIsDetecting(false);
-    sendRef.current({ type: 'profile:detectWindow', payload: { requestId: requestIdRef.current!, enabled: false } });
+    toolsRef.current.detectWindow({ requestId: requestIdRef.current!, enabled: false });
   }, []);
   useImperativeHandle(ref, () => ({ stopDetection }), [stopDetection]);
 
   useEffect(() => () => {
     if (armedRef.current) {
-      sendRef.current({ type: 'profile:detectWindow', payload: { requestId: requestIdRef.current!, enabled: false } });
+      toolsRef.current.detectWindow({ requestId: requestIdRef.current!, enabled: false });
     }
   }, []);
 
@@ -210,7 +212,7 @@ export const WindowTargetFields = forwardRef<WindowTargetFieldsHandle, {
                 const next = !showPicker;
                 setShowPicker(next);
                 // Lazy fetch — first open enumerates. Re-opens reuse the cache.
-                if (next && processList === null) send({ type: 'process:list', payload: {} });
+                if (next && processList === null) tools.listProcesses({});
               }}
               aria-label="Pick a running process"
               aria-expanded={showPicker}

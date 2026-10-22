@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import type { Dispatch, SetStateAction, MutableRefObject } from 'react';
 import { BridgeProvider, useBridge } from './bridge/BridgeContext';
+import { useEditorTools, newRequestId } from './logic/useEditorTools';
 import { AppStateProvider, useAppState } from './state/AppStateContext';
 import { SelectionProvider } from './state/SelectionContext';
 import { SheetGuardProvider, useSheetGuard } from './state/SheetGuardContext';
@@ -137,7 +138,8 @@ const NON_TEXT_INPUT_TYPES = new Set(['checkbox', 'radio', 'range', 'button', 's
 
 function AppShell() {
   const { settings, buttonStates } = useAppState();
-  const { send, subscribe } = useBridge();
+  const { subscribe } = useBridge();
+  const tools = useEditorTools();
   const { showToast } = useToast();
   const tt = useTt();
   const isClicker = settings.useCursorClick;
@@ -393,10 +395,10 @@ function AppShell() {
   const rowPickRef = useRef<{ index: number; requestId: string } | null>(null);
   const [sheetSeedCoords, setSheetSeedCoords] = useState<{ x: number; y: number } | null>(null);
   const handlePickCoordsForRow = useCallback((index: number) => {
-    const requestId = Math.random().toString(36).slice(2, 10);
+    const requestId = newRequestId();
     rowPickRef.current = { index, requestId };
-    send({ type: 'mouse:pickPosition', payload: { requestId } });
-  }, [send]);
+    tools.pickPosition({ requestId });
+  }, [tools]);
 
   // Set by <AutoCollapseOnZoom> (which owns the responsive auto-collapse logic — it lives
   // outside AppShell to keep the ThemeContext subscription out of the shell) and cleared by

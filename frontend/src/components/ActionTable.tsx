@@ -18,14 +18,14 @@ import { useTt, useLanguage } from '../state/LanguageContext';
 import type { Language } from '../state/LanguageContext';
 import { useSelectionRef } from '../state/SelectionContext';
 import { useToast } from '../state/ToastContext';
-import { useEditorClaim } from '../hooks/useEditorClaim';
+import { useEditorClaim } from '../logic/useEditorClaim';
 import { getDisplayKey, getDisplayX, getDisplayY, getActionTypeColors, formatKeyCombo, formatMs, isCombinedClick, isClickHold, isCoordinateClick, isFocusClickEligible, CLICK_FAMILY_TYPES, clickFormOf } from '../utils/displayUtils';
 import { snapIndicesToBlocks, hasConditionFields, skippedRowMask, isStructuralRow, armBodyEnd } from '../utils/conditionalBlocks';
 import { uiZoom } from '../utils/zoomSpace';
 import { tryParseInt32 } from '../utils/int32';
 import { parseCoordPair } from '../utils/coordPair';
 import { screenTextSummary, isNumberMode } from '../utils/screenText';
-import { useSingleKeyCapture } from '../hooks/useSingleKeyCapture';
+import { useSingleKeyCapture } from '../logic/useKeyCapture';
 // Deferred: already rendered conditionally, but a static import pulls the whole Lexical editor
 // stack and emoji-picker-react (~300 KB minified) into the startup chunk for a dialog most sessions
 // never open. Splitting at the DIALOG boundary and not on emoji-picker-react itself is deliberate —
