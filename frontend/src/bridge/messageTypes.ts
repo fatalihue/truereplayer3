@@ -870,6 +870,28 @@ export interface ProfileDataTable {
   cursorRow: number;
 }
 
+/** One of the example macros that ship inside the app (examples:listResult). */
+export interface ExampleInfo {
+  name: string;
+  description?: string | null;
+  tags: string[];
+  iconEmoji?: string | null;
+  actionCount: number;
+  /** The other examples it runs by name; examples:use copies them along. */
+  runs: string[];
+  /** A macro with this name is already in the library. */
+  inLibrary: boolean;
+}
+
+/** The answer to examples:use: the name the example got in the library (a clash adds " (2)"). */
+export interface ExampleUseResult {
+  ok: boolean;
+  requested: string;
+  name?: string;
+  copied?: string[];
+  error?: string;
+}
+
 export type IncomingMessage =
   | { type: 'state:init'; payload: AppState }
   | { type: 'status:changed'; payload: { status: AppState['status'] } }
@@ -987,6 +1009,8 @@ export type IncomingMessage =
   // OCR at all); installing = the tag being installed now; pendingRestart = installed, but this
   // process's engine does not list it until the app restarts.
   | { type: 'ocr:languagesResult'; payload: OcrLanguagesPayload }
+  | { type: 'examples:listResult'; payload: { examples: ExampleInfo[] } }
+  | { type: 'examples:useResult'; payload: ExampleUseResult }
   | { type: 'ocr:installResult'; payload: { tag: string; ok: boolean; canceled: boolean; restartApp: boolean; restartWindows: boolean; error?: string | null } }
   | { type: 'image:testMatchResult'; payload: { requestId: string; found: boolean; score: number; x: number; y: number; w: number; h: number; error?: string } }
   | { type: 'waitimage:searchRegionSet'; payload: { requestId: string; cancelled: boolean; x?: number; y?: number; w?: number; h?: number } }
@@ -1167,6 +1191,10 @@ export type OutgoingMessage =
   // Every app setting back to its default, without touching the open macro or the Automations
   // master switch (D23). The page confirms; there is no native dialog.
   | { type: 'settings:resetAll'; payload: Record<string, never> }
+  // The example macros inside the app (decision 4): the list, and "Use this example", which copies
+  // one (and the examples it runs) into the library's Examples folder.
+  | { type: 'examples:list'; payload: Record<string, never> }
+  | { type: 'examples:use'; payload: { name: string } }
   | { type: 'settings:change'; payload: { key: string; value: string | boolean | number | object | null } }
   // `indices` absent = the whole profile (the command palette's convert). Present = those rows
   // only, which is the row menu's Split / Merge. The backend groups them into contiguous runs

@@ -1083,6 +1083,8 @@ namespace TrueReplayer
                     case "profile:updateWindowSize": HandleUpdateWindowSize(payload); break;
                     case "profile:reset": HandleProfileReset(); break;
                     case "settings:resetAll": HandleSettingsResetAll(); break;
+                    case "examples:list": HandleExamplesList(); break;
+                    case "examples:use": HandleExamplesUse(payload); break;
                     case "selection:changed": HandleSelectionChanged(payload); break;
                     case "settings:change": HandleSettingsChange(payload); break;
                     case "window:alwaysOnTop": HandleAlwaysOnTop(payload); break;
@@ -12642,6 +12644,60 @@ namespace TrueReplayer
         }
 
         // ── Sharing metadata handlers ──
+
+        // examples:list — the example macros that ship inside the app (ExampleLibrary), with what a
+        // list of them needs: whether the library already has a macro of that name, and the examples
+        // each one runs by name (examples:use copies those along).
+        private void HandleExamplesList()
+        {
+            var inLibrary = new HashSet<string>(profileController.ProfileEntries.Select(p => p.Name), StringComparer.OrdinalIgnoreCase);
+            var examples = ExampleLibrary.List().Select(e => new
+            {
+                name = e.Name,
+                description = e.Description,
+                tags = e.Tags,
+                iconEmoji = e.IconEmoji,
+                actionCount = e.ActionCount,
+                runs = e.Runs,
+                inLibrary = inLibrary.Contains(e.Name),
+            }).ToList();
+            SendMessage("examples:listResult", new { examples });
+        }
+
+        // examples:use — "Use this example": copies the example, and every example it runs by name,
+        // into the library's Examples folder through the import (ConfirmImportAsync). It never writes
+        // over a macro: a clash gets "name (2)", and the copied RunProfile rows follow the new names.
+        // Built-in content, so the import's security warning is not shown. Answers with the name the
+        // example got in the library, for the shell to open it.
+        private async void HandleExamplesUse(JsonElement payload)
+        {
+            string name = payload.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
+            if (replayService.IsReplaying || recordingService.IsRecording)
+            {
+                SendMessage("examples:useResult", new { ok = false, requested = name, error = "Finish the current recording/replay before copying an example." });
+                return;
+            }
+            var package = ExampleLibrary.PackageFor(name);
+            if (package == null)
+            {
+                SendMessage("examples:useResult", new { ok = false, requested = name, error = $"There is no example named \"{name}\"." });
+                return;
+            }
+            var selected = new HashSet<string>(package.Profiles.Select(p => p.Name).Where(IsSafeProfileName), StringComparer.Ordinal);
+            var renameOnClash = selected.ToDictionary(x => x, _ => ImportConflictResult.Rename, StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                var (imported, _, _, _, writtenNames, _, _, renamedPairs) = await profileController.ConfirmImportAsync(package, selected, renameOnClash);
+                profileController.GetAndClearHotkeyCollisions(); // examples carry no hotkeys; keeps the queue clean for the next import
+                PushProfilesUpdate();
+                var finalName = renamedPairs.FirstOrDefault(r => r.requested == name).final ?? name;
+                SendMessage("examples:useResult", new { ok = imported > 0, requested = name, name = finalName, copied = writtenNames });
+            }
+            catch (Exception ex)
+            {
+                SendMessage("examples:useResult", new { ok = false, requested = name, error = ex.Message });
+            }
+        }
 
         private async void HandleProfileGetMetadata(JsonElement payload)
         {
