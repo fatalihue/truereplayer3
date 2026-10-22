@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { ArrowLeft, RefreshCw, Crosshair, Copy, ClipboardPaste, ShieldCheck, ShieldAlert, ShieldQuestion, PlayCircle, Pipette, Check, X, Frame, FolderOpen } from 'lucide-react';
 import { ActionIcon } from './ActionTable';
 import { useBridge } from '../bridge/BridgeContext';
+import { useSteps } from '../logic/useSteps';
 import { useAppState } from '../state/AppStateContext';
 import { carriesConditionProbe, hasConditionFields } from '../utils/conditionalBlocks';
 import { typeBudgetMs as typeBudgetMsOf } from '../utils/typeBudget';
@@ -304,6 +305,7 @@ const TIER_META: Record<'S' | 'A' | 'B' | 'C', { color: string; label: string; l
 export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, onExited, seedCoords, onSeedConsumed, ref }: SheetPanelProps) {
   const { actions, profiles, activeProfile, buttonStates } = useAppState();
   const { send, subscribe } = useBridge();
+  const steps = useSteps();
   const tt = useTt();
   // Hoisted to sit beside tt(): handleSave is declared far above the guard machinery that used to
   // own this, and a dependency array cannot forward-reference a const (TS2448) the way a closure
@@ -1636,10 +1638,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
     // `id` is the row's identity: the index alone would land these edits on whatever row slid
     // under it since the panel opened, so the backend refuses a mismatch out loud.
     if (pendingEdits.length > 0 || convert) {
-      send({
-        type: 'actions:editMany',
-        payload: { index: actionIndex, id: action.id, edits: pendingEdits, ...(convert ? { convert } : {}) },
-      });
+      steps.editMany({ index: actionIndex, id: action.id, edits: pendingEdits, ...(convert ? { convert } : {}) });
     }
 
     onClose();
@@ -1647,7 +1646,7 @@ export function SheetPanel({ actionIndex, onClose, onReanchor, leaving = false, 
     // from actionType + action.conditionType which are already in the array, so the
     // callback rebinds whenever those change. Listing the derived flags would also
     // be a forward-reference error (they're declared further down the component body).
-  }, [actionIndex, action, actionType, formDraft, initialForm, effectiveSelector, x, y, delay, comment, repeatCount, repeatGapMs, jitterOn, jitterPct, posJitterOn, posJitterPx, atCursor, holdMs, timeout, confidence, browserText, variableValue, variableMode, slotMode, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, waitImageOnTimeout, waitImageInvert, waitImageClickOnMatch, waitImageSearchRegion, pixelX, pixelY, pixelColor, pixelTolerance, pixelOnTimeout, pixelInvert, pixelClickOnMatch, conditionNegate, ifOnProbeError, conditionTimeout, loopMaxIterations, windowProcessName, windowTitle, windowTitleMatchMode, windowMatchForegroundOnly, clipboardPatternType, clipboardPattern, randomPercent, conditionOperator, conditionOperand, filePath, timeStart, timeEnd, daysOfWeek, launchPath, launchArgs, activateOnTimeout, restorePosition, restoreSize, windowX, windowY, windowWidth, windowHeight, windowVerb, matchIndex, assertOnFail, alternatives, pickedThisSession, ocrEditState, send, onClose,
+  }, [actionIndex, action, actionType, formDraft, initialForm, effectiveSelector, x, y, delay, comment, repeatCount, repeatGapMs, jitterOn, jitterPct, posJitterOn, posJitterPx, atCursor, holdMs, timeout, confidence, browserText, variableValue, variableMode, slotMode, newTab, waitMode, urlWaitPattern, postNavigateSelector, typeAppend, typePaste, typeDelay, selectMatchMode, waitImageOnTimeout, waitImageInvert, waitImageClickOnMatch, waitImageSearchRegion, pixelX, pixelY, pixelColor, pixelTolerance, pixelOnTimeout, pixelInvert, pixelClickOnMatch, conditionNegate, ifOnProbeError, conditionTimeout, loopMaxIterations, windowProcessName, windowTitle, windowTitleMatchMode, windowMatchForegroundOnly, clipboardPatternType, clipboardPattern, randomPercent, conditionOperator, conditionOperand, filePath, timeStart, timeEnd, daysOfWeek, launchPath, launchArgs, activateOnTimeout, restorePosition, restoreSize, windowX, windowY, windowWidth, windowHeight, windowVerb, matchIndex, assertOnFail, alternatives, pickedThisSession, ocrEditState, steps, onClose,
     // The two booleans, never the buttonStates object: it is republished on unrelated events
     // and this callback already rebuilds on every keystroke.
     refuseDuringRun]);

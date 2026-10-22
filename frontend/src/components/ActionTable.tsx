@@ -8,11 +8,11 @@ import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { CSS } from '@dnd-kit/utilities';
 import { Mouse, MousePointerClick, MousePointer2, Keyboard, ArrowUp, ArrowDown, Zap, Type, Trash2, ChevronRight, ChevronDown, ChevronsDownUp, ChevronsUpDown, Plus, Pencil, ScanSearch, Pipette, Globe, CheckCheck, Check, Code2, Files, Hourglass, Repeat2, ExternalLink, Crosshair, Link, GripVertical, Timer, GitBranch, ArrowRightLeft, Combine, Split, Brackets, MoreHorizontal, Focus, Braces, AppWindow, Clipboard, ClipboardCopy, ClipboardPaste, Eye, EyeOff, RotateCcw, Dice5, Cpu, FileCheck, Clock, ShieldCheck, CircleStop, CornerDownLeft, IterationCw, ChevronUp, ArrowRightFromLine, SkipForward, Table2, ScanText } from 'lucide-react';
 import { canCollapse, canExpand, expandKeystroke } from '../utils/keyRepeat';
-import type { ActionItem, OutgoingMessage } from '../bridge/messageTypes';
+import type { ActionItem } from '../bridge/messageTypes';
 import { useAppState } from '../state/AppStateContext';
 import { ReplayRowMarker } from './ReplayRowMarker';
 import { InsertedRowMarker } from './InsertedRowMarker';
-import { useBridge } from '../bridge/BridgeContext';
+import { useSteps, deleteIntent } from '../logic/useSteps';
 import { useMacro } from '../logic/useMacro';
 import { useTt, useLanguage } from '../state/LanguageContext';
 import type { Language } from '../state/LanguageContext';
@@ -677,8 +677,8 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
   // every push re-render all ~2300 grid nodes (19.5 ms median at 87 rows) to change three of
   // them. ReplayRowMarker owns it instead: it marks the row with data-replay and index.css
   // paints it, at a cost that no longer scales with row count.
-  const { send } = useBridge();
   const macro = useMacro();
+  const steps = useSteps();
   const tt = useTt();
   const { language } = useLanguage();
   const selectionRef = useSelectionRef();
@@ -993,36 +993,14 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
    * on its own took its whole If…EndIf when deleted from the bar and only its arm when deleted by
    * keyboard, from the same selection, with the bar reading "1 selected" either way.
    *
-   * Derived once, here. The callers keep their own toasts, which is the part that legitimately
-   * differs between a menu with a label, a bar with a count and a bare keypress.
+   * Derived once, by deleteIntent in logic/useSteps. The callers keep their own toasts, which is
+   * the part that legitimately differs between a menu with a label, a bar with a count and a bare
+   * keypress.
    */
-  const deleteIntentFor = useCallback((sel: number[]): { message: OutgoingMessage; count: number } => {
-    if (sel.length === 1) {
-      const t = actions[sel[0]]?.actionType;
-      if (t === 'If') {
-        const end = blockInfo.closerOf.get(sel[0]);
-        return {
-          message: { type: 'actions:deleteConditional', payload: { ifRowIndex: sel[0] } },
-          count: end != null ? end - sel[0] + 1 : 1,
-        };
-      }
-      if (t === 'While' || t === 'ForEachRow') {
-        const end = blockInfo.closerOf.get(sel[0]);
-        return {
-          message: { type: 'actions:deleteLoop', payload: { loopRowIndex: sel[0] } },
-          count: end != null ? end - sel[0] + 1 : 1,
-        };
-      }
-      if (t === 'ElseIf') {
-        return {
-          message: { type: 'actions:deleteElseIfArm', payload: { elseIfRowIndex: sel[0] } },
-          count: armBodyEnd(actions, sel[0]) - sel[0] + 1,
-        };
-      }
-    }
-    const snapped = snapSelectionToBlocks(sel);
-    return { message: { type: 'actions:delete', payload: { indices: snapped } }, count: snapped.length };
-  }, [actions, blockInfo, snapSelectionToBlocks]);
+  const deleteIntentFor = useCallback(
+    (sel: number[]) => deleteIntent(sel, actions, (opener) => blockInfo.closerOf.get(opener)),
+    [actions, blockInfo],
+  );
 
   const lastRunRefusalRef = useRef(0);
   const refuseDuringRun = useCallback(() => {
@@ -1050,8 +1028,8 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
   // Sync selection to shared ref and push to C# bridge
   useEffect(() => {
     selectionRef.current = selectedIndices;
-    send({ type: 'selection:changed', payload: { indices: Array.from(selectedIndices) } });
-  }, [selectedIndices, selectionRef, send]);
+    steps.reportSelection(Array.from(selectedIndices));
+  }, [selectedIndices, selectionRef, steps]);
 
   // Scroll to top when replay starts
   useEffect(() => {
@@ -1510,13 +1488,10 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
         // ONE message, so ONE undo entry. As two actions:edit this was two snapshots, and a single
         // Ctrl+Z left the row at the NEW x with the OLD y — a point that existed at no moment of
         // the edit, which the next replay would click. Same rule the Sheet's Save follows.
-        send({
-          type: 'actions:editMany',
-          payload: {
-            index: editingCell.index,
-            id: editingCell.id,
-            edits: [{ field: 'x', value: String(pair.x) }, { field: 'y', value: String(pair.y) }],
-          },
+        steps.editMany({
+          index: editingCell.index,
+          id: editingCell.id,
+          edits: [{ field: 'x', value: String(pair.x) }, { field: 'y', value: String(pair.y) }],
         });
       } else if (source === 'key') {
         setEditInvalid(true);
@@ -1536,13 +1511,10 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
         return;
       }
     }
-    send({
-      type: 'actions:edit',
-      payload: { index: editingCell.index, id: editingCell.id, field: editingCell.field, value: editValue },
-    });
+    steps.edit({ index: editingCell.index, id: editingCell.id, field: editingCell.field, value: editValue });
     setEditingCell(null);
     setEditInvalid(false);
-  }, [editingCell, editValue, send, buttonStates.recordingActive, buttonStates.replayActive, showToast, tt]);
+  }, [editingCell, editValue, steps, buttonStates.recordingActive, buttonStates.replayActive, showToast, tt]);
 
   // Cancel the edit
   const cancelEdit = useCallback(() => {
@@ -1592,7 +1564,7 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
         showToast(tt(`Deleted ${count} rows — the selection touched a block marker, so whole blocks went with it.`,
                      `${count} linhas apagadas — a seleção tocou um marcador de bloco, então blocos inteiros foram junto.`));
       }
-      send(message);
+      steps.removeSteps({ message });
       setSelectedIndices(new Set());
     }
 
@@ -1607,7 +1579,7 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
       e.preventDefault();
       setSelectedIndices(new Set());
     }
-  }, [editingCell, sendTextEdit, selectedIndices, send, actions, deleteIntentFor, showToast, tt,
+  }, [editingCell, sendTextEdit, selectedIndices, steps, actions, deleteIntentFor, showToast, tt,
       buttonStates.recordingActive, buttonStates.replayActive]);
 
   // Handle edit input key events
@@ -1633,13 +1605,10 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
       return;
     }
     if (key !== editOriginRef.current) {
-      send({
-        type: 'actions:edit',
-        payload: { index: editingCell.index, id: editingCell.id, field: 'key', value: key },
-      });
+      steps.edit({ index: editingCell.index, id: editingCell.id, field: 'key', value: key });
     }
     setEditingCell(null);
-  }, [editingCell, send, buttonStates.recordingActive, buttonStates.replayActive, showToast, tt]);
+  }, [editingCell, steps, buttonStates.recordingActive, buttonStates.replayActive, showToast, tt]);
   // Armed exactly while the key editor is open; closing it by ANY route releases the hook.
   useSingleKeyCapture(editingCell?.field === 'key', commitKeyCapture, cancelEdit);
   // A run that starts under an armed capture (an automation, a hotkey from another window)
@@ -1811,9 +1780,9 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
       });
       pendingFlipRects.current = { map, at: performance.now() };
     }
-    send({ type: 'actions:reorder', payload: { indices, targetIndex: target } });
+    steps.reorder({ indices, targetIndex: target });
     setSelectedIndices(new Set());
-  }, [dragIndices, sortableIds, send]);
+  }, [dragIndices, sortableIds, steps]);
 
   // Esc (handled natively by dnd-kit) cancels the drag — clear the visual state;
   // dragOccurred stays set so the click fired on pointer release is suppressed.
@@ -2011,9 +1980,9 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
     } else {
       indices = snapSelectionToBlocks(sel);
     }
-    send({ type: 'actions:duplicate', payload: { indices } });
+    steps.duplicate({ indices });
     closeContextMenu();
-  }, [contextMenu, selectedIndices, send, closeContextMenu, actions, blockInfo, snapSelectionToBlocks]);
+  }, [contextMenu, selectedIndices, steps, closeContextMenu, actions, blockInfo, snapSelectionToBlocks]);
 
 
   const handleContextDelete = useCallback(() => {
@@ -2027,10 +1996,10 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
     // One source for "what does deleting THIS selection mean" — see deleteIntentFor. A lone If,
     // loop opener or Else If each take their own scope; anything else snaps to whole blocks so a
     // straddling multi-select cannot orphan a marker.
-    send(deleteIntentFor(indices).message);
+    steps.removeSteps(deleteIntentFor(indices));
     setSelectedIndices(new Set());
     closeContextMenu();
-  }, [contextMenu, selectedIndices, send, closeContextMenu, deleteIntentFor]);
+  }, [contextMenu, selectedIndices, steps, closeContextMenu, deleteIntentFor]);
 
   // What Delete will actually take, for the menu label. A lone marker row deletes its own SCOPE —
   // a block, a loop, or now a single arm — and one flat "Delete" gave no hint which of the three,
@@ -2126,16 +2095,16 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
       repeatDelayMs: result.repeatDelayMs,
       comment: result.comment,
     }];
-    send({ type: 'actions:replaceRange', payload: {
+    steps.replaceRange({
       startIndex: indices[0],
       count: indices.length,
       replacement,
-    }});
+    });
     // Pin selection on the new single row. The actions:updated round-trip will
     // re-render with the new layout in the next tick.
     setSelectedIndices(new Set([indices[0]]));
     closeContextMenu();
-  }, [contextMenu, contextSelectionIndices, actions, send, closeContextMenu]);
+  }, [contextMenu, contextSelectionIndices, actions, steps, closeContextMenu]);
 
   // Expand: only meaningful for a single-row selection of a Keystroke × N. The
   // resulting N pairs become the new selection so the user can immediately
@@ -2148,16 +2117,16 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
     const row = actions[idx];
     if (!canExpand(row)) return;
     const replacement = expandKeystroke(row);
-    send({ type: 'actions:replaceRange', payload: {
+    steps.replaceRange({
       startIndex: idx,
       count: 1,
       replacement,
-    }});
+    });
     const newSel = new Set<number>();
     for (let i = 0; i < replacement.length; i++) newSel.add(idx + i);
     setSelectedIndices(newSel);
     closeContextMenu();
-  }, [contextMenu, contextSelectionIndices, actions, send, closeContextMenu]);
+  }, [contextMenu, contextSelectionIndices, actions, steps, closeContextMenu]);
 
   // The bulk bar floats over the grid (see the overlay render below). Drives the
   // scroll-area padding so a selection never hides the bottom rows behind it.
@@ -2508,7 +2477,7 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
                         {canAddPlainElse && (
                           <button
                             type="button"
-                            onClick={() => send({ type: 'actions:addElseBranch', payload: { ifRowIndex: chainOpener } })}
+                            onClick={() => steps.addElseBranch({ ifRowIndex: chainOpener })}
                             disabled={buttonStates.recordingActive || buttonStates.replayActive}
                             className="pointer-events-auto inline-flex items-center gap-1.5 px-2.5 py-0.5 text-caption font-medium rounded border border-dashed transition-colors hover:bg-bg-elevated disabled:hover:bg-transparent disabled:opacity-40 disabled:cursor-not-allowed"
                             style={{
@@ -3170,18 +3139,15 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
             actionIndex={sendTextEdit.index}
             onConfirm={(r) => {
               if (refuseDuringRun()) return;
-              send({
-                type: 'actions:editSendText',
-                payload: {
-                  index: sendTextEdit.index,
-                  id: sendTextEdit.id,
-                  text: r.text,
-                  html: r.html ?? undefined,
-                  markdown: r.markdown ?? undefined,
-                  mode: r.mode,
-                  method: r.method,
-                  charDelayMs: r.charDelayMs,
-                },
+              steps.editSendText({
+                index: sendTextEdit.index,
+                id: sendTextEdit.id,
+                text: r.text,
+                html: r.html ?? undefined,
+                markdown: r.markdown ?? undefined,
+                mode: r.mode,
+                method: r.method,
+                charDelayMs: r.charDelayMs,
               });
               setSendTextEdit(null);
             }}
@@ -3231,7 +3197,7 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
               } else if (result.holdDurationMs !== curDuration) {
                 edits.push({ field: 'holdDurationMs', value: String(result.holdDurationMs) });
               }
-              if (edits.length > 0) send({ type: 'actions:editMany', payload: { index: idx, id: keystrokeEdit.id, edits } });
+              if (edits.length > 0) steps.editMany({ index: idx, id: keystrokeEdit.id, edits });
               setKeystrokeEdit(null);
             }}
             onClose={() => setKeystrokeEdit(null)}
@@ -3255,7 +3221,7 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
               const edits: { field: string; value: string }[] = [];
               if (key !== (editing?.key ?? '')) edits.push({ field: 'key', value: key });
               if (timeoutMs !== (editing?.timeout ?? 0)) edits.push({ field: 'timeout', value: String(Math.round(timeoutMs)) });
-              if (edits.length > 0) send({ type: 'actions:editMany', payload: { index: idx, id: pauseEdit.id, edits } });
+              if (edits.length > 0) steps.editMany({ index: idx, id: pauseEdit.id, edits });
               setPauseEdit(null);
             }}
             onClose={() => setPauseEdit(null)}
@@ -3270,7 +3236,7 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
           excludeProfileName={activeProfile ?? undefined}
           onConfirm={(profileName, repeatCount, runOverData) => {
             if (refuseDuringRun()) return;
-            send({ type: 'actions:editRunProfile', payload: { index: runProfileEdit.index, id: runProfileEdit.id, profileName, repeatCount, runOverData } });
+            steps.editRunProfile({ index: runProfileEdit.index, id: runProfileEdit.id, profileName, repeatCount, runOverData });
             setRunProfileEdit(null);
           }}
           onClose={() => setRunProfileEdit(null)}
@@ -3287,7 +3253,7 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
           initial={runProfileInsert.profileName ? { profileName: runProfileInsert.profileName, repeatCount: 1 } : undefined}
           onConfirm={(profileName, repeatCount, runOverData) => {
             if (refuseDuringRun()) return;
-            send({ type: 'actions:addRunProfile', payload: { profileName, repeatCount, runOverData, insertIndex: runProfileInsert.insertIndex } });
+            steps.addRunProfile({ profileName, repeatCount, runOverData, insertIndex: runProfileInsert.insertIndex });
             setRunProfileInsert(null);
           }}
           onClose={() => setRunProfileInsert(null)}
@@ -3328,7 +3294,7 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
             // a lone marker — and a lone Else If is exactly the case where snapping takes the
             // whole conditional while the bar still reads "1 selected".
             const { message, count } = deleteIntentFor(selSorted);
-            send(message);
+            steps.removeSteps({ message });
             showToast(tt(`Deleted ${count} action(s)`, `${count} ação(ões) excluída(s)`), 'success');
             setSelectedIndices(new Set());
           }}
@@ -3338,7 +3304,7 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
             // canMoveUp (derived from the snapped set) so a block already at the top no-ops.
             if (!canMoveUp) return;
             const minIdx = moveSet[0];
-            send({ type: 'actions:reorder', payload: { indices: moveSet, targetIndex: minIdx - 1 } });
+            steps.reorder({ indices: moveSet, targetIndex: minIdx - 1 });
             // HandleActionsReorder reinserts the removed rows CONTIGUOUSLY at the adjusted
             // target — landing at [minIdx-1 .. minIdx-1+count-1] regardless of whether the
             // (snapped) selection was contiguous. Emit that contiguous landing range so the
@@ -3352,7 +3318,7 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
             const maxIdx = moveSet[moveSet.length - 1];
             // targetIndex = maxIdx + 2 because the reorder API treats the target as the
             // pre-shift insertion point (mirrors the Alt+↓ hotkey behaviour exactly).
-            send({ type: 'actions:reorder', payload: { indices: moveSet, targetIndex: maxIdx + 2 } });
+            steps.reorder({ indices: moveSet, targetIndex: maxIdx + 2 });
             // As in onMoveUp: rows land contiguously. All moved indices are < the target so the
             // backend's adjustedTarget = maxIdx + 2 - count, landing at [maxIdx+2-count .. maxIdx+1].
             const count = moveSet.length;
@@ -3367,17 +3333,17 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
             if (targets.length === 0) return;
             // No toast here — HandleBulkUpdateDelay confirms it, as HandleBulkUpdateCoord does for
             // X/Y: only it knows how many rows an Add stopped at 0 ms, and whether anything changed.
-            send({ type: 'actions:bulkUpdateDelay', payload: { indices: targets, mode, delay } });
+            steps.bulkUpdateDelay({ indices: targets, mode, delay });
           }}
           onSetCoord={(axis, mode, value) => {
             // No toast here, unlike the three siblings — on purpose. HandleBulkUpdateCoord
             // confirms it itself ("Set X to 500 on N action(s)") because only it knows N: rows that
             // are not coordinate clicks, and at-cursor clicks, are skipped, so a count taken here
             // would overstate it, and a second toast would stack on the backend's.
-            send({ type: 'actions:bulkUpdateCoord', payload: { indices: selSorted, axis, mode, value } });
+            steps.bulkUpdateCoord({ indices: selSorted, axis, mode, value });
           }}
           onSetComment={(comment) => {
-            send({ type: 'actions:bulkUpdateComment', payload: { indices: selSorted, comment } });
+            steps.bulkUpdateComment({ indices: selSorted, comment });
             showToast(tt(`Set notes for ${selectedIndices.size} action(s)`, `Notas definidas para ${selectedIndices.size} ação(ões)`), 'success');
           }}
           onClearNotes={() => {
@@ -3385,12 +3351,12 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
             // CANCELS is the field's rule, not the message's). Only the rows that had a note are
             // sent, so N in the toast is the rows that actually changed.
             if (notedSorted.length === 0) return;
-            send({ type: 'actions:bulkUpdateComment', payload: { indices: notedSorted, comment: '' } });
+            steps.bulkUpdateComment({ indices: notedSorted, comment: '' });
             showToast(tt(`Cleared notes on ${notedSorted.length} action(s)`, `Notas removidas de ${notedSorted.length} ação(ões)`), 'success');
           }}
           onToggleSkip={() => {
             const allSkipped = selSorted.every(i => actions[i]?.isSkipped);
-            send({ type: 'actions:toggleSkip', payload: { indices: selSorted } });
+            steps.toggleSkip({ indices: selSorted });
             showToast(
               allSkipped
                 ? tt(`Enabled ${selectedIndices.size} action(s)`, `${selectedIndices.size} ação(ões) ativada(s)`)
@@ -3425,7 +3391,7 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
               key={ct}
               type="button"
               onClick={() => {
-                send({ type: 'actions:addElseIfBranch', payload: { ifRowIndex: elseIfPicker.ifRowIndex, conditionType: ct } });
+                steps.addElseIfBranch({ ifRowIndex: elseIfPicker.ifRowIndex, conditionType: ct });
                 setElseIfPicker(null);
               }}
               className="menu-item text-text-primary"
@@ -3605,7 +3571,7 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
                               // ONE message for N rows = one undo entry. The old Convert to
                               // Double Click looped actions:edit, and the bridge pushes an undo
                               // state per call, so ten rows cost ten Ctrl+Z.
-                              if (!current) send({ type: 'actions:bulkUpdateType', payload: { indices: targets, actionType: target } });
+                              if (!current) steps.bulkUpdateType({ indices: targets, actionType: target });
                               closeContextMenu();
                             }}
                             className="menu-item justify-between text-text-primary"
@@ -3624,7 +3590,7 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
                       {form === '' ? (
                         <button
                           onClick={() => {
-                            send({ type: 'actions:convertMode', payload: { direction: 'toPaired', indices: targets } });
+                            steps.convertMode({ direction: 'toPaired', indices: targets });
                             closeContextMenu();
                           }}
                           data-tip={tt('Two rows: press, then release — a drag needs this',
@@ -3656,7 +3622,7 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
                             const pair = Array.from(new Set(
                               seeds.flatMap(i => (form === 'Down' ? [i, i + 1] : [i - 1, i])),
                             )).sort((a, b) => a - b);
-                            send({ type: 'actions:convertMode', payload: { direction: 'toCombined', indices: pair.filter(i => i >= 0 && i < actions.length) } });
+                            steps.convertMode({ direction: 'toCombined', indices: pair.filter(i => i >= 0 && i < actions.length) });
                             closeContextMenu();
                           }}
                           data-tip={tt('One row that owns the whole press', 'Uma linha que carrega a pressão inteira')}
@@ -3684,7 +3650,7 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
               <button
                 onMouseEnter={() => setActiveSubmenu(null)}
                 onClick={() => {
-                  send({ type: 'actions:resetCycle', payload: { index: contextMenu.rowIndex } });
+                  steps.resetCycle({ index: contextMenu.rowIndex });
                   closeContextMenu();
                 }}
                 className="menu-item text-text-primary"
@@ -3870,7 +3836,7 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
               <button
                 onMouseEnter={() => setActiveSubmenu(null)}
                 onClick={() => {
-                  send({ type: 'actions:toggleSkip', payload: { indices } });
+                  steps.toggleSkip({ indices });
                   showToast(
                     allSkipped
                       ? tt(`Enabled ${indices.length} action(s)`, `${indices.length} ação(ões) ativada(s)`)
@@ -3935,7 +3901,7 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
                   <button
                     onClick={() => {
                       const indices = contextSelectionIndices();
-                      send({ type: 'actions:copyInternal', payload: { indices } });
+                      steps.copyInternal({ indices });
                       showToast(tt(`Copied ${indices.length} action(s)`, `${indices.length} ação(ões) copiada(s)`), 'success');
                       closeContextMenu();
                     }}
@@ -3952,7 +3918,7 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
                       every other insert in the app goes, so Ctrl+V and this land the same way up. */}
                   <button
                     onClick={() => {
-                      send({ type: 'actions:paste', payload: { insertIndex: contextMenu.rowIndex } });
+                      steps.paste({ insertIndex: contextMenu.rowIndex });
                       closeContextMenu();
                     }}
                     data-tip={tt('Pastes above this row (Ctrl+V)', 'Cola acima desta linha (Ctrl+V)')}
@@ -4059,7 +4025,7 @@ function ActionTableImpl({ columnVisibility, onOpenSheet, onPickCoords, editorIn
                     return (
                       <button
                         onClick={() => {
-                          send({ type: 'actions:toggleFocusClick', payload: { indices: clickIdx } });
+                          steps.toggleFocusClick({ indices: clickIdx });
                           closeContextMenu();
                         }}
                         className="menu-item justify-between text-text-primary"

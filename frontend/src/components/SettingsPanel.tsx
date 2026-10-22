@@ -6,6 +6,7 @@ import { useLanguage, useTt } from '../state/LanguageContext';
 // `Search` import removed with the disabled Settings filter — re-add it to revive the filter.
 import { useAppState } from '../state/AppStateContext';
 import { useBridge } from '../bridge/BridgeContext';
+import { useSteps } from '../logic/useSteps';
 import { useSelectionRef } from '../state/SelectionContext';
 import { useToast } from '../state/ToastContext';
 import { Toggle } from './common/Toggle';
@@ -1397,8 +1398,9 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
   }, [settingsResetEpoch]);
   const { language, setLanguage } = useLanguage();
   const tt = useTt();
-  const { send, subscribe } = useBridge();
+  const { subscribe } = useBridge();
   const remapCmds = useRemaps();
+  const steps = useSteps();
   const automationCmds = useAutomations();
   const settingsCmds = useSettings();
   const selectionRef = useSelectionRef();
@@ -1762,7 +1764,7 @@ export function SettingsPanel({ collapsed = false, onToggleCollapse }: SettingsP
                     // Refused at the send, not on a control: this path has no button to disable —
                     // it is reached by Enter inside the chip. See refuseGridWrite above.
                     if (indices.size > 0 && !refuseGridWrite()) {
-                      send({ type: 'actions:bulkUpdateDelay', payload: { indices: [...indices], mode: 'set', delay } });
+                      steps.bulkUpdateDelay({ indices: [...indices], mode: 'set', delay });
                     }
                   }}
                 />

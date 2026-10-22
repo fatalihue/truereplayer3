@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useLayoutEffect, lazy, Suspense } from 'react';
 import { Trash2, Undo2, Redo2, Type, Mouse, MoreHorizontal, ScanSearch, Pipette, Keyboard, Globe, Repeat2, Hourglass, X, GitBranch, ScanEye, Braces, AppWindow, Clipboard, ClipboardCopy, ChevronDown, ChevronRight, Dice5, ScanText, Cpu, FileCheck, Clock, Table2, ShieldCheck, CircleStop, CornerDownLeft, IterationCw, ArrowRightFromLine, SkipForward } from 'lucide-react';
 import { useAppState } from '../state/AppStateContext';
-import { useBridge } from '../bridge/BridgeContext';
+import { useSteps } from '../logic/useSteps';
+import { insertIndexAtSelection } from '../logic/insertIndex';
 import { useMacro } from '../logic/useMacro';
 import { useSelectionRef } from '../state/SelectionContext';
 import { useSheetGuard } from '../state/SheetGuardContext';
@@ -141,8 +142,8 @@ const isCollapsed = (count: number, k: OverflowKey) => count > OVERFLOW_ORDER.in
 
 export function Toolbar(_props: ToolbarProps) {
   const { toolbar, buttonStates, actions, activeProfile, settings, dataTable } = useAppState();
-  const { send } = useBridge();
   const macro = useMacro();
+  const steps = useSteps();
   const tt = useTt();
   const { showToast } = useToast();
   // Clicker-mode coherence: the macro action list is invisible in Clicker mode,
@@ -492,8 +493,8 @@ export function Toolbar(_props: ToolbarProps) {
     // Behind a modal dialog it stands down entirely (isModalDialogOpen): the list is behind the
     // scrim, and a Ctrl+Z on one of the dialog's buttons undid a list edit nobody could see — under
     // an Insert Text about to insert by position, or a row editor about to save by index.
-    const onUndo = () => { if (!insertsDisabledRef.current && !isModalDialogOpen() && sheetGuard.allowListChange()) send({ type: 'actions:undo', payload: {} }); };
-    const onRedo = () => { if (!insertsDisabledRef.current && !isModalDialogOpen() && sheetGuard.allowListChange()) send({ type: 'actions:redo', payload: {} }); };
+    const onUndo = () => { if (!insertsDisabledRef.current && !isModalDialogOpen() && sheetGuard.allowListChange()) steps.undo({}); };
+    const onRedo = () => { if (!insertsDisabledRef.current && !isModalDialogOpen() && sheetGuard.allowListChange()) steps.redo({}); };
     window.addEventListener('cmd:save', onSave);
     window.addEventListener('cmd:undo', onUndo);
     window.addEventListener('cmd:redo', onRedo);
@@ -502,7 +503,7 @@ export function Toolbar(_props: ToolbarProps) {
       window.removeEventListener('cmd:undo', onUndo);
       window.removeEventListener('cmd:redo', onRedo);
     };
-  }, [send, macro, showToast, tt, sheetGuard]);
+  }, [steps, macro, showToast, tt, sheetGuard]);
 
   // Outside-press + Escape dismissal for the three insert dropdowns in the row (More has its own
   // call above; its Loop/Assert submenus live inside its panel, so a click in them is not
@@ -578,7 +579,7 @@ export function Toolbar(_props: ToolbarProps) {
         const sel = selectionRef.current;
         if (sel.size > 0) {
           e.preventDefault();
-          send({ type: 'actions:copyInternal', payload: { indices: Array.from(sel) } });
+          steps.copyInternal({ indices: Array.from(sel) });
         }
       }
       // Mutating shortcuts (paste, reorder) share the buttons' full gate —
@@ -596,9 +597,8 @@ export function Toolbar(_props: ToolbarProps) {
       if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
         e.preventDefault();
         if (!sheetGuard.allowListChange()) return;
-        const sel = selectionRef.current;
-        const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
-        send({ type: 'actions:paste', payload: { insertIndex } });
+        const insertIndex = insertIndexAtSelection(selectionRef.current, actions.length);
+        steps.paste({ insertIndex });
       }
       // Alt+↑/↓ to reorder the selected rows. Mirrors the Move Up/Move Down
       // toolbar buttons exactly — same payload, same selection update event.
@@ -617,7 +617,7 @@ export function Toolbar(_props: ToolbarProps) {
           const minIdx = indices[0];
           if (minIdx <= 0) return;
           if (!sheetGuard.allowListChange()) return;
-          send({ type: 'actions:reorder', payload: { indices, targetIndex: minIdx - 1 } });
+          steps.reorder({ indices, targetIndex: minIdx - 1 });
           // Backend reinserts the rows CONTIGUOUSLY at the adjusted target, so they land at
           // [minIdx-1 .. minIdx-1+count-1]. A per-index i-1 map mis-highlights non-contiguous
           // selections — emit the contiguous range (mirrors the bulk Move Up button fix).
@@ -626,7 +626,7 @@ export function Toolbar(_props: ToolbarProps) {
           const maxIdx = indices[indices.length - 1];
           if (maxIdx >= actions.length - 1) return;
           if (!sheetGuard.allowListChange()) return;
-          send({ type: 'actions:reorder', payload: { indices, targetIndex: maxIdx + 2 } });
+          steps.reorder({ indices, targetIndex: maxIdx + 2 });
           // adjustedTarget = maxIdx + 2 - count → rows land at [maxIdx+2-count .. maxIdx+1].
           const count = indices.length;
           window.dispatchEvent(new CustomEvent('selection:set', { detail: indices.map((_, i) => maxIdx + 2 - count + i) }));
@@ -638,7 +638,7 @@ export function Toolbar(_props: ToolbarProps) {
     // selectionRef is a useRef result — stable identity across renders, so listing it
     // doesn't cause extra subscribes. Adding it just silences exhaustive-deps without
     // changing behaviour (handler always reads .current at the time it fires).
-  }, [send, actions, selectionRef, sheetGuard, buttonStates.recordingActive, buttonStates.replayActive]);
+  }, [steps, actions, selectionRef, sheetGuard, buttonStates.recordingActive, buttonStates.replayActive]);
 
   return (
     <>
@@ -836,9 +836,8 @@ export function Toolbar(_props: ToolbarProps) {
                 <button
                   className="menu-item text-text-primary"
                   onClick={() => {
-                    const sel = selectionRef.current;
-                    const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
-                    send({ type: 'actions:insertAction', payload: { actionType: 'WaitImage', insertIndex } });
+                    const insertIndex = insertIndexAtSelection(selectionRef.current, actions.length);
+                    steps.insertAction({ actionType: 'WaitImage', insertIndex });
                     setShowWaitMenu(false);
                   }}
                 >
@@ -848,9 +847,8 @@ export function Toolbar(_props: ToolbarProps) {
                 <button
                   className="menu-item text-text-primary"
                   onClick={() => {
-                    const sel = selectionRef.current;
-                    const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
-                    send({ type: 'actions:insertWaitPixelColor', payload: { insertIndex } });
+                    const insertIndex = insertIndexAtSelection(selectionRef.current, actions.length);
+                    steps.insertWaitPixelColor({ insertIndex });
                     setShowWaitMenu(false);
                   }}
                 >
@@ -862,9 +860,8 @@ export function Toolbar(_props: ToolbarProps) {
                 <button
                   className="menu-item text-text-primary"
                   onClick={() => {
-                    const sel = selectionRef.current;
-                    const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
-                    send({ type: 'actions:insertAction', payload: { actionType: 'WaitText', insertIndex } });
+                    const insertIndex = insertIndexAtSelection(selectionRef.current, actions.length);
+                    steps.insertAction({ actionType: 'WaitText', insertIndex });
                     setShowWaitMenu(false);
                   }}
                 >
@@ -899,9 +896,8 @@ export function Toolbar(_props: ToolbarProps) {
                     key={`waitcond-${ct}`}
                     className="menu-item text-text-primary"
                     onClick={() => {
-                      const sel = selectionRef.current;
-                      const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
-                      send({ type: 'actions:insertAssert', payload: { conditionType: ct, insertIndex, conditionTimeout: 10000, assertOnFail: 'StopReplay' } });
+                      const insertIndex = insertIndexAtSelection(selectionRef.current, actions.length);
+                      steps.insertAssert({ conditionType: ct, insertIndex, conditionTimeout: 10000, assertOnFail: 'StopReplay' });
                       setShowWaitMenu(false);
                     }}
                   >
@@ -939,9 +935,8 @@ export function Toolbar(_props: ToolbarProps) {
                 <button
                   className="menu-item text-text-primary"
                   onClick={() => {
-                    const sel = selectionRef.current;
-                    const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
-                    send({ type: 'actions:insertConditional', payload: { conditionType: 'ImageFound', insertIndex } });
+                    const insertIndex = insertIndexAtSelection(selectionRef.current, actions.length);
+                    steps.insertConditional({ conditionType: 'ImageFound', insertIndex });
                     setShowConditionalMenu(false);
                   }}
                 >
@@ -951,9 +946,8 @@ export function Toolbar(_props: ToolbarProps) {
                 <button
                   className="menu-item text-text-primary"
                   onClick={() => {
-                    const sel = selectionRef.current;
-                    const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
-                    send({ type: 'actions:insertConditional', payload: { conditionType: 'PixelColorMatch', insertIndex } });
+                    const insertIndex = insertIndexAtSelection(selectionRef.current, actions.length);
+                    steps.insertConditional({ conditionType: 'PixelColorMatch', insertIndex });
                     setShowConditionalMenu(false);
                   }}
                 >
@@ -965,9 +959,8 @@ export function Toolbar(_props: ToolbarProps) {
                 <button
                   className="menu-item text-text-primary"
                   onClick={() => {
-                    const sel = selectionRef.current;
-                    const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
-                    send({ type: 'actions:insertConditional', payload: { conditionType: 'ScreenText', insertIndex } });
+                    const insertIndex = insertIndexAtSelection(selectionRef.current, actions.length);
+                    steps.insertConditional({ conditionType: 'ScreenText', insertIndex });
                     setShowConditionalMenu(false);
                   }}
                 >
@@ -979,9 +972,8 @@ export function Toolbar(_props: ToolbarProps) {
                 <button
                   className="menu-item text-text-primary"
                   onClick={() => {
-                    const sel = selectionRef.current;
-                    const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
-                    send({ type: 'actions:insertConditional', payload: { conditionType: 'WindowOpen', insertIndex } });
+                    const insertIndex = insertIndexAtSelection(selectionRef.current, actions.length);
+                    steps.insertConditional({ conditionType: 'WindowOpen', insertIndex });
                     setShowConditionalMenu(false);
                   }}
                 >
@@ -991,9 +983,8 @@ export function Toolbar(_props: ToolbarProps) {
                 <button
                   className="menu-item text-text-primary"
                   onClick={() => {
-                    const sel = selectionRef.current;
-                    const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
-                    send({ type: 'actions:insertConditional', payload: { conditionType: 'ClipboardMatch', insertIndex } });
+                    const insertIndex = insertIndexAtSelection(selectionRef.current, actions.length);
+                    steps.insertConditional({ conditionType: 'ClipboardMatch', insertIndex });
                     setShowConditionalMenu(false);
                   }}
                 >
@@ -1003,9 +994,8 @@ export function Toolbar(_props: ToolbarProps) {
                 <button
                   className="menu-item text-text-primary"
                   onClick={() => {
-                    const sel = selectionRef.current;
-                    const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
-                    send({ type: 'actions:insertConditional', payload: { conditionType: 'BrowserElementState', insertIndex } });
+                    const insertIndex = insertIndexAtSelection(selectionRef.current, actions.length);
+                    steps.insertConditional({ conditionType: 'BrowserElementState', insertIndex });
                     setShowConditionalMenu(false);
                   }}
                 >
@@ -1023,9 +1013,8 @@ export function Toolbar(_props: ToolbarProps) {
                     key={ct}
                     className="menu-item text-text-primary"
                     onClick={() => {
-                      const sel = selectionRef.current;
-                      const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
-                      send({ type: 'actions:insertConditional', payload: { conditionType: ct, insertIndex } });
+                      const insertIndex = insertIndexAtSelection(selectionRef.current, actions.length);
+                      steps.insertConditional({ conditionType: ct, insertIndex });
                       setShowConditionalMenu(false);
                     }}
                   >
@@ -1046,9 +1035,8 @@ export function Toolbar(_props: ToolbarProps) {
             aria-label="Set Variable"
             tabIndex={-1}
             onClick={() => {
-              const sel = selectionRef.current;
-              const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
-              send({ type: 'actions:insertAction', payload: { actionType: 'SetVariable', insertIndex } });
+              const insertIndex = insertIndexAtSelection(selectionRef.current, actions.length);
+              steps.insertAction({ actionType: 'SetVariable', insertIndex });
             }}
             disabled={insertsDisabled}
             className={iconButtonClass('md')}
@@ -1099,9 +1087,8 @@ export function Toolbar(_props: ToolbarProps) {
                         setShowBrowserMenu(false);
                         setShowNavigateDialog(true);
                       } else {
-                        const sel = selectionRef.current;
-                        const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
-                        send({ type: 'actions:addBrowserAction', payload: { actionType: item.type, selector: '', insertIndex } });
+                        const insertIndex = insertIndexAtSelection(selectionRef.current, actions.length);
+                        steps.addBrowserAction({ actionType: item.type, selector: '', insertIndex });
                         setShowBrowserMenu(false);
                       }
                     }}
@@ -1133,9 +1120,8 @@ export function Toolbar(_props: ToolbarProps) {
             aria-label="Activate Window"
             tabIndex={-1}
             onClick={() => {
-              const sel = selectionRef.current;
-              const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
-              send({ type: 'actions:insertAction', payload: { actionType: 'ActivateWindow', insertIndex } });
+              const insertIndex = insertIndexAtSelection(selectionRef.current, actions.length);
+              steps.insertAction({ actionType: 'ActivateWindow', insertIndex });
             }}
             disabled={insertsDisabled}
             className={iconButtonClass('md')}
@@ -1226,7 +1212,7 @@ export function Toolbar(_props: ToolbarProps) {
                       // A reset is one of the list changes the Sheet's guard is asked about
                       // (SheetGuardContext) — the same question Ctrl+V and Undo put.
                       if (!sheetGuard.allowListChange()) return;
-                      send({ type: 'actions:clear', payload: {} });
+                      steps.clear({});
                       setShowClearConfirm(false);
                     }}
                     // Same gate as the trigger — covers the render-tick race between
@@ -1290,9 +1276,8 @@ export function Toolbar(_props: ToolbarProps) {
                   <button
                     className="menu-item text-text-primary"
                     onClick={() => {
-                      const sel = selectionRef.current;
-                      const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
-                      send({ type: 'actions:insertAction', payload: { actionType: 'CopyToSlot', insertIndex } });
+                      const insertIndex = insertIndexAtSelection(selectionRef.current, actions.length);
+                      steps.insertAction({ actionType: 'CopyToSlot', insertIndex });
                       setShowMoreMenu(false);
                     }}
                   >
@@ -1325,8 +1310,7 @@ export function Toolbar(_props: ToolbarProps) {
                     {moreSubmenu === 'loop' && (() => {
                       // Selection is stable while the menu is open (clicking a row dismisses it),
                       // so the insert point — and the Break/Next gate — is computed once per open.
-                      const loopSel = selectionRef.current;
-                      const loopInsertAt = loopSel.size > 0 ? Math.min(...loopSel) : actions.length;
+                      const loopInsertAt = insertIndexAtSelection(selectionRef.current, actions.length);
                       const loopDepth = loopDepthAt(actions, loopInsertAt);
                       const rowsN = dataTable.rows.length;
                       return (
@@ -1351,7 +1335,7 @@ export function Toolbar(_props: ToolbarProps) {
                                 key={`loop-${ct}`}
                                 className="menu-item text-text-primary"
                                 onClick={() => {
-                                  send({ type: 'actions:insertLoop', payload: { conditionType: ct, insertIndex: loopInsertAt } });
+                                  steps.insertLoop({ conditionType: ct, insertIndex: loopInsertAt });
                                   setShowMoreMenu(false);
                                 }}
                               >
@@ -1363,7 +1347,7 @@ export function Toolbar(_props: ToolbarProps) {
                             <button
                               className="menu-item text-text-primary"
                               onClick={() => {
-                                send({ type: 'actions:insertLoop', payload: { kind: 'ForEachRow', insertIndex: loopInsertAt } });
+                                steps.insertLoop({ kind: 'ForEachRow', insertIndex: loopInsertAt });
                                 setShowMoreMenu(false);
                               }}
                             >
@@ -1387,7 +1371,7 @@ export function Toolbar(_props: ToolbarProps) {
                                   : undefined}
                                 className="menu-item text-text-primary"
                                 onClick={() => {
-                                  send({ type: 'actions:insertAction', payload: { actionType: at, insertIndex: loopInsertAt } });
+                                  steps.insertAction({ actionType: at, insertIndex: loopInsertAt });
                                   setShowMoreMenu(false);
                                 }}
                               >
@@ -1439,9 +1423,8 @@ export function Toolbar(_props: ToolbarProps) {
                               key={`assert-${ct}`}
                               className="menu-item text-text-primary"
                               onClick={() => {
-                                const sel = selectionRef.current;
-                                const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
-                                send({ type: 'actions:insertAssert', payload: { conditionType: ct, insertIndex } });
+                                const insertIndex = insertIndexAtSelection(selectionRef.current, actions.length);
+                                steps.insertAssert({ conditionType: ct, insertIndex });
                                 setShowMoreMenu(false);
                               }}
                             >
@@ -1461,9 +1444,8 @@ export function Toolbar(_props: ToolbarProps) {
                               key={`flow-${at}`}
                               className="menu-item text-text-primary"
                               onClick={() => {
-                                const sel = selectionRef.current;
-                                const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
-                                send({ type: 'actions:insertAction', payload: { actionType: at, insertIndex } });
+                                const insertIndex = insertIndexAtSelection(selectionRef.current, actions.length);
+                                steps.insertAction({ actionType: at, insertIndex });
                                 setShowMoreMenu(false);
                               }}
                             >
@@ -1483,9 +1465,8 @@ export function Toolbar(_props: ToolbarProps) {
                     <button
                       className="menu-item text-text-primary"
                       onClick={() => {
-                        const sel = selectionRef.current;
-                        const insertIndex = sel.size > 0 ? Math.min(...sel) : actions.length;
-                        send({ type: 'actions:insertAction', payload: { actionType: 'ActivateWindow', insertIndex } });
+                        const insertIndex = insertIndexAtSelection(selectionRef.current, actions.length);
+                        steps.insertAction({ actionType: 'ActivateWindow', insertIndex });
                         setShowMoreMenu(false);
                       }}
                     >
@@ -1528,7 +1509,7 @@ export function Toolbar(_props: ToolbarProps) {
                         <Button
                           onClick={() => {
                             if (!sheetGuard.allowListChange()) return;
-                            send({ type: 'actions:clear', payload: {} });
+                            steps.clear({});
                             setClearArmed(false);
                             setShowMoreMenu(false);
                           }}
@@ -1570,17 +1551,14 @@ export function Toolbar(_props: ToolbarProps) {
               const target = resolveInsertTarget();
               if (!target) return;
               const insertIndex = target.index;
-              send({
-                type: 'actions:addSendText',
-                payload: {
-                  text: r.text,
-                  html: r.html ?? undefined,
-                  markdown: r.markdown ?? undefined,
-                  mode: r.mode,
-                  method: r.method,
-                  charDelayMs: r.charDelayMs,
-                  insertIndex,
-                },
+              steps.addSendText({
+                text: r.text,
+                html: r.html ?? undefined,
+                markdown: r.markdown ?? undefined,
+                mode: r.mode,
+                method: r.method,
+                charDelayMs: r.charDelayMs,
+                insertIndex,
               });
               setShowSendTextDialog(false);
             }}
@@ -1601,7 +1579,7 @@ export function Toolbar(_props: ToolbarProps) {
             // runOverData must ride along: dropping it here silently discarded the
             // dialog's "Run once per data row" tick on the toolbar-add path, while
             // the grid's add/edit paths (ActionTable) carried it correctly.
-            send({ type: 'actions:addRunProfile', payload: { profileName, repeatCount, runOverData, insertIndex } });
+            steps.addRunProfile({ profileName, repeatCount, runOverData, insertIndex });
             setShowRunProfileDialog(false);
           }}
           onClose={() => setShowRunProfileDialog(false)}
@@ -1615,7 +1593,7 @@ export function Toolbar(_props: ToolbarProps) {
             const target = resolveInsertTarget();
             if (!target) return;
             const insertIndex = target.index ?? actions.length;
-            send({ type: 'actions:addBrowserAction', payload: { actionType: 'BrowserNavigate', selector: url, newTab, insertIndex } });
+            steps.addBrowserAction({ actionType: 'BrowserNavigate', selector: url, newTab, insertIndex });
             setShowNavigateDialog(false);
           }}
           onClose={() => setShowNavigateDialog(false)}
@@ -1628,10 +1606,7 @@ export function Toolbar(_props: ToolbarProps) {
             if (refuseInsert()) return;
             const target = resolveInsertTarget();
             if (!target) return;
-            send({
-              type: 'actions:insertPause',
-              payload: { key, timeoutMs: Math.max(0, Math.round(timeoutMs)), insertIndex: target.index ?? actions.length },
-            });
+            steps.insertPause({ key, timeoutMs: Math.max(0, Math.round(timeoutMs)), insertIndex: target.index ?? actions.length });
             setShowPauseDialog(false);
           }}
           onClose={() => setShowPauseDialog(false)}
@@ -1650,10 +1625,7 @@ export function Toolbar(_props: ToolbarProps) {
             if (refuseInsert()) return;
             const target = resolveInsertTarget();
             if (!target) return;
-            send({
-              type: 'actions:insertClick',
-              payload: { ...r, insertIndex: target.index ?? actions.length },
-            });
+            steps.insertClick({ ...r, insertIndex: target.index ?? actions.length });
             setShowClickDialog(false);
           }}
           onClose={() => setShowClickDialog(false)}
@@ -1672,10 +1644,7 @@ export function Toolbar(_props: ToolbarProps) {
             if (!target) return;
             const insertIndex = target.index ?? actions.length;
             if (result.actionType === 'HoldKey') {
-              send({
-                type: 'actions:insertHoldKey',
-                payload: { key: result.key, insertIndex, holdDurationMs: result.holdDurationMs },
-              });
+              steps.insertHoldKey({ key: result.key, insertIndex, holdDurationMs: result.holdDurationMs });
             } else {
               // Omit `repeat`/`repeatDelayMs` for the single-press default so the bridge
               // payload stays minimal and the C# side leaves RepeatDelayMs as null (clean
@@ -1689,7 +1658,7 @@ export function Toolbar(_props: ToolbarProps) {
                 // payload + the persisted profile JSON minimal).
                 if (result.repeatDelayJitterPct > 0) payload.repeatDelayJitterPct = result.repeatDelayJitterPct;
               }
-              send({ type: 'actions:insertKeystroke', payload });
+              steps.insertKeystroke(payload);
             }
             setShowKeystrokeCapture(false);
           }}

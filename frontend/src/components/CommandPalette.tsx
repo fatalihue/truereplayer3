@@ -6,7 +6,8 @@ import {
   Combine, Split, ScrollText, Activity, ListChecks, BookOpen, Info, Chrome,
 } from 'lucide-react';
 import { useAppState } from '../state/AppStateContext';
-import { useBridge } from '../bridge/BridgeContext';
+import { useSteps } from '../logic/useSteps';
+import { insertIndexAtSelection } from '../logic/insertIndex';
 import { useAppActions } from '../logic/useSettings';
 import { useMacro } from '../logic/useMacro';
 import { useSelectionRef } from '../state/SelectionContext';
@@ -58,17 +59,15 @@ const MANUAL_URL = 'https://fatalihue.github.io/TrueReplayer-releases/manual.htm
 
 export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   const { activeProfile, settings, actions, buttonStates } = useAppState();
-  const { send } = useBridge();
   const appActions = useAppActions();
   const macro = useMacro();
+  const steps = useSteps();
   const selectionRef = useSelectionRef();
   const [query, setQuery] = useState('');
 
-  // Insert position helper: matches the toolbar's behavior — before the first selected
-  // action, or at the end of the list when nothing is selected.
+  // Where a new step goes: the toolbar's rule (insertIndexAtSelection).
   const computeInsertIndex = useCallback(() => {
-    const sel = selectionRef.current;
-    return sel.size > 0 ? Math.min(...sel) : actions.length;
+    return insertIndexAtSelection(selectionRef.current, actions.length);
   }, [actions.length, selectionRef]);
   // The open Sheet's say over the list rewrites below (see SheetGuardContext): Ctrl+K opens the
   // palette from inside the sheet — even mid-typing — and a paste or a convert re-seeded the
@@ -150,7 +149,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             // neither is gated and the two stay consistent.
             keywords: ['tsv', 'export', 'clipboard', 'spreadsheet'],
             icon: <Table2 size={14} className="text-text-secondary" />,
-            onAction: () => { send({ type: 'actions:copy', payload: {} }); onClose(); },
+            onAction: () => { steps.copy({}); onClose(); },
           },
           {
             // Ctrl+V works but has no visible control anywhere, so this is the only
@@ -158,7 +157,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             id: 'pasteactions', label: 'Paste actions',
             ...gate(isClicker, runActive),
             icon: <ClipboardPaste size={14} className="text-text-secondary" />,
-            onAction: () => { if (!sheetAllows()) return; send({ type: 'actions:paste', payload: { insertIndex: computeInsertIndex() } }); onClose(); },
+            onAction: () => { if (!sheetAllows()) return; steps.paste({ insertIndex: computeInsertIndex() }); onClose(); },
           },
           {
             id: 'convertrelative', label: 'Convert coordinates to relative',
@@ -181,14 +180,14 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             ...gate(isClicker, runActive),
             keywords: ['merge', 'keystroke', 'click'],
             icon: <Combine size={14} className="text-text-secondary" />,
-            onAction: () => { if (!sheetAllows()) return; send({ type: 'actions:convertMode', payload: { direction: 'toCombined' } }); onClose(); },
+            onAction: () => { if (!sheetAllows()) return; steps.convertMode({ direction: 'toCombined' }); onClose(); },
           },
           {
             id: 'converttopaired', label: 'Convert actions to paired',
             ...gate(isClicker, runActive),
             keywords: ['split', 'down up', 'separate'],
             icon: <Split size={14} className="text-text-secondary" />,
-            onAction: () => { if (!sheetAllows()) return; send({ type: 'actions:convertMode', payload: { direction: 'toPaired' } }); onClose(); },
+            onAction: () => { if (!sheetAllows()) return; steps.convertMode({ direction: 'toPaired' }); onClose(); },
           },
         ],
       },
@@ -316,7 +315,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     // Narrow deps to the exact settings field read above so unrelated settings changes
     // (hotkeys, loop config, movement knobs) don't rebuild every command group.
   }, [
-    activeProfile, send, appActions, macro, onClose, openAfterClose, computeInsertIndex, sheetAllows,
+    activeProfile, steps, appActions, macro, onClose, openAfterClose, computeInsertIndex, sheetAllows,
     settings.useCursorClick,
     // The two BOOLEAN fields, never the buttonStates object: it is republished on several
     // unrelated events, and depending on the object would rebuild every group each time.
