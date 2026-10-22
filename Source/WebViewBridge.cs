@@ -1031,6 +1031,7 @@ namespace TrueReplayer
                     case "browser:testAction": _ = HandleBrowserTestAction(payload); break;
                     case "browser:testCondition": _ = HandleBrowserTestCondition(payload); break;
                     case "profile:click": HandleProfileClick(payload); break;
+                    case "profile:open": HandleProfileOpen(payload); break;
                     case "profile:create": HandleProfileCreate(payload); break;
                     case "profile:rename": HandleProfileRename(payload); break;
                     case "profile:duplicate": HandleProfileDuplicate(payload); break;
@@ -1081,6 +1082,7 @@ namespace TrueReplayer
                     case "profile:convertCoordinates": HandleConvertCoordinates(payload); break;
                     case "profile:updateWindowSize": HandleUpdateWindowSize(payload); break;
                     case "profile:reset": HandleProfileReset(); break;
+                    case "settings:resetAll": HandleSettingsResetAll(); break;
                     case "selection:changed": HandleSelectionChanged(payload); break;
                     case "settings:change": HandleSettingsChange(payload); break;
                     case "window:alwaysOnTop": HandleAlwaysOnTop(payload); break;
@@ -9252,6 +9254,24 @@ namespace TrueReplayer
         {
             string name = payload.GetProperty("name").GetString() ?? "";
             if (string.IsNullOrEmpty(name)) return;
+            await OpenProfileAsync(name, toggleIfOpen: true);
+        }
+
+        // profile:open — opens a macro and never closes the open one (D1 of the parity inventory:
+        // the new shell has no "no macro open" state, and a Run Macro's Open macro that points at
+        // its own macro must not close it). Opening the macro that is already open does nothing,
+        // so it neither asks about unsaved changes nor trips the run guard.
+        private async void HandleProfileOpen(JsonElement payload)
+        {
+            string name = payload.GetProperty("name").GetString() ?? "";
+            if (string.IsNullOrEmpty(name)) return;
+            await OpenProfileAsync(name, toggleIfOpen: false);
+        }
+
+        // profile:click toggles (clicking the open macro closes it); profile:open only opens.
+        private async Task OpenProfileAsync(string name, bool toggleIfOpen)
+        {
+            if (!toggleIfOpen && CurrentProfileName == name) return;
 
             // The panel refuses a switch mid-run, but it was the ONLY gate, and it reads the button
             // slice — which a UI remounted during a run used to receive as "idle" (see
@@ -9267,7 +9287,7 @@ namespace TrueReplayer
             if (!await CheckUnsavedChangesAsync("switching profiles")) return;
 
             // Deselect if clicking the already-active profile
-            if (CurrentProfileName == name)
+            if (toggleIfOpen && CurrentProfileName == name)
             {
                 CurrentProfileName = "No Profile";
                 CurrentProfilePath = null;
@@ -12936,13 +12956,66 @@ namespace TrueReplayer
             if (confirm != Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary)
                 return;
 
-            // Reset ALL global settings to defaults and save.
-            // — Preserve the current mode (Macro/Clicker): the reset is "restore values",
-            //   not "switch modes". Users in Clicker mode shouldn't get bounced back to
-            //   Macro just because they reset.
-            // — Use real Clicker defaults (delay=100 ms, hold=10 ms, everything else 0/off)
-            //   instead of the -1 migration sentinel, so a reset doesn't re-trigger the
-            //   one-shot first-run migration from the active profile.
+            var defaults = SaveDefaultGlobalSettings(keepAutomationEnabled: false);
+            profileController.ResetProfile();
+            MirrorGlobalSettings(defaults);
+
+            ApplyProfile(UserProfile.Current);
+            profileController.UpdateProfileColors(null);
+            CurrentProfileName = "No Profile";
+            CurrentProfilePath = null;
+            HasUnsavedChanges = false;
+            ClearLoopEdit();
+            PushProfileLoop();
+            PushSettingsLoaded();
+            // Distinct signal for "the user explicitly reset everything" — used by the
+            // Clicker panel to bounce its local UI state (e.g. the /s ↔ ms unit toggle)
+            // back to its default. Plain settings:loaded fires too often (mode toggle, tray,
+            // every settings:change) so a dedicated message keeps the protocol clear.
+            // (It does NOT fire on a profile switch — that claim used to be here and was wrong;
+            // it is precisely why the per-profile loop needed its own profile:loop push.)
+            SendMessage("settings:reset", new { });
+            PushProfilesUpdate();
+            PushToolbarUpdate();
+            PushStatusBarUpdate();
+            TrayIconService.UpdateTrayIcon();
+        }
+
+        // settings:resetAll — D23 of the parity inventory: "Reset all settings…" puts every global
+        // setting back to its default WITHOUT clearing the steps or closing the macro (with the
+        // save-as-you-go of the new shell, an emptied list would be written). The page asks for the
+        // confirmation, so there is no native dialog. Two things profile:reset changes stay as they
+        // are: the open macro (its steps and its own run settings) and the Automations master
+        // switch, because a reset must never start firing the user's automations.
+        private void HandleSettingsResetAll()
+        {
+            if (recordingService.IsRecording || replayService.IsReplaying)
+            {
+                SendMessage("alert:show", new { message = "Stop the recording or replay before resetting settings." });
+                return;
+            }
+            var defaults = SaveDefaultGlobalSettings(keepAutomationEnabled: true);
+            // The open macro keeps its identity; only the app-wide values stamped on it change.
+            AppSettingsManager.ApplyGlobalSettings(UserProfile.Current);
+            MirrorGlobalSettings(defaults);
+            // The open macro's effective Game Mode / Return cursor follow the new defaults.
+            PushProfileLoop();
+            PushSettingsLoaded();
+            SendMessage("settings:reset", new { });
+            PushToolbarUpdate();
+            PushStatusBarUpdate();
+            TrayIconService.UpdateTrayIcon();
+        }
+
+        // Every global setting back to its default, saved.
+        // — Preserve the current mode (Macro/Clicker): the reset is "restore values",
+        //   not "switch modes". Users in Clicker mode shouldn't get bounced back to
+        //   Macro just because they reset.
+        // — Use real Clicker defaults (delay=100 ms, hold=10 ms, everything else 0/off)
+        //   instead of the -1 migration sentinel, so a reset doesn't re-trigger the
+        //   one-shot first-run migration from the active profile.
+        private AppSettingsManager.AppSettings SaveDefaultGlobalSettings(bool keepAutomationEnabled)
+        {
             bool preserveCursorMode = UseCursorClick;
             string preserveCursorButton = CursorClickButton;
             var defaults = new AppSettingsManager.AppSettings
@@ -12965,10 +13038,14 @@ namespace TrueReplayer
                 // Presets are the user's own data, not a value to restore — kept, like the mode.
                 ClickerPresets = ClickerPresets,
             };
+            if (keepAutomationEnabled) defaults.AutomationEnabled = UserProfile.Current.AutomationEnabled;
             AppSettingsManager.Save(defaults);
+            return defaults;
+        }
 
-            profileController.ResetProfile();
-
+        // The bridge mirrors, the replayer statics and the window flags, from the defaults just saved.
+        private void MirrorGlobalSettings(AppSettingsManager.AppSettings defaults)
+        {
             // Sync bridge state from defaults
             CustomDelay = defaults.CustomDelay.ToString();
             UseCustomDelay = defaults.UseCustomDelay;
@@ -13029,26 +13106,6 @@ namespace TrueReplayer
             UserProfile.Current.RunEndSound = defaults.RunEndSound;
             TrayIconService.SetRunOnStartup(defaults.RunOnStartup);
             window.UpdateAlwaysOnTop(defaults.AlwaysOnTop);
-
-            ApplyProfile(UserProfile.Current);
-            profileController.UpdateProfileColors(null);
-            CurrentProfileName = "No Profile";
-            CurrentProfilePath = null;
-            HasUnsavedChanges = false;
-            ClearLoopEdit();
-            PushProfileLoop();
-            PushSettingsLoaded();
-            // Distinct signal for "the user explicitly reset everything" — used by the
-            // Clicker panel to bounce its local UI state (e.g. the /s ↔ ms unit toggle)
-            // back to its default. Plain settings:loaded fires too often (mode toggle, tray,
-            // every settings:change) so a dedicated message keeps the protocol clear.
-            // (It does NOT fire on a profile switch — that claim used to be here and was wrong;
-            // it is precisely why the per-profile loop needed its own profile:loop push.)
-            SendMessage("settings:reset", new { });
-            PushProfilesUpdate();
-            PushToolbarUpdate();
-            PushStatusBarUpdate();
-            TrayIconService.UpdateTrayIcon();
         }
 
         // Returns the instance it just persisted so a caller can hand it straight to
@@ -13544,6 +13601,12 @@ namespace TrueReplayer
                 // Smooth mouse movement (interpolated cursor path). See ActionReplayer.SmoothMovement.
                 case "smoothMovement":
                     ActionReplayer.SmoothMovement = valueElement.GetBoolean();
+                    break;
+                // The app default of Return cursor; the open macro's own value is
+                // profileRestoreCursor, routed above. Twin of smoothMovement: both defaults change
+                // with a macro open (D1 of the parity inventory, Settings › Recording and playback).
+                case "restoreCursor":
+                    ActionReplayer.RestoreCursorDefault = valueElement.GetBoolean();
                     break;
                 case "moveStepPx":
                     if (int.TryParse(valueElement.GetString(), out int mvStep))

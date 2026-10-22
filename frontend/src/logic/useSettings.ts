@@ -13,12 +13,18 @@ export function useSettings() {
   return useMemo(() => ({
     /**
      * Writes one setting by its key. The same key can mean the open macro's own value
-     * (profileLoopCount, profileGameMode, …): the engine routes those to the profile. A global
-     * hotkey that clashes with another is refused there, with a toast, and the echo puts the field
-     * back.
+     * (profileLoopCount, profileGameMode, …): the engine routes those to the profile, while
+     * smoothMovement and restoreCursor are always the app defaults of Game Mode and Return cursor,
+     * macro open or not. A global hotkey that clashes with another is refused there, with a toast,
+     * and the echo puts the field back.
      */
     change: (key: string, value: string | boolean | number | object | null) =>
       send({ type: 'settings:change', payload: { key, value } }),
+    /**
+     * Puts every app setting back to its default, keeping the open macro (its steps and its own run
+     * settings) and the Automations master switch (D23). The page asks first: no native dialog.
+     */
+    resetAll: () => send({ type: 'settings:resetAll', payload: {} }),
     setAlwaysOnTop: (enabled: boolean) => send({ type: 'window:alwaysOnTop', payload: { enabled } }),
     setMinimizeToTray: (enabled: boolean) => send({ type: 'window:minimizeToTray', payload: { enabled } }),
     /** Run on startup. Turning it off also turns off "start minimized", which means nothing without it. */

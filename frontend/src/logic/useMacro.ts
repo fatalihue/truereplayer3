@@ -16,12 +16,14 @@ export function useMacro() {
     // ── opening and saving ──
     /**
      * Opens a macro — or CLOSES it when it is the one already open: profile:click toggles. That is
-     * the "no macro open" state decision D1 retires; the new shell will open through profile:open.
+     * the "no macro open" state decision D1 retires; the new shell opens through `open`.
      */
     click: (name: string) => send({ type: 'profile:click', payload: { name } }),
+    /** Opens a macro and never closes the open one (D1). Opening the macro already open does nothing. */
+    open: (name: string) => send({ type: 'profile:open', payload: { name } }),
     save: () => send({ type: 'profile:save', payload: {} }),
     load: () => send({ type: 'profile:load', payload: {} }),
-    /** Resets the app's settings to the defaults, after a native confirmation — and clears the steps (D23 changes that). */
+    /** Resets the app's settings to the defaults, after a native confirmation — and clears the steps. useSettings().resetAll is the reset that keeps them (D23). */
     reset: () => send({ type: 'profile:reset', payload: {} }),
 
     // ── the library ──

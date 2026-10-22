@@ -1102,6 +1102,8 @@ export type OutgoingMessage =
   | { type: 'actions:editMany'; payload: { index: number; id?: string; edits: { field: string; value: string }[]; convert?: { direction: 'toPaired' | 'toCombined'; indices: number[] } } }
   | { type: 'actions:delete'; payload: { indices: number[] } }
   | { type: 'profile:click'; payload: { name: string } }
+  // Opens a macro and never closes the open one (D1); opening the open macro does nothing.
+  | { type: 'profile:open'; payload: { name: string } }
   | { type: 'profile:create'; payload: { name: string; folder?: string } }
   | { type: 'profile:rename'; payload: { oldName: string; newName: string } }
   | { type: 'profile:duplicate'; payload: { name: string } }
@@ -1162,6 +1164,9 @@ export type OutgoingMessage =
   | { type: 'profile:save'; payload: Record<string, never> }
   | { type: 'profile:load'; payload: Record<string, never> }
   | { type: 'profile:reset'; payload: Record<string, never> }
+  // Every app setting back to its default, without touching the open macro or the Automations
+  // master switch (D23). The page confirms; there is no native dialog.
+  | { type: 'settings:resetAll'; payload: Record<string, never> }
   | { type: 'settings:change'; payload: { key: string; value: string | boolean | number | object | null } }
   // `indices` absent = the whole profile (the command palette's convert). Present = those rows
   // only, which is the row menu's Split / Merge. The backend groups them into contiguous runs
