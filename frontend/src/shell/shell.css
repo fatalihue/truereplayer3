@@ -34,9 +34,11 @@
 .shell-mark { width: 1.25rem; height: 1.25rem; flex: none; }
 .shell-titlebar-middle { flex: 1; display: flex; justify-content: center; }
 .shell-state {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.375rem;
+  min-width: 0;
   padding: 0.25rem 0.625rem;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--state-color) 20%, transparent);
@@ -47,7 +49,27 @@
 }
 .shell-state[data-state='recording'] { --state-color: var(--color-recording); }
 .shell-state[data-state='replaying'] { --state-color: var(--color-accent); }
-.shell-state-dot { width: 0.375rem; height: 0.375rem; border-radius: 50%; background: var(--state-color); }
+.shell-state[data-state='clicking'] { --state-color: var(--color-clicker); }
+.shell-state-dot { width: 0.375rem; height: 0.375rem; flex: none; border-radius: 50%; background: var(--state-color); }
+.shell-state-text { max-width: 18rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The ring that goes out while something runs, and once, green, when a run ends. A pseudo-element
+   that scales and fades (rule 8), not an animated box-shadow, which repaints every frame. */
+.shell-state::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border: 2px solid var(--state-color);
+  border-radius: inherit;
+  opacity: 0;
+  pointer-events: none;
+}
+html[data-animations='true'] .shell-state[data-live]::after { animation: shell-state-ring 1.4s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+html[data-animations='true'] .shell-state[data-live] .shell-state-dot { animation: pulse-dot 2s ease-in-out infinite; }
+html[data-animations='true'] .shell-state[data-done]::after { border-color: var(--color-replay); animation: shell-state-ring 1.5s ease-out; }
+@keyframes shell-state-ring {
+  from { opacity: 0.6; transform: scale(1); }
+  to { opacity: 0; transform: scale(1.08, 1.5); }
+}
 
 /* ── Body: the five bands (rule 9). Measured in rem, so they move with the scale: a bigger UI
    reaches the narrower layouts at a wider window. ── */
@@ -121,26 +143,8 @@
 .shell-menu-item[aria-current='true'] .shell-menu-end { color: inherit; }
 .shell-menu-separator { height: 1px; margin: 0.25rem 0; background: var(--color-border-subtle); }
 
-/* ── Main: ④ macro header and ⑦ steps ── */
+/* ── Main: ④ macro header (header/header.css) and ⑦ steps ── */
 .shell-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.shell-macro-header {
-  display: flex;
-  align-items: baseline;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--color-border-subtle);
-}
-.shell-macro-title {
-  margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--text-subtitle);
-  line-height: var(--text-subtitle--line-height);
-  font-weight: 600;
-}
-.shell-macro-count { flex: none; font-size: var(--text-caption); color: var(--color-text-tertiary); }
-.shell-macro-transport { margin-left: auto; }
 
 .shell-steps { flex: 1; min-height: 0; overflow-y: auto; margin: 0; padding: 0.25rem 0; list-style: none; }
 .shell-steps-empty { margin: 2rem 1rem; color: var(--color-text-tertiary); }

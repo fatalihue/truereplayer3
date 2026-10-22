@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ChevronRight, type LucideIcon } from 'lucide-react';
-import type { MenuAnchor } from './menuAnchor';
+import { placeAtAnchor, placeBeside, type MenuAnchor, type Size, type Spot } from './menuAnchor';
 
 export interface MenuItem {
   label: string;
@@ -21,8 +21,6 @@ export interface MenuItem {
   tip?: string;
 }
 export type MenuEntry = MenuItem | 'separator';
-
-const MARGIN = 8;
 
 /** Drops the items this build does not have, and the separators that leaves dangling. */
 function visible(entries: MenuEntry[]): MenuEntry[] {
@@ -101,39 +99,6 @@ export function Menu({ anchor, entries, label, onClose, focusFirst = false, togg
     </div>,
     document.body,
   );
-}
-
-interface Size { width: number; height: number }
-interface Spot { left: number; top: number }
-
-function placeAtAnchor(anchor: MenuAnchor, size: Size): Spot {
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-  let left: number;
-  let top: number;
-  if (anchor.kind === 'point') {
-    left = anchor.x;
-    top = anchor.y;
-    if (top + size.height > vh - MARGIN) top = Math.max(MARGIN, top - size.height);
-  } else {
-    const { rect, align } = anchor;
-    left = align === 'start' ? rect.left : rect.right - size.width;
-    top = rect.bottom + 4;
-    if (top + size.height > vh - MARGIN && rect.top - 4 - size.height >= MARGIN) top = rect.top - 4 - size.height;
-  }
-  if (left + size.width > vw - MARGIN) left = vw - MARGIN - size.width;
-  return { left: Math.max(MARGIN, left), top: Math.max(MARGIN, top) };
-}
-
-/** A submenu opens beside its item, on the side with room, top-aligned to it. */
-function placeBeside(item: DOMRect, size: Size): Spot {
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-  let left = item.right + 2;
-  if (left + size.width > vw - MARGIN && item.left - 2 - size.width >= MARGIN) left = item.left - 2 - size.width;
-  let top = item.top - 5;
-  if (top + size.height > vh - MARGIN) top = Math.max(MARGIN, vh - MARGIN - size.height);
-  return { left: Math.max(MARGIN, left), top };
 }
 
 function MenuList({ entries, label, place, focusFirst, onClose, onBack, panel }: {

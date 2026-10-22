@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
-import { ChevronDown, Folder, FolderPlus, Pencil, Trash2 } from 'lucide-react';
+import { ChevronDown, Folder, FolderPlus, Pencil, RotateCcw, Trash2 } from 'lucide-react';
 import type { ProfileEntry, ProfileOrderData } from '../../bridge/messageTypes';
 import { DialogFooter, DialogShell } from '../../components/common/DialogShell';
 import { FieldError } from '../../components/common/FieldError';
@@ -10,13 +10,13 @@ import { ExportDialog } from './ExportDialog';
 import { nameTaken } from './model';
 
 export type LibraryDialogState =
-  | { kind: 'renameMacro' | 'renameFolder' | 'deleteMacro'; name: string }
+  | { kind: 'renameMacro' | 'renameFolder' | 'deleteMacro' | 'revertMacro'; name: string }
   | { kind: 'newFolder' }
   | { kind: 'export'; names: string[] };
 
 /**
- * The library's dialogs. Loaded when the first one opens (rule 6): they are not part of opening
- * the app.
+ * The dialogs of the library and of the macro's menu. Loaded when the first one opens (rule 6):
+ * they are not part of opening the app.
  */
 export default function LibraryDialog({ dialog, profiles, order, onClose }: {
   dialog: LibraryDialogState;
@@ -54,6 +54,8 @@ export default function LibraryDialog({ dialog, profiles, order, onClose }: {
       return <NewFolderDialog folders={order.folders.map(f => f.name)} onCreate={macro.createFolder} onClose={onClose} />;
     case 'deleteMacro':
       return <DeleteMacroDialog name={dialog.name} onDelete={() => macro.remove(dialog.name)} onClose={onClose} />;
+    case 'revertMacro':
+      return <RevertMacroDialog name={dialog.name} onRevert={macro.revert} onClose={onClose} />;
     case 'export':
       return <ExportDialog profiles={profiles} order={order} initial={dialog.names} onExport={macro.exportMacros} onClose={onClose} />;
   }
@@ -184,6 +186,31 @@ function DeleteMacroDialog({ name, onDelete, onClose }: { name: string; onDelete
           Delete macro <span className="text-text-primary font-medium">'{name}'</span>?
         </p>
         <p className="text-minor text-text-tertiary">Its file and its images are deleted. This can't be undone.</p>
+      </div>
+    </DialogShell>
+  );
+}
+
+/**
+ * "Revert to when I opened it": the engine writes back the copy it took on opening and reopens the
+ * macro, dropping the edits and their undo history. The engine does not ask, so this does, the way
+ * the delete does: Cancel holds the focus.
+ */
+function RevertMacroDialog({ name, onRevert, onClose }: { name: string; onRevert: () => void; onClose: () => void }) {
+  return (
+    <DialogShell
+      icon={<RotateCcw size={14} style={{ color: 'var(--color-recording-fg)' }} />}
+      title="Revert macro"
+      size="sm"
+      onClose={onClose}
+      onCardKeyDown={(e) => { if (e.key === 'Enter') e.stopPropagation(); }}
+      footer={<DialogFooter danger secondary={{ label: 'Cancel', onClick: onClose, autoFocus: true }} primary={{ label: 'Revert', onClick: () => { onRevert(); onClose(); } }} />}
+    >
+      <div className="p-4 flex flex-col gap-2">
+        <p className="text-body text-text-secondary">
+          Put <span className="text-text-primary font-medium">'{name}'</span> back the way it was when you opened it?
+        </p>
+        <p className="text-minor text-text-tertiary">The changes since then are lost, and Ctrl+Z can't bring them back.</p>
       </div>
     </DialogShell>
   );

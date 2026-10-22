@@ -1,21 +1,21 @@
 import { lazy, Suspense, useEffect, useRef, useState, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  AppWindow, Ban, ChevronsDownUp, ChevronsUpDown, Copy, Download, Eraser, ExternalLink, FilePlus, Folder,
-  FolderInput, FolderMinus, FolderOpen, FolderPlus, Info, Keyboard, Palette, Pencil, Pin, PinOff, Power,
-  RotateCcw, Trash2, Type, Upload,
+  AppWindow, Ban, ChevronsDownUp, ChevronsUpDown, Download, FilePlus, FolderOpen, FolderPlus, Palette, Pencil, Power,
+  Trash2, Upload,
 } from 'lucide-react';
 import { useImport } from '../../logic/useImport';
 import { useMacro } from '../../logic/useMacro';
+import { macroMenuEntries } from '../macroMenu';
 import { Menu, type MenuEntry } from '../Menu';
 import { anchorBelow, anchorFromEvent, fromKeyboard, type MenuAnchor } from '../menuAnchor';
 import { useApp } from '../store';
+import { closeDialog, focusName, openDialog, useUi } from '../ui';
 import { useShellBand } from '../useShellBand';
 import { ColorGrid } from './ColorGrid';
-import type { LibraryDialogState } from './LibraryDialogs';
 import { LibraryFolded } from './LibraryFolded';
 import { LibraryPanel } from './LibraryPanel';
-import { displayOrder, folderOf, freeName, neighbourOf, sectionsOf } from './model';
+import { displayOrder, freeName, neighbourOf, sectionsOf } from './model';
 import './library.css';
 
 // Not part of opening the app (rule 6): the dialogs load when the first one opens, and the import
@@ -54,7 +54,7 @@ export function Library() {
   const [folded, setFolded] = useState(readFolded);
   const [peek, setPeek] = useState(false);
   const [menu, setMenu] = useState<MenuState | null>(null);
-  const [dialog, setDialog] = useState<LibraryDialogState | null>(null);
+  const dialog = useUi(s => s.dialog);
   const seq = useRef(0);
 
   const hidden = band === 'single' || band === 'compact';
@@ -106,7 +106,9 @@ export function Library() {
   };
   const newMacro = (folder: string | null) => {
     // It is born saved and open, as "Untitled macro"; the name is typed in its header.
-    macro.create(freeName('Untitled macro', names), folder);
+    const name = freeName('Untitled macro', names);
+    macro.create(name, folder);
+    focusName(name);
     setPeek(false);
   };
 
@@ -119,56 +121,7 @@ export function Library() {
     setMenu({ kind, button, anchor: anchorBelow(button, kind === 'new' ? 'start' : 'end'), keyboard, seq: ++seq.current });
   };
 
-  const macroEntries = (name: string): MenuEntry[] => {
-    const entry = profiles.find(p => p.name === name);
-    if (!entry) return [];
-    const inFolder = folderOf(name, order);
-    const isOpen = name === active;
-    return [
-      { label: 'Rename…', icon: Pencil, onSelect: () => setDialog({ kind: 'renameMacro', name }) },
-      { label: 'Duplicate', icon: Copy, onSelect: () => macro.duplicate(name) },
-      {
-        label: 'Move to folder',
-        icon: FolderInput,
-        submenu: order.folders.length === 0
-          ? [{ label: 'No folders', disabled: true }]
-          : [
-              ...order.folders.map((f): MenuEntry => ({
-                label: f.name,
-                icon: Folder,
-                iconColor: f.color,
-                checked: inFolder?.name === f.name,
-                onSelect: () => macro.moveToFolder(name, f.name),
-              })),
-              ...(inFolder ? ['separator' as const, { label: 'Remove from folder', icon: FolderMinus, onSelect: () => macro.moveToFolder(name, null) }] : []),
-            ],
-      },
-      order.pinned.includes(name)
-        ? { label: 'Unpin', icon: PinOff, onSelect: () => macro.unpin(name) }
-        : { label: 'Pin', icon: Pin, onSelect: () => macro.pin(name) },
-      'separator',
-      // The triggers, the window target and the info are edited in the Inspector (phase 2).
-      { label: 'Hotkey…', icon: Keyboard, notBuilt: true },
-      { label: 'Hotstring…', icon: Type, notBuilt: true },
-      { label: 'Window target…', icon: AppWindow, notBuilt: true },
-      { label: 'Edit info…', icon: Info, notBuilt: true },
-      'separator',
-      { label: 'Export…', icon: Upload, onSelect: () => macro.exportMacros([name], true) },
-      { label: 'Open in Explorer', icon: ExternalLink, onSelect: () => macro.openFolder(name) },
-      'separator',
-      // Only the open macro has a copy from when it was opened, and steps on screen (slice 3).
-      ...(isOpen ? [
-        { label: 'Revert to when I opened it', icon: RotateCcw, notBuilt: true },
-        { label: 'Clear all steps…', icon: Eraser, notBuilt: true },
-        'separator' as const,
-      ] : []),
-      entry.isDisabled
-        ? { label: 'Enable', icon: Power, onSelect: () => macro.toggleDisabled(name) }
-        : { label: 'Disable', icon: Ban, onSelect: () => macro.toggleDisabled(name) },
-      'separator',
-      { label: 'Delete macro…', icon: Trash2, danger: true, onSelect: () => setDialog({ kind: 'deleteMacro', name }) },
-    ];
-  };
+  const macroEntries = (name: string) => macroMenuEntries({ name, profiles, order, active, locked, macro });
 
   const folderEntries = (name: string): MenuEntry[] => {
     const folder = order.folders.find(f => f.name === name);
@@ -176,7 +129,7 @@ export function Library() {
     const members = sections.folders.find(s => s.folder.name === name)?.macros ?? [];
     const allOff = members.length > 0 && members.every(m => m.isDisabled);
     return [
-      { label: 'Rename…', icon: Pencil, onSelect: () => setDialog({ kind: 'renameFolder', name }) },
+      { label: 'Rename…', icon: Pencil, onSelect: () => openDialog({ kind: 'renameFolder', name }) },
       {
         label: 'Color',
         icon: Palette,
@@ -196,11 +149,11 @@ export function Library() {
 
   const newEntries: MenuEntry[] = [
     { label: 'New macro', icon: FilePlus, onSelect: () => newMacro(null) },
-    { label: 'New folder', icon: FolderPlus, onSelect: () => setDialog({ kind: 'newFolder' }) },
+    { label: 'New folder', icon: FolderPlus, onSelect: () => openDialog({ kind: 'newFolder' }) },
   ];
   const moreEntries: MenuEntry[] = [
     { label: 'Import macros…', icon: Download, onSelect: imports.start },
-    { label: 'Export macros…', icon: Upload, disabled: profiles.length === 0, onSelect: () => setDialog({ kind: 'export', names: [] }) },
+    { label: 'Export macros…', icon: Upload, disabled: profiles.length === 0, onSelect: () => openDialog({ kind: 'export', names: [] }) },
     'separator',
     { label: 'Open macros folder', icon: FolderOpen, onSelect: () => macro.openFolder() },
     'separator',
@@ -263,7 +216,7 @@ export function Library() {
           import that finished meanwhile) must still show. */}
       {createPortal(
         <Suspense fallback={null}>
-          {dialog && <LibraryDialog dialog={dialog} profiles={profiles} order={order} onClose={() => setDialog(null)} />}
+          {dialog && <LibraryDialog dialog={dialog} profiles={profiles} order={order} onClose={closeDialog} />}
           {(imports.warning || imports.preview || imports.result) && <ImportFlow flow={imports} />}
         </Suspense>,
         document.body,

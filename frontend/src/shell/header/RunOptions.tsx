@@ -1,0 +1,274 @@
+import { useState, type MouseEvent } from 'react';
+import { ChevronDown } from 'lucide-react';
+import type { SettingsState } from '../../bridge/messageTypes';
+import { useSettings } from '../../logic/useSettings';
+import { useTt } from '../../state/LanguageContext';
+import { keycaps } from '../library/model';
+import { Menu } from '../Menu';
+import { anchorBelow, type MenuAnchor } from '../menuAnchor';
+import { NumberField } from '../NumberField';
+import { Popover } from '../Popover';
+import { useApp } from '../store';
+import { useAnswered } from '../useAnswered';
+import { loopsShown, runsPerRow } from './model';
+
+/**
+ * Record ▾ and Replay ▾: what a recording captures, and how the open macro runs. Loaded when one
+ * first opens (rule 6). Every control writes one setting through settings:change, and the engine
+ * routes the macro's own keys (profile…) to the open macro, which saves itself.
+ */
+export default function RunOptions({ kind, anchor, toggle, focusFirst, onClose }: {
+  kind: 'record' | 'replay';
+  anchor: MenuAnchor;
+  toggle: Element | null;
+  focusFirst: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <Popover
+      anchor={anchor}
+      label={kind === 'record' ? 'Recording options' : 'Run options'}
+      toggle={toggle}
+      focusFirst={focusFirst}
+      onClose={onClose}
+    >
+      {kind === 'record' ? <RecordOptions /> : <ReplayOptions />}
+    </Popover>
+  );
+}
+
+const CAPTURE: { key: keyof SettingsState & string; label: string; detail?: string }[] = [
+  { key: 'recordMouse', label: 'Mouse clicks' },
+  { key: 'recordScroll', label: 'Mouse scroll' },
+  { key: 'recordKeyboard', label: 'Keyboard' },
+  { key: 'recordCombinedInput', label: 'One step per click or key', detail: 'Off records press and release apart' },
+  { key: 'browserSelectorEnabled', label: 'Browser actions', detail: 'Through the browser extension' },
+];
+
+/** Record ▾. The capture switches are the app's, for every macro, as they have always been. */
+function RecordOptions() {
+  const settings = useApp(a => a.settings);
+  const steps = useApp(a => a.actions.length);
+  const { change } = useSettings();
+  return (
+    <div className="ro-panel" data-kind="record">
+      <span className="ro-heading">Capture</span>
+      {CAPTURE.map(({ key, label, detail }) => (
+        <CaptureOption
+          key={key}
+          label={label}
+          detail={detail}
+          on={settings[key] !== false}
+          onChange={(on) => change(key, on)}
+        />
+      ))}
+      <span className="ro-separator" role="separator" />
+      {/* The insert point arrives with the list (slice 4); until then a recording goes at the end. */}
+      <span className="ro-note">{steps === 0 ? 'Records into the empty macro' : `Records at the end, after step ${steps}`}</span>
+      <HotkeyLine label="Start or stop" combo={settings.recordingHotkey} />
+    </div>
+  );
+}
+
+function CaptureOption({ label, detail, on, onChange }: { label: string; detail?: string; on: boolean; onChange: (on: boolean) => void }) {
+  const [shown, answer] = useAnswered(on);
+  return (
+    <label className="ro-check">
+      <input
+        type="checkbox"
+        checked={shown}
+        onChange={(e) => {
+          answer(e.target.checked);
+          onChange(e.target.checked);
+        }}
+      />
+      <span className="ro-check-text">
+        {label}
+        {detail && <span className="ro-detail">{detail}</span>}
+      </span>
+    </label>
+  );
+}
+
+/**
+ * Replay ▾. Loops and Interval have no switch of their own: 1 loop is one pass and an interval of
+ * 0 is none, and the engine's switches follow the number. Return cursor and Game Mode are the
+ * macro's own, or the app's default. Jitter and Fast approach are still the app's, for every macro,
+ * so they sit apart and say so.
+ */
+function ReplayOptions() {
+  const loop = useApp(a => a.profileLoop);
+  const settings = useApp(a => a.settings);
+  const open = useApp(a => a.activeProfile);
+  const perRow = useApp(a => runsPerRow(a.dataTable));
+  const { change } = useSettings();
+  const tt = useTt();
+  const gameModeOn = loop.gameMode ?? settings.smoothMovement;
+  return (
+    <div className="ro-panel" data-kind="replay">
+      <span className="ro-heading">Run options · saved with the macro</span>
+      <div className="ro-grid">
+        <NumberField
+          label="Loops"
+          unit="×"
+          value={loopsShown(loop)}
+          min={1}
+          max={999}
+          owner={open}
+          tip={perRow ? tt('The Data Loop table runs the macro once per row instead.', 'A tabela do Data Loop roda o macro uma vez por linha no lugar disto.') : undefined}
+          onCommit={(n) => {
+            if (n > 1) {
+              change('profileLoopCount', String(n));
+              if (!loop.enabled) change('profileEnableLoop', true);
+            } else if (loop.enabled) {
+              change('profileEnableLoop', false);
+            }
+          }}
+        />
+        <NumberField
+          label="Interval"
+          unit="ms"
+          value={loop.intervalEnabled ? loop.interval : '0'}
+          min={0}
+          max={60000}
+          owner={open}
+          tip={tt('Between loops', 'Entre os loops')}
+          onCommit={(n) => {
+            if (n > 0) {
+              change('profileLoopInterval', String(n));
+              if (!loop.intervalEnabled) change('profileLoopIntervalEnabled', true);
+            } else if (loop.intervalEnabled) {
+              change('profileLoopIntervalEnabled', false);
+            }
+          }}
+        />
+      </div>
+      <Choice
+        label="Return cursor"
+        own={loop.restoreCursor}
+        appDefault={settings.restoreCursor}
+        tip={tt('The cursor goes back to where it was when the run started.', 'O cursor volta para onde estava quando o run começou.')}
+        onChange={(v) => change('profileRestoreCursor', v)}
+      />
+      <Choice
+        label="Game Mode"
+        own={loop.gameMode}
+        appDefault={settings.smoothMovement}
+        tip={tt('The cursor walks a path so games accept the move. Off jumps at once.', 'O cursor percorre um caminho para jogos aceitarem o movimento. Desligado, salta direto.')}
+        onChange={(v) => change('profileGameMode', v)}
+      />
+      <span className="ro-separator" role="separator" />
+      <span className="ro-heading">For every macro</span>
+      <div className="ro-grid">
+        <NumberField
+          label="Jitter"
+          unit="%"
+          value={settings.useDelayVariation ? settings.delayVariation : '0'}
+          min={0}
+          max={100}
+          tip={tt('Random ±% on each delay — less robotic.', 'Variação ±% aleatória em cada atraso — menos robótico.')}
+          onCommit={(n) => {
+            if (n > 0) {
+              change('delayVariation', String(n));
+              if (!settings.useDelayVariation) change('useDelayVariation', true);
+            } else if (settings.useDelayVariation) {
+              change('useDelayVariation', false);
+            }
+          }}
+        />
+      </div>
+      <SwitchRow
+        label="Fast approach"
+        on={settings.fastApproach}
+        disabled={!gameModeOn}
+        tip={gameModeOn
+          ? tt('Teleports long moves, walks only the last stretch. Turn off if a game misclicks.', 'Teletransporta movimentos longos, anda só o trecho final. Desligue se um jogo errar o clique.')
+          : tt('Only with Game Mode on.', 'Só com o Game Mode ligado.')}
+        onChange={(v) => change('fastApproach', v)}
+      />
+      <HotkeyLine label="Replay or stop" combo={settings.replayHotkey} />
+    </div>
+  );
+}
+
+/**
+ * A setting the macro can have of its own or take from the app: Default, On or Off. The choice is a
+ * small menu, in the same layer as the panel, so picking in it does not close the panel.
+ */
+function Choice({ label, own, appDefault, tip, onChange }: {
+  label: string;
+  own: boolean | null;
+  appDefault: boolean;
+  tip: string;
+  onChange: (value: boolean | null) => void;
+}) {
+  const [shown, answer] = useAnswered(own);
+  const [menu, setMenu] = useState<{ anchor: MenuAnchor; button: HTMLElement; keyboard: boolean } | null>(null);
+  const name = (v: boolean | null) => (v === null ? `Default (${appDefault ? 'on' : 'off'})` : v ? 'On' : 'Off');
+  const pick = (v: boolean | null) => {
+    answer(v);
+    if (v !== own) onChange(v);
+  };
+  const toggleMenu = (e: MouseEvent<HTMLButtonElement>) => {
+    if (menu) { setMenu(null); return; }
+    const button = e.currentTarget;
+    setMenu({ anchor: anchorBelow(button, 'end'), button, keyboard: e.detail === 0 });
+  };
+  return (
+    <div className="ro-row">
+      <span className="ro-row-label" data-tip={tip}>{label}</span>
+      <button type="button" className="ro-choice" aria-haspopup="menu" aria-expanded={!!menu} aria-label={`${label}: ${name(shown)}`} onClick={toggleMenu}>
+        {name(shown)}
+        <ChevronDown aria-hidden="true" />
+      </button>
+      {menu && (
+        <Menu
+          anchor={menu.anchor}
+          label={label}
+          focusFirst={menu.keyboard}
+          toggle={menu.button}
+          onClose={() => setMenu(null)}
+          entries={[null, true, false].map(v => ({ label: name(v), checked: shown === v, onSelect: () => pick(v) }))}
+        />
+      )}
+    </div>
+  );
+}
+
+function SwitchRow({ label, on, disabled, tip, onChange }: {
+  label: string;
+  on: boolean;
+  disabled: boolean;
+  tip: string;
+  onChange: (on: boolean) => void;
+}) {
+  const [shown, answer] = useAnswered(on);
+  return (
+    <div className="ro-row" data-disabled={disabled || undefined}>
+      <span className="ro-row-label" data-tip={tip}>{label}</span>
+      <button
+        type="button"
+        role="switch"
+        className="ro-switch"
+        aria-checked={shown}
+        aria-label={label}
+        disabled={disabled}
+        data-tip={disabled ? tip : undefined}
+        onClick={() => {
+          answer(!shown);
+          onChange(!shown);
+        }}
+      />
+    </div>
+  );
+}
+
+function HotkeyLine({ label, combo }: { label: string; combo: string }) {
+  if (!combo) return null;
+  return (
+    <span className="ro-hotkey">
+      <span>{label}</span>
+      <kbd className="kbd">{keycaps(combo)}</kbd>
+    </span>
+  );
+}

@@ -28,3 +28,39 @@ export function anchorFromEvent(e: ContextEvent): MenuAnchor {
 export function anchorBelow(button: Element, align: 'start' | 'end'): MenuAnchor {
   return { kind: 'below', rect: button.getBoundingClientRect(), align };
 }
+
+const MARGIN = 8;
+
+export interface Size { width: number; height: number }
+export interface Spot { left: number; top: number }
+
+/** Where a menu (or a Popover) goes: at its anchor, kept inside the window, above the button when there is no room below. */
+export function placeAtAnchor(anchor: MenuAnchor, size: Size): Spot {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  let left: number;
+  let top: number;
+  if (anchor.kind === 'point') {
+    left = anchor.x;
+    top = anchor.y;
+    if (top + size.height > vh - MARGIN) top = Math.max(MARGIN, top - size.height);
+  } else {
+    const { rect, align } = anchor;
+    left = align === 'start' ? rect.left : rect.right - size.width;
+    top = rect.bottom + 4;
+    if (top + size.height > vh - MARGIN && rect.top - 4 - size.height >= MARGIN) top = rect.top - 4 - size.height;
+  }
+  if (left + size.width > vw - MARGIN) left = vw - MARGIN - size.width;
+  return { left: Math.max(MARGIN, left), top: Math.max(MARGIN, top) };
+}
+
+/** A submenu opens beside its item, on the side with room, top-aligned to it. */
+export function placeBeside(item: DOMRect, size: Size): Spot {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  let left = item.right + 2;
+  if (left + size.width > vw - MARGIN && item.left - 2 - size.width >= MARGIN) left = item.left - 2 - size.width;
+  let top = item.top - 5;
+  if (top + size.height > vh - MARGIN) top = Math.max(MARGIN, vh - MARGIN - size.height);
+  return { left: Math.max(MARGIN, left), top };
+}

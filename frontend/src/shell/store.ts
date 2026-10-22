@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { ActionItem, AppState, IncomingMessage, ProfileEntry } from '../bridge/messageTypes';
+import { summarizeRun, type LastRunSummary } from '../logic/useReplay';
 import {
   appStateReducer,
   clickerLiveReducer,
@@ -29,6 +30,24 @@ export interface ShellState {
   /** The step the run is executing, or null. */
   highlight: number | null;
   saved: SaveStatus | null;
+  /** The last finished run, from the report the engine pushes at the end of every run. */
+  lastRun: LastRunSummary | null;
+  runClock: RunClock;
+}
+
+/**
+ * When the recording or the run on now started, and how long Pause steps have held it. The engine
+ * keeps no clock for a macro run, so this one starts when its status reaches the page — within a
+ * frame of it — and a run's clock leaves out its pauses.
+ */
+export interface RunClock {
+  /** Date.now() when the status left 'ready'; 0 before the first run. */
+  startedAt: number;
+  pausedMs: number;
+  /** Date.now() when the pause on now began; 0 when none is. */
+  pausedSince: number;
+  /** A replay ended into 'ready' (not a recording): the state badge rings once for it. */
+  replayEnded: boolean;
 }
 
 export const useShell = create<ShellState>(() => ({
@@ -36,6 +55,8 @@ export const useShell = create<ShellState>(() => ({
   live: initialClickerLiveInternal,
   highlight: null,
   saved: null,
+  lastRun: null,
+  runClock: { startedAt: 0, pausedMs: 0, pausedSince: 0, replayEnded: false },
 }));
 
 /** One slice of the app state, re-rendering only when that slice changes. */
@@ -77,12 +98,14 @@ function flush() {
   if (queue.length === 0) return;
   const batch = queue.splice(0);
   const before = useShell.getState();
-  let { app, live, highlight, saved } = before;
+  let { app, live, highlight, saved, lastRun } = before;
   for (const message of batch) {
     app = appStateReducer(app, message);
     live = clickerLiveReducer(live, message);
     highlight = highlightReducer(highlight, message);
     if (message.type === 'profile:saved') saved = message.payload;
+    // A report asked for mid-run describes no finished run (summarizeRun says null): keep the last.
+    else if (message.type === 'replay:report') lastRun = summarizeRun(message.payload) ?? lastRun;
   }
   if (app.actions !== before.app.actions) {
     const actions = reconcile(before.app.actions, app.actions, stepId);
@@ -97,9 +120,24 @@ function flush() {
   if (app.profileOrder !== before.app.profileOrder && sameValue(before.app.profileOrder, app.profileOrder)) {
     app = { ...app, profileOrder: before.app.profileOrder };
   }
-  if (app !== before.app || live !== before.live || highlight !== before.highlight || saved !== before.saved) {
-    useShell.setState({ app, live, highlight, saved });
+  const runClock = clockOf(before.runClock, before.app, app);
+  if (app !== before.app || live !== before.live || highlight !== before.highlight || saved !== before.saved
+    || lastRun !== before.lastRun || runClock !== before.runClock) {
+    useShell.setState({ app, live, highlight, saved, lastRun, runClock });
   }
+}
+
+/** The run clock after a batch: started when the status leaves 'ready', paused while a Pause step holds. */
+function clockOf(clock: RunClock, before: AppState, app: AppState): RunClock {
+  const now = Date.now();
+  if (app.status !== before.status) {
+    if (app.status === 'ready') return { ...clock, pausedSince: 0, replayEnded: before.status === 'replaying' };
+    return { startedAt: now, pausedMs: 0, pausedSince: app.pauseState.isPaused ? app.pauseState.startedAt : 0, replayEnded: false };
+  }
+  const paused = app.status === 'replaying' && app.pauseState.isPaused;
+  if (paused && !clock.pausedSince) return { ...clock, pausedSince: app.pauseState.startedAt || now };
+  if (!paused && clock.pausedSince) return { ...clock, pausedMs: clock.pausedMs + Math.max(0, now - clock.pausedSince), pausedSince: 0 };
+  return clock;
 }
 
 const stepId = (step: ActionItem) => step.id;

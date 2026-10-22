@@ -58,6 +58,8 @@ export interface LastRunSummary {
    *  field falls back to the sum of step costs, which is the old, smaller number. */
   durationIsWallClock: boolean;
   outcome: 'completed' | 'stopped' | 'failed' | null;
+  /** When the run started (ISO), for "last run 14:02". */
+  startedAt: string;
 }
 
 /**
@@ -90,6 +92,7 @@ export function summarizeRun(r: RunReport): LastRunSummary | null {
     durationMs: dur.totalMs,
     durationIsWallClock: dur.wallClock,
     outcome: r.outcome ?? null,
+    startedAt: r.startedAt,
   };
 }
 
