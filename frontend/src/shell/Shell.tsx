@@ -1,6 +1,7 @@
 import { TooltipLayer } from '../components/common/TooltipLayer';
+import { Toast } from '../components/Toast';
 import { Inspector } from './Inspector';
-import { Library } from './Library';
+import { Library } from './library/Library';
 import { MacroHeader } from './MacroHeader';
 import { Rail } from './Rail';
 import { StatusBar } from './StatusBar';
@@ -27,6 +28,7 @@ export function Shell() {
         <Inspector />
       </div>
       <StatusBar />
+      <Toast />
       <TooltipLayer />
     </div>
   );

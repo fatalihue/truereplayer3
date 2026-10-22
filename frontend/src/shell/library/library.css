@@ -1,0 +1,486 @@
+/* ③ The macro library. Sizes from the concept's Main and SendText boards, in rem (rule 9); colours
+   are theme tokens only. The library has two forms: the panel, and folded into a column of avatars
+   (below 1280 px, or folded by hand). Library.tsx renders one or the other. */
+
+.shell-library {
+  position: relative;
+  width: 15.5rem;
+  min-height: 0;
+  border-right: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-surface);
+}
+.shell-library[data-folded] { width: 3rem; }
+
+/* ── The panel ── */
+.lib-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--color-bg-surface);
+}
+/* Folded by the window and opened for a moment: the panel lies over the steps. */
+.lib-panel[data-peek] {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 15.5rem;
+  z-index: var(--z-floating-panel);
+  border-right: 1px solid var(--color-border-default);
+  box-shadow: var(--shadow-overlay);
+}
+
+.lib-header {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: var(--spacing-band);
+  flex: none;
+  padding: 0 0.5rem 0 1rem;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.lib-title { flex: 1; min-width: 0; font-size: var(--text-body); font-weight: 600; color: var(--color-text-primary); }
+.lib-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: 1.75rem;
+  padding: 0 0.375rem 0 0.5rem;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: var(--text-minor);
+}
+.lib-new svg { width: 0.875rem; height: 0.875rem; }
+.lib-new svg:last-child { width: 0.75rem; height: 0.75rem; color: var(--color-text-tertiary); }
+.lib-icon-button {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex: none;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-tertiary);
+}
+.lib-icon-button svg { width: 1rem; height: 1rem; }
+.lib-new:hover,
+.lib-icon-button:hover { background: var(--color-bg-card); color: var(--color-text-primary); }
+.lib-icon-button[aria-expanded='true'],
+.lib-new[aria-expanded='true'] { background: var(--color-bg-card); color: var(--color-text-primary); }
+
+.lib-search { padding: 0.625rem 0.625rem 0.375rem; flex: none; }
+.lib-search-field {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 2rem;
+  padding: 0 0.25rem 0 0.5rem;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-input);
+  color: var(--color-text-tertiary);
+}
+.lib-search-field:focus-within { border-color: var(--color-accent-solid); }
+.lib-search-field[data-tags] { border-color: color-mix(in srgb, var(--color-accent-solid) 50%, transparent); }
+.lib-search-field[data-tags] > svg { color: var(--color-accent); }
+.lib-search-field > svg { width: 0.875rem; height: 0.875rem; flex: none; }
+.lib-search-field input {
+  flex: 1;
+  min-width: 0;
+  height: 1.75rem;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: var(--text-body);
+}
+.lib-search-field input::placeholder { color: var(--color-text-tertiary); }
+.lib-search-clear {
+  display: grid;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-tertiary);
+}
+.lib-search-clear svg { width: 0.75rem; height: 0.75rem; }
+.lib-search-clear:hover { color: var(--color-text-primary); }
+
+.lib-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.25rem 0.5rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+.lib-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 1.625rem;
+  flex: none;
+  padding: 0 0.5rem;
+  font-size: var(--text-minor);
+  font-weight: 600;
+  color: var(--color-text-tertiary);
+}
+.lib-heading svg { width: 0.75rem; height: 0.75rem; }
+.lib-heading[data-after] { margin-top: 0.625rem; }
+.lib-loose { display: flex; flex-direction: column; gap: 0.125rem; border-radius: var(--radius-overlay); }
+.lib-loose[data-drop] { outline: 2px solid color-mix(in srgb, var(--color-accent-solid) 50%, transparent); background: color-mix(in srgb, var(--color-accent-solid) 12%, transparent); }
+
+/* A macro. */
+.lib-macro {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  height: 1.875rem;
+  flex: none;
+  padding: 0 0.375rem 0 0.625rem;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  text-align: left;
+  user-select: none;
+  /* Rule 7, as in the step list: a row off screen skips layout and paint. Its height is fixed, so
+     the placeholder size is exact. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 1.875rem;
+}
+.lib-macro:hover { background: var(--color-bg-elevated); }
+.lib-macro[aria-current='true'] { background: color-mix(in srgb, var(--color-accent) 12%, transparent); }
+.lib-macro[aria-current='true']::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.4375rem;
+  bottom: 0.4375rem;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--color-accent);
+}
+.lib-macro[aria-current='true'] .lib-name { font-weight: 600; }
+.lib-macro[data-disabled] { opacity: 0.45; }
+.lib-macro[aria-disabled='true'] { cursor: default; }
+.lib-macro[data-dragging] { opacity: 0.5; }
+.lib-folder .lib-macro { padding-left: 1.75rem; }
+
+.lib-macro-icon {
+  display: grid;
+  place-items: center;
+  width: 0.9375rem;
+  height: 0.9375rem;
+  flex: none;
+  color: var(--color-text-tertiary);
+}
+.lib-macro-icon svg { width: 0.9375rem; height: 0.9375rem; }
+.lib-macro-icon img { width: 0.875rem; height: 0.875rem; object-fit: contain; }
+.lib-macro-icon [data-inherited] { opacity: 0.55; }
+/* The document and window glyphs (the lucide File and AppWindow shapes) as a mask over the text
+   colour: one element per row instead of an SVG tree. */
+.lib-glyph {
+  display: block;
+  width: 0.9375rem;
+  height: 0.9375rem;
+  background: currentColor;
+  -webkit-mask: var(--glyph) center / contain no-repeat;
+  mask: var(--glyph) center / contain no-repeat;
+}
+.lib-glyph[data-glyph='doc'] {
+  --glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z'/%3E%3Cpath d='M14 2v4a2 2 0 0 0 2 2h4'/%3E%3C/svg%3E");
+}
+.lib-glyph[data-glyph='window'] {
+  --glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='4' width='20' height='16' rx='2'/%3E%3Cpath d='M2 8h20'/%3E%3Cpath d='M6 4v4'/%3E%3C/svg%3E");
+}
+.lib-macro-icon .lib-emoji { font-size: 0.8125rem; line-height: 1; }
+
+/* The name: a long one is cut in the MIDDLE, so the end of it — where sibling macros differ
+   ("SET Crit 1", "SET Crit 2") — stays on screen. */
+.lib-name { flex: 1; min-width: 0; display: flex; white-space: pre; }
+.lib-name-head { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.lib-name-tail { flex: none; }
+
+.lib-armed {
+  width: 0.375rem;
+  height: 0.375rem;
+  flex: none;
+  border-radius: 50%;
+  background: var(--color-replay);
+}
+.lib-mode { display: flex; flex: none; color: var(--color-text-tertiary); }
+.lib-mode svg { width: 0.75rem; height: 0.75rem; }
+.lib-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1875rem;
+  flex: none;
+  max-width: 6.5rem;
+  overflow: hidden;
+  padding: 0 0.3125rem;
+  border: 1px solid var(--color-hotkey-border);
+  border-radius: var(--radius-control);
+  background: var(--color-hotkey-bg);
+  color: var(--color-hotkey-fg);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  line-height: 1rem;
+  white-space: nowrap;
+}
+.lib-chip svg { width: 0.625rem; height: 0.625rem; flex: none; }
+/* Cut at the start: right-to-left only for the overflow, so the ellipsis lands on the left and
+   the key at the end stays. The combo itself is left-to-right text and keeps its order. */
+.lib-chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; }
+.lib-chip[data-hotstring] {
+  border-color: color-mix(in srgb, var(--color-warning) 30%, transparent);
+  background: color-mix(in srgb, var(--color-warning) 10%, transparent);
+  color: var(--color-warning-ink);
+}
+.lib-chip[data-conflict] {
+  border-color: color-mix(in srgb, var(--color-recording) 45%, transparent);
+  background: color-mix(in srgb, var(--color-recording) 12%, transparent);
+  color: var(--color-recording-fg);
+}
+.lib-macro[data-disabled] .lib-chip {
+  border-color: var(--color-border-default);
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
+/* A folder: a card, its header and its macros. */
+.lib-folder {
+  flex: none;
+  margin-top: 0.25rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-overlay);
+  background: color-mix(in srgb, var(--color-bg-card) 60%, var(--color-bg-surface));
+}
+.lib-heading + .lib-folder,
+.lib-macro + .lib-folder { margin-top: 0.5rem; }
+.lib-folder[data-collapsed] { border-color: color-mix(in srgb, var(--color-border-subtle) 55%, transparent); }
+.lib-folder[data-drop] {
+  border-color: color-mix(in srgb, var(--color-accent-solid) 50%, transparent);
+  background: color-mix(in srgb, var(--color-accent-solid) 14%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--color-accent-solid) 50%, transparent);
+}
+.lib-folder[data-dragging] { opacity: 0.5; }
+.lib-folder-header {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  width: 100%;
+  height: 1.875rem;
+  padding: 0 0.5rem;
+  border: 0;
+  border-radius: var(--radius-overlay);
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  text-align: left;
+  user-select: none;
+}
+.lib-folder[data-collapsed] .lib-folder-header { height: 1.875rem; }
+.lib-folder-header:hover { background: var(--color-bg-elevated); }
+.lib-folder-header > svg { width: 0.875rem; height: 0.875rem; flex: none; color: var(--color-text-tertiary); }
+.lib-folder-header > .lib-folder-icon { width: 0.9375rem; height: 0.9375rem; color: var(--folder-color); }
+.lib-folder-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.lib-folder[data-off] .lib-folder-name { color: var(--color-text-disabled); }
+.lib-folder[data-off] .lib-folder-icon { opacity: 0.45; }
+.lib-folder-target { width: 0.875rem; height: 0.875rem; flex: none; object-fit: contain; }
+.lib-folder-count { flex: none; font-size: var(--text-caption); color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
+.lib-folder-body { display: flex; flex-direction: column; gap: 0.125rem; padding: 0.125rem 0 0.25rem; }
+/* The folder's own "+ New macro": its room is always kept, so a hover never pushes the folders
+   below it down; it shows on hover, and always in an empty folder, where it is the folder's body. */
+.lib-new-in-folder {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 1.5rem;
+  padding: 0 0.5rem 0 1.75rem;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-tertiary);
+  font: inherit;
+  font-size: var(--text-caption);
+  text-align: left;
+  opacity: 0;
+}
+.lib-new-in-folder svg { width: 0.75rem; height: 0.75rem; color: var(--folder-color); }
+.lib-folder:hover .lib-new-in-folder,
+.lib-new-in-folder:focus-visible,
+.lib-new-in-folder[data-always] { opacity: 1; }
+.lib-new-in-folder:hover { background: var(--color-bg-elevated); color: var(--color-text-secondary); }
+
+/* Where a dragged folder will land. */
+.lib-drop-gap {
+  flex: none;
+  height: 1.875rem;
+  margin: 0.25rem 0;
+  border: 2px dashed color-mix(in srgb, var(--color-accent) 45%, transparent);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+}
+
+.lib-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 2rem 0.75rem;
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: var(--text-minor);
+}
+.lib-empty svg { width: 1.375rem; height: 1.375rem; color: var(--color-text-disabled); }
+.lib-link {
+  border: 0;
+  background: transparent;
+  color: var(--color-accent);
+  font: inherit;
+  font-size: var(--text-caption);
+}
+.lib-link:hover { color: var(--color-accent-hover); }
+
+/* The card that follows the pointer while dragging. Moved by transform only (rule 8). */
+.lib-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: var(--z-topmost);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.625rem;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-overlay);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-overlay), 0 0 0 1px color-mix(in srgb, var(--color-accent) 35%, transparent);
+  color: var(--color-text-primary);
+  font-size: var(--text-caption);
+  font-weight: 500;
+  opacity: 0.9;
+  pointer-events: none;
+  will-change: transform;
+}
+.lib-ghost svg { width: 0.75rem; height: 0.75rem; color: var(--color-accent); }
+
+/* ── Folded: a column of avatars ── */
+.lib-folded {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.375rem;
+  height: 100%;
+  min-height: 0;
+  padding: 0.625rem 0;
+}
+.lib-folded-divider { width: 1.75rem; height: 1px; flex: none; margin: 0.125rem 0; background: var(--color-border-subtle); }
+.lib-avatars {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.375rem;
+  overflow: hidden;
+}
+.lib-avatar {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  border: 1px solid var(--color-border-default);
+  border-radius: 50%;
+  background: var(--color-bg-elevated);
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: var(--text-caption);
+  font-weight: 600;
+}
+.lib-avatar[data-folder] { border-color: color-mix(in srgb, var(--folder-color) 50%, transparent); }
+.lib-avatar[data-conflict] { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--color-recording) 60%, transparent); }
+.lib-avatar[aria-current='true'] {
+  border: 2px solid var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  color: var(--color-text-primary);
+  font-weight: 700;
+  box-shadow: none;
+}
+.lib-avatar[data-disabled] { opacity: 0.45; }
+.lib-avatar:hover { background: var(--color-bg-card); }
+.lib-avatar[aria-current='true']:hover { background: color-mix(in srgb, var(--color-accent) 22%, transparent); }
+.lib-avatar img { width: 1.125rem; height: 1.125rem; object-fit: contain; pointer-events: none; }
+.lib-avatar img[data-inherited] { opacity: 0.55; }
+.lib-avatar .lib-emoji { font-size: 0.9375rem; line-height: 1; }
+.lib-avatar[data-long] { font-size: 0.625rem; letter-spacing: -0.02em; }
+.lib-avatar .lib-armed {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 0.5rem;
+  height: 0.5rem;
+  border: 2px solid var(--color-bg-surface);
+  box-sizing: content-box;
+}
+.lib-more {
+  flex: none;
+  margin-top: 0.125rem;
+  padding: 0.125rem 0.375rem;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-tertiary);
+  font: inherit;
+  font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+}
+.lib-more:hover { background: var(--color-bg-elevated); color: var(--color-text-primary); }
+.lib-more[data-conflict] { color: var(--color-recording-fg); }
+
+/* ── Folder colours (New folder, and the folder menu's Color ▸) ── */
+.lib-colors { display: grid; grid-template-columns: repeat(8, 1fr); gap: 0.375rem; }
+.lib-colors[data-menu] { width: 13.25rem; padding: 0.625rem; }
+.lib-color {
+  position: relative;
+  aspect-ratio: 1;
+  width: 100%;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: var(--swatch);
+}
+.lib-color[aria-pressed='true'],
+.lib-color[aria-current='true'] { box-shadow: 0 0 0 2px var(--color-bg-card), 0 0 0 4px var(--color-text-primary); }
+.lib-color svg { position: absolute; inset: 0; margin: auto; width: 0.75rem; height: 0.75rem; color: var(--swatch-ink); }
+html[data-animations='true'] .lib-color:hover { transform: scale(1.1); }
+
+.lib-folder-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.875rem;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  font-size: var(--text-minor);
+  font-weight: 500;
+}
+.lib-folder-preview svg { width: 0.8125rem; height: 0.8125rem; color: var(--folder-color); flex: none; }
+.lib-folder-preview span:first-of-type { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib-folder-preview span:last-child { color: var(--color-text-disabled); font-size: var(--text-caption); }

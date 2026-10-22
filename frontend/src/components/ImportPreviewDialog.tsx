@@ -151,7 +151,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
     },
     {
       value: 'overwrite', label: 'Overwrite', icon: <Replace size={iconSize} />,
-      tip: withTips ? tt('Replaces your local profile', 'Substitui o seu perfil local') : undefined,
+      tip: withTips ? tt('Replaces your local macro', 'Substitui o seu macro local') : undefined,
     },
     {
       value: 'skip', label: 'Skip', icon: <Ban size={iconSize} />,
@@ -162,7 +162,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
   return (
     <DialogShell
       icon={<Download size={14} style={{ color: 'var(--color-accent)' }} />}
-      title="Import profiles"
+      title="Import macros"
       // max-h keeps the review list scrollable inside the card on short windows
       // (the profile list below is the flex-1 overflow-y-auto region).
       size="xl"
@@ -198,7 +198,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
             <span className="text-text-secondary font-medium truncate">{preview.fileName}</span>
           </div>
           <div className="mt-1 text-minor text-text-secondary flex flex-wrap items-center gap-x-3 gap-y-0.5">
-            <span>{preview.profiles.length} profile{preview.profiles.length === 1 ? '' : 's'}</span>
+            <span>{preview.profiles.length} macro{preview.profiles.length === 1 ? '' : 's'}</span>
             {conflictCountAll > 0 && (
               <span
                 className="text-warning-ink flex items-center gap-1"
@@ -416,7 +416,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
                               d.status === 'inEnvelope'
                                 ? tt('Bundled — imported alongside', 'Incluído — importado junto')
                                 : d.status === 'localOnly'
-                                  ? tt('Not in the file — uses your local profile', 'Fora do arquivo — usa o seu perfil local')
+                                  ? tt('Not in the file — uses your local macro', 'Fora do arquivo — usa o seu macro local')
                                   : tt('Missing here and locally — the step does nothing', 'Não existe aqui nem localmente — o passo não faz nada')
                             }
                             // Both hues use their DERIVED ink, not the raw token: this is 10px
@@ -455,7 +455,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
 
                   {/* Z4 — scale, demoted to the last line in tertiary. */}
                   <div className="mt-1 text-caption text-text-tertiary flex items-center gap-3 flex-wrap">
-                    <span>{p.actionCount} action{p.actionCount === 1 ? '' : 's'}</span>
+                    <span>{p.actionCount} step{p.actionCount === 1 ? '' : 's'}</span>
                     {!!p.imageCount && (
                       <span>{p.imageCount} image{p.imageCount === 1 ? '' : 's'}</span>
                     )}

@@ -59,7 +59,7 @@ export function SecurityWarningModal({ fileName, profileCount, onContinue, onCan
             <span className="text-text-secondary font-medium truncate">{fileName}</span>
             {profileCount !== undefined && (
               <span className="text-caption text-text-tertiary shrink-0">
-                · {profileCount} profile{profileCount === 1 ? '' : 's'}
+                · {profileCount} macro{profileCount === 1 ? '' : 's'}
               </span>
             )}
           </div>
@@ -68,7 +68,7 @@ export function SecurityWarningModal({ fileName, profileCount, onContinue, onCan
         {/* The danger facts get the DS warning band (left rule + translucent tint) —
             visually marked without shouting. */}
         <div className="warning-band text-minor text-text-secondary leading-relaxed pl-3 py-2 rounded-r">
-          Imported profiles can:
+          Imported macros can:
           <ul className="mt-1.5 ml-4 space-y-1 list-disc text-text-tertiary">
             <li>Click anywhere on screen</li>
             <li>Type any text (including passwords if a password field is focused)</li>

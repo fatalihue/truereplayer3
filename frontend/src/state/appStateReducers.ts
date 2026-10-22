@@ -161,7 +161,9 @@ export function appStateReducer(state: AppState, message: IncomingMessage): AppS
     case 'automation:state':
       return { ...state, automation: message.payload ?? state.automation };
     case 'profiles:updated':
-      return { ...state, profiles: message.payload.profiles, activeProfile: message.payload.activeProfile, profileOrder: message.payload.profileOrder ?? state.profileOrder };
+      // `?? null`: the engine leaves null properties out of its JSON, so with no macro open the
+      // payload has no activeProfile at all — undefined, which a `!== null` check reads as open.
+      return { ...state, profiles: message.payload.profiles, activeProfile: message.payload.activeProfile ?? null, profileOrder: message.payload.profileOrder ?? state.profileOrder };
     case 'settings:loaded': {
       // Deep-merge over defaults (mirrors state:init) so a partial/version-skewed payload
       // that drops a field can't make settings.* undefined and crash downstream reads.

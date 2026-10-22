@@ -1172,6 +1172,20 @@ export const themes: ThemePreset[] = [
 
 export const DEFAULT_THEME_ID = 'lavender-coal';
 
+// The 24 tones a folder can wear, as a colour wheel in three rows of eight (the library's folder
+// colour picker). Picker options only: a folder keeps whatever colour its file has. They are the
+// folders' own data, like a tag colour, not theme tokens — and this file is where literal colours
+// live, so the lint gate's colour rule leaves them alone here.
+export const FOLDER_COLORS = [
+  '#f43f5e', '#ff6b6b', '#fb923c', '#f59e0b', '#d4a020', '#ffd93d', '#84cc16', '#9a9a3e',
+  '#22c55e', '#6bcb77', '#4dd0a0', '#14b8a6', '#06b6d4', '#60cdff', '#42a5f5', '#3b82f6',
+  '#5d5fd1', '#a78bfa', '#c084fc', '#e879f9', '#ef5da8', '#f472b6', '#b3814e', '#7a8599',
+];
+export const DEFAULT_FOLDER_COLOR = '#60cdff';
+// The check on the chosen swatch: dark on a light tone, white on a dark one. Fixed, because the
+// swatches are fixed — they do not follow the theme either.
+export const SWATCH_CHECK_INK = { onLight: 'rgba(0, 0, 0, 0.72)', onDark: '#fff' };
+
 // Where each preset retired by the 2026-08 curation lands: its closest surviving
 // relative (same hue family / same vibe). Consumed by the v6 migration in
 // loadThemeConfig so a stored id keeps resolving to something familiar instead of

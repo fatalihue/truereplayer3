@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ActionItem, AppState, IncomingMessage } from '../bridge/messageTypes';
+import type { ActionItem, AppState, IncomingMessage, ProfileEntry } from '../bridge/messageTypes';
 import {
   appStateReducer,
   clickerLiveReducer,
@@ -50,12 +50,17 @@ export function useApp<T>(select: (app: AppState) => T): T {
 const queue: IncomingMessage[] = [];
 let frame = 0;
 let timer = 0;
+/** The first state:init has been applied: the launch is over. */
+let started = false;
 
 export function receive(message: IncomingMessage) {
   queue.push(message);
   // The whole state at launch, onto an empty screen: nothing to batch it with, and the user is
   // waiting for exactly this (measured: waiting for the first frame cost ~50 ms of the launch).
-  if (message.type === 'state:init') {
+  // Before it, the engine sends the library on its own, ~14 ms ahead of state:init (measured in
+  // the real app): that goes on screen at once too, and state:init then finds the same macros.
+  if (message.type === 'state:init' || (!started && message.type === 'profiles:updated')) {
+    if (message.type === 'state:init') started = true;
     flush();
     return;
   }
@@ -80,27 +85,43 @@ function flush() {
     if (message.type === 'profile:saved') saved = message.payload;
   }
   if (app.actions !== before.app.actions) {
-    const actions = reconcile(before.app.actions, app.actions);
+    const actions = reconcile(before.app.actions, app.actions, stepId);
     if (actions !== app.actions) app = { ...app, actions };
+  }
+  // The library comes whole too, on every switch and every edit of a macro's settings: a macro
+  // equal to the one it had keeps its object, so only the rows that changed re-render.
+  if (app.profiles !== before.app.profiles) {
+    const profiles = reconcile(before.app.profiles, app.profiles, macroName);
+    if (profiles !== app.profiles) app = { ...app, profiles };
+  }
+  if (app.profileOrder !== before.app.profileOrder && sameValue(before.app.profileOrder, app.profileOrder)) {
+    app = { ...app, profileOrder: before.app.profileOrder };
   }
   if (app !== before.app || live !== before.live || highlight !== before.highlight || saved !== before.saved) {
     useShell.setState({ app, live, highlight, saved });
   }
 }
 
+const stepId = (step: ActionItem) => step.id;
+const macroName = (entry: ProfileEntry) => entry.name;
+
 /**
- * The engine sends the whole list on every change (rule 5 keeps that). A step equal to the one it
+ * The engine sends the whole list on every change (rule 5 keeps that). An item equal to the one it
  * had keeps its old object, so its row — memoized by the React Compiler — does not re-render; and a
  * list where nothing changed keeps its old array, so the list does not either.
  */
-function reconcile(before: ActionItem[], next: ActionItem[]): ActionItem[] {
+function reconcile<T>(before: T[], next: T[], key: (item: T) => string | undefined): T[] {
   if (before.length === 0 || next.length === 0) return next;
-  const byId = new Map<string, ActionItem>();
-  for (const step of before) if (step.id) byId.set(step.id, step);
+  const byKey = new Map<string, T>();
+  for (const item of before) {
+    const k = key(item);
+    if (k) byKey.set(k, item);
+  }
   let unchanged = next.length === before.length;
-  const out = next.map((step, i) => {
-    const old = step.id ? byId.get(step.id) : undefined;
-    const kept = old && sameValue(old, step) ? old : step;
+  const out = next.map((item, i) => {
+    const k = key(item);
+    const old = k ? byKey.get(k) : undefined;
+    const kept = old && sameValue(old, item) ? old : item;
     if (kept !== before[i]) unchanged = false;
     return kept;
   });

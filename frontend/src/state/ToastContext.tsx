@@ -153,13 +153,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         const p = msg.payload;
         const partial = p.exportedCount < p.requestedCount;
         let m = partial
-          ? `Exported ${p.exportedCount} of ${p.requestedCount} profile(s)`
-          : `Exported ${p.exportedCount} profile(s)`;
+          ? `Exported ${p.exportedCount} of ${p.requestedCount} macro(s)`
+          : `Exported ${p.exportedCount} macro(s)`;
         if (p.fileName) m += ` to ${p.fileName}`;
         m += '.';
         if (partial) m += ` ${p.requestedCount - p.exportedCount} could not be loaded.`;
         if (p.bundledDependencies.length > 0)
-          m += ` Included ${p.bundledDependencies.length} referenced sub-profile(s): ${p.bundledDependencies.join(', ')}.`;
+          m += ` Included ${p.bundledDependencies.length} macro(s) they run: ${p.bundledDependencies.join(', ')}.`;
         if (p.missingImages > 0) m += ` ${p.missingImages} reference image(s) were missing and not included.`;
         const hasDisclosures = partial || p.bundledDependencies.length > 0 || p.missingImages > 0;
         showToast(m, {

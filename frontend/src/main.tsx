@@ -7,6 +7,7 @@ import { Shell } from './shell/Shell'
 import { ShellBridge } from './shell/ShellBridge'
 import { LanguageProvider } from './state/LanguageContext'
 import { ThemeProvider } from './state/ThemeContext'
+import { ToastProvider } from './state/ToastContext'
 import { applyThemeConfig, loadCustomPresets, loadThemeConfig, resolveThemeColors } from './themes'
 
 // The theme's TOKENS go on <html> before the first render; data-animations stays off until
@@ -44,9 +45,12 @@ createRoot(document.getElementById('root')!).render(
         <BridgeProvider capabilities={CAPABILITIES}>
           <ShellBridge>
             <LanguageProvider>
-              <ErrorBoundary>
-                <Shell />
-              </ErrorBoundary>
+              {/* The engine's notices (alert:show) and the export result come through the toasts. */}
+              <ToastProvider>
+                <ErrorBoundary>
+                  <Shell />
+                </ErrorBoundary>
+              </ToastProvider>
             </LanguageProvider>
           </ShellBridge>
         </BridgeProvider>

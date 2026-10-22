@@ -106,7 +106,7 @@ export function ImportResultDialog({ result, onClose }: ImportResultDialogProps)
                   won, so the imported profiles act on a DIFFERENT window than authored. */}
               {result.keptLocalFolderTargets.length > 0 && (
                 <p className="warning-band pl-2.5 py-1.5 rounded-r">
-                  Kept your existing window target on folder(s): <span className="font-medium">{result.keptLocalFolderTargets.join(', ')}</span> — the imported profiles there will use <span className="font-medium">your</span> target, not the sender's.
+                  Kept your existing window target on folder(s): <span className="font-medium">{result.keptLocalFolderTargets.join(', ')}</span> — the imported macros there will use <span className="font-medium">your</span> target, not the sender's.
                 </p>
               )}
             </div>

@@ -53,7 +53,9 @@
    reaches the narrower layouts at a wider window. ── */
 .shell-body {
   display: grid;
-  grid-template-columns: 3.5rem 16rem minmax(0, 1fr) 22.5rem;
+  /* The library's column is as wide as the library says: 15.5 rem open, 3 rem folded (by the
+     window or by hand, library.css). */
+  grid-template-columns: 3.5rem auto minmax(0, 1fr) 22.5rem;
   min-height: 0;
   position: relative;
 }
@@ -93,82 +95,31 @@
   white-space: nowrap;
 }
 
-/* ── ③ Library ── */
-.shell-library {
-  min-height: 0;
-  border-right: 1px solid var(--color-border-subtle);
-  background: var(--color-bg-surface);
+/* ③ The library's own rules are in library/library.css. */
+
+/* ── Menus (Menu.tsx): the menu-surface and menu-item recipes, with the shell's icon sizes ── */
+.shell-menu-layer { position: fixed; inset: 0 auto auto 0; z-index: var(--z-submenu); }
+.shell-menu {
+  position: fixed;
+  min-width: 11.25rem;
+  max-width: 20rem;
+  max-height: calc(100vh - 1rem);
+  overflow-y: auto;
+  padding: 0.25rem 0;
+  outline: none;
 }
-.shell-library-scroll { height: 100%; overflow-y: auto; padding: 0.5rem; }
-.shell-library-heading {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  margin: 0.5rem 0.375rem 0.25rem;
-  font-size: var(--text-caption);
-  font-weight: 500;
-  color: var(--color-text-tertiary);
-}
-.shell-library-heading svg { width: 0.75rem; height: 0.75rem; }
-.shell-folder { margin-top: 0.25rem; }
-.shell-folder-header,
-.shell-macro {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  width: 100%;
-  min-height: 2rem;
-  padding: 0 0.5rem;
-  border: 0;
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--color-text-secondary);
-  font: inherit;
-  text-align: left;
-}
-.shell-folder-header svg { width: 0.875rem; height: 0.875rem; flex: none; color: var(--color-text-icon); }
-.shell-folder-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; flex: none; background: var(--folder-color, var(--color-text-tertiary)); }
-.shell-folder-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
-.shell-folder-count { font-size: var(--text-caption); color: var(--color-text-tertiary); }
-.shell-folder .shell-macro { padding-left: 1.75rem; }
-.shell-folder-header:hover,
-.shell-macro:hover { background: var(--color-bg-elevated); }
-.shell-macro[aria-current='true'] {
-  color: var(--color-text-primary);
-  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
-}
-.shell-macro[data-disabled] { color: var(--color-text-disabled); }
-.shell-macro-icon {
-  display: grid;
-  place-items: center;
-  width: 1.375rem;
-  height: 1.375rem;
-  flex: none;
-  border-radius: var(--radius-control);
-  background: var(--color-bg-elevated);
-  font-size: var(--text-caption);
-}
-.shell-macro-initials {
-  display: none;
-  place-items: center;
-  min-width: 2.375rem;
-  height: 1.5rem;
-  padding: 0 0.25rem;
-  border-radius: var(--radius-control);
-  background: var(--color-bg-elevated);
-  font-size: var(--text-caption);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.shell-macro-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.shell-macro-key {
-  flex: none;
-  padding: 0 0.25rem;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-control);
-  font-size: var(--text-caption);
-  color: var(--color-text-tertiary);
-}
+.shell-menu-item { color: var(--color-text-primary); }
+.shell-menu-item[data-danger] { color: var(--color-recording-fg); }
+.shell-menu-item:disabled { color: var(--color-text-disabled); }
+.shell-menu-item:focus-visible { outline: none; background: var(--color-bg-elevated); }
+.shell-menu-icon { display: grid; place-items: center; width: 0.875rem; height: 0.875rem; flex: none; color: var(--color-text-tertiary); }
+.shell-menu-item[data-danger] .shell-menu-icon { color: inherit; }
+.shell-menu-icon svg { width: 0.8125rem; height: 0.8125rem; }
+.shell-menu-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shell-menu-end { width: 0.75rem; height: 0.75rem; flex: none; margin-left: auto; color: var(--color-text-tertiary); }
+.shell-menu-item[aria-current='true'] { color: var(--color-accent); }
+.shell-menu-item[aria-current='true'] .shell-menu-end { color: inherit; }
+.shell-menu-separator { height: 1px; margin: 0.25rem 0; background: var(--color-border-subtle); }
 
 /* ── Main: ④ macro header and ⑦ steps ── */
 .shell-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
@@ -266,19 +217,11 @@
 }
 
 /* ── The five bands ── */
-/* 1024–1279: the library folds into icons. */
-@container shell (max-width: 79.99rem) {
-  .shell-body { grid-template-columns: 3.5rem 3.5rem minmax(0, 1fr) 22.5rem; }
-  .shell-library-scroll { padding: 0.5rem 0.375rem; }
-  .shell-macro, .shell-folder .shell-macro { justify-content: center; padding: 0; }
-  .shell-macro-icon, .shell-macro-name, .shell-macro-key, .shell-library-heading, .shell-folder-name, .shell-folder-count { display: none; }
-  .shell-macro-initials { display: grid; }
-  .shell-folder-header { justify-content: center; padding: 0; }
-}
+/* 1024–1279: the library folds into avatars (Library.tsx renders that form from useShellBand). */
 /* 760–1023: the Inspector lies over the list instead of beside it, and only while it has a step
    to show (data-open, from slice 6). */
 @container shell (max-width: 63.99rem) {
-  .shell-body { grid-template-columns: 3.5rem 3.5rem minmax(0, 1fr); }
+  .shell-body { grid-template-columns: 3.5rem auto minmax(0, 1fr); }
   .shell-inspector {
     position: absolute;
     inset: 0 0 0 auto;

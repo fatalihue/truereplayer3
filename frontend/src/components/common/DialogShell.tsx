@@ -60,11 +60,13 @@ export const PANEL_MAX_WIDTH = 'max-w-none';
  */
 export type DialogSize = 'sm' | 'md' | 'lg' | 'xl' | 'full' | 'auto';
 
+// In rem, so a dialog grows with the interface's scale like everything else in the new shell
+// (rule 9): 22.5rem is the 360 px of the 100 % scale.
 const SIZE_CLASSES: Record<DialogSize, string> = {
-  sm: 'w-[360px]',
-  md: 'w-[440px]',
-  lg: 'w-[560px]',
-  xl: 'w-[720px]',
+  sm: 'w-[22.5rem]',
+  md: 'w-[27.5rem]',
+  lg: 'w-[35rem]',
+  xl: 'w-[45rem]',
   full: PANEL_SIZE,
   auto: 'w-auto',
 };
@@ -100,13 +102,13 @@ export function DialogFooter({ secondary, extra, primary, danger = false }: {
   return (
     <>
       {secondary && (
-        <Button variant="secondary" size="md" className={`min-w-[84px] ${secondary.className ?? ''}`} onClick={secondary.onClick} disabled={secondary.disabled} data-tip={secondary.tip} autoFocus={secondary.autoFocus}>
+        <Button variant="secondary" size="md" className={`min-w-[5.25rem] ${secondary.className ?? ''}`} onClick={secondary.onClick} disabled={secondary.disabled} data-tip={secondary.tip} autoFocus={secondary.autoFocus}>
           {secondary.label}
         </Button>
       )}
       {extra}
       {primary && (
-        <Button variant={danger ? 'destructive' : 'primary'} size="md" className={`min-w-[84px] ${primary.className ?? ''}`} onClick={primary.onClick} disabled={primary.disabled} data-tip={primary.tip} autoFocus={primary.autoFocus}>
+        <Button variant={danger ? 'destructive' : 'primary'} size="md" className={`min-w-[5.25rem] ${primary.className ?? ''}`} onClick={primary.onClick} disabled={primary.disabled} data-tip={primary.tip} autoFocus={primary.autoFocus}>
           {primary.label}
         </Button>
       )}
