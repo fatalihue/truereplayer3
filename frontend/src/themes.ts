@@ -1924,9 +1924,10 @@ export function applyThemeConfig(colors: ThemeColors, uiSettings: ThemeUISetting
     for (let n = 1; n <= 4; n++) parts.push(`--color-block-${n}: var(--color-block-${n}-light);`);
   }
   // Layout
-  parts.push(`--ui-font-size: ${uiSettings.fontSize}px;`);
-  parts.push(`--ui-border-radius: ${uiSettings.borderRadius}px;`);
-  parts.push(`--ui-row-height: ${uiSettings.rowHeight}px;`);
+  // In rem (the settings are px at 100 %), so they follow the scale like everything else.
+  parts.push(`--ui-font-size: ${uiSettings.fontSize / 16}rem;`);
+  parts.push(`--ui-border-radius: ${uiSettings.borderRadius / 16}rem;`);
+  parts.push(`--ui-row-height: ${uiSettings.rowHeight / 16}rem;`);
   // Semantic colors + auto-derived backgrounds
   parts.push(`--color-recording: ${uiSettings.recordingColor};`);
   parts.push(`--color-recording-bg: color-mix(in srgb, ${uiSettings.recordingColor} 10%, transparent);`);
@@ -2054,38 +2055,30 @@ export function applyThemeConfig(colors: ThemeColors, uiSettings: ThemeUISetting
   parts.push(lightSurface
     ? `--shadow-overlay: 0 6px 20px rgba(20, 30, 50, 0.14); --shadow-dialog: 0 16px 40px rgba(20, 30, 50, 0.2);`
     : `--shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.45); --shadow-dialog: 0 16px 48px rgba(0, 0, 0, 0.55);`);
-  // The zoom as a NUMBER, mirroring root.style.zoom below. `zoom` on <html> scales
-  // everything it paints, but viewport units still resolve against the UNZOOMED viewport —
-  // so `height: 100vh` paints at only `100vh * zoom` and can never fill the window (at the
-  // default 90 % it tops out at 90 % of it, and at zoom 200 % it would paint at DOUBLE the
-  // window height and clip). Anything that wants a real fraction of the visible window has
-  // to divide the viewport unit by this: `calc(90vh / var(--ui-zoom))`. Kept in sync here
-  // rather than read back off the element so it can't drift.
-  parts.push(`--ui-zoom: ${uiSettings.zoom / 100};`);
+  // The scale. The new shell scales by rem (rule 9 of the interface plan): the zoom setting becomes
+  // the root font size, every size in the shell is in rem, and nothing is zoomed — so viewport units
+  // mean the real window again, and --ui-zoom, which code written for the zoomed shell divides them
+  // by, is 1. The boot mirror in index.html (tools/gen-boot-mirror.mjs) paints the same.
+  parts.push(`--ui-zoom: 1;`);
+  parts.push(`font-size: ${(16 * uiSettings.zoom) / 100}px;`);
 
   // Write only what changed. main.tsx puts the stored theme's declaration on <html> before the
   // first render, and ThemeProvider's mount effect arrives a moment later with the identical
   // config; rewriting the identical cssText would restyle the whole tree for nothing. `css`
-  // carries --ui-zoom and --color-bg-base, so it also decides the zoom and the color-scheme that
-  // are written with it. Nothing else in the app writes documentElement.style (grep before
+  // carries the font size and --color-bg-base, so it also decides the scale and the color-scheme
+  // that are written with it. Nothing else in the app writes documentElement.style (grep before
   // adding one), so an unchanged string means an unchanged inline style.
   const css = parts.join(' ');
   if (css !== lastAppliedCss) {
     lastAppliedCss = css;
     root.style.cssText = css;
 
-    // `zoom` doesn't sit cleanly in the cssText batch because it's a real CSS
-    // property (not a custom var). Set it separately — a single property assign
-    // still benefits from coming after the variable batch so the browser only
-    // composes one final layout. Same reasoning for the data-attribute.
-    root.style.zoom = `${uiSettings.zoom / 100}`;
-
     // Native controls (the <input type="time"> picker glyph, date pickers, scrollbars)
     // render their built-in icons per `color-scheme`. Without this the time-picker clock
     // icon stays a dark UA glyph — invisible on a dark theme (Automation → Schedule, the
     // If-Time condition). Derive it from the background luminance so the glyphs track
     // whatever preset is active: dark bg → light glyphs, light bg → dark glyphs. Set after
-    // the cssText batch (which replaces the whole inline style), same as zoom above.
+    // the cssText batch, which replaces the whole inline style.
     // isLightColor, not relativeLuminance on the raw string: that one also reads the value as hex
     // digits, so an `rgba(18,18,18,1)` background produced NaN, `NaN < 0.5` is false, and a DARK
     // theme was told to render light native glyphs — dark-on-dark. The `=== true` keeps the app's

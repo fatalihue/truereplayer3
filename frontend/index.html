@@ -140,14 +140,14 @@
         }
         var s = document.documentElement.style;
         for (var k3 in colors) s.setProperty('--color-' + k3, colors[k3]);
-        s.setProperty('--ui-font-size', ui.fontSize + 'px');
-        s.setProperty('--ui-border-radius', ui.borderRadius + 'px');
-        s.setProperty('--ui-row-height', ui.rowHeight + 'px');
-        // Zoom too, or the first frame paints at 100 % and snaps to the user's scale the moment
-        // applyThemeConfig runs — the one part of the boot paint the hand-maintained mirror
-        // never covered.
-        s.setProperty('--ui-zoom', ui.zoom / 100);
-        s.zoom = ui.zoom / 100;
+        s.setProperty('--ui-font-size', ui.fontSize / 16 + 'rem');
+        s.setProperty('--ui-border-radius', ui.borderRadius / 16 + 'rem');
+        s.setProperty('--ui-row-height', ui.rowHeight / 16 + 'rem');
+        // The scale too, or the first frame paints at 100 % and snaps to the user's scale the moment
+        // applyThemeConfig runs. The new shell scales by rem (themes.ts, setScaleMode): the zoom
+        // becomes the root font size, and nothing is zoomed.
+        s.setProperty('--ui-zoom', 1);
+        s.fontSize = (16 * ui.zoom / 100) + 'px';
         s.background = colors['bg-base'];
       })();
     </script>

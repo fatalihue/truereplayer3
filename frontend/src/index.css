@@ -185,18 +185,20 @@
      pairs generate text-caption/-minor/-body/-subtitle/-title utilities). 11px is
      the floor for text that carries meaning; body matches --ui-font-size's 13px
      default. Weights: 400/500/600 only, sentence case (platform convention). */
-  --text-caption: 11px;
+  /* In rem since the new shell (rule 9 of the interface plan): the zoom setting is the root font
+     size, so every size follows it. Each value is the px it was, over 16. */
+  --text-caption: 0.6875rem;
   /* 16, not the 14 first drafted: the ~350 call sites that moved onto the ramp in the 2026-10-13
      rework had been inheriting 1.5 (16.5 px at 11 px), and multi-line hints read cramped at 14. */
-  --text-caption--line-height: 16px;
-  --text-minor: 12px;
-  --text-minor--line-height: 16px;
-  --text-body: 13px;
-  --text-body--line-height: 18px;
-  --text-subtitle: 15px;
-  --text-subtitle--line-height: 20px;
-  --text-title: 20px;
-  --text-title--line-height: 28px;
+  --text-caption--line-height: 1rem;
+  --text-minor: 0.75rem;
+  --text-minor--line-height: 1rem;
+  --text-body: 0.8125rem;
+  --text-body--line-height: 1.125rem;
+  --text-subtitle: 0.9375rem;
+  --text-subtitle--line-height: 1.25rem;
+  --text-title: 1.25rem;
+  --text-title--line-height: 1.75rem;
 
   /* Motion tokens — three durations, asymmetric easing (decelerate hard on the
      way IN, accelerate on the way OUT — exits get out of the way). Keyboard-
@@ -209,19 +211,19 @@
 
   /* UI Settings (overridden at runtime by ThemeContext). Values must mirror
      DEFAULT_UI_SETTINGS in themes.ts so the pre-hydration frame matches. */
-  --ui-font-size: 13px;
-  --ui-border-radius: 3px;
-  --ui-row-height: 34px;
+  --ui-font-size: 0.8125rem;
+  --ui-border-radius: 0.1875rem;
+  --ui-row-height: 2.125rem;
 
   /* Chrome bands — the fixed-height strips, one token per role instead of the magic numbers
      each panel carried (rework 2026-10-13). `band` is the CONTRACT between the toolbar and the
      right panel's tab strip / headers: both must stay at the same height so their bottom
      hairlines line up across the window. The title bar, the sheet header and the status bar
      are their own roles. Tailwind's --spacing-* namespace turns each into h-band, h-titlebar… */
-  --spacing-band: 47px;
-  --spacing-titlebar: 48px;
-  --spacing-sheet-header: 52px;
-  --spacing-statusbar: 26px;
+  --spacing-band: 2.9375rem;
+  --spacing-titlebar: 3rem;
+  --spacing-sheet-header: 3.25rem;
+  --spacing-statusbar: 1.625rem;
 
   /* Radius scale — four roles in place of the eight ad-hoc values the audit of 2026-09-03
      counted. Control = buttons, chips, pills, inputs (Tailwind `rounded`, 4px). The SHELL radius
@@ -229,10 +231,10 @@
      value, so the 3px default draws the 6px shell the design was made at and a user who picks
      0 still gets square panels. Overlays (menus, flyouts, tooltip, toast) and dialogs (palette,
      DialogShell, sheet) are fixed: they float, so the user's shell setting is not about them. */
-  --radius-control: 4px;
+  --radius-control: 0.25rem;
   --radius-shell: calc(var(--ui-border-radius) * 2);
-  --radius-overlay: 8px;
-  --radius-dialog: 12px;
+  --radius-overlay: 0.5rem;
+  --radius-dialog: 0.75rem;
 
   /* Elevation — two shadows for the whole app, re-derived per theme in applyThemeConfig (the
      light presets get a lighter, blue-grey shadow; a black 45-60% shadow on a white card reads
@@ -307,26 +309,9 @@
    named keyframes below respected it. :where() keeps the prefix at zero specificity. */
 @custom-variant motion-ok (&:where(html[data-animations="true"] *));
 
-/* Animations toggle — when html[data-animations="true"] is set (default), opt key
-   surfaces into a short color/background transition so theme changes don't snap
-   harshly. Lives in @layer base with :where() so any element that declares its own
-   transition (Tailwind transition-* utilities live in @layer utilities, which wins
-   over base) keeps it — the unlayered/full-specificity version of this rule used to
-   clobber every width/transform/opacity transition in the app because the
-   `transition:` shorthand resets transition-property. */
-@layer base {
-  html[data-animations="true"] :where(body, body *) {
-    transition:
-      background-color 180ms ease,
-      color 180ms ease,
-      border-color 180ms ease;
-  }
-  /* Disable transitions inside dropdowns/menus/text inputs while typing — avoids
-     a perceived "lag" when characters paint. */
-  html[data-animations="true"] :where(input, textarea, select) {
-    transition: border-color 180ms ease, background-color 180ms ease;
-  }
-}
+/* No global transition (rule 8 of the interface plan): the colour fade that used to sit on every
+   element started ~1,600 transitions at launch. The new shell animates only transform and
+   opacity, each one where it is declared, behind the animations toggle (motion-ok:). */
 
 html, body, #root {
   height: 100%;

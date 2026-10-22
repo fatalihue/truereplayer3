@@ -14,7 +14,14 @@ function removeCrossorigin(): import('vite').Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), removeCrossorigin()],
+  plugins: [
+    // The React Compiler memoizes components and hooks by itself (rule 2 of the interface plan), so
+    // a store update re-renders only what reads the part that changed. The react-hooks lint already
+    // holds the code to the rules it needs.
+    react({ babel: { plugins: ['babel-plugin-react-compiler'] } }),
+    tailwindcss(),
+    removeCrossorigin(),
+  ],
   base: './',
   build: {
     outDir: 'dist',

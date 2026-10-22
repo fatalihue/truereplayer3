@@ -1,7 +1,12 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
-import App from './App.tsx'
+import { BridgeProvider } from './bridge/BridgeContext'
+import { ErrorBoundary } from './components/common/ErrorBoundary'
+import { Shell } from './shell/Shell'
+import { ShellBridge } from './shell/ShellBridge'
+import { LanguageProvider } from './state/LanguageContext'
+import { ThemeProvider } from './state/ThemeContext'
 import { applyThemeConfig, loadCustomPresets, loadThemeConfig, resolveThemeColors } from './themes'
 
 // The theme's TOKENS go on <html> before the first render; data-animations stays off until
@@ -25,8 +30,27 @@ import { applyThemeConfig, loadCustomPresets, loadThemeConfig, resolveThemeColor
 const bootTheme = loadThemeConfig()
 applyThemeConfig(resolveThemeColors(bootTheme, loadCustomPresets()), bootTheme.uiSettings, false)
 
+// In this branch the app opens the new shell only (phase 1 of the interface plan); the shell of
+// today stays in components/ as a reference until phase 6 and is not part of the bundle. The shell
+// asks the engine to save as you go and to undo the macro's settings too (ui:capabilities).
+const CAPABILITIES = { autoSave: true, extendedUndo: true }
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    {/* Two boundaries, as in the shell of today: the outer one catches a provider crash, the inner
+        one a shell crash with the theme still applied. */}
+    <ErrorBoundary>
+      <ThemeProvider>
+        <BridgeProvider capabilities={CAPABILITIES}>
+          <ShellBridge>
+            <LanguageProvider>
+              <ErrorBoundary>
+                <Shell />
+              </ErrorBoundary>
+            </LanguageProvider>
+          </ShellBridge>
+        </BridgeProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   </StrictMode>,
 )
