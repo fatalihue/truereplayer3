@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AppWindow, CornerDownLeft, Zap } from 'lucide-react';
 import type { ProfileEntry } from '../../bridge/messageTypes';
 import { useMacro } from '../../logic/useMacro';
-import { useTt } from '../../state/LanguageContext';
+import { useLanguage, useTt } from '../../state/LanguageContext';
 import { lastRunKind } from '../../utils/lastRunChip';
 import { keycaps, nameTaken, targetLabel } from '../library/model';
 import { useApp, useShell } from '../store';
@@ -211,6 +211,7 @@ function MacroMeta({ name }: { name: string }) {
   const table = useApp(a => a.dataTable);
   const lastRun = useShell(s => s.lastRun);
   const tt = useTt();
+  const { language } = useLanguage();
   if (status === 'recording') return <RecordingMeta steps={actions.length} />;
   if (actions.length === 0) return <p className="hdr-meta">No steps yet</p>;
   const pass = onePassMs(actions);
@@ -220,14 +221,14 @@ function MacroMeta({ name }: { name: string }) {
   const why = tt('Delays + ~30 ms per step, plus holds and × N gaps. Moves and waits are not counted.',
                  'Atrasos + ~30 ms por passo, mais holds e os intervalos do × N. Movimentos e esperas não entram.');
   const estimateTip = passes > 1
-    ? tt(`${passes} ${perRow ? 'rows' : 'loops'}: about ${formatDuration(pass * passes)} in all. `, `${passes} ${perRow ? 'linhas' : 'loops'}: cerca de ${formatDuration(pass * passes)} no total. `) + why
+    ? tt(`${passes} ${perRow ? 'rows' : 'loops'}: about ${formatDuration(pass * passes, language)} in all. `, `${passes} ${perRow ? 'linhas' : 'loops'}: cerca de ${formatDuration(pass * passes, language)} no total. `) + why
     : why;
   const run = status === 'ready' && lastRun && lastRun.profile === name ? lastRun : null;
   return (
     <p className="hdr-meta">
       {stepCount(actions.length)}
       {' · '}
-      <span data-tip={estimateTip}>about {formatDuration(pass)}{per}</span>
+      <span data-tip={estimateTip}>about {formatDuration(pass, language)}{per}</span>
       {run && (
         <>
           {' · '}

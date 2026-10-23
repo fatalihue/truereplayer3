@@ -10,6 +10,7 @@ import { NumberField } from '../NumberField';
 import { Popover } from '../Popover';
 import { useApp } from '../store';
 import { useAnswered } from '../useAnswered';
+import { insertPoint, useSelection } from '../list/selection';
 import { loopsShown, runsPerRow } from './model';
 
 /**
@@ -48,7 +49,8 @@ const CAPTURE: { key: keyof SettingsState & string; label: string; detail?: stri
 /** Record ▾. The capture switches are the app's, for every macro, as they have always been. */
 function RecordOptions() {
   const settings = useApp(a => a.settings);
-  const steps = useApp(a => a.actions.length);
+  const steps = useApp(a => a.actions);
+  const at = useSelection(s => insertPoint(steps, s.keys));
   const { change } = useSettings();
   return (
     <div className="ro-panel" data-kind="record">
@@ -63,8 +65,12 @@ function RecordOptions() {
         />
       ))}
       <span className="ro-separator" role="separator" />
-      {/* The insert point arrives with the list (slice 4); until then a recording goes at the end. */}
-      <span className="ro-note">{steps === 0 ? 'Records into the empty macro' : `Records at the end, after step ${steps}`}</span>
+      {/* Where the recording goes: the insertion point, after the last selected step (lista-032). */}
+      <span className="ro-note">
+        {steps.length === 0 ? 'Records into the empty macro'
+          : at < steps.length ? `Records at the insert point, after step ${at}`
+          : `Records at the end, after step ${steps.length}`}
+      </span>
       <HotkeyLine label="Start or stop" combo={settings.recordingHotkey} />
     </div>
   );

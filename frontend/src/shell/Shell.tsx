@@ -6,7 +6,7 @@ import { MacroHeader } from './header/MacroHeader';
 import { Rail } from './Rail';
 import { ShellKeys } from './ShellKeys';
 import { StatusBar } from './StatusBar';
-import { StepList } from './StepList';
+import { StepList } from './list/StepList';
 import { TitleBar } from './TitleBar';
 import './shell.css';
 

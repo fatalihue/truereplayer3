@@ -139,54 +139,16 @@ html[data-animations='true'] .shell-state[data-done]::after { border-color: var(
 .shell-menu-icon svg { width: 0.8125rem; height: 0.8125rem; }
 .shell-menu-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shell-menu-end { width: 0.75rem; height: 0.75rem; flex: none; margin-left: auto; color: var(--color-text-tertiary); }
+.shell-menu-kbd { flex: none; margin-left: 0.75rem; }
+.shell-menu-kbd + .shell-menu-end { margin-left: 0.375rem; }
 .shell-menu-item[aria-current='true'] { color: var(--color-accent); }
 .shell-menu-item[aria-current='true'] .shell-menu-end { color: inherit; }
 .shell-menu-separator { height: 1px; margin: 0.25rem 0; background: var(--color-border-subtle); }
 
-/* ── Main: ④ macro header (header/header.css) and ⑦ steps ── */
+/* ── Main: ④ macro header (header/header.css) and ⑦ steps (list/list.css) ── */
 .shell-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 
-.shell-steps { flex: 1; min-height: 0; overflow-y: auto; margin: 0; padding: 0.25rem 0; list-style: none; }
 .shell-steps-empty { margin: 2rem 1rem; color: var(--color-text-tertiary); }
-.shell-step {
-  display: grid;
-  /* The number column is 28 px at 100 %: the narrowest that fits "9999" in 11 px tabular figures
-     (23.7 px measured in the font's metrics, 2 px each side). Both are rem, so they keep that
-     proportion at any scale. */
-  grid-template-columns: 1.75rem 7.5rem minmax(0, 1fr) 4.5rem minmax(0, 12rem);
-  align-items: center;
-  gap: 0.5rem;
-  min-height: var(--ui-row-height);
-  padding-right: 1rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-border-subtle) 60%, transparent);
-  /* Rule 7: rows off screen skip layout and paint, with no virtualization in script. */
-  content-visibility: auto;
-  contain-intrinsic-size: auto var(--ui-row-height);
-}
-.shell-step[data-running] { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
-.shell-step[data-skipped] { opacity: 0.5; }
-.shell-step-num {
-  text-align: center;
-  font-size: 0.6875rem;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-text-tertiary);
-}
-.shell-step[data-running] .shell-step-num { color: var(--color-accent); }
-.shell-step-type {
-  justify-self: start;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding: 0.0625rem 0.375rem;
-  border-radius: var(--radius-control);
-  font-size: var(--text-caption);
-  font-weight: 500;
-}
-.shell-step-what,
-.shell-step-note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.shell-step-delay { text-align: right; font-size: var(--text-caption); font-variant-numeric: tabular-nums; color: var(--color-text-tertiary); }
-.shell-step-note { font-size: var(--text-caption); color: var(--color-text-tertiary); }
 
 /* ── ⑧ Inspector ── */
 .shell-inspector {
@@ -238,13 +200,9 @@ html[data-animations='true'] .shell-state[data-done]::after { border-color: var(
 @container shell (max-width: 47.49rem) {
   .shell-body { grid-template-columns: 3.5rem minmax(0, 1fr); }
   .shell-library { display: none; }
-  .shell-step { grid-template-columns: 1.75rem 6rem minmax(0, 1fr) 4rem; }
-  .shell-step-note { display: none; }
 }
 /* Under 520: the compact layout (the compact view itself is phase 4). */
 @container shell (max-width: 32.49rem) {
   .shell-body { grid-template-columns: minmax(0, 1fr); }
   .shell-rail { display: none; }
-  .shell-step { grid-template-columns: 1.75rem minmax(0, 1fr) 3.5rem; }
-  .shell-step-type { display: none; }
 }

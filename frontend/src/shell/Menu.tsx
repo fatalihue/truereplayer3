@@ -19,6 +19,8 @@ export interface MenuItem {
   /** A submenu that is not a list of items (the folder colours). It gets the menu's close. */
   panel?: (close: () => void) => ReactNode;
   tip?: string;
+  /** The key that does the same from the list ("Ctrl+C", "Del"), drawn at the end. */
+  shortcut?: string;
 }
 export type MenuEntry = MenuItem | 'separator';
 
@@ -194,6 +196,7 @@ function MenuList({ entries, label, place, focusFirst, onClose, onBack, panel }:
               aria-haspopup={hasSub ? 'menu' : undefined}
               aria-expanded={hasSub ? open?.index === i : undefined}
               aria-current={entry.checked || undefined}
+              aria-keyshortcuts={entry.shortcut}
               disabled={disabled}
               data-tip={entry.tip}
               onMouseEnter={(e) => {
@@ -214,6 +217,7 @@ function MenuList({ entries, label, place, focusFirst, onClose, onBack, panel }:
             >
               <span className="shell-menu-icon" style={entry.iconColor ? { color: entry.iconColor } : undefined}>{Icon && <Icon aria-hidden="true" />}</span>
               <span className="shell-menu-label">{entry.notBuilt ? `${entry.label} — not built yet` : entry.label}</span>
+              {entry.shortcut && <kbd className="kbd shell-menu-kbd" aria-hidden="true">{entry.shortcut}</kbd>}
               {entry.checked && <Check className="shell-menu-end" aria-hidden="true" />}
               {hasSub && <ChevronRight className="shell-menu-end" aria-hidden="true" />}
             </button>

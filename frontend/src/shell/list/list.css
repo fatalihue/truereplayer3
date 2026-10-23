@@ -1,0 +1,329 @@
+/* ⑦ The step list. Sizes are the concept's at 100 %, in rem (16 px). Theme tokens only; motion is
+   transform and opacity, behind html[data-animations="true"] (rule 8). */
+
+.steps { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.steps-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+
+/* The concept's columns: the number (28 px, the narrowest that fits "9999"), Step, Details, Delay, Note. */
+.steps-head,
+.step,
+.step-ghost {
+  display: grid;
+  grid-template-columns: 1.75rem 10.75rem minmax(0, 1fr) 4.75rem minmax(0, 11rem);
+  align-items: center;
+}
+.steps-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: 2rem;
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-base);
+  font-size: var(--text-minor);
+  color: var(--color-text-tertiary);
+}
+.steps-head-num { display: grid; place-items: center; }
+.steps-head-delay { text-align: right; padding-right: 0.875rem; }
+.steps-body { position: relative; padding-bottom: 0.5rem; outline: none; }
+
+/* ── A step ── */
+.step {
+  position: relative;
+  min-height: var(--ui-row-height);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border-subtle) 60%, transparent);
+  font-size: var(--text-body);
+  /* Rule 7: steps off screen skip layout and paint, with no virtualization in script. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto var(--ui-row-height);
+}
+.step[data-block-open] { background: color-mix(in srgb, var(--row-block-color) 3%, transparent); }
+.step[data-kind] { background: color-mix(in srgb, var(--row-block-color) 6%, transparent); }
+.step:hover { background: color-mix(in srgb, var(--color-text-primary) 4%, transparent); }
+.step[aria-selected='true'] { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+.steps-body:focus-visible .step[data-cursor] { box-shadow: inset 2px 0 0 var(--color-accent-solid); }
+.step[data-running] { background: color-mix(in srgb, var(--color-replay) 10%, transparent); box-shadow: inset 2px 0 0 var(--color-replay); }
+.step[data-paused]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--color-action-pause-fg) 14%, transparent);
+  pointer-events: none;
+}
+html[data-animations='true'] .step[data-paused]::before { animation: step-paused 2s ease-in-out infinite; }
+@keyframes step-paused { 50% { opacity: 0.35; } }
+.step[data-dragging] { opacity: 0.4; }
+.step[data-skipped] .step-pill { text-decoration: line-through; }
+.step[data-skipped] .step-pill,
+.step[data-skipped] .step-what,
+.step[data-skipped] .step-delay { opacity: 0.45; }
+html[data-animations='true'] .step[data-inserted='on'] {
+  background-color: color-mix(in srgb, var(--color-accent) 22%, transparent);
+  transition: none;
+}
+html[data-animations='true'] .step[data-inserted='fade'] { transition: background-color 700ms var(--ease-enter); }
+
+/* The number, which turns into a checkbox under the pointer and on a selected step. */
+.step-num {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-tertiary);
+}
+.step-check {
+  display: none;
+  position: relative;
+  width: 0.875rem;
+  height: 0.875rem;
+  padding: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 0.1875rem;
+  background: var(--color-bg-input);
+  cursor: pointer;
+}
+.step-check-all { display: block; }
+.step:hover .step-num-text,
+.step[aria-selected='true'] .step-num-text { display: none; }
+.step:hover .step-check,
+.step[aria-selected='true'] .step-check { display: block; }
+.step[data-running] .step-check { display: none; }
+.step[aria-selected='true'] .step-check,
+.step-check-all[aria-checked='true'],
+.step-check-all[aria-checked='mixed'] { border-color: var(--color-accent-solid); background: var(--color-accent-solid); }
+.step[aria-selected='true'] .step-check::after,
+.step-check-all[aria-checked='true']::after {
+  content: '';
+  position: absolute;
+  left: 0.25rem;
+  top: 0.0625rem;
+  width: 0.25rem;
+  height: 0.4375rem;
+  border: solid var(--color-accent-ink);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.step-check-all[aria-checked='mixed']::after {
+  content: '';
+  position: absolute;
+  left: 0.125rem;
+  right: 0.125rem;
+  top: calc(50% - 1px);
+  height: 2px;
+  background: var(--color-accent-ink);
+}
+.step-check:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 1px; }
+
+/* The step's pill, past the rails of the blocks it sits in. */
+.step-type {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 100%;
+  min-width: 0;
+  padding-left: var(--step-indent, 0);
+}
+.step-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+  max-width: 100%;
+  height: 1.5rem;
+  padding: 0 0.5rem;
+  border-radius: var(--radius-control);
+  overflow: hidden;
+  font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.step-icon {
+  display: inline-block;
+  flex: none;
+  width: 0.875rem;
+  height: 0.875rem;
+  background: currentColor;
+  -webkit-mask: var(--step-icon) center / contain no-repeat;
+  mask: var(--step-icon) center / contain no-repeat;
+}
+.step-times { font-family: var(--font-mono); font-size: var(--text-caption); opacity: 0.85; }
+.step-not {
+  padding: 0 0.25rem;
+  border-radius: 0.1875rem;
+  background: var(--color-action-if-fg);
+  color: var(--color-bg-surface);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+.step-skipped { color: var(--color-text-tertiary); }
+.step-run { width: 0.625rem; height: 0.625rem; color: var(--color-replay-fg); }
+.step[data-paused] .step-run { color: var(--color-action-pause-fg); }
+
+/* Block rails: one per enclosing block, coloured by level; the marker's own is full strength and
+   capped at its end. The block under the pointer or of the one selected step lights up (data-lit). */
+.step-rail {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: color-mix(in srgb, var(--rail-color) 45%, transparent);
+  pointer-events: none;
+}
+.step-rail[data-strong] { background: var(--rail-color); }
+.step-rail[data-cap='top'] { top: 0.5625rem; border-radius: 2px 2px 0 0; }
+.step-rail[data-cap='bottom'] { bottom: 0.5625rem; border-radius: 0 0 2px 2px; }
+.step-rail[data-lit],
+.step-rail[data-lit-sel] { width: 3px; background: var(--rail-color); }
+
+/* Details. */
+.step-what {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+  padding-right: 0.75rem;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.step-mono { font-family: var(--font-mono); font-size: var(--text-minor); }
+.step-cut { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.step-combo { word-spacing: -0.15em; }
+.step-family { flex: none; font-size: var(--text-minor); color: var(--color-text-secondary); }
+.step-quiet { font-size: var(--text-minor); color: var(--color-text-tertiary); }
+.step-swatch {
+  width: 0.625rem;
+  height: 0.625rem;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--color-text-primary) 20%, transparent);
+}
+.step-thumb {
+  height: 1rem;
+  max-width: 3rem;
+  flex: none;
+  border-radius: 0.1875rem;
+  border: 1px solid var(--color-border-default);
+  object-fit: contain;
+}
+.step-delay {
+  padding-right: 0.875rem;
+  text-align: right;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--text-minor);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+}
+.step-ms { margin-left: 0.25rem; color: var(--color-text-tertiary); }
+.step-note { padding-right: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-secondary); }
+
+/* "+ Add Else": a row of the block, where the arm will land. */
+.step-ghost {
+  position: relative;
+  min-height: var(--ui-row-height);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border-subtle) 60%, transparent);
+  background: color-mix(in srgb, var(--row-block-color) 3%, transparent);
+}
+.step-ghost .step-type { grid-column: 2 / -1; }
+.step-ghost-actions { display: flex; gap: 0.5rem; }
+.step-ghost-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 1.5rem;
+  padding: 0 0.625rem;
+  border: 1px dashed color-mix(in srgb, var(--row-block-color) 45%, transparent);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: var(--text-minor);
+  cursor: pointer;
+}
+.step-ghost-button .step-icon { width: 0.75rem; height: 0.75rem; }
+.step-ghost-button:hover:not(:disabled) { background: var(--color-bg-elevated); }
+.step-ghost-button:disabled { opacity: 0.45; cursor: default; }
+.step-ghost-button:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 1px; }
+
+/* The insertion point, after the last selected step; and where dragged steps would land. */
+.steps-insert {
+  position: absolute;
+  left: 1.3125rem;
+  right: 0;
+  z-index: 2;
+  height: 2px;
+  background: var(--color-accent-solid);
+  pointer-events: none;
+}
+.steps-insert-dot {
+  position: absolute;
+  left: -0.9375rem;
+  top: -0.4375rem;
+  display: grid;
+  place-items: center;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: var(--color-accent-solid);
+  color: var(--color-accent-ink);
+}
+.steps-insert-dot .step-icon { width: 0.625rem; height: 0.625rem; }
+.steps-drop {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  height: 2px;
+  margin-top: -1px;
+  background: var(--color-accent-solid);
+  pointer-events: none;
+}
+
+/* The card that follows a drag. */
+.step-ghost-card {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: var(--z-topmost);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 20rem;
+  padding: 0.375rem 0.625rem;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-overlay);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-overlay);
+  opacity: 0.92;
+  pointer-events: none;
+  font-size: var(--text-body);
+}
+.step-ghost-note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-minor); color: var(--color-text-secondary); }
+.step-ghost-more {
+  margin-left: auto;
+  padding: 0 0.375rem;
+  border-radius: 999px;
+  background: var(--color-accent-solid);
+  color: var(--color-accent-ink);
+  font-size: var(--text-caption);
+  font-weight: 600;
+}
+
+/* Narrow bands: the Note goes first, then the Delay. */
+@container shell (max-width: 47.49rem) {
+  .steps-head,
+  .step,
+  .step-ghost { grid-template-columns: 1.75rem 9rem minmax(0, 1fr) 4.25rem; }
+  .step-note,
+  .steps-head > :last-child { display: none; }
+}
+@container shell (max-width: 32.49rem) {
+  .steps-head,
+  .step,
+  .step-ghost { grid-template-columns: 1.75rem minmax(0, 8rem) minmax(0, 1fr); }
+  .step-delay,
+  .steps-head-delay { display: none; }
+}

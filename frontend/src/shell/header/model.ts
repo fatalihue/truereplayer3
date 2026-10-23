@@ -41,10 +41,16 @@ export function passesOf(loop: ProfileLoopState, table: ProfileDataTable): numbe
 /** The Loops field: the count while they are on, 1 while they are off — the passes they make. */
 export const loopsShown = (loop: ProfileLoopState) => (loop.enabled ? loop.count : '1');
 
+// The decimal mark follows the interface's language, as the list's delays do ("3.5 s", "3,5 s").
+const SECONDS = {
+  en: new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }),
+  'pt-BR': new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 }),
+} as const;
+
 /** "450 ms", "3.5 s", "2 min 5 s", "1 h 4 min". */
-export function formatDuration(ms: number): string {
+export function formatDuration(ms: number, language: 'en' | 'pt-BR' = 'en'): string {
   if (ms < 1000) return `${Math.round(ms)} ms`;
-  if (ms < 59_950) return `${Number((ms / 1000).toFixed(1))} s`;
+  if (ms < 59_950) return `${SECONDS[language].format(Math.round(ms / 100) / 10)} s`;
   const seconds = Math.round(ms / 1000);
   if (seconds < 3600) {
     const s = seconds % 60;

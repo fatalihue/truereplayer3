@@ -5,6 +5,7 @@ import { useRecording } from '../../logic/useRecording';
 import { useReplay } from '../../logic/useReplay';
 import { useTt } from '../../state/LanguageContext';
 import { keycaps } from '../library/model';
+import { insertPoint } from '../list/selection';
 import { macroMenuEntries } from '../macroMenu';
 import { Menu } from '../Menu';
 import { anchorBelow, type MenuAnchor } from '../menuAnchor';
@@ -70,7 +71,12 @@ export function Transport({ name }: { name: string }) {
         </button>
       ) : (
         <div className="hdr-split" data-tone="record" data-disabled={!buttons.recordEnabled || undefined}>
-          <button type="button" className="hdr-run" disabled={!buttons.recordEnabled} onClick={recording.toggle}>
+          <button
+            type="button"
+            className="hdr-run"
+            disabled={!buttons.recordEnabled}
+            onClick={() => recording.toggleAt(insertPoint(useShell.getState().app.actions))}
+          >
             <span className="hdr-rec-dot" aria-hidden="true" />
             Record
           </button>
