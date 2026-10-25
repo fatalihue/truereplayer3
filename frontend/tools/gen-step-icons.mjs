@@ -13,13 +13,15 @@ const iconsDir = path.join(front, 'node_modules', 'lucide-react', 'dist', 'esm',
 const out = path.join(front, 'src', 'shell', 'list', 'stepIcons.css');
 
 // The icons the list draws: the ones stepIcon() names in src/shell/list/stepTypes.ts, and the
-// row's own glyphs (StepRow.tsx: play, pause, plus, eye-off, focus, mouse-pointer-2).
+// row's own glyphs (StepRow.tsx: play, pause, plus, eye-off, focus, mouse-pointer-2). The insert
+// row and the Add step catalog draw theirs from here too (src/shell/insert: undo-2, redo-2,
+// search, chevron-right, clock).
 const NAMES = [
-  'app-window', 'arrow-down', 'arrow-right-from-line', 'arrow-up', 'braces', 'circle-stop',
-  'clipboard-copy', 'corner-down-left', 'eye-off', 'focus', 'git-branch', 'globe', 'hourglass',
-  'iteration-cw', 'keyboard', 'mouse', 'mouse-pointer-2', 'pause', 'pipette', 'play', 'plus', 'repeat-2',
-  'scan-search', 'scan-text', 'shield-check', 'skip-forward', 'split', 'table-2', 'timer', 'type',
-  'zap',
+  'app-window', 'arrow-down', 'arrow-right-from-line', 'arrow-up', 'braces', 'chevron-right', 'circle-stop',
+  'clipboard-copy', 'clock', 'corner-down-left', 'eye-off', 'focus', 'git-branch', 'globe', 'hourglass',
+  'iteration-cw', 'keyboard', 'mouse', 'mouse-pointer-2', 'pause', 'pipette', 'play', 'plus', 'redo-2', 'repeat-2',
+  'scan-search', 'scan-text', 'search', 'shield-check', 'skip-forward', 'split', 'table-2', 'timer', 'type',
+  'undo-2', 'zap',
 ];
 
 const version = JSON.parse(fs.readFileSync(path.join(front, 'node_modules', 'lucide-react', 'package.json'), 'utf8')).version;

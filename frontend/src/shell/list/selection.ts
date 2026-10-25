@@ -40,6 +40,19 @@ export function insertPoint(steps: ActionItem[], keys: ReadonlySet<string> = use
   return sel.length > 0 ? sel[sel.length - 1] + 1 : steps.length;
 }
 
+/**
+ * A step the shell asked the engine for that has not landed yet: the insert row and the Add step
+ * catalog ask for one at the insertion point, and the list selects it when it arrives
+ * (useArrival), so the next insert goes after it. A capture-first insert (Wait Image) lands only
+ * after the capture, or never when the capture is cancelled.
+ */
+let expected: { at: number; macro: string | null } | null = null;
+export const arrival = {
+  expect: (at: number, macro: string | null) => { expected = { at, macro }; },
+  peek: () => expected,
+  clear: () => { expected = null; },
+};
+
 export const selection = {
   clear: () => useSelection.setState({ keys: EMPTY, anchor: null, cursor: null }),
   /** Exactly these rows; the anchor and the cursor go to `focus` (the first by default). */

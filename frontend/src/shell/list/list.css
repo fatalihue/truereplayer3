@@ -2,7 +2,9 @@
    transform and opacity, behind html[data-animations="true"] (rule 8). */
 
 .steps { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.steps-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+/* The scroll padding is the sticky column header's height: a step brought into view (the arrows,
+   Home, a new step, the run) lands below it, not under it. */
+.steps-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scroll-padding-top: calc(2rem + 1px); }
 
 /* The concept's columns: the number (28 px, the narrowest that fits "9999"), Step, Details, Delay, Note. */
 .steps-head,

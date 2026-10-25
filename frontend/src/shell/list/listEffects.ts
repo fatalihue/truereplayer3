@@ -1,12 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
 import type { ActionItem } from '../../bridge/messageTypes';
 import { useShell } from '../store';
-import { selectedIndices, useSelection } from './selection';
+import { arrival, selectedIndices, selection, useSelection } from './selection';
 import { stepKey } from './stepTypes';
 
 /**
  * The list's effects that write to the DOM instead of rendering: lighting a block's rails, the
- * flash of a step that just arrived, and following the run. Each costs a query or two and no row
+ * flash of a step that just arrived, selecting the one the shell asked for, and following the run. Each costs a query or two and no row
  * render, which is what keeps them cheap at a thousand steps (the doctrine of the shell of today's
  * ReplayRowMarker and InsertedRowMarker).
  */
@@ -81,6 +81,29 @@ export function useInsertFlash(bodyRef: RefObject<HTMLElement | null>, steps: Ac
       setTimeout(clear, 1000);
     }
   }, [steps, recording, bodyRef]);
+}
+
+/**
+ * Selects the step the shell asked for (arrival) when it lands: it becomes the selection, so the
+ * insertion point moves after it, and the list brings it into view. That is the new step at the
+ * asked index, or the first new one when the list moved under a long capture. A list that changes
+ * with nothing new keeps waiting; another macro drops the wait.
+ */
+export function useArrival(bodyRef: RefObject<HTMLElement | null>, steps: ActionItem[], open: string | null) {
+  const prev = useRef<Set<string> | null>(null);
+  useLayoutEffect(() => {
+    const keys = steps.map(stepKey);
+    const before = prev.current;
+    prev.current = new Set(keys);
+    const want = arrival.peek();
+    if (!want || !before) return;
+    if (want.macro !== open) { arrival.clear(); return; }
+    const at = keys[want.at] !== undefined && !before.has(keys[want.at]) ? want.at : keys.findIndex(k => !before.has(k));
+    if (at < 0) return;
+    arrival.clear();
+    selection.only(steps, at);
+    bodyRef.current?.querySelector(`.step[data-index="${at}"]`)?.scrollIntoView({ block: 'nearest' });
+  }, [steps, open, bodyRef]);
 }
 
 /**

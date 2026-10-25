@@ -1,0 +1,139 @@
+/* ⑥ The Add step catalog (AddStepCatalog.tsx), in the Popover's surface. Loads with the catalog.
+   Sizes are the concept's at 100 %, in rem; colours are theme tokens only — a tile's two come from
+   its step type, as the list's pill does. */
+
+.cat {
+  display: flex;
+  flex-direction: column;
+  width: min(37.5rem, calc(100vw - 1rem));
+  height: min(31.25rem, calc(100vh - 2rem));
+  font-size: var(--text-body);
+}
+
+.cat-search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 2.125rem;
+  margin: 0.5rem;
+  padding: 0 0.625rem;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-input);
+  color: var(--color-text-tertiary);
+}
+.cat-search:focus-within { border-color: var(--color-accent-solid); }
+.cat-search input {
+  flex: 1;
+  min-width: 0;
+  height: 1.875rem;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+}
+.cat-search input::placeholder { color: var(--color-text-tertiary); }
+
+.cat-body { flex: 1; min-height: 0; display: flex; border-top: 1px solid var(--color-border-subtle); }
+
+.cat-groups {
+  width: 11.5rem;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: 0.375rem;
+  box-sizing: border-box;
+  overflow-y: auto;
+  border-right: 1px solid var(--color-border-subtle);
+}
+.cat-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 1.875rem;
+  padding: 0 0.625rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cat-group:hover { background: var(--color-bg-elevated); }
+.cat-group[aria-selected='true'] {
+  border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  font-weight: 600;
+}
+.cat-group:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: -1px; }
+.cat-group-name { flex: 1; min-width: 0; }
+.cat-group-count { font-size: var(--text-caption); font-weight: 400; color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
+
+.cat-items {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: 0.375rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.cat-item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.4375rem 0.625rem;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+.cat-item[aria-selected='true'] { background: var(--color-bg-elevated); }
+.cat-item[aria-disabled='true'] { cursor: default; }
+.cat-item[aria-disabled='true'] .cat-tile,
+.cat-item[aria-disabled='true'] .cat-text { opacity: 0.55; }
+.cat-tile {
+  width: 1.75rem;
+  height: 1.75rem;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 0.375rem;
+}
+.cat-tile .step-icon { width: 0.9375rem; height: 0.9375rem; }
+.cat-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.cat-name { color: var(--color-text-primary); }
+.cat-in { color: var(--color-text-tertiary); font-size: var(--text-minor); }
+.cat-desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-minor);
+  line-height: 1rem;
+  color: var(--color-text-secondary);
+}
+.cat-later { flex: none; font-size: var(--text-caption); color: var(--color-text-tertiary); }
+.cat-more { width: 0.875rem; height: 0.875rem; color: var(--color-text-tertiary); }
+.cat-empty { margin: 1rem 0.625rem; color: var(--color-text-tertiary); }
+
+.cat-foot {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 2.125rem;
+  flex: none;
+  padding: 0 0.75rem;
+  border-top: 1px solid var(--color-border-subtle);
+  font-size: var(--text-minor);
+  color: var(--color-text-tertiary);
+}
+.cat-spacer { flex: 1; }
+
+/* A narrow window: the groups give up their counts and some width. */
+@media (max-width: 40rem) {
+  .cat-groups { width: 8.5rem; }
+  .cat-group-count { display: none; }
+}

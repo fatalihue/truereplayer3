@@ -11,8 +11,8 @@ import { Menu } from '../Menu';
 import { fromKeyboard, type MenuAnchor } from '../menuAnchor';
 import { useApp, useShell } from '../store';
 import { blockColor, blockMap, type BlockMap, type GhostRow } from './blocks';
-import { useInsertFlash, useLitBlocks, useRunFollow } from './listEffects';
-import { insertPoint, selectedIndices, selection, useSelection } from './selection';
+import { useArrival, useInsertFlash, useLitBlocks, useRunFollow } from './listEffects';
+import { arrival, insertPoint, selectedIndices, selection, useSelection } from './selection';
 import { StepGhost } from './StepGhost';
 import { StepRow } from './StepRow';
 import { stepKey, stepName } from './stepTypes';
@@ -29,7 +29,8 @@ type StepMenuKit = Awaited<ReturnType<typeof loadStepMenu>>;
 /**
  * ⑦ The steps of the open macro. Clicking selects (Ctrl adds, Shift extends), the number turns
  * into a checkbox, the arrows move, and the insertion point sits after the last selected step:
- * new steps — a recording, a paste — go there. Right-click opens the step's menu, a press that
+ * new steps — a recording, a paste, Add step — go there, and a step Add step asked for is selected
+ * when it lands. Right-click opens the step's menu, a press that
  * moves drags, and blocks are drawn as rails. During a recording or a run the list is read-only.
  *
  * The rows only draw (StepRow): the pointer and the keys are handled here, once for the list, and
@@ -70,6 +71,7 @@ export function StepList() {
   });
   const lit = useLitBlocks(bodyRef, steps, owners);
   useInsertFlash(bodyRef, steps, status === 'recording');
+  useArrival(bodyRef, steps, open);
   useRunFollow(scrollRef, bodyRef);
 
   // Another macro: nothing selected, and the list from its top (lista-112).
@@ -78,10 +80,12 @@ export function StepList() {
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
   }, [open]);
 
-  // A recording that ends clears the selection, so the next one goes to the end (lista-032).
+  // A recording that ends clears the selection, so the next one goes to the end (lista-032). One
+  // that starts drops a step still on its way: what arrives now is the recording's.
   const wasRecording = useRef(false);
   useEffect(() => {
     if (wasRecording.current && status !== 'recording') selection.clear();
+    if (status === 'recording') arrival.clear();
     wasRecording.current = status === 'recording';
   }, [status]);
 
@@ -124,7 +128,9 @@ export function StepList() {
   }), [subscribe, cmds, showToast, tt]);
 
   if (!open) return <p className="shell-steps-empty">Open a macro from the library.</p>;
-  if (steps.length === 0) return <p className="shell-steps-empty">No steps yet.</p>;
+  // The Steps tab's panel (InsertRow has the tab).
+  const panel = { id: 'macro-panel-steps', role: 'tabpanel', 'aria-labelledby': 'macro-tab-steps' } as const;
+  if (steps.length === 0) return <p className="shell-steps-empty" {...panel}>No steps yet.</p>;
 
   const rowOf = (target: EventTarget) => (target as Element).closest<HTMLElement>('.step');
 
@@ -264,7 +270,7 @@ export function StepList() {
   })();
 
   return (
-    <div className="steps" data-locked={locked || undefined}>
+    <div className="steps" data-locked={locked || undefined} {...panel}>
       <div className="steps-scroll" ref={scrollRef}>
         <div className="steps-head">
           <SelectAll steps={steps} />
