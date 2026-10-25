@@ -4,8 +4,8 @@ import { useMacro } from '../logic/useMacro';
 import { useSteps } from '../logic/useSteps';
 import { useTt } from '../state/LanguageContext';
 import { useToast } from '../state/ToastContext';
-import { snapIndicesToBlocks } from '../utils/conditionalBlocks';
 import { isModalDialogOpen } from '../utils/modalDialog';
+import { moveSteps } from './list/moves';
 import { insertPoint, selectedIndices } from './list/selection';
 import { useShell } from './store';
 
@@ -84,12 +84,7 @@ export function ShellKeys() {
         const sel = selectedIndices(steps);
         if (sel.length === 0) return;
         e.preventDefault();
-        // The engine puts the rows back together at the target, counted on the list as it is.
-        const rows = snapIndicesToBlocks(sel, steps);
-        const first = rows[0];
-        const last = rows[rows.length - 1];
-        if (e.key === 'ArrowUp' && first > 0) cmds.reorder({ indices: rows, targetIndex: first - 1 });
-        else if (e.key === 'ArrowDown' && last < steps.length - 1) cmds.reorder({ indices: rows, targetIndex: last + 2 });
+        moveSteps(steps, sel, e.key === 'ArrowUp' ? 'up' : 'down', cmds);
       }
     };
     window.addEventListener('keydown', onKeyDown);

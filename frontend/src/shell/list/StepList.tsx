@@ -3,7 +3,7 @@ import type { ActionItem } from '../../bridge/messageTypes';
 import { useBridge } from '../../bridge/BridgeContext';
 import { newRequestId, useEditorTools } from '../../logic/useEditorTools';
 import { useMacro } from '../../logic/useMacro';
-import { deleteIntent, useSteps } from '../../logic/useSteps';
+import { useSteps } from '../../logic/useSteps';
 import { useLanguage, useTt } from '../../state/LanguageContext';
 import { useToast } from '../../state/ToastContext';
 import { skippedRowMask } from '../../utils/conditionalBlocks';
@@ -11,7 +11,10 @@ import { Menu } from '../Menu';
 import { fromKeyboard, type MenuAnchor } from '../menuAnchor';
 import { useApp, useShell } from '../store';
 import { blockColor, blockMap, type BlockMap, type GhostRow } from './blocks';
+import { focusInspector, loadInspectorBody } from '../inspector/inspectorState';
+import { preload } from '../lazyModule';
 import { useArrival, useInsertFlash, useLitBlocks, useRunFollow } from './listEffects';
+import { deleteSteps } from './moves';
 import { arrival, insertPoint, selectedIndices, selection, useSelection } from './selection';
 import { StepGhost } from './StepGhost';
 import { StepRow } from './StepRow';
@@ -108,8 +111,14 @@ export function StepList() {
     cmds.reportSelection(at < 0 ? [] : [at]);
   }, [insertAt, steps.length, cmds]);
 
-  // Pick from screen: the point goes onto the step at once, and Undo puts it back.
+  // Pick from screen: the point goes onto the step at once, and Undo puts it back. And a step the
+  // engine wants opened (sheet:openIndex, after a capture insert) is selected: the Inspector shows it.
   useEffect(() => subscribe((message) => {
+    if (message.type === 'sheet:openIndex') {
+      const now = useShell.getState().app.actions;
+      if (now[message.payload.index]) selection.only(now, message.payload.index);
+      return;
+    }
     if (message.type !== 'mouse:positionPicked') return;
     const pending = pickRef.current;
     if (!pending || message.payload.requestId !== pending.requestId) return;
@@ -213,6 +222,17 @@ export function StepList() {
       selection.clear();
       return;
     }
+    // Enter opens the selection in the Inspector (lista-037): the cursor's step when nothing is selected.
+    if (e.key === 'Enter' && !e.ctrlKey && !e.shiftKey) {
+      e.preventDefault();
+      if (keys.size === 0) {
+        const at = cursor ? steps.findIndex((s, i) => stepKey(s, i) === cursor) : -1;
+        if (at < 0) return;
+        selection.only(steps, at);
+      }
+      focusInspector();
+      return;
+    }
     if (locked || e.ctrlKey || e.metaKey) return;
     const at = cursor ? steps.findIndex((s, i) => stepKey(s, i) === cursor) : -1;
     const moveTo = (to: number) => {
@@ -236,16 +256,7 @@ export function StepList() {
     }
   };
 
-  /** Deletes what a selection means (deleteIntent) and says so when whole blocks went with it. */
-  const remove = (sel: number[]) => {
-    const intent = deleteIntent(sel, steps, (o) => blocks.closerOf.get(o));
-    if (intent.message.type === 'actions:delete' && intent.count > sel.length) {
-      showToast(tt(`Deleted ${intent.count} steps — the selection touched a block marker, so whole blocks went with it.`,
-                   `${intent.count} passos apagados — a seleção tocou um marcador de bloco, então blocos inteiros foram junto.`));
-    }
-    cmds.removeSteps(intent);
-    selection.clear();
-  };
+  const remove = (sel: number[]) => deleteSteps(steps, sel, blocks, cmds, (text) => showToast(text), tt);
 
   const menuEntries = !menu || !menuKit ? [] : (() => {
     const sel = selectedIndices(steps);
@@ -262,6 +273,11 @@ export function StepList() {
         const requestId = newRequestId();
         pickRef.current = { requestId, id };
         tools.pickPosition({ requestId });
+      },
+      edit: (row) => {
+        // The step menu's Edit: the step is the selection, and the Inspector takes the focus.
+        if (!selectedIndices(steps).includes(row)) selection.only(steps, row);
+        focusInspector();
       },
       select: (indices) => selection.set(steps, indices),
       toast: (text, kind) => showToast(text, kind ?? 'info'),
@@ -293,9 +309,10 @@ export function StepList() {
           onKeyDown={onKeyDown}
           onMouseOver={(e) => { if (!drag.drag) lit.over(e.target); }}
           onMouseLeave={lit.leave}
-          // The step menu loads before it is asked for: the pointer or the focus on the list starts it.
-          onMouseEnter={() => { void loadStepMenu(); }}
-          onFocus={() => { void loadStepMenu(); }}
+          // The step menu and the Inspector's editors load before they are asked for: the pointer
+          // or the focus on the list starts them.
+          onMouseEnter={() => { void loadStepMenu(); void preload(loadInspectorBody); }}
+          onFocus={() => { void loadStepMenu(); void preload(loadInspectorBody); }}
         >
           {steps.map((step, i) => {
             const k = stepKey(step, i);

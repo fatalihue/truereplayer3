@@ -1077,7 +1077,7 @@ export type IncomingMessage =
 // ── Messages JS → C# ──
 
 /** Who holds an editor:pendingEdits claim — AutomationGuard keeps one stamp per owner. */
-export type EditorClaimOwner = 'sheet' | 'row-dialog' | 'insert-dialog' | 'data-panel' | 'automation-panel';
+export type EditorClaimOwner = 'sheet' | 'row-dialog' | 'insert-dialog' | 'data-panel' | 'automation-panel' | 'inspector';
 
 /**
  * What a shell asks of the engine beyond today's behaviour (ui:capabilities, right after ui:ready).

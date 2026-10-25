@@ -4,11 +4,11 @@ import {
 } from 'lucide-react';
 import type { ActionItem } from '../../bridge/messageTypes';
 import { deleteIntent, type useSteps } from '../../logic/useSteps';
-import { armBodyEnd, hasConditionFields, isStructuralRow, snapIndicesToBlocks } from '../../utils/conditionalBlocks';
+import { hasConditionFields, isStructuralRow, snapIndicesToBlocks } from '../../utils/conditionalBlocks';
 import { CLICK_FAMILY_TYPES, clickFormOf, isCoordinateClick, isFocusClickEligible } from '../../utils/displayUtils';
 import { canCollapse, canExpand, expandKeystroke } from '../../utils/keyRepeat';
 import type { MenuEntry } from '../Menu';
-import type { BlockMap } from './blocks';
+import { scopeOf, type BlockMap } from './blocks';
 
 type Tt = (en: string, pt: string) => string;
 
@@ -24,6 +24,8 @@ export interface StepMenuContext {
   convertCoordinates: (direction: 'toRelative' | 'toAbsolute') => void;
   /** Picks a point on screen for the step, then writes it (the list's own flow). */
   pick: (row: number) => void;
+  /** Opens the step in the Inspector, with the focus in its first field. */
+  edit: (row: number) => void;
   select: (indices: number[]) => void;
   toast: (message: string, kind?: 'success' | 'error' | 'info') => void;
   tt: Tt;
@@ -48,8 +50,7 @@ export function stepMenuEntries(ctx: StepMenuContext): MenuEntry[] {
   const delScope = deleteScope(targets, steps);
   const allSkipped = targets.every(i => steps[i]?.isSkipped);
   const entries: MenuEntry[] = [
-    // The editors are the Inspector's (slices 6 and 7).
-    { label: 'Edit', icon: Pencil, shortcut: 'Enter', notBuilt: true },
+    { label: 'Edit', icon: Pencil, shortcut: 'Enter', onSelect: () => ctx.edit(row) },
   ];
 
   if (isStructuralRow(t)) {
@@ -259,20 +260,6 @@ function moreEntries(ctx: StepMenuContext): MenuEntry[] {
   return out;
 }
 
-/** What Duplicate copies: a lone opener its block, a lone Else If its arm, else whole blocks for any marker touched. */
-export function scopeOf(sel: number[], steps: ActionItem[], blocks: BlockMap): number[] {
-  if (sel.length === 1) {
-    const t = steps[sel[0]]?.actionType;
-    if (t === 'If' || t === 'While' || t === 'ForEachRow') {
-      const end = blocks.closerOf.get(sel[0]);
-      if (end != null) return span(sel[0], end);
-    } else if (t === 'ElseIf') {
-      return span(sel[0], armBodyEnd(steps, sel[0]));
-    }
-  }
-  return snapIndicesToBlocks(sel, steps);
-}
-
 /** What Delete takes, named: a lone If its block, a loop opener its loop, an Else If its arm; a lone closer what the snap gives it. */
 function deleteScope(sel: number[], steps: ActionItem[]): 'block' | 'loop' | 'arm' | 'rows' {
   if (sel.length !== 1) return 'rows';
@@ -283,8 +270,6 @@ function deleteScope(sel: number[], steps: ActionItem[]): 'block' | 'loop' | 'ar
   if (snapIndicesToBlocks(sel, steps).length > 1) return t === 'EndLoop' ? 'loop' : 'block';
   return 'rows';
 }
-
-const span = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, k) => from + k);
 
 /**
  * What makes two steps "the same" for Select similar: the type, and the thing the step is about —

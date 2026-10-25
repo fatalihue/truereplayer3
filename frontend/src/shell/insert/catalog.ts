@@ -37,8 +37,8 @@ const BROWSER = 'browser web page site extension element selector';
 
 export const ITEMS: CatalogItem[] = [
   { id: 'click', group: 'input', type: 'LeftClick', name: 'Click', desc: 'A mouse click at a point or at the cursor', words: 'mouse left right middle double triple hold press tap', insert: inserts.click },
-  // Slice 6: the Inspector captures the key. Slice 7: it holds the text.
-  { id: 'key', group: 'input', type: 'Keystroke', name: 'Key', desc: 'A key or a combination, pressed or held', words: 'keystroke keyboard press hold shortcut hotkey combo' },
+  // The Inspector captures the key, and the step is born with it. The text is slice 7's.
+  { id: 'key', group: 'input', type: 'Keystroke', name: 'Key', desc: 'A key or a combination, pressed or held', words: 'keystroke keyboard press hold shortcut hotkey combo', insert: inserts.key },
   { id: 'text', group: 'input', type: 'SendText', name: 'Text', desc: 'Types or pastes text, with tokens', words: 'send type paste write string message' },
   { id: 'scroll', group: 'input', type: 'ScrollDown', name: 'Scroll', desc: 'Turns the mouse wheel up or down', words: 'wheel mouse up down' },
 

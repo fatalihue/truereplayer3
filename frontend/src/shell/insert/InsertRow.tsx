@@ -1,7 +1,8 @@
-import { lazy, Suspense, useRef, useState, type MouseEvent } from 'react';
+import { useRef, useState, type MouseEvent } from 'react';
 import { useRovingToolbar } from '../../hooks/useRovingToolbar';
 import { useSteps } from '../../logic/useSteps';
 import { useTt } from '../../state/LanguageContext';
+import { preload, useLoaded } from '../lazyModule';
 import { keycaps } from '../library/model';
 import { anchorBelow, type MenuAnchor } from '../menuAnchor';
 import { useApp } from '../store';
@@ -9,9 +10,9 @@ import { insertHere, inserts } from './inserts';
 import './insert.css';
 
 // The catalog is not part of opening the app (rule 6). Its chunk starts loading when the pointer
-// or the focus reaches Add step, so it is there by the press.
+// or the focus reaches Add step, so it is there by the press, and drawn on it (lazyModule).
 const loadCatalog = () => import('./AddStepCatalog');
-const AddStepCatalog = lazy(loadCatalog);
+const loadNow = () => { void preload(loadCatalog); };
 
 interface Opened {
   anchor: MenuAnchor;
@@ -41,6 +42,7 @@ export function InsertRow() {
   const toolsRef = useRef<HTMLDivElement>(null);
   const roving = useRovingToolbar(toolsRef);
   const [catalog, setCatalog] = useState<Opened | null>(null);
+  const AddStepCatalog = useLoaded(loadCatalog)?.default;
   const locked = status !== 'ready' || clicker;
   // The catalog does not outlive its macro, and closes when a run, a recording or the Clicker
   // starts (casca-027).
@@ -51,6 +53,7 @@ export function InsertRow() {
   const openCatalog = (e: MouseEvent<HTMLButtonElement>) => {
     if (catalog) { setCatalog(null); return; }
     const button = e.currentTarget;
+    loadNow();
     setCatalog({ anchor: anchorBelow(button, 'end'), button, macro: open });
   };
 
@@ -91,8 +94,8 @@ export function InsertRow() {
             tabIndex={-1}
             aria-haspopup="dialog"
             aria-expanded={!!catalog}
-            onPointerEnter={loadCatalog}
-            onFocus={loadCatalog}
+            onPointerEnter={loadNow}
+            onFocus={loadNow}
             onClick={openCatalog}
           >
             <span className="step-icon" data-icon="plus" />
@@ -109,19 +112,23 @@ export function InsertRow() {
             <span className="step-icon" data-icon="mouse" />
             Click
           </button>
-          {/* Key and Text are born in the Inspector, which captures the key and holds the text:
-              the engine keeps neither step empty (slices 6 and 7). */}
+          {/* Key and Text are born in the Inspector, which captures the key and holds the text: the
+              engine keeps neither step empty. The text is slice 7's. */}
+          <button
+            type="button"
+            className="ins-quick"
+            tabIndex={-1}
+            data-tip={tt('Opens in the Inspector, listening for the key', 'Abre no Inspector, escutando a tecla')}
+            onClick={() => insertHere(inserts.key, cmds)}
+          >
+            <span className="step-icon" data-icon="keyboard" />
+            Key
+          </button>
           {import.meta.env.DEV && (
-            <>
-              <button type="button" className="ins-quick" tabIndex={-1} disabled data-tip="Key — not built yet">
-                <span className="step-icon" data-icon="keyboard" />
-                Key
-              </button>
-              <button type="button" className="ins-quick" tabIndex={-1} disabled data-tip="Text — not built yet">
-                <span className="step-icon" data-icon="type" />
-                Text
-              </button>
-            </>
+            <button type="button" className="ins-quick" tabIndex={-1} disabled data-tip="Text — not built yet">
+              <span className="step-icon" data-icon="type" />
+              Text
+            </button>
           )}
           <button
             type="button"
@@ -160,10 +167,8 @@ export function InsertRow() {
           </button>
         </div>
       )}
-      {catalog && (
-        <Suspense fallback={null}>
-          <AddStepCatalog anchor={catalog.anchor} toggle={catalog.button} onClose={() => setCatalog(null)} />
-        </Suspense>
+      {catalog && AddStepCatalog && (
+        <AddStepCatalog anchor={catalog.anchor} toggle={catalog.button} onClose={() => setCatalog(null)} />
       )}
     </div>
   );

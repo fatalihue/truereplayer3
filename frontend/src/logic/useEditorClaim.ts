@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useBridge } from '../bridge/BridgeContext';
 import type { EditorClaimOwner } from '../bridge/messageTypes';
 
@@ -21,7 +21,12 @@ const EDITOR_CLAIM_RENEW_MS = 60_000;
  */
 export function useEditorClaim(owner: EditorClaimOwner, pending: boolean) {
   const { send } = useBridge();
+  // What the engine was told last: a mount with nothing pending tells it nothing (an editor that is
+  // always there, like the new shell's Inspector, would otherwise speak before ui:ready).
+  const told = useRef(false);
   useEffect(() => {
+    if (pending === told.current) return;
+    told.current = pending;
     send({ type: 'editor:pendingEdits', payload: { pending, owner } });
   }, [pending, owner, send]);
   useEffect(() => () => {

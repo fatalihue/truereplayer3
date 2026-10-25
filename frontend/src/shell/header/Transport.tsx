@@ -1,4 +1,5 @@
-import { lazy, Suspense, useState, type MouseEvent } from 'react';
+import { useState, type MouseEvent } from 'react';
+import { preload, useLoaded } from '../lazyModule';
 import { ChevronDown, MoreHorizontal, Play, Square } from 'lucide-react';
 import { useMacro } from '../../logic/useMacro';
 import { useRecording } from '../../logic/useRecording';
@@ -14,9 +15,9 @@ import { passesOf, runsPerRow } from './model';
 import { RunProgress } from './RunProgress';
 
 // Record ▾ and Replay ▾ are not part of opening the app (rule 6). The chunk starts loading when the
-// pointer or the focus reaches either ▾, so it is there by the press.
+// pointer or the focus reaches either ▾, so it is there by the press, and drawn on it (lazyModule).
 const loadRunOptions = () => import('./RunOptions');
-const RunOptions = lazy(loadRunOptions);
+const loadNow = () => { void preload(loadRunOptions); };
 
 interface Opened {
   anchor: MenuAnchor;
@@ -41,10 +42,12 @@ export function Transport({ name }: { name: string }) {
   const tt = useTt();
   const [panel, setPanel] = useState<(Opened & { kind: 'record' | 'replay' }) | null>(null);
   const [menu, setMenu] = useState<Opened | null>(null);
+  const RunOptions = useLoaded(loadRunOptions)?.default;
 
   const openPanel = (kind: 'record' | 'replay') => (e: MouseEvent<HTMLButtonElement>) => {
     if (panel?.kind === kind) { setPanel(null); return; }
     const button = e.currentTarget;
+    loadNow();
     setPanel({ kind, button, anchor: anchorBelow(button, 'end'), keyboard: e.detail === 0 });
   };
   const openMenu = (e: MouseEvent<HTMLButtonElement>) => {
@@ -87,8 +90,8 @@ export function Transport({ name }: { name: string }) {
               aria-label="Recording options"
               aria-haspopup="dialog"
               aria-expanded={panel?.kind === 'record'}
-              onPointerEnter={loadRunOptions}
-              onFocus={loadRunOptions}
+              onPointerEnter={loadNow}
+              onFocus={loadNow}
               onClick={openPanel('record')}
             >
               <ChevronDown aria-hidden="true" />
@@ -125,8 +128,8 @@ export function Transport({ name }: { name: string }) {
             aria-label="Run options"
             aria-haspopup="dialog"
             aria-expanded={panel?.kind === 'replay'}
-            onPointerEnter={loadRunOptions}
-            onFocus={loadRunOptions}
+            onPointerEnter={loadNow}
+            onFocus={loadNow}
             onClick={openPanel('replay')}
           >
             <ChevronDown aria-hidden="true" />
@@ -145,10 +148,8 @@ export function Transport({ name }: { name: string }) {
         <MoreHorizontal aria-hidden="true" />
       </button>
 
-      {panel && (
-        <Suspense fallback={null}>
-          <RunOptions kind={panel.kind} anchor={panel.anchor} toggle={panel.button} focusFirst={panel.keyboard} onClose={() => setPanel(null)} />
-        </Suspense>
+      {panel && RunOptions && (
+        <RunOptions kind={panel.kind} anchor={panel.anchor} toggle={panel.button} focusFirst={panel.keyboard} onClose={() => setPanel(null)} />
       )}
       {menu && <MacroActions name={name} opened={menu} onClose={() => setMenu(null)} />}
     </div>

@@ -1,4 +1,5 @@
 import type { ActionItem } from '../../bridge/messageTypes';
+import { armBodyEnd, snapIndicesToBlocks } from '../../utils/conditionalBlocks';
 
 /**
  * The blocks of a step list — If…End If and the loops — as the list draws them, in one O(n) walk
@@ -106,3 +107,22 @@ const LEVEL_COLORS = [
   'var(--color-block-4)',
 ];
 export const blockColor = (level: number) => LEVEL_COLORS[((level % 5) + 5) % 5];
+
+/**
+ * What a copy of the selection takes (Duplicate in the step menu and in the batch editor): a lone
+ * opener its block, a lone Else If its arm, else whole blocks for any marker touched.
+ */
+export function scopeOf(sel: number[], steps: ActionItem[], blocks: BlockMap): number[] {
+  if (sel.length === 1) {
+    const t = steps[sel[0]]?.actionType;
+    if (t === 'If' || t === 'While' || t === 'ForEachRow') {
+      const end = blocks.closerOf.get(sel[0]);
+      if (end != null) return span(sel[0], end);
+    } else if (t === 'ElseIf') {
+      return span(sel[0], armBodyEnd(steps, sel[0]));
+    }
+  }
+  return snapIndicesToBlocks(sel, steps);
+}
+
+export const span = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, k) => from + k);

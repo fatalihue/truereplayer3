@@ -1,6 +1,6 @@
 import { TooltipLayer } from '../components/common/TooltipLayer';
 import { Toast } from '../components/Toast';
-import { Inspector } from './Inspector';
+import { Inspector } from './inspector/Inspector';
 import { InsertRow } from './insert/InsertRow';
 import { Library } from './library/Library';
 import { MacroHeader } from './header/MacroHeader';
