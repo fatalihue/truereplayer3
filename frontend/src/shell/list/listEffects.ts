@@ -101,6 +101,7 @@ export function useArrival(bodyRef: RefObject<HTMLElement | null>, steps: Action
     const at = keys[want.at] !== undefined && !before.has(keys[want.at]) ? want.at : keys.findIndex(k => !before.has(k));
     if (at < 0) return;
     arrival.clear();
+    want.onArrive?.(steps[at]);
     selection.only(steps, at);
     bodyRef.current?.querySelector(`.step[data-index="${at}"]`)?.scrollIntoView({ block: 'nearest' });
   }, [steps, open, bodyRef]);

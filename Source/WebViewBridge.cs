@@ -513,6 +513,17 @@ namespace TrueReplayer
                 "BrowserWaitElement", "BrowserNavigate", "BrowserSelectOption", "BrowserAssert",
             };
 
+        // Allowlist for the actions:edit "conditionType" field — the probe families the executor's
+        // condition switch knows, spelled as the inserts spell them (actions:insertConditional,
+        // insertLoop, addElseIfBranch, insertAssert). Same reason as KnownActionTypes: a family no
+        // branch handles is a condition that silently never passes.
+        private static readonly HashSet<string> KnownConditionTypes =
+            new(StringComparer.Ordinal)
+            {
+                "ImageFound", "PixelColorMatch", "ScreenText", "WindowOpen", "ProcessRunning",
+                "FileExists", "ClipboardMatch", "Variable", "BrowserElementState", "Random", "TimeWindow",
+            };
+
         /// <summary>
         /// A click row the RECORDER can have produced on its own — the vocabulary the browser-side
         /// dedup sweeps have to mirror, since every one of them is a duplicate of the extension
@@ -5245,6 +5256,11 @@ namespace TrueReplayer
                 DiagnosticLog.Warn($"actions:edit rejected unknown actionType '{value}' at index {index}");
                 return;
             }
+            if (field == "conditionType" && !KnownConditionTypes.Contains(value))
+            {
+                DiagnosticLog.Warn($"actions:edit rejected unknown conditionType '{value}' at index {index}");
+                return;
+            }
 
             if (RefusedFreeTextNumber("actions:edit", index, field, value)) return;
 
@@ -5315,6 +5331,11 @@ namespace TrueReplayer
                 if (field == "actionType" && !KnownActionTypes.Contains(value))
                 {
                     DiagnosticLog.Warn($"actions:editMany rejected unknown actionType '{value}' at index {index}");
+                    return;
+                }
+                if (field == "conditionType" && !KnownConditionTypes.Contains(value))
+                {
+                    DiagnosticLog.Warn($"actions:editMany rejected unknown conditionType '{value}' at index {index}");
                     return;
                 }
                 // The same door as the single-field edit, and here it is what keeps the batch whole:
@@ -5522,20 +5543,53 @@ namespace TrueReplayer
                     action.PixelClickOnMatch = value == "true";
                     break;
                 case "conditionType":
-                    // Nothing sends this today: the condition type is chosen when the row is
-                    // INSERTED (actions:insertConditional / insertAssert / addElseIfBranch) and
-                    // the Sheet offers no way to change it afterwards. Kept as the landing spot
-                    // for a future type switcher, which is why it is a pass-through rather than
-                    // a closed set.
+                    // The Inspector's Check: an existing If, Else If or While (or an Assert) gets
+                    // another probe family. The two doors above refuse an unknown family; the same
+                    // family again changes nothing.
                     //
-                    // A switcher must not stop here, though: this only overwrites the type and
-                    // leaves the OUTGOING probe's payload behind — ImagePath, pixel coords and
-                    // colour, clipboard pattern. That matters most for images, whose file
-                    // lifecycle keys off CarriesConditionProbe + ConditionType == "ImageFound"
-                    // (see ProfileController's carry/cleanup): flipping away from ImageFound with
-                    // ImagePath still set strands the PNG. Clear the old probe's fields in the
-                    // same edit.
-                    action.ConditionType = string.IsNullOrEmpty(value) ? null : value;
+                    // The OUTGOING probe's payload goes with it, here and not in the caller, so no
+                    // switcher can forget a field: ImagePath above all, whose file lifecycle keys off
+                    // CarriesConditionProbe + ConditionType == "ImageFound" (ProfileController's
+                    // carry/cleanup) — left set under another family it would strand the PNG. The PNG
+                    // itself stays on disk, like every delete path in this file, so Ctrl+Z gets the
+                    // image back; the keep-set rebuilt from the saved profile lets it go after that.
+                    //
+                    // The INCOMING family starts the way a direct insert leaves it (InsertBlockDirect):
+                    // empty, Random at 50 % (0 % would be a condition that never passes), Text on
+                    // screen with its explicit Contains. The shared chrome stays: polarity, the wait,
+                    // the probe-error policy, the While's ceiling, the delay and the notes.
+                    if (string.IsNullOrEmpty(value) || string.Equals(action.ConditionType, value, StringComparison.OrdinalIgnoreCase)) break;
+                    action.ConditionType = value;
+                    action.Key = "";
+                    action.ImagePath = null;
+                    action.Confidence = 0.8;
+                    action.WaitImageSearchX = null;
+                    action.WaitImageSearchY = null;
+                    action.WaitImageSearchW = null;
+                    action.WaitImageSearchH = null;
+                    action.PixelX = null;
+                    action.PixelY = null;
+                    action.PixelColor = null;
+                    action.PixelTolerance = 0;
+                    action.WindowProcessName = null;
+                    action.WindowTitle = null;
+                    action.WindowTitleMatchMode = null;
+                    action.WindowMatchForegroundOnly = false;
+                    action.ClipboardPatternType = null;
+                    action.ClipboardPattern = null;
+                    action.RandomPercent = value == "Random" ? 50 : 0;
+                    action.ConditionOperator = value == "ScreenText" ? "contains" : null;
+                    action.ConditionOperand = null;
+                    action.OcrReadAs = null;
+                    action.OcrTextColor = null;
+                    action.OcrColorTolerance = null;
+                    action.FilePath = null;
+                    action.TimeStart = null;
+                    action.TimeEnd = null;
+                    action.DaysOfWeek = 0;
+                    action.BrowserText = null;
+                    action.WaitMode = null;
+                    action.SelectorAlternatives = null;
                     break;
                 case "conditionNegate":
                     action.ConditionNegate = value == "true";

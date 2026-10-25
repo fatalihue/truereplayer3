@@ -68,11 +68,18 @@ export function Inspector() {
   }, [showing, editors]);
   const Body = editors?.default;
   // A step still being made goes with its macro, when a run or the Clicker starts, and when the
-  // selection moves (the step it made arriving, or a click elsewhere).
+  // selection moves (the step it made arriving, or a click elsewhere) — except a Text that became
+  // a step and is still being typed: its editor stays while that step is the one selected.
+  const adoptedGone = draft?.kind === 'text' && !!draft.stepId && !steps.some(s => s.id === draft.stepId);
   useEffect(() => {
-    if (draft && (draft.macro !== open || locked)) cancelDraft();
-  }, [draft, open, locked]);
-  useEffect(() => useSelection.subscribe((s, prev) => { if (s.keys !== prev.keys) cancelDraft(); }), []);
+    if (draft && (draft.macro !== open || locked || adoptedGone)) cancelDraft();
+  }, [draft, open, locked, adoptedGone]);
+  useEffect(() => useSelection.subscribe((s, prev) => {
+    if (s.keys === prev.keys) return;
+    const d = useDraft.getState().draft;
+    if (d?.kind === 'text' && d.stepId && s.keys.size === 1 && s.keys.has(d.stepId)) return;
+    cancelDraft();
+  }), []);
 
   const note = clicker
     ? tt(`The Clicker is on — ${keycaps(modeKey || 'ScrollLock')} brings the macros back`,

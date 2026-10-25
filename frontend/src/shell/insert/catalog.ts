@@ -37,9 +37,9 @@ const BROWSER = 'browser web page site extension element selector';
 
 export const ITEMS: CatalogItem[] = [
   { id: 'click', group: 'input', type: 'LeftClick', name: 'Click', desc: 'A mouse click at a point or at the cursor', words: 'mouse left right middle double triple hold press tap', insert: inserts.click },
-  // The Inspector captures the key, and the step is born with it. The text is slice 7's.
+  // The Inspector captures the key, or holds the text, and the step is born with it.
   { id: 'key', group: 'input', type: 'Keystroke', name: 'Key', desc: 'A key or a combination, pressed or held', words: 'keystroke keyboard press hold shortcut hotkey combo', insert: inserts.key },
-  { id: 'text', group: 'input', type: 'SendText', name: 'Text', desc: 'Types or pastes text, with tokens', words: 'send type paste write string message' },
+  { id: 'text', group: 'input', type: 'SendText', name: 'Text', desc: 'Types or pastes text, with tokens', words: 'send type paste write string message', insert: inserts.text },
   { id: 'scroll', group: 'input', type: 'ScrollDown', name: 'Scroll', desc: 'Turns the mouse wheel up or down', words: 'wheel mouse up down' },
 
   { id: 'pause', group: 'wait', type: 'Pause', name: 'Pause', desc: 'Wait for a key or a timeout', words: 'delay sleep time timeout resume hold', insert: inserts.pause },
@@ -48,9 +48,9 @@ export const ITEMS: CatalogItem[] = [
   { id: 'waitText', group: 'wait', type: 'WaitText', name: 'Wait Text', desc: 'Until text appears, read with Screen Text', words: 'ocr read screen' },
   { id: 'waitUntil', group: 'wait', type: 'Assert', icon: 'clock', name: 'Wait until…', desc: 'Window open, process, clipboard, variable, file or time', words: 'condition state', more: true },
 
-  // Slice 7, with the check in the Inspector.
-  { id: 'if', group: 'flow', type: 'If', name: 'If', desc: 'Runs the steps inside only when a check passes', words: 'condition branch check else image pixel window' },
-  { id: 'while', group: 'flow', type: 'While', name: 'While', desc: 'Repeats the steps inside while a check passes', words: 'loop repeat until condition' },
+  // The check is chosen in the Inspector, and the block is born with it.
+  { id: 'if', group: 'flow', type: 'If', name: 'If', desc: 'Runs the steps inside only when a check passes', words: 'condition branch check else image pixel window', insert: inserts.if },
+  { id: 'while', group: 'flow', type: 'While', name: 'While', desc: 'Repeats the steps inside while a check passes', words: 'loop repeat until condition', insert: inserts.while },
   { id: 'forEachRow', group: 'flow', type: 'ForEachRow', name: 'For Each Data Row', desc: 'Repeats the steps inside once per Data Loop row', words: 'loop table rows csv' },
   { id: 'break', group: 'flow', type: 'BreakLoop', name: 'Break loop', desc: 'Leaves the loop it is in', words: 'exit stop' },
   { id: 'next', group: 'flow', type: 'ContinueLoop', name: 'Next iteration', desc: 'Skips to the next pass of the loop', words: 'continue skip' },

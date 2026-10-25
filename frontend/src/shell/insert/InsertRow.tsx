@@ -113,7 +113,7 @@ export function InsertRow() {
             Click
           </button>
           {/* Key and Text are born in the Inspector, which captures the key and holds the text: the
-              engine keeps neither step empty. The text is slice 7's. */}
+              engine keeps neither step empty. */}
           <button
             type="button"
             className="ins-quick"
@@ -124,12 +124,16 @@ export function InsertRow() {
             <span className="step-icon" data-icon="keyboard" />
             Key
           </button>
-          {import.meta.env.DEV && (
-            <button type="button" className="ins-quick" tabIndex={-1} disabled data-tip="Text — not built yet">
-              <span className="step-icon" data-icon="type" />
-              Text
-            </button>
-          )}
+          <button
+            type="button"
+            className="ins-quick"
+            tabIndex={-1}
+            data-tip={tt('Opens in the Inspector: the step is added with its first text', 'Abre no Inspector: o passo entra com o primeiro texto')}
+            onClick={() => insertHere(inserts.text, cmds)}
+          >
+            <span className="step-icon" data-icon="type" />
+            Text
+          </button>
           <button
             type="button"
             className="ins-quick"

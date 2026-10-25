@@ -1,57 +1,58 @@
-import { useLayoutEffect } from 'react';
+import { useEffect, useLayoutEffect } from 'react';
 import type { ActionItem } from '../../bridge/messageTypes';
 import { getActionTypeColors, isCoordinateClick } from '../../utils/displayUtils';
+import { preload, useLoaded } from '../lazyModule';
 import { arrival, selection } from '../list/selection';
 import { stepIcon, stepKey, stepName } from '../list/stepTypes';
 import { NotBuilt } from '../NotBuilt';
 import { useApp } from '../store';
 import { BatchEditor } from './BatchEditor';
+import { CheckDraft } from './CheckDraft';
 import { ClickEditor } from './ClickEditor';
 import { DraftField, Section } from './fields';
-import { drafts, focusList, takeFocusAsk, type Draft } from './inspectorState';
+import { drafts, focusList, loadProbeEditors, loadSendTextEditor, takeFocusAsk, type Draft, type TextDraft } from './inspectorState';
 import { DraftKeyEditor, KeyEditor, KeyHalfEditor } from './KeyEditor';
 import { PauseEditor } from './PauseEditor';
 import './editors.css';
+import './editorIcons.css';
 
 // Where a step has no delay of its own to edit here: the If family and the jump markers (the While
 // keeps its settle), and the browser steps, whose delay is part of their own editor (phase 2).
 const NO_DELAY_FIELD = new Set(['If', 'ElseIf', 'Else', 'EndIf', 'EndLoop', 'BreakLoop', 'ContinueLoop', 'ForEachRow']);
 const MAX_DELAY_MS = 999_999_999;
+const CONDITION_STEPS = new Set(['If', 'ElseIf', 'While']);
+// The markers of a block say where their settings live (editor-passo-059).
+const MARKER_NOTES: Record<string, string> = {
+  Else: 'The FALSE branch. Set the condition on the If step.',
+  EndIf: 'Closes the block. Set the condition on the If step.',
+  EndLoop: 'Closes the block. Set the loop on its opening step.',
+};
 
 /**
  * The Inspector with a selection, loaded with the first step (rule 6): the header, one step's
  * editor or the batch editor for several, and the footer — or, while a run, a recording or the
  * Clicker is on, the note that it is read-only. Each step's editor is keyed by the step, so its
- * fields start from that step and send what was typed when another one is selected.
+ * fields start from that step and send what was typed when another one is selected. A step being
+ * made (a draft) has its own view, with what it needs before it can exist.
  */
 export default function InspectorBody({ indices, locked, note, draft }: { indices: number[]; locked: boolean; note: string | null; draft: Draft | null }) {
   const steps = useApp(a => a.actions);
   // Enter on a step (or Edit in its menu) asked for the first field before this was drawn.
   useLayoutEffect(() => { takeFocusAsk(); });
-  if (draft) {
-    const where = steps.length === 0 ? 'the first step' : draft.at < steps.length ? `after step ${draft.at}` : `at the end, after step ${steps.length}`;
-    const colors = getActionTypeColors('Keystroke');
-    return (
-      <>
-        <div className="insp-head">
-          <span className="insp-tile" style={{ background: colors.bg, color: colors.fg }}>
-            <span className="step-icon" data-icon="keyboard" />
-          </span>
-          <div className="insp-title">
-            <span className="insp-name" data-display="">Keystroke</span>
-            <span className="insp-sub">New step · {where}</span>
-          </div>
-          <button type="button" className="insp-close" aria-label="Cancel the new step" onClick={() => { drafts.end(); arrival.clear(); focusList(); }}>
-            <span className="step-icon" data-icon="x" />
-          </button>
-        </div>
-        <div className="insp-body">
-          <DraftKeyEditor draft={draft} locked={locked} />
-        </div>
-        <div className="insp-foot" data-locked={note ? '' : undefined}>{note ?? 'The step is added with its key · Esc cancels'}</div>
-      </>
-    );
-  }
+  // The chunks of the Send Text editor and of the probes, once the Inspector is up and the page is
+  // idle, when the macro has such a step to open: its first opening does not wait for them.
+  const hasText = steps.some(s => s.actionType === 'SendText');
+  const hasProbe = steps.some(s => s.actionType === 'WaitImage' || CONDITION_STEPS.has(s.actionType));
+  useEffect(() => {
+    if (!hasText && !hasProbe) return;
+    const id = requestIdleCallback(() => {
+      if (hasProbe) void preload(loadProbeEditors);
+      if (hasText) void preload(loadSendTextEditor);
+    });
+    return () => cancelIdleCallback(id);
+  }, [hasText, hasProbe]);
+
+  if (draft) return <DraftView draft={draft} steps={steps} locked={locked} note={note} />;
   const one = indices.length === 1 ? steps[indices[0]] : null;
   return (
     <>
@@ -61,10 +62,63 @@ export default function InspectorBody({ indices, locked, note, draft }: { indice
           ? <StepEditor key={stepKey(one, indices[0])} step={one} index={indices[0]} steps={steps} locked={locked} />
           : <BatchEditor indices={indices} steps={steps} locked={locked} />}
       </div>
-      <div className="insp-foot" data-locked={note ? '' : undefined}>
-        {note ?? (one ? 'Applies as you type and saves on its own · Ctrl+Z undoes' : 'Each change is one undo step · Ctrl+Z undoes')}
-      </div>
+      <Foot note={note} text={one ? 'Applies as you type and saves on its own · Ctrl+Z undoes' : 'Each change is one undo step · Ctrl+Z undoes'} />
     </>
+  );
+}
+
+function Foot({ note, text }: { note: string | null; text: string }) {
+  return <div className="insp-foot" data-locked={note ? '' : undefined}>{note ?? text}</div>;
+}
+
+/** Where a step being made goes, said in its header. */
+function whereOf(at: number, count: number): string {
+  return count === 0 ? 'the first step' : at < count ? `after step ${at}` : `at the end, after step ${count}`;
+}
+
+const DRAFT_TYPE: Record<string, string> = { key: 'Keystroke', text: 'SendText' };
+
+/**
+ * A step being made: a Key waiting for its key, a Text for its first text — which then goes on as
+ * the step it became, in the same editor —, and an If, a While or an Else If for its check.
+ */
+function DraftView({ draft, steps, locked, note }: { draft: Draft; steps: ActionItem[]; locked: boolean; note: string | null }) {
+  const born = draft.kind === 'text' && draft.stepId ? steps.find(s => s.id === draft.stepId) ?? null : null;
+  const index = born ? steps.indexOf(born) : -1;
+  const type = draft.kind === 'check' ? draft.opener : DRAFT_TYPE[draft.kind];
+  const foot = draft.kind === 'key' ? 'The step is added with its key · Esc cancels'
+    : draft.kind === 'text' ? (born ? 'Applies as you type and saves on its own · Ctrl+Z undoes' : 'The step is added with its first text · Esc cancels while it is empty')
+    : 'Choose what it checks · Esc cancels';
+  return (
+    <>
+      {born ? <StepHeader step={born} index={index} count={steps.length} /> : <DraftHeader type={type} where={whereOf(draft.at, steps.length)} />}
+      <div className="insp-body">
+        {draft.kind === 'key' && <DraftKeyEditor draft={draft} locked={locked} />}
+        {draft.kind === 'text' && <TextEditorSlot key={draft.serial} step={born} draft={draft} locked={locked} />}
+        {draft.kind === 'text' && born && <CommonFields step={born} locked={locked} />}
+        {draft.kind === 'check' && <CheckDraft draft={draft} locked={locked} />}
+      </div>
+      <Foot note={note} text={foot} />
+    </>
+  );
+}
+
+function DraftHeader({ type, where }: { type: string; where: string }) {
+  const colors = getActionTypeColors(type);
+  const icon = stepIcon(type);
+  return (
+    <div className="insp-head">
+      <span className="insp-tile" style={{ background: colors.bg, color: colors.fg }}>
+        {icon && <span className="step-icon" data-icon={icon} />}
+      </span>
+      <div className="insp-title">
+        <span className="insp-name" data-display="">{stepName(type)}</span>
+        <span className="insp-sub">New step · {where}</span>
+      </div>
+      <button type="button" className="insp-close" aria-label="Cancel the new step" onClick={() => { drafts.end(); arrival.clear(); focusList(); }}>
+        <span className="step-icon" data-icon="x" />
+      </button>
+    </div>
   );
 }
 
@@ -119,27 +173,63 @@ function BatchHeader({ sel }: { sel: number[] }) {
 /** One step: its type's editor, then the Delay and the Notes every step has (editor-passo-190 and 191). */
 function StepEditor({ step, index, steps, locked }: { step: ActionItem; index: number; steps: ActionItem[]; locked: boolean }) {
   const t = step.actionType;
-  const id = step.id ?? '';
   const editor = isCoordinateClick(t) ? <ClickEditor step={step} index={index} steps={steps} locked={locked} />
     : t === 'Keystroke' || t === 'HoldKey' ? <KeyEditor step={step} locked={locked} />
     : t === 'KeyDown' || t === 'KeyUp' ? <KeyHalfEditor step={step} locked={locked} />
     : t === 'Pause' ? <PauseEditor step={step} locked={locked} />
-    // The other types' editors come with slice 7 (Text, Wait Image, If, Else If, While) and phase 2.
+    : t === 'SendText' ? <TextEditorSlot step={step} draft={null} locked={locked} />
+    : t === 'WaitImage' || CONDITION_STEPS.has(t) ? <ProbeSlot step={step} locked={locked} />
+    : MARKER_NOTES[t] ? <p className="insp-summary">{MARKER_NOTES[t]}</p>
+    // The other types' editors come with phase 2.
     : <NotBuilt what={`${stepName(t)} editor`} />;
-  const delay = !NO_DELAY_FIELD.has(t) && !t.startsWith('Browser');
   return (
     <>
       {editor}
-      <div className="insp-pair insp-common">
-        {delay && (
-          <Section label="Delay">
-            <DraftField stepId={id} field="delay" label="Delay in milliseconds" kind="int" min={0} max={MAX_DELAY_MS} empty="min" unit="ms" stored={String(step.delay)} disabled={locked} />
-          </Section>
-        )}
-        <Section label="Notes">
-          <DraftField stepId={id} field="comment" label="Notes" kind="text" placeholder="Add a note…" stored={step.comment ?? ''} disabled={locked} />
-        </Section>
-      </div>
+      <CommonFields step={step} locked={locked} />
     </>
   );
+}
+
+function CommonFields({ step, locked }: { step: ActionItem; locked: boolean }) {
+  const t = step.actionType;
+  const id = step.id ?? '';
+  const delay = !NO_DELAY_FIELD.has(t) && !t.startsWith('Browser');
+  return (
+    <div className="insp-pair insp-common">
+      {delay && (
+        <Section label="Delay">
+          <DraftField stepId={id} field="delay" label="Delay in milliseconds" kind="int" min={0} max={MAX_DELAY_MS} empty="min" unit="ms" stored={String(step.delay)} disabled={locked} />
+        </Section>
+      )}
+      <Section label="Notes">
+        <DraftField stepId={id} field="comment" label="Notes" kind="text" placeholder="Add a note…" stored={step.comment ?? ''} disabled={locked} />
+      </Section>
+    </div>
+  );
+}
+
+/**
+ * The Send Text editor, from its own chunk (it brings the rich editor along): drawn as soon as the
+ * chunk is in — usually already, loaded when the page was idle —, an empty frame for the moment
+ * before that.
+ */
+function TextEditorSlot({ step, draft, locked }: { step: ActionItem | null; draft: TextDraft | null; locked: boolean }) {
+  const mod = useLoaded(loadSendTextEditor);
+  useEffect(() => {
+    if (!mod) void preload(loadSendTextEditor);
+  }, [mod]);
+  const Editor = mod?.default;
+  return Editor ? <Editor step={step} draft={draft} locked={locked} /> : <div className="insp-text-wait" />;
+}
+
+/** Wait Image and the condition editor, from their chunk, the same way. */
+function ProbeSlot({ step, locked }: { step: ActionItem; locked: boolean }) {
+  const mod = useLoaded(loadProbeEditors);
+  useEffect(() => {
+    if (!mod) void preload(loadProbeEditors);
+  }, [mod]);
+  if (!mod) return null;
+  return step.actionType === 'WaitImage'
+    ? <mod.WaitImageEditor step={step} locked={locked} />
+    : <mod.ConditionEditor step={step} locked={locked} />;
 }

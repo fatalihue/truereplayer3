@@ -11,7 +11,7 @@ import { Menu } from '../Menu';
 import { fromKeyboard, type MenuAnchor } from '../menuAnchor';
 import { useApp, useShell } from '../store';
 import { blockColor, blockMap, type BlockMap, type GhostRow } from './blocks';
-import { focusInspector, loadInspectorBody } from '../inspector/inspectorState';
+import { drafts, focusInspector, loadInspectorBody } from '../inspector/inspectorState';
 import { preload } from '../lazyModule';
 import { useArrival, useInsertFlash, useLitBlocks, useRunFollow } from './listEffects';
 import { deleteSteps } from './moves';
@@ -320,8 +320,17 @@ export function StepList() {
             const ghost = blocks.ghostBefore.get(i);
             return (
               <Fragment key={k}>
-                {ghost && (ghost.canElse || import.meta.env.DEV) && (
-                  <Ghost ghost={ghost} anchor={i} locked={locked} onAddElse={() => cmds.addElseBranch({ ifRowIndex: ghost.opener })} />
+                {ghost && (
+                  <Ghost
+                    ghost={ghost}
+                    anchor={i}
+                    locked={locked}
+                    onAddElse={() => cmds.addElseBranch({ ifRowIndex: ghost.opener })}
+                    onAddElseIf={() => {
+                      drafts.start({ kind: 'check', opener: 'ElseIf', at: i, macro: open, ifRowIndex: ghost.opener });
+                      void preload(loadInspectorBody);
+                    }}
+                  />
                 )}
                 <StepRow
                   step={step}
@@ -397,8 +406,11 @@ function InsertLine({ steps, bodyRef }: { steps: ActionItem[]; bodyRef: React.Re
   );
 }
 
-/** "+ Add Else" inside an If block with no Else, where the arm will land (lista-026). */
-function Ghost({ ghost, anchor, locked, onAddElse }: { ghost: GhostRow; anchor: number; locked: boolean; onAddElse: () => void }) {
+/**
+ * "+ Add Else If" and "+ Add Else" inside an If block, where the arm will land (lista-026): the
+ * Else If's check is chosen in the Inspector; the Else, while the block has none, lands at once.
+ */
+function Ghost({ ghost, anchor, locked, onAddElse, onAddElseIf }: { ghost: GhostRow; anchor: number; locked: boolean; onAddElse: () => void; onAddElseIf: () => void }) {
   const rails = ghost.rails.split(',');
   return (
     <div
@@ -413,8 +425,10 @@ function Ghost({ ghost, anchor, locked, onAddElse }: { ghost: GhostRow; anchor: 
           <span key={i} className="step-rail" data-rail-block={opener} style={{ left: `${i * 0.875}rem`, '--rail-color': blockColor(i) } as CSSProperties} />
         ))}
         <span className="step-ghost-actions">
-          {/* The arm's condition is chosen in the Inspector (slice 7). */}
-          {import.meta.env.DEV && <button type="button" className="step-ghost-button" disabled>Add Else If — not built yet</button>}
+          <button type="button" className="step-ghost-button" disabled={locked} onClick={onAddElseIf}>
+            <span className="step-icon" data-icon="plus" />
+            Add Else If
+          </button>
           {ghost.canElse && (
             <button type="button" className="step-ghost-button" disabled={locked} onClick={onAddElse}>
               <span className="step-icon" data-icon="plus" />

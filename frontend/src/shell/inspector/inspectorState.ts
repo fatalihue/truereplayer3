@@ -11,6 +11,11 @@ import { useShell } from '../store';
 /** The editors are not part of opening the app (rule 6): they load with the first step selected, or
  *  earlier, when the pointer or the focus reaches the list. */
 export const loadInspectorBody = () => import('./InspectorBody');
+/** The Send Text editor brings the rich editor (Lexical) along: a chunk of its own, loaded for a
+ *  Send Text step or a Text being made, never for opening the app or for the first step clicked. */
+export const loadSendTextEditor = () => import('./SendTextEditor');
+/** …and the editors of the steps that probe (Wait Image, If, Else If, While), likewise. */
+export const loadProbeEditors = () => import('./probeEditors');
 
 const NONE: ReadonlySet<string> = new Set();
 export const usePendingEdits = create<{ fields: ReadonlySet<string> }>(() => ({ fields: NONE }));
@@ -32,20 +37,37 @@ export const pendingEdits = {
 };
 
 /**
- * A step being made in the Inspector before it exists. A Key waits for its key there (Key in the
- * insert row and in the catalog): the engine keeps no Keystroke without one, so the step is born
- * when the key arrives, at the insertion point it was asked for, and Esc leaves nothing behind.
+ * A step being made in the Inspector before it exists, at the insertion point it was asked for
+ * (`at`, in `macro`). The engine keeps no Keystroke without its key and no Send Text without text,
+ * so a Key is born when the key arrives and a Text with its first text; an If, a While or an Else
+ * If waits for its check (the Check list). Esc, the × and selecting another step leave nothing.
+ *
+ * A Text goes on being edited where it was typed: once born, the step it became is adopted, and
+ * the same editor keeps the caret until the selection leaves it.
  */
-export interface Draft {
-  kind: 'key';
-  /** Where the step goes, and in which macro. */
-  at: number;
-  macro: string | null;
-}
+export type Draft = { serial: number } & (
+  | { kind: 'key'; at: number; macro: string | null }
+  | { kind: 'text'; at: number; macro: string | null; born?: boolean; stepId?: string }
+  | { kind: 'check'; opener: CheckOpener; at: number; macro: string | null; ifRowIndex?: number });
+export type CheckOpener = 'If' | 'While' | 'ElseIf';
+export type TextDraft = Extract<Draft, { kind: 'text' }>;
+type NewDraft = Draft extends infer D ? D extends Draft ? Omit<D, 'serial'> : never : never;
 export const useDraft = create<{ draft: Draft | null }>(() => ({ draft: null }));
+// Each draft is a new one, even at the same point: its editor starts empty.
+let serial = 0;
 export const drafts = {
-  start: (draft: Draft) => useDraft.setState({ draft }),
+  start: (draft: NewDraft) => useDraft.setState({ draft: { ...draft, serial: ++serial } as Draft }),
   end: () => { if (useDraft.getState().draft) useDraft.setState({ draft: null }); },
+  /** The Text was sent to the engine; the step it becomes has not arrived yet. */
+  born: () => {
+    const { draft } = useDraft.getState();
+    if (draft?.kind === 'text' && !draft.born) useDraft.setState({ draft: { ...draft, born: true } });
+  },
+  /** …and this is it. */
+  adopt: (stepId: string | undefined) => {
+    const { draft } = useDraft.getState();
+    if (draft?.kind === 'text' && draft.born && !draft.stepId && stepId) useDraft.setState({ draft: { ...draft, stepId } });
+  },
 };
 
 export type StepEdit = { field: string; value: string };

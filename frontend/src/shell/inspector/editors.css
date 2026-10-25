@@ -251,3 +251,281 @@ html[data-animations='true'] .insp-capture[data-listening] .insp-capture-hint { 
 .insp-actions button:disabled { color: var(--color-text-disabled); cursor: default; }
 .insp-actions button[data-danger] { color: var(--color-recording-fg); }
 .insp-actions button:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: -1px; }
+
+/* Shared by the probes and the Send Text editor. */
+/* The body scrolls: what is in it keeps its height instead of shrinking to fit. */
+.insp-body > * { flex-shrink: 0; }
+span.insp-mono { font-family: var(--font-mono); }
+.insp-group { display: contents; }
+.insp-rule { height: 1px; flex: none; background: var(--color-border-subtle); }
+.insp-line { display: flex; align-items: center; gap: 0.375rem; min-width: 0; }
+.insp-line > .insp-box,
+.insp-line > .insp-hex { flex: 1; }
+.insp-seg[data-wrap] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); height: auto; }
+.insp-seg[data-wrap] button { height: 1.625rem; }
+.insp-icon-button {
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+.insp-icon-button .step-icon { width: 0.9375rem; height: 0.9375rem; }
+.insp-icon-button:not(:disabled):hover { border-color: var(--color-border-strong); color: var(--color-text-primary); }
+.insp-icon-button[aria-pressed='true'] { border-color: var(--color-accent-solid); color: var(--color-accent); }
+.insp-icon-button:disabled { color: var(--color-text-disabled); cursor: default; }
+.insp-icon-button:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 1px; }
+.insp-button[data-armed] { border-color: var(--color-recording); color: var(--color-recording-fg); }
+
+/* The message: the rich editor in a field's frame, its bar on top. */
+.insp-text {
+  display: flex;
+  flex-direction: column;
+  min-height: 8rem;
+  max-height: 22rem;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-input);
+  overflow: hidden;
+}
+.insp-text:focus-within { border-color: var(--color-accent-solid); }
+.insp-text[data-disabled] { opacity: 0.6; }
+.insp-text-content {
+  min-height: 5.5rem;
+  height: 100%;
+  padding: 0.5rem 0.625rem;
+  box-sizing: border-box;
+  overflow: auto;
+  outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--color-text-primary);
+  line-height: 1.5;
+}
+.insp-text-placeholder {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.625rem;
+  right: 0.625rem;
+  color: var(--color-text-tertiary);
+  line-height: 1.5;
+  pointer-events: none;
+  user-select: none;
+}
+.insp-text-placeholder-tip { display: block; margin-top: 0.25rem; font-size: var(--text-minor); }
+.insp-text-wait { min-height: 8rem; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-control); }
+.insp-text-status {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+  margin-top: -0.625rem;
+  font-size: var(--text-minor);
+  line-height: 1rem;
+  color: var(--color-text-tertiary);
+}
+.insp-text-counts { font-variant-numeric: tabular-nums; }
+.insp-text-note[data-tone='warn'] { color: var(--color-warning-ink); }
+.insp-text-delivery { display: flex; align-items: center; gap: 0.5rem; }
+.insp-text-delivery .insp-seg { flex: 1; }
+.insp-text-delivery .insp-box { width: 6rem; flex: none; }
+
+/* The Check: the list of a step being made, and the switch of one that exists. */
+.insp-checks { display: flex; flex-direction: column; gap: 0.25rem; }
+.insp-check {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-height: 2.5rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.insp-check:not(:disabled):hover { border-color: var(--color-border-default); background: var(--color-bg-elevated); }
+.insp-check[aria-pressed='true'] {
+  border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+.insp-check:disabled:not([aria-pressed='true']) { opacity: 0.45; cursor: default; }
+.insp-check:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: -1px; }
+.insp-check-tile { width: 1.75rem; height: 1.75rem; flex: none; display: grid; place-items: center; border-radius: 0.375rem; }
+.insp-check-tile .step-icon { width: 1rem; height: 1rem; }
+.insp-check-text { display: flex; flex-direction: column; min-width: 0; }
+.insp-check-name { font-weight: 600; }
+.insp-check-desc { font-size: var(--text-minor); line-height: 1rem; color: var(--color-text-tertiary); }
+.insp-check-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 2rem;
+  padding: 0 0.625rem;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.insp-check-button .step-icon { width: 0.9375rem; height: 0.9375rem; flex: none; color: var(--color-text-secondary); }
+.insp-check-button .insp-check-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.insp-check-button:not(:disabled):hover { border-color: var(--color-border-strong); }
+.insp-check-button:disabled { opacity: 0.6; cursor: default; }
+.insp-check-button:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 1px; }
+
+/* The reference image. */
+.insp-image {
+  display: grid;
+  place-items: center;
+  min-height: 5rem;
+  padding: 0.375rem;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-input);
+  color: var(--color-text-tertiary);
+  font-size: var(--text-minor);
+}
+.insp-image[data-none] { border-style: dashed; }
+.insp-image img { max-width: 100%; max-height: 8.75rem; object-fit: contain; }
+
+/* What a test answered. */
+.insp-result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid color-mix(in srgb, var(--color-recording) 40%, transparent);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--color-recording) 8%, transparent);
+  font-size: var(--text-minor);
+  line-height: 1rem;
+  color: var(--color-text-primary);
+}
+.insp-result[data-ok] {
+  border-color: color-mix(in srgb, var(--color-replay) 40%, transparent);
+  background: color-mix(in srgb, var(--color-replay) 8%, transparent);
+}
+.insp-result-line { display: flex; align-items: flex-start; gap: 0.375rem; font-weight: 600; }
+.insp-result-line .step-icon { width: 0.875rem; height: 0.875rem; flex: none; margin-top: 0.0625rem; color: var(--color-recording-fg); }
+.insp-result[data-ok] .insp-result-line .step-icon { color: var(--color-replay-fg); }
+.insp-result-more { display: flex; flex-direction: column; align-items: flex-start; gap: 0.25rem; color: var(--color-text-secondary); }
+.insp-result-image { max-width: 100%; max-height: 5rem; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-control); }
+
+/* Where a probe looks. */
+.insp-region { display: flex; align-items: center; gap: 0.375rem; }
+.insp-region-text { flex: 1; min-width: 0; font-variant-numeric: tabular-nums; color: var(--color-text-primary); }
+.insp-region-text[data-whole] { color: var(--color-warning-ink); }
+
+/* A number on a rail, with its exact box. */
+.insp-rail { display: flex; align-items: center; gap: 0.625rem; }
+.insp-rail input[type='range'] { flex: 1; min-width: 0; accent-color: var(--color-accent-solid); }
+.insp-rail input[type='range']:disabled { opacity: 0.5; }
+.insp-rail .insp-box { width: 5.5rem; flex: none; }
+
+/* A colour. */
+.insp-hex { display: flex; align-items: center; gap: 0.375rem; min-width: 0; }
+.insp-hex .insp-box { flex: 1; }
+.insp-swatch { width: 1.5rem; height: 1.5rem; flex: none; box-sizing: border-box; border: 1px solid var(--color-border-strong); border-radius: var(--radius-control); }
+.insp-swatch[data-none] { border-style: dashed; }
+
+/* The running processes. */
+.insp-procs { display: flex; flex-direction: column; gap: 0.375rem; width: 20rem; max-width: calc(100vw - 2rem); padding: 0.5rem; box-sizing: border-box; }
+.insp-procs-filter {
+  height: 2rem;
+  padding: 0 0.625rem;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
+  font: inherit;
+  outline: none;
+}
+.insp-procs-filter:focus { border-color: var(--color-accent-solid); }
+.insp-procs-list { display: flex; flex-direction: column; max-height: 16rem; overflow-y: auto; }
+.insp-procs-list button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 0.3125rem 0.5rem;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.insp-procs-list button:hover,
+.insp-procs-list button:focus-visible { background: var(--color-bg-elevated); outline: none; }
+.insp-procs-name { font-family: var(--font-mono); }
+.insp-procs-title { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-minor); color: var(--color-text-tertiary); }
+.insp-procs-none { padding: 0.5rem; font-size: var(--text-minor); color: var(--color-text-tertiary); }
+
+/* The days of a Time check. */
+.insp-days { display: flex; gap: 0.25rem; }
+.insp-days button {
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-input);
+  color: var(--color-text-tertiary);
+  font: inherit;
+  font-size: var(--text-minor);
+  font-weight: 600;
+  cursor: pointer;
+}
+.insp-days button[aria-pressed='true'] {
+  border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  color: var(--color-accent);
+}
+.insp-days button:disabled { opacity: 0.5; cursor: default; }
+.insp-days button:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 1px; }
+
+/* A selector's stability, and the alternatives a pick found. */
+.insp-tier { font-weight: 600; }
+.insp-tier[data-tier='S'] { color: var(--color-replay-fg); }
+.insp-tier[data-tier='A'] { color: var(--color-accent); }
+.insp-tier[data-tier='B'] { color: var(--color-warning-ink); }
+.insp-tier[data-tier='C'] { color: var(--color-recording-fg); }
+.insp-alts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: 0.375rem;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-elevated);
+}
+.insp-alts-head { display: flex; align-items: center; justify-content: space-between; padding-left: 0.25rem; font-size: var(--text-minor); color: var(--color-text-tertiary); }
+.insp-alts-head .insp-icon-button { width: 1.5rem; height: 1.5rem; border: 0; background: transparent; }
+.insp-alts > button {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+  padding: 0.25rem 0.375rem;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: var(--text-minor);
+  text-align: left;
+  cursor: pointer;
+}
+.insp-alts > button .insp-mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.insp-alts > button:hover { background: var(--color-bg-card); color: var(--color-text-primary); }

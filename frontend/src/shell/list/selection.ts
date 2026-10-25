@@ -44,11 +44,13 @@ export function insertPoint(steps: ActionItem[], keys: ReadonlySet<string> = use
  * A step the shell asked the engine for that has not landed yet: the insert row and the Add step
  * catalog ask for one at the insertion point, and the list selects it when it arrives
  * (useArrival), so the next insert goes after it. A capture-first insert (Wait Image) lands only
- * after the capture, or never when the capture is cancelled.
+ * after the capture, or never when the capture is cancelled. A step born in the Inspector (a Text)
+ * is told which one it became before the selection moves to it.
  */
-let expected: { at: number; macro: string | null } | null = null;
+interface Arrival { at: number; macro: string | null; onArrive?: (step: ActionItem) => void }
+let expected: Arrival | null = null;
 export const arrival = {
-  expect: (at: number, macro: string | null) => { expected = { at, macro }; },
+  expect: (at: number, macro: string | null, onArrive?: (step: ActionItem) => void) => { expected = { at, macro, onArrive }; },
   peek: () => expected,
   clear: () => { expected = null; },
 };

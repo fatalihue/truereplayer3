@@ -19,15 +19,17 @@ export function Section({ label, aside, hint, children }: { label: string; aside
 }
 
 /** One choice among a few, applied on the press (Button, Clicks, Position, Action, Set | Add). */
-export function Segmented<T extends string>({ label, value, options, onChange, disabled }: {
+export function Segmented<T extends string>({ label, value, options, onChange, disabled, wrap }: {
   label: string;
   value: T;
   options: { value: T; label: string; disabled?: boolean; tip?: string }[];
   onChange: (value: T) => void;
   disabled?: boolean;
+  /** Two to a line, for labels too long to share one. */
+  wrap?: boolean;
 }) {
   return (
-    <div className="insp-seg" role="group" aria-label={label}>
+    <div className="insp-seg" role="group" aria-label={label} data-wrap={wrap || undefined}>
       {options.map(o => (
         <button
           key={o.value}
@@ -90,6 +92,8 @@ export interface DraftFieldProps {
   unit?: string;
   placeholder?: string;
   disabled?: boolean;
+  /** What a typed text sends, or null to send nothing (a colour that is not six hex digits). */
+  parse?: (text: string) => string | null;
   /** Sends the value; one edit of `field` when absent. */
   onApply?: (value: string) => void;
 }
@@ -187,6 +191,7 @@ function clean(text: string, p: DraftFieldProps): string {
 
 /** The value to send for what was typed, or null for nothing to send. */
 function parseValue(text: string, p: DraftFieldProps): string | null {
+  if (p.parse) return p.parse(text);
   if (p.kind === 'text') return text;
   if (p.kind === 'mono') {
     const t = text.trim();
