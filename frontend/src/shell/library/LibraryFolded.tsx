@@ -46,6 +46,9 @@ export function LibraryFolded({ macros, order, active, locked, onExpand, onOpen,
   const hidden = macros.filter(m => !shown.includes(m));
   const armed = hidden.filter(m => m.triggerArmed).length;
   const conflicts = hidden.filter(m => m.hotkeyConflict).length;
+  // Pinned, folders, the rest: a line where one group gives way to the next (drawn in the gap the
+  // avatars already keep, so as many still fit).
+  const groupOf = (entry: ProfileEntry) => (order.pinned.includes(entry.name) ? 0 : folderOf(entry.name, order) ? 1 : 2);
 
   return (
     <nav className="lib-folded" aria-label="Macros, collapsed">
@@ -54,8 +57,9 @@ export function LibraryFolded({ macros, order, active, locked, onExpand, onOpen,
       </button>
       <span className="lib-folded-divider" />
       <div ref={columnRef} className="lib-avatars">
-        {room > 0 && shown.map(entry => {
+        {room > 0 && shown.map((entry, i) => {
           const folder = folderOf(entry.name, order);
+          const newGroup = i > 0 && groupOf(entry) !== groupOf(shown[i - 1]);
           const initials = railInitials(entry.name);
           const inherited = entry.effectiveTargetSource === 'folder' || undefined;
           const tip = [
@@ -76,6 +80,7 @@ export function LibraryFolded({ macros, order, active, locked, onExpand, onOpen,
               aria-current={entry.name === active ? 'true' : undefined}
               aria-disabled={locked || undefined}
               data-folder={folder ? '' : undefined}
+              data-group-start={newGroup || undefined}
               data-conflict={entry.hotkeyConflict || undefined}
               data-disabled={entry.isDisabled || undefined}
               data-long={!entry.iconEmoji && !entry.appIconBase64 && glyphCount(initials) > 2 ? '' : undefined}
@@ -109,6 +114,7 @@ export function LibraryFolded({ macros, order, active, locked, onExpand, onOpen,
             onClick={onExpand}
           >
             +{hidden.length}
+            {armed > 0 && <span className="lib-armed" />}
           </button>
         )}
       </div>

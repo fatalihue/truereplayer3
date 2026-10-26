@@ -12424,7 +12424,7 @@ namespace TrueReplayer
             {
                 var msgBlock = new Microsoft.UI.Xaml.Controls.TextBlock
                 {
-                    Text = $"Folder \"{name}\" contains {profileCount} profile(s).\nDelete only the folder or everything inside?",
+                    Text = $"Folder \"{name}\" contains {profileCount} macro(s).\nDelete only the folder or everything inside?",
                     TextWrapping = Microsoft.UI.Xaml.TextWrapping.Wrap
                 };
                 var dialog = new Microsoft.UI.Xaml.Controls.ContentDialog

@@ -8,8 +8,8 @@ import { useToast } from '../../state/ToastContext';
 import { CLICK_COORD_TOLERANCE_PX, clickDefaultGap } from '../../utils/actionCost';
 import { clickFormOf, formatMs, isClickHold, isCombinedClick, isFocusClickEligible } from '../../utils/displayUtils';
 import { useApp } from '../store';
-import { Chips, DraftField, Section, Segmented, Switch } from './fields';
-import { applyEdits, type StepEdit } from './inspectorState';
+import { Chips, DraftField, Section, Segmented, Switch, Vary } from './fields';
+import { applyEdits, durationStep, type StepEdit } from './inspectorState';
 
 type Button = 'Left' | 'Right' | 'Middle';
 type Kind = 'single' | 'double' | 'triple' | 'hold';
@@ -118,8 +118,7 @@ export function ClickEditor({ step, index, steps, locked }: { step: ActionItem; 
   const setRelease = (x: number, y: number) => {
     if (Math.abs(x - step.x) <= CLICK_COORD_TOLERANCE_PX && Math.abs(y - step.y) <= CLICK_COORD_TOLERANCE_PX) {
       setReleaseText({ x: String(x), y: String(y) });
-      setReleaseNote(tt('Release within 2 px of the press — the app reads that as one click, not a drag.',
-                        'Soltar a 2 px do aperto — o app lê isso como um clique, não um arrasto.'));
+      setReleaseNote('Release within 2 px of the press — the app reads that as one click, not a drag.');
       return;
     }
     setReleaseNote(null);
@@ -141,7 +140,7 @@ export function ClickEditor({ step, index, steps, locked }: { step: ActionItem; 
     const x = Number.parseInt(text.x, 10);
     const y = Number.parseInt(text.y, 10);
     if (text.x === '' && text.y === '') setReleaseNote(null);
-    else if (!Number.isFinite(x) || !Number.isFinite(y)) setReleaseNote(tt('A drag needs both X and Y for the release.', 'Um arrasto precisa de X e Y para soltar.'));
+    else if (!Number.isFinite(x) || !Number.isFinite(y)) setReleaseNote('A drag needs both X and Y for the release.');
     else setRelease(Math.max(-COORD, Math.min(COORD, x)), Math.max(-COORD, Math.min(COORD, y)));
   };
   /** One click again: the drag's two steps become the press, at its own point. */
@@ -193,7 +192,7 @@ export function ClickEditor({ step, index, steps, locked }: { step: ActionItem; 
           disabled={locked}
         />
       </Section>
-      <Section label="Clicks" hint={form ? tt('A half of a click keeps its form; Convert ▸ in the step menu joins the two.', 'Uma metade de clique mantém a forma; Convert ▸ no menu do passo junta as duas.') : undefined}>
+      <Section label="Clicks" hint={form ? 'A half of a click keeps its form; Convert ▸ in the step menu joins the two.' : undefined}>
         <Segmented<Kind>
           label="Clicks"
           value={kind}
@@ -209,14 +208,14 @@ export function ClickEditor({ step, index, steps, locked }: { step: ActionItem; 
       </Section>
       {kind === 'hold' && (
         <Section label="Hold">
-          <DraftField stepId={id} field="holdDurationMs" label="Hold duration in milliseconds" kind="int" min={10} max={60000} unit="ms" stored={String(step.holdDurationMs || DEFAULT_HOLD_MS)} disabled={locked} />
+          <DraftField stepId={id} field="holdDurationMs" label="Hold duration in milliseconds" kind="int" min={10} max={60000} step={durationStep} unit="ms" stored={String(step.holdDurationMs || DEFAULT_HOLD_MS)} disabled={locked} />
           <Chips values={HOLD_CHIPS} current={step.holdDurationMs || DEFAULT_HOLD_MS} onPick={(ms) => edit([{ field: 'holdDurationMs', value: String(ms) }])} disabled={locked} />
         </Section>
       )}
       <Section
         label="Position"
         hint={!atCursor && target !== null
-          ? tt(`Relative to ${target || 'the target window'}'s top-left corner`, `Relativo ao canto superior esquerdo de ${target || 'a janela-alvo'}`)
+          ? `Relative to ${target || 'the target window'}'s top-left corner`
           : undefined}
       >
         <Segmented<'point' | 'cursor'>
@@ -261,8 +260,21 @@ export function ClickEditor({ step, index, steps, locked }: { step: ActionItem; 
       {form === '' && (
         <Section label="Repeat">
           <div className="insp-pair">
-            <DraftField stepId={id} field="repeat" label="Times to repeat" kind="int" min={1} max={999} empty="min" unit="times" stored={String(repeat)} disabled={locked} />
-            <DraftField stepId={id} field="repeatDelayMs" label="Gap between clicks (ms)" kind="int" min={0} max={5000} empty="clear" unit="ms gap" placeholder={String(clickDefaultGap(t))} stored={step.repeatDelayMs == null ? '' : String(step.repeatDelayMs)} disabled={locked || repeat <= 1} />
+            <DraftField stepId={id} field="repeat" label="Times to repeat" kind="int" min={1} max={999} unit="times" stored={String(repeat)} disabled={locked} />
+            <DraftField
+              stepId={id}
+              field="repeatDelayMs"
+              label="Gap between clicks (ms)"
+              kind="int"
+              min={0}
+              max={5000}
+              empty="clear"
+              unit="ms gap"
+              placeholder={String(clickDefaultGap(t))}
+              stored={step.repeatDelayMs == null ? '' : String(step.repeatDelayMs)}
+              disabled={locked || repeat <= 1}
+              tip={kind === 'double' || kind === 'triple' ? tt('Keep it above your system double-click speed (~½ s).', 'Mantenha acima da velocidade de duplo-clique do sistema (~½ s).') : undefined}
+            />
           </div>
           <Vary
             label="Vary the gap"
@@ -305,7 +317,7 @@ export function ClickEditor({ step, index, steps, locked }: { step: ActionItem; 
         </div>
       )}
       {canDrag && (
-        <Section label="Release at" hint={releaseNote ?? tt('Leave it empty and the release lands on the press point.', 'Vazio, a soltura cai no ponto do aperto.')}>
+        <Section label="Release at" hint={releaseNote ?? 'Leave it empty and the release lands on the press point.'}>
           <div className="insp-pair">
             <ReleaseField label="Release X coordinate" prefix="X" text={release.x} disabled={locked} onCommit={(x) => commitRelease({ ...release, x })} />
             <ReleaseField label="Release Y coordinate" prefix="Y" text={release.y} disabled={locked} onCommit={(y) => commitRelease({ ...release, y })} />
@@ -317,7 +329,7 @@ export function ClickEditor({ step, index, steps, locked }: { step: ActionItem; 
         </Section>
       )}
       {pairedUp && (
-        <Section label="Release at" hint={dragged(step, pairedUp) ? undefined : tt('Within 2 px of the press — the app reads it as one click.', 'A 2 px do aperto — o app lê como um clique.')}>
+        <Section label="Release at" hint={dragged(step, pairedUp) ? undefined : 'Within 2 px of the press — the app reads it as one click.'}>
           <div className="insp-pair">
             <DraftField stepId={pairedUp.id ?? ''} field="x" label="Release X coordinate" kind="int" signed min={-COORD} max={COORD} prefix="X" stored={String(pairedUp.x)} disabled={locked} />
             <DraftField stepId={pairedUp.id ?? ''} field="y" label="Release Y coordinate" kind="int" signed min={-COORD} max={COORD} prefix="Y" stored={String(pairedUp.y)} disabled={locked} />
@@ -340,35 +352,6 @@ function without<T extends object, K extends keyof T>(o: T, ...keys: K[]): Omit<
 
 const dragged = (down: ActionItem, up: ActionItem) =>
   Math.abs(up.x - down.x) > CLICK_COORD_TOLERANCE_PX || Math.abs(up.y - down.y) > CLICK_COORD_TOLERANCE_PX;
-
-/**
- * A variation of the repeat: a switch and its amount. On, it starts at the amount used last in
- * this editor (or `first`); off clears it. The amount applies as typed.
- */
-function Vary({ label, tip, stepId, field, value, first, unit, max, disabled, onSwitch }: {
-  label: string;
-  tip: string;
-  stepId: string;
-  field: string;
-  value: number;
-  first: number;
-  unit: string;
-  max: number;
-  disabled: boolean;
-  onSwitch: (value: string) => void;
-}) {
-  const [last, setLast] = useState(value > 0 ? value : first);
-  if (value > 0 && value !== last) setLast(value);
-  return (
-    <div className="insp-row">
-      <Switch label={label} tip={tip} checked={value > 0} disabled={disabled} onChange={(on) => onSwitch(on ? String(last) : '')} />
-      <span className="insp-row-label">{label}</span>
-      <span className="insp-row-end">
-        <DraftField stepId={stepId} field={field} label={`${label} (${unit})`} kind="int" min={1} max={max} empty="keep" prefix="±" unit={unit} stored={value > 0 ? String(value) : String(last)} disabled={disabled || value <= 0} />
-      </span>
-    </div>
-  );
-}
 
 /** A release coordinate, kept here until both are typed (it is not a field of the step yet). */
 function ReleaseField({ label, prefix, text, disabled, onCommit }: { label: string; prefix: string; text: string; disabled: boolean; onCommit: (text: string) => void }) {

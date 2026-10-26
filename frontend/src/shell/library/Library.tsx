@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useImport } from '../../logic/useImport';
 import { useMacro } from '../../logic/useMacro';
+import { useTt } from '../../state/LanguageContext';
 import { macroMenuEntries } from '../macroMenu';
 import { Menu, type MenuEntry } from '../Menu';
 import { anchorBelow, anchorFromEvent, fromKeyboard, type MenuAnchor } from '../menuAnchor';
@@ -49,6 +50,7 @@ export function Library() {
   const active = useApp(a => a.activeProfile);
   const locked = useApp(a => a.buttonStates.recordingActive || a.buttonStates.replayActive);
   const macro = useMacro();
+  const tt = useTt();
   const imports = useImport();
   const band = useShellBand();
   const [folded, setFolded] = useState(readFolded);
@@ -123,7 +125,7 @@ export function Library() {
     setMenu({ kind, button, anchor: anchorBelow(button, kind === 'new' ? 'start' : 'end'), keyboard, seq: ++seq.current });
   };
 
-  const macroEntries = (name: string) => macroMenuEntries({ name, profiles, order, active, locked, macro });
+  const macroEntries = (name: string) => macroMenuEntries({ name, profiles, order, active, locked, macro, tt });
 
   const folderEntries = (name: string): MenuEntry[] => {
     const folder = order.folders.find(f => f.name === name);

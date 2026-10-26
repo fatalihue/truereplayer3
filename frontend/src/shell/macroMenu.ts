@@ -8,11 +8,13 @@ import { folderOf } from './library/model';
 import type { MenuEntry } from './Menu';
 import { focusName, openDialog } from './ui';
 
+type Tt = (en: string, pt: string) => string;
+
 /**
  * The macro's menu: a right-click on it in the library, and ⋯ in its header when it is the open
  * one. Renaming the open macro types in its header; any other gets the dialog.
  */
-export function macroMenuEntries({ name, profiles, order, active, locked, macro }: {
+export function macroMenuEntries({ name, profiles, order, active, locked, macro, tt }: {
   name: string;
   profiles: ProfileEntry[];
   order: ProfileOrderData;
@@ -20,6 +22,7 @@ export function macroMenuEntries({ name, profiles, order, active, locked, macro 
   /** Recording or replaying: the engine refuses the revert then, so the item says so first. */
   locked: boolean;
   macro: ReturnType<typeof useMacro>;
+  tt: Tt;
 }): MenuEntry[] {
   const entry = profiles.find(p => p.name === name);
   if (!entry) return [];
@@ -63,7 +66,7 @@ export function macroMenuEntries({ name, profiles, order, active, locked, macro 
         label: 'Revert to when I opened it',
         icon: RotateCcw,
         disabled: locked,
-        tip: locked ? 'Stop the run first' : undefined,
+        tip: locked ? tt('Stop the run first', 'Pare a execução antes') : undefined,
         onSelect: () => openDialog({ kind: 'revertMacro', name }),
       },
       // Clearing goes with the list's own editing (phase 2).

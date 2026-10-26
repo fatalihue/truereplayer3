@@ -2049,15 +2049,15 @@ namespace TrueReplayer.Controllers
             // reference PNG as base64 (the expensive part), so a cancel here must waste none of it.
             // defaultName comes from the SELECTED names; dependency expansion (if any) only grows the
             // count afterwards, so a single selection that pulls deps still names the sensible default.
-            // Multi-profile default carries the date: the literal "profiles" made every successive
+            // Multi-profile default carries the date: the literal "macros" made every successive
             // export overwrite the previous one in the sender's Save dialog.
             var defaultName = profileNames.Count == 1
                 ? profileNames[0]
-                : $"profiles-{DateTime.Now:yyyy-MM-dd}";
+                : $"macros-{DateTime.Now:yyyy-MM-dd}";
             var fileName = await ShowFileDialogAsync(new WinForms.SaveFileDialog
             {
-                Title = "Export profiles",
-                Filter = "TrueReplayer Profile (*.trprofile)|*.trprofile",
+                Title = "Export macros",
+                Filter = "TrueReplayer macros (*.trprofile)|*.trprofile",
                 FileName = defaultName,
                 DefaultExt = "trprofile"
             }, "export profiles");
@@ -2247,8 +2247,8 @@ namespace TrueReplayer.Controllers
             // lost. A null Downloads (shell refusal) leaves the default behavior.
             var fileName = await ShowFileDialogAsync(new WinForms.OpenFileDialog
             {
-                Title = "Import profiles",
-                Filter = "TrueReplayer Profile (*.trprofile)|*.trprofile",
+                Title = "Import macros",
+                Filter = "TrueReplayer macros (*.trprofile)|*.trprofile",
                 DefaultExt = "trprofile",
                 InitialDirectory = Interop.NativeMethods.TryGetDownloadsFolder() ?? string.Empty
             }, "import profiles");

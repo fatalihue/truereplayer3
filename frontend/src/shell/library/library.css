@@ -299,6 +299,30 @@
 .lib-folder[data-off] .lib-folder-icon { opacity: 0.45; }
 .lib-folder-target { width: 0.875rem; height: 0.875rem; flex: none; object-fit: contain; }
 .lib-folder-count { flex: none; font-size: var(--text-caption); color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
+/* The folder menu's ⋯ (D3), in the count's place while the pointer is on the header. */
+.lib-folder-head { position: relative; }
+.lib-folder-more {
+  position: absolute;
+  top: 50%;
+  right: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.375rem;
+  height: 1.375rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-tertiary);
+  opacity: 0;
+  transform: translateY(-50%);
+}
+.lib-folder-more svg { width: 0.875rem; height: 0.875rem; }
+.lib-folder-head:hover .lib-folder-more,
+.lib-folder-more:focus-visible { opacity: 1; }
+.lib-folder-more:hover { background: var(--color-bg-card); color: var(--color-text-primary); }
+.lib-folder-head:hover .lib-folder-count { visibility: hidden; }
 .lib-folder-body { display: flex; flex-direction: column; gap: 0.125rem; padding: 0.125rem 0 0.25rem; }
 /* The folder's own "+ New macro": its room is always kept, so a hover never pushes the folders
    below it down; it shows on hover, and always in an empty folder, where it is the folder's body. */
@@ -450,6 +474,19 @@
   font-variant-numeric: tabular-nums;
 }
 .lib-more:hover { background: var(--color-bg-elevated); color: var(--color-text-primary); }
+/* The hidden ones' armed automation, as on an avatar. */
+.lib-more { position: relative; }
+.lib-more .lib-armed { position: absolute; top: 0; right: -0.125rem; }
+/* Where pinned give way to folders, and folders to the rest: a line in the gap above the avatar. */
+.lib-avatar[data-group-start]::before {
+  content: '';
+  position: absolute;
+  top: calc(-0.1875rem - 1px);
+  left: 0.25rem;
+  right: 0.25rem;
+  height: 1px;
+  background: var(--color-border-subtle);
+}
 .lib-more[data-conflict] { color: var(--color-recording-fg); }
 
 /* ── Folder colours (New folder, and the folder menu's Color ▸) ── */

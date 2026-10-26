@@ -198,11 +198,11 @@ function CommonFields({ step, locked }: { step: ActionItem; locked: boolean }) {
     <div className="insp-pair insp-common">
       {delay && (
         <Section label="Delay">
-          <DraftField stepId={id} field="delay" label="Delay in milliseconds" kind="int" min={0} max={MAX_DELAY_MS} empty="min" unit="ms" stored={String(step.delay)} disabled={locked} />
+          <DraftField stepId={id} field="delay" label="Delay in milliseconds" kind="int" min={0} max={MAX_DELAY_MS} unit="ms" stored={String(step.delay)} disabled={locked} />
         </Section>
       )}
       <Section label="Notes">
-        <DraftField stepId={id} field="comment" label="Notes" kind="text" placeholder="Add a note…" stored={step.comment ?? ''} disabled={locked} />
+        <DraftField stepId={id} field="comment" label="Notes" kind="text" multiline placeholder="Add a note…" stored={step.comment ?? ''} disabled={locked} />
       </Section>
     </div>
   );

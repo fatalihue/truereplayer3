@@ -67,7 +67,7 @@ export function StepRow({ step, index, k, depth, kind, owner, rails, broken, tip
         {running
           ? <span className="step-icon step-run" data-icon={paused ? 'pause' : 'play'} role="img" aria-label={paused ? 'Paused' : 'Running'} />
           : <span className="step-num-text">{index + 1}</span>}
-        <span className="step-check" aria-hidden="true" />
+        <span className="step-check" aria-hidden="true" data-tip={tt(`Select step ${index + 1}`, `Selecionar o passo ${index + 1}`)} />
       </span>
       <span className="step-type">
         {openers.map((opener, i) => {

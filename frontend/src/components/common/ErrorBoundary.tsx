@@ -60,7 +60,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBound
             The interface hit an error
           </div>
           <div style={{ fontSize: 12, opacity: 0.75, lineHeight: 1.5, marginBottom: 12 }}>
-            Your profiles and recordings are safe — this only affected the window's
+            Your macros and recordings are safe — this only affected the window's
             rendering. Reload to continue; if it keeps happening, the text below
             says where.
           </div>

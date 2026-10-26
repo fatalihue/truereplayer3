@@ -1,6 +1,6 @@
 import type { ActionItem } from '../../bridge/messageTypes';
 import { useSteps } from '../../logic/useSteps';
-import { useLanguage } from '../../state/LanguageContext';
+import { useLanguage, useTt } from '../../state/LanguageContext';
 import { formatMs } from '../../utils/displayUtils';
 import { Chips, DraftField, Section, Segmented, Switch } from './fields';
 import { ImageProbe } from './ImageProbe';
@@ -20,6 +20,7 @@ const MAX_TIMEOUT_MS = 86_400_000;
 export function WaitImageEditor({ step, locked }: { step: ActionItem; locked: boolean }) {
   const cmds = useSteps();
   const { language } = useLanguage();
+  const tt = useTt();
   const id = step.id ?? '';
   const edit = (edits: StepEdit[]) => applyEdits(cmds, id, edits);
   const gone = !!step.waitImageInvert;
@@ -44,7 +45,7 @@ export function WaitImageEditor({ step, locked }: { step: ActionItem; locked: bo
         />
       </Section>
       <Section label="Timeout">
-        <DraftField stepId={id} field="timeout" label="Timeout in milliseconds" kind="int" step={1000} min={MIN_TIMEOUT_MS} max={MAX_TIMEOUT_MS} empty="min" unit="ms" stored={String(timeout)} disabled={locked} />
+        <DraftField stepId={id} field="timeout" label="Timeout in milliseconds" kind="int" step={1000} min={MIN_TIMEOUT_MS} max={MAX_TIMEOUT_MS} unit="ms" stored={String(timeout)} disabled={locked} />
         <Chips values={TIMEOUT_CHIPS} current={timeout} disabled={locked} onPick={(v) => edit([{ field: 'timeout', value: String(v) }])} />
       </Section>
       <Section label="On timeout">
@@ -52,7 +53,7 @@ export function WaitImageEditor({ step, locked }: { step: ActionItem; locked: bo
           label="On timeout"
           value={goOn ? 'continue' : 'halt'}
           disabled={locked}
-          options={[{ value: 'halt', label: 'Halt', tip: 'The run stops' }, { value: 'continue', label: 'Continue', tip: 'The run goes on to the next step' }]}
+          options={[{ value: 'halt', label: 'Halt', tip: tt('The run stops', 'A execução para') }, { value: 'continue', label: 'Continue', tip: tt('The run goes on to the next step', 'A execução segue para o próximo passo') }]}
           onChange={(v) => edit([{ field: 'waitImageOnTimeout', value: v === 'continue' ? 'Continue' : '' }])}
         />
       </Section>

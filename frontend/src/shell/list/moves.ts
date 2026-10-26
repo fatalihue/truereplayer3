@@ -27,7 +27,8 @@ export function moveSteps(steps: ActionItem[], sel: number[], dir: 'up' | 'down'
 
 /**
  * Deletes what a selection means (deleteIntent) — the Delete key, the step menu and the batch
- * editor — says so when whole blocks went with it, and clears the selection.
+ * editor — says so when whole blocks went with it, and clears the selection. Returns how many
+ * steps went, or 0 when whole blocks went too (that was said already).
  */
 export function deleteSteps(
   steps: ActionItem[],
@@ -36,12 +37,14 @@ export function deleteSteps(
   cmds: ReturnType<typeof useSteps>,
   tell: (text: string) => void,
   tt: (en: string, pt: string) => string,
-) {
+): number {
   const intent = deleteIntent(sel, steps, (o) => blocks.closerOf.get(o));
-  if (intent.message.type === 'actions:delete' && intent.count > sel.length) {
+  const wider = intent.message.type === 'actions:delete' && intent.count > sel.length;
+  if (wider) {
     tell(tt(`Deleted ${intent.count} steps — the selection touched a block marker, so whole blocks went with it.`,
             `${intent.count} passos apagados — a seleção tocou um marcador de bloco, então blocos inteiros foram junto.`));
   }
   cmds.removeSteps(intent);
   selection.clear();
+  return wider ? 0 : intent.count;
 }

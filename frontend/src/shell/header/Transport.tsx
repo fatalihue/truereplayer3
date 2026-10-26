@@ -36,6 +36,7 @@ export function Transport({ name }: { name: string }) {
   const settings = useApp(a => a.settings);
   const clicker = settings.useCursorClick;
   const passes = useApp(a => passesOf(a.profileLoop, a.dataTable));
+  const loop = useShell(s => s.live.loopProgress);
   const perRow = useApp(a => runsPerRow(a.dataTable));
   const recording = useRecording();
   const replay = useReplay();
@@ -136,6 +137,10 @@ export function Transport({ name }: { name: string }) {
           </button>
         </div>
       )}
+      {/* The last "Loop 3 of 3" stays after the run, until the next one starts, as in today's status bar (casca-122). */}
+      {!isReplaying && !clicker && loop.active && (
+        <span className="hdr-loop-done">Loop {loop.current} of {loop.total === 0 ? '∞' : loop.total}</span>
+      )}
 
       <button
         type="button"
@@ -162,10 +167,11 @@ function MacroActions({ name, opened, onClose }: { name: string; opened: Opened;
   const order = useApp(a => a.profileOrder);
   const locked = useShell(s => s.app.status !== 'ready');
   const macro = useMacro();
+  const tt = useTt();
   return (
     <Menu
       anchor={opened.anchor}
-      entries={macroMenuEntries({ name, profiles, order, active: name, locked, macro })}
+      entries={macroMenuEntries({ name, profiles, order, active: name, locked, macro, tt })}
       label="Macro actions"
       focusFirst={opened.keyboard}
       toggle={opened.button}

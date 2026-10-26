@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type RefObject } from 'react';
 import { useEditorClaim } from '../../logic/useEditorClaim';
-import { useTt } from '../../state/LanguageContext';
 import { preload, useLoaded } from '../lazyModule';
 import { keycaps } from '../library/model';
 import { arrival, selectedIndices, selection, useSelection } from '../list/selection';
@@ -53,7 +52,6 @@ export function Inspector() {
   const pending = usePendingEdits(s => s.fields.size > 0);
   // Automations wait only while typing has not reached the engine (D12).
   useEditorClaim('inspector', pending);
-  const tt = useTt();
   const band = useShellBand();
   const [width, setWidth] = useState(readWidth);
   const asideRef = useRef<HTMLElement>(null);
@@ -84,18 +82,18 @@ export function Inspector() {
   }), []);
 
   const note = clicker
-    ? tt(`The Clicker is on — ${keycaps(modeKey || 'ScrollLock')} brings the macros back`,
-         `O Clicker está ligado — ${keycaps(modeKey || 'ScrollLock')} traz os macros de volta`)
+    ? `The Clicker is on — ${keycaps(modeKey || 'ScrollLock')} brings the macros back`
     : status === 'recording' ? 'Read-only while recording'
     : status === 'replaying' ? 'Read-only while it runs'
     : null;
 
   const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
     // An Esc no field kept for itself gives the focus back to the list (D12), and drops a step
-    // still being made.
-    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    // still being made; Ctrl+Enter, the "done" of today's dialogs, gives it back from any field.
+    const done = e.key === 'Enter' && e.ctrlKey && !e.altKey && !e.shiftKey;
+    if ((e.key !== 'Escape' && !done) || e.defaultPrevented) return;
     e.preventDefault();
-    cancelDraft();
+    if (!done) cancelDraft();
     focusList();
   };
 

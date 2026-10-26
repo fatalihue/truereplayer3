@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useBridge } from '../../bridge/BridgeContext';
 import { useEditorTools } from '../../logic/useEditorTools';
+import { useTt } from '../../state/LanguageContext';
 import { anchorBelow, type MenuAnchor } from '../menuAnchor';
 import { Popover } from '../Popover';
 import { DraftField, type DraftFieldProps } from './fields';
@@ -35,6 +36,7 @@ export function RegionField({ label = 'Search region', region, onRegion, locked,
   drawTip: string;
 }) {
   const tools = useEditorTools();
+  const tt = useTt();
   const draw = useAsk('waitimage:searchRegionSet', (p) => {
     if (!p.cancelled && p.w && p.h && p.w > 0 && p.h > 0) onRegion({ x: p.x ?? 0, y: p.y ?? 0, w: p.w, h: p.h });
   });
@@ -56,7 +58,7 @@ export function RegionField({ label = 'Search region', region, onRegion, locked,
           {draw.waiting ? 'Drawing…' : region ? 'Redraw' : 'Draw'}
         </button>
         {region && (
-          <button type="button" className="insp-icon-button" aria-label="Search the whole screen" data-tip="Search the whole screen" disabled={locked} onClick={() => onRegion(null)}>
+          <button type="button" className="insp-icon-button" aria-label="Search the whole screen" data-tip={tt('Search the whole screen', 'Procurar na tela inteira')} disabled={locked} onClick={() => onRegion(null)}>
             <span className="step-icon" data-icon="x" />
           </button>
         )}
@@ -177,6 +179,7 @@ export function HexField({ clearable, placeholder = '#RRGGBB', ...props }: Omit<
  */
 export function ProcessPicker({ onPick, disabled }: { onPick: (name: string) => void; disabled?: boolean }) {
   const tools = useEditorTools();
+  const tt = useTt();
   const { subscribe } = useBridge();
   const [open, setOpen] = useState<{ anchor: MenuAnchor; button: HTMLButtonElement } | null>(null);
   const [list, setList] = useState<{ name: string; title: string }[] | null>(null);
@@ -194,7 +197,7 @@ export function ProcessPicker({ onPick, disabled }: { onPick: (name: string) => 
         aria-label="Pick a running process"
         aria-haspopup="dialog"
         aria-expanded={!!open}
-        data-tip="Pick a running process"
+        data-tip={tt('Pick a running process', 'Escolher um processo em execução')}
         disabled={disabled}
         onClick={(e) => {
           if (open) { setOpen(null); return; }

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AppWindow, Clipboard, Clock, Cpu, Dices, FileCheck, Globe, Image, Pipette, ScanText, Variable, type LucideIcon } from 'lucide-react';
 import type { ActionItem } from '../../bridge/messageTypes';
 import { useSteps } from '../../logic/useSteps';
+import { useTt } from '../../state/LanguageContext';
 import { Menu } from '../Menu';
 import { anchorBelow, type MenuAnchor } from '../menuAnchor';
 import { checkOf, checksFor, type Check, type ConditionType } from './checks';
@@ -27,6 +28,7 @@ const MAX_ITERATIONS = 1_000_000;
  */
 export function ConditionEditor({ step, locked }: { step: ActionItem; locked: boolean }) {
   const cmds = useSteps();
+  const tt = useTt();
   const id = step.id ?? '';
   const edit = (edits: StepEdit[]) => applyEdits(cmds, id, edits);
   const check = checkOf(step.conditionType);
@@ -50,12 +52,12 @@ export function ConditionEditor({ step, locked }: { step: ActionItem; locked: bo
           {/* A chance re-rolled until it hits is no wait at all. */}
           {check.type !== 'Random' && (
             <Section label="Wait for it" hint="0 = check once.">
-              <DraftField stepId={id} field="conditionTimeout" label="Wait for it, in milliseconds" kind="int" step={500} min={0} max={MAX_WAIT_MS} empty="min" unit="ms" stored={String(step.conditionTimeout ?? 0)} disabled={locked} />
+              <DraftField stepId={id} field="conditionTimeout" label="Wait for it, in milliseconds" kind="int" step={500} min={0} max={MAX_WAIT_MS} unit="ms" stored={String(step.conditionTimeout ?? 0)} disabled={locked} />
             </Section>
           )}
           {step.actionType === 'While' && (
             <Section label="Max iterations" hint="0 = the default, 1,000.">
-              <DraftField stepId={id} field="loopMaxIterations" label="Maximum loop iterations" kind="int" min={0} max={MAX_ITERATIONS} empty="min" unit="×" stored={String(step.loopMaxIterations ?? 0)} disabled={locked} />
+              <DraftField stepId={id} field="loopMaxIterations" label="Maximum loop iterations" kind="int" min={0} max={MAX_ITERATIONS} unit="×" stored={String(step.loopMaxIterations ?? 0)} disabled={locked} />
             </Section>
           )}
           <Section label="If the check itself errors">
@@ -64,7 +66,7 @@ export function ConditionEditor({ step, locked }: { step: ActionItem; locked: bo
               value={step.ifOnProbeError === 'Halt' ? 'halt' : 'false'}
               disabled={locked}
               options={[
-                { value: 'false', label: met ? 'Treat as not met' : 'Treat as not found', tip: step.actionType === 'While' ? 'The loop ends' : 'The If goes the other way' },
+                { value: 'false', label: met ? 'Treat as not met' : 'Treat as not found', tip: step.actionType === 'While' ? tt('The loop ends', 'O loop termina') : tt('The If goes the other way', 'O If vai para o outro lado') },
                 { value: 'halt', label: 'Stop the run' },
               ]}
               onChange={(v) => edit([{ field: 'ifOnProbeError', value: v === 'halt' ? 'Halt' : '' }])}
@@ -99,6 +101,7 @@ function CheckFields({ check, step, locked }: { check: Check; step: ActionItem; 
  * since its settings go with it until Ctrl+Z.
  */
 function CheckSwitch({ step, check, locked, onSwitch }: { step: ActionItem; check: Check | undefined; locked: boolean; onSwitch: (type: ConditionType) => void }) {
+  const tt = useTt();
   const [menu, setMenu] = useState<{ anchor: MenuAnchor; keyboard: boolean; button: HTMLButtonElement } | null>(null);
   const [was, setWas] = useState<string | null>(null);
   return (
@@ -127,7 +130,7 @@ function CheckSwitch({ step, check, locked, onSwitch }: { step: ActionItem; chec
             label: c.name,
             icon: MENU_ICONS[c.type],
             checked: c.type === check?.type,
-            tip: c.desc,
+            tip: tt(c.desc, c.descPt),
             onSelect: () => {
               if (c.type === check?.type) return;
               setWas(check?.name ?? null);

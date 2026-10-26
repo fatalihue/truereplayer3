@@ -58,8 +58,7 @@ export function InsertRow() {
   };
 
   const note = clicker
-    ? tt(`The Clicker is on — ${keycaps(modeKey || 'ScrollLock')} brings the macros back`,
-         `O Clicker está ligado — ${keycaps(modeKey || 'ScrollLock')} traz os macros de volta`)
+    ? `The Clicker is on — ${keycaps(modeKey || 'ScrollLock')} brings the macros back`
     : status === 'recording' ? 'Read-only while recording' : 'Read-only while it runs';
 
   return (
@@ -151,7 +150,7 @@ export function InsertRow() {
             tabIndex={-1}
             aria-label="Undo"
             aria-keyshortcuts="Control+Z"
-            data-tip="Undo (Ctrl+Z)"
+            data-tip={tt('Undo (Ctrl+Z)', 'Desfazer (Ctrl+Z)')}
             disabled={!canUndo}
             onClick={() => cmds.undo({})}
           >
@@ -163,7 +162,7 @@ export function InsertRow() {
             tabIndex={-1}
             aria-label="Redo"
             aria-keyshortcuts="Control+Y"
-            data-tip="Redo (Ctrl+Y)"
+            data-tip={tt('Redo (Ctrl+Y)', 'Refazer (Ctrl+Y)')}
             disabled={!canRedo}
             onClick={() => cmds.redo({})}
           >

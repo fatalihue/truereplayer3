@@ -76,6 +76,14 @@ export function GetAppStateProvider({ getState, children }: { getState: () => Ap
 }
 
 /**
+ * The same shell's state for the parts of today it still mounts that read it during render (the
+ * Send Text editor's previews of a {row:} cell read the Data Loop table): only they re-render with it.
+ */
+export function AppStateValueProvider({ value, children }: { value: AppState; children: ReactNode }) {
+  return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
+}
+
+/**
  * The ~4 Hz live run slices. Read this ONLY where the values are actually rendered (StatusBar,
  * ClickerDashboard) — pulling it into a component that merely happens to be nearby puts that
  * component back on the four-renders-a-second path this split exists to get it off.

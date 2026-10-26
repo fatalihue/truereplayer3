@@ -42,15 +42,16 @@ const sigOf = (p: Payload) => JSON.stringify([
   p.method === 'type' && p.delay > 0 ? p.delay : null,
 ]);
 
-const MODES: { value: SendMode; label: string; tip: string }[] = [
-  { value: 'rich', label: 'Rich', tip: 'Real formatting (Gmail, Crisp, Word)' },
-  { value: 'markdown', label: 'Markdown', tip: '*bold* / _italic_ as text — for WhatsApp' },
-  { value: 'discord', label: 'Discord', tip: '**bold** / ~~strike~~ as text — for Discord' },
-  { value: 'plain', label: 'Plain', tip: 'Only the text: the formatting stays with the step, unsent' },
+type Tt = (en: string, pt: string) => string;
+const modes = (tt: Tt): { value: SendMode; label: string; tip: string }[] => [
+  { value: 'rich', label: 'Rich', tip: tt('Real formatting (Gmail, Crisp, Word)', 'Formatação real (Gmail, Crisp, Word)') },
+  { value: 'markdown', label: 'Markdown', tip: tt('*bold* / _italic_ as text — for WhatsApp', '*negrito* / _itálico_ como texto — para WhatsApp') },
+  { value: 'discord', label: 'Discord', tip: tt('**bold** / ~~strike~~ as text — for Discord', '**negrito** / ~~tachado~~ como texto — para Discord') },
+  { value: 'plain', label: 'Plain', tip: tt('Only the text: the formatting stays with the step, unsent', 'Só o texto: a formatação fica no passo, sem ser enviada') },
 ];
-const METHODS: { value: SendMethod; label: string; tip: string }[] = [
-  { value: 'paste', label: 'Paste', tip: 'Ctrl+V — the only way that sends formatting' },
-  { value: 'type', label: 'Type', tip: 'Key by key — for apps that ignore Ctrl+V' },
+const methods = (tt: Tt): { value: SendMethod; label: string; tip: string }[] => [
+  { value: 'paste', label: 'Paste', tip: tt('Ctrl+V — the only way that sends formatting', 'Ctrl+V — o único jeito que envia a formatação') },
+  { value: 'type', label: 'Type', tip: tt('Key by key — for apps that ignore Ctrl+V', 'Tecla a tecla — para apps que ignoram o Ctrl+V') },
 ];
 
 interface Editor {
@@ -239,11 +240,12 @@ export default function SendTextEditor({ step, draft, locked }: { step: ActionIt
           label="Message"
           value={mode}
           disabled={locked}
-          options={MODES}
+          options={modes(tt)}
           onChange={(v) => { setMode(v); commit({ mode: v }); }}
         />
       </Section>
-      <div className="insp-text" data-disabled={locked || undefined} inert={locked || undefined} onBlur={onBlur}>
+      {/* The message is where Enter on the step lands (data-autofocus), as in the dialog of today. */}
+      <div className="insp-text" data-autofocus="" data-disabled={locked || undefined} inert={locked || undefined} onBlur={onBlur}>
         <LexicalTokenEditor
           key={seed.nonce}
           initialText={seed.text}
@@ -278,7 +280,7 @@ export default function SendTextEditor({ step, draft, locked }: { step: ActionIt
             label="Delivery"
             value={method}
             disabled={locked}
-            options={METHODS}
+            options={methods(tt)}
             onChange={(v) => { setMethod(v); commit({ method: v }); }}
           />
           {method === 'type' && (
@@ -289,7 +291,6 @@ export default function SendTextEditor({ step, draft, locked }: { step: ActionIt
               kind="int"
               min={0}
               max={MAX_CHAR_DELAY_MS}
-              empty="min"
               unit="ms"
               stored={String(delay)}
               disabled={locked}

@@ -72,6 +72,9 @@ export const drafts = {
 
 export type StepEdit = { field: string; value: string };
 
+/** The step of today's duration spinners (a hold): 1 s from 1 s up, 100 ms below it. */
+export const durationStep = (ms: number, dir: 1 | -1) => ((dir > 0 ? ms : ms - 1) >= 1000 ? 1000 : 100);
+
 /**
  * Sends edits to one step, found by its id now: it may have moved since the typing began. One
  * message, one undo entry. False when the step is gone or there is nothing to send.
@@ -105,6 +108,8 @@ export function takeFocusAsk() {
   focusAsked = false;
   first.focus();
 }
-const firstField = () => document.querySelector<HTMLElement>(
-  '.insp-body input:not(:disabled), .insp-body button:not(:disabled), .insp-body [tabindex="0"]',
-);
+// An editor whose heart is not its first control (the Send Text's message) marks it data-autofocus.
+const firstField = () => document.querySelector<HTMLElement>('.insp-body [data-autofocus] [contenteditable="true"]')
+  ?? document.querySelector<HTMLElement>(
+    '.insp-body input:not(:disabled), .insp-body textarea:not(:disabled), .insp-body button:not(:disabled), .insp-body [tabindex="0"]',
+  );

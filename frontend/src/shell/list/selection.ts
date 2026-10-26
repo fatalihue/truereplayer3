@@ -47,10 +47,11 @@ export function insertPoint(steps: ActionItem[], keys: ReadonlySet<string> = use
  * after the capture, or never when the capture is cancelled. A step born in the Inspector (a Text)
  * is told which one it became before the selection moves to it.
  */
-interface Arrival { at: number; macro: string | null; onArrive?: (step: ActionItem) => void }
+interface Arrival { at: number; macro: string | null; onArrive?: (step: ActionItem) => void; count: number }
 let expected: Arrival | null = null;
 export const arrival = {
-  expect: (at: number, macro: string | null, onArrive?: (step: ActionItem) => void) => { expected = { at, macro, onArrive }; },
+  /** `count` new steps from `at` become the selection (Expand × N gives back several). */
+  expect: (at: number, macro: string | null, onArrive?: (step: ActionItem) => void, count = 1) => { expected = { at, macro, onArrive, count }; },
   peek: () => expected,
   clear: () => { expected = null; },
 };

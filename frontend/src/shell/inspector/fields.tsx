@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type FocusEvent, type KeyboardEvent, type MutableRefObject, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { splitCombo } from '../../components/common/KbdTag';
-import { isPureModifier, useKeyCapture } from '../../logic/useKeyCapture';
+import { isPureModifier, SINGLE_KEY_CAPTURE_IDLE_MS, useKeyCapture } from '../../logic/useKeyCapture';
 import { useSteps } from '../../logic/useSteps';
-import { useLanguage } from '../../state/LanguageContext';
+import { useLanguage, useTt } from '../../state/LanguageContext';
 import { formatMs } from '../../utils/displayUtils';
 import { compactKey } from '../../utils/keyNames';
 import { applyEdits, pendingEdits } from './inspectorState';
@@ -57,14 +57,47 @@ export function Switch({ label, checked, onChange, disabled, tip }: { label: str
 /** Quick durations under a field (DurationChips): the current one lit; ∞ is "no timeout" (0). */
 export function Chips({ values, current, onPick, disabled, forever }: { values: number[]; current: number; onPick: (ms: number) => void; disabled?: boolean; forever?: boolean }) {
   const { language } = useLanguage();
+  const tt = useTt();
   return (
     <div className="insp-chips">
       {values.map(v => (
         <button key={v} type="button" aria-pressed={v === current} disabled={disabled} onClick={() => onPick(v)}>{formatMs(v, language)} ms</button>
       ))}
       {forever && (
-        <button type="button" aria-pressed={current === 0} disabled={disabled} data-tip="Wait for the resume key, with no time limit" onClick={() => onPick(0)}>∞ No timeout</button>
+        <button type="button" aria-pressed={current === 0} disabled={disabled} data-tip={tt('Wait for the resume key, with no time limit', 'Esperar a tecla de retomada, sem limite de tempo')} onClick={() => onPick(0)}>∞ No timeout</button>
       )}
+    </div>
+  );
+}
+
+/**
+ * A variation of the repeat: a switch and its amount (Vary the gap, Vary the point). On, it starts
+ * at the amount used last in this editor (or `first`), as today; off clears it. The amount applies
+ * as typed.
+ */
+export function Vary({ label, fieldLabel, tip, stepId, field, value, first, unit, max, disabled, onSwitch }: {
+  label: string;
+  /** The amount's accessible name (`label (unit)` when absent). */
+  fieldLabel?: string;
+  tip: string;
+  stepId: string;
+  field: string;
+  value: number;
+  first: number;
+  unit: string;
+  max: number;
+  disabled: boolean;
+  onSwitch: (value: string) => void;
+}) {
+  const [last, setLast] = useState(value > 0 ? value : first);
+  if (value > 0 && value !== last) setLast(value);
+  return (
+    <div className="insp-row">
+      <Switch label={label} tip={tip} checked={value > 0} disabled={disabled} onChange={(on) => onSwitch(on ? String(last) : '')} />
+      <span className="insp-row-label">{label}</span>
+      <span className="insp-row-end">
+        <DraftField stepId={stepId} field={field} label={fieldLabel ?? `${label} (${unit})`} kind="int" min={1} max={max} prefix="±" unit={unit} stored={value > 0 ? String(value) : String(last)} disabled={disabled || value <= 0} />
+      </span>
     </div>
   );
 }
@@ -87,16 +120,28 @@ export interface DraftFieldProps {
   max?: number;
   /** A minus sign is allowed (coordinates). */
   signed?: boolean;
-  /** An emptied field keeps the stored value ('keep', the default), sends the lower bound ('min') or clears it ('clear'). */
-  empty?: 'keep' | 'min' | 'clear';
+  /**
+   * An emptied field goes back to the stored value ('keep', the default, as the numeric fields of
+   * today: an erased Delay is not 0 ms), or clears it where empty means something ('clear').
+   */
+  empty?: 'keep' | 'clear';
   prefix?: string;
   unit?: string;
   placeholder?: string;
   disabled?: boolean;
   /** What a typed text sends, or null to send nothing (a colour that is not six hex digits). */
   parse?: (text: string) => string | null;
-  /** A number's step for ↑ ↓, the wheel and ▲ ▼ (1 by default; 500 or 1000 for long waits). */
-  step?: number;
+  /**
+   * A number's step for ↑ ↓, the wheel and ▲ ▼: 1 by default, 500 or 1000 for long waits, or one
+   * that depends on the value (durationStep).
+   */
+  step?: number | ((value: number, dir: 1 | -1) => number);
+  /** Text that may hold line breaks (Notes): a box from 2 to 8 lines, where Enter is a new line. */
+  multiline?: boolean;
+  /** Told what is being typed (null when nothing is), for a hint that judges the text as it goes. */
+  onText?: (text: string | null) => void;
+  /** The field's tooltip (bilingual, from tt). */
+  tip?: string;
   /** Sends the value; one edit of `field` when absent. */
   onApply?: (value: string) => void;
 }
@@ -151,7 +196,11 @@ export function DraftField(props: DraftFieldProps) {
   // The editor going (another step selected, the selection cleared) sends what was typed.
   useEffect(() => () => { flush(timer, edit, latest); }, []);
 
-  const commit = () => {
+  // The pause in the typing sends what is good to send and leaves the rest being typed (an erased
+  // number, a colour or a pattern half written); leaving the field, Enter or Esc settle it — sent,
+  // or the step's value back.
+  const commit = (settle = true) => {
+    if (!settle && (!edit.current || parseValue(edit.current.text, latest.current.props) === null)) return;
     const value = flush(timer, edit, latest);
     if (value !== null) setSent({ value, over: stored });
     setTyping(null);
@@ -165,7 +214,7 @@ export function DraftField(props: DraftFieldProps) {
     setTyping({ text, base: from });
     pendingEdits.add(`${stepId}:${field}`);
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => commitRef.current(), IDLE_MS);
+    timer.current = setTimeout(() => commitRef.current(false), IDLE_MS);
   };
   // A step up or down from what shows (the lower bound when it is empty), inside the bounds.
   const shownText = typing ? typing.text : base;
@@ -173,14 +222,20 @@ export function DraftField(props: DraftFieldProps) {
   const stepBy = (dir: 1 | -1) => {
     if (kind !== 'int' || disabled) return;
     const from = Number.isFinite(now) ? now : (props.min ?? 0);
-    const next = Number.isFinite(now) ? from + dir * (props.step ?? 1) : from;
+    const size = typeof props.step === 'function' ? props.step(from, dir) : (props.step ?? 1);
+    const next = Number.isFinite(now) ? from + dir * size : from;
     type(String(Math.min(props.max ?? Number.MAX_SAFE_INTEGER, Math.max(props.min ?? Number.MIN_SAFE_INTEGER, next))));
   };
   const stepRef = useRef(stepBy);
   useEffect(() => { stepRef.current = stepBy; });
+  // What is being typed, for the caller's hint (the Regex that does not compile).
+  const typedText = typing ? typing.text : null;
+  const onTextRef = useRef(props.onText);
+  useEffect(() => { onTextRef.current = props.onText; });
+  useEffect(() => { onTextRef.current?.(typedText); }, [typedText]);
   // The wheel turns a focused number and leaves the panel where it is; a passive listener (React's)
   // could not keep the panel from scrolling.
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
   useEffect(() => {
     const el = inputRef.current;
     if (!el || kind !== 'int') return;
@@ -199,44 +254,47 @@ export function DraftField(props: DraftFieldProps) {
   const shown = typing ? typing.text
     : grouped && !focused && /^-?\d+$/.test(base) ? GROUPED[language].format(Number(base))
     : base;
+  const box = {
+    ref: inputRef,
+    'aria-label': props.label,
+    className: kind === 'text' ? undefined : 'insp-mono',
+    value: shown,
+    placeholder: props.placeholder,
+    disabled,
+    spellCheck: false,
+    autoComplete: 'off',
+    onChange: (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => type(clean(e.target.value, props)),
+    onKeyDown: (e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      // In a box of lines, Enter is a new line: the text goes when the typing stops or the box is left.
+      // Ctrl+Enter goes on to the Inspector, which gives the focus back to the list (sent on the way).
+      if (e.key === 'Enter' && !e.ctrlKey && !props.multiline) {
+        e.preventDefault();
+        commit();
+      } else if (e.key === 'Escape') {
+        // Sent as it stands; the Inspector then gives the focus back to the list (D12).
+        commit();
+      } else if (kind === 'int' && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.altKey && !e.ctrlKey && !e.shiftKey) {
+        e.preventDefault();
+        stepBy(e.key === 'ArrowUp' ? 1 : -1);
+      }
+    },
+    // The number trades its thousands for its digits in the focus event itself, and the digits
+    // come selected, so what is typed takes their place instead of going after them (setting the
+    // text had dropped the caret at its end). A click still puts the caret where it lands.
+    onFocus: (e: FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      const el = e.currentTarget;
+      const was = el.value;
+      flushSync(() => setFocused(true));
+      if (el.value !== was) el.select();
+    },
+    onBlur: () => { setFocused(false); commit(); },
+  };
   return (
-    <label className="insp-box" data-disabled={disabled || undefined}>
+    <label className="insp-box" data-disabled={disabled || undefined} data-multiline={props.multiline || undefined} data-tip={props.tip}>
       {props.prefix && <span className="insp-box-prefix">{props.prefix}</span>}
-      <input
-        ref={inputRef}
-        type="text"
-        inputMode={kind === 'int' ? 'numeric' : undefined}
-        aria-label={props.label}
-        className={kind === 'text' ? undefined : 'insp-mono'}
-        value={shown}
-        placeholder={props.placeholder}
-        disabled={disabled}
-        spellCheck={false}
-        autoComplete="off"
-        onChange={(e) => type(clean(e.target.value, props))}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            commit();
-          } else if (e.key === 'Escape') {
-            // Sent as it stands; the Inspector then gives the focus back to the list (D12).
-            commit();
-          } else if (kind === 'int' && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.altKey && !e.ctrlKey && !e.shiftKey) {
-            e.preventDefault();
-            stepBy(e.key === 'ArrowUp' ? 1 : -1);
-          }
-        }}
-        // The number trades its thousands for its digits in the focus event itself, and the digits
-        // come selected, so what is typed takes their place instead of going after them (setting the
-        // text had dropped the caret at its end). A click still puts the caret where it lands.
-        onFocus={(e) => {
-          const el = e.currentTarget;
-          const was = el.value;
-          flushSync(() => setFocused(true));
-          if (el.value !== was) el.select();
-        }}
-        onBlur={() => { setFocused(false); commit(); }}
-      />
+      {props.multiline
+        ? <textarea {...box} rows={2} />
+        : <input {...box} type="text" inputMode={kind === 'int' ? 'numeric' : undefined} />}
       {props.unit && <span className="insp-box-unit">{props.unit}</span>}
       {kind === 'int' && !disabled && (
         <span className="insp-steppers">
@@ -263,7 +321,7 @@ function parseValue(text: string, p: DraftFieldProps): string | null {
     const t = text.trim();
     return t === '' ? null : t;
   }
-  if (text === '') return p.empty === 'min' ? String(p.min ?? 0) : p.empty === 'clear' ? '' : null;
+  if (text === '') return p.empty === 'clear' ? '' : null;
   if (text === '-') return null;
   const n = Number.parseInt(text, 10);
   if (!Number.isFinite(n)) return null;
@@ -308,9 +366,9 @@ export function Keys({ combo }: { combo: string }) {
  * The key captured in the panel ("Keystroke — captura no próprio painel"): a press on the box
  * listens through the engine's hook, so Win+letter, AltGr and keys the page never sees arrive too,
  * and global hotkeys stay quiet meanwhile. The first real key or combo answers; a lone modifier
- * waits for the rest (except for a single key, where Ctrl alone is a key). Esc, a press elsewhere
- * or the panel going away stop listening without changing anything — Esc itself is typed in the
- * field beside it.
+ * waits for the rest (except for a single key, where Ctrl alone is a key). Esc, a press elsewhere,
+ * 4 s with no key or the panel going away stop listening without changing anything — Esc itself is
+ * typed in the field beside it.
  */
 export function KeyCapture({ value, single, label, onCapture, onCancel, autoListen, disabled }: {
   value: string;
@@ -333,30 +391,34 @@ export function KeyCapture({ value, single, label, onCapture, onCancel, autoList
   useEffect(() => { onCaptureRef.current = { onCapture, onCancel }; });
 
   // Armed while listening; released on every way out, unmount included (an armed hook is an app
-  // with no keyboard, the Stop hotkey included).
+  // with no keyboard, the Stop hotkey included). Left alone, it gives up after the idle budget of
+  // today's captures, counted again while a modifier waits for the rest.
   useEffect(() => {
     if (!listening) return;
     capture.arm(owner);
+    const stop = () => { setListening(false); setHeld(null); };
+    let idle = setTimeout(stop, SINGLE_KEY_CAPTURE_IDLE_MS);
     const off = capture.listen(owner, (combo) => {
       if (typeof combo !== 'string' || combo === '') return;
       const parts = splitCombo(combo);
       const key = parts[parts.length - 1];
       if (!key || NOT_A_KEY.has(key)) return;
       if (key === 'Escape' || key === 'Esc') {
-        setListening(false);
-        setHeld(null);
+        stop();
         onCaptureRef.current.onCancel?.();
         return;
       }
       if (!single && isPureModifier(combo)) {
         setHeld(combo);
+        clearTimeout(idle);
+        idle = setTimeout(stop, SINGLE_KEY_CAPTURE_IDLE_MS);
         return;
       }
-      setListening(false);
-      setHeld(null);
+      stop();
       onCaptureRef.current.onCapture(single ? key : combo);
     });
     return () => {
+      clearTimeout(idle);
       off();
       capture.release(owner);
     };

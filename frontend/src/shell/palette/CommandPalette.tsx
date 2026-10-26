@@ -189,7 +189,7 @@ function useItems(): PaletteItem[] {
   const tt = useTt();
 
   const locked = status !== 'ready' || clicker;
-  const lockHint = clicker ? 'The Clicker is on' : 'Not while a run or a recording is on';
+  const lockHint = clicker ? tt('The Clicker is on', 'O Clicker está ligado') : tt('Not while a run or a recording is on', 'Não durante uma execução ou gravação');
   // A run or the Clicker is the reason that counts while it lasts.
   const lock = (item: PaletteItem): PaletteItem => (locked ? { ...item, disabled: true, hint: lockHint } : item);
   const out: PaletteItem[] = [];
@@ -212,10 +212,10 @@ function useItems(): PaletteItem[] {
   if (active && !clicker) {
     out.push(status === 'replaying'
       ? cmd('stop', 'Stop the run', replay.toggle, { icon: Square, keys: shortcut(replayKey) })
-      : cmd('replay', `Replay ${active}`, replay.toggle, { icon: Play, keys: shortcut(replayKey), disabled: status === 'recording', hint: 'Stop the recording first' }));
+      : cmd('replay', `Replay ${active}`, replay.toggle, { icon: Play, keys: shortcut(replayKey), disabled: status === 'recording', hint: tt('Stop the recording first', 'Pare a gravação antes') }));
     out.push(status === 'recording'
       ? cmd('record', 'Stop recording', recording.toggle, { icon: Square, keys: shortcut(recordKey) })
-      : cmd('record', `Record into ${active}`, recording.toggle, { icon: SquareDot, keys: shortcut(recordKey), disabled: status === 'replaying', hint: 'Stop the run first' }));
+      : cmd('record', `Record into ${active}`, recording.toggle, { icon: SquareDot, keys: shortcut(recordKey), disabled: status === 'replaying', hint: tt('Stop the run first', 'Pare a execução antes') }));
   }
 
   // The steps the insert row and Add step make, at the insertion point.
@@ -258,8 +258,8 @@ function useItems(): PaletteItem[] {
   // The whole macro's steps.
   if (active) {
     out.push(
-      lock(cmd('undo', 'Undo', () => cmds.undo({}), { icon: Undo2, keys: 'Ctrl+Z', disabled: !buttons.canUndo, hint: 'Nothing to undo' })),
-      lock(cmd('redo', 'Redo', () => cmds.redo({}), { icon: Redo2, keys: 'Ctrl+Y', disabled: !buttons.canRedo, hint: 'Nothing to redo' })),
+      lock(cmd('undo', 'Undo', () => cmds.undo({}), { icon: Undo2, keys: 'Ctrl+Z', disabled: !buttons.canUndo, hint: tt('Nothing to undo', 'Nada para desfazer') })),
+      lock(cmd('redo', 'Redo', () => cmds.redo({}), { icon: Redo2, keys: 'Ctrl+Y', disabled: !buttons.canRedo, hint: tt('Nothing to redo', 'Nada para refazer') })),
       cmd('selectall', 'Select all steps', () => { selection.set(steps, steps.map((_, i) => i)); focusList(); }, { icon: ListChecks, keys: 'Ctrl+A', disabled: steps.length === 0 }),
       lock(cmd('paste', 'Paste steps', () => cmds.paste({ insertIndex: sel.length > 0 ? sel[sel.length - 1] + 1 : steps.length }), { icon: ClipboardPaste, keys: 'Ctrl+V', words: 'clipboard' })),
       cmd('copytable', 'Copy all steps as a table', () => cmds.copy({}), { icon: Table2, words: 'tsv export spreadsheet clipboard' }),
@@ -272,7 +272,7 @@ function useItems(): PaletteItem[] {
 
   // The open macro's menu, said with its name.
   if (active) {
-    out.push(...fromMenu('macro', macroMenuEntries({ name: active, profiles, order, active, locked: status !== 'ready', macro }), (item, path) => ({ label: macroPhrase(item.label, path, active), detail: 'Macro' })));
+    out.push(...fromMenu('macro', macroMenuEntries({ name: active, profiles, order, active, locked: status !== 'ready', macro, tt }), (item, path) => ({ label: macroPhrase(item.label, path, active), detail: 'Macro' })));
   }
 
   // The library's New ▾ and ⋯.

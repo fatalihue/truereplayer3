@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { ActionItem } from '../../bridge/messageTypes';
 import { useEditorTools } from '../../logic/useEditorTools';
 import { useSteps } from '../../logic/useSteps';
+import { useTt } from '../../state/LanguageContext';
 import { NotBuilt } from '../NotBuilt';
 import { useShell } from '../store';
 import { Section } from './fields';
@@ -21,6 +22,7 @@ interface Match { found: boolean; score: number; x: number; y: number; w: number
 export function ImageProbe({ step, locked, reads }: { step: ActionItem; locked: boolean; reads: 'found' | 'not found' | 'gone' }) {
   const cmds = useSteps();
   const tools = useEditorTools();
+  const tt = useTt();
   const id = step.id ?? '';
   const region = regionOf(step);
   const tolerance = Math.round((step.confidence || 0.8) * 100);
@@ -48,7 +50,7 @@ export function ImageProbe({ step, locked, reads }: { step: ActionItem; locked: 
             type="button"
             className="insp-button"
             disabled={locked}
-            data-tip="Capture the image again on the screen"
+            data-tip={tt('Capture the image again on the screen', 'Capturar a imagem de novo na tela')}
             onClick={() => { const index = indexNow(); if (index >= 0) tools.recaptureImage({ index }); }}
           >
             <span className="step-icon" data-icon="refresh-cw" />
@@ -86,7 +88,7 @@ export function ImageProbe({ step, locked, reads }: { step: ActionItem; locked: 
         region={region}
         locked={locked}
         wholeHint="The whole screen can match the wrong thing, and takes ~440 ms per check instead of ~4 ms."
-        drawTip="Faster, and fewer false matches"
+        drawTip={tt('Faster, and fewer false matches', 'Mais rápido, e com menos acertos falsos')}
         onRegion={(r) => applyEdits(cmds, id, [{ field: 'waitImageSearchRegion', value: regionValue(r) }])}
       />
       <Section label="Tolerance" hint="Higher is stricter.">

@@ -102,7 +102,8 @@ export function useArrival(bodyRef: RefObject<HTMLElement | null>, steps: Action
     if (at < 0) return;
     arrival.clear();
     want.onArrive?.(steps[at]);
-    selection.only(steps, at);
+    if (want.count > 1) selection.set(steps, Array.from({ length: Math.min(want.count, steps.length - at) }, (_, i) => at + i));
+    else selection.only(steps, at);
     bodyRef.current?.querySelector(`.step[data-index="${at}"]`)?.scrollIntoView({ block: 'nearest' });
   }, [steps, open, bodyRef]);
 }

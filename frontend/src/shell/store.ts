@@ -33,6 +33,8 @@ export interface ShellState {
   /** The last finished run, from the report the engine pushes at the end of every run. */
   lastRun: LastRunSummary | null;
   runClock: RunClock;
+  /** The first state:init is on screen: what waits for the launch to end (idle preloads) may start. */
+  booted: boolean;
 }
 
 /**
@@ -57,6 +59,7 @@ export const useShell = create<ShellState>(() => ({
   saved: null,
   lastRun: null,
   runClock: { startedAt: 0, pausedMs: 0, pausedSince: 0, replayEnded: false },
+  booted: false,
 }));
 
 /** One slice of the app state, re-rendering only when that slice changes. */
@@ -121,9 +124,10 @@ function flush() {
     app = { ...app, profileOrder: before.app.profileOrder };
   }
   const runClock = clockOf(before.runClock, before.app, app);
+  const booted = before.booted || batch.some(m => m.type === 'state:init');
   if (app !== before.app || live !== before.live || highlight !== before.highlight || saved !== before.saved
-    || lastRun !== before.lastRun || runClock !== before.runClock) {
-    useShell.setState({ app, live, highlight, saved, lastRun, runClock });
+    || lastRun !== before.lastRun || runClock !== before.runClock || booted !== before.booted) {
+    useShell.setState({ app, live, highlight, saved, lastRun, runClock, booted });
   }
 }
 

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { ActionItem, SelectorAlternative } from '../../bridge/messageTypes';
 import { useEditorTools } from '../../logic/useEditorTools';
 import { useSteps } from '../../logic/useSteps';
+import { useTt } from '../../state/LanguageContext';
 import { effectiveOperator, isNumberMode, parsesAsNumber, regexProblem } from '../../utils/screenText';
 import { DraftField, Section, Segmented } from './fields';
 import { applyEdits, type StepEdit } from './inspectorState';
@@ -21,6 +22,7 @@ const useEdit = (step: ActionItem) => {
 export function PixelCheck({ step, locked }: Props) {
   const edit = useEdit(step);
   const tools = useEditorTools();
+  const tt = useTt();
   const id = step.id ?? '';
   const tolerance = step.pixelTolerance ?? 0;
   const pick = useAsk('pixel:colorPicked', (p) => {
@@ -39,7 +41,7 @@ export function PixelCheck({ step, locked }: Props) {
         <div className="insp-line">
           <DraftField stepId={id} field="pixelX" label="Pixel X" kind="int" signed min={-2_000_000} max={2_000_000} empty="clear" prefix="X" placeholder="—" stored={step.pixelX == null ? '' : String(step.pixelX)} disabled={locked} />
           <DraftField stepId={id} field="pixelY" label="Pixel Y" kind="int" signed min={-2_000_000} max={2_000_000} empty="clear" prefix="Y" placeholder="—" stored={step.pixelY == null ? '' : String(step.pixelY)} disabled={locked} />
-          <button type="button" className="insp-button" disabled={locked || pick.waiting} data-tip="Click a point of the screen: its place and its color" onClick={() => pick.ask(requestId => tools.pickColor({ requestId }))}>
+          <button type="button" className="insp-button" disabled={locked || pick.waiting} data-tip={tt('Click a point of the screen: its place and its color', 'Clique num ponto da tela: o lugar e a cor dele')} onClick={() => pick.ask(requestId => tools.pickColor({ requestId }))}>
             <span className="step-icon" data-icon="pipette" />
             {pick.waiting ? 'Picking…' : 'Pick'}
           </button>
@@ -89,6 +91,7 @@ interface Read { text?: string; matched?: boolean | null; number?: string | null
 export function ScreenTextCheck({ step, locked }: Props) {
   const edit = useEdit(step);
   const tools = useEditorTools();
+  const tt = useTt();
   const id = step.id ?? '';
   const region = regionOf(step);
   const number = isNumberMode(step.ocrReadAs);
@@ -111,11 +114,17 @@ export function ScreenTextCheck({ step, locked }: Props) {
     if (!p.cancelled && !p.refused && p.hex) edit([{ field: 'ocrTextColor', value: p.hex }]);
   });
 
+  // What is judged is what shows: the text being typed, else the step's. A pattern that does not
+  // compile, or a value that is not a number, is never sent — the check would fail on every run
+  // (today Save refused it); leaving the field brings the last good one back.
+  const [typed, setTyped] = useState<string | null>(null);
+  const text = typed ?? operand;
+  const wrong = (t: string) => number ? (t.trim() !== '' && !t.includes('{') && !parsesAsNumber(t)) : mode === 'regex' && t !== '' && !!regexProblem(t);
   const problem = number
-    ? (operand.trim() === '' ? 'Enter a number to compare with' : !operand.includes('{') && !parsesAsNumber(operand) ? 'Not a number' : null)
+    ? (text.trim() === '' ? 'Enter a number to compare with' : wrong(text) ? 'Not a number' : null)
     : mode === 'regex'
-      ? (operand === '' ? 'Enter the pattern to look for' : regexProblem(operand))
-      : (operand.trim() === '' ? 'Enter the text to look for' : null);
+      ? (text === '' ? 'Enter the pattern to look for' : regexProblem(text))
+      : (text.trim() === '' ? 'Enter the text to look for' : null);
 
   const setMode = (v: ReadMode) => {
     if (v === 'number') edit([{ field: 'ocrReadAs', value: 'number' }, { field: 'conditionOperator', value: 'eq' }]);
@@ -130,7 +139,7 @@ export function ScreenTextCheck({ step, locked }: Props) {
         region={region}
         locked={locked}
         wholeHint="The whole screen takes ~0.5 s per read. Draw a region."
-        drawTip="Faster, and reads only what you mean"
+        drawTip={tt('Faster, and reads only what you mean', 'Mais rápido, e lê só o que você quer')}
         onRegion={(r) => edit([{ field: 'waitImageSearchRegion', value: regionValue(r) }])}
       />
       <Section label="Text">
@@ -140,9 +149,9 @@ export function ScreenTextCheck({ step, locked }: Props) {
           disabled={locked}
           options={[
             { value: 'contains', label: 'Contains' },
-            { value: 'eq', label: 'Equals', tip: 'The whole region reads exactly this' },
+            { value: 'eq', label: 'Equals', tip: tt('The whole region reads exactly this', 'A região inteira diz exatamente isto') },
             { value: 'regex', label: 'Regex' },
-            { value: 'number', label: 'Number', tip: 'The first number in the region' },
+            { value: 'number', label: 'Number', tip: tt('The first number in the region', 'O primeiro número da região') },
           ]}
           onChange={setMode}
         />
@@ -163,7 +172,8 @@ export function ScreenTextCheck({ step, locked }: Props) {
           placeholder={number ? '30' : mode === 'regex' ? '^Level \\d+' : 'Victory'}
           stored={operand}
           disabled={locked}
-          parse={(t) => t}
+          parse={(t) => (wrong(t) ? null : t)}
+          onText={setTyped}
         />
         <span className="insp-hint">
           {problem ? <span data-error="">{problem}</span>
@@ -174,12 +184,12 @@ export function ScreenTextCheck({ step, locked }: Props) {
       <Section label="Text color" hint={color ? undefined : 'Any. Pick the text color to read game HUDs over a busy scene.'}>
         <div className="insp-line">
           <HexField stepId={id} field="ocrTextColor" label="Text color" placeholder="Any" stored={step.ocrTextColor ?? ''} disabled={locked} clearable />
-          <button type="button" className="insp-button" disabled={locked || pick.waiting} data-tip="Pick the color of the text on the screen" onClick={() => pick.ask(requestId => tools.pickColor({ requestId }))}>
+          <button type="button" className="insp-button" disabled={locked || pick.waiting} data-tip={tt('Pick the color of the text on the screen', 'Escolher a cor do texto na tela')} onClick={() => pick.ask(requestId => tools.pickColor({ requestId }))}>
             <span className="step-icon" data-icon="pipette" />
             {pick.waiting ? 'Picking…' : 'Pick'}
           </button>
           {color && (
-            <button type="button" className="insp-icon-button" aria-label="Read every color" data-tip="Read every color" disabled={locked} onClick={() => edit([{ field: 'ocrTextColor', value: '' }])}>
+            <button type="button" className="insp-icon-button" aria-label="Read every color" data-tip={tt('Read every color', 'Ler todas as cores')} disabled={locked} onClick={() => edit([{ field: 'ocrTextColor', value: '' }])}>
               <span className="step-icon" data-icon="x" />
             </button>
           )}
@@ -254,6 +264,7 @@ function estimateTier(selector: string): SelectorAlternative['tier'] {
   return 'C';
 }
 const TIER_NAMES: Record<SelectorAlternative['tier'], string> = { S: 'Stable', A: 'Strong', B: 'Decent', C: 'Fragile' };
+const TIER_NAMES_PT: Record<SelectorAlternative['tier'], string> = { S: 'Estável', A: 'Forte', B: 'Razoável', C: 'Frágil' };
 
 type BrowserState = 'appears' | 'disappears' | 'enabled' | 'text-match';
 
@@ -266,6 +277,7 @@ type BrowserState = 'appears' | 'disappears' | 'enabled' | 'text-match';
 export function BrowserCheck({ step, locked }: Props) {
   const edit = useEdit(step);
   const tools = useEditorTools();
+  const tt = useTt();
   const id = step.id ?? '';
   const selector = step.key ?? '';
   const tier = estimateTier(selector);
@@ -302,7 +314,7 @@ export function BrowserCheck({ step, locked }: Props) {
     <div className="insp-group" onKeyDown={onKeyDown}>
       <Section
         label="CSS selector"
-        aside={selector ? <span className="insp-tier" data-tier={tier} data-tip={`${tier} · ${TIER_NAMES[tier]}`}>{tier} · {TIER_NAMES[tier]}</span> : undefined}
+        aside={selector ? <span className="insp-tier" data-tier={tier} data-tip={tt(`${tier} · ${TIER_NAMES[tier]}`, `${tier} · ${TIER_NAMES_PT[tier]}`)}>{tier} · {TIER_NAMES[tier]}</span> : undefined}
         hint={pickError ? <span data-error="">{pickError}</span> : 'With the extension offline, it reads as not found.'}
       >
         <div className="insp-line">
@@ -322,7 +334,7 @@ export function BrowserCheck({ step, locked }: Props) {
             className="insp-icon-button"
             aria-label="Pick element"
             aria-pressed={pick.waiting}
-            data-tip={pick.waiting ? 'Picking on the page · Esc cancels' : 'Pick an element on the page'}
+            data-tip={pick.waiting ? tt('Picking on the page · Esc cancels', 'Escolhendo na página · Esc cancela') : tt('Pick an element on the page', 'Escolher um elemento na página')}
             disabled={locked}
             onClick={() => {
               if (pick.waiting) { tools.cancelPick({}); pick.drop(); return; }

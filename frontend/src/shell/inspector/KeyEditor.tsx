@@ -6,8 +6,8 @@ import { useLanguage, useTt } from '../../state/LanguageContext';
 import { formatMs } from '../../utils/displayUtils';
 import { keycaps } from '../library/model';
 import { arrival } from '../list/selection';
-import { Chips, DraftField, KeyCapture, Section, Segmented, Switch } from './fields';
-import { applyEdits, drafts, focusList, type Draft, type StepEdit } from './inspectorState';
+import { Chips, DraftField, KeyCapture, Section, Segmented, Vary } from './fields';
+import { applyEdits, drafts, durationStep, focusList, type Draft, type StepEdit } from './inspectorState';
 
 const HOLD_CHIPS = [100, 500, 1000, 5000];
 const DEFAULT_HOLD_MS = 1000;
@@ -21,7 +21,6 @@ const lastKey = (combo: string) => {
 
 /** The key, captured in the panel or typed beside it (tokens like {var:name} are typed). */
 function KeyInput({ step, single, locked, onKey }: { step: ActionItem; single?: boolean; locked: boolean; onKey: (key: string) => void }) {
-  const tt = useTt();
   return (
     <Section label="Key">
       <KeyCapture value={step.key} single={single} label="Capture a key" onCapture={onKey} disabled={locked} />
@@ -36,7 +35,7 @@ function KeyInput({ step, single, locked, onKey }: { step: ActionItem; single?: 
         disabled={locked}
         onApply={onKey}
       />
-      {!single && <span className="insp-hint">{tt('Typed keys accept tokens, like {var:name}.', 'Teclas digitadas aceitam tokens, como {var:name}.')}</span>}
+      {!single && <span className="insp-hint">{'Typed keys accept tokens, like {var:name}.'}</span>}
     </Section>
   );
 }
@@ -58,7 +57,15 @@ export function KeyEditor({ step, locked }: { step: ActionItem; locked: boolean 
   const combo = !hold && parts.length > 1;
   const modifiers = parts.slice(0, -1).join('+');
 
-  const setKey = (key: string) => edit([{ field: 'key', value: hold ? lastKey(key) : key }]);
+  // A combo given to a Hold keeps its last key; what it dropped is said under the duration until
+  // another key comes (dialogos-031: never in silence).
+  const [dropped, setDropped] = useState<{ stepId: string; kept: string; modifiers: string } | null>(null);
+  const setKey = (key: string) => {
+    const given = splitCombo(key);
+    setDropped(hold && given.length > 1 ? { stepId: id, kept: given[given.length - 1], modifiers: given.slice(0, -1).join('+') } : null);
+    edit([{ field: 'key', value: hold ? lastKey(key) : key }]);
+  };
+  const droppedHere = hold && dropped?.stepId === id ? dropped : null;
   const setAction = (action: 'press' | 'hold') => {
     if (action === 'hold') edit([{ field: 'actionType', value: 'HoldKey' }, ...(combo ? [{ field: 'key', value: lastKey(step.key) }] : [])]);
     else edit([{ field: 'actionType', value: 'Keystroke' }]);
@@ -75,8 +82,7 @@ export function KeyEditor({ step, locked }: { step: ActionItem; locked: boolean 
       <KeyInput step={step} locked={locked} onKey={setKey} />
       <Section
         label="Action"
-        hint={combo ? tt(`Hold takes one key: switching keeps ${lastKey(step.key)} and drops ${modifiers}.`,
-                         `Hold pega uma tecla: trocar mantém ${lastKey(step.key)} e larga ${modifiers}.`) : undefined}
+        hint={combo ? `Hold takes one key: switching keeps ${lastKey(step.key)} and drops ${modifiers}.` : undefined}
       >
         <Segmented<'press' | 'hold'>
           label="Keystroke mode"
@@ -87,35 +93,36 @@ export function KeyEditor({ step, locked }: { step: ActionItem; locked: boolean 
         />
       </Section>
       {hold ? (
-        <Section label="Hold">
-          <DraftField stepId={id} field="holdDurationMs" label="Hold duration in milliseconds" kind="int" min={10} max={60000} unit="ms" stored={String(step.holdDurationMs || DEFAULT_HOLD_MS)} disabled={locked} />
+        <Section
+          label="Hold"
+          hint={droppedHere ? `Hold takes a single key: this saved ${droppedHere.kept} and dropped ${droppedHere.modifiers}. For a combo, add a Hold row for the modifier above this one.` : undefined}
+        >
+          <DraftField stepId={id} field="holdDurationMs" label="Hold duration in milliseconds" kind="int" min={10} max={60000} step={durationStep} unit="ms" stored={String(step.holdDurationMs || DEFAULT_HOLD_MS)} disabled={locked} />
           <Chips values={HOLD_CHIPS} current={step.holdDurationMs || DEFAULT_HOLD_MS} onPick={(ms) => edit([{ field: 'holdDurationMs', value: String(ms) }])} disabled={locked} />
         </Section>
       ) : (
         <>
           <div className="insp-pair">
             <Section label="Times">
-              <DraftField stepId={id} field="repeat" label="Times to repeat" kind="int" min={1} max={999} empty="min" unit="×" stored={String(repeat)} disabled={locked} />
+              <DraftField stepId={id} field="repeat" label="Times to repeat" kind="int" min={1} max={999} unit="×" stored={String(repeat)} disabled={locked} />
             </Section>
             <Section label="Gap">
               <DraftField stepId={id} field="repeatDelayMs" label="Gap between presses" kind="int" min={0} max={5000} empty="clear" unit="ms" placeholder={String(DEFAULT_KEY_GAP_MS)} stored={step.repeatDelayMs == null ? '' : String(step.repeatDelayMs)} disabled={locked || repeat <= 1} />
             </Section>
           </div>
-          <div className="insp-row">
-            <Switch
-              label="Vary the gap"
-              tip={tt('Random ±% on each gap — less robotic.', 'Variação ±% aleatória em cada intervalo — menos robótico.')}
-              checked={(step.repeatDelayJitterPct ?? 0) > 0}
-              disabled={locked || repeat <= 1}
-              onChange={(on) => edit([{ field: 'repeatDelayJitterPct', value: on ? '20' : '' }])}
-            />
-            <span className="insp-row-label">Vary the gap</span>
-            {(step.repeatDelayJitterPct ?? 0) > 0 && (
-              <span className="insp-row-end">
-                <DraftField stepId={id} field="repeatDelayJitterPct" label="Gap jitter (%)" kind="int" min={1} max={100} prefix="±" unit="%" stored={String(step.repeatDelayJitterPct)} disabled={locked || repeat <= 1} />
-              </span>
-            )}
-          </div>
+          <Vary
+            label="Vary the gap"
+            fieldLabel="Gap jitter (%)"
+            tip={tt('Random ±% on each gap — less robotic.', 'Variação ±% aleatória em cada intervalo — menos robótico.')}
+            stepId={id}
+            field="repeatDelayJitterPct"
+            value={step.repeatDelayJitterPct ?? 0}
+            first={20}
+            unit="%"
+            max={100}
+            disabled={locked || repeat <= 1}
+            onSwitch={(v) => edit([{ field: 'repeatDelayJitterPct', value: v }])}
+          />
         </>
       )}
       <p className="insp-summary" aria-live="polite">{summary}</p>
@@ -130,7 +137,6 @@ export function KeyEditor({ step, locked }: { step: ActionItem; locked: boolean 
  */
 export function DraftKeyEditor({ draft, locked }: { draft: Draft; locked: boolean }) {
   const cmds = useSteps();
-  const tt = useTt();
   const [typed, setTyped] = useState('');
   const add = (key: string) => {
     const k = key.trim();
@@ -167,7 +173,7 @@ export function DraftKeyEditor({ draft, locked }: { draft: Draft; locked: boolea
             }}
           />
         </label>
-        <span className="insp-hint">{tt('Typed keys accept tokens, like {var:name}. Enter adds the step.', 'Teclas digitadas aceitam tokens, como {var:name}. Enter adiciona o passo.')}</span>
+        <span className="insp-hint">{'Typed keys accept tokens, like {var:name}. Enter adds the step.'}</span>
       </Section>
     </>
   );

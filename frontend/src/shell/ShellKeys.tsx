@@ -141,14 +141,14 @@ export function ShellKeys() {
       asked.current = null;
       // An answer long after the key belongs to a later save, not to this one.
       if (Date.now() - wanted.at > 5000) return;
-      if (message.payload.ok) showToast('Saved', 'success');
+      if (message.payload.ok) showToast(tt('Saved', 'Salvo'), 'success');
       // The engine speaks (alert:show) on the first failure of a run of them; after that, the
       // status bar says "Not saved" and this key is the one to answer.
-      else if (useShell.getState().saved?.ok === false) showToast(`Not saved — ${message.payload.error ?? 'the file could not be written'}`, 'error');
+      else if (useShell.getState().saved?.ok === false) showToast(tt(`Not saved — ${message.payload.error ?? 'the file could not be written'}`, `Não salvo — ${message.payload.error ?? 'o arquivo não pôde ser gravado'}`), 'error');
     } else if (message.type === 'profile:reverted' && message.payload.ok) {
-      showToast('Back to when you opened it', 'success');
+      showToast(tt('Back to when you opened it', 'De volta a quando você o abriu'), 'success');
     }
-  }), [subscribe, showToast]);
+  }), [subscribe, showToast, tt]);
 
   return null;
 }

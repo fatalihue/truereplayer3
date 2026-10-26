@@ -57,6 +57,7 @@ export function BatchEditor({ indices, steps, locked }: { indices: number[]; ste
   const commonNote = notes.size === 1 ? [...notes][0] : null;
   const withNotes = sel.filter(i => (steps[i].comment ?? '') !== '').length;
   const allSkipped = sel.every(i => steps[i].isSkipped);
+  const blocks = blockMap(steps);
 
   const [delay, setDelay] = useState<{ mode: Mode; text: string; error?: string }>({ mode: 'set', text: '' });
   const [x, setX] = useState<{ mode: Mode; text: string }>({ mode: 'set', text: '' });
@@ -82,10 +83,27 @@ export function BatchEditor({ indices, steps, locked }: { indices: number[]; ste
     setX({ ...x, text: '' });
     setY({ ...y, text: '' });
   };
+  // An emptied note only closes, as today: the notes go only with "Clear notes".
   const applyNote = () => {
     if (note === null || note === commonNote) return;
-    cmds.bulkUpdateComment({ indices: sel, comment: note });
     setNote(null);
+    if (note.trim() === '') return;
+    cmds.bulkUpdateComment({ indices: sel, comment: note });
+    showToast(tt(`Set notes for ${n} step(s)`, `Notas definidas para ${n} passo(s)`), 'success');
+  };
+  const clearNotes = () => {
+    cmds.bulkUpdateComment({ indices: sel, comment: '' });
+    showToast(tt(`Cleared notes on ${withNotes} step(s)`, `Notas removidas de ${withNotes} passo(s)`), 'success');
+  };
+  const toggleSkip = () => {
+    cmds.toggleSkip({ indices: sel });
+    showToast(allSkipped
+      ? tt(`Enabled ${n} step(s)`, `${n} passo(s) ativado(s)`)
+      : tt(`Skipped ${n} step(s)`, `${n} passo(s) pulado(s)`), 'success');
+  };
+  const remove = () => {
+    const gone = deleteSteps(steps, sel, blocks, cmds, (text) => showToast(text, 'info'), tt);
+    if (gone > 0) showToast(tt(`Deleted ${gone} step(s)`, `${gone} passo(s) apagado(s)`), { type: 'success', action: { label: 'Undo', onClick: () => cmds.undo({}) } });
   };
   const enter = (apply: () => void) => (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== 'Enter') return;
@@ -93,14 +111,20 @@ export function BatchEditor({ indices, steps, locked }: { indices: number[]; ste
     apply();
   };
 
-  const modes = [{ value: 'set' as const, label: 'Set' }, { value: 'add' as const, label: 'Add' }];
-  const blocks = blockMap(steps);
+  const delayModes = [
+    { value: 'set' as const, label: 'Set', tip: tt('Every selected step gets this delay', 'Todo passo selecionado recebe este atraso') },
+    { value: 'add' as const, label: 'Add', tip: tt("Added to each step's delay. Negative subtracts, stopping at 0.", 'Somado ao atraso de cada passo. Negativo subtrai, parando em 0.') },
+  ];
+  const pointModes = [
+    { value: 'set' as const, label: 'Set', tip: tt('Every selected click gets this value', 'Todo clique selecionado recebe este valor') },
+    { value: 'add' as const, label: 'Add', tip: tt("Added to each click's current value. Negative subtracts.", 'Somado ao valor atual de cada clique. Negativo subtrai.') },
+  ];
 
   return (
     <>
       <Section label="Delay" hint={delay.error ? <span data-error="">{delay.error}</span> : delayNow}>
         <div className="insp-bulk">
-          <Segmented<Mode> label="Set or add the delay" value={delay.mode} options={modes} onChange={(mode) => setDelay({ mode, text: delay.text })} disabled={locked || delayRows.length === 0} />
+          <Segmented<Mode> label="Set or add the delay" value={delay.mode} options={delayModes} onChange={(mode) => setDelay({ mode, text: delay.text })} disabled={locked || delayRows.length === 0} />
           <label className="insp-box" data-invalid={delay.error ? '' : undefined}>
             <input
               type="text"
@@ -123,7 +147,7 @@ export function BatchEditor({ indices, steps, locked }: { indices: number[]; ste
           {([['X', x, setX], ['Y', y, setY]] as const).map(([axis, value, set]) => (
             <div key={axis} className="insp-bulk">
               <span className="insp-axis">{axis}</span>
-              <Segmented<Mode> label={`Set or add ${axis}`} value={value.mode} options={modes} onChange={(mode) => set({ mode, text: value.text })} disabled={locked} />
+              <Segmented<Mode> label={`Set or add ${axis}`} value={value.mode} options={pointModes} onChange={(mode) => set({ mode, text: value.text })} disabled={locked} />
               <label className="insp-box" data-invalid={posError ? '' : undefined}>
                 <input
                   type="text"
@@ -157,9 +181,9 @@ export function BatchEditor({ indices, steps, locked }: { indices: number[]; ste
               onKeyDown={enter(applyNote)}
             />
           </label>
-          <button type="button" className="insp-button" disabled={locked || note === null || note === commonNote} onClick={applyNote}>Apply</button>
+          <button type="button" className="insp-button" disabled={locked || note === null || note === commonNote || note.trim() === ''} onClick={applyNote}>Apply</button>
         </div>
-        <button type="button" className="insp-link" disabled={locked || withNotes === 0} onClick={() => cmds.bulkUpdateComment({ indices: sel, comment: '' })}>
+        <button type="button" className="insp-link" disabled={locked || withNotes === 0} data-tip={tt('Remove the notes from the selected steps', 'Remove as notas dos passos selecionados')} onClick={clearNotes}>
           Clear notes on all {n}
         </button>
       </Section>
@@ -178,10 +202,10 @@ export function BatchEditor({ indices, steps, locked }: { indices: number[]; ste
           <button type="button" onClick={() => cmds.copyInternal({ indices: sel })}>
             <span>Copy</span><kbd className="kbd" aria-hidden="true">Ctrl+C</kbd>
           </button>
-          <button type="button" disabled={locked} onClick={() => cmds.toggleSkip({ indices: sel })}>
+          <button type="button" disabled={locked} onClick={toggleSkip}>
             <span>{allSkipped ? `Enable all ${n}` : `Skip all ${n}`}</span>
           </button>
-          <button type="button" data-danger="" disabled={locked} onClick={() => deleteSteps(steps, sel, blocks, cmds, (text) => showToast(text), tt)}>
+          <button type="button" data-danger="" disabled={locked} onClick={remove}>
             <span>Delete {n} steps</span><kbd className="kbd" aria-hidden="true">Del</kbd>
           </button>
         </div>

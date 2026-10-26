@@ -47,7 +47,7 @@ export function SecurityWarningModal({ fileName, profileCount, onContinue, onCan
       {/* Body */}
       <div className="px-4 py-4 space-y-3">
         <p className="text-minor text-text-secondary leading-relaxed">
-          Profiles run automated mouse and keyboard actions. Only import profiles
+          Macros run automated mouse and keyboard actions. Only import macros
           from sources you trust.
         </p>
 

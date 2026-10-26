@@ -133,7 +133,7 @@ export function StepList() {
     const index = now.findIndex(s => s.id === pending.id);
     if (index < 0) return;
     cmds.editMany({ index, id: pending.id, edits: [{ field: 'x', value: String(x) }, { field: 'y', value: String(y) }] });
-    showToast(`Point set to ${x}, ${y}`, { type: 'success', action: { label: 'Undo', onClick: () => cmds.undo({}) } });
+    showToast(tt(`Point set to ${x}, ${y}`, `Ponto definido em ${x}, ${y}`), { type: 'success', action: { label: 'Undo', onClick: () => cmds.undo({}) } });
   }), [subscribe, cmds, showToast, tt]);
 
   if (!open) return <p className="shell-steps-empty">Open a macro from the library.</p>;
@@ -256,7 +256,7 @@ export function StepList() {
     }
   };
 
-  const remove = (sel: number[]) => deleteSteps(steps, sel, blocks, cmds, (text) => showToast(text), tt);
+  const remove = (sel: number[]) => deleteSteps(steps, sel, blocks, cmds, (text) => showToast(text, 'info'), tt);
 
   const menuEntries = !menu || !menuKit ? [] : (() => {
     const sel = selectedIndices(steps);

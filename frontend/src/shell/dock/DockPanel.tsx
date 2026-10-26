@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef, type KeyboardEvent, type PointerEvent } from 'react';
 import type { RunStep } from '../../bridge/messageTypes';
 import { useRunReport, useRunState } from '../../logic/useRunState';
-import { useLanguage } from '../../state/LanguageContext';
+import { useLanguage, useTt } from '../../state/LanguageContext';
 import { runDurationMs } from '../../utils/runReportStats';
 import { formatClock, formatDuration } from '../header/model';
 import { runSeconds, useNow } from '../header/useNow';
@@ -60,6 +60,7 @@ function RunReportView() {
   const status = useApp(a => a.status);
   const active = useApp(a => a.activeProfile);
   const { language } = useLanguage();
+  const tt = useTt();
   const running = status === 'replaying';
   const listRef = useRef<HTMLDivElement>(null);
   // While a run is on, the report is asked for again and again; when it ends, the engine pushes it.
@@ -94,7 +95,12 @@ function RunReportView() {
     <div className="dock-report">
       <div className="dock-head">
         {running ? <LiveHead failed={failed} /> : (
-          <span className="dock-head-text" data-tip={dur.wallClock ? `Wall clock, minus the time paused. Inside the steps: ${formatDuration(dur.actionsMs, language)}.` : 'The sum of the steps — this report predates the engine clock.'}>
+          <span
+            className="dock-head-text"
+            data-tip={dur.wallClock
+              ? tt(`Wall clock, minus the time paused. Inside the steps: ${formatDuration(dur.actionsMs, language)}.`, `Tempo de relógio, menos o tempo em pausa. Dentro dos passos: ${formatDuration(dur.actionsMs, language)}.`)
+              : tt('The sum of the steps — this report predates the engine clock.', 'A soma dos passos — este relatório é de antes do relógio do motor.')}
+          >
             {[...profiles][0] ?? report?.profile}{startAt(report?.startedAt)} · {steps.length} steps · {formatDuration(dur.totalMs, language)}
           </span>
         )}
@@ -127,7 +133,7 @@ function RunReportView() {
                 <div className="dock-chain"><span className="step-icon" data-icon="repeat-2" />{s.profile}</div>
               )}
               <div className="dock-step" role="listitem" data-run-index={i} data-status={s.status}>
-                <button type="button" className="dock-step-line" disabled={!mine} data-tip={mine ? `Select step ${s.row}` : undefined} onClick={() => goTo(s)}>
+                <button type="button" className="dock-step-line" disabled={!mine} data-tip={mine ? tt(`Select step ${s.row}`, `Selecionar o passo ${s.row}`) : undefined} onClick={() => goTo(s)}>
                   <span className="dock-step-row">{s.row}</span>
                   <span className="step-icon" data-icon={icon.icon} role="img" aria-label={icon.label} />
                   <span className="dock-step-type">{stepName(s.actionType)}</span>

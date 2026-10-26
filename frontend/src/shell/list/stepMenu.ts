@@ -8,7 +8,9 @@ import { hasConditionFields, isStructuralRow, snapIndicesToBlocks } from '../../
 import { CLICK_FAMILY_TYPES, clickFormOf, isCoordinateClick, isFocusClickEligible } from '../../utils/displayUtils';
 import { canCollapse, canExpand, expandKeystroke } from '../../utils/keyRepeat';
 import type { MenuEntry } from '../Menu';
+import { useShell } from '../store';
 import { scopeOf, type BlockMap } from './blocks';
+import { arrival } from './selection';
 
 type Tt = (en: string, pt: string) => string;
 
@@ -140,7 +142,7 @@ function clickTypeEntry({ steps, row, targets, cmds }: StepMenuContext): MenuEnt
  * Convert ▸: a click's shape (D14: One row and Two rows, for the selected clicks) and the whole
  * macro's coordinates and shapes. The engine refuses what it cannot convert, and says why.
  */
-function convertEntries({ steps, row, targets, cmds, convertCoordinates, tt }: StepMenuContext): MenuEntry[] {
+function convertEntries({ steps, row, targets, cmds, convertCoordinates, tt, toast }: StepMenuContext): MenuEntry[] {
   const t = steps[row].actionType;
   const form = isCoordinateClick(t) ? clickFormOf(t) : null;
   const clicks = targets.filter(i => isCoordinateClick(steps[i]?.actionType ?? '') && clickFormOf(steps[i].actionType) === form);
@@ -158,11 +160,18 @@ function convertEntries({ steps, row, targets, cmds, convertCoordinates, tt }: S
     const pair = [...new Set(seeds.flatMap(i => (form === 'Down' ? [i, i + 1] : [i - 1, i])))]
       .filter(i => i >= 0 && i < steps.length)
       .sort((a, b) => a - b);
+    // D14: the merge keeps the Down half. A button or a point that differs, the engine refuses and
+    // says why; the notes of an Up half go in silence, so they are said at once.
+    const upNotes = pair.some(i => clickFormOf(steps[i].actionType) === 'Up' && (steps[i].comment ?? '') !== ''
+      && steps[i].comment !== (steps[i - 1]?.comment ?? ''));
     out.push({
       label: 'One row',
       icon: Combine,
       tip: tt('Press and release together', 'Aperta e solta juntos'),
-      onSelect: () => cmds.convertMode({ direction: 'toCombined', indices: pair }),
+      onSelect: () => {
+        cmds.convertMode({ direction: 'toCombined', indices: pair });
+        if (upNotes) toast(tt('One row keeps the Down half: the notes of the Up half are gone. Ctrl+Z brings them back.', 'Uma linha fica com a metade Down: as notas da metade Up saíram. Ctrl+Z as traz de volta.'), 'info');
+      },
     });
   }
   if (out.length > 0) out.push('separator');
@@ -234,12 +243,13 @@ function moreEntries(ctx: StepMenuContext): MenuEntry[] {
         : tt('Select adjacent Key Down + Key Up pairs of the same key', 'Selecione pares Key Down + Key Up adjacentes da mesma tecla'),
       onSelect: () => {
         if (!collapse) return;
+        // The new step has a new id: it is selected when it lands, not by the ids of before.
+        arrival.expect(targets[0], useShell.getState().app.activeProfile ?? null);
         cmds.replaceRange({
           startIndex: targets[0],
           count: targets.length,
           replacement: [{ actionType: 'Keystroke', key: collapse.key, delay: collapse.delay, repeatCount: collapse.count, repeatDelayMs: collapse.repeatDelayMs, comment: collapse.comment }],
         });
-        ctx.select([targets[0]]);
       },
     },
     {
@@ -252,8 +262,8 @@ function moreEntries(ctx: StepMenuContext): MenuEntry[] {
       onSelect: () => {
         if (!expandOk) return;
         const replacement = expandKeystroke(steps[targets[0]]);
+        arrival.expect(targets[0], useShell.getState().app.activeProfile ?? null, undefined, replacement.length);
         cmds.replaceRange({ startIndex: targets[0], count: 1, replacement });
-        ctx.select(replacement.map((_, i) => targets[0] + i));
       },
     },
   );

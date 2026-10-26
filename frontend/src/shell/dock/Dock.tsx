@@ -1,5 +1,5 @@
 import { useEffect, useRef, type CSSProperties, type KeyboardEvent } from 'react';
-import { useLanguage } from '../../state/LanguageContext';
+import { useLanguage, useTt } from '../../state/LanguageContext';
 import { formatDuration, lastRunOutcome, timeOfDay } from '../header/model';
 import { preload, useLoaded } from '../lazyModule';
 import { useApp, useShell } from '../store';
@@ -25,6 +25,7 @@ export function Dock() {
   const tab = useDock(s => s.tab);
   const height = useDock(s => s.height);
   const { language } = useLanguage();
+  const tt = useTt();
   const ref = useRef<HTMLElement>(null);
   const panel = useLoaded(loadDockPanel);
   useEffect(() => {
@@ -86,7 +87,7 @@ export function Dock() {
           type="button"
           className="dock-summary"
           data-run={run && status !== 'replaying' ? (run.failedCount > 0 || run.outcome === 'failed' ? 'failed' : run.outcome === 'stopped' ? 'stopped' : 'ok') : undefined}
-          data-tip="Open the run report"
+          data-tip={tt('Open the run report', 'Abrir o relatório da execução')}
           onClick={() => dock.show('report')}
         >
           {summary}
@@ -96,7 +97,7 @@ export function Dock() {
           className="dock-toggle"
           aria-label={open ? 'Close panel' : 'Open panel'}
           aria-expanded={open}
-          data-tip={open ? 'Close panel' : 'Open panel'}
+          data-tip={open ? tt('Close panel', 'Fechar o painel') : tt('Open panel', 'Abrir o painel')}
           onClick={() => dock.setOpen(!open)}
         >
           <span className="step-icon" data-icon={open ? 'arrow-down' : 'arrow-up'} />
