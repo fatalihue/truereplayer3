@@ -79,6 +79,15 @@
 .insp-box input.insp-mono { font-family: var(--font-mono); }
 .insp-box-prefix,
 .insp-box-unit { flex: none; font-size: var(--text-minor); color: var(--color-text-tertiary); }
+/* A number's ▲ ▼: at the edge, seen on hover and with the focus; their place is kept, so nothing moves. */
+.insp-steppers { display: flex; flex-direction: column; flex: none; width: 0.75rem; margin-right: -0.375rem; opacity: 0; transition: none; }
+.insp-box:hover .insp-steppers,
+.insp-box:focus-within .insp-steppers { opacity: 1; }
+.insp-steppers button { height: 0.75rem; padding: 0; border: 0; background: transparent; color: var(--color-text-tertiary); cursor: pointer; }
+.insp-steppers button::before { content: ''; display: block; width: 0.5rem; height: 0.3125rem; margin: 0 auto; background: currentColor; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.insp-steppers button + button::before { clip-path: polygon(0 0, 100% 0, 50% 100%); }
+.insp-steppers button:not(:disabled):hover { color: var(--color-text-primary); }
+.insp-steppers button:disabled { color: var(--color-text-disabled); cursor: default; }
 
 .insp-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
 /* Delay narrow, Notes taking the rest (or the whole line on a step with no delay). */

@@ -1368,6 +1368,8 @@ export type OutgoingMessage =
   | { type: 'pixel:testMatch'; payload: { requestId: string; x: number; y: number; hex: string; tolerance: number } }
   | { type: 'selection:changed'; payload: { indices: number[] } }
   | { type: 'window:alwaysOnTop'; payload: { enabled: boolean } }
+  // The new interface's layout band edges, in DIP: a dragged window edge sticks to them (D27).
+  | { type: 'window:snapWidths'; payload: { widths: number[] } }
   | { type: 'window:minimizeToTray'; payload: { enabled: boolean } }
   | { type: 'window:runOnStartup'; payload: { enabled: boolean } }
   | { type: 'window:startMinimized'; payload: { enabled: boolean } }

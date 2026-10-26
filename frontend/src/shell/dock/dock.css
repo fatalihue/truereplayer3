@@ -1,0 +1,77 @@
+/* ⑨ The dock under the steps: the bar (in the opening bundle) and the panel (with DockPanel).
+   Sizes in rem; colours are theme tokens only; motion is opacity, behind html[data-animations]. */
+
+.dock { position: relative; flex: none; display: flex; flex-direction: column; border-top: 1px solid var(--color-border-subtle); background: var(--color-bg-base); }
+.dock-bar { display: flex; align-items: center; gap: 0.75rem; height: 2.25rem; padding: 0 0.5rem 0 0.75rem; box-sizing: border-box; }
+.dock-tabs { display: flex; gap: 0.125rem; flex: none; }
+.dock-tabs [role='tab'] {
+  height: 1.625rem;
+  padding: 0 0.625rem;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: var(--text-minor);
+  cursor: pointer;
+}
+.dock-tabs [role='tab']:hover { background: var(--color-bg-elevated); color: var(--color-text-primary); }
+.dock-tabs [role='tab'][data-open] { background: color-mix(in srgb, var(--color-accent) 12%, transparent); color: var(--color-text-primary); font-weight: 600; }
+.dock-tabs [role='tab']:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: -1px; }
+.dock-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  height: 1.625rem;
+  padding: 0 0.375rem;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-tertiary);
+  font: inherit;
+  font-size: var(--text-minor);
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.dock-summary:hover { color: var(--color-text-secondary); }
+.dock-summary[data-run='failed'] { color: var(--color-recording-fg); }
+.dock-summary:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: -1px; }
+.dock-toggle {
+  width: 1.75rem;
+  height: 1.75rem;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+}
+.dock-toggle .step-icon { width: 0.875rem; height: 0.875rem; }
+.dock-toggle:hover { background: var(--color-bg-elevated); color: var(--color-text-primary); }
+.dock-toggle:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: -1px; }
+/* The top edge: drag to raise or lower the panel. Its bar shows on hover and on focus, like the
+   Inspector's; the keyboard's focus paints it in the accent instead of the ring. */
+.dock-edge { position: absolute; top: -0.25rem; left: 0; right: 0; height: 0.5rem; cursor: row-resize; z-index: 1; touch-action: none; outline: none; }
+.dock-edge::after {
+  content: '';
+  position: absolute;
+  top: 0.09375rem;
+  left: 50%;
+  width: 2rem;
+  height: 0.3125rem;
+  margin-left: -1rem;
+  border-radius: 0.1875rem;
+  background: var(--color-border-strong);
+  opacity: 0;
+}
+.dock:hover .dock-edge::after,
+.dock-edge:focus-visible::after { opacity: 1; }
+.dock-edge:focus-visible { box-shadow: none; }
+.dock-edge:focus-visible::after { background: var(--color-accent-solid); }
+
+.dock-panel { height: var(--dock-panel, 14rem); min-height: 0; overflow: hidden; border-top: 1px solid var(--color-border-subtle); display: flex; flex-direction: column; }

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Activity, X } from 'lucide-react';
 import { iconButtonClass } from './common/IconButton';
 import { useAppState } from '../state/AppStateContext';
-import { useRunState } from '../logic/useReplay';
+import { useRunState } from '../logic/useRunState';
 
 
 // ── Live Variables pane ──────────────────────────────────────────────────────

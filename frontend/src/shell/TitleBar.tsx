@@ -1,6 +1,8 @@
+import { Search } from 'lucide-react';
 import { useApp, useShell } from './store';
 import { BrandMark } from './BrandMark';
-import { NotBuilt } from './NotBuilt';
+import { preload } from './lazyModule';
+import { loadPalette, palette } from './palette/paletteState';
 
 // The native caption buttons (minimize, maximize, close) sit over the right edge of the title bar.
 // They keep their device size whatever the UI scale is, so this gap stays in px.
@@ -18,7 +20,24 @@ export function TitleBar() {
         <span>TrueReplayer</span>
       </div>
       <div className="shell-titlebar-middle">
-        <NotBuilt what="Ctrl+K" />
+        {/* casca-018: the search that opens Ctrl+K. Out of the drag region, or a click would move the window.
+            Its words shorten with the room it has (shell.css); its name stays whole. */}
+        <button
+          type="button"
+          className="shell-search no-drag"
+          aria-label="Search macros, steps and commands"
+          aria-keyshortcuts="Control+K"
+          onClick={palette.open}
+          onPointerEnter={() => { void preload(loadPalette); }}
+          onFocus={() => { void preload(loadPalette); }}
+        >
+          {/* lucide's, like the rail's: a CSS mask here was the opening's first SVG image (~2 ms). */}
+          <Search aria-hidden="true" />
+          <span className="shell-search-text" data-form="long">Search macros, steps and commands</span>
+          <span className="shell-search-text" data-form="short">Search</span>
+          <kbd className="shell-search-kbd">Ctrl</kbd>
+          <kbd className="shell-search-kbd">K</kbd>
+        </button>
       </div>
       <StateBadge status={status} clicker={clicker} />
     </header>

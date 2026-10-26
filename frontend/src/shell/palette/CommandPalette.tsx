@@ -1,0 +1,297 @@
+import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { createPortal } from 'react-dom';
+import {
+  BookOpen, Chrome, ClipboardCopy, ClipboardPaste, Combine, CornerDownRight, Keyboard, ListChecks, Play, Redo2, RefreshCw,
+  Replace, ScrollText, Split, Square, SquareDot, Table2, Undo2, Variable, Zap,
+} from 'lucide-react';
+import { useAutomations } from '../../logic/useAutomations';
+import { useMacro } from '../../logic/useMacro';
+import { useRecording } from '../../logic/useRecording';
+import { useRemaps } from '../../logic/useRemaps';
+import { useReplay } from '../../logic/useReplay';
+import { useAppActions, useSettings } from '../../logic/useSettings';
+import { useSteps } from '../../logic/useSteps';
+import { useTt } from '../../state/LanguageContext';
+import { useToast } from '../../state/ToastContext';
+import { dock } from '../dock/dockState';
+import { ITEMS } from '../insert/catalog';
+import { insertHere } from '../insert/inserts';
+import { drafts, focusInspector, focusList } from '../inspector/inspectorState';
+import { libraryMenus } from '../library/libraryMenus';
+import { displayOrder, sectionsOf } from '../library/model';
+import { blockMap } from '../list/blocks';
+import { selectedIndices, selection, useSelection } from '../list/selection';
+import { stepMenuEntries } from '../list/stepMenu';
+import { stepIcon } from '../list/stepTypes';
+import { macroMenuEntries } from '../macroMenu';
+import { useApp } from '../store';
+import { setExtensionHelp, useUi } from '../ui';
+import { fromMenu, macroItems, macroPhrase, scoreOf, shortcut, stepItems, tokensOf, type PaletteItem } from './commands';
+import { palette } from './paletteState';
+import './palette.css';
+
+const MANUAL_URL = 'https://fatalihue.github.io/TrueReplayer-releases/manual.html';
+const LIMIT = { Macros: 8, Steps: 8, Commands: 60 } as const;
+const GROUPS = ['Macros', 'Steps', 'Commands'] as const;
+
+/**
+ * ① Ctrl+K (Menus board: "busca tudo: macros, passos e todos os comandos, com atalho"): one field
+ * that finds a macro to open, a step of the open macro to go to, and every command, each with the
+ * keys that do the same. "> " looks for commands only. ↑ ↓ move, Enter runs, Esc and a press outside
+ * close; Tab stays in the field (casca-131). The commands come from the menus that already exist —
+ * the macro's, the library's, the step's — plus the ones only the old palette had.
+ */
+export default function CommandPalette() {
+  const [query, setQuery] = useState('');
+  const [hi, setHi] = useState(0);
+  const [opener] = useState(() => (document.activeElement instanceof HTMLElement ? document.activeElement : null));
+  const listRef = useRef<HTMLDivElement>(null);
+  const items = useItems();
+
+  const commandsOnly = query.trimStart().startsWith('>');
+  const tokens = tokensOf(commandsOnly ? query.trimStart().slice(1) : query);
+  const shown: { group: (typeof GROUPS)[number]; items: PaletteItem[] }[] = [];
+  for (const group of GROUPS) {
+    if (commandsOnly && group !== 'Commands') continue;
+    // The steps only answer what was typed: listed whole, they would bury the commands.
+    if (group === 'Steps' && tokens.length === 0) continue;
+    const scored = items.filter(i => i.group === group).map((item, order) => ({ item, order, score: scoreOf(item, tokens) })).filter(x => x.score > 0);
+    if (tokens.length > 0) scored.sort((a, b) => b.score - a.score || a.order - b.order);
+    const limit = group === 'Macros' && tokens.length === 0 ? 5 : LIMIT[group];
+    if (scored.length > 0) shown.push({ group, items: scored.slice(0, limit).map(x => x.item) });
+  }
+  const flat = shown.flatMap(g => g.items);
+  const at = flat.length === 0 ? -1 : Math.min(hi, flat.length - 1);
+
+  useLayoutEffect(() => {
+    listRef.current?.querySelector(`[data-index="${at}"]`)?.scrollIntoView({ block: 'nearest' });
+  }, [at]);
+  // Closing gives the focus back to what had it, unless what ran took it somewhere.
+  useLayoutEffect(() => () => {
+    setTimeout(() => {
+      const active = document.activeElement;
+      if ((!active || active === document.body) && opener?.isConnected) opener.focus({ preventScroll: true });
+    }, 0);
+  }, [opener]);
+
+  const run = (item: PaletteItem | undefined) => {
+    if (!item || item.disabled) return;
+    palette.close();
+    setTimeout(item.run, 0);
+  };
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (flat.length > 0) setHi((at + (e.key === 'ArrowDown' ? 1 : -1) + flat.length) % flat.length);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      run(flat[at]);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      palette.close();
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+    }
+  };
+
+  let index = -1;
+  return createPortal(
+    <div className="pal-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) palette.close(); }}>
+      <div className="pal" role="dialog" aria-modal="true" aria-label="Search macros, steps and commands">
+        <div className="pal-search">
+          <span className="step-icon" data-icon="search" />
+          <input
+            autoFocus
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="pal-list"
+            aria-activedescendant={at >= 0 ? `pal-option-${at}` : undefined}
+            aria-label="Search macros, steps and commands"
+            placeholder="Search macros, steps and commands"
+            spellCheck={false}
+            autoComplete="off"
+            value={query}
+            onChange={(e) => { setQuery(e.target.value); setHi(0); }}
+            onKeyDown={onKeyDown}
+          />
+          <kbd className="pal-kbd">Esc</kbd>
+        </div>
+        <div ref={listRef} id="pal-list" className="pal-list" role="listbox" aria-label="Results">
+          {shown.map(({ group, items: rows }) => (
+            <div key={group} role="group" aria-label={group}>
+              <div className="pal-group" aria-hidden="true">{group}</div>
+              {rows.map(item => {
+                index += 1;
+                const i = index;
+                const Icon = item.icon;
+                return (
+                  <div
+                    key={item.id}
+                    id={`pal-option-${i}`}
+                    role="option"
+                    aria-selected={i === at}
+                    aria-disabled={item.disabled || undefined}
+                    className="pal-option"
+                    data-index={i}
+                    data-tip={item.disabled ? item.hint : undefined}
+                    onMouseMove={() => { if (i !== at) setHi(i); }}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => run(item)}
+                  >
+                    <span className="pal-icon">
+                      {item.stepIcon !== undefined
+                        ? (item.stepIcon && <span className="step-icon" data-icon={item.stepIcon} />)
+                        : Icon ? <Icon aria-hidden="true" /> : null}
+                    </span>
+                    <span className="pal-label">{item.label}</span>
+                    {item.detail && <span className="pal-detail">{item.detail}</span>}
+                    {item.keys && <span className="pal-keys">{item.keys.split('+').map((k, n) => <kbd key={n} className="pal-kbd">{k}</kbd>)}</span>}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+          {flat.length === 0 && <p className="pal-none">Nothing matches “{query.trim()}”.</p>}
+        </div>
+        <div className="pal-foot">↑↓ move · Enter opens · type &gt; for commands only</div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/** Everything Ctrl+K can find, as it stands now. */
+function useItems(): PaletteItem[] {
+  const status = useApp(a => a.status);
+  const clicker = useApp(a => a.settings.useCursorClick);
+  const steps = useApp(a => a.actions);
+  const profiles = useApp(a => a.profiles);
+  const order = useApp(a => a.profileOrder);
+  const active = useApp(a => a.activeProfile);
+  const buttons = useApp(a => a.buttonStates);
+  const shortcuts = useApp(a => a.settings.profileKeyEnabled);
+  const automationsOn = useApp(a => a.automation.enabled);
+  const remapsOn = useApp(a => a.settings.remaps.enabled);
+  const recordKey = useApp(a => a.settings.recordingHotkey);
+  const replayKey = useApp(a => a.settings.replayHotkey);
+  const keys = useSelection(s => s.keys);
+  const startImport = useUi(s => s.startImport);
+  const macro = useMacro();
+  const cmds = useSteps();
+  const replay = useReplay();
+  const recording = useRecording();
+  const settings = useSettings();
+  const app = useAppActions();
+  const automations = useAutomations();
+  const remaps = useRemaps();
+  const { showToast } = useToast();
+  const tt = useTt();
+
+  const locked = status !== 'ready' || clicker;
+  const lockHint = clicker ? 'The Clicker is on' : 'Not while a run or a recording is on';
+  // A run or the Clicker is the reason that counts while it lasts.
+  const lock = (item: PaletteItem): PaletteItem => (locked ? { ...item, disabled: true, hint: lockHint } : item);
+  const out: PaletteItem[] = [];
+  const cmd = (id: string, label: string, run: () => void, extra: Partial<PaletteItem> = {}): PaletteItem => ({ id: `cmd:${id}`, group: 'Commands', label, run, ...extra });
+
+  // Macros, in the library's order.
+  out.push(...macroItems(order, displayOrder(sectionsOf(profiles, order)), active, (name) => macro.open(name)));
+
+  // The open macro's steps: Enter selects it in the list.
+  if (active) {
+    out.push(...stepItems(steps, active, (i) => {
+      const all = steps;
+      selection.only(all, i);
+      document.querySelector(`.step[data-index="${i}"]`)?.scrollIntoView({ block: 'nearest' });
+      focusList();
+    }).map((item, i) => ({ ...item, stepIcon: stepIcon(steps[i].actionType) })));
+  }
+
+  // Run and record.
+  if (active && !clicker) {
+    out.push(status === 'replaying'
+      ? cmd('stop', 'Stop the run', replay.toggle, { icon: Square, keys: shortcut(replayKey) })
+      : cmd('replay', `Replay ${active}`, replay.toggle, { icon: Play, keys: shortcut(replayKey), disabled: status === 'recording', hint: 'Stop the recording first' }));
+    out.push(status === 'recording'
+      ? cmd('record', 'Stop recording', recording.toggle, { icon: Square, keys: shortcut(recordKey) })
+      : cmd('record', `Record into ${active}`, recording.toggle, { icon: SquareDot, keys: shortcut(recordKey), disabled: status === 'replaying', hint: 'Stop the run first' }));
+  }
+
+  // The steps the insert row and Add step make, at the insertion point.
+  if (active) {
+    for (const item of ITEMS) {
+      if (!item.insert) continue;
+      const insert = item.insert;
+      out.push(lock(cmd(`add:${item.id}`, `Add ${item.name}`, () => insertHere(insert, cmds), { stepIcon: stepIcon(item.type), detail: item.desc, words: item.words })));
+    }
+  }
+
+  // The selection: the step menu's own items (its Pick from screen is the list's, on screen).
+  const sel = selectedIndices(steps, keys);
+  const blocks = blockMap(steps);
+  if (active && sel.length > 0) {
+    const entries = stepMenuEntries({
+      steps, blocks, row: sel[0], targets: sel, cmds,
+      convertCoordinates: macro.convertCoordinates,
+      pick: () => {},
+      edit: (row) => { selection.only(steps, row); focusInspector(); },
+      select: (indices) => selection.set(steps, indices),
+      toast: showToast,
+      tt,
+    });
+    const which = sel.length === 1 ? `Step ${sel[0] + 1}` : `${sel.length} steps`;
+    out.push(...fromMenu('step', entries.filter(e => e === 'separator' || e.label !== 'Pick from screen'), () => ({ detail: which })).map(lock));
+    // The If block the step is in: its Else If and Else, which the list offers as a row (D2).
+    const at = sel[0];
+    let owner: number | null = null;
+    for (const [o, c] of blocks.closerOf) if (steps[o].actionType === 'If' && o <= at && at <= c && (owner === null || o > owner)) owner = o;
+    const ghost = owner === null ? null : [...blocks.ghostBefore.entries()].find(([, g]) => g.opener === owner);
+    if (owner !== null && ghost) {
+      const [anchor, g] = ghost;
+      const opener = owner;
+      out.push(lock(cmd('elseif', 'Add Else If to this If…', () => drafts.start({ kind: 'check', opener: 'ElseIf', at: anchor, macro: active, ifRowIndex: opener }), { stepIcon: 'split', detail: `If at step ${opener + 1}` })));
+      if (g.canElse) out.push(lock(cmd('else', 'Add Else to this If', () => cmds.addElseBranch({ ifRowIndex: opener }), { stepIcon: 'split', detail: `If at step ${opener + 1}` })));
+    }
+  }
+
+  // The whole macro's steps.
+  if (active) {
+    out.push(
+      lock(cmd('undo', 'Undo', () => cmds.undo({}), { icon: Undo2, keys: 'Ctrl+Z', disabled: !buttons.canUndo, hint: 'Nothing to undo' })),
+      lock(cmd('redo', 'Redo', () => cmds.redo({}), { icon: Redo2, keys: 'Ctrl+Y', disabled: !buttons.canRedo, hint: 'Nothing to redo' })),
+      cmd('selectall', 'Select all steps', () => { selection.set(steps, steps.map((_, i) => i)); focusList(); }, { icon: ListChecks, keys: 'Ctrl+A', disabled: steps.length === 0 }),
+      lock(cmd('paste', 'Paste steps', () => cmds.paste({ insertIndex: sel.length > 0 ? sel[sel.length - 1] + 1 : steps.length }), { icon: ClipboardPaste, keys: 'Ctrl+V', words: 'clipboard' })),
+      cmd('copytable', 'Copy all steps as a table', () => cmds.copy({}), { icon: Table2, words: 'tsv export spreadsheet clipboard' }),
+      lock(cmd('torelative', 'Convert coordinates to relative', () => macro.convertCoordinates('toRelative'), { icon: Replace, words: 'window rebase' })),
+      lock(cmd('toabsolute', 'Convert coordinates to absolute', () => macro.convertCoordinates('toAbsolute'), { icon: Replace, words: 'screen rebase' })),
+      lock(cmd('tocombined', 'Convert steps to combined', () => cmds.convertMode({ direction: 'toCombined' }), { icon: Combine, words: 'merge keystroke click' })),
+      lock(cmd('topaired', 'Convert steps to paired', () => cmds.convertMode({ direction: 'toPaired' }), { icon: Split, words: 'split down up' })),
+    );
+  }
+
+  // The open macro's menu, said with its name.
+  if (active) {
+    out.push(...fromMenu('macro', macroMenuEntries({ name: active, profiles, order, active, locked: status !== 'ready', macro }), (item, path) => ({ label: macroPhrase(item.label, path, active), detail: 'Macro' })));
+  }
+
+  // The library's New ▾ and ⋯.
+  const { newEntries, moreEntries } = libraryMenus({ profiles, order, macro, startImport });
+  out.push(...fromMenu('library', [...newEntries, ...moreEntries], () => ({ detail: 'Library' })));
+
+  // The dock, the master switches, and the app's own doors.
+  out.push(
+    cmd('runreport', 'Run Report', () => dock.toggle('report'), { icon: ListChecks, detail: 'Dock', words: 'debug trace timeline failed why last run' }),
+    cmd('livevars', 'Live Variables', () => dock.toggle('vars'), { icon: Variable, detail: 'Dock', words: 'debug variables slots clip row' }),
+    cmd('shortcuts', shortcuts ? 'Turn Shortcuts off' : 'Turn Shortcuts on', () => settings.change('profileKeyEnabled', !shortcuts), { icon: Keyboard, words: 'profile keys hotkeys hotstrings pause' }),
+    cmd('automations', automationsOn ? 'Turn Automations off' : 'Turn Automations on', () => automations.setEnabled(!automationsOn), { icon: Zap, words: 'triggers armed' }),
+    cmd('remaps', remapsOn ? 'Turn Key Remaps off' : 'Turn Key Remaps on', () => remaps.setEnabled(!remapsOn), { icon: CornerDownRight, words: 'remap keys' }),
+    cmd('extension', 'Connect browser extension', () => setExtensionHelp(true), { icon: Chrome, words: 'chrome edge brave extension unpacked install disconnected' }),
+    cmd('reload', 'Reload UI', app.reloadUI, { icon: RefreshCw, words: 'refresh stuck frozen' }),
+    cmd('logs', 'Open logs folder', app.openLogsFolder, { icon: ScrollText, words: 'diagnostics session log support' }),
+    cmd('diagnostics', 'Copy diagnostics', app.copyDiagnostics, { icon: ClipboardCopy, words: 'support version bug report system info about' }),
+    cmd('manual', 'Open manual', () => app.openUrl(MANUAL_URL), { icon: BookOpen, words: 'help docs documentation guide ajuda' }),
+  );
+  return out;
+}
+

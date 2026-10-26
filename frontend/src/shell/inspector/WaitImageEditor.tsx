@@ -44,7 +44,7 @@ export function WaitImageEditor({ step, locked }: { step: ActionItem; locked: bo
         />
       </Section>
       <Section label="Timeout">
-        <DraftField stepId={id} field="timeout" label="Timeout in milliseconds" kind="int" min={MIN_TIMEOUT_MS} max={MAX_TIMEOUT_MS} empty="min" unit="ms" stored={String(timeout)} disabled={locked} />
+        <DraftField stepId={id} field="timeout" label="Timeout in milliseconds" kind="int" step={1000} min={MIN_TIMEOUT_MS} max={MAX_TIMEOUT_MS} empty="min" unit="ms" stored={String(timeout)} disabled={locked} />
         <Chips values={TIMEOUT_CHIPS} current={timeout} disabled={locked} onPick={(v) => edit([{ field: 'timeout', value: String(v) }])} />
       </Section>
       <Section label="On timeout">

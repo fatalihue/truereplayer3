@@ -1,6 +1,6 @@
 import { Fragment, useMemo } from 'react';
 import { ListChecks, CheckCircle2, CircleDashed, XCircle, MinusCircle, TriangleAlert, RefreshCw, Repeat } from 'lucide-react';
-import { useRunReport } from '../logic/useReplay';
+import { useRunReport } from '../logic/useRunState';
 import { DialogShell, DialogFooter  } from './common/DialogShell';
 import { Callout } from './common/Callout';
 import type { RunStep } from '../bridge/messageTypes';

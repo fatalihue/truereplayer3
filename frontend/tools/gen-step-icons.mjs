@@ -32,6 +32,9 @@ const EDITOR_NAMES = [
   'square-dashed', 'variable',
 ];
 const editorOut = path.join(front, 'src', 'shell', 'inspector', 'editorIcons.css');
+// …and the ones the dock's panel draws (a run step's state), which load with that panel.
+const DOCK_NAMES = ['circle-check', 'circle-dashed', 'circle-minus', 'circle-x', 'triangle-alert'];
+const dockOut = path.join(front, 'src', 'shell', 'dock', 'dockIcons.css');
 
 const version = JSON.parse(fs.readFileSync(path.join(front, 'node_modules', 'lucide-react', 'package.json'), 'utf8')).version;
 const attrs = (o) => Object.entries(o).filter(([k]) => k !== 'key').map(([k, v]) => `${k}='${v}'`).join(' ');
@@ -50,3 +53,4 @@ async function write(names, file) {
 }
 await write(NAMES, out);
 await write(EDITOR_NAMES, editorOut);
+await write(DOCK_NAMES, dockOut);

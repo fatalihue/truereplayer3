@@ -114,7 +114,8 @@ export function LibraryPanel({ profiles, order, sections, active, locked, peek, 
     (list?.querySelector<HTMLElement>('.lib-macro[aria-current="true"]') ?? list?.querySelector<HTMLElement>(ITEM))?.focus({ preventScroll: false });
     const outside = (e: Event) => {
       const t = e.target as Element;
-      if (panelRef.current?.contains(t) || t.closest?.('.shell-menu-layer, [role="dialog"]')) return;
+      // The rail's Macros is the toggle: its own click takes the panel away.
+      if (panelRef.current?.contains(t) || t.closest?.('.shell-menu-layer, [role="dialog"], [data-library-toggle]')) return;
       onFold();
     };
     const escape = (e: globalThis.KeyboardEvent) => {

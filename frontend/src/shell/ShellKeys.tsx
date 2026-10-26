@@ -2,12 +2,16 @@ import { useEffect, useRef } from 'react';
 import { useBridge } from '../bridge/BridgeContext';
 import { useMacro } from '../logic/useMacro';
 import { useSteps } from '../logic/useSteps';
+import { useWindowSnap } from '../logic/useWindowSnap';
 import { useTt } from '../state/LanguageContext';
 import { useToast } from '../state/ToastContext';
 import { isModalDialogOpen } from '../utils/modalDialog';
+import { preload } from './lazyModule';
 import { moveSteps } from './list/moves';
 import { insertPoint, selectedIndices } from './list/selection';
+import { loadPalette, palette, usePalette } from './palette/paletteState';
 import { useShell } from './store';
+import { useBandEdges } from './useShellBand';
 
 // Inputs whose keys are not typing: a checkbox or a range is a control, and Ctrl+C there is ours.
 const NOT_TYPING = new Set(['checkbox', 'radio', 'range', 'button', 'submit', 'reset', 'color', 'file', 'image']);
@@ -16,6 +20,14 @@ const typing = (target: EventTarget | null) => {
   if (!el) return false;
   if (el.tagName === 'INPUT') return !NOT_TYPING.has((el as HTMLInputElement).type);
   return el.tagName === 'TEXTAREA' || el.isContentEditable;
+};
+// The keys the run's keyboard lock and the scroll guard look at.
+const GUARDED = new Set(['Tab', ' ', 'Enter', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
+/** A control that does something with these keys itself: a button, a field, a widget with a role or a Tab stop. */
+const interactive = (target: EventTarget | null) => {
+  const el = target as HTMLElement | null;
+  if (!el || el === document.body || el === document.documentElement) return false;
+  return !!el.closest('button, a[href], input, select, textarea, [role], [tabindex]');
 };
 
 /**
@@ -38,12 +50,43 @@ export function ShellKeys() {
   const tt = useTt();
   // The macro Ctrl+S asked to save, until its profile:saved arrives.
   const asked = useRef<{ name: string; at: number } | null>(null);
+  // The window's edge sticks to where the layout changes (D27).
+  useWindowSnap(useBandEdges());
+
+  useEffect(() => {
+    // casca-006: while recording or running, a key aimed at the game must not work the interface —
+    // Tab, Space, Enter and the arrows go nowhere outside a text field, even on a focused control.
+    // casca-007: outside a field and a control, Space, Enter and the arrows scroll and press nothing.
+    const guard = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.altKey || e.metaKey || !GUARDED.has(e.key) || typing(e.target)) return;
+      const running = useShell.getState().app.status !== 'ready';
+      if (running && e.key !== 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+      } else if (!running && e.key !== 'Tab' && !interactive(e.target)) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('keydown', guard, true);
+    return () => window.removeEventListener('keydown', guard, true);
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((!e.ctrlKey && !e.altKey) || e.metaKey) return;
       const key = e.key.toLowerCase();
       const { app } = useShell.getState();
+      // Ctrl+K (casca-001): from anywhere, a text field included, but not over a modal dialog —
+      // except its own, which it closes.
+      if (e.ctrlKey && !e.altKey && !e.shiftKey && key === 'k') {
+        e.preventDefault();
+        if (usePalette.getState().open) palette.close();
+        else if (!isModalDialogOpen()) {
+          void preload(loadPalette);
+          palette.open();
+        }
+        return;
+      }
       if (e.ctrlKey && !e.altKey && key === 's') {
         e.preventDefault();
         if (e.repeat || !app.activeProfile) return;

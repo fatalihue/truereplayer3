@@ -409,6 +409,8 @@ function InsertLine({ steps, bodyRef }: { steps: ActionItem[]; bodyRef: React.Re
 /**
  * "+ Add Else If" and "+ Add Else" inside an If block, where the arm will land (lista-026): the
  * Else If's check is chosen in the Inspector; the Else, while the block has none, lands at once.
+ * Off the Tab order (D2: Tab goes between the zones, the arrows inside them); from the keyboard,
+ * Ctrl+K offers both for the block of the selected step.
  */
 function Ghost({ ghost, anchor, locked, onAddElse, onAddElseIf }: { ghost: GhostRow; anchor: number; locked: boolean; onAddElse: () => void; onAddElseIf: () => void }) {
   const rails = ghost.rails.split(',');
@@ -425,12 +427,12 @@ function Ghost({ ghost, anchor, locked, onAddElse, onAddElseIf }: { ghost: Ghost
           <span key={i} className="step-rail" data-rail-block={opener} style={{ left: `${i * 0.875}rem`, '--rail-color': blockColor(i) } as CSSProperties} />
         ))}
         <span className="step-ghost-actions">
-          <button type="button" className="step-ghost-button" disabled={locked} onClick={onAddElseIf}>
+          <button type="button" className="step-ghost-button" tabIndex={-1} disabled={locked} onClick={onAddElseIf}>
             <span className="step-icon" data-icon="plus" />
             Add Else If
           </button>
           {ghost.canElse && (
-            <button type="button" className="step-ghost-button" disabled={locked} onClick={onAddElse}>
+            <button type="button" className="step-ghost-button" tabIndex={-1} disabled={locked} onClick={onAddElse}>
               <span className="step-icon" data-icon="plus" />
               Add Else
             </button>

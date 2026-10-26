@@ -6,6 +6,8 @@
 .shell {
   container: shell / inline-size;
   display: grid;
+  /* The window's width and no more: what does not fit gives way inside its own row. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
   height: 100%;
   background: var(--color-bg-base);
@@ -32,7 +34,50 @@
   color: var(--color-text-secondary);
 }
 .shell-mark { width: 1.25rem; height: 1.25rem; flex: none; }
-.shell-titlebar-middle { flex: 1; display: flex; justify-content: center; }
+/* The search takes what the mark and the state leave, and never more: a container of its own. */
+.shell-titlebar-middle { flex: 1; min-width: 0; display: flex; justify-content: center; container: titlesearch / inline-size; }
+/* casca-018: the search that opens Ctrl+K. */
+.shell-search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: min(26rem, 100%);
+  height: 1.75rem;
+  padding: 0 0.375rem 0 0.625rem;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-input);
+  color: var(--color-text-tertiary);
+  font: inherit;
+  font-size: var(--text-minor);
+  cursor: pointer;
+}
+.shell-search:hover { border-color: var(--color-border-strong); color: var(--color-text-secondary); }
+.shell-search:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 1px; }
+.shell-search svg { width: 0.875rem; height: 0.875rem; flex: none; }
+.shell-search-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.shell-search-text[data-form='short'] { display: none; }
+/* Less room: "Search", then the icon and Ctrl K alone. */
+@container titlesearch (max-width: 19.5rem) {
+  .shell-search-text[data-form='long'] { display: none; }
+  .shell-search-text[data-form='short'] { display: block; }
+}
+@container titlesearch (max-width: 10.5rem) {
+  .shell-search { width: auto; }
+  .shell-search-text[data-form='short'] { display: none; }
+}
+/* In the body's font, not the mono one a <kbd> gets from the reset: the opening draws no mono text
+   before the library, and a font's first use on the page costs layout (~3 ms of the launch here). */
+.shell-search-kbd {
+  flex: none;
+  padding: 0 0.25rem;
+  border: 1px solid var(--color-border-default);
+  border-radius: 0.1875rem;
+  font-family: inherit;
+  font-size: var(--text-caption);
+  line-height: 1rem;
+  color: var(--color-text-tertiary);
+}
 .shell-state {
   position: relative;
   display: flex;
@@ -165,6 +210,44 @@ html[data-animations='true'] .shell-state[data-done]::after { border-color: var(
 }
 .shell-statusbar-spacer { flex: 1; }
 .shell-saved[data-error] { color: var(--color-recording); }
+.shell-version { flex: none; }
+/* The master switches: one click from on to off, with the state in words and in a dot. */
+.sb-switches { display: flex; align-items: center; gap: 0.25rem; min-width: 0; }
+.sb-switch,
+.sb-extension {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 1.25rem;
+  padding: 0 0.375rem;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.sb-switch:hover,
+.sb-extension:hover { background: var(--color-bg-elevated); color: var(--color-text-primary); }
+.sb-switch:focus-visible,
+.sb-extension:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: -1px; }
+.sb-dot { width: 0.375rem; height: 0.375rem; flex: none; border-radius: 50%; background: var(--color-text-disabled); }
+.sb-switch[aria-pressed='true'] .sb-dot { background: var(--color-replay); }
+.sb-switch[aria-pressed='false'] { color: var(--color-text-tertiary); }
+/* Shortcuts off holds every macro's hotkey: said in the warning ink, not just greyed. */
+.sb-switch[data-off] { color: var(--color-warning-ink); }
+.sb-switch[data-off] .sb-dot { background: var(--color-warning); }
+.sb-switch[data-paused] .sb-dot { background: var(--color-warning); }
+.sb-extension { color: var(--color-text-tertiary); }
+.sb-extension[data-state='connected'] .sb-dot { background: var(--color-replay); }
+.sb-extension[data-state='reload'] { color: var(--color-warning-ink); }
+.sb-extension[data-state='reload'] .sb-dot { background: var(--color-warning); }
+/* Narrow windows keep the switches and drop the words around them first. */
+@container shell (max-width: 47.49rem) {
+  .shell-version,
+  .shell-saved { display: none; }
+}
 
 /* Development build only (NotBuilt): what phase 1 has not reached yet. */
 .shell-notbuilt {
@@ -190,10 +273,13 @@ html[data-animations='true'] .shell-state[data-done]::after { border-color: var(
   }
   .shell-inspector:not([data-open]) { display: none; }
 }
-/* 520–759: one panel at a time — the list; the library is reached from the rail (slice 8). */
+/* 520–759: one pane at a time — the list; the rail's Macros lays the library over it (a peek), and
+   a step opens the Inspector over all of it, with "← Steps" to go back (Responsive board). */
 @container shell (max-width: 47.49rem) {
   .shell-body { grid-template-columns: 3.5rem minmax(0, 1fr); }
   .shell-library { display: none; }
+  .shell-library[data-peek] { display: block; position: absolute; inset: 0 auto 0 3.5rem; width: 15.5rem; z-index: var(--z-floating-panel); border-right: 0; }
+  .shell-inspector { inset: 0 0 0 3.5rem; width: auto; box-shadow: none; }
 }
 /* Under 520: the compact layout (the compact view itself is phase 4). */
 @container shell (max-width: 32.49rem) {

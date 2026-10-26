@@ -1254,6 +1254,7 @@ namespace TrueReplayer
                     case "selection:changed": HandleSelectionChanged(payload); break;
                     case "settings:change": HandleSettingsChange(payload); break;
                     case "window:alwaysOnTop": HandleAlwaysOnTop(payload); break;
+                    case "window:snapWidths": HandleSnapWidths(payload); break;
                     case "window:minimizeToTray": HandleMinimizeToTray(payload); break;
                     case "window:runOnStartup": HandleRunOnStartup(payload); break;
                     case "window:startMinimized": HandleStartMinimized(payload); break;
@@ -14547,6 +14548,19 @@ namespace TrueReplayer
             window.UpdateAlwaysOnTop(enabled);
             SaveGlobalSettings();
             PushSettingsLoaded();
+        }
+
+        // The new interface's layout band edges, in DIP (D27): a dragged window edge sticks to them.
+        // Said by the page because they follow its zoom; nothing is saved — the page says them again
+        // whenever it loads or the zoom changes.
+        private void HandleSnapWidths(JsonElement payload)
+        {
+            if (!payload.TryGetProperty("widths", out var widthsEl) || widthsEl.ValueKind != JsonValueKind.Array) return;
+            var widths = widthsEl.EnumerateArray()
+                .Where(e => e.ValueKind == JsonValueKind.Number && e.TryGetInt32(out _))
+                .Select(e => e.GetInt32())
+                .ToList();
+            window.SetResizeSnapWidths(widths);
         }
 
         private void HandleMinimizeToTray(JsonElement payload)

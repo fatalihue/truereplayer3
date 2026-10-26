@@ -1,0 +1,79 @@
+/* ① Ctrl+K: the field and its results, over the shell. Loads with the palette. Sizes in rem; colours
+   are theme tokens only; motion is opacity, behind html[data-animations]. */
+
+.pal-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dialog-raised, 80);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: max(3rem, 12vh);
+  background: color-mix(in srgb, var(--color-bg-base) 45%, transparent);
+}
+.pal {
+  display: flex;
+  flex-direction: column;
+  width: min(40rem, calc(100vw - 2rem));
+  max-height: min(32rem, 76vh);
+  border: 1px solid var(--color-border-default);
+  border-radius: 0.5rem;
+  background: var(--color-bg-elevated);
+  box-shadow: var(--shadow-overlay);
+  overflow: hidden;
+}
+html[data-animations='true'] .pal { animation: pal-in var(--motion-fast, 120ms) var(--ease-enter, ease-out); }
+@keyframes pal-in { from { opacity: 0; } to { opacity: 1; } }
+
+.pal-search { display: flex; align-items: center; gap: 0.625rem; height: 2.75rem; flex: none; padding: 0 0.875rem; border-bottom: 1px solid var(--color-border-subtle); }
+.pal-search .step-icon { width: 1rem; height: 1rem; flex: none; color: var(--color-text-tertiary); }
+.pal-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: var(--text-body);
+  outline: none;
+}
+.pal-search input::placeholder { color: var(--color-text-tertiary); }
+.pal-kbd {
+  display: inline-block;
+  min-width: 1.25rem;
+  padding: 0 0.3125rem;
+  border: 1px solid var(--color-border-default);
+  border-bottom-width: 2px;
+  border-radius: 0.25rem;
+  background: var(--color-bg-input);
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  line-height: 1.125rem;
+  text-align: center;
+}
+
+.pal-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0.25rem 0.375rem 0.5rem; }
+.pal-group { padding: 0.5rem 0.5rem 0.25rem; font-size: var(--text-caption); font-weight: 600; letter-spacing: 0.02em; color: var(--color-text-tertiary); }
+.pal-option {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-height: 2rem;
+  padding: 0 0.5rem;
+  border-radius: var(--radius-control);
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+.pal-option[aria-selected='true'] { background: color-mix(in srgb, var(--color-accent) 14%, transparent); }
+.pal-option[aria-disabled='true'] { color: var(--color-text-disabled); cursor: default; }
+.pal-icon { width: 1rem; height: 1rem; flex: none; display: grid; place-items: center; color: var(--color-text-secondary); }
+.pal-icon svg,
+.pal-icon .step-icon { width: 0.9375rem; height: 0.9375rem; }
+.pal-option[aria-disabled='true'] .pal-icon { color: var(--color-text-disabled); }
+.pal-label { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pal-detail { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-minor); color: var(--color-text-tertiary); }
+.pal-keys { display: flex; gap: 0.1875rem; margin-left: auto; flex: none; }
+.pal-none { margin: 0; padding: 1.25rem 0.5rem; text-align: center; font-size: var(--text-minor); color: var(--color-text-tertiary); }
+.pal-foot { flex: none; padding: 0.375rem 0.875rem; border-top: 1px solid var(--color-border-subtle); font-size: var(--text-caption); color: var(--color-text-tertiary); }

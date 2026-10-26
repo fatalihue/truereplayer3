@@ -11,11 +11,14 @@ import { useSyncExternalStore } from 'react';
 export type ShellBand = 'wide' | 'fold' | 'over' | 'single' | 'compact';
 
 let band: ShellBand | null = null;
+// The root's font size, in px: the zoom setting, which the bands are measured in.
+let rootPx = 0;
 const listeners = new Set<() => void>();
 let stop: (() => void) | null = null;
 
-function measure(): ShellBand {
-  const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+const rootSize = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+
+function measure(rem: number): ShellBand {
   const width = document.documentElement.clientWidth / rem;
   if (width > 79.99) return 'wide';
   if (width > 63.99) return 'fold';
@@ -27,9 +30,11 @@ function measure(): ShellBand {
 // Measured on the events that move it — a resize, or the zoom setting, which the theme writes as
 // the root's font size — and cached, so a render never forces a style recalculation to read it.
 function update() {
-  const next = measure();
-  if (next === band) return;
+  const rem = rootSize();
+  const next = measure(rem);
+  if (next === band && rem === rootPx) return;
   band = next;
+  rootPx = rem;
   for (const listener of listeners) listener();
 }
 
@@ -59,10 +64,27 @@ function subscribe(onChange: () => void) {
 }
 
 function snapshot(): ShellBand {
-  band ??= measure();
+  if (band === null) {
+    rootPx = rootSize();
+    band = measure(rootPx);
+  }
   return band;
 }
 
 export function useShellBand(): ShellBand {
   return useSyncExternalStore(subscribe, snapshot);
+}
+
+const edgesSnapshot = () => {
+  snapshot();
+  return rootPx;
+};
+
+/**
+ * Where the two wide bands begin, in px (DIP): the three columns from 80 rem, the folded library
+ * from 64 rem. The window's edge sticks there when it is dragged (D27).
+ */
+export function useBandEdges(): number[] {
+  const rem = useSyncExternalStore(subscribe, edgesSnapshot);
+  return [Math.round(80 * rem), Math.round(64 * rem)];
 }

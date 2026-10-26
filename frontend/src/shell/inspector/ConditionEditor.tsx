@@ -50,7 +50,7 @@ export function ConditionEditor({ step, locked }: { step: ActionItem; locked: bo
           {/* A chance re-rolled until it hits is no wait at all. */}
           {check.type !== 'Random' && (
             <Section label="Wait for it" hint="0 = check once.">
-              <DraftField stepId={id} field="conditionTimeout" label="Wait for it, in milliseconds" kind="int" min={0} max={MAX_WAIT_MS} empty="min" unit="ms" stored={String(step.conditionTimeout ?? 0)} disabled={locked} />
+              <DraftField stepId={id} field="conditionTimeout" label="Wait for it, in milliseconds" kind="int" step={500} min={0} max={MAX_WAIT_MS} empty="min" unit="ms" stored={String(step.conditionTimeout ?? 0)} disabled={locked} />
             </Section>
           )}
           {step.actionType === 'While' && (

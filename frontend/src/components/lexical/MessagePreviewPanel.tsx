@@ -5,7 +5,7 @@ import { normalizeToken, splitTokenSegments } from './tokenNormalize';
 import type { DeliveryFacts } from '../../utils/sendTextStatus';
 import { useAppState } from '../../state/AppStateContext';
 import { useClipboardContent } from '../../logic/useClipboardContent';
-import { useRunState } from '../../logic/useReplay';
+import { useRunState } from '../../logic/useRunState';
 import { resolveMessagePreview, type PendingReason, type PreviewPiece } from './messagePreview';
 import type { SendMethod } from '../../utils/sendTextTypes';
 

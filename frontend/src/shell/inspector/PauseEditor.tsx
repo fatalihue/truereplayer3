@@ -38,7 +38,7 @@ export function PauseEditor({ step, locked }: { step: ActionItem; locked: boolea
         </div>
       </Section>
       <Section label="Timeout">
-        <DraftField stepId={id} field="timeout" label="Pause timeout in milliseconds" kind="int" min={0} max={MAX_TIMEOUT_MS} empty="min" unit="ms" stored={String(timeout)} disabled={locked} />
+        <DraftField stepId={id} field="timeout" label="Pause timeout in milliseconds" kind="int" step={1000} min={0} max={MAX_TIMEOUT_MS} empty="min" unit="ms" stored={String(timeout)} disabled={locked} />
         <Chips values={TIMEOUT_CHIPS} current={timeout} forever onPick={(v) => applyEdits(cmds, id, [{ field: 'timeout', value: String(v) }])} disabled={locked} />
       </Section>
       <p className="insp-summary" aria-live="polite" data-error={!key && timeout <= 0 ? '' : undefined}>{summary}</p>

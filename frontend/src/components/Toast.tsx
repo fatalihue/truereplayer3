@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { CheckCircle2, XCircle, Info, X } from 'lucide-react';
+import { useDockPx } from '../shell/dock/dockState';
 import { useToast, useToasts, type ToastType } from '../state/ToastContext';
 import { Button } from './common/Button';
 import { iconButtonClass } from './common/IconButton';
@@ -10,11 +11,12 @@ const iconMap: Record<ToastType, { Icon: React.ElementType; color: string }> = {
   info:    { Icon: Info,          color: 'var(--color-accent)' },
 };
 
-// Clear of the bottom chrome by construction: in the new shell that is the status bar, so the
-// stack sits 0.75 rem above it, in rem like the bar (the dock of slice 8 will move it up).
-const BOTTOM_CLEARANCE = 'calc(var(--spacing-statusbar) + 0.75rem)';
+// Clear of the bottom chrome by construction: in the new shell that is the status bar and the dock
+// over it, whose laid-out height the dock says (useDockPx), so the stack sits 0.75 rem above both.
+const bottomClearance = (dockPx: number) => `calc(var(--spacing-statusbar) + ${dockPx}px + 0.75rem)`;
 
 export function Toast() {
+  const dockPx = useDockPx(s => s.px);
   // The list comes from its own context so every other consumer of useToast (which only ever calls
   // showToast) stops re-rendering on each show and auto-dismiss.
   const toasts = useToasts();
@@ -90,7 +92,7 @@ export function Toast() {
     // no pointer events.
     <div
       className="fixed left-1/2 -translate-x-1/2 z-(--z-topmost) flex flex-col-reverse items-center gap-2 pointer-events-none"
-      style={{ bottom: BOTTOM_CLEARANCE }}
+      style={{ bottom: bottomClearance(dockPx) }}
     >
       <div role="status" className="sr-only">{said.text}</div>
       {toasts.map(renderToast)}

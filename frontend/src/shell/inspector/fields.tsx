@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
+import { flushSync } from 'react-dom';
 import { splitCombo } from '../../components/common/KbdTag';
 import { isPureModifier, useKeyCapture } from '../../logic/useKeyCapture';
 import { useSteps } from '../../logic/useSteps';
@@ -94,9 +95,16 @@ export interface DraftFieldProps {
   disabled?: boolean;
   /** What a typed text sends, or null to send nothing (a colour that is not six hex digits). */
   parse?: (text: string) => string | null;
+  /** A number's step for ↑ ↓, the wheel and ▲ ▼ (1 by default; 500 or 1000 for long waits). */
+  step?: number;
   /** Sends the value; one edit of `field` when absent. */
   onApply?: (value: string) => void;
 }
+
+const GROUPED = {
+  en: new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }),
+  'pt-BR': new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }),
+} as const;
 
 interface Latest {
   props: DraftFieldProps;
@@ -112,10 +120,17 @@ interface Typed { text: string; base: string }
  * changed, inside its bounds. While typing is unsent the field holds the automations back
  * (pendingEdits). The value just sent stays shown until the engine's echo replaces it; a value that
  * moves under the typing (an undo) drops what was typed instead of writing over it.
+ *
+ * A number does what the numeric fields of today do (editor-passo-228 to 234): ↑ ↓, the wheel while
+ * it has the focus, and ▲ ▼ at its edge (on hover or focus, off the Tab order) move it a step — sent
+ * like typing, so a run of steps is one edit; out of the focus a duration or a count of passes reads
+ * with its thousands.
  */
 export function DraftField(props: DraftFieldProps) {
   const { stored, stepId, field, kind, disabled } = props;
   const cmds = useSteps();
+  const { language } = useLanguage();
+  const [focused, setFocused] = useState(false);
   const [typing, setTyping] = useState<Typed | null>(null);
   const [sent, setSent] = useState<{ value: string; over: string } | null>(null);
   // The echo came, or something else moved the value: the step's value shows again.
@@ -144,28 +159,61 @@ export function DraftField(props: DraftFieldProps) {
   const commitRef = useRef(commit);
   useEffect(() => { commitRef.current = commit; });
 
+  const type = (text: string) => {
+    const from = edit.current?.base ?? base;
+    edit.current = { text, base: from };
+    setTyping({ text, base: from });
+    pendingEdits.add(`${stepId}:${field}`);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => commitRef.current(), IDLE_MS);
+  };
+  // A step up or down from what shows (the lower bound when it is empty), inside the bounds.
+  const shownText = typing ? typing.text : base;
+  const now = Number.parseInt(shownText, 10);
+  const stepBy = (dir: 1 | -1) => {
+    if (kind !== 'int' || disabled) return;
+    const from = Number.isFinite(now) ? now : (props.min ?? 0);
+    const next = Number.isFinite(now) ? from + dir * (props.step ?? 1) : from;
+    type(String(Math.min(props.max ?? Number.MAX_SAFE_INTEGER, Math.max(props.min ?? Number.MIN_SAFE_INTEGER, next))));
+  };
+  const stepRef = useRef(stepBy);
+  useEffect(() => { stepRef.current = stepBy; });
+  // The wheel turns a focused number and leaves the panel where it is; a passive listener (React's)
+  // could not keep the panel from scrolling.
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el || kind !== 'int') return;
+    const onWheel = (e: WheelEvent) => {
+      if (document.activeElement !== el || e.deltaY === 0) return;
+      e.preventDefault();
+      stepRef.current(e.deltaY < 0 ? 1 : -1);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [kind]);
+
+  // The thousands only where the number is a count of ms or of passes, as in the fields of today: a
+  // coordinate, a percent or a number of times reads as typed.
+  const grouped = kind === 'int' && (props.unit === 'ms' || props.unit === '×');
+  const shown = typing ? typing.text
+    : grouped && !focused && /^-?\d+$/.test(base) ? GROUPED[language].format(Number(base))
+    : base;
   return (
     <label className="insp-box" data-disabled={disabled || undefined}>
       {props.prefix && <span className="insp-box-prefix">{props.prefix}</span>}
       <input
+        ref={inputRef}
         type="text"
         inputMode={kind === 'int' ? 'numeric' : undefined}
         aria-label={props.label}
         className={kind === 'text' ? undefined : 'insp-mono'}
-        value={typing ? typing.text : base}
+        value={shown}
         placeholder={props.placeholder}
         disabled={disabled}
         spellCheck={false}
         autoComplete="off"
-        onChange={(e) => {
-          const text = clean(e.target.value, props);
-          const from = edit.current?.base ?? base;
-          edit.current = { text, base: from };
-          setTyping({ text, base: from });
-          pendingEdits.add(`${stepId}:${field}`);
-          if (timer.current) clearTimeout(timer.current);
-          timer.current = setTimeout(() => commitRef.current(), IDLE_MS);
-        }}
+        onChange={(e) => type(clean(e.target.value, props))}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
             e.preventDefault();
@@ -173,11 +221,29 @@ export function DraftField(props: DraftFieldProps) {
           } else if (e.key === 'Escape') {
             // Sent as it stands; the Inspector then gives the focus back to the list (D12).
             commit();
+          } else if (kind === 'int' && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.altKey && !e.ctrlKey && !e.shiftKey) {
+            e.preventDefault();
+            stepBy(e.key === 'ArrowUp' ? 1 : -1);
           }
         }}
-        onBlur={commit}
+        // The number trades its thousands for its digits in the focus event itself, and the digits
+        // come selected, so what is typed takes their place instead of going after them (setting the
+        // text had dropped the caret at its end). A click still puts the caret where it lands.
+        onFocus={(e) => {
+          const el = e.currentTarget;
+          const was = el.value;
+          flushSync(() => setFocused(true));
+          if (el.value !== was) el.select();
+        }}
+        onBlur={() => { setFocused(false); commit(); }}
       />
       {props.unit && <span className="insp-box-unit">{props.unit}</span>}
+      {kind === 'int' && !disabled && (
+        <span className="insp-steppers">
+          <button type="button" tabIndex={-1} aria-label="Increase" disabled={props.max !== undefined && now >= props.max} onMouseDown={(e) => e.preventDefault()} onClick={() => stepBy(1)} />
+          <button type="button" tabIndex={-1} aria-label="Decrease" disabled={!Number.isFinite(now) || (props.min !== undefined && now <= props.min)} onMouseDown={(e) => e.preventDefault()} onClick={() => stepBy(-1)} />
+        </span>
+      )}
     </label>
   );
 }

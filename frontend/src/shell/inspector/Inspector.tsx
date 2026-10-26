@@ -3,9 +3,10 @@ import { useEditorClaim } from '../../logic/useEditorClaim';
 import { useTt } from '../../state/LanguageContext';
 import { preload, useLoaded } from '../lazyModule';
 import { keycaps } from '../library/model';
-import { arrival, selectedIndices, useSelection } from '../list/selection';
+import { arrival, selectedIndices, selection, useSelection } from '../list/selection';
 import { NotBuilt } from '../NotBuilt';
 import { useApp } from '../store';
+import { useShellBand } from '../useShellBand';
 import { drafts, focusList, loadInspectorBody, useDraft, usePendingEdits } from './inspectorState';
 import './inspector.css';
 
@@ -53,6 +54,7 @@ export function Inspector() {
   // Automations wait only while typing has not reached the engine (D12).
   useEditorClaim('inspector', pending);
   const tt = useTt();
+  const band = useShellBand();
   const [width, setWidth] = useState(readWidth);
   const asideRef = useRef<HTMLElement>(null);
   const open = useApp(a => a.activeProfile);
@@ -107,6 +109,13 @@ export function Inspector() {
       onKeyDown={onKeyDown}
     >
       <Grip asideRef={asideRef} width={width} onWidth={(rem) => { setWidth(rem); writeWidth(rem); }} />
+      {/* One pane at a time (520–759 px): the Inspector covers the steps, and this goes back. */}
+      {showing && (band === 'single' || band === 'compact') && (
+        <button type="button" className="insp-back" onClick={() => { cancelDraft(); selection.clear(); focusList(); }}>
+          <span className="step-icon" data-icon="chevron-right" />
+          Steps
+        </button>
+      )}
       {!showing ? (
         <>
           <div className="insp-head">

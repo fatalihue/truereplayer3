@@ -18,7 +18,7 @@ interface AskInputDialogProps {
   onCancel: () => void;
 }
 
-function AskInputDialog({ label, options, onSubmit, onCancel }: AskInputDialogProps) {
+export function AskInputDialog({ label, options, onSubmit, onCancel }: AskInputDialogProps) {
   const [value, setValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const isMenu = options != null && options.length > 0;

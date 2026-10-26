@@ -1,21 +1,38 @@
+import { useEffect } from 'react';
+import { APP_VERSION } from '../appVersion';
 import { useTt } from '../state/LanguageContext';
-import { NotBuilt } from './NotBuilt';
+import { preload, useLoaded } from './lazyModule';
+import { useExtensionWatch } from './statusbar/extensionState';
 import { useShell } from './store';
 
+// The switches and the extension's state (rule 6): not part of opening the app — they come when the
+// page is first idle, a moment after the library is drawn.
+const loadStatusLive = () => import('./statusbar/StatusLive');
+
 /**
- * ⑩ The status bar. The master switches (Shortcuts, Automations, Key Remaps) are slice 8 of phase 1;
- * slice 1 shows whether the open macro is on disk, from profile:saved.
+ * ⑩ The status bar: the three master switches, then the browser extension's state, whether the
+ * macro is on disk, and the version. The extension is heard from the start (useExtensionWatch): the
+ * engine says its state once, right after the app's state.
  */
 export function StatusBar() {
   const saved = useShell(s => s.saved);
   const tt = useTt();
+  const live = useLoaded(loadStatusLive);
+  useExtensionWatch();
+  useEffect(() => {
+    if (live) return;
+    const id = requestIdleCallback(() => { void preload(loadStatusLive); });
+    return () => cancelIdleCallback(id);
+  }, [live]);
   return (
     <footer className="shell-statusbar">
-      <NotBuilt what="Shortcuts · Automations · Key Remaps" />
+      {live && <live.Switches />}
       <span className="shell-statusbar-spacer" />
+      {live && <live.Extension />}
       {saved && (saved.ok
         ? <span className="shell-saved" data-tip={tt('Changes save as you go', 'As alterações são salvas sozinhas')}>Saved {clock(saved.at)}</span>
         : <span className="shell-saved" data-error="true" data-tip={saved.error}>Not saved</span>)}
+      <span className="shell-version">{APP_VERSION}</span>
     </footer>
   );
 }
