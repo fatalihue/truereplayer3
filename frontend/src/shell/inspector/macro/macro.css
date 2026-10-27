@@ -1,0 +1,122 @@
+/* ⑧ Macro settings (no step chosen). Theme tokens only, sizes in rem (rule 9). */
+
+.mset-group { display: flex; flex-direction: column; gap: 0.875rem; min-width: 0; }
+.mset-title {
+  font-size: var(--text-caption);
+  line-height: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+
+/* Info › icon: the emoji in a square the size of a field. */
+.mset-icon {
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-input);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+}
+.mset-icon svg { width: 1rem; height: 1rem; }
+.mset-icon-emoji { font-size: 1.125rem; line-height: 1; }
+.mset-icon:not(:disabled):hover { border-color: var(--color-border-strong); color: var(--color-text-primary); }
+.mset-icon[aria-expanded='true'] { border-color: var(--color-accent-solid); }
+.mset-icon:disabled { opacity: 0.5; cursor: default; }
+.mset-icon:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 1px; }
+
+/* Info › tags. */
+.mset-tags { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
+.mset-tag-chips,
+.mset-tag-top { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; }
+.mset-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.125rem;
+  height: 1.5rem;
+  padding: 0 0.125rem 0 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  color: var(--color-text-primary);
+  font-size: var(--text-caption);
+}
+.mset-tag button {
+  width: 1.25rem;
+  height: 1.25rem;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+}
+.mset-tag button svg { width: 0.75rem; height: 0.75rem; }
+.mset-tag button:not(:disabled):hover { color: var(--color-text-primary); background: var(--color-bg-elevated); }
+.mset-tag button:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 0; }
+.mset-tag-field { position: relative; min-width: 0; }
+.mset-tag-field .insp-box input { flex: 1; min-width: 0; }
+.mset-tag-hash { width: 0.875rem; height: 0.875rem; flex: none; color: var(--color-text-tertiary); }
+.mset-tag-list {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  right: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  padding: 0.25rem;
+  max-height: 14rem;
+  overflow-y: auto;
+}
+.mset-tag-list [role='option'] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  height: 1.75rem;
+  padding: 0 0.5rem;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mset-tag-list [role='option'][aria-selected='true'] { background: var(--color-bg-elevated); color: var(--color-text-primary); }
+.mset-tag-count { font-size: var(--text-caption); color: var(--color-text-tertiary); }
+.mset-tag-chip {
+  height: 1.5rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--color-border-default);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: var(--text-caption);
+  cursor: pointer;
+}
+.mset-tag-chip:not(:disabled):hover { background: var(--color-bg-elevated); color: var(--color-text-primary); }
+.mset-tag-chip:disabled { color: var(--color-text-disabled); cursor: default; }
+.mset-tag-chip:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 1px; }
+
+/* Info › history, only to read. */
+.mset-history { display: flex; flex-direction: column; gap: 0.5rem; }
+.mset-facts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.375rem 0.75rem;
+  margin: 0;
+  font-size: var(--text-minor);
+}
+.mset-facts dt { color: var(--color-text-tertiary); }
+.mset-facts dd { margin: 0; min-width: 0; color: var(--color-text-secondary); overflow-wrap: anywhere; }
+.mset-facts-why { display: block; color: var(--color-text-tertiary); }

@@ -1114,7 +1114,7 @@ namespace TrueReplayer
                     var procName = target?.ProcessName ?? "target window";
                     bridge?.SendMessage("alert:show", new
                     {
-                        message = $"Profile '{profileName}' hotkey ignored — '{procName}' isn't running"
+                        message = $"Macro '{profileName}' hotkey ignored — '{procName}' isn't running"
                     });
                     // The toast alone is in the wrong place: a profile hotkey (or its hotstring) is
                     // pressed while the user is in ANOTHER app, which is exactly when this window is

@@ -131,6 +131,9 @@ export interface DraftFieldProps {
   disabled?: boolean;
   /** What a typed text sends, or null to send nothing (a colour that is not six hex digits). */
   parse?: (text: string) => string | null;
+  /** What a key may put in the text, for text that takes only some characters (a hotstring). */
+  filter?: (text: string) => string;
+  maxLength?: number;
   /**
    * A number's step for ↑ ↓, the wheel and ▲ ▼: 1 by default, 500 or 1000 for long waits, or one
    * that depends on the value (durationStep).
@@ -260,6 +263,7 @@ export function DraftField(props: DraftFieldProps) {
     className: kind === 'text' ? undefined : 'insp-mono',
     value: shown,
     placeholder: props.placeholder,
+    maxLength: props.maxLength,
     disabled,
     spellCheck: false,
     autoComplete: 'off',
@@ -308,6 +312,7 @@ export function DraftField(props: DraftFieldProps) {
 
 /** What a typed key does to the text: digits only in a number (and one leading minus where allowed). */
 function clean(text: string, p: DraftFieldProps): string {
+  if (p.filter) return p.filter(text);
   if (p.kind !== 'int') return text;
   const minus = p.signed && text.trim().startsWith('-') ? '-' : '';
   return minus + text.replace(/\D/g, '').slice(0, 9);

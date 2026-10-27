@@ -3,10 +3,10 @@ import { useEditorClaim } from '../../logic/useEditorClaim';
 import { preload, useLoaded } from '../lazyModule';
 import { keycaps } from '../library/model';
 import { arrival, selectedIndices, selection, useSelection } from '../list/selection';
-import { NotBuilt } from '../NotBuilt';
-import { useApp } from '../store';
+import { useApp, useShell } from '../store';
+import { closeMacroSettings, useUi } from '../ui';
 import { useShellBand } from '../useShellBand';
-import { drafts, focusList, loadInspectorBody, useDraft, usePendingEdits } from './inspectorState';
+import { drafts, focusList, loadInspectorBody, loadMacroSettings, useDraft, usePendingEdits } from './inspectorState';
 import './inspector.css';
 
 /** Drops a step still being made, and the arrival it would have had. */
@@ -34,7 +34,7 @@ function writeWidth(rem: number) {
 
 /**
  * ⑧ The Inspector: the selected step's editor, the batch editor for several, and the macro's own
- * settings when nothing is selected (phase 2). It follows the selection — clicking a step opens it,
+ * settings when nothing is selected. It follows the selection — clicking a step opens it,
  * Enter and Edit put the focus in it — and applies as you type: a field sends when the typing
  * stops, when it is left and on Enter (rule 3), and Ctrl+Z undoes. Esc gives the focus back to the
  * list (D12); Close editor clears the selection.
@@ -67,6 +67,31 @@ export function Inspector() {
     if (showing && !editors) void preload(loadInspectorBody);
   }, [showing, editors]);
   const Body = editors?.default;
+  // The macro's settings (no step chosen) come at the first idle moment once the app's state is
+  // drawn, or at once when they are asked for (Hotkey…, Edit info…).
+  const settingsOpen = useUi(s => s.settingsOpen);
+  const booted = useShell(s => s.booted);
+  const settings = useLoaded(loadMacroSettings);
+  useEffect(() => {
+    if (settings || !booted) return;
+    if (settingsOpen) { void preload(loadMacroSettings); return; }
+    let idle = 0;
+    const frame = requestAnimationFrame(() => { idle = requestIdleCallback(() => { void preload(loadMacroSettings); }); });
+    return () => {
+      cancelAnimationFrame(frame);
+      cancelIdleCallback(idle);
+    };
+  }, [settings, booted, settingsOpen]);
+  const Settings = settings?.default;
+  // Another macro opened from the library or Ctrl+K takes the settings away; one opened to show
+  // its own settings (Edit info… on a macro that was not open) keeps them.
+  const shownFor = useRef(open);
+  useEffect(() => {
+    if (shownFor.current === open) return;
+    shownFor.current = open;
+    const ui = useUi.getState();
+    if (ui.settingsOpen && ui.settingsFocus?.name !== open) closeMacroSettings();
+  }, [open]);
   // A step still being made goes with its macro, when a run or the Clicker starts, and when the
   // selection moves (the step it made arriving, or a click elsewhere) — except a Text that became
   // a step and is still being typed: its editor stays while that step is the one selected.
@@ -76,6 +101,8 @@ export function Inspector() {
   }, [draft, open, locked, adoptedGone]);
   useEffect(() => useSelection.subscribe((s, prev) => {
     if (s.keys === prev.keys) return;
+    // A step chosen takes the Inspector from the macro's settings.
+    if (s.keys.size > 0 && useUi.getState().settingsOpen) closeMacroSettings();
     const d = useDraft.getState().draft;
     if (d?.kind === 'text' && d.stepId && s.keys.size === 1 && s.keys.has(d.stepId)) return;
     cancelDraft();
@@ -102,14 +129,14 @@ export function Inspector() {
       ref={asideRef}
       className="shell-inspector insp"
       aria-label="Inspector"
-      data-open={showing || undefined}
+      data-open={showing || settingsOpen || undefined}
       style={{ '--inspector-width': `${width}rem` } as CSSProperties}
       onKeyDown={onKeyDown}
     >
       <Grip asideRef={asideRef} width={width} onWidth={(rem) => { setWidth(rem); writeWidth(rem); }} />
       {/* One pane at a time (520–759 px): the Inspector covers the steps, and this goes back. */}
-      {showing && (band === 'single' || band === 'compact') && (
-        <button type="button" className="insp-back" onClick={() => { cancelDraft(); selection.clear(); focusList(); }}>
+      {(showing || settingsOpen) && (band === 'single' || band === 'compact') && (
+        <button type="button" className="insp-back" onClick={() => { cancelDraft(); selection.clear(); closeMacroSettings(); focusList(); }}>
           <span className="step-icon" data-icon="chevron-right" />
           Steps
         </button>
@@ -121,11 +148,14 @@ export function Inspector() {
               <span className="insp-name">Macro settings</span>
               <span className="insp-sub">No step selected</span>
             </div>
+            {/* 760–1023 px: asked for, the settings lie over the list until closed. */}
+            {settingsOpen && band === 'over' && (
+              <button type="button" className="insp-close" aria-label="Close macro settings" onClick={() => { closeMacroSettings(); focusList(); }}>
+                <span className="step-icon" data-icon="x" />
+              </button>
+            )}
           </div>
-          <div className="insp-body insp-empty">
-            <p>Select a step to edit it here, or several to change them together.</p>
-            <NotBuilt what="Macro settings" />
-          </div>
+          {open && Settings ? <Settings name={open} locked={locked} /> : <div className="insp-body" />}
         </>
       ) : Body ? (
         // The header, the editors and the footer come with the editors' chunk.

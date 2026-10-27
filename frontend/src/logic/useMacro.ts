@@ -86,6 +86,8 @@ export function useMacro() {
       send({ type: 'profile:getMetadata', payload: { name } });
       send({ type: 'profile:listTags', payload: {} });
     },
+    /** Asks only for a macro's metadata, with what pinned its minimum app version (it reads the file). */
+    requestMetadata: (name: string) => send({ type: 'profile:getMetadata', payload: { name } }),
     setInfo: (payload: PayloadOf<'profile:setMetadata'>) => send({ type: 'profile:setMetadata', payload }),
 
     // ── import and export ──

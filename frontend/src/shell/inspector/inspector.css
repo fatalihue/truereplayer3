@@ -41,7 +41,6 @@
 /* The keyboard's focus paints the bar in the accent, without the ring's halo around the edge. */
 .insp-grip:focus-visible { box-shadow: none; }
 .insp-grip:focus-visible::after { background: var(--color-accent-solid); }
-.insp-grip:focus-visible::after { background: var(--color-accent-solid); }
 
 .insp-head {
   height: 3.25rem;
@@ -103,8 +102,6 @@
   flex-direction: column;
   gap: 1rem;
 }
-.insp-empty { color: var(--color-text-tertiary); }
-.insp-empty p { margin: 0; }
 
 .insp-foot {
   flex: none;

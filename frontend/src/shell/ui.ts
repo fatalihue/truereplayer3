@@ -17,9 +17,20 @@ interface ShellUi {
   extensionHelp: boolean;
   /** Starts an import, from wherever it was asked: the library holds the import's own dialogs. */
   startImport: (() => void) | null;
+  /**
+   * The macro's settings asked for (Hotkey…, Hotstring…, Edit info…): the Inspector shows them even
+   * where it lies over the list, until a step is chosen or it is closed.
+   */
+  settingsOpen: boolean;
+  /** The section to take the focus once the settings of that macro are on screen. */
+  settingsFocus: { name: string; section: SettingsSection; seq: number } | null;
 }
 
-export const useUi = create<ShellUi>(() => ({ dialog: null, nameFocus: null, libraryPeek: false, extensionHelp: false, startImport: null }));
+export type SettingsSection = 'hotkey' | 'hotstring' | 'info';
+
+export const useUi = create<ShellUi>(() => ({
+  dialog: null, nameFocus: null, libraryPeek: false, extensionHelp: false, startImport: null, settingsOpen: false, settingsFocus: null,
+}));
 
 export const openDialog = (dialog: LibraryDialogState) => useUi.setState({ dialog });
 export const closeDialog = () => useUi.setState({ dialog: null });
@@ -27,6 +38,11 @@ export const focusName = (name: string) => useUi.setState({ nameFocus: name });
 export const nameFocused = () => useUi.setState({ nameFocus: null });
 export const setLibraryPeek = (libraryPeek: boolean) => useUi.setState({ libraryPeek });
 export const setExtensionHelp = (extensionHelp: boolean) => useUi.setState({ extensionHelp });
+let settingsSeq = 0;
+export const openMacroSettings = (name: string, section: SettingsSection) =>
+  useUi.setState({ settingsOpen: true, settingsFocus: { name, section, seq: ++settingsSeq } });
+export const closeMacroSettings = () => useUi.setState({ settingsOpen: false, settingsFocus: null });
+export const settingsFocused = () => useUi.setState({ settingsFocus: null });
 
 // The extension's dialog of today (copy the folder, load it unpacked), until Settings › Browser
 // extension exists (phase 3). Its code comes when it is first opened.

@@ -5,8 +5,9 @@ import {
 import type { ProfileEntry, ProfileOrderData } from '../bridge/messageTypes';
 import type { useMacro } from '../logic/useMacro';
 import { folderOf } from './library/model';
+import { selection } from './list/selection';
 import type { MenuEntry } from './Menu';
-import { focusName, openDialog } from './ui';
+import { focusName, openDialog, openMacroSettings, type SettingsSection } from './ui';
 
 type Tt = (en: string, pt: string) => string;
 
@@ -28,6 +29,12 @@ export function macroMenuEntries({ name, profiles, order, active, locked, macro,
   if (!entry) return [];
   const inFolder = folderOf(name, order);
   const isOpen = name === active;
+  // The macro's own settings are in the Inspector with no step chosen: another macro opens first.
+  const openSettings = (section: SettingsSection) => {
+    if (!isOpen) macro.open(name);
+    selection.clear();
+    openMacroSettings(name, section);
+  };
   return [
     { label: 'Rename…', icon: Pencil, onSelect: () => (isOpen ? focusName(name) : openDialog({ kind: 'renameMacro', name })) },
     { label: 'Duplicate', icon: Copy, onSelect: () => macro.duplicate(name) },
@@ -51,11 +58,11 @@ export function macroMenuEntries({ name, profiles, order, active, locked, macro,
       ? { label: 'Unpin', icon: PinOff, onSelect: () => macro.unpin(name) }
       : { label: 'Pin', icon: Pin, onSelect: () => macro.pin(name) },
     'separator',
-    // The triggers, the window target and the info are edited in the Inspector (phase 2).
-    { label: 'Hotkey…', icon: Keyboard, notBuilt: true },
-    { label: 'Hotstring…', icon: Type, notBuilt: true },
+    { label: 'Hotkey…', icon: Keyboard, onSelect: () => openSettings('hotkey') },
+    { label: 'Hotstring…', icon: Type, onSelect: () => openSettings('hotstring') },
+    // The window target comes to the Inspector with the next slice of phase 2.
     { label: 'Window target…', icon: AppWindow, notBuilt: true },
-    { label: 'Edit info…', icon: Info, notBuilt: true },
+    { label: 'Edit info…', icon: Info, onSelect: () => openSettings('info') },
     'separator',
     { label: 'Export…', icon: Upload, onSelect: () => macro.exportMacros([name], true) },
     { label: 'Open in Explorer', icon: ExternalLink, onSelect: () => macro.openFolder(name) },
