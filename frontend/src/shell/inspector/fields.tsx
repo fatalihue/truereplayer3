@@ -54,6 +54,26 @@ export function Switch({ label, checked, onChange, disabled, tip }: { label: str
   );
 }
 
+/** The × at the end of a field that clears it, and gives the focus back to the field. */
+export function Clear({ label, labelPt, onClear, disabled }: { label: string; labelPt: string; onClear: () => void; disabled?: boolean }) {
+  const tt = useTt();
+  return (
+    <button
+      type="button"
+      className="insp-icon-button"
+      aria-label={label}
+      data-tip={tt(label, labelPt)}
+      disabled={disabled}
+      onClick={(e) => {
+        onClear();
+        e.currentTarget.parentElement?.querySelector('input')?.focus();
+      }}
+    >
+      <span className="step-icon" data-icon="x" />
+    </button>
+  );
+}
+
 /** Quick durations under a field (DurationChips): the current one lit; ∞ is "no timeout" (0). */
 export function Chips({ values, current, onPick, disabled, forever }: { values: number[]; current: number; onPick: (ms: number) => void; disabled?: boolean; forever?: boolean }) {
   const { language } = useLanguage();

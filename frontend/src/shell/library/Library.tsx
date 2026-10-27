@@ -49,6 +49,7 @@ export function Library() {
   const order = useApp(a => a.profileOrder);
   const active = useApp(a => a.activeProfile);
   const locked = useApp(a => a.buttonStates.recordingActive || a.buttonStates.replayActive);
+  const hasSteps = useApp(a => a.actions.length > 0);
   const macro = useMacro();
   const tt = useTt();
   const imports = useImport();
@@ -125,7 +126,7 @@ export function Library() {
     setMenu({ kind, button, anchor: anchorBelow(button, kind === 'new' ? 'start' : 'end'), keyboard, seq: ++seq.current });
   };
 
-  const macroEntries = (name: string) => macroMenuEntries({ name, profiles, order, active, locked, macro, tt });
+  const macroEntries = (name: string) => macroMenuEntries({ name, profiles, order, active, locked, hasSteps, macro, tt });
 
   const folderEntries = (name: string): MenuEntry[] => {
     const folder = order.folders.find(f => f.name === name);
@@ -140,8 +141,8 @@ export function Library() {
         panel: (close) => <ColorGrid menu value={folder.color} onPick={(color) => { close(); macro.setFolderColor(name, color); }} />,
       },
       'separator',
-      // The folder's window target uses the Inspector's editor (phase 2).
-      { label: 'Window target…', icon: AppWindow, notBuilt: true },
+      // The Inspector's fields, in a dialog: the folder's target has no Ctrl+Z, so it is saved by Set target.
+      { label: 'Window target…', icon: AppWindow, onSelect: () => openDialog({ kind: 'folderTarget', name }) },
       'separator',
       allOff
         ? { label: 'Enable all', icon: Power, onSelect: () => macro.toggleFolderDisabled(name) }

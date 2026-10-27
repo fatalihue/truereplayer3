@@ -96,8 +96,9 @@ export default defineConfig([
     },
   },
   {
-    // The palette source. Scoped to the RULE, never a top-level `ignores` — see the note above.
-    files: ['src/themes.ts'],
+    // The palette source (the presets moved to their own file, which only the pickers load). Scoped
+    // to the RULE, never a top-level `ignores` — see the note above.
+    files: ['src/themes.ts', 'src/themePresets.ts'],
     rules: { 'no-restricted-syntax': 'off' },
   },
 ])

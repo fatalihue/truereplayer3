@@ -322,6 +322,8 @@ namespace TrueReplayer.Controllers
                 // Per-profile Game Mode — same reason as the loop four.
                 GameMode = UserProfile.Current.GameMode,
                 RestoreCursor = UserProfile.Current.RestoreCursor,
+                DelayVariation = UserProfile.Current.DelayVariation,
+                FastApproach = UserProfile.Current.FastApproach,
                 // Data-loop table — mirror CreateProfileFromState so a "Save As New" /
                 // first-save doesn't silently drop the table.
                 Data = UserProfile.Current.Data,
@@ -2158,6 +2160,8 @@ namespace TrueReplayer.Controllers
                     LoopInterval = profile.LoopInterval >= 0 ? profile.LoopInterval : 0,
                     GameMode = profile.GameMode,
                     RestoreCursor = profile.RestoreCursor,
+                    DelayVariation = profile.DelayVariation,
+                    FastApproach = profile.FastApproach,
                     Actions = profile.Actions,
                     Images = images,
                     Data = profile.Data,
@@ -2538,6 +2542,9 @@ namespace TrueReplayer.Controllers
                     // A bool? has no out-of-range value to normalize — null (absent) follows.
                     GameMode = entry.GameMode,
                     RestoreCursor = entry.RestoreCursor,
+                    // The jitter does: a percent, 0..100, the bound the Replay options keep.
+                    DelayVariation = entry.DelayVariation is int jitter ? Math.Clamp(jitter, 0, 100) : null,
+                    FastApproach = entry.FastApproach,
                     // Round-trip sharing metadata. Pre-metadata .trprofile files leave these null
                     // (System.Text.Json default-inits when the property is missing in the JSON),
                     // which is exactly what we want — the Info tab will render "Unknown" / empty.

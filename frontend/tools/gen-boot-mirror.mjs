@@ -1,4 +1,5 @@
-// Generates the theme boot mirror inside frontend/index.html from frontend/src/themes.ts.
+// Generates the theme boot mirror inside frontend/index.html from frontend/src/themePresets.ts and
+// themes.ts.
 //
 // WHY THIS EXISTS
 // index.html paints the saved theme before any bundle exists, so it runs as a classic inline
@@ -25,12 +26,23 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const htmlPath = path.join(here, '..', 'index.html');
 const themesPath = path.join(here, '..', 'src', 'themes.ts');
+const presetsPath = path.join(here, '..', 'src', 'themePresets.ts');
 
-// Node imports the .ts directly (type stripping). themes.ts has no imports of its own, so there
-// is nothing to resolve — if this ever throws, the build SHOULD fail rather than ship a stale
-// mirror silently, which is the whole point of the file.
-const { themes, DEFAULT_THEME_ID, DEFAULT_UI_SETTINGS, REMOVED_THEME_FALLBACKS, THEME_COLOR_KEYS, UI_NUMBER_BOUNDS } =
+// Node imports the .ts directly (type stripping). themes.ts has no imports of its own, and
+// themePresets.ts only a type one, so there is nothing to resolve — if this ever throws, the build
+// SHOULD fail rather than ship a stale mirror silently, which is the whole point of the file.
+const { DEFAULT_PALETTE, DEFAULT_THEME_ID, DEFAULT_UI_SETTINGS, REMOVED_THEME_FALLBACKS, THEME_COLOR_KEYS, UI_NUMBER_BOUNDS } =
   await import(pathToFileURL(themesPath).href);
+const { themes } = await import(pathToFileURL(presetsPath).href);
+
+// The app paints from the mirror's palettes (window.__trPalettes, read by themes.ts) and keeps only
+// the default one of its own, for a page without the mirror. That copy has to be the preset's.
+const preset = themes.find((t) => t.id === DEFAULT_THEME_ID);
+const drift = THEME_COLOR_KEYS.filter((k) => !preset || preset.colors[k] !== DEFAULT_PALETTE[k]);
+if (drift.length) {
+  console.error('[boot-mirror] DEFAULT_PALETTE in themes.ts differs from the %s preset in themePresets.ts: %s', DEFAULT_THEME_ID, drift.join(', '));
+  process.exit(1);
+}
 
 const BEGIN = '    <!-- BEGIN GENERATED THEME BOOT MIRROR — edit tools/gen-boot-mirror.mjs, not this -->';
 const END = '    <!-- END GENERATED THEME BOOT MIRROR -->';
@@ -47,15 +59,18 @@ const block = `${BEGIN}
       // Paint the saved theme BEFORE React loads, so launching never flashes the wrong
       // canvas (most visible on the light presets: a dark boot then a white app).
       //
-      // GENERATED from frontend/src/themes.ts — this file cannot import the module (it runs as a
-      // classic inline script before any bundle exists), so the palettes, the removed-id remap
-      // and the defaults below are a copy kept in sync by the build. A stale entry here only
-      // costs one frame of the wrong colour, never a crash: an unknown id falls back to the
-      // default preset.
+      // GENERATED from frontend/src/themePresets.ts and themes.ts — this file cannot import the
+      // modules (it runs as a classic inline script before any bundle exists), so the palettes, the
+      // removed-id remap and the defaults below are a copy kept in sync by the build. A stale entry
+      // here only costs one frame of the wrong colour, never a crash: an unknown id falls back to
+      // the default preset.
       (function() {
         var presets = {
 ${presets}
         };
+        // The app resolves the theme from these too (themes.ts, getPalette), so its first chunk
+        // does not carry a second copy of them.
+        window.__trPalettes = presets;
         // Ids retired by the theme curation → their surviving relative, mirroring
         // REMOVED_THEME_FALLBACKS so the splash agrees with the migration that runs
         // moments later in loadThemeConfig.
@@ -189,8 +204,8 @@ if (next === norm) {
   process.exit(0);
 }
 if (process.argv.includes('--check')) {
-  console.error('[boot-mirror] STALE — index.html does not match themes.ts. Run: npm run mirror');
+  console.error('[boot-mirror] STALE — index.html does not match themePresets.ts and themes.ts. Run: npm run mirror');
   process.exit(1);
 }
 fs.writeFileSync(htmlPath, eol === '\r\n' ? next.replace(/\n/g, '\r\n') : next, 'utf8');
-console.log('[boot-mirror] regenerated from themes.ts (%d presets)', themes.length);
+console.log('[boot-mirror] regenerated from themePresets.ts and themes.ts (%d presets)', themes.length);

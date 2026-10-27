@@ -347,15 +347,18 @@ namespace TrueReplayer.Services
         // global value without anything noticing.
         // restoreCursor: the profile's own cursor return (WebViewBridge.ResolveRestoreCursor), null =
         // follows the app default. REQUIRED for the same reason as gameMode.
-        public void ToggleReplay(bool loopEnabled, string loopCountText, bool intervalEnabled, string intervalText, bool? gameMode, bool? restoreCursor, bool useDelayVariation = false, int delayVariationPercent = 20, bool useRelativeCoords = false, Models.WindowTarget? windowTarget = null, bool bringToFocus = false, int lockWidth = 0, int lockHeight = 0, int lockX = 0, int lockY = 0, bool restorePosition = false, bool restoreSize = false, bool forceInfiniteLoop = false)
+        // fastApproach: the profile's own Fast approach (WebViewBridge.ResolveFastApproach), null =
+        // follows the app's. REQUIRED for the same reason. The jitter pair arrives resolved already
+        // (WebViewBridge.EffectiveDelayVariation): the macro's own percent, or the app's.
+        public void ToggleReplay(bool loopEnabled, string loopCountText, bool intervalEnabled, string intervalText, bool? gameMode, bool? restoreCursor, bool? fastApproach, bool useDelayVariation = false, int delayVariationPercent = 20, bool useRelativeCoords = false, Models.WindowTarget? windowTarget = null, bool bringToFocus = false, int lockWidth = 0, int lockHeight = 0, int lockX = 0, int lockY = 0, bool restorePosition = false, bool restoreSize = false, bool forceInfiniteLoop = false)
         {
             if (!IsReplaying && actions.Count > 0)
-                StartReplay(loopEnabled, loopCountText, intervalEnabled, intervalText, gameMode, restoreCursor, useDelayVariation, delayVariationPercent, useRelativeCoords, windowTarget, bringToFocus, lockWidth, lockHeight, lockX, lockY, restorePosition, restoreSize, forceInfiniteLoop);
+                StartReplay(loopEnabled, loopCountText, intervalEnabled, intervalText, gameMode, restoreCursor, fastApproach, useDelayVariation, delayVariationPercent, useRelativeCoords, windowTarget, bringToFocus, lockWidth, lockHeight, lockX, lockY, restorePosition, restoreSize, forceInfiniteLoop);
             else if (IsReplaying)
                 StopReplay();
         }
 
-        private void StartReplay(bool loopEnabled, string loopCountText, bool intervalEnabled, string intervalText, bool? gameMode, bool? restoreCursor, bool useDelayVariation, int delayVariationPercent, bool useRelativeCoords, Models.WindowTarget? windowTarget, bool bringToFocus, int lockWidth, int lockHeight, int lockX, int lockY, bool restorePosition, bool restoreSize, bool forceInfiniteLoop)
+        private void StartReplay(bool loopEnabled, string loopCountText, bool intervalEnabled, string intervalText, bool? gameMode, bool? restoreCursor, bool? fastApproach, bool useDelayVariation, int delayVariationPercent, bool useRelativeCoords, Models.WindowTarget? windowTarget, bool bringToFocus, int lockWidth, int lockHeight, int lockX, int lockY, bool restorePosition, bool restoreSize, bool forceInfiniteLoop)
         {
             // Data-loop (Model A): the active profile's table. Read BEFORE flipping IsReplaying
             // so the empty-table guard can bail cleanly without a state to unwind. Data is
@@ -396,6 +399,7 @@ namespace TrueReplayer.Services
             replayer.SetForceInfiniteLoop(forceInfiniteLoop);
             replayer.SetGameMode(gameMode);
             replayer.SetRestoreCursor(restoreCursor);
+            replayer.SetFastApproach(fastApproach);
 
             // Start banner — the single highest-value diagnostic line: records action count,
             // loop config, the resolved window target, relative-coords, and the movement strategy
@@ -410,7 +414,8 @@ namespace TrueReplayer.Services
                 // Effective value AND where it came from: "my Roblox macro didn't walk" is
                 // answered by this field, and "default" vs "profile" is half of that answer.
                 $"gameMode={gameMode ?? ActionReplayer.SmoothMovement} ({(gameMode.HasValue ? "profile" : "default")}) (step {ActionReplayer.MoveStepPx}px/{ActionReplayer.MoveStepDelayMs}ms, clickGap {ActionReplayer.MoveClickDelayMs}ms), " +
-                $"fastApproach={ActionReplayer.FastApproach} (settle {ActionReplayer.SettleDistancePx}px), " +
+                $"fastApproach={fastApproach ?? ActionReplayer.FastApproach} ({(fastApproach.HasValue ? "profile" : "default")}) (settle {ActionReplayer.SettleDistancePx}px), " +
+                $"jitter={(useDelayVariation ? delayVariationPercent + "%" : "off")}, " +
                 // Effective at start; a profile that follows re-reads the default at the end.
                 $"restoreCursor={restoreCursor ?? ActionReplayer.RestoreCursorDefault} ({(restoreCursor.HasValue ? "profile" : "default")})");
 
@@ -1620,6 +1625,11 @@ namespace TrueReplayer.Services
         // UI keys: fastApproach / settleDistance.
         public static bool FastApproach = true;
         public static int SettleDistancePx = 80;
+        // The RUN's own Fast approach — the macro's explicit choice, or null = FastApproach above,
+        // read per move. Per run for the reason _runGameMode is, and swapped by a sub-profile with
+        // its own value for its call (SaveWindowContext carries it), like Game Mode.
+        private bool? _runFastApproach;
+        public void SetFastApproach(bool? fastApproach) => _runFastApproach = fastApproach;
 
         // ── Focus click ───────────────────────────────────────────────────────────────
         // Opt-in per-action flag (ActionItem.IsFocusClick) honoured by combined clicks. A
@@ -4371,13 +4381,19 @@ namespace TrueReplayer.Services
             public bool BringToFocus;
             // Not a window setting, but it rides the same save/restore for the same reason: a
             // sub-profile with its own Game Mode applies it for its call and the caller's comes
-            // back on return, however the call ends.
+            // back on return, however the call ends. Fast approach and the jitter likewise.
             public bool? GameMode;
+            public bool? FastApproach;
+            public bool UseDelayVariation;
+            public int DelayVariationPercent;
         }
 
         private WindowContextSnapshot SaveWindowContext() => new()
         {
             GameMode = _runGameMode,
+            FastApproach = _runFastApproach,
+            UseDelayVariation = _useDelayVariation,
+            DelayVariationPercent = _delayVariationPercent,
             UseRelativeCoordinates = _useRelativeCoordinates,
             WindowTarget = _windowTarget,
             LockWidth = _lockWidth,
@@ -4402,6 +4418,9 @@ namespace TrueReplayer.Services
             _restoreSize = snap.RestoreSize;
             _bringToFocus = snap.BringToFocus;
             _runGameMode = snap.GameMode;
+            _runFastApproach = snap.FastApproach;
+            _useDelayVariation = snap.UseDelayVariation;
+            _delayVariationPercent = snap.DelayVariationPercent;
         }
 
         /// <summary>
@@ -4784,6 +4803,18 @@ namespace TrueReplayer.Services
                 {
                     _runGameMode = subGameMode;
                     DiagnosticLog.Info($"[Chain] '{targetName}' Game Mode {(subGameMode ? "on" : "off")} (its own)");
+                }
+                // Fast approach and the jitter: the same rule as Game Mode, restored in the same finally.
+                if (subProfile.FastApproach is bool subFastApproach)
+                {
+                    _runFastApproach = subFastApproach;
+                    DiagnosticLog.Info($"[Chain] '{targetName}' Fast approach {(subFastApproach ? "on" : "off")} (its own)");
+                }
+                if (subProfile.DelayVariation is int subJitter)
+                {
+                    _useDelayVariation = subJitter > 0;
+                    _delayVariationPercent = Math.Clamp(subJitter, 0, 50); // the run's bound, as SetDelayVariation
+                    DiagnosticLog.Info($"[Chain] '{targetName}' jitter {(subJitter > 0 ? subJitter + "%" : "off")} (its own)");
                 }
 
                 // Clamp 1..999 to match Keystroke (the canonical RepeatCount range) — without
@@ -5959,7 +5990,10 @@ namespace TrueReplayer.Services
                 // for callers that opt out (the focus tap — see FocusTap). The settle point lands on
                 // the nearest integer pixel, so it can sit ~1px off the exact SettleDistancePx ring;
                 // that's harmless — the walk below still ends exactly on the target.
-                if (allowFastApproach && FastApproach && SettleDistancePx > 0)
+                // A macro's move reads the run's own value; the Clicker's forced walk reads the
+                // app's (ClickerMoveTo says why), never one a macro run left behind here.
+                bool fastApproach = forceSmooth ? FastApproach : (_runFastApproach ?? FastApproach);
+                if (allowFastApproach && fastApproach && SettleDistancePx > 0)
                 {
                     double fullDx = x - originX;
                     double fullDy = y - originY;

@@ -98,9 +98,9 @@ function CaptureOption({ label, detail, on, onChange }: { label: string; detail?
 
 /**
  * Replay ▾. Loops and Interval have no switch of their own: 1 loop is one pass and an interval of
- * 0 is none, and the engine's switches follow the number. Return cursor and Game Mode are the
- * macro's own, or the app's default. Jitter and Fast approach are still the app's, for every macro,
- * so they sit apart and say so.
+ * 0 is none, and the engine's switches follow the number. Return cursor, Game Mode, Fast approach
+ * and Jitter are the macro's own, or the app's (settings-030 and 037): Default says which, and a
+ * number typed in Jitter is the macro's own until Use default.
  */
 function ReplayOptions() {
   const loop = useApp(a => a.profileLoop);
@@ -110,6 +110,7 @@ function ReplayOptions() {
   const { change } = useSettings();
   const tt = useTt();
   const gameModeOn = loop.gameMode ?? settings.smoothMovement;
+  const appJitter = settings.useDelayVariation ? Number(settings.delayVariation) || 0 : 0;
   return (
     <div className="ro-panel" data-kind="replay">
       <span className="ro-heading">Run options · saved with the macro</span>
@@ -148,6 +149,31 @@ function ReplayOptions() {
             }
           }}
         />
+        <NumberField
+          label="Jitter"
+          unit="%"
+          value={String(loop.delayVariation ?? appJitter)}
+          min={0}
+          max={100}
+          owner={open}
+          tip={tt('Random ±% on each delay — less robotic.', 'Variação ±% aleatória em cada atraso — menos robótico.')}
+          onCommit={(n) => change('profileDelayVariation', n)}
+        />
+        {loop.scoped && (loop.delayVariation === null ? (
+          <span className="ro-default" data-tip={tt("The app's jitter. Type a number to give this macro its own.", 'O jitter do app. Digite um número para este macro ter o seu.')}>
+            Default
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="ro-default"
+            data-reset=""
+            data-tip={tt(`Back to the app's jitter (${appJitter} %)`, `Volta ao jitter do app (${appJitter} %)`)}
+            onClick={() => change('profileDelayVariation', null)}
+          >
+            Use default
+          </button>
+        ))}
       </div>
       <Choice
         label="Return cursor"
@@ -163,34 +189,15 @@ function ReplayOptions() {
         tip={tt('The cursor walks a path so games accept the move. Off jumps at once.', 'O cursor percorre um caminho para jogos aceitarem o movimento. Desligado, salta direto.')}
         onChange={(v) => change('profileGameMode', v)}
       />
-      <span className="ro-separator" role="separator" />
-      <span className="ro-heading">For every macro</span>
-      <div className="ro-grid">
-        <NumberField
-          label="Jitter"
-          unit="%"
-          value={settings.useDelayVariation ? settings.delayVariation : '0'}
-          min={0}
-          max={100}
-          tip={tt('Random ±% on each delay — less robotic.', 'Variação ±% aleatória em cada atraso — menos robótico.')}
-          onCommit={(n) => {
-            if (n > 0) {
-              change('delayVariation', String(n));
-              if (!settings.useDelayVariation) change('useDelayVariation', true);
-            } else if (settings.useDelayVariation) {
-              change('useDelayVariation', false);
-            }
-          }}
-        />
-      </div>
-      <SwitchRow
+      <Choice
         label="Fast approach"
-        on={settings.fastApproach}
+        own={loop.fastApproach}
+        appDefault={settings.fastApproach}
         disabled={!gameModeOn}
         tip={gameModeOn
           ? tt('Teleports long moves, walks only the last stretch. Turn off if a game misclicks.', 'Teletransporta movimentos longos, anda só o trecho final. Desligue se um jogo errar o clique.')
           : tt('Only with Game Mode on.', 'Só com o Game Mode ligado.')}
-        onChange={(v) => change('fastApproach', v)}
+        onChange={(v) => change('profileFastApproach', v)}
       />
       <HotkeyLine label="Replay or stop" combo={settings.replayHotkey} />
     </div>
@@ -201,11 +208,13 @@ function ReplayOptions() {
  * A setting the macro can have of its own or take from the app: Default, On or Off. The choice is a
  * small menu, in the same layer as the panel, so picking in it does not close the panel.
  */
-function Choice({ label, own, appDefault, tip, onChange }: {
+function Choice({ label, own, appDefault, tip, disabled, onChange }: {
   label: string;
   own: boolean | null;
   appDefault: boolean;
   tip: string;
+  /** Off while it does nothing (Fast approach without Game Mode); the tip says why. */
+  disabled?: boolean;
   onChange: (value: boolean | null) => void;
 }) {
   const [shown, answer] = useAnswered(own);
@@ -221,9 +230,18 @@ function Choice({ label, own, appDefault, tip, onChange }: {
     setMenu({ anchor: anchorBelow(button, 'end'), button, keyboard: e.detail === 0 });
   };
   return (
-    <div className="ro-row">
+    <div className="ro-row" data-disabled={disabled || undefined}>
       <span className="ro-row-label" data-tip={tip}>{label}</span>
-      <button type="button" className="ro-choice" aria-haspopup="menu" aria-expanded={!!menu} aria-label={`${label}: ${name(shown)}`} onClick={toggleMenu}>
+      <button
+        type="button"
+        className="ro-choice"
+        aria-haspopup="menu"
+        aria-expanded={!!menu}
+        aria-label={`${label}: ${name(shown)}`}
+        disabled={disabled}
+        data-tip={disabled ? tip : undefined}
+        onClick={toggleMenu}
+      >
         {name(shown)}
         <ChevronDown aria-hidden="true" />
       </button>
@@ -237,34 +255,6 @@ function Choice({ label, own, appDefault, tip, onChange }: {
           entries={[null, true, false].map(v => ({ label: name(v), checked: shown === v, onSelect: () => pick(v) }))}
         />
       )}
-    </div>
-  );
-}
-
-function SwitchRow({ label, on, disabled, tip, onChange }: {
-  label: string;
-  on: boolean;
-  disabled: boolean;
-  tip: string;
-  onChange: (on: boolean) => void;
-}) {
-  const [shown, answer] = useAnswered(on);
-  return (
-    <div className="ro-row" data-disabled={disabled || undefined}>
-      <span className="ro-row-label" data-tip={tip}>{label}</span>
-      <button
-        type="button"
-        role="switch"
-        className="ro-switch"
-        aria-checked={shown}
-        aria-label={label}
-        disabled={disabled}
-        data-tip={disabled ? tip : undefined}
-        onClick={() => {
-          answer(!shown);
-          onChange(!shown);
-        }}
-      />
     </div>
   );
 }

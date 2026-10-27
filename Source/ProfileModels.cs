@@ -148,6 +148,17 @@ namespace TrueReplayer.Models
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public bool? RestoreCursor { get; set; }
 
+        // ── Per-profile jitter and fast approach (serialized, optional) ──
+        // The macro's own Jitter (±% on each delay, 0 = none, at most 100) and Fast approach (jump,
+        // then walk only the last stretch — it acts with Game Mode on). null = FOLLOWS the app's
+        // (Settings) for a run it starts, and the caller's effective value when it runs as a
+        // sub-profile — the same chain rule as GameMode, the movement setting they belong with.
+        // Same written-only-when-set rule, so a profile that never touched them is unchanged.
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? DelayVariation { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? FastApproach { get; set; }
+
         [JsonIgnore]
         public bool AlwaysOnTop { get; set; } = false;
 
@@ -531,6 +542,11 @@ namespace TrueReplayer.Models
         // Per-profile cursor return — mirrors UserProfile.RestoreCursor, same rule as GameMode.
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public bool? RestoreCursor { get; set; }
+        // Per-profile jitter and fast approach — mirror UserProfile's, same rule as GameMode.
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? DelayVariation { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? FastApproach { get; set; }
         public ObservableCollection<ActionItem> Actions { get; set; } = new();
         /// <summary>
         /// Embedded WaitImage reference images: filename → base64 PNG data.

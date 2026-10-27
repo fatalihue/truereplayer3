@@ -166,12 +166,13 @@ function MacroActions({ name, opened, onClose }: { name: string; opened: Opened;
   const profiles = useApp(a => a.profiles);
   const order = useApp(a => a.profileOrder);
   const locked = useShell(s => s.app.status !== 'ready');
+  const hasSteps = useApp(a => a.actions.length > 0);
   const macro = useMacro();
   const tt = useTt();
   return (
     <Menu
       anchor={opened.anchor}
-      entries={macroMenuEntries({ name, profiles, order, active: name, locked, macro, tt })}
+      entries={macroMenuEntries({ name, profiles, order, active: name, locked, hasSteps, macro, tt })}
       label="Macro actions"
       focusFirst={opened.keyboard}
       toggle={opened.button}

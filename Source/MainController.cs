@@ -38,17 +38,17 @@ namespace TrueReplayer.Controllers
         {
             // A running replay → this toggle STOPS it; the start-only arguments are never read.
             if (replayService.IsReplaying)
-                replayService.ToggleReplay(false, "1", false, "0", gameMode: null, restoreCursor: null);
+                replayService.ToggleReplay(false, "1", false, "0", gameMode: null, restoreCursor: null, fastApproach: null);
 
             recordingService.ToggleRecording();
         }
 
-        public void ToggleReplay(bool loopEnabled, string loopCountText, bool intervalEnabled, string intervalText, bool? gameMode, bool? restoreCursor, bool useDelayVariation = false, int delayVariationPercent = 20, bool useRelativeCoords = false, Models.WindowTarget? windowTarget = null, bool bringToFocus = false, int lockWidth = 0, int lockHeight = 0, int lockX = 0, int lockY = 0, bool restorePosition = false, bool restoreSize = false, bool forceInfiniteLoop = false)
+        public void ToggleReplay(bool loopEnabled, string loopCountText, bool intervalEnabled, string intervalText, bool? gameMode, bool? restoreCursor, bool? fastApproach, bool useDelayVariation = false, int delayVariationPercent = 20, bool useRelativeCoords = false, Models.WindowTarget? windowTarget = null, bool bringToFocus = false, int lockWidth = 0, int lockHeight = 0, int lockX = 0, int lockY = 0, bool restorePosition = false, bool restoreSize = false, bool forceInfiniteLoop = false)
         {
             if (recordingService.IsRecording)
                 recordingService.ToggleRecording();
 
-            replayService.ToggleReplay(loopEnabled, loopCountText, intervalEnabled, intervalText, gameMode, restoreCursor, useDelayVariation, delayVariationPercent, useRelativeCoords, windowTarget, bringToFocus, lockWidth, lockHeight, lockX, lockY, restorePosition, restoreSize, forceInfiniteLoop);
+            replayService.ToggleReplay(loopEnabled, loopCountText, intervalEnabled, intervalText, gameMode, restoreCursor, fastApproach, useDelayVariation, delayVariationPercent, useRelativeCoords, windowTarget, bringToFocus, lockWidth, lockHeight, lockX, lockY, restorePosition, restoreSize, forceInfiniteLoop);
         }
 
         public void ToggleCursorClickReplay(ClickerRunConfig config)

@@ -4,7 +4,7 @@ import type { ActionItem } from '../../bridge/messageTypes';
 import { newRequestId, useEditorTools } from '../../logic/useEditorTools';
 import { useSteps } from '../../logic/useSteps';
 import { useTt } from '../../state/LanguageContext';
-import { DraftField, Section, Segmented, Switch } from './fields';
+import { Clear, DraftField, Section, Segmented, Switch } from './fields';
 import { applyEdits, pendingEdits, type StepEdit } from './inspectorState';
 import { ProcessPicker, ResultCard } from './probeKit';
 import { useAsk } from './probes';
@@ -20,26 +20,6 @@ const useEdit = (step: ActionItem) => {
 };
 // A text field whose empty is a real value (it clears the field): every typed text goes as it is.
 const asTyped = (text: string) => text.trim();
-
-/** The × at the end of a field that clears it, and gives the focus back to the field. */
-function Clear({ label, labelPt, onClear, disabled }: { label: string; labelPt: string; onClear: () => void; disabled?: boolean }) {
-  const tt = useTt();
-  return (
-    <button
-      type="button"
-      className="insp-icon-button"
-      aria-label={label}
-      data-tip={tt(label, labelPt)}
-      disabled={disabled}
-      onClick={(e) => {
-        onClear();
-        e.currentTarget.parentElement?.querySelector('input')?.focus();
-      }}
-    >
-      <span className="step-icon" data-icon="x" />
-    </button>
-  );
-}
 
 const validRegex = (s: string) => {
   try { new RegExp(s); return true; } catch { return false; }

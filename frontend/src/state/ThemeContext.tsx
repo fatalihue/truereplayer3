@@ -2,11 +2,12 @@ import { createContext, useContext, useState, useEffect, useCallback, useMemo, u
 import type { ReactNode } from 'react';
 import type { ThemeColors, ThemeConfig, ThemeUISettings, ExportedTheme, CustomThemePreset } from '../themes';
 import {
-  themes,
   THEME_COLOR_KEYS,
   DEFAULT_UI_SETTINGS,
   DEFAULT_THEME_ID,
-  getThemeById,
+  DEFAULT_PALETTE,
+  getPalette,
+  isBuiltinTheme,
   loadThemeConfig,
   saveThemeConfig,
   resolveThemeColors,
@@ -162,7 +163,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const selectPreset = useCallback((id: string) => {
     // Built-in OR custom preset — both are valid targets.
-    const isBuiltin = !!getThemeById(id);
+    const isBuiltin = isBuiltinTheme(id);
     const isCustom = customPresets.some(p => p.id === id);
     if (!isBuiltin && !isCustom) return;
     setConfig(prev => ({
@@ -303,7 +304,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     // restoring the id verbatim persists an orphan: resolveThemeColors falls through to the
     // default, the header reads the wrong name, and the boot mirror paints the default forever.
     // selectPreset has always validated this; a restore has to as well.
-    const idLives = !!getThemeById(next.baseThemeId) || customPresets.some(p => p.id === next.baseThemeId);
+    const idLives = isBuiltinTheme(next.baseThemeId) || customPresets.some(p => p.id === next.baseThemeId);
     setConfig(prev => ({
       ...next,
       // Carries CURRENT_THEME_CONFIG_VERSION rather than whatever the snapshot held: a snapshot is
@@ -328,12 +329,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     if (!validateExportedTheme(theme)) return false;
 
     const baseId = findClosestPreset(theme.colors);
-    const base = getThemeById(baseId) ?? themes[0];
+    const base = getPalette(baseId) ?? getPalette(DEFAULT_THEME_ID) ?? DEFAULT_PALETTE;
 
     // Only store overrides for colors that differ from the base preset
     const overrides: Partial<ThemeColors> = {};
     for (const key of THEME_COLOR_KEYS) {
-      if (theme.colors[key] !== base.colors[key]) {
+      if (theme.colors[key] !== base[key]) {
         overrides[key] = theme.colors[key];
       }
     }

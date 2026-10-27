@@ -62,10 +62,13 @@ namespace TrueReplayer
                 json == null ? null : JsonSerializer.Deserialize<T>(json);
         }
 
-        // Loops, Interval, Game Mode and Return cursor: in memory, written with the macro's next save.
-        private sealed record RunPart(bool EnableLoop, int LoopCount, bool IntervalEnabled, int Interval, bool? GameMode, bool? RestoreCursor) : MacroPart
+        // Loops, Interval, Game Mode, Return cursor, Jitter and Fast approach: in memory, written with
+        // the macro's next save.
+        private sealed record RunPart(bool EnableLoop, int LoopCount, bool IntervalEnabled, int Interval, bool? GameMode, bool? RestoreCursor,
+            int? DelayVariation, bool? FastApproach) : MacroPart
         {
-            public static RunPart Of(UserProfile p) => new(p.EnableLoop, p.LoopCount, p.LoopIntervalEnabled, p.LoopInterval, p.GameMode, p.RestoreCursor);
+            public static RunPart Of(UserProfile p) => new(p.EnableLoop, p.LoopCount, p.LoopIntervalEnabled, p.LoopInterval, p.GameMode, p.RestoreCursor,
+                p.DelayVariation, p.FastApproach);
             public override MacroPart Read(UserProfile p) => Of(p);
             public override void CopyTo(UserProfile p)
             {
@@ -75,6 +78,8 @@ namespace TrueReplayer
                 p.LoopInterval = Interval;
                 p.GameMode = GameMode;
                 p.RestoreCursor = RestoreCursor;
+                p.DelayVariation = DelayVariation;
+                p.FastApproach = FastApproach;
             }
         }
 
@@ -3326,6 +3331,36 @@ namespace TrueReplayer
         }
 
         /// <summary>
+        /// The macro's own Jitter (±% on each delay, 0 = none), or null = follow the app's. Same
+        /// `profile` contract and same "No Profile" check as ResolveGameMode.
+        /// </summary>
+        public int? ResolveDelayVariation(UserProfile? profile = null)
+        {
+            if (profile == null && CurrentProfileName == "No Profile") return null;
+            return (profile ?? UserProfile.Current).DelayVariation;
+        }
+
+        /// <summary>
+        /// The jitter a run gets: the macro's own when it set one, the app's pair otherwise. The ONE
+        /// place every run entry point reads it, so none of them goes back to the app's value alone.
+        /// </summary>
+        public (bool Use, int Percent) EffectiveDelayVariation(UserProfile? profile = null)
+        {
+            if (ResolveDelayVariation(profile) is int own) return (own > 0, Math.Clamp(own, 0, 100));
+            return (UseDelayVariation, int.TryParse(DelayVariation, out var percent) ? percent : 20);
+        }
+
+        /// <summary>
+        /// The macro's own Fast approach, or null = follow the app's (ActionReplayer.FastApproach,
+        /// read per move). Same contract as ResolveGameMode.
+        /// </summary>
+        public bool? ResolveFastApproach(UserProfile? profile = null)
+        {
+            if (profile == null && CurrentProfileName == "No Profile") return null;
+            return (profile ?? UserProfile.Current).FastApproach;
+        }
+
+        /// <summary>
         /// Narrow push for the active profile's loop settings. Deliberately NOT PushSettingsLoaded:
         /// that message replaces the whole React `settings` slice by merging over the DEFAULTS and
         /// has ~19 emitters (tray, ScrollLock, Pause, remaps, the automation master, every Clicker
@@ -3365,6 +3400,9 @@ namespace TrueReplayer
                 // The profile's OWN cursor return (null = follows the app default) — same
                 // lifecycle, same payload, for the same reason as gameMode.
                 restoreCursor = ResolveRestoreCursor(),
+                // The profile's OWN jitter percent and fast approach (null = follow the app's).
+                delayVariation = ResolveDelayVariation(),
+                fastApproach = ResolveFastApproach(),
             };
         }
 
@@ -4011,6 +4049,9 @@ namespace TrueReplayer
                 GameMode = UserProfile.Current.GameMode,
                 // Per-profile cursor return — same rule.
                 RestoreCursor = UserProfile.Current.RestoreCursor,
+                // Per-profile jitter and fast approach — same rule.
+                DelayVariation = UserProfile.Current.DelayVariation,
+                FastApproach = UserProfile.Current.FastApproach,
                 // Data-loop table travels with the profile so a normal Save preserves it
                 // (data:save also persists immediately, but the main Save must not null it).
                 Data = UserProfile.Current.Data,
@@ -4866,8 +4907,7 @@ namespace TrueReplayer
             bool intervalEnabled = loop.IntervalEnabled;
             string intervalText = loop.Interval;
 
-            bool useVariation = UseDelayVariation;
-            int variationPercent = int.TryParse(DelayVariation, out var vp) ? vp : 20;
+            var (useVariation, variationPercent) = EffectiveDelayVariation();
             bool hasCur = CurrentProfileName != "No Profile";
             var effTarget = hasCur ? profileController.GetEffectiveWindowTarget(CurrentProfileName) : UserProfile.Current.TargetWindow;
             // This replays the GRID, so the flag comes from where the grid's coordinates were last
@@ -4932,7 +4972,7 @@ namespace TrueReplayer
                 }
             }
 
-            mainController.ToggleReplay(loopEnabled, loopCount, intervalEnabled, intervalText, ResolveGameMode(), ResolveRestoreCursor(), useVariation, variationPercent, effRelCoords, effTarget, effBringFocus, effW, effH, effGX, effGY, effRestorePos, effRestoreSz);
+            mainController.ToggleReplay(loopEnabled, loopCount, intervalEnabled, intervalText, ResolveGameMode(), ResolveRestoreCursor(), ResolveFastApproach(), useVariation, variationPercent, effRelCoords, effTarget, effBringFocus, effW, effH, effGX, effGY, effRestorePos, effRestoreSz);
             // Save as you go: a run writes what is pending, after the start so the first step does
             // not wait for the disk.
             FlushAutoSaveInBackground();
@@ -13927,7 +13967,10 @@ namespace TrueReplayer
             // under "No Profile" the app-wide switch (the smoothMovement global).
             "profileGameMode",
             // The "Return cursor" header switch — same scoping; the global is RestoreCursorDefault.
-            "profileRestoreCursor"
+            "profileRestoreCursor",
+            // Jitter and Fast approach in Replay ▾ — same scoping; the globals are
+            // UseDelayVariation/DelayVariation and ActionReplayer.FastApproach.
+            "profileDelayVariation", "profileFastApproach"
         };
 
         /// <summary>
@@ -14013,6 +14056,38 @@ namespace TrueReplayer
                     else if (next is bool on) ActionReplayer.RestoreCursorDefault = on;
                     break;
                 }
+                case "profileDelayVariation":
+                {
+                    // The percent, 0..100 (0 = none), or null = back to following the app's. Under
+                    // No Profile it is the app's own pair: 0 turns the variation off and keeps the
+                    // percent it had, as the Settings field always did.
+                    int? next = value.ValueKind switch
+                    {
+                        JsonValueKind.Number when value.TryGetInt32(out var n) => Math.Clamp(n, 0, 100),
+                        JsonValueKind.String when int.TryParse(value.GetString(), out var s) => Math.Clamp(s, 0, 100),
+                        _ => null,
+                    };
+                    if (scoped) { changed = p.DelayVariation != next; p.DelayVariation = next; }
+                    else if (next is int pct)
+                    {
+                        UseDelayVariation = pct > 0;
+                        if (pct > 0) DelayVariation = pct.ToString();
+                    }
+                    break;
+                }
+                case "profileFastApproach":
+                {
+                    // Same three-valued contract as profileGameMode.
+                    bool? next = value.ValueKind switch
+                    {
+                        JsonValueKind.True => true,
+                        JsonValueKind.False => false,
+                        _ => null,
+                    };
+                    if (scoped) { changed = p.FastApproach != next; p.FastApproach = next; }
+                    else if (next is bool on) ActionReplayer.FastApproach = on;
+                    break;
+                }
             }
 
             if (scoped)
@@ -14033,8 +14108,8 @@ namespace TrueReplayer
                 var saved = SaveGlobalSettings();
                 // The Game Mode default is also the React `settings.smoothMovement` (the rail dot
                 // and the knob gates read it), which only settings:loaded refreshes. Same for the
-                // cursor return default (`settings.restoreCursor`).
-                if (key is "profileGameMode" or "profileRestoreCursor") PushSettingsLoaded(saved);
+                // cursor return default (`settings.restoreCursor`), the jitter pair and Fast approach.
+                if (key is "profileGameMode" or "profileRestoreCursor" or "profileDelayVariation" or "profileFastApproach") PushSettingsLoaded(saved);
             }
 
             PushProfileLoop();

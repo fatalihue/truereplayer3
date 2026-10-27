@@ -714,6 +714,17 @@ export interface ProfileLoopState {
    * and same reason as `gameMode`.
    */
   restoreCursor: boolean | null;
+  /**
+   * The loaded profile's OWN jitter, a percent where 0 is none (WebViewBridge.ResolveDelayVariation);
+   * null = it follows the app's (`settings.useDelayVariation`, `settings.delayVariation`). Same
+   * lifecycle as `gameMode`.
+   */
+  delayVariation: number | null;
+  /**
+   * The loaded profile's OWN Fast approach (WebViewBridge.ResolveFastApproach); null = it follows
+   * the app's (`settings.fastApproach`). Same lifecycle as `gameMode`.
+   */
+  fastApproach: boolean | null;
 }
 
 export interface AppState {

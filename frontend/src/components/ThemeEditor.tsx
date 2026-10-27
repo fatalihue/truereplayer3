@@ -10,13 +10,12 @@ import { DialogShell  } from './common/DialogShell';
 import { Button } from './common/Button';
 import { SegmentedControl } from './common/SegmentedControl';
 import { FieldError } from './common/FieldError';
+import { themes, getThemeTags, type ThemeTag } from '../themePresets';
 import {
-  themes,
   DEFAULT_UI_SETTINGS,
   toHex,
   withOriginalAlpha,
   validateExportedTheme,
-  getThemeTags,
   hexToHSL,
   hslToHex,
   measurePaintedContrast,
@@ -25,7 +24,7 @@ import {
   DEFAULT_THEME_ID,
   makeCustomPresetId,
 } from '../themes';
-import type { ThemeColors, ExportedTheme, ThemeTag, CustomThemePreset, ThemeUISettings, ThemeConfig } from '../themes';
+import type { ThemeColors, ExportedTheme, CustomThemePreset, ThemeUISettings, ThemeConfig } from '../themes';
 import { useTheme } from '../state/ThemeContext';
 import { useTt, useLanguage, DEFAULT_LANGUAGE } from '../state/LanguageContext';
 import { useToast } from '../state/ToastContext';

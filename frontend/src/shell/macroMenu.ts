@@ -15,13 +15,18 @@ type Tt = (en: string, pt: string) => string;
  * The macro's menu: a right-click on it in the library, and ⋯ in its header when it is the open
  * one. Renaming the open macro types in its header; any other gets the dialog.
  */
-export function macroMenuEntries({ name, profiles, order, active, locked, macro, tt }: {
+export function macroMenuEntries({ name, profiles, order, active, locked, hasSteps, macro, tt }: {
   name: string;
   profiles: ProfileEntry[];
   order: ProfileOrderData;
   active: string | null;
   /** Recording or replaying: the engine refuses the revert then, so the item says so first. */
   locked: boolean;
+  /**
+   * The open macro has steps (Clear all steps… is off with none). A yes or no, not the count: the
+   * count changes with every switch, and the library would draw once more for nothing.
+   */
+  hasSteps: boolean;
   macro: ReturnType<typeof useMacro>;
   tt: Tt;
 }): MenuEntry[] {
@@ -60,8 +65,7 @@ export function macroMenuEntries({ name, profiles, order, active, locked, macro,
     'separator',
     { label: 'Hotkey…', icon: Keyboard, onSelect: () => openSettings('hotkey') },
     { label: 'Hotstring…', icon: Type, onSelect: () => openSettings('hotstring') },
-    // The window target comes to the Inspector with the next slice of phase 2.
-    { label: 'Window target…', icon: AppWindow, notBuilt: true },
+    { label: 'Window target…', icon: AppWindow, onSelect: () => openSettings('target') },
     { label: 'Edit info…', icon: Info, onSelect: () => openSettings('info') },
     'separator',
     { label: 'Export…', icon: Upload, onSelect: () => macro.exportMacros([name], true) },
@@ -76,8 +80,14 @@ export function macroMenuEntries({ name, profiles, order, active, locked, macro,
         tip: locked ? tt('Stop the run first', 'Pare a execução antes') : undefined,
         onSelect: () => openDialog({ kind: 'revertMacro', name }),
       },
-      // Clearing goes with the list's own editing (phase 2).
-      { label: 'Clear all steps…', icon: Eraser, notBuilt: true },
+      {
+        label: 'Clear all steps…',
+        icon: Eraser,
+        disabled: locked || !hasSteps,
+        tip: locked ? tt('Stop the run first', 'Pare a execução antes')
+          : !hasSteps ? tt('There are no steps to clear', 'Não há passos para limpar') : undefined,
+        onSelect: () => openDialog({ kind: 'clearSteps', name }),
+      },
       'separator' as const,
     ] : []),
     entry.isDisabled

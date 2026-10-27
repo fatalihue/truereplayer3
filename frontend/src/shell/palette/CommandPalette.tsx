@@ -272,7 +272,7 @@ function useItems(): PaletteItem[] {
 
   // The open macro's menu, said with its name.
   if (active) {
-    out.push(...fromMenu('macro', macroMenuEntries({ name: active, profiles, order, active, locked: status !== 'ready', macro, tt }), (item, path) => ({ label: macroPhrase(item.label, path, active), detail: 'Macro' })));
+    out.push(...fromMenu('macro', macroMenuEntries({ name: active, profiles, order, active, locked: status !== 'ready', hasSteps: steps.length > 0, macro, tt }), (item, path) => ({ label: macroPhrase(item.label, path, active), detail: 'Macro' })));
   }
 
   // The library's New ▾ and ⋯.

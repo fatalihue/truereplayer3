@@ -96,7 +96,7 @@ export const initialState: AppState = {
   settings: defaultSettings,
   // Mirrors WebViewBridge's "No Profile" fallback so there's no wrong-value flash before the
   // first profile:loop / state:init lands. count '1', never '0' — 0 means forever to the engine.
-  profileLoop: { count: '1', enabled: false, interval: '200', intervalEnabled: false, dirty: false, scoped: false, gameMode: null, restoreCursor: null },
+  profileLoop: { count: '1', enabled: false, interval: '200', intervalEnabled: false, dirty: false, scoped: false, gameMode: null, restoreCursor: null, delayVariation: null, fastApproach: null },
   toolbar: { profileName: 'No Profile' },
   statusBar: { directory: 'Profiles', profileName: null, actionCount: 0 },
   buttonStates: {
@@ -142,6 +142,8 @@ export function appStateReducer(state: AppState, message: IncomingMessage): AppS
               ...message.payload.profileLoop,
               gameMode: message.payload.profileLoop.gameMode ?? null,
               restoreCursor: message.payload.profileLoop.restoreCursor ?? null,
+              delayVariation: message.payload.profileLoop.delayVariation ?? null,
+              fastApproach: message.payload.profileLoop.fastApproach ?? null,
             }
           : initialState.profileLoop,
       };
@@ -183,6 +185,8 @@ export function appStateReducer(state: AppState, message: IncomingMessage): AppS
           ...message.payload,
           gameMode: message.payload.gameMode ?? null,
           restoreCursor: message.payload.restoreCursor ?? null,
+          delayVariation: message.payload.delayVariation ?? null,
+          fastApproach: message.payload.fastApproach ?? null,
         },
       };
     case 'button:states':

@@ -1,16 +1,24 @@
-import { useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
-import { ChevronDown, Folder, FolderPlus, Pencil, RotateCcw, Trash2 } from 'lucide-react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import { AppWindow, ChevronDown, Eraser, Folder, FolderPlus, Pencil, RotateCcw, Trash2 } from 'lucide-react';
+import { useBridge } from '../../bridge/BridgeContext';
 import type { ProfileEntry, ProfileOrderData } from '../../bridge/messageTypes';
 import { DialogFooter, DialogShell } from '../../components/common/DialogShell';
 import { FieldError } from '../../components/common/FieldError';
 import { useMacro } from '../../logic/useMacro';
+import { useSteps } from '../../logic/useSteps';
+import { useTt } from '../../state/LanguageContext';
+import { useToast } from '../../state/ToastContext';
 import { DEFAULT_FOLDER_COLOR } from '../../themes';
+import { Switch } from '../inspector/fields';
+import { asMode, targetProblem, type TargetValue } from '../inspector/macro/target';
+import { TargetFields } from '../inspector/macro/TargetFields';
+import { useApp } from '../store';
 import { ColorGrid } from './ColorGrid';
 import { ExportDialog } from './ExportDialog';
 import { nameTaken } from './model';
 
 export type LibraryDialogState =
-  | { kind: 'renameMacro' | 'renameFolder' | 'deleteMacro' | 'revertMacro'; name: string }
+  | { kind: 'renameMacro' | 'renameFolder' | 'deleteMacro' | 'revertMacro' | 'clearSteps' | 'folderTarget'; name: string }
   | { kind: 'newFolder' }
   | { kind: 'export'; names: string[] };
 
@@ -56,6 +64,10 @@ export default function LibraryDialog({ dialog, profiles, order, onClose }: {
       return <DeleteMacroDialog name={dialog.name} onDelete={() => macro.remove(dialog.name)} onClose={onClose} />;
     case 'revertMacro':
       return <RevertMacroDialog name={dialog.name} onRevert={macro.revert} onClose={onClose} />;
+    case 'clearSteps':
+      return <ClearStepsDialog name={dialog.name} onClose={onClose} />;
+    case 'folderTarget':
+      return <FolderTargetDialog folderName={dialog.name} profiles={profiles} order={order} onClose={onClose} />;
     case 'export':
       return <ExportDialog profiles={profiles} order={order} initial={dialog.names} onExport={macro.exportMacros} onClose={onClose} />;
   }
@@ -211,6 +223,180 @@ function RevertMacroDialog({ name, onRevert, onClose }: { name: string; onRevert
           Put <span className="text-text-primary font-medium">'{name}'</span> back the way it was when you opened it?
         </p>
         <p className="text-minor text-text-tertiary">The changes since then are lost, and Ctrl+Z can't bring them back.</p>
+      </div>
+    </DialogShell>
+  );
+}
+
+/**
+ * Clear all steps (casca-060 to 063): every step of the open macro goes, and Ctrl+Z brings them back.
+ * Cancel holds the focus, as in the other confirmations. It closes by itself once there is nothing it
+ * could clear: the list is empty, a run started, or another macro opened under it.
+ */
+function ClearStepsDialog({ name, onClose }: { name: string; onClose: () => void }) {
+  const steps = useApp(a => a.actions.length);
+  const busy = useApp(a => a.status !== 'ready');
+  const open = useApp(a => a.activeProfile);
+  const { clear } = useSteps();
+  const gone = steps === 0 || busy || open !== name;
+  useEffect(() => { if (gone) onClose(); }, [gone, onClose]);
+  return (
+    <DialogShell
+      icon={<Eraser size={14} style={{ color: 'var(--color-recording-fg)' }} />}
+      title="Clear all steps"
+      size="sm"
+      onClose={onClose}
+      onCardKeyDown={(e) => { if (e.key === 'Enter') e.stopPropagation(); }}
+      footer={<DialogFooter danger secondary={{ label: 'Cancel', onClick: onClose, autoFocus: true }} primary={{ label: 'Clear all', onClick: () => { if (!gone) clear({}); onClose(); } }} />}
+    >
+      <div className="p-4 flex flex-col gap-2">
+        <p className="text-body text-text-secondary">
+          Clear all {steps} step{steps === 1 ? '' : 's'} of <span className="text-text-primary font-medium">'{name}'</span>?
+        </p>
+        <p className="text-minor text-text-tertiary">Ctrl+Z brings them back.</p>
+      </div>
+    </DialogShell>
+  );
+}
+
+/**
+ * A folder's window target (dialogos-038): the Inspector's fields, for every macro in it without a
+ * target of its own. Saved by Set target, because a folder's settings are in no macro's Ctrl+Z.
+ * Remove asks the engine and the toast comes with its confirmation (a removal that would make two
+ * hotkeys collide is refused, and the dialog stays). Turning Relative coordinates while macros read
+ * their points in the folder's space holds Set target until the note about them is read
+ * (dialogos-048 and 049): a folder has no steps of its own to convert.
+ */
+function FolderTargetDialog({ folderName, profiles, order, onClose }: {
+  folderName: string;
+  profiles: ProfileEntry[];
+  order: ProfileOrderData;
+  onClose: () => void;
+}) {
+  const macro = useMacro();
+  const tt = useTt();
+  const { showToast } = useToast();
+  const { subscribe } = useBridge();
+  const folder = order.folders.find(f => f.name === folderName);
+  const own = !!folder?.hasWindowTarget;
+  const savedRelative = !!folder?.useRelativeCoordinates;
+  const [value, setValue] = useState<TargetValue>(() => ({
+    processName: folder?.windowTargetProcessName ?? '',
+    windowTitle: folder?.windowTargetWindowTitle ?? '',
+    titleMatchMode: asMode(folder?.windowTargetTitleMatchMode),
+  }));
+  // The newest fields for Set target: a field still being typed commits as it is left, which is
+  // just before the click that reads this.
+  const latest = useRef(value);
+  const [relative, setRelative] = useState(savedRelative);
+  const [bringToFocus, setBringToFocus] = useState(!!folder?.bringToFocus);
+  const [restorePosition, setRestorePosition] = useState(!!folder?.restorePosition);
+  const [restoreSize, setRestoreSize] = useState(!!folder?.restoreSize);
+  const inheriting = (folder?.items ?? []).filter(n => { const p = profiles.find(q => q.name === n); return !!p && !p.hasWindowTarget; }).length;
+  const [noteRead, setNoteRead] = useState(false);
+  const note = inheriting > 0 && !noteRead && relative !== savedRelative;
+  const problem = targetProblem(value);
+
+  const asked = useRef(false);
+  const live = useRef({ onClose, showToast, tt, macro });
+  useEffect(() => { live.current = { onClose, showToast, tt, macro }; });
+  useEffect(() => subscribe((message) => {
+    if (message.type !== 'profile:folderWindowTargetRemoved' || message.payload.folderName !== folderName || !asked.current) return;
+    asked.current = false;
+    const r = message.payload;
+    const l = live.current;
+    if (r.hadTarget) {
+      const label = r.processName || r.windowTitle || 'target';
+      l.showToast(l.tt(`Removed folder target (${label}) from "${r.folderName}"`, `Alvo da pasta (${label}) removido de "${r.folderName}"`), {
+        type: 'success',
+        duration: 10000,
+        action: {
+          label: 'Undo',
+          // Everything the removal wiped, the switches and the captured rect included.
+          onClick: () => l.macro.setFolderWindowTarget({
+            folderName: r.folderName, processName: r.processName, windowTitle: r.windowTitle, titleMatchMode: r.titleMatchMode,
+            relativeCoordinates: r.relativeCoordinates, bringToFocus: r.bringToFocus, restorePosition: r.restorePosition, restoreSize: r.restoreSize,
+            windowX: r.windowX, windowY: r.windowY, windowWidth: r.windowWidth, windowHeight: r.windowHeight,
+          }),
+        },
+      });
+    }
+    l.onClose();
+  }), [subscribe, folderName]);
+
+  const set = () => {
+    const v = latest.current;
+    if (targetProblem(v) || note) return;
+    macro.setFolderWindowTarget({
+      folderName, processName: v.processName.trim(), windowTitle: v.windowTitle.trim(), titleMatchMode: v.titleMatchMode,
+      relativeCoordinates: relative, bringToFocus, restorePosition, restoreSize,
+    });
+    onClose();
+  };
+  const row = (label: string, on: boolean, setOn: (on: boolean) => void, tip: string, disabled = false) => (
+    <div className="insp-row">
+      <Switch label={label} checked={on} disabled={disabled} tip={tip} onChange={setOn} />
+      <span className="insp-row-label">{label}</span>
+    </div>
+  );
+
+  return (
+    <DialogShell
+      icon={<AppWindow size={14} className="text-text-tertiary" />}
+      title="Folder window target"
+      onClose={onClose}
+      // A form of several fields: a stray click on the scrim must not drop them (Esc or Cancel only).
+      closeOnBackdrop={false}
+      footerStart={own ? (
+        <button type="button" className="insp-link" style={{ color: 'var(--color-recording-fg)' }} onClick={() => { asked.current = true; macro.removeFolderWindowTarget(folderName); }}>
+          Remove
+        </button>
+      ) : undefined}
+      footer={<DialogFooter
+        secondary={{ label: 'Cancel', onClick: onClose }}
+        primary={{
+          label: 'Set target',
+          onClick: set,
+          disabled: problem !== null || note,
+          tip: note ? tt("Read the note about this folder's macros first", 'Leia o aviso sobre os macros desta pasta primeiro') : undefined,
+        }}
+      />}
+    >
+      <div className="p-4 flex flex-col gap-3">
+        <p className="text-minor text-text-secondary">
+          For every macro in <span className="text-text-primary font-medium">‘{folderName}’</span> without a target of its own.
+        </p>
+        <TargetFields id={`folder:${folderName}`} value={value} onChange={(patch) => { latest.current = { ...latest.current, ...patch }; setValue(latest.current); }} />
+        {row('Relative coordinates', relative, setRelative,
+          tt("The points of its macros' steps follow the window when it moves", 'Os pontos dos passos dos macros acompanham a janela quando ela se move'),
+          !relative && targetProblem(value) === 'empty')}
+        {note && (
+          <div className="mset-convert" role="status">
+            <span>
+              {inheriting} macro{inheriting === 1 ? '' : 's'} in this folder use{inheriting === 1 ? 's' : ''} its target, with X/Y set for {savedRelative ? 'relative' : 'absolute'} coords.
+              They are not converted: if a macro's clicks land in the wrong place, open it and run
+              “Convert coordinates to {savedRelative ? 'absolute' : 'relative'}” (Ctrl+K).
+            </span>
+            <span className="mset-convert-actions">
+              <button type="button" className="insp-button" data-primary="" onClick={() => setNoteRead(true)}>Got it</button>
+            </span>
+          </div>
+        )}
+        {row('Bring to focus', bringToFocus, setBringToFocus,
+          tt('Brings the window to the front before a run. With it on, the hotkeys work from any window.', 'Traz a janela para a frente antes de rodar. Ligado, os atalhos funcionam de qualquer janela.'))}
+        {row('Restore position', restorePosition, setRestorePosition,
+          tt('Puts the window back where it was captured, before a run', 'Devolve a janela à posição capturada, antes de rodar'))}
+        {row('Restore size', restoreSize, setRestoreSize,
+          tt('Puts the window back to the captured size, before a run', 'Devolve a janela ao tamanho capturado, antes de rodar'))}
+        <button
+          type="button"
+          className="insp-button"
+          disabled={problem !== null}
+          data-tip={tt('Reads where the window is now, and its size, for Restore position and Restore size', 'Lê agora onde a janela está e o tamanho dela, para Restore position e Restore size')}
+          onClick={() => macro.updateWindowSize({ folderName, processName: value.processName || undefined, windowTitle: value.windowTitle || undefined, titleMatchMode: value.titleMatchMode })}
+        >
+          Update window size &amp; position
+        </button>
       </div>
     </DialogShell>
   );

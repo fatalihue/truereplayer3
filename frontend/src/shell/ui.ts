@@ -18,7 +18,7 @@ interface ShellUi {
   /** Starts an import, from wherever it was asked: the library holds the import's own dialogs. */
   startImport: (() => void) | null;
   /**
-   * The macro's settings asked for (Hotkey…, Hotstring…, Edit info…): the Inspector shows them even
+   * The macro's settings asked for (Hotkey…, Hotstring…, Window target…, Edit info…): the Inspector shows them even
    * where it lies over the list, until a step is chosen or it is closed.
    */
   settingsOpen: boolean;
@@ -26,7 +26,7 @@ interface ShellUi {
   settingsFocus: { name: string; section: SettingsSection; seq: number } | null;
 }
 
-export type SettingsSection = 'hotkey' | 'hotstring' | 'info';
+export type SettingsSection = 'hotkey' | 'hotstring' | 'target' | 'info';
 
 export const useUi = create<ShellUi>(() => ({
   dialog: null, nameFocus: null, libraryPeek: false, extensionHelp: false, startImport: null, settingsOpen: false, settingsFocus: null,

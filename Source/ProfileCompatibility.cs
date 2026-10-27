@@ -743,6 +743,15 @@ namespace TrueReplayer.Services
             (p => p.RestoreCursor.HasValue,
                 new Version(2, 47, 0), "Per-profile cursor return"),
 
+            // Per-profile jitter and fast approach. Same destroy-on-round-trip mechanism as Game
+            // Mode: an older build drops the keys and runs the macro on the app's values, with
+            // nothing on screen saying so. Gated on USE the same way (written only when set).
+            // Introduced after 2.50.0 — bump at release if the release number differs.
+            (p => p.DelayVariation.HasValue,
+                new Version(2, 51, 0), "Per-profile jitter"),
+            (p => p.FastApproach.HasValue,
+                new Version(2, 51, 0), "Per-profile fast approach"),
+
             // Screen text (OCR). Each family fails SILENTLY on an older build, which is the whole
             // reason for one row apiece: Wait for Text has no case in the action switch (no default),
             // so the row is skipped and its step reads "ok"; a ScreenText condition hits

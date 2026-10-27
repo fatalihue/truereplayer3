@@ -1384,6 +1384,7 @@ namespace TrueReplayer
                             // Reading bridge.EnableLoop/LoopCount directly here is what made the
                             // global Replay hotkey ignore the loaded profile's loop count.
                             var globalLoop = bridge?.BuildLoopConfig() ?? new LoopRunConfig(false, "1", false, "0");
+                            var jitter = bridge?.EffectiveDelayVariation() ?? (false, 20);
                             mainController.ToggleReplay(
                                 globalLoop.Enabled,
                                 globalLoop.Count,
@@ -1392,8 +1393,9 @@ namespace TrueReplayer
                                 // Same resolver as the loop, same "whatever is loaded now".
                                 bridge?.ResolveGameMode(),
                                 bridge?.ResolveRestoreCursor(),
-                                bridge?.UseDelayVariation ?? false,
-                                int.TryParse(bridge?.DelayVariation ?? "20", out var hvp) ? hvp : 20,
+                                bridge?.ResolveFastApproach(),
+                                jitter.Use,
+                                jitter.Percent,
                                 effRelCoords,
                                 effTarget,
                                 effBringFocus,
@@ -1673,6 +1675,7 @@ namespace TrueReplayer
             // passes as false by construction. The guard also only ever covered this method, i.e.
             // never the Replay button or the global Replay hotkey; the clamp covers all four.
             var loop = bridge.BuildLoopConfig(profile);
+            var jitter = bridge.EffectiveDelayVariation(profile);
             mainController.ToggleReplay(
                 loop.Enabled,
                 loop.Count,
@@ -1681,8 +1684,9 @@ namespace TrueReplayer
                 // The FIRED instance, like the loop: its Game Mode, not whatever was loaded.
                 bridge.ResolveGameMode(profile),
                 bridge.ResolveRestoreCursor(profile),
-                bridge.UseDelayVariation,
-                int.TryParse(bridge.DelayVariation, out var pvp) ? pvp : 20,
+                bridge.ResolveFastApproach(profile),
+                jitter.Use,
+                jitter.Percent,
                 effectiveRelCoords,
                 effectiveTarget,
                 effectiveBringToFocus,

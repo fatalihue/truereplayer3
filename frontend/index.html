@@ -9,11 +9,11 @@
       // Paint the saved theme BEFORE React loads, so launching never flashes the wrong
       // canvas (most visible on the light presets: a dark boot then a white app).
       //
-      // GENERATED from frontend/src/themes.ts — this file cannot import the module (it runs as a
-      // classic inline script before any bundle exists), so the palettes, the removed-id remap
-      // and the defaults below are a copy kept in sync by the build. A stale entry here only
-      // costs one frame of the wrong colour, never a crash: an unknown id falls back to the
-      // default preset.
+      // GENERATED from frontend/src/themePresets.ts and themes.ts — this file cannot import the
+      // modules (it runs as a classic inline script before any bundle exists), so the palettes, the
+      // removed-id remap and the defaults below are a copy kept in sync by the build. A stale entry
+      // here only costs one frame of the wrong colour, never a crash: an unknown id falls back to
+      // the default preset.
       (function() {
         var presets = {
           'gruvbox-dark':{'bg-base':'#1d2021','bg-surface':'#282828','bg-card':'#3c3836','bg-elevated':'#45403d','bg-input':'#161819','border-subtle':'rgba(235,219,178,0.06)','border-default':'rgba(235,219,178,0.1)','border-strong':'rgba(235,219,178,0.15)','text-primary':'#ebdbb2','text-secondary':'#d5c4a1','text-tertiary':'#928374','text-disabled':'#665c54','accent':'#fabd2f','accent-solid':'#d79921','accent-hover':'#ffd866'},
@@ -54,6 +54,9 @@
           'mint-sorbet':{'bg-base':'#f1faf5','bg-surface':'#e3f3eb','bg-card':'#d2ebde','bg-elevated':'#bce0cd','bg-input':'#f8fdfa','border-subtle':'rgba(70,120,90,0.08)','border-default':'rgba(70,120,90,0.16)','border-strong':'rgba(70,120,90,0.26)','text-primary':'#2c4838','text-secondary':'#4a6a58','text-tertiary':'#6e8c7c','text-disabled':'#aabbb1','accent':'#9470d4','accent-solid':'#7150b3','accent-hover':'#b094df'},
           'peach-fuzz':{'bg-base':'#fff3ec','bg-surface':'#ffe5d4','bg-card':'#ffd2b6','bg-elevated':'#f6c19f','bg-input':'#fff9f4','border-subtle':'rgba(184,92,56,0.08)','border-default':'rgba(184,92,56,0.16)','border-strong':'rgba(184,92,56,0.26)','text-primary':'#4a2618','text-secondary':'#6e3f2a','text-tertiary':'#9a6648','text-disabled':'#c4967a','accent':'#df502e','accent-solid':'#95452f','accent-hover':'#e86c4e'}
         };
+        // The app resolves the theme from these too (themes.ts, getPalette), so its first chunk
+        // does not carry a second copy of them.
+        window.__trPalettes = presets;
         // Ids retired by the theme curation → their surviving relative, mirroring
         // REMOVED_THEME_FALLBACKS so the splash agrees with the migration that runs
         // moments later in loadThemeConfig.
