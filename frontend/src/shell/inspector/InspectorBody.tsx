@@ -8,6 +8,7 @@ import { NotBuilt } from '../NotBuilt';
 import { useApp } from '../store';
 import { BatchEditor } from './BatchEditor';
 import { CheckDraft } from './CheckDraft';
+import { openerType } from './checks';
 import { ClickEditor } from './ClickEditor';
 import { DraftField, Section } from './fields';
 import { drafts, focusList, loadProbeEditors, loadSendTextEditor, loadSimpleEditors, takeFocusAsk, type Draft, type TextDraft } from './inspectorState';
@@ -20,7 +21,8 @@ import './editorIcons.css';
 // keeps its settle), and the browser steps, whose delay is part of their own editor (phase 2).
 const NO_DELAY_FIELD = new Set(['If', 'ElseIf', 'Else', 'EndIf', 'EndLoop', 'BreakLoop', 'ContinueLoop', 'ForEachRow']);
 const MAX_DELAY_MS = 999_999_999;
-const CONDITION_STEPS = new Set(['If', 'ElseIf', 'While']);
+const CONDITION_STEPS = new Set(['If', 'ElseIf', 'While', 'Assert']);
+const WAIT_STEPS = new Set(['WaitImage', 'WaitPixelColor', 'WaitText']);
 const SIMPLE_STEPS = new Set(['ScrollUp', 'ScrollDown', 'SetVariable', 'CopyToSlot']);
 // The markers of a block say where their settings live (editor-passo-059), and the loop's jumps,
 // its rows and the two endings what they do (editor-passo-060): there is nothing else to set.
@@ -49,7 +51,7 @@ export default function InspectorBody({ indices, locked, note, draft }: { indice
   // The chunks of the Send Text editor and of the probes, once the Inspector is up and the page is
   // idle, when the macro has such a step to open: its first opening does not wait for them.
   const hasText = steps.some(s => s.actionType === 'SendText');
-  const hasProbe = steps.some(s => s.actionType === 'WaitImage' || CONDITION_STEPS.has(s.actionType));
+  const hasProbe = steps.some(s => WAIT_STEPS.has(s.actionType) || CONDITION_STEPS.has(s.actionType));
   const hasSimple = steps.some(s => SIMPLE_STEPS.has(s.actionType));
   useEffect(() => {
     if (!hasText && !hasProbe && !hasSimple) return;
@@ -89,18 +91,22 @@ const DRAFT_TYPE: Record<string, string> = { key: 'Keystroke', text: 'SendText' 
 
 /**
  * A step being made: a Key waiting for its key, a Text for its first text — which then goes on as
- * the step it became, in the same editor —, and an If, a While or an Else If for its check.
+ * the step it became, in the same editor —, and an If, a While, an Else If, an Assert or a Wait
+ * until for its check. A Wait until becomes an Assert, and says it is a wait until then.
  */
 function DraftView({ draft, steps, locked, note }: { draft: Draft; steps: ActionItem[]; locked: boolean; note: string | null }) {
   const born = draft.kind === 'text' && draft.stepId ? steps.find(s => s.id === draft.stepId) ?? null : null;
   const index = born ? steps.indexOf(born) : -1;
-  const type = draft.kind === 'check' ? draft.opener : DRAFT_TYPE[draft.kind];
+  const type = draft.kind === 'check' ? openerType(draft.opener) : DRAFT_TYPE[draft.kind];
+  const waitUntil = draft.kind === 'check' && draft.opener === 'WaitUntil';
   const foot = draft.kind === 'key' ? 'The step is added with its key · Esc cancels'
     : draft.kind === 'text' ? (born ? 'Applies as you type and saves on its own · Ctrl+Z undoes' : 'The step is added with its first text · Esc cancels while it is empty')
+    : waitUntil ? 'Choose what it waits for · Esc cancels'
     : 'Choose what it checks · Esc cancels';
   return (
     <>
-      {born ? <StepHeader step={born} index={index} count={steps.length} /> : <DraftHeader type={type} where={whereOf(draft.at, steps.length)} />}
+      {born ? <StepHeader step={born} index={index} count={steps.length} />
+        : <DraftHeader type={type} where={whereOf(draft.at, steps.length)} name={waitUntil ? 'Wait until…' : undefined} icon={waitUntil ? 'clock' : undefined} />}
       <div className="insp-body">
         {draft.kind === 'key' && <DraftKeyEditor draft={draft} locked={locked} />}
         {draft.kind === 'text' && <TextEditorSlot key={draft.serial} step={born} draft={draft} locked={locked} />}
@@ -112,16 +118,16 @@ function DraftView({ draft, steps, locked, note }: { draft: Draft; steps: Action
   );
 }
 
-function DraftHeader({ type, where }: { type: string; where: string }) {
+/** The header of a step being made; a Wait until names itself and draws the catalog's clock. */
+function DraftHeader({ type, where, name, icon = stepIcon(type) }: { type: string; where: string; name?: string; icon?: string | null }) {
   const colors = getActionTypeColors(type);
-  const icon = stepIcon(type);
   return (
     <div className="insp-head">
       <span className="insp-tile" style={{ background: colors.bg, color: colors.fg }}>
         {icon && <span className="step-icon" data-icon={icon} />}
       </span>
       <div className="insp-title">
-        <span className="insp-name" data-display="">{stepName(type)}</span>
+        <span className="insp-name" data-display="">{name ?? stepName(type)}</span>
         <span className="insp-sub">New step · {where}</span>
       </div>
       <button type="button" className="insp-close" aria-label="Cancel the new step" onClick={() => { drafts.end(); arrival.clear(); focusList(); }}>
@@ -187,7 +193,7 @@ function StepEditor({ step, index, steps, locked }: { step: ActionItem; index: n
     : t === 'KeyDown' || t === 'KeyUp' ? <KeyHalfEditor step={step} locked={locked} />
     : t === 'Pause' ? <PauseEditor step={step} locked={locked} />
     : t === 'SendText' ? <TextEditorSlot step={step} draft={null} locked={locked} />
-    : t === 'WaitImage' || CONDITION_STEPS.has(t) ? <ProbeSlot step={step} locked={locked} />
+    : WAIT_STEPS.has(t) || CONDITION_STEPS.has(t) ? <ProbeSlot step={step} locked={locked} />
     : SIMPLE_STEPS.has(t) ? <SimpleSlot step={step} index={index} locked={locked} />
     : MARKER_NOTES[t] ? <p className="insp-summary">{MARKER_NOTES[t]}</p>
     // The other types' editors come with phase 2.
@@ -232,15 +238,17 @@ function TextEditorSlot({ step, draft, locked }: { step: ActionItem | null; draf
   return Editor ? <Editor step={step} draft={draft} locked={locked} /> : <div className="insp-text-wait" />;
 }
 
-/** Wait Image and the condition editor, from their chunk, the same way. */
+/** The three waits and the condition editor, from their chunk, the same way. */
 function ProbeSlot({ step, locked }: { step: ActionItem; locked: boolean }) {
   const mod = useLoaded(loadProbeEditors);
   useEffect(() => {
     if (!mod) void preload(loadProbeEditors);
   }, [mod]);
   if (!mod) return null;
-  return step.actionType === 'WaitImage'
-    ? <mod.WaitImageEditor step={step} locked={locked} />
+  const t = step.actionType;
+  return t === 'WaitImage' ? <mod.WaitImageEditor step={step} locked={locked} />
+    : t === 'WaitPixelColor' ? <mod.WaitPixelEditor step={step} locked={locked} />
+    : t === 'WaitText' ? <mod.WaitTextEditor step={step} locked={locked} />
     : <mod.ConditionEditor step={step} locked={locked} />;
 }
 

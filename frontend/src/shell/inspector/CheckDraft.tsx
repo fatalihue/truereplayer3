@@ -2,17 +2,21 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from
 import { useSteps } from '../../logic/useSteps';
 import { getActionTypeColors } from '../../utils/displayUtils';
 import { arrival } from '../list/selection';
-import { checksFor, type Check, type ConditionType } from './checks';
+import { checksFor, isStateCheck, openerType, type Check, type ConditionType } from './checks';
 import { drafts, focusList, type Draft } from './inspectorState';
 
 type CheckDraftT = Extract<Draft, { kind: 'check' }>;
 /** A direct insert that has not arrived in this long was refused: the draft goes. */
 const ARRIVAL_MS = 2000;
+// A Wait until is the old Wait ▾ "Until …" items: an Assert that waits up to 10 s for its check,
+// then ends the run with no error (casca-031 to 036).
+const WAIT_UNTIL_MS = 10000;
 
 /**
- * An If, a While or an Else If being made: the Check list, as the concept's If editor draws it.
- * A check of the screen (an image, a pixel, a region to read) is captured first — the engine's
- * overlay, where Esc makes nothing —; the others make the step at once, and its editor opens on it.
+ * An If, a While, an Else If, an Assert or a Wait until being made: the Check list, as the concept's
+ * If editor draws it. A check of the screen (an image, a pixel, a region to read) is captured first
+ * — the engine's overlay, where Esc makes nothing —; the others make the step at once, and its
+ * editor opens on it.
  */
 export function CheckDraft({ draft, locked }: { draft: CheckDraftT; locked: boolean }) {
   const cmds = useSteps();
@@ -34,6 +38,8 @@ export function CheckDraft({ draft, locked }: { draft: CheckDraftT; locked: bool
     arrival.expect(draft.at, draft.macro);
     if (draft.opener === 'ElseIf') cmds.addElseIfBranch({ ifRowIndex: draft.ifRowIndex ?? -1, conditionType: c.type });
     else if (draft.opener === 'While' && c.type !== 'Random') cmds.insertLoop({ conditionType: c.type, insertIndex: draft.at });
+    else if (draft.opener === 'Assert' && isStateCheck(c.type)) cmds.insertAssert({ conditionType: c.type, insertIndex: draft.at });
+    else if (draft.opener === 'WaitUntil' && isStateCheck(c.type)) cmds.insertAssert({ conditionType: c.type, insertIndex: draft.at, conditionTimeout: WAIT_UNTIL_MS, assertOnFail: 'StopReplay' });
     else cmds.insertConditional({ conditionType: c.type, insertIndex: draft.at });
     focusList();
     if (c.capture) drafts.end();
@@ -50,7 +56,7 @@ export function CheckDraft({ draft, locked }: { draft: CheckDraftT; locked: bool
     all[(next + all.length) % all.length].focus();
   };
 
-  const colors = getActionTypeColors(draft.opener);
+  const colors = getActionTypeColors(openerType(draft.opener));
   return (
     <div ref={listRef} className="insp-checks" role="group" aria-label="Checks" onKeyDown={onArrows}>
       {checksFor(draft.opener).map(c => (

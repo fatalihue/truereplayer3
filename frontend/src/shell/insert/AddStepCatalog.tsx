@@ -212,7 +212,6 @@ function Item({ item, active, off, detail, group, onHover, onChoose }: {
         <span className="cat-desc">{item.desc}{detail && <> · {detail}</>}</span>
       </span>
       {!built && <span className="cat-later">not built yet</span>}
-      {item.more && <span className="step-icon cat-more" data-icon="chevron-right" />}
     </div>
   );
 }

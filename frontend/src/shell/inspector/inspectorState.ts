@@ -14,7 +14,7 @@ export const loadInspectorBody = () => import('./InspectorBody');
 /** The Send Text editor brings the rich editor (Lexical) along: a chunk of its own, loaded for a
  *  Send Text step or a Text being made, never for opening the app or for the first step clicked. */
 export const loadSendTextEditor = () => import('./SendTextEditor');
-/** …and the editors of the steps that probe (Wait Image, If, Else If, While), likewise. */
+/** …and the editors of the steps that probe (the waits, If, Else If, While, Assert), likewise. */
 export const loadProbeEditors = () => import('./probeEditors');
 /** …and the simple steps' (Scroll, Set Variable, Copy to Slot), likewise. */
 export const loadSimpleEditors = () => import('./simpleEditors');
@@ -44,8 +44,9 @@ export const pendingEdits = {
 /**
  * A step being made in the Inspector before it exists, at the insertion point it was asked for
  * (`at`, in `macro`). The engine keeps no Keystroke without its key and no Send Text without text,
- * so a Key is born when the key arrives and a Text with its first text; an If, a While or an Else
- * If waits for its check (the Check list). Esc, the × and selecting another step leave nothing.
+ * so a Key is born when the key arrives and a Text with its first text; an If, a While, an Else If,
+ * an Assert or a Wait until waits for its check (the Check list). Esc, the × and selecting another
+ * step leave nothing.
  *
  * A Text goes on being edited where it was typed: once born, the step it became is adopted, and
  * the same editor keeps the caret until the selection leaves it.
@@ -54,7 +55,7 @@ export type Draft = { serial: number } & (
   | { kind: 'key'; at: number; macro: string | null }
   | { kind: 'text'; at: number; macro: string | null; born?: boolean; stepId?: string }
   | { kind: 'check'; opener: CheckOpener; at: number; macro: string | null; ifRowIndex?: number });
-export type CheckOpener = 'If' | 'While' | 'ElseIf';
+export type CheckOpener = 'If' | 'While' | 'ElseIf' | 'Assert' | 'WaitUntil';
 export type TextDraft = Extract<Draft, { kind: 'text' }>;
 type NewDraft = Draft extends infer D ? D extends Draft ? Omit<D, 'serial'> : never : never;
 export const useDraft = create<{ draft: Draft | null }>(() => ({ draft: null }));

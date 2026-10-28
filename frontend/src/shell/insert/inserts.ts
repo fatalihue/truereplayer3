@@ -1,5 +1,5 @@
 import type { useSteps } from '../../logic/useSteps';
-import { drafts, loadInspectorBody, loadSendTextEditor, loadSimpleEditors } from '../inspector/inspectorState';
+import { drafts, loadInspectorBody, loadProbeEditors, loadSendTextEditor, loadSimpleEditors } from '../inspector/inspectorState';
 import { preload } from '../lazyModule';
 import { arrival, insertPoint } from '../list/selection';
 import { useShell } from '../store';
@@ -26,12 +26,14 @@ const plain = (actionType: string, editors?: () => Promise<unknown>): Insert =>
 /**
  * The inserts, shared by the insert row's buttons and the Add step catalog. A Click is born at the
  * cursor and a Pause waits 1 s, the old Pause dialog's default; the Inspector then picks the point
- * and the key. Wait Image is the engine's capture-first insert: the step lands only once the image
- * is captured. The engine keeps no Key without its key, no Text without text and no If or While
- * without its check, so those open in the Inspector first — listening for the key, with the text
- * editor, with the Check list — and are born from there. A Scroll is born turning down, and the
- * Inspector turns it; the loop jumps and the two endings have nothing to set; a Set Variable and a
- * Copy to Slot are born empty and named in the Inspector.
+ * and the key. The three waits are the engine's capture-first inserts: the step lands only once the
+ * image is captured, the pixel picked or the region drawn (and read: a Wait Text is born with the
+ * text it read). The engine keeps no Key without its key, no Text without text and no If, While or
+ * Assert without its check, so those open in the Inspector first — listening for the key, with the
+ * text editor, with the Check list — and are born from there; a Wait until is an Assert born
+ * waiting 10 s and stopping quietly. A Scroll is born turning down, and the Inspector turns it; the
+ * loop jumps and the two endings have nothing to set; a Set Variable and a Copy to Slot are born
+ * empty and named in the Inspector.
  */
 export const inserts = {
   click: ((cmds, at) => cmds.insertClick({ actionType: 'LeftClick', atCursor: true, insertIndex: at })) as Insert,
@@ -39,9 +41,13 @@ export const inserts = {
   text: draft((at, macro) => ({ kind: 'text', at, macro }), loadSendTextEditor),
   scroll: plain('ScrollDown', loadSimpleEditors),
   pause: ((cmds, at) => cmds.insertPause({ key: '', timeoutMs: 1000, insertIndex: at })) as Insert,
-  waitImage: ((cmds, at) => cmds.insertAction({ actionType: 'WaitImage', insertIndex: at })) as Insert,
-  if: draft((at, macro) => ({ kind: 'check', opener: 'If', at, macro })),
-  while: draft((at, macro) => ({ kind: 'check', opener: 'While', at, macro })),
+  waitImage: plain('WaitImage', loadProbeEditors),
+  waitPixel: ((cmds, at) => { cmds.insertWaitPixelColor({ insertIndex: at }); void preload(loadInspectorBody); void preload(loadProbeEditors); }) as Insert,
+  waitText: plain('WaitText', loadProbeEditors),
+  waitUntil: draft((at, macro) => ({ kind: 'check', opener: 'WaitUntil', at, macro }), loadProbeEditors),
+  if: draft((at, macro) => ({ kind: 'check', opener: 'If', at, macro }), loadProbeEditors),
+  while: draft((at, macro) => ({ kind: 'check', opener: 'While', at, macro }), loadProbeEditors),
+  assert: draft((at, macro) => ({ kind: 'check', opener: 'Assert', at, macro }), loadProbeEditors),
   forEachRow: ((cmds, at) => { cmds.insertLoop({ kind: 'ForEachRow', insertIndex: at }); void preload(loadInspectorBody); }) as Insert,
   breakLoop: plain('BreakLoop'),
   nextIteration: plain('ContinueLoop'),

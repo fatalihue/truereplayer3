@@ -1,16 +1,14 @@
 import type { ActionItem } from '../../bridge/messageTypes';
 import { useSteps } from '../../logic/useSteps';
-import { useLanguage, useTt } from '../../state/LanguageContext';
+import { useLanguage } from '../../state/LanguageContext';
 import { formatMs } from '../../utils/displayUtils';
-import { Chips, DraftField, Section, Segmented, Switch } from './fields';
+import { Section, Segmented, Switch } from './fields';
 import { ImageProbe } from './ImageProbe';
 import { applyEdits, type StepEdit } from './inspectorState';
+import { goesOn, waitTimeout, WaitTiming } from './WaitTiming';
 
-const TIMEOUT_CHIPS = [5000, 10000, 30000, 60000];
-// The engine's floor for a wait (WebViewBridge, the "timeout" edit), and what it waits with none.
-const MIN_TIMEOUT_MS = 1000;
+// What the engine waits with no timeout of its own (ActionExecution, ExecuteWaitImage).
 const DEFAULT_TIMEOUT_MS = 30000;
-const MAX_TIMEOUT_MS = 86_400_000;
 
 /**
  * ⑧ Wait Image: the reference image with its test, region and tolerance (ImageProbe), then what the
@@ -20,12 +18,11 @@ const MAX_TIMEOUT_MS = 86_400_000;
 export function WaitImageEditor({ step, locked }: { step: ActionItem; locked: boolean }) {
   const cmds = useSteps();
   const { language } = useLanguage();
-  const tt = useTt();
   const id = step.id ?? '';
   const edit = (edits: StepEdit[]) => applyEdits(cmds, id, edits);
   const gone = !!step.waitImageInvert;
-  const timeout = step.timeout > 0 ? step.timeout : DEFAULT_TIMEOUT_MS;
-  const goOn = step.waitImageOnTimeout === 'Continue';
+  const timeout = waitTimeout(step, DEFAULT_TIMEOUT_MS);
+  const goOn = goesOn(step);
   const click = !gone && !!step.waitImageClickOnMatch;
   const upTo = `${formatMs(timeout, language)} ms`;
   const summary = gone
@@ -44,19 +41,7 @@ export function WaitImageEditor({ step, locked }: { step: ActionItem; locked: bo
           onChange={(v) => edit([{ field: 'waitImageInvert', value: String(v === 'gone') }])}
         />
       </Section>
-      <Section label="Timeout">
-        <DraftField stepId={id} field="timeout" label="Timeout in milliseconds" kind="int" step={1000} min={MIN_TIMEOUT_MS} max={MAX_TIMEOUT_MS} unit="ms" stored={String(timeout)} disabled={locked} />
-        <Chips values={TIMEOUT_CHIPS} current={timeout} disabled={locked} onPick={(v) => edit([{ field: 'timeout', value: String(v) }])} />
-      </Section>
-      <Section label="On timeout">
-        <Segmented<'halt' | 'continue'>
-          label="On timeout"
-          value={goOn ? 'continue' : 'halt'}
-          disabled={locked}
-          options={[{ value: 'halt', label: 'Halt', tip: tt('The run stops', 'A execução para') }, { value: 'continue', label: 'Continue', tip: tt('The run goes on to the next step', 'A execução segue para o próximo passo') }]}
-          onChange={(v) => edit([{ field: 'waitImageOnTimeout', value: v === 'continue' ? 'Continue' : '' }])}
-        />
-      </Section>
+      <WaitTiming step={step} locked={locked} timeout={timeout} />
       {!gone && (
         <div className="insp-row">
           <span className="insp-row-label">Click on found location</span>

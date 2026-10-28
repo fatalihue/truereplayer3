@@ -20,11 +20,12 @@ const MAX_WAIT_MS = 86_400_000;
 const MAX_ITERATIONS = 1_000_000;
 
 /**
- * ⑧ If, Else If and While: one condition editor ("Condição — o mesmo editor em If, While, Assert e
- * Automations"; the Assert and the Automations take it in phase 2). The Check, and the change of it
- * — the engine drops the old check's settings in the same edit, so Ctrl+Z brings them back —; when
+ * ⑧ If, Else If, While and Assert: one condition editor ("Condição — o mesmo editor em If, While,
+ * Assert e Automations"; the Automations take it in phase 3). The Check, and the change of it —
+ * the engine drops the old check's settings in the same edit, so Ctrl+Z brings them back —; when
  * the step passes (found or not, met or not); how long to wait for it; a While's ceiling; what a
- * check that fails to run does; then the check's own fields.
+ * check that fails to run does, or for an Assert what a failure does (the engine treats a check
+ * that cannot run as failed there); then the check's own fields.
  */
 export function ConditionEditor({ step, locked }: { step: ActionItem; locked: boolean }) {
   const cmds = useSteps();
@@ -34,6 +35,7 @@ export function ConditionEditor({ step, locked }: { step: ActionItem; locked: bo
   const check = checkOf(step.conditionType);
   const negate = !!step.conditionNegate;
   const met = !check?.subject;
+  const assert = step.actionType === 'Assert';
 
   return (
     <>
@@ -60,18 +62,34 @@ export function ConditionEditor({ step, locked }: { step: ActionItem; locked: bo
               <DraftField stepId={id} field="loopMaxIterations" label="Maximum loop iterations" kind="int" min={0} max={MAX_ITERATIONS} unit="×" stored={String(step.loopMaxIterations ?? 0)} disabled={locked} />
             </Section>
           )}
-          <Section label="If the check itself errors">
-            <Segmented<'false' | 'halt'>
-              label="If the check itself errors"
-              value={step.ifOnProbeError === 'Halt' ? 'halt' : 'false'}
-              disabled={locked}
-              options={[
-                { value: 'false', label: met ? 'Treat as not met' : 'Treat as not found', tip: step.actionType === 'While' ? tt('The loop ends', 'O loop termina') : tt('The If goes the other way', 'O If vai para o outro lado') },
-                { value: 'halt', label: 'Stop the run' },
-              ]}
-              onChange={(v) => edit([{ field: 'ifOnProbeError', value: v === 'halt' ? 'Halt' : '' }])}
-            />
-          </Section>
+          {assert ? (
+            <Section label="On failure" hint="Continue does not fail a data-loop row.">
+              <Segmented<'abort' | 'continue' | 'quiet'>
+                label="On assert failure"
+                value={step.assertOnFail === 'Continue' ? 'continue' : step.assertOnFail === 'StopReplay' ? 'quiet' : 'abort'}
+                disabled={locked}
+                options={[
+                  { value: 'abort', label: 'Abort', tip: tt('The run stops with an error', 'A execução para com erro') },
+                  { value: 'continue', label: 'Continue', tip: tt('The run goes on to the next step', 'A execução segue para o próximo passo') },
+                  { value: 'quiet', label: 'Stop quietly', tip: tt('The run ends here, with no error', 'A execução termina aqui, sem erro') },
+                ]}
+                onChange={(v) => edit([{ field: 'assertOnFail', value: v === 'continue' ? 'Continue' : v === 'quiet' ? 'StopReplay' : '' }])}
+              />
+            </Section>
+          ) : (
+            <Section label="If the check itself errors">
+              <Segmented<'false' | 'halt'>
+                label="If the check itself errors"
+                value={step.ifOnProbeError === 'Halt' ? 'halt' : 'false'}
+                disabled={locked}
+                options={[
+                  { value: 'false', label: met ? 'Treat as not met' : 'Treat as not found', tip: step.actionType === 'While' ? tt('The loop ends', 'O loop termina') : tt('The If goes the other way', 'O If vai para o outro lado') },
+                  { value: 'halt', label: 'Stop the run' },
+                ]}
+                onChange={(v) => edit([{ field: 'ifOnProbeError', value: v === 'halt' ? 'Halt' : '' }])}
+              />
+            </Section>
+          )}
           <div className="insp-rule" />
           <CheckFields check={check} step={step} locked={locked} />
         </>
@@ -83,8 +101,8 @@ export function ConditionEditor({ step, locked }: { step: ActionItem; locked: bo
 function CheckFields({ check, step, locked }: { check: Check; step: ActionItem; locked: boolean }) {
   switch (check.type) {
     case 'ImageFound': return <ImageProbe step={step} locked={locked} reads={step.conditionNegate ? 'not found' : 'found'} />;
-    case 'PixelColorMatch': return <PixelCheck step={step} locked={locked} />;
-    case 'ScreenText': return <ScreenTextCheck step={step} locked={locked} />;
+    case 'PixelColorMatch': return <PixelCheck step={step} locked={locked} reads={step.conditionNegate ? 'not found' : 'found'} />;
+    case 'ScreenText': return <ScreenTextCheck step={step} locked={locked} reads={step.conditionNegate ? 'not found' : 'found'} />;
     case 'WindowOpen': return <WindowCheck step={step} locked={locked} />;
     case 'ProcessRunning': return <ProcessCheck step={step} locked={locked} />;
     case 'FileExists': return <FileExistsCheck step={step} locked={locked} />;

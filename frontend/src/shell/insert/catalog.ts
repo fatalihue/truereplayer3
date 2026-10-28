@@ -28,8 +28,6 @@ export interface CatalogItem {
   icon?: string;
   /** More words the search knows it by. */
   words?: string;
-  /** Opens a second level to choose from. */
-  more?: boolean;
   /** Means something only inside a While or a For Each Data Row (Break loop, Next iteration). */
   inLoop?: boolean;
   insert?: Insert;
@@ -46,9 +44,10 @@ export const ITEMS: CatalogItem[] = [
 
   { id: 'pause', group: 'wait', type: 'Pause', name: 'Pause', desc: 'Wait for a key or a timeout', words: 'delay sleep time timeout resume hold', insert: inserts.pause },
   { id: 'waitImage', group: 'wait', type: 'WaitImage', name: 'Wait Image', desc: 'Until an image shows up on screen', words: 'picture screenshot find appear capture', insert: inserts.waitImage },
-  { id: 'waitPixel', group: 'wait', type: 'WaitPixelColor', name: 'Wait Pixel Color', desc: 'Until a point on screen turns a color', words: 'pixel colour point' },
-  { id: 'waitText', group: 'wait', type: 'WaitText', name: 'Wait Text', desc: 'Until text appears, read with Screen Text', words: 'ocr read screen' },
-  { id: 'waitUntil', group: 'wait', type: 'Assert', icon: 'clock', name: 'Wait until…', desc: 'Window open, process, clipboard, variable, file or time', words: 'condition state', more: true },
+  { id: 'waitPixel', group: 'wait', type: 'WaitPixelColor', name: 'Wait Pixel Color', desc: 'Until a point on screen turns a color', words: 'pixel colour point', insert: inserts.waitPixel },
+  { id: 'waitText', group: 'wait', type: 'WaitText', name: 'Wait Text', desc: 'Until text shows up on screen, read by OCR', words: 'ocr read screen disappear change', insert: inserts.waitText },
+  // The condition is chosen in the Inspector's Check list, as an If's (casca-031 to 036).
+  { id: 'waitUntil', group: 'wait', type: 'Assert', icon: 'clock', name: 'Wait until…', desc: 'Window open, process, clipboard, variable, file or time', words: 'condition state', insert: inserts.waitUntil },
 
   // The check is chosen in the Inspector, and the block is born with it.
   { id: 'if', group: 'flow', type: 'If', name: 'If', desc: 'Runs the steps inside only when a check passes', words: 'condition branch check else image pixel window', insert: inserts.if },
@@ -57,7 +56,7 @@ export const ITEMS: CatalogItem[] = [
   { id: 'break', group: 'flow', type: 'BreakLoop', name: 'Break loop', desc: 'Leaves the loop it is in', words: 'exit stop', inLoop: true, insert: inserts.breakLoop },
   { id: 'next', group: 'flow', type: 'ContinueLoop', name: 'Next iteration', desc: 'Skips to the next pass of the loop', words: 'continue skip', inLoop: true, insert: inserts.nextIteration },
 
-  { id: 'assert', group: 'checks', type: 'Assert', name: 'Assert', desc: 'Stops the run when a check fails', words: 'require verify condition fail' },
+  { id: 'assert', group: 'checks', type: 'Assert', name: 'Assert', desc: 'Stops the run when a check fails', words: 'require verify condition fail', insert: inserts.assert },
   { id: 'stop', group: 'checks', type: 'Stop', name: 'Stop', desc: 'Ends the run here', words: 'end halt finish', insert: inserts.stop },
   { id: 'return', group: 'checks', type: 'Return', name: 'Return', desc: 'Ends this pass, or goes back to the macro that ran it', words: 'exit back', insert: inserts.return },
 

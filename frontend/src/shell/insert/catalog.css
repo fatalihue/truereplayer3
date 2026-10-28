@@ -116,7 +116,6 @@
   color: var(--color-text-secondary);
 }
 .cat-later { flex: none; font-size: var(--text-caption); color: var(--color-text-tertiary); }
-.cat-more { width: 0.875rem; height: 0.875rem; color: var(--color-text-tertiary); }
 .cat-empty { margin: 1rem 0.625rem; color: var(--color-text-tertiary); }
 
 .cat-foot {

@@ -10,6 +10,9 @@ import { HexField, RailField, RegionField, ResultCard } from './probeKit';
 import { around, normalHex, regionOf, regionValue, useAsk } from './probes';
 
 type Props = { step: ActionItem; locked: boolean };
+/** How a test's verdict turns, as the image probe's: a check that passes when what it looks for is
+ *  not found, or a wait for it to go. */
+type Reads = 'found' | 'not found' | 'gone';
 const useEdit = (step: ActionItem) => {
   const cmds = useSteps();
   return (edits: StepEdit[]) => applyEdits(cmds, step.id ?? '', edits);
@@ -19,7 +22,7 @@ const useEdit = (step: ActionItem) => {
  * Pixel color: one point of the screen and the colour it must have, within a tolerance per channel.
  * Pick fills the point and its colour from one click; Test match reads the pixel now.
  */
-export function PixelCheck({ step, locked }: Props) {
+export function PixelCheck({ step, locked, reads }: Props & { reads: Reads }) {
   const edit = useEdit(step);
   const tools = useEditorTools();
   const tt = useTt();
@@ -33,7 +36,7 @@ export function PixelCheck({ step, locked }: Props) {
   const [result, setResult] = useState<{ matches: boolean; sampledHex?: string | null; error?: string } | null>(null);
   const test = useAsk('pixel:testMatchResult', setResult, 5000, () => setResult({ matches: false, error: 'No answer from the app.' }));
   const target = normalHex(step.pixelColor ?? '');
-  const negate = !!step.conditionNegate;
+  const flipped = reads !== 'found';
 
   return (
     <>
@@ -69,10 +72,11 @@ export function PixelCheck({ step, locked }: Props) {
       {result && !test.waiting && (
         result.error ? <ResultCard ok={false} title={result.error} /> : (
           <ResultCard
-            ok={result.matches !== negate}
+            ok={result.matches !== flipped}
             title={<>Sampled <span className="insp-mono">{result.sampledHex ?? '—'}</span> · Target <span className="insp-mono">{target} ± {tolerance}</span>{result.matches ? '' : ' — out of tolerance'}</>}
           >
-            {negate && (result.matches ? 'Set to pass when not found: right now it does not pass.' : 'Set to pass when not found: right now it passes.')}
+            {reads === 'not found' && (result.matches ? 'Set to pass when not found: right now it does not pass.' : 'Set to pass when not found: right now it passes.')}
+            {reads === 'gone' && (result.matches ? 'Still that color: the wait goes on.' : 'Not that color: the wait ends now.')}
           </ResultCard>
         )
       )}
@@ -87,10 +91,11 @@ interface Read { text?: string; matched?: boolean | null; number?: string | null
  * Text on screen (OCR): the region read, how the text is matched — Contains, Equals, Regex, or the
  * first number compared with a value, one control ("O conceito junta 'Read as' e 'Match'") —, the
  * text colour to read alone (game HUDs), and Test now, whose answer can become the text. Set
- * Variable's Screen mode reads with no match ('read'): the text, or the first number, is the value.
+ * Variable's Screen mode reads with no match ('read'): the text, or the first number, is the value;
+ * a Wait Text that waits for the region to change ('watch') reads it the same way.
  */
-export function ScreenTextCheck({ step, locked, variant = 'match' }: Props & { variant?: 'match' | 'read' }) {
-  const read = variant === 'read';
+export function ScreenTextCheck({ step, locked, variant = 'match', reads = 'found' }: Props & { variant?: 'match' | 'read' | 'watch'; reads?: Reads }) {
+  const read = variant !== 'match';
   const edit = useEdit(step);
   const tools = useEditorTools();
   const tt = useTt();
@@ -145,7 +150,12 @@ export function ScreenTextCheck({ step, locked, variant = 'match' }: Props & { v
         onRegion={(r) => edit([{ field: 'waitImageSearchRegion', value: regionValue(r) }])}
       />
       {read ? (
-        <Section label="Read as" hint={number ? 'Stores the first number in the region.' : 'Stores what the region reads.'}>
+        <Section
+          label="Read as"
+          hint={variant === 'watch'
+            ? (number ? 'Watches the first number in the region.' : 'Watches what the region reads.')
+            : (number ? 'Stores the first number in the region.' : 'Stores what the region reads.')}
+        >
           <Segmented<'text' | 'number'>
             label="Read as"
             value={number ? 'number' : 'text'}
@@ -241,10 +251,13 @@ export function ScreenTextCheck({ step, locked, variant = 'match' }: Props & { v
       {result && !test.waiting && (
         result.error ? <ResultCard ok={false} title={result.error} /> : (
           <ResultCard
-            ok={result.matched === true}
+            // A read with nothing to match (no text yet, or a read for the value) is good when it read something.
+            ok={result.matched == null ? !!result.text : result.matched !== (reads !== 'found')}
             title={!result.text ? 'Nothing readable'
               : <>Reads “{result.text.length > 80 ? `${result.text.slice(0, 77)}…` : result.text}”{result.number ? <> · number <span className="insp-mono">{result.number}</span></> : null}{result.matched === false ? ' — no match yet' : result.matched ? ' — a match' : ''}</>}
           >
+            {reads === 'not found' && result.matched != null && (result.matched ? 'Set to pass when not found: right now it does not pass.' : 'Set to pass when not found: right now it passes.')}
+            {reads === 'gone' && result.matched != null && (result.matched ? 'Still on the screen: the wait goes on.' : 'Not on the screen: the wait ends now.')}
             {(result.elapsedMs != null || result.variant) && <span>{[result.elapsedMs != null ? `${result.elapsedMs} ms` : null, result.variant].filter(Boolean).join(' · ')}</span>}
             {result.previewBase64 && <img className="insp-result-image" src={`data:image/png;base64,${result.previewBase64}`} alt="What was read" />}
             {snapped && <span>Search region set around this match.</span>}

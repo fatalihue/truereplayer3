@@ -33,9 +33,23 @@ export const CHECKS: Check[] = [
   { type: 'TimeWindow', name: 'Time', icon: 'clock', desc: 'A time of day and days of the week', descPt: 'Um horário e dias da semana', subject: null },
 ];
 
-/** A While takes every check but Random: a coin flip has no stable way out of a loop. */
+/** The checks of a state, the six an Assert takes (the engine's actions:insertAssert). */
+export type StateCheck = Extract<ConditionType, 'WindowOpen' | 'ProcessRunning' | 'FileExists' | 'ClipboardMatch' | 'Variable' | 'TimeWindow'>;
+const STATE_CHECKS: ReadonlySet<ConditionType> = new Set<StateCheck>(['WindowOpen', 'ProcessRunning', 'FileExists', 'ClipboardMatch', 'Variable', 'TimeWindow']);
+export const isStateCheck = (type: ConditionType): type is StateCheck => STATE_CHECKS.has(type);
+
+/**
+ * A While takes every check but Random: a coin flip has no stable way out of a loop. An Assert,
+ * and a Wait until (an Assert that waits, then stops quietly), take the checks of a state: an image
+ * and a pixel have their waits, a coin flip is no requirement, and a page element has Assert Element.
+ */
 export const checksFor = (opener: CheckOpener | string): Check[] =>
-  opener === 'While' ? CHECKS.filter(c => c.type !== 'Random') : CHECKS;
+  opener === 'While' ? CHECKS.filter(c => c.type !== 'Random')
+  : opener === 'Assert' || opener === 'WaitUntil' ? CHECKS.filter(c => isStateCheck(c.type))
+  : CHECKS;
+
+/** The step type a check being made becomes: a Wait until is an Assert. */
+export const openerType = (opener: CheckOpener) => (opener === 'WaitUntil' ? 'Assert' : opener);
 
 export const checkOf = (type: string | null | undefined): Check | undefined =>
   CHECKS.find(c => c.type.toLowerCase() === (type ?? '').toLowerCase());
