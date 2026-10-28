@@ -68,13 +68,14 @@ export const ITEMS: CatalogItem[] = [
   // library onto the steps makes one too.
   { id: 'runMacro', group: 'windows', type: 'RunProfile', name: 'Run Macro', desc: 'Runs another macro, then comes back', words: 'profile call sub chain', insert: inserts.runMacro },
 
-  { id: 'openUrl', group: 'browser', type: 'BrowserNavigate', name: 'Open URL', desc: 'Opens a page in the browser', words: `${BROWSER} url link website navigate` },
-  { id: 'clickElement', group: 'browser', type: 'BrowserClick', name: 'Click Element', desc: 'Clicks an element of the page', words: BROWSER },
-  { id: 'rightClickElement', group: 'browser', type: 'BrowserRightClick', name: 'Right Click Element', desc: 'Right-clicks an element of the page', words: BROWSER },
-  { id: 'typeText', group: 'browser', type: 'BrowserType', name: 'Type Text', desc: 'Types into a field of the page', words: BROWSER },
-  { id: 'selectOption', group: 'browser', type: 'BrowserSelectOption', name: 'Select Option', desc: 'Picks an option in a list of the page', words: `${BROWSER} dropdown` },
-  { id: 'waitElement', group: 'browser', type: 'BrowserWaitElement', name: 'Wait Element', desc: 'Until an element shows up on the page', words: BROWSER },
-  { id: 'assertElement', group: 'browser', type: 'BrowserAssert', name: 'Assert Element', desc: 'Stops the run when the page lacks an element', words: BROWSER },
+  // Born empty, and filled in the Inspector: the address, or the element (Pick element) and the rest.
+  { id: 'openUrl', group: 'browser', type: 'BrowserNavigate', name: 'Open URL', desc: 'Opens a page in the browser', words: `${BROWSER} url link website navigate`, insert: inserts.openUrl },
+  { id: 'clickElement', group: 'browser', type: 'BrowserClick', name: 'Click Element', desc: 'Clicks an element of the page', words: BROWSER, insert: inserts.clickElement },
+  { id: 'rightClickElement', group: 'browser', type: 'BrowserRightClick', name: 'Right Click Element', desc: 'Right-clicks an element of the page', words: BROWSER, insert: inserts.rightClickElement },
+  { id: 'typeText', group: 'browser', type: 'BrowserType', name: 'Type Text', desc: 'Types into a field of the page', words: BROWSER, insert: inserts.typeText },
+  { id: 'selectOption', group: 'browser', type: 'BrowserSelectOption', name: 'Select Option', desc: 'Picks an option in a list of the page', words: `${BROWSER} dropdown`, insert: inserts.selectOption },
+  { id: 'waitElement', group: 'browser', type: 'BrowserWaitElement', name: 'Wait Element', desc: 'Until an element shows up on the page', words: BROWSER, insert: inserts.waitElement },
+  { id: 'assertElement', group: 'browser', type: 'BrowserAssert', name: 'Assert Element', desc: 'Stops the run when the page lacks an element', words: BROWSER, insert: inserts.assertElement },
 ];
 
 const fold = (s: string) => s.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');

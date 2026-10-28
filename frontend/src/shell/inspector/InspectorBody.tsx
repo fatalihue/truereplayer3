@@ -11,14 +11,14 @@ import { CheckDraft } from './CheckDraft';
 import { openerType } from './checks';
 import { ClickEditor } from './ClickEditor';
 import { DraftField, Section } from './fields';
-import { drafts, focusList, loadProbeEditors, loadSendTextEditor, loadSimpleEditors, loadWindowEditors, takeFocusAsk, type Draft, type TextDraft } from './inspectorState';
+import { drafts, focusList, loadBrowserEditors, loadProbeEditors, loadSendTextEditor, loadSimpleEditors, loadWindowEditors, takeFocusAsk, type Draft, type TextDraft } from './inspectorState';
 import { DraftKeyEditor, KeyEditor, KeyHalfEditor } from './KeyEditor';
 import { PauseEditor } from './PauseEditor';
 import './editors.css';
 import './editorIcons.css';
 
 // Where a step has no delay of its own to edit here: the If family and the jump markers (the While
-// keeps its settle), and the browser steps, whose delay is part of their own editor (phase 2).
+// keeps its settle), and the browser steps, whose delay is part of their own editor, by the Timeout.
 const NO_DELAY_FIELD = new Set(['If', 'ElseIf', 'Else', 'EndIf', 'EndLoop', 'BreakLoop', 'ContinueLoop', 'ForEachRow']);
 const MAX_DELAY_MS = 999_999_999;
 const CONDITION_STEPS = new Set(['If', 'ElseIf', 'While', 'Assert']);
@@ -55,16 +55,18 @@ export default function InspectorBody({ indices, locked, note, draft }: { indice
   const hasProbe = steps.some(s => WAIT_STEPS.has(s.actionType) || CONDITION_STEPS.has(s.actionType));
   const hasSimple = steps.some(s => SIMPLE_STEPS.has(s.actionType));
   const hasWindow = steps.some(s => WINDOW_STEPS.has(s.actionType));
+  const hasBrowser = steps.some(s => s.actionType.startsWith('Browser'));
   useEffect(() => {
-    if (!hasText && !hasProbe && !hasSimple && !hasWindow) return;
+    if (!hasText && !hasProbe && !hasSimple && !hasWindow && !hasBrowser) return;
     const id = requestIdleCallback(() => {
       if (hasProbe) void preload(loadProbeEditors);
       if (hasText) void preload(loadSendTextEditor);
       if (hasSimple) void preload(loadSimpleEditors);
       if (hasWindow) void preload(loadWindowEditors);
+      if (hasBrowser) void preload(loadBrowserEditors);
     });
     return () => cancelIdleCallback(id);
-  }, [hasText, hasProbe, hasSimple, hasWindow]);
+  }, [hasText, hasProbe, hasSimple, hasWindow, hasBrowser]);
 
   if (draft) return <DraftView draft={draft} steps={steps} locked={locked} note={note} />;
   const one = indices.length === 1 ? steps[indices[0]] : null;
@@ -202,6 +204,7 @@ function StepEditor({ step, index, steps, locked }: { step: ActionItem; index: n
     : WAIT_STEPS.has(t) || CONDITION_STEPS.has(t) ? <ProbeSlot step={step} locked={locked} />
     : SIMPLE_STEPS.has(t) ? <SimpleSlot step={step} index={index} locked={locked} />
     : WINDOW_STEPS.has(t) ? <WindowSlot step={step} locked={locked} />
+    : t.startsWith('Browser') ? <BrowserSlot step={step} locked={locked} />
     : MARKER_NOTES[t] ? <p className="insp-summary">{MARKER_NOTES[t]}</p>
     // The other types' editors come with phase 2.
     : <NotBuilt what={`${stepName(t)} editor`} />;
@@ -282,6 +285,15 @@ function WindowSlot({ step, locked }: { step: ActionItem; locked: boolean }) {
   return step.actionType === 'RunProfile'
     ? <mod.RunMacroEditor step={step} locked={locked} />
     : <mod.ActivateWindowEditor step={step} locked={locked} />;
+}
+
+/** The browser steps, from their chunk, the same way. */
+function BrowserSlot({ step, locked }: { step: ActionItem; locked: boolean }) {
+  const mod = useLoaded(loadBrowserEditors);
+  useEffect(() => {
+    if (!mod) void preload(loadBrowserEditors);
+  }, [mod]);
+  return mod ? <mod.BrowserEditor step={step} locked={locked} /> : null;
 }
 
 /** The Run Macro being made, from the same chunk. */

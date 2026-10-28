@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import type { ActionItem, SelectorAlternative } from '../../bridge/messageTypes';
+import { useRef, useState } from 'react';
+import type { ActionItem } from '../../bridge/messageTypes';
 import { useEditorTools } from '../../logic/useEditorTools';
 import { useSteps } from '../../logic/useSteps';
 import { useTt } from '../../state/LanguageContext';
@@ -8,6 +8,7 @@ import { DraftField, Section, Segmented } from './fields';
 import { applyEdits, type StepEdit } from './inspectorState';
 import { HexField, RailField, RegionField, ResultCard } from './probeKit';
 import { around, normalHex, regionOf, regionValue, useAsk } from './probes';
+import { SelectorField } from './selectorField';
 
 type Props = { step: ActionItem; locked: boolean };
 /** How a test's verdict turns, as the image probe's: a check that passes when what it looks for is
@@ -280,125 +281,30 @@ export function ScreenTextCheck({ step, locked, variant = 'match', reads = 'foun
   );
 }
 
-// The selector's stability, from its text alone (no page): an id or a test hook is stable, a name or
-// a label strong, a text match or a tag with a class decent, a path through the tree fragile.
-function estimateTier(selector: string): SelectorAlternative['tier'] {
-  const s = selector.trim();
-  if (!s) return 'C';
-  if (s.startsWith('text=') || s.startsWith('text*=') || s.startsWith('text~=') || s.startsWith('text/')) return 'B';
-  if (/^#[A-Za-z_][\w-]*$/.test(s)) return 'S';
-  if (/\[data-(testid|test|cy|qa)=/.test(s)) return 'S';
-  if (/\[(name|aria-label|placeholder)=/.test(s)) return 'A';
-  if (s.includes(':nth-') || s.includes(' > ')) return 'C';
-  if (/^[a-z]+\./i.test(s)) return 'B';
-  return 'C';
-}
-const TIER_NAMES: Record<SelectorAlternative['tier'], string> = { S: 'Stable', A: 'Strong', B: 'Decent', C: 'Fragile' };
-const TIER_NAMES_PT: Record<SelectorAlternative['tier'], string> = { S: 'Estável', A: 'Forte', B: 'Razoável', C: 'Frágil' };
-
 type BrowserState = 'appears' | 'disappears' | 'enabled' | 'text-match';
 
 /**
- * Browser element: an element of the active tab, by its CSS selector, in a state — visible, gone,
- * enabled, or with a text. Pick element takes it from the page through the extension (Esc cancels);
- * with two or more candidates the alternatives show, and stay saved as the run's fallbacks. Typing
- * the selector drops them. Check now asks the page the same instant question the run asks.
+ * Browser element: an element of the active tab, by its CSS selector (the shield, Pick element and
+ * the alternatives, as in the browser steps), in a state — visible, gone, enabled, or with a text.
+ * Check now asks the page the same instant question the run asks.
  */
 export function BrowserCheck({ step, locked }: Props) {
   const edit = useEdit(step);
   const tools = useEditorTools();
-  const tt = useTt();
   const id = step.id ?? '';
   const selector = step.key ?? '';
-  const tier = estimateTier(selector);
   const alternatives = step.selectorAlternatives ?? [];
   const state: BrowserState = step.waitMode === 'disappears' || step.waitMode === 'enabled' || step.waitMode === 'text-match' ? step.waitMode : 'appears';
-  const [showAlternatives, setShowAlternatives] = useState(false);
-  const [pickError, setPickError] = useState<string | null>(null);
-  const pick = useAsk('browser:pickResult', (r) => {
-    if (!r.selector) { setPickError(r.error || null); return; }
-    setPickError(null);
-    const alts = r.alternatives ?? [];
-    edit([{ field: 'key', value: r.selector }, { field: 'selectorAlternatives', value: alts.length > 1 ? JSON.stringify(alts) : '' }]);
-    setShowAlternatives(alts.length > 1);
-  });
   const [result, setResult] = useState<{ satisfied: boolean; raw: boolean; connected: boolean; negate: boolean; lost?: boolean } | null>(null);
   const asked = useRef(false);
   const check = useAsk('browser:testConditionResult',
     (r) => setResult({ satisfied: r.satisfied, raw: r.raw, connected: r.connected, negate: asked.current }),
     6000,
     () => setResult({ satisfied: false, raw: false, connected: false, negate: asked.current, lost: true }));
-  // Leaving the step cancels a pick still waiting on the page (editor-passo-005).
-  const live = useRef(pick.waiting);
-  useEffect(() => { live.current = pick.waiting; });
-  useEffect(() => () => cancelPick(tools, live), [tools]);
-
-  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== 'Escape' || !pick.waiting || e.defaultPrevented) return;
-    e.preventDefault();
-    tools.cancelPick({});
-    pick.drop();
-  };
 
   return (
-    <div className="insp-group" onKeyDown={onKeyDown}>
-      <Section
-        label="CSS selector"
-        aside={selector ? <span className="insp-tier" data-tier={tier} data-tip={tt(`${tier} · ${TIER_NAMES[tier]}`, `${tier} · ${TIER_NAMES_PT[tier]}`)}>{tier} · {TIER_NAMES[tier]}</span> : undefined}
-        hint={pickError ? <span data-error="">{pickError}</span> : 'With the extension offline, it reads as not found.'}
-      >
-        <div className="insp-line">
-          <DraftField
-            stepId={id}
-            field="key"
-            label="CSS selector"
-            kind="mono"
-            placeholder=".btn-save"
-            stored={selector}
-            disabled={locked}
-            parse={(t) => t.trim()}
-            onApply={(v) => { setShowAlternatives(false); edit([{ field: 'key', value: v }, { field: 'selectorAlternatives', value: '' }]); }}
-          />
-          <button
-            type="button"
-            className="insp-icon-button"
-            aria-label="Pick element"
-            aria-pressed={pick.waiting}
-            data-tip={pick.waiting ? tt('Picking on the page · Esc cancels', 'Escolhendo na página · Esc cancela') : tt('Pick an element on the page', 'Escolher um elemento na página')}
-            disabled={locked}
-            onClick={() => {
-              if (pick.waiting) { tools.cancelPick({}); pick.drop(); return; }
-              setShowAlternatives(false);
-              setPickError(null);
-              pick.ask(requestId => tools.pickElement({ requestId }));
-            }}
-          >
-            <span className="step-icon" data-icon="crosshair" />
-          </button>
-        </div>
-        {showAlternatives && alternatives.length > 1 && (
-          <div className="insp-alts" role="group" aria-label="Alternatives">
-            <span className="insp-alts-head">
-              Alternatives
-              <button type="button" className="insp-icon-button" aria-label="Close alternatives" onClick={() => setShowAlternatives(false)}>
-                <span className="step-icon" data-icon="x" />
-              </button>
-            </span>
-            {alternatives.map((alt, i) => (
-              <button
-                key={i}
-                type="button"
-                data-tip={alt.description}
-                disabled={locked}
-                onClick={() => { edit([{ field: 'key', value: alt.selector }]); setShowAlternatives(false); }}
-              >
-                <span className="insp-tier" data-tier={alt.tier}>{alt.tier}</span>
-                <span className="insp-mono">{alt.selector}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </Section>
+    <div className="insp-group">
+      <SelectorField step={step} locked={locked} hint="With the extension offline, it reads as not found." />
       <Section label="State">
         <Segmented<BrowserState>
           label="State"
@@ -450,8 +356,4 @@ export function BrowserCheck({ step, locked }: Props) {
       )}
     </div>
   );
-}
-
-function cancelPick(tools: ReturnType<typeof useEditorTools>, live: { current: boolean }) {
-  if (live.current) tools.cancelPick({});
 }

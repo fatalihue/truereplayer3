@@ -1,5 +1,5 @@
 import type { useSteps } from '../../logic/useSteps';
-import { drafts, loadInspectorBody, loadProbeEditors, loadSendTextEditor, loadSimpleEditors, loadWindowEditors } from '../inspector/inspectorState';
+import { drafts, loadBrowserEditors, loadInspectorBody, loadProbeEditors, loadSendTextEditor, loadSimpleEditors, loadWindowEditors } from '../inspector/inspectorState';
 import { preload } from '../lazyModule';
 import { arrival, insertPoint } from '../list/selection';
 import { useShell } from '../store';
@@ -23,6 +23,14 @@ const plain = (actionType: string, editors?: () => Promise<unknown>): Insert =>
     if (editors) void preload(editors);
   };
 
+/** A browser step, born empty — no selector, no address — and filled in the Inspector. */
+const browser = (actionType: string): Insert =>
+  (cmds, at) => {
+    cmds.addBrowserAction({ actionType, selector: '', insertIndex: at });
+    void preload(loadInspectorBody);
+    void preload(loadBrowserEditors);
+  };
+
 /**
  * The inserts, shared by the insert row's buttons and the Add step catalog. A Click is born at the
  * cursor and a Pause waits 1 s, the old Pause dialog's default; the Inspector then picks the point
@@ -33,8 +41,8 @@ const plain = (actionType: string, editors?: () => Promise<unknown>): Insert =>
  * text editor, with the Check list — and are born from there; a Wait until is an Assert born
  * waiting 10 s and stopping quietly, and a Run Macro is born with the macro picked there. A Scroll
  * is born turning down, and the Inspector turns it; the loop jumps and the two endings have nothing
- * to set; a Set Variable, a Copy to Slot and an Activate Window are born empty and filled in the
- * Inspector.
+ * to set; a Set Variable, a Copy to Slot, an Activate Window and the browser steps are born empty
+ * and filled in the Inspector.
  */
 export const inserts = {
   click: ((cmds, at) => cmds.insertClick({ actionType: 'LeftClick', atCursor: true, insertIndex: at })) as Insert,
@@ -58,6 +66,13 @@ export const inserts = {
   copyToSlot: plain('CopyToSlot', loadSimpleEditors),
   activateWindow: plain('ActivateWindow', loadWindowEditors),
   runMacro: draft((at, macro) => ({ kind: 'macro', at, macro }), loadWindowEditors),
+  openUrl: browser('BrowserNavigate'),
+  clickElement: browser('BrowserClick'),
+  rightClickElement: browser('BrowserRightClick'),
+  typeText: browser('BrowserType'),
+  selectOption: browser('BrowserSelectOption'),
+  waitElement: browser('BrowserWaitElement'),
+  assertElement: browser('BrowserAssert'),
 };
 
 /** Sends an insert at the insertion point, and has the list select the step when it lands. */

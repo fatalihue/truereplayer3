@@ -150,6 +150,8 @@ interface LexicalTokenEditorProps {
    * 340 px sheet field has no room for. A slot, not a flag: the caller owns the words.
    */
   placeholder?: React.ReactNode;
+  /** The text box's accessible name: "Text to send" by default, the payload of a Send Text. */
+  ariaLabel?: string;
   /**
    * Typing `{` opens the token list (TokenAutocompletePlugin) — the keyboard door to the Insert
    * palette. Opt-in per surface: the Insert Text dialog and both sheet editors (Text to Type,
@@ -1375,6 +1377,7 @@ export function LexicalTokenEditor({
   contentClassName = EDITOR_DENSITY[density].content,
   placeholderClassName = EDITOR_DENSITY[density].placeholder,
   placeholder: placeholderContent = 'Type the text to send…',
+  ariaLabel = 'Text to send',
   tokenAutocomplete = false,
   tokenScope = 'desktop',
   onClipboardChipEdit,
@@ -1420,7 +1423,7 @@ export function LexicalTokenEditor({
   const contentEditable = (
     <ContentEditable
       className={contentClassName}
-      aria-label="Text to send"
+      aria-label={ariaLabel}
       spellCheck={false}
     />
   );

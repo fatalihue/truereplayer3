@@ -1,0 +1,8 @@
+/* The editors of the browser steps (browserEditors.tsx), loaded with them. */
+
+/* Test action's answer: the extension's tip under its message, and a fallback that saved the step,
+   with the one click that makes it the primary. */
+.insp-test-tip { font-style: italic; color: var(--color-text-tertiary); }
+.insp-test-via { display: flex; align-items: baseline; gap: 0.5rem; min-width: 0; max-width: 100%; }
+.insp-test-via .insp-mono { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.insp-test-via .insp-link { flex: none; }

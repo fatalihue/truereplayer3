@@ -20,6 +20,8 @@ export const loadProbeEditors = () => import('./probeEditors');
 export const loadSimpleEditors = () => import('./simpleEditors');
 /** …and the windows' and macros' (Activate Window, Run Macro and the macro it runs), likewise. */
 export const loadWindowEditors = () => import('./windowEditors');
+/** …and the browser steps' (Open URL and the six that act on an element), likewise. */
+export const loadBrowserEditors = () => import('./browserEditors');
 /** The macro's own settings, shown with no step chosen: the page's first idle moment once the app's
  *  state is drawn, as the status bar's switches (never ahead of the library). */
 export const loadMacroSettings = () => import('./macro/MacroSettings');
@@ -84,6 +86,10 @@ export type StepEdit = { field: string; value: string };
 /** The step of today's duration spinners (a hold): 1 s from 1 s up, 100 ms below it. */
 export const durationStep = (ms: number, dir: 1 | -1) => ((dir > 0 ? ms : ms - 1) >= 1000 ? 1000 : 100);
 
+/** When an edit last went to the engine: a test that acts for real waits for its echo (the field
+ *  left by the press on the test's own button sends just before it). */
+export const lastEdit = { at: 0 };
+
 /**
  * Sends edits to one step, found by its id now: it may have moved since the typing began. One
  * message, one undo entry. False when the step is gone or there is nothing to send.
@@ -93,6 +99,7 @@ export function applyEdits(cmds: ReturnType<typeof useSteps>, stepId: string, ed
   const index = useShell.getState().app.actions.findIndex(s => s.id === stepId);
   if (index < 0) return false;
   cmds.editMany({ index, id: stepId, edits });
+  lastEdit.at = performance.now();
   return true;
 }
 
