@@ -1,0 +1,48 @@
+/* The editors of the windows and the macros (windowEditors.tsx), loaded with them. */
+
+/* The macros to choose from: a search over a list that keeps its height while it narrows. */
+.insp-picker { display: flex; flex-direction: column; gap: 0.375rem; min-width: 0; }
+.insp-picker .insp-line > .insp-box { flex: 1; }
+.insp-picker-glass { width: 0.8125rem; height: 0.8125rem; flex: none; color: var(--color-text-tertiary); }
+.insp-picker-list {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-input);
+}
+.insp-picker-list button {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.5rem;
+  height: 1.875rem;
+  padding: 0 0.625rem;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.insp-picker-list button[data-lit] { background: var(--color-bg-elevated); color: var(--color-text-primary); }
+/* The chosen one: the accent and its ✓, two signs, since a tint alone fades on the low-contrast themes. */
+.insp-picker-list button[aria-selected='true'] { background: color-mix(in srgb, var(--color-accent) 12%, transparent); color: var(--color-accent); }
+.insp-picker-list button:disabled { cursor: default; opacity: 0.6; }
+.insp-picker-list .step-icon { width: 0.75rem; height: 0.75rem; flex: none; }
+.insp-picker-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.insp-picker-none { margin: auto; font-size: var(--text-minor); color: var(--color-text-tertiary); }
+
+/* A note on how the step behaves, quieter than its summary. */
+.insp-callout {
+  margin: 0;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-card);
+  font-size: var(--text-minor);
+  line-height: 1rem;
+  color: var(--color-text-tertiary);
+}

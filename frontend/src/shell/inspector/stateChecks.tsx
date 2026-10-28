@@ -28,8 +28,10 @@ const validRegex = (s: string) => {
 /**
  * Window open: the window by its process and/or its title (Contains or a .NET regex), in front or
  * just open. Detect window fills both from the next window clicked; Test asks the engine now.
+ * Activate Window ('activate') takes the same window by which match it is, front to back, instead
+ * of whether it is in front, and Test looks for that match.
  */
-export function WindowCheck({ step, locked }: Props) {
+export function WindowCheck({ step, locked, activate = false }: Props & { activate?: boolean }) {
   const edit = useEdit(step);
   const tools = useEditorTools();
   const tt = useTt();
@@ -37,6 +39,7 @@ export function WindowCheck({ step, locked }: Props) {
   const regex = step.windowTitleMatchMode === 'regex';
   const process = step.windowProcessName ?? '';
   const title = step.windowTitle ?? '';
+  const nth = Math.max(1, step.windowMatchIndex ?? 1);
   const [result, setResult] = useState<{ found: boolean; matchProcess: string; matchTitle: string; error?: string } | null>(null);
   const test = useAsk('window:testProbeResult', setResult);
   const { subscribe } = useBridge();
@@ -80,7 +83,7 @@ export function WindowCheck({ step, locked }: Props) {
         label="Title"
         hint={regex && title && !validRegex(title)
           ? <span data-error="">This does not look like a valid regular expression.</span>
-          : process ? 'Case-insensitive.' : 'Case-insensitive. Fill at least one.'}
+          : process || activate ? 'Case-insensitive.' : 'Case-insensitive. Fill at least one.'}
       >
         <Segmented<'contains' | 'regex'>
           label="Title match mode"
@@ -94,17 +97,26 @@ export function WindowCheck({ step, locked }: Props) {
           {title && <Clear label="Clear the title" labelPt="Limpar o título" disabled={locked} onClear={() => edit([{ field: 'windowTitle', value: '' }])} />}
         </div>
       </Section>
-      <div className="insp-row">
-        <span className="insp-row-label">Foreground window only</span>
-        <Switch label="Foreground window only" tip={tt('It must be in front, not just open', 'Precisa estar em primeiro plano, não só aberta')} checked={!!step.windowMatchForegroundOnly} disabled={locked} onChange={(on) => edit([{ field: 'windowMatchForegroundOnly', value: String(on) }])} />
-      </div>
+      {activate ? (
+        // Above 1, "no window" means fewer than this many: the Launch path runs then (editor-passo-174).
+        <Section label="Match #" hint={nth > 1 ? 'Counted front→back. Above 1, Launch fires when FEWER than this many match.' : '1 = frontmost.'}>
+          <DraftField stepId={id} field="windowMatchIndex" label="Match #" kind="int" min={1} max={99} stored={String(nth)} disabled={locked} />
+        </Section>
+      ) : (
+        <div className="insp-row">
+          <span className="insp-row-label">Foreground window only</span>
+          <Switch label="Foreground window only" tip={tt('It must be in front, not just open', 'Precisa estar em primeiro plano, não só aberta')} checked={!!step.windowMatchForegroundOnly} disabled={locked} onChange={(on) => edit([{ field: 'windowMatchForegroundOnly', value: String(on) }])} />
+        </div>
+      )}
       <div className="insp-pair">
         <button
           type="button"
           className="insp-button"
           data-armed={detecting ? '' : undefined}
           data-tip={detecting
-            ? tt('Click the window to check for. Click here or press Esc to cancel.', 'Clique na janela a checar. Clique aqui ou aperte Esc para cancelar.')
+            ? (activate
+              ? tt('Click the window to act on. Click here or press Esc to cancel.', 'Clique na janela em que agir. Clique aqui ou aperte Esc para cancelar.')
+              : tt('Click the window to check for. Click here or press Esc to cancel.', 'Clique na janela a checar. Clique aqui ou aperte Esc para cancelar.'))
             : tt('The next window you click fills the process and the title', 'A próxima janela que você clicar preenche o processo e o título')}
           disabled={locked}
           onClick={() => {
@@ -126,7 +138,7 @@ export function WindowCheck({ step, locked }: Props) {
             setResult(null);
             test.ask(requestId => tools.testWindow({
               requestId, processName: process, windowTitle: title, titleMatchMode: regex ? 'regex' : 'contains',
-              foregroundOnly: !!step.windowMatchForegroundOnly, matchIndex: 1,
+              foregroundOnly: !activate && !!step.windowMatchForegroundOnly, matchIndex: activate ? nth : 1,
             }));
           }}
         >

@@ -1,6 +1,7 @@
 import {
   Brackets, CheckCheck, ChevronsDownUp, ChevronsUpDown, ClipboardCopy, ClipboardPaste, Code2, Combine, Crosshair,
-  Eye, EyeOff, Files, Focus, Link, MoreHorizontal, MousePointerClick, Pencil, Repeat, RotateCcw, Split, Table2, Trash2,
+  Eye, EyeOff, Files, Focus, Link, MoreHorizontal, MousePointerClick, Pencil, Repeat, RotateCcw, Split, SquareArrowOutUpRight,
+  Table2, Trash2,
 } from 'lucide-react';
 import type { ActionItem } from '../../bridge/messageTypes';
 import { deleteIntent, type useSteps } from '../../logic/useSteps';
@@ -28,6 +29,8 @@ export interface StepMenuContext {
   pick: (row: number) => void;
   /** Opens the step in the Inspector, with the focus in its first field. */
   edit: (row: number) => void;
+  /** Opens another macro (a Run Macro's). */
+  openMacro: (name: string) => void;
   select: (indices: number[]) => void;
   toast: (message: string, kind?: 'success' | 'error' | 'info') => void;
   tt: Tt;
@@ -54,6 +57,13 @@ export function stepMenuEntries(ctx: StepMenuContext): MenuEntry[] {
   const entries: MenuEntry[] = [
     { label: 'Edit', icon: Pencil, shortcut: 'Enter', onSelect: () => ctx.edit(row) },
   ];
+
+  // A Run Macro opens the macro it calls (lista-074), when it is in the library: it always opens it,
+  // and never closes the one open (D1).
+  const called = t === 'RunProfile' ? step.key ?? '' : '';
+  if (called && useShell.getState().app.profiles.some(p => p.name === called)) {
+    entries.push({ label: 'Open macro', icon: SquareArrowOutUpRight, onSelect: () => ctx.openMacro(called) });
+  }
 
   // A Set Variable in Cycle starts its list over (lista-070): right under Edit, as today. The
   // engine confirms it ("Cycle '<name>' reset to the first item").

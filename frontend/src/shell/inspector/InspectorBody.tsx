@@ -11,7 +11,7 @@ import { CheckDraft } from './CheckDraft';
 import { openerType } from './checks';
 import { ClickEditor } from './ClickEditor';
 import { DraftField, Section } from './fields';
-import { drafts, focusList, loadProbeEditors, loadSendTextEditor, loadSimpleEditors, takeFocusAsk, type Draft, type TextDraft } from './inspectorState';
+import { drafts, focusList, loadProbeEditors, loadSendTextEditor, loadSimpleEditors, loadWindowEditors, takeFocusAsk, type Draft, type TextDraft } from './inspectorState';
 import { DraftKeyEditor, KeyEditor, KeyHalfEditor } from './KeyEditor';
 import { PauseEditor } from './PauseEditor';
 import './editors.css';
@@ -24,6 +24,7 @@ const MAX_DELAY_MS = 999_999_999;
 const CONDITION_STEPS = new Set(['If', 'ElseIf', 'While', 'Assert']);
 const WAIT_STEPS = new Set(['WaitImage', 'WaitPixelColor', 'WaitText']);
 const SIMPLE_STEPS = new Set(['ScrollUp', 'ScrollDown', 'SetVariable', 'CopyToSlot']);
+const WINDOW_STEPS = new Set(['ActivateWindow', 'RunProfile']);
 // The markers of a block say where their settings live (editor-passo-059), and the loop's jumps,
 // its rows and the two endings what they do (editor-passo-060): there is nothing else to set.
 const MARKER_NOTES: Record<string, string> = {
@@ -53,15 +54,17 @@ export default function InspectorBody({ indices, locked, note, draft }: { indice
   const hasText = steps.some(s => s.actionType === 'SendText');
   const hasProbe = steps.some(s => WAIT_STEPS.has(s.actionType) || CONDITION_STEPS.has(s.actionType));
   const hasSimple = steps.some(s => SIMPLE_STEPS.has(s.actionType));
+  const hasWindow = steps.some(s => WINDOW_STEPS.has(s.actionType));
   useEffect(() => {
-    if (!hasText && !hasProbe && !hasSimple) return;
+    if (!hasText && !hasProbe && !hasSimple && !hasWindow) return;
     const id = requestIdleCallback(() => {
       if (hasProbe) void preload(loadProbeEditors);
       if (hasText) void preload(loadSendTextEditor);
       if (hasSimple) void preload(loadSimpleEditors);
+      if (hasWindow) void preload(loadWindowEditors);
     });
     return () => cancelIdleCallback(id);
-  }, [hasText, hasProbe, hasSimple]);
+  }, [hasText, hasProbe, hasSimple, hasWindow]);
 
   if (draft) return <DraftView draft={draft} steps={steps} locked={locked} note={note} />;
   const one = indices.length === 1 ? steps[indices[0]] : null;
@@ -87,12 +90,13 @@ function whereOf(at: number, count: number): string {
   return count === 0 ? 'the first step' : at < count ? `after step ${at}` : `at the end, after step ${count}`;
 }
 
-const DRAFT_TYPE: Record<string, string> = { key: 'Keystroke', text: 'SendText' };
+const DRAFT_TYPE: Record<string, string> = { key: 'Keystroke', text: 'SendText', macro: 'RunProfile' };
 
 /**
  * A step being made: a Key waiting for its key, a Text for its first text — which then goes on as
- * the step it became, in the same editor —, and an If, a While, an Else If, an Assert or a Wait
- * until for its check. A Wait until becomes an Assert, and says it is a wait until then.
+ * the step it became, in the same editor —, an If, a While, an Else If, an Assert or a Wait until
+ * for its check, and a Run Macro for the macro it runs. A Wait until becomes an Assert, and says it
+ * is a wait until then.
  */
 function DraftView({ draft, steps, locked, note }: { draft: Draft; steps: ActionItem[]; locked: boolean; note: string | null }) {
   const born = draft.kind === 'text' && draft.stepId ? steps.find(s => s.id === draft.stepId) ?? null : null;
@@ -101,6 +105,7 @@ function DraftView({ draft, steps, locked, note }: { draft: Draft; steps: Action
   const waitUntil = draft.kind === 'check' && draft.opener === 'WaitUntil';
   const foot = draft.kind === 'key' ? 'The step is added with its key · Esc cancels'
     : draft.kind === 'text' ? (born ? 'Applies as you type and saves on its own · Ctrl+Z undoes' : 'The step is added with its first text · Esc cancels while it is empty')
+    : draft.kind === 'macro' ? 'Choose the macro it runs · Esc cancels'
     : waitUntil ? 'Choose what it waits for · Esc cancels'
     : 'Choose what it checks · Esc cancels';
   return (
@@ -112,6 +117,7 @@ function DraftView({ draft, steps, locked, note }: { draft: Draft; steps: Action
         {draft.kind === 'text' && <TextEditorSlot key={draft.serial} step={born} draft={draft} locked={locked} />}
         {draft.kind === 'text' && born && <CommonFields step={born} locked={locked} />}
         {draft.kind === 'check' && <CheckDraft draft={draft} locked={locked} />}
+        {draft.kind === 'macro' && <MacroDraftSlot key={draft.serial} draft={draft} locked={locked} />}
       </div>
       <Foot note={note} text={foot} />
     </>
@@ -195,6 +201,7 @@ function StepEditor({ step, index, steps, locked }: { step: ActionItem; index: n
     : t === 'SendText' ? <TextEditorSlot step={step} draft={null} locked={locked} />
     : WAIT_STEPS.has(t) || CONDITION_STEPS.has(t) ? <ProbeSlot step={step} locked={locked} />
     : SIMPLE_STEPS.has(t) ? <SimpleSlot step={step} index={index} locked={locked} />
+    : WINDOW_STEPS.has(t) ? <WindowSlot step={step} locked={locked} />
     : MARKER_NOTES[t] ? <p className="insp-summary">{MARKER_NOTES[t]}</p>
     // The other types' editors come with phase 2.
     : <NotBuilt what={`${stepName(t)} editor`} />;
@@ -263,4 +270,25 @@ function SimpleSlot({ step, index, locked }: { step: ActionItem; index: number; 
   return t === 'SetVariable' ? <mod.SetVariableEditor step={step} index={index} locked={locked} />
     : t === 'CopyToSlot' ? <mod.CopyToSlotEditor step={step} locked={locked} />
     : <mod.ScrollEditor step={step} locked={locked} />;
+}
+
+/** Activate Window and Run Macro, from their chunk, the same way. */
+function WindowSlot({ step, locked }: { step: ActionItem; locked: boolean }) {
+  const mod = useLoaded(loadWindowEditors);
+  useEffect(() => {
+    if (!mod) void preload(loadWindowEditors);
+  }, [mod]);
+  if (!mod) return null;
+  return step.actionType === 'RunProfile'
+    ? <mod.RunMacroEditor step={step} locked={locked} />
+    : <mod.ActivateWindowEditor step={step} locked={locked} />;
+}
+
+/** The Run Macro being made, from the same chunk. */
+function MacroDraftSlot({ draft, locked }: { draft: Extract<Draft, { kind: 'macro' }>; locked: boolean }) {
+  const mod = useLoaded(loadWindowEditors);
+  useEffect(() => {
+    if (!mod) void preload(loadWindowEditors);
+  }, [mod]);
+  return mod ? <mod.RunMacroDraft draft={draft} locked={locked} /> : null;
 }

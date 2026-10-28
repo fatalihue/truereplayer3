@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type MouseEvent, type RefObject } from 'react';
 import type { ProfileEntry, ProfileFolder, ProfileOrderData } from '../../bridge/messageTypes';
+import { macroDrop } from '../list/macroDrop';
 import { folderOf } from './model';
 
 export type DragKind = 'macro' | 'folder';
@@ -13,7 +14,8 @@ const SPEED = 14;  // px per frame at the very edge
 
 /**
  * Dragging in the library: a macro onto a folder (or onto Ungrouped, out of its folder), and a
- * folder up or down among the folders — the only way to order them.
+ * folder up or down among the folders — the only way to order them. A macro taken over the steps
+ * runs there instead: the list shows where, and the drop makes a Run Macro step (lista-049).
  *
  * Mouse events, not HTML drag and drop (WebView2 shows the system's drag image and cursor for
  * that). The pointer is read every event and the work is done once a frame: the card under the
@@ -21,12 +23,14 @@ const SPEED = 14;  // px per frame at the very edge
  * the engine's new order arrives, the rows slide from where they were (transform only, with the
  * animations setting on).
  */
-export function useLibraryDrag({ listRef, order, profiles, onMove, onReorder }: {
+export function useLibraryDrag({ listRef, order, profiles, onMove, onReorder, onRun }: {
   listRef: RefObject<HTMLElement | null>;
   order: ProfileOrderData;
   profiles: ProfileEntry[];
   onMove: (macro: string, folder: string | null) => void;
   onReorder: (folders: ProfileFolder[]) => void;
+  /** A macro dropped on the steps, and the place it was dropped. */
+  onRun?: (macro: string, index: number) => void;
 }) {
   const [dragging, setDragging] = useState<{ kind: DragKind; name: string; x: number; y: number } | null>(null);
   /** A macro drag: the folder under the pointer, '' for Ungrouped, null for neither. */
@@ -49,6 +53,7 @@ export function useLibraryDrag({ listRef, order, profiles, onMove, onReorder }: 
     let scrollFrame = 0;
     let overTarget: string | null = null;
     let overGap: number | null = null;
+    let overSteps = false;
     let folderCards: { name: string; el: HTMLElement }[] = [];
     let loose: HTMLElement | null = null;
 
@@ -60,9 +65,11 @@ export function useLibraryDrag({ listRef, order, profiles, onMove, onReorder }: 
     const update = () => {
       frame = 0;
       if (kind === 'macro') {
+        // Over the steps, no folder is the target: the drop runs the macro there.
+        overSteps = !!onRun && macroDrop.over(pointer.x, pointer.y);
         let found: string | null = null;
-        for (const card of folderCards) if (inside(card.el)) found = card.name;
-        if (found === null && loose && inside(loose)) found = '';
+        if (!overSteps) for (const card of folderCards) if (inside(card.el)) found = card.name;
+        if (found === null && !overSteps && loose && inside(loose)) found = '';
         if (found !== overTarget) {
           overTarget = found;
           setTarget(found);
@@ -87,6 +94,8 @@ export function useLibraryDrag({ listRef, order, profiles, onMove, onReorder }: 
 
     const scroll = () => {
       scrollFrame = 0;
+      // The steps scroll themselves under a macro taken there (macroDrop).
+      if (overSteps) return;
       const r = list.getBoundingClientRect();
       let delta = 0;
       if (pointer.y < r.top + EDGE) delta = -SPEED * Math.min(1, (r.top + EDGE - pointer.y) / EDGE);
@@ -117,12 +126,14 @@ export function useLibraryDrag({ listRef, order, profiles, onMove, onReorder }: 
       window.removeEventListener('keydown', key, true);
       cancelAnimationFrame(frame);
       cancelAnimationFrame(scrollFrame);
+      const runAt = kind === 'macro' && onRun ? macroDrop.end() : null;
       if (!active) return;
       document.body.style.cursor = '';
       // The click that ends a drag is not a click on the row or the folder under it.
       justDragged.current = true;
       setTimeout(() => { justDragged.current = false; }, 0);
-      if (commit && kind === 'macro' && overTarget !== null) {
+      if (commit && runAt !== null) onRun?.(name, runAt);
+      else if (commit && kind === 'macro' && overTarget !== null) {
         const to = overTarget === '' ? null : overTarget;
         if ((folderOf(name, order)?.name ?? null) !== to) {
           snapshot(list, '.lib-macro');

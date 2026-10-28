@@ -14,6 +14,7 @@ import { blockColor, blockMap, type BlockMap, type GhostRow } from './blocks';
 import { drafts, focusInspector, loadInspectorBody } from '../inspector/inspectorState';
 import { preload } from '../lazyModule';
 import { useArrival, useInsertFlash, useLitBlocks, useRunFollow } from './listEffects';
+import { useMacroDrop } from './macroDrop';
 import { deleteSteps } from './moves';
 import { arrival, insertPoint, selectedIndices, selection, useSelection } from './selection';
 import { StepGhost } from './StepGhost';
@@ -72,6 +73,9 @@ export function StepList() {
     locked,
     onDrop: (indices, targetIndex) => cmds.reorder({ indices, targetIndex }),
   });
+  // A macro dragged from the library over the steps: the line where its Run Macro would land.
+  const macroSlot = useMacroDrop(s => s.slot);
+  const dropLine = drag.slot ?? macroSlot;
   const lit = useLitBlocks(bodyRef, steps, owners);
   useInsertFlash(bodyRef, steps, status === 'recording');
   useArrival(bodyRef, steps, open);
@@ -139,7 +143,7 @@ export function StepList() {
   if (!open) return <p className="shell-steps-empty">Open a macro from the library.</p>;
   // The Steps tab's panel (InsertRow has the tab).
   const panel = { id: 'macro-panel-steps', role: 'tabpanel', 'aria-labelledby': 'macro-tab-steps' } as const;
-  if (steps.length === 0) return <p className="shell-steps-empty" {...panel}>No steps yet.</p>;
+  if (steps.length === 0) return <p className="shell-steps-empty" data-drop={macroSlot ? '' : undefined} {...panel}>No steps yet.</p>;
 
   const rowOf = (target: EventTarget) => (target as Element).closest<HTMLElement>('.step');
 
@@ -279,6 +283,7 @@ export function StepList() {
         if (!selectedIndices(steps).includes(row)) selection.only(steps, row);
         focusInspector();
       },
+      openMacro: (name) => macro.open(name),
       select: (indices) => selection.set(steps, indices),
       toast: (text, kind) => showToast(text, kind ?? 'info'),
       tt,
@@ -351,7 +356,7 @@ export function StepList() {
             );
           })}
           <InsertLine steps={steps} bodyRef={bodyRef} />
-          {drag.slot && <div className="steps-drop" style={{ top: drag.slot.top }} aria-hidden="true" />}
+          {dropLine && <div className="steps-drop" style={{ top: dropLine.top }} aria-hidden="true" />}
         </div>
       </div>
       {drag.drag && steps[drag.drag.lead] && (

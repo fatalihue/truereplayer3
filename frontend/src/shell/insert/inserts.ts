@@ -1,5 +1,5 @@
 import type { useSteps } from '../../logic/useSteps';
-import { drafts, loadInspectorBody, loadProbeEditors, loadSendTextEditor, loadSimpleEditors } from '../inspector/inspectorState';
+import { drafts, loadInspectorBody, loadProbeEditors, loadSendTextEditor, loadSimpleEditors, loadWindowEditors } from '../inspector/inspectorState';
 import { preload } from '../lazyModule';
 import { arrival, insertPoint } from '../list/selection';
 import { useShell } from '../store';
@@ -31,9 +31,10 @@ const plain = (actionType: string, editors?: () => Promise<unknown>): Insert =>
  * text it read). The engine keeps no Key without its key, no Text without text and no If, While or
  * Assert without its check, so those open in the Inspector first — listening for the key, with the
  * text editor, with the Check list — and are born from there; a Wait until is an Assert born
- * waiting 10 s and stopping quietly. A Scroll is born turning down, and the Inspector turns it; the
- * loop jumps and the two endings have nothing to set; a Set Variable and a Copy to Slot are born
- * empty and named in the Inspector.
+ * waiting 10 s and stopping quietly, and a Run Macro is born with the macro picked there. A Scroll
+ * is born turning down, and the Inspector turns it; the loop jumps and the two endings have nothing
+ * to set; a Set Variable, a Copy to Slot and an Activate Window are born empty and filled in the
+ * Inspector.
  */
 export const inserts = {
   click: ((cmds, at) => cmds.insertClick({ actionType: 'LeftClick', atCursor: true, insertIndex: at })) as Insert,
@@ -55,6 +56,8 @@ export const inserts = {
   return: plain('Return'),
   setVariable: plain('SetVariable', loadSimpleEditors),
   copyToSlot: plain('CopyToSlot', loadSimpleEditors),
+  activateWindow: plain('ActivateWindow', loadWindowEditors),
+  runMacro: draft((at, macro) => ({ kind: 'macro', at, macro }), loadWindowEditors),
 };
 
 /** Sends an insert at the insertion point, and has the list select the step when it lands. */

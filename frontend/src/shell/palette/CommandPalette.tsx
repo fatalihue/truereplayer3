@@ -236,6 +236,7 @@ function useItems(): PaletteItem[] {
       convertCoordinates: macro.convertCoordinates,
       pick: () => {},
       edit: (row) => { selection.only(steps, row); focusInspector(); },
+      openMacro: (name) => macro.open(name),
       select: (indices) => selection.set(steps, indices),
       toast: showToast,
       tt,

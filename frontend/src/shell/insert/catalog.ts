@@ -63,8 +63,10 @@ export const ITEMS: CatalogItem[] = [
   { id: 'setVariable', group: 'variables', type: 'SetVariable', name: 'Set Variable', desc: 'Stores a value under a name', words: 'var value counter cycle screen ocr', insert: inserts.setVariable },
   { id: 'copyToSlot', group: 'variables', type: 'CopyToSlot', name: 'Copy to Slot', desc: 'Copies the selection of the app in front into a named slot', words: 'clipboard copy clip', insert: inserts.copyToSlot },
 
-  { id: 'activateWindow', group: 'windows', type: 'ActivateWindow', name: 'Activate Window', desc: 'Brings a window to the front, or opens it', words: 'focus app program launch' },
-  { id: 'runMacro', group: 'windows', type: 'RunProfile', name: 'Run Macro', desc: 'Runs another macro, then comes back', words: 'profile call sub chain' },
+  { id: 'activateWindow', group: 'windows', type: 'ActivateWindow', name: 'Activate Window', desc: 'Brings a window to the front, or opens it', words: 'focus app program launch maximize minimize close', insert: inserts.activateWindow },
+  // The macro is chosen in the Inspector, and the step is born with it; a macro dragged from the
+  // library onto the steps makes one too.
+  { id: 'runMacro', group: 'windows', type: 'RunProfile', name: 'Run Macro', desc: 'Runs another macro, then comes back', words: 'profile call sub chain', insert: inserts.runMacro },
 
   { id: 'openUrl', group: 'browser', type: 'BrowserNavigate', name: 'Open URL', desc: 'Opens a page in the browser', words: `${BROWSER} url link website navigate` },
   { id: 'clickElement', group: 'browser', type: 'BrowserClick', name: 'Click Element', desc: 'Clicks an element of the page', words: BROWSER },

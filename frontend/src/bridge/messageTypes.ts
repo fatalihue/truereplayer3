@@ -1349,7 +1349,9 @@ export type OutgoingMessage =
   // in at startIndex after removing `count` existing rows.
   | { type: 'actions:replaceRange'; payload: { startIndex: number; count: number; replacement: Partial<ActionItem>[] } }
   | { type: 'actions:addRunProfile'; payload: { profileName: string; repeatCount: number; runOverData?: boolean; insertIndex?: number } }
-  | { type: 'actions:editRunProfile'; payload: { index: number; id?: string; profileName: string; repeatCount: number; runOverData?: boolean } }
+  // Each field optional: the engine changes only what the message carries (the new shell sends the
+  // one that changed, so a second change before the echo cannot undo the first).
+  | { type: 'actions:editRunProfile'; payload: { index: number; id?: string; profileName?: string; repeatCount?: number; runOverData?: boolean } }
   | { type: 'waitimage:recapture'; payload: { index: number } }
   // `anchor` (as tres abaixo): a janela a que um vigia de automacao ancora suas coordenadas.
   // Presente => o backend subtrai a origem dela ao GRAVAR e a soma ao exibir/testar, para que o

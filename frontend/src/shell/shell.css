@@ -194,6 +194,8 @@ html[data-animations='true'] .shell-state[data-done]::after { border-color: var(
 .shell-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 
 .shell-steps-empty { margin: 2rem 1rem; color: var(--color-text-tertiary); }
+/* A macro from the library about to be dropped on an empty macro: it becomes the first step. */
+.shell-steps-empty[data-drop] { outline: 2px dashed var(--color-accent-solid); outline-offset: 0.75rem; border-radius: var(--radius-control); }
 
 /* ⑧ The Inspector's own rules are in inspector/inspector.css. */
 

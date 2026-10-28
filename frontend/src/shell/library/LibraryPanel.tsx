@@ -19,7 +19,7 @@ const ITEM = '.lib-macro, .lib-folder-header, .lib-new-in-folder';
  * folder (← on a macro goes to its folder), Enter and Space open a macro or a folder, and Shift+F10
  * (or the Menu key) is the menu of whatever has the focus.
  */
-export function LibraryPanel({ profiles, order, sections, active, locked, peek, menuFor, onFold, onOpen, onToggleFolder, onMacroMenu, onFolderMenu, onNewMenu, onMoreMenu, onNewMacro, onMove, onReorder }: {
+export function LibraryPanel({ profiles, order, sections, active, locked, peek, menuFor, onFold, onOpen, onToggleFolder, onMacroMenu, onFolderMenu, onNewMenu, onMoreMenu, onNewMacro, onMove, onReorder, onRun }: {
   profiles: ProfileEntry[];
   order: ProfileOrderData;
   /** The library's sections, worked out once by the container for both of its forms. */
@@ -41,6 +41,8 @@ export function LibraryPanel({ profiles, order, sections, active, locked, peek, 
   onNewMacro: (folder: string | null) => void;
   onMove: (macro: string, folder: string | null) => void;
   onReorder: (folders: ProfileFolder[]) => void;
+  /** A macro dropped on the steps: a Run Macro step there. */
+  onRun: (macro: string, index: number) => void;
 }) {
   const tt = useTt();
   const [query, setQuery] = useState('');
@@ -48,7 +50,7 @@ export function LibraryPanel({ profiles, order, sections, active, locked, peek, 
   const listRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const lastFocus = useRef<string | null>(null);
-  const drag = useLibraryDrag({ listRef, order, profiles, onMove, onReorder });
+  const drag = useLibraryDrag({ listRef, order, profiles, onMove, onReorder, onRun });
 
   const match = searchOf(query);
   const found = match ? displayOrder(sections).filter(match) : null;

@@ -25,11 +25,12 @@ const NAMES = [
   'table-2', 'timer', 'type', 'undo-2', 'x', 'zap',
 ];
 
-// The ones only the step editors draw (the checks of an If, the probes' tools), which load with the
-// editors and not with the app: src/shell/inspector/editorIcons.css.
+// The ones only the step editors draw (the checks of an If, the probes' tools, Activate Window's
+// Browse… and Read from window, Run Macro's Open macro), which load with the editors and not with
+// the app: src/shell/inspector/editorIcons.css.
 const EDITOR_NAMES = [
-  'check', 'chevron-down', 'clipboard', 'cpu', 'dices', 'file-check', 'image', 'list', 'refresh-cw',
-  'square-dashed', 'variable',
+  'check', 'chevron-down', 'clipboard', 'cpu', 'dices', 'file-check', 'folder-open', 'frame', 'image', 'list',
+  'refresh-cw', 'square-arrow-out-up-right', 'square-dashed', 'variable',
 ];
 const editorOut = path.join(front, 'src', 'shell', 'inspector', 'editorIcons.css');
 // …and the ones the dock's panel draws (a run step's state), which load with that panel.

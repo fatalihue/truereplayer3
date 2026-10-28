@@ -5,7 +5,12 @@ import {
 } from 'lucide-react';
 import { useImport } from '../../logic/useImport';
 import { useMacro } from '../../logic/useMacro';
+import { useSteps } from '../../logic/useSteps';
 import { useTt } from '../../state/LanguageContext';
+import { useToast } from '../../state/ToastContext';
+import { loadInspectorBody, loadWindowEditors } from '../inspector/inspectorState';
+import { preload } from '../lazyModule';
+import { arrival } from '../list/selection';
 import { macroMenuEntries } from '../macroMenu';
 import { Menu, type MenuEntry } from '../Menu';
 import { anchorBelow, anchorFromEvent, fromKeyboard, type MenuAnchor } from '../menuAnchor';
@@ -51,6 +56,8 @@ export function Library() {
   const locked = useApp(a => a.buttonStates.recordingActive || a.buttonStates.replayActive);
   const hasSteps = useApp(a => a.actions.length > 0);
   const macro = useMacro();
+  const steps = useSteps();
+  const { showToast } = useToast();
   const tt = useTt();
   const imports = useImport();
   const band = useShellBand();
@@ -116,6 +123,18 @@ export function Library() {
     }
   };
   const newMacroIn = (folder: string | null) => newMacro(macro, profiles, folder);
+  // A macro dropped on the steps runs there: a Run Macro step where it fell, opened in the
+  // Inspector (lista-049). The open macro cannot call itself.
+  const runMacroAt = (name: string, at: number) => {
+    if (name === active) {
+      showToast(tt('A macro can’t run itself', 'Um macro não pode rodar a si mesmo'), 'error');
+      return;
+    }
+    arrival.expect(at, active);
+    steps.addRunProfile({ profileName: name, repeatCount: 1, insertIndex: at });
+    void preload(loadInspectorBody);
+    void preload(loadWindowEditors);
+  };
 
   const contextMenu = (kind: 'macro' | 'folder') => (e: MouseEvent<HTMLElement>, name: string) => {
     e.preventDefault();
@@ -192,6 +211,7 @@ export function Library() {
           onNewMacro={newMacroIn}
           onMove={macro.moveToFolder}
           onReorder={macro.reorder}
+          onRun={runMacroAt}
         />
       )}
       {menu && menuEntries.length > 0 && (

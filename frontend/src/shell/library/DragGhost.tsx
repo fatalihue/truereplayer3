@@ -1,16 +1,19 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { FileText, Folder } from 'lucide-react';
+import { FileText, Folder, Repeat2 } from 'lucide-react';
+import { useMacroDrop } from '../list/macroDrop';
 import type { DragKind } from './useLibraryDrag';
 
 const at = (x: number, y: number) => `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%) rotate(1.5deg)`;
 
 /**
  * The card that follows the pointer while a macro or a folder is dragged. It follows on its own,
- * by transform once a frame (rule 8), so the move never re-renders the library.
+ * by transform once a frame (rule 8), so the move never re-renders the library. Over the steps, a
+ * macro's card shows the Run Macro icon: dropped there, it runs.
  */
 export function DragGhost({ kind, name, x, y }: { kind: DragKind; name: string; x: number; y: number }) {
   const ref = useRef<HTMLDivElement>(null);
+  const run = useMacroDrop(s => s.slot !== null);
   useEffect(() => {
     let frame = 0;
     let px = x;
@@ -32,7 +35,7 @@ export function DragGhost({ kind, name, x, y }: { kind: DragKind; name: string; 
   }, [x, y]);
   return createPortal(
     <div ref={ref} className="lib-ghost" style={{ transform: at(x, y) }}>
-      {kind === 'folder' ? <Folder aria-hidden="true" /> : <FileText aria-hidden="true" />}
+      {kind === 'folder' ? <Folder aria-hidden="true" /> : run ? <Repeat2 aria-hidden="true" /> : <FileText aria-hidden="true" />}
       {name}
     </div>,
     document.body,

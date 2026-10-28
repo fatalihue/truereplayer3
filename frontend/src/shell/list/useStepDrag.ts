@@ -67,26 +67,11 @@ export function useStepDrag({ scrollRef, bodyRef, steps, locked, onDrop }: {
 
     const update = () => {
       frame = 0;
-      const hit = document.elementFromPoint(pointer.x, pointer.y)?.closest<HTMLElement>('.step, .step-ghost');
-      let target: number;
-      if (hit && body.contains(hit)) {
-        if (hit.classList.contains('step-ghost')) target = Number(hit.dataset.anchor);
-        else {
-          const r = hit.getBoundingClientRect();
-          target = Number(hit.dataset.index) + (pointer.y < r.top + r.height / 2 ? 0 : 1);
-        }
-      } else {
-        const r = body.getBoundingClientRect();
-        target = pointer.y < r.top ? 0 : steps.length;
-      }
+      const at = slotAt(body, pointer.x, pointer.y, steps.length);
       // Dropping a run of steps on itself, or right after itself, moves nothing.
       const contiguous = indices[indices.length - 1] - indices[0] === indices.length - 1;
-      const still = contiguous && target >= indices[0] && target <= indices[indices.length - 1] + 1;
-      let next: DropSlot | null = null;
-      if (!still) {
-        const row = target < steps.length ? rowAt(target) : rowAt(steps.length - 1);
-        if (row) next = { index: target, top: target < steps.length ? row.offsetTop : row.offsetTop + row.offsetHeight };
-      }
+      const still = !at || (contiguous && at.index >= indices[0] && at.index <= indices[indices.length - 1] + 1);
+      const next = still ? null : at;
       if (next?.index !== over?.index || next?.top !== over?.top) {
         over = next;
         setSlot(next);
@@ -189,6 +174,29 @@ export function useStepDrag({ scrollRef, bodyRef, steps, locked, onDrop }: {
     /** True for the click that a drag ends with. */
     justDragged: () => justDragged.current,
   };
+}
+
+/**
+ * Where a drop under the pointer would land in the list's body: before the step under it, or after
+ * it past its middle; at a ghost row's anchor; above the steps the first place, below them the
+ * end. The steps being dragged (useStepDrag) and a macro dragged from the library (macroDrop) both
+ * land this way.
+ */
+export function slotAt(body: HTMLElement, x: number, y: number, count: number): DropSlot | null {
+  const hit = document.elementFromPoint(x, y)?.closest<HTMLElement>('.step, .step-ghost');
+  let target: number;
+  if (hit && body.contains(hit)) {
+    if (hit.classList.contains('step-ghost')) target = Number(hit.dataset.anchor);
+    else {
+      const r = hit.getBoundingClientRect();
+      target = Number(hit.dataset.index) + (y < r.top + r.height / 2 ? 0 : 1);
+    }
+  } else {
+    const r = body.getBoundingClientRect();
+    target = y < r.top ? 0 : count;
+  }
+  const row = body.querySelector<HTMLElement>(`.step[data-index="${target < count ? target : count - 1}"]`);
+  return row ? { index: target, top: target < count ? row.offsetTop : row.offsetTop + row.offsetHeight } : null;
 }
 
 /** The step rows inside the scrolled view — the only ones worth measuring in a long list. */
