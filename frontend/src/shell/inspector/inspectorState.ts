@@ -16,6 +16,8 @@ export const loadInspectorBody = () => import('./InspectorBody');
 export const loadSendTextEditor = () => import('./SendTextEditor');
 /** …and the editors of the steps that probe (Wait Image, If, Else If, While), likewise. */
 export const loadProbeEditors = () => import('./probeEditors');
+/** …and the simple steps' (Scroll, Set Variable, Copy to Slot), likewise. */
+export const loadSimpleEditors = () => import('./simpleEditors');
 /** The macro's own settings, shown with no step chosen: the page's first idle moment once the app's
  *  state is drawn, as the status bar's switches (never ahead of the library). */
 export const loadMacroSettings = () => import('./macro/MacroSettings');

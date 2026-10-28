@@ -10,7 +10,7 @@ import { BatchEditor } from './BatchEditor';
 import { CheckDraft } from './CheckDraft';
 import { ClickEditor } from './ClickEditor';
 import { DraftField, Section } from './fields';
-import { drafts, focusList, loadProbeEditors, loadSendTextEditor, takeFocusAsk, type Draft, type TextDraft } from './inspectorState';
+import { drafts, focusList, loadProbeEditors, loadSendTextEditor, loadSimpleEditors, takeFocusAsk, type Draft, type TextDraft } from './inspectorState';
 import { DraftKeyEditor, KeyEditor, KeyHalfEditor } from './KeyEditor';
 import { PauseEditor } from './PauseEditor';
 import './editors.css';
@@ -21,11 +21,18 @@ import './editorIcons.css';
 const NO_DELAY_FIELD = new Set(['If', 'ElseIf', 'Else', 'EndIf', 'EndLoop', 'BreakLoop', 'ContinueLoop', 'ForEachRow']);
 const MAX_DELAY_MS = 999_999_999;
 const CONDITION_STEPS = new Set(['If', 'ElseIf', 'While']);
-// The markers of a block say where their settings live (editor-passo-059).
+const SIMPLE_STEPS = new Set(['ScrollUp', 'ScrollDown', 'SetVariable', 'CopyToSlot']);
+// The markers of a block say where their settings live (editor-passo-059), and the loop's jumps,
+// its rows and the two endings what they do (editor-passo-060): there is nothing else to set.
 const MARKER_NOTES: Record<string, string> = {
   Else: 'The FALSE branch. Set the condition on the If step.',
   EndIf: 'Closes the block. Set the condition on the If step.',
   EndLoop: 'Closes the block. Set the loop on its opening step.',
+  BreakLoop: 'Exits the innermost loop.',
+  ContinueLoop: 'Jumps back to the innermost loop’s opening step.',
+  ForEachRow: 'Runs its block once per row of the Data Loop table. {row:column} reads the current row.',
+  Stop: 'Ends the whole run here, with no error.',
+  Return: 'Ends this pass only — the remaining passes and data rows still run.',
 };
 
 /**
@@ -43,14 +50,16 @@ export default function InspectorBody({ indices, locked, note, draft }: { indice
   // idle, when the macro has such a step to open: its first opening does not wait for them.
   const hasText = steps.some(s => s.actionType === 'SendText');
   const hasProbe = steps.some(s => s.actionType === 'WaitImage' || CONDITION_STEPS.has(s.actionType));
+  const hasSimple = steps.some(s => SIMPLE_STEPS.has(s.actionType));
   useEffect(() => {
-    if (!hasText && !hasProbe) return;
+    if (!hasText && !hasProbe && !hasSimple) return;
     const id = requestIdleCallback(() => {
       if (hasProbe) void preload(loadProbeEditors);
       if (hasText) void preload(loadSendTextEditor);
+      if (hasSimple) void preload(loadSimpleEditors);
     });
     return () => cancelIdleCallback(id);
-  }, [hasText, hasProbe]);
+  }, [hasText, hasProbe, hasSimple]);
 
   if (draft) return <DraftView draft={draft} steps={steps} locked={locked} note={note} />;
   const one = indices.length === 1 ? steps[indices[0]] : null;
@@ -179,6 +188,7 @@ function StepEditor({ step, index, steps, locked }: { step: ActionItem; index: n
     : t === 'Pause' ? <PauseEditor step={step} locked={locked} />
     : t === 'SendText' ? <TextEditorSlot step={step} draft={null} locked={locked} />
     : t === 'WaitImage' || CONDITION_STEPS.has(t) ? <ProbeSlot step={step} locked={locked} />
+    : SIMPLE_STEPS.has(t) ? <SimpleSlot step={step} index={index} locked={locked} />
     : MARKER_NOTES[t] ? <p className="insp-summary">{MARKER_NOTES[t]}</p>
     // The other types' editors come with phase 2.
     : <NotBuilt what={`${stepName(t)} editor`} />;
@@ -232,4 +242,17 @@ function ProbeSlot({ step, locked }: { step: ActionItem; locked: boolean }) {
   return step.actionType === 'WaitImage'
     ? <mod.WaitImageEditor step={step} locked={locked} />
     : <mod.ConditionEditor step={step} locked={locked} />;
+}
+
+/** Scroll, Set Variable and Copy to Slot, from their chunk, the same way. */
+function SimpleSlot({ step, index, locked }: { step: ActionItem; index: number; locked: boolean }) {
+  const mod = useLoaded(loadSimpleEditors);
+  useEffect(() => {
+    if (!mod) void preload(loadSimpleEditors);
+  }, [mod]);
+  if (!mod) return null;
+  const t = step.actionType;
+  return t === 'SetVariable' ? <mod.SetVariableEditor step={step} index={index} locked={locked} />
+    : t === 'CopyToSlot' ? <mod.CopyToSlotEditor step={step} locked={locked} />
+    : <mod.ScrollEditor step={step} locked={locked} />;
 }

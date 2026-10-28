@@ -6664,6 +6664,21 @@ namespace TrueReplayer
                 return;
             }
 
+            // ScrollUp / ScrollDown: one notch of the wheel where the cursor is, from the Add step
+            // catalog (the recorder writes the same rows). Nothing to set up but the direction, which
+            // the Inspector turns afterwards; the delay is the custom delay, as for Stop and Return.
+            if (actionType == "ScrollUp" || actionType == "ScrollDown")
+            {
+                int delay = int.TryParse(CustomDelay, out var sd) ? sd : 100;
+                actions.Insert(insertIndex, new ActionItem { ActionType = actionType, Delay = delay, Comment = "" });
+                for (int i = 0; i < actions.Count; i++)
+                    actions[i].RowNumber = i + 1;
+                HasUnsavedChanges = true;
+                PushActionsUpdate();
+                mainController.UpdateButtonStates();
+                return;
+            }
+
             // BreakLoop / ContinueLoop: the Loop ▾ "Loop control" rows — pure jump markers,
             // inserted with Delay = 0 (the engine never pays their delay and the load-time
             // validator zeroes it; seeding a CustomDelay here would just be erased later).
@@ -6780,10 +6795,9 @@ namespace TrueReplayer
             // rebuilds the original order. UpdateButtonStates re-runs because PushUndoState
             // last computed the button states against the pushed-and-cleared stacks.
             //
-            // ScrollUp/ScrollDown, Browser* and the capture types (Left/Right/MiddleClick,
-            // KeyPress) end here too: nothing sends them any more — the toolbar is the only
-            // sender of actions:insertAction, Browser rows travel as actions:addBrowserAction —
-            // and their branches, with the whole capture mode behind the last one, were removed.
+            // Browser* and the capture types (Left/Right/MiddleClick, KeyPress) end here too:
+            // nothing sends them any more — Browser rows travel as actions:addBrowserAction — and
+            // their branches, with the whole capture mode behind the last one, were removed.
             _undoStack.TryPop(out _);
             for (int i = discardedRedo.Length - 1; i >= 0; i--)
                 _redoStack.Push(discardedRedo[i]);

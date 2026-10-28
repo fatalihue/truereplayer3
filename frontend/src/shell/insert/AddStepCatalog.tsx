@@ -1,6 +1,8 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { useSteps } from '../../logic/useSteps';
+import { useTt } from '../../state/LanguageContext';
 import { getActionTypeColors } from '../../utils/displayUtils';
+import { insideLoop } from '../list/blocks';
 import { insertPoint, useSelection } from '../list/selection';
 import { stepIcon } from '../list/stepTypes';
 import type { MenuAnchor } from '../menuAnchor';
@@ -32,8 +34,13 @@ export default function AddStepCatalog({ anchor, toggle, onClose }: {
   onClose: () => void;
 }) {
   const cmds = useSteps();
+  const tt = useTt();
   const steps = useApp(a => a.actions);
+  const rows = useApp(a => a.dataTable.rows.length);
   const at = useSelection(s => insertPoint(steps, s.keys));
+  // Break loop and Next iteration mean something only inside a loop (casca-079 and 080).
+  const inLoop = insideLoop(steps, at);
+  const offOf = (item: CatalogItem) => (item.inLoop && !inLoop ? tt('Only inside a loop', 'Só dentro de um laço') : null);
   const [query, setQuery] = useState('');
   const [group, setGroup] = useState<GroupId>(() => lastGroup);
   const [active, setActive] = useState(0);
@@ -52,7 +59,7 @@ export default function AddStepCatalog({ anchor, toggle, onClose }: {
   }, [active, listKey]);
 
   const choose = (item: CatalogItem | undefined) => {
-    if (!item?.insert) return;
+    if (!item?.insert || offOf(item)) return;
     remember(item.group);
     insertHere(item.insert, cmds);
     onClose();
@@ -151,6 +158,9 @@ export default function AddStepCatalog({ anchor, toggle, onClose }: {
                 key={item.id}
                 item={item}
                 active={item === current}
+                off={offOf(item)}
+                // For Each Data Row says how many rows the table has (casca-078).
+                detail={item.type === 'ForEachRow' ? (rows === 0 ? 'the table is empty' : `${rows} row${rows === 1 ? '' : 's'}`) : undefined}
                 group={searching ? GROUPS.find(g => g.id === item.group)?.label : undefined}
                 onHover={() => { if (active !== i) setActive(i); }}
                 onChoose={() => choose(item)}
@@ -169,9 +179,13 @@ export default function AddStepCatalog({ anchor, toggle, onClose }: {
   );
 }
 
-function Item({ item, active, group, onHover, onChoose }: {
+function Item({ item, active, off, detail, group, onHover, onChoose }: {
   item: CatalogItem;
   active: boolean;
+  /** Why it cannot go where the step would land (the tip), or null. */
+  off: string | null;
+  /** A fact after its line (the Data Loop table's rows). */
+  detail?: string;
   /** Searching: the group it is in. */
   group?: string;
   onHover: () => void;
@@ -185,7 +199,8 @@ function Item({ item, active, group, onHover, onChoose }: {
       role="option"
       className="cat-item"
       aria-selected={active}
-      aria-disabled={!built || undefined}
+      aria-disabled={!built || !!off || undefined}
+      data-tip={off ?? undefined}
       onMouseMove={onHover}
       onClick={onChoose}
     >
@@ -194,7 +209,7 @@ function Item({ item, active, group, onHover, onChoose }: {
       </span>
       <span className="cat-text">
         <span className="cat-name">{item.name}{group && <span className="cat-in"> · {group}</span>}</span>
-        <span className="cat-desc">{item.desc}</span>
+        <span className="cat-desc">{item.desc}{detail && <> · {detail}</>}</span>
       </span>
       {!built && <span className="cat-later">not built yet</span>}
       {item.more && <span className="step-icon cat-more" data-icon="chevron-right" />}

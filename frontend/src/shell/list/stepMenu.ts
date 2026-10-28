@@ -1,6 +1,6 @@
 import {
   Brackets, CheckCheck, ChevronsDownUp, ChevronsUpDown, ClipboardCopy, ClipboardPaste, Code2, Combine, Crosshair,
-  Eye, EyeOff, Files, Focus, Link, MoreHorizontal, MousePointerClick, Pencil, Repeat, Split, Table2, Trash2,
+  Eye, EyeOff, Files, Focus, Link, MoreHorizontal, MousePointerClick, Pencil, Repeat, RotateCcw, Split, Table2, Trash2,
 } from 'lucide-react';
 import type { ActionItem } from '../../bridge/messageTypes';
 import { deleteIntent, type useSteps } from '../../logic/useSteps';
@@ -54,6 +54,17 @@ export function stepMenuEntries(ctx: StepMenuContext): MenuEntry[] {
   const entries: MenuEntry[] = [
     { label: 'Edit', icon: Pencil, shortcut: 'Enter', onSelect: () => ctx.edit(row) },
   ];
+
+  // A Set Variable in Cycle starts its list over (lista-070): right under Edit, as today. The
+  // engine confirms it ("Cycle '<name>' reset to the first item").
+  if (t === 'SetVariable' && step.variableMode === 'cycle') {
+    entries.push({
+      label: 'Reset cycle position',
+      icon: RotateCcw,
+      tip: tt('The next run starts at the first item of the list', 'A próxima execução começa no primeiro item da lista'),
+      onSelect: () => cmds.resetCycle({ index: row }),
+    });
+  }
 
   if (isStructuralRow(t)) {
     const block = snapIndicesToBlocks([row], steps);

@@ -30,6 +30,8 @@ export interface CatalogItem {
   words?: string;
   /** Opens a second level to choose from. */
   more?: boolean;
+  /** Means something only inside a While or a For Each Data Row (Break loop, Next iteration). */
+  inLoop?: boolean;
   insert?: Insert;
 }
 
@@ -40,7 +42,7 @@ export const ITEMS: CatalogItem[] = [
   // The Inspector captures the key, or holds the text, and the step is born with it.
   { id: 'key', group: 'input', type: 'Keystroke', name: 'Key', desc: 'A key or a combination, pressed or held', words: 'keystroke keyboard press hold shortcut hotkey combo', insert: inserts.key },
   { id: 'text', group: 'input', type: 'SendText', name: 'Text', desc: 'Types or pastes text, with tokens', words: 'send type paste write string message', insert: inserts.text },
-  { id: 'scroll', group: 'input', type: 'ScrollDown', name: 'Scroll', desc: 'Turns the mouse wheel up or down', words: 'wheel mouse up down' },
+  { id: 'scroll', group: 'input', type: 'ScrollDown', name: 'Scroll', desc: 'Turns the mouse wheel up or down', words: 'wheel mouse up down', insert: inserts.scroll },
 
   { id: 'pause', group: 'wait', type: 'Pause', name: 'Pause', desc: 'Wait for a key or a timeout', words: 'delay sleep time timeout resume hold', insert: inserts.pause },
   { id: 'waitImage', group: 'wait', type: 'WaitImage', name: 'Wait Image', desc: 'Until an image shows up on screen', words: 'picture screenshot find appear capture', insert: inserts.waitImage },
@@ -51,16 +53,16 @@ export const ITEMS: CatalogItem[] = [
   // The check is chosen in the Inspector, and the block is born with it.
   { id: 'if', group: 'flow', type: 'If', name: 'If', desc: 'Runs the steps inside only when a check passes', words: 'condition branch check else image pixel window', insert: inserts.if },
   { id: 'while', group: 'flow', type: 'While', name: 'While', desc: 'Repeats the steps inside while a check passes', words: 'loop repeat until condition', insert: inserts.while },
-  { id: 'forEachRow', group: 'flow', type: 'ForEachRow', name: 'For Each Data Row', desc: 'Repeats the steps inside once per Data Loop row', words: 'loop table rows csv' },
-  { id: 'break', group: 'flow', type: 'BreakLoop', name: 'Break loop', desc: 'Leaves the loop it is in', words: 'exit stop' },
-  { id: 'next', group: 'flow', type: 'ContinueLoop', name: 'Next iteration', desc: 'Skips to the next pass of the loop', words: 'continue skip' },
+  { id: 'forEachRow', group: 'flow', type: 'ForEachRow', name: 'For Each Data Row', desc: 'Repeats the steps inside once per Data Loop row', words: 'loop table rows csv', insert: inserts.forEachRow },
+  { id: 'break', group: 'flow', type: 'BreakLoop', name: 'Break loop', desc: 'Leaves the loop it is in', words: 'exit stop', inLoop: true, insert: inserts.breakLoop },
+  { id: 'next', group: 'flow', type: 'ContinueLoop', name: 'Next iteration', desc: 'Skips to the next pass of the loop', words: 'continue skip', inLoop: true, insert: inserts.nextIteration },
 
   { id: 'assert', group: 'checks', type: 'Assert', name: 'Assert', desc: 'Stops the run when a check fails', words: 'require verify condition fail' },
-  { id: 'stop', group: 'checks', type: 'Stop', name: 'Stop', desc: 'Ends the run here', words: 'end halt finish' },
-  { id: 'return', group: 'checks', type: 'Return', name: 'Return', desc: 'Leaves this macro, back to the one that ran it', words: 'exit back' },
+  { id: 'stop', group: 'checks', type: 'Stop', name: 'Stop', desc: 'Ends the run here', words: 'end halt finish', insert: inserts.stop },
+  { id: 'return', group: 'checks', type: 'Return', name: 'Return', desc: 'Ends this pass, or goes back to the macro that ran it', words: 'exit back', insert: inserts.return },
 
-  { id: 'setVariable', group: 'variables', type: 'SetVariable', name: 'Set Variable', desc: 'Stores a value under a name', words: 'var value counter cycle' },
-  { id: 'copyToSlot', group: 'variables', type: 'CopyToSlot', name: 'Copy to Slot', desc: 'Keeps what the clipboard holds in a named slot', words: 'clipboard copy' },
+  { id: 'setVariable', group: 'variables', type: 'SetVariable', name: 'Set Variable', desc: 'Stores a value under a name', words: 'var value counter cycle screen ocr', insert: inserts.setVariable },
+  { id: 'copyToSlot', group: 'variables', type: 'CopyToSlot', name: 'Copy to Slot', desc: 'Copies the selection of the app in front into a named slot', words: 'clipboard copy clip', insert: inserts.copyToSlot },
 
   { id: 'activateWindow', group: 'windows', type: 'ActivateWindow', name: 'Activate Window', desc: 'Brings a window to the front, or opens it', words: 'focus app program launch' },
   { id: 'runMacro', group: 'windows', type: 'RunProfile', name: 'Run Macro', desc: 'Runs another macro, then comes back', words: 'profile call sub chain' },

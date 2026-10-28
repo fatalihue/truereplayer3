@@ -86,9 +86,11 @@ interface Read { text?: string; matched?: boolean | null; number?: string | null
 /**
  * Text on screen (OCR): the region read, how the text is matched — Contains, Equals, Regex, or the
  * first number compared with a value, one control ("O conceito junta 'Read as' e 'Match'") —, the
- * text colour to read alone (game HUDs), and Test now, whose answer can become the text.
+ * text colour to read alone (game HUDs), and Test now, whose answer can become the text. Set
+ * Variable's Screen mode reads with no match ('read'): the text, or the first number, is the value.
  */
-export function ScreenTextCheck({ step, locked }: Props) {
+export function ScreenTextCheck({ step, locked, variant = 'match' }: Props & { variant?: 'match' | 'read' }) {
+  const read = variant === 'read';
   const edit = useEdit(step);
   const tools = useEditorTools();
   const tt = useTt();
@@ -142,6 +144,20 @@ export function ScreenTextCheck({ step, locked }: Props) {
         drawTip={tt('Faster, and reads only what you mean', 'Mais rápido, e lê só o que você quer')}
         onRegion={(r) => edit([{ field: 'waitImageSearchRegion', value: regionValue(r) }])}
       />
+      {read ? (
+        <Section label="Read as" hint={number ? 'Stores the first number in the region.' : 'Stores what the region reads.'}>
+          <Segmented<'text' | 'number'>
+            label="Read as"
+            value={number ? 'number' : 'text'}
+            disabled={locked}
+            options={[
+              { value: 'text', label: 'Text' },
+              { value: 'number', label: 'Number', tip: tt('The first number in the region', 'O primeiro número da região') },
+            ]}
+            onChange={(v) => edit([{ field: 'ocrReadAs', value: v === 'number' ? 'number' : '' }])}
+          />
+        </Section>
+      ) : (
       <Section label="Text">
         <Segmented<ReadMode>
           label="Read as"
@@ -181,6 +197,7 @@ export function ScreenTextCheck({ step, locked }: Props) {
             : 'Ignores case, spaces and accents. Tokens resolve at run time.'}
         </span>
       </Section>
+      )}
       <Section label="Text color" hint={color ? undefined : 'Any. Pick the text color to read game HUDs over a busy scene.'}>
         <div className="insp-line">
           <HexField stepId={id} field="ocrTextColor" label="Text color" placeholder="Any" stored={step.ocrTextColor ?? ''} disabled={locked} clearable />
@@ -211,8 +228,8 @@ export function ScreenTextCheck({ step, locked }: Props) {
             searchRegion: region ?? undefined,
             readAs: number ? 'number' : null,
             operator: op,
-            operand,
-            match: operand !== '',
+            operand: read ? '' : operand,
+            match: !read && operand !== '',
             textColor: color,
             tolerance: colorTolerance,
           }));
@@ -231,7 +248,7 @@ export function ScreenTextCheck({ step, locked }: Props) {
             {(result.elapsedMs != null || result.variant) && <span>{[result.elapsedMs != null ? `${result.elapsedMs} ms` : null, result.variant].filter(Boolean).join(' · ')}</span>}
             {result.previewBase64 && <img className="insp-result-image" src={`data:image/png;base64,${result.previewBase64}`} alt="What was read" />}
             {snapped && <span>Search region set around this match.</span>}
-            {firstLine && !number && firstLine !== operand && (
+            {!read && firstLine && !number && firstLine !== operand && (
               <button
                 type="button"
                 className="insp-link"

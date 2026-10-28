@@ -91,6 +91,22 @@ export function blockMap(steps: ActionItem[]): BlockMap {
   return { rows, closerOf, ghostBefore };
 }
 
+/**
+ * Whether a step put at `at` sits inside a loop (a While or a For Each Data Row) — where Break loop
+ * and Next iteration mean something. The same typed stack as blockMap, over the steps before it.
+ */
+export function insideLoop(steps: ActionItem[], at: number): boolean {
+  const stack: ('If' | 'Loop')[] = [];
+  for (let i = 0; i < Math.min(at, steps.length); i++) {
+    const t = steps[i].actionType;
+    if (t === 'If') stack.push('If');
+    else if (t === 'While' || t === 'ForEachRow') stack.push('Loop');
+    else if (t === 'EndIf' && stack[stack.length - 1] === 'If') stack.pop();
+    else if (t === 'EndLoop' && stack[stack.length - 1] === 'Loop') stack.pop();
+  }
+  return stack.includes('Loop');
+}
+
 /** The number of rails a row draws: one per enclosing block, and a marker's own on top. */
 export const railCount = (b: RowBlock) => (b.kind ? b.depth + 1 : b.depth);
 
