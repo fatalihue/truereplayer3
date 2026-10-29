@@ -231,11 +231,11 @@ function RevertMacroDialog({ name, onRevert, onClose }: { name: string; onRevert
 /**
  * Clear all steps (casca-060 to 063): every step of the open macro goes, and Ctrl+Z brings them back.
  * Cancel holds the focus, as in the other confirmations. It closes by itself once there is nothing it
- * could clear: the list is empty, a run started, or another macro opened under it.
+ * could clear: the list is empty, a run or the Clicker started, or another macro opened under it.
  */
 function ClearStepsDialog({ name, onClose }: { name: string; onClose: () => void }) {
   const steps = useApp(a => a.actions.length);
-  const busy = useApp(a => a.status !== 'ready');
+  const busy = useApp(a => a.status !== 'ready' || a.settings.useCursorClick);
   const open = useApp(a => a.activeProfile);
   const { clear } = useSteps();
   const gone = steps === 0 || busy || open !== name;

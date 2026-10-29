@@ -1,4 +1,4 @@
-import { Fragment, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
 import { ArrowLeft, ArrowRight, Copy, Play, Plus, Trash2 } from 'lucide-react';
 import { scanRowTokenUsage } from '../../lib/rowTokenUsage';
 import { useTt } from '../../state/LanguageContext';
@@ -181,6 +181,19 @@ export function DataGrid({ locked }: { locked: boolean }) {
   const backToTable = (byKey: boolean) => {
     if (byKey) sheetRef.current?.focus({ preventScroll: true });
     else refocusTable();
+  };
+  // A cell closed from outside with something typed in it (paineis-089 and 090). It is saved when
+  // nothing stops it; else the toast says why it was not kept, as today's panel's "— unsaved changes
+  // were discarded." did: the engine saves only the open macro's table, and a run is reading it.
+  const dropped = (edit: Extract<Editing, { kind: 'cell' }>, value: string) => {
+    const app = useShell.getState().app;
+    const why = app.activeProfile !== edit.macro ? tt('Another macro was opened', 'Outro macro foi aberto')
+      : app.settings.useCursorClick ? tt('The Clicker turned on', 'O Clicker foi ligado')
+      : app.status === 'recording' ? tt('A recording started', 'Uma gravação começou')
+      : app.status === 'replaying' ? tt('A run started', 'Uma execução começou')
+      : null;
+    if (why) showToast(`${why} — ${tt('the cell’s edit was discarded.', 'a edição da célula foi descartada.')}`, 'error');
+    else ops.setCell(edit.r, edit.c, value);
   };
   const finishCell = (edit: Extract<Editing, { kind: 'cell' }>, value: string | null, nav: Nav | undefined, byKey: boolean) => {
     if (useDataTab.getState().editing !== edit) return;
@@ -378,6 +391,7 @@ export function DataGrid({ locked }: { locked: boolean }) {
                 onCursor={moveCursor}
                 ops={ops}
                 onDone={finishCell}
+                onDropped={dropped}
               />
             ))}
           </div>
@@ -547,7 +561,7 @@ function HeaderEditor({ edit, initial, headers, onDone }: {
 }
 
 /** One row of the table: its number (the cursor's marker, and the way to move it), its cells, and its tools. */
-function GridRow({ r, row, cols, blank, cursor, cursorMode, locked, activeC, edit, editLabel, term, current, onCursor, ops, onDone }: {
+function GridRow({ r, row, cols, blank, cursor, cursorMode, locked, activeC, edit, editLabel, term, current, onCursor, ops, onDone, onDropped }: {
   r: number;
   row: string[];
   cols: number;
@@ -563,6 +577,7 @@ function GridRow({ r, row, cols, blank, cursor, cursorMode, locked, activeC, edi
   onCursor: (r: number) => void;
   ops: DataOps;
   onDone: (edit: Extract<Editing, { kind: 'cell' }>, value: string | null, nav: Nav | undefined, byKey: boolean) => void;
+  onDropped: (edit: Extract<Editing, { kind: 'cell' }>, value: string) => void;
 }) {
   const tt = useTt();
   const cells: ReactNode[] = [];
@@ -582,7 +597,7 @@ function GridRow({ r, row, cols, blank, cursor, cursorMode, locked, activeC, edi
         data-current={(hit && current) || undefined}
         data-editing={edit?.c === c ? '' : undefined}
       >
-        {edit?.c === c ? <CellEditor edit={edit} initial={value} label={editLabel} onDone={onDone} /> : cellText(value)}
+        {edit?.c === c ? <CellEditor edit={edit} initial={value} label={editLabel} onDone={onDone} onDropped={onDropped} /> : cellText(value)}
       </div>,
     );
   }
@@ -639,15 +654,30 @@ function GridRow({ r, row, cols, blank, cursor, cursorMode, locked, activeC, edi
  * right or left), Ctrl+Enter and by leaving it; Alt+Enter or Shift+Enter break the line; Esc puts the
  * value back. A composition in progress (IME) keeps every key.
  */
-function CellEditor({ edit, initial, label, onDone }: {
+/** The table still has this cell of this macro open. */
+const stillOpen = (edit: Extract<Editing, { kind: 'cell' }>) => {
+  const now = useDataTab.getState().editing;
+  return now?.kind === 'cell' && now.r === edit.r && now.c === edit.c && now.macro === edit.macro;
+};
+
+function CellEditor({ edit, initial, label, onDone, onDropped }: {
   edit: Extract<Editing, { kind: 'cell' }>;
   initial: string;
   label: string;
   onDone: (edit: Extract<Editing, { kind: 'cell' }>, value: string | null, nav: Nav | undefined, byKey: boolean) => void;
+  /** Closed from outside (a run, the Clicker, another macro) with something typed in it. */
+  onDropped: (edit: Extract<Editing, { kind: 'cell' }>, value: string) => void;
 }) {
   const [value, setValue] = useState(edit.seed ?? initial);
   const done = useRef(false);
   const ref = useRef<HTMLTextAreaElement>(null);
+  // What the cell holds now and who to tell, for the close that comes from outside (below).
+  const typed = useRef(value);
+  const dropped = useRef(onDropped);
+  useEffect(() => {
+    typed.current = value;
+    dropped.current = onDropped;
+  });
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -655,9 +685,21 @@ function CellEditor({ edit, initial, label, onDone }: {
     if (edit.seed === null) el.select();
     else el.setSelectionRange(el.value.length, el.value.length);
   }, [edit]);
+  // The table moved on without this cell — a run or the Clicker started, or the engine opened
+  // another macro — while something was typed in it: the grid keeps it if it still can, or says it
+  // was dropped.
+  useEffect(() => () => {
+    if (done.current || stillOpen(edit)) return;
+    done.current = true;
+    if (typed.current !== initial) dropped.current(edit, typed.current);
+  }, [edit, initial]);
   const finish = (commit: boolean, nav: Nav | undefined, byKey: boolean) => {
     if (done.current) return;
     done.current = true;
+    if (!stillOpen(edit)) {
+      if (commit && value !== initial) onDropped(edit, value);
+      return;
+    }
     onDone(edit, commit ? value : null, nav, byKey);
   };
   return (

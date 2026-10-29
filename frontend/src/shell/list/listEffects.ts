@@ -6,7 +6,8 @@ import { stepKey } from './stepTypes';
 
 /**
  * The list's effects that write to the DOM instead of rendering: lighting a block's rails, the
- * flash of a step that just arrived, selecting the one the shell asked for, and following the run. Each costs a query or two and no row
+ * flash of a step that just arrived, selecting the one the shell asked for, the set size for a
+ * screen reader, and following the run. Each costs a query or two and no row
  * render, which is what keeps them cheap at a thousand steps (the doctrine of the shell of today's
  * ReplayRowMarker and InsertedRowMarker).
  */
@@ -105,6 +106,22 @@ export function useArrival(bodyRef: RefObject<HTMLElement | null>, steps: Action
     if (want.count > 1) selection.set(steps, Array.from({ length: Math.min(want.count, steps.length - at) }, (_, i) => at + i));
     else selection.only(steps, at);
     bodyRef.current?.querySelector(`.step[data-index="${at}"]`)?.scrollIntoView({ block: 'nearest' });
+  }, [steps, open, bodyRef]);
+}
+
+/**
+ * How many steps the list has, on each row (aria-setsize; StepRow draws aria-posinset): a block of
+ * rows off screen is out of the accessibility tree (content-visibility), and a screen reader would
+ * count only the rows drawn. Written here, not rendered: one step more would redraw every row.
+ */
+export function useSetSize(bodyRef: RefObject<HTMLElement | null>, steps: ActionItem[], open: string | null) {
+  // The macro too: its steps can arrive a frame before it is the open one, and the rows are drawn
+  // only then, with the same steps.
+  useLayoutEffect(() => {
+    const size = String(steps.length);
+    bodyRef.current?.querySelectorAll('.step').forEach(row => {
+      if (row.getAttribute('aria-setsize') !== size) row.setAttribute('aria-setsize', size);
+    });
   }, [steps, open, bodyRef]);
 }
 

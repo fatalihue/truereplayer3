@@ -15,13 +15,18 @@ type Tt = (en: string, pt: string) => string;
  * The macro's menu: a right-click on it in the library, and ⋯ in its header when it is the open
  * one. Renaming the open macro types in its header; any other gets the dialog.
  */
-export function macroMenuEntries({ name, profiles, order, active, locked, hasSteps, macro, tt }: {
+export function macroMenuEntries({ name, profiles, order, active, locked, clicker, hasSteps, macro, tt }: {
   name: string;
   profiles: ProfileEntry[];
   order: ProfileOrderData;
   active: string | null;
   /** Recording or replaying: the engine refuses the revert then, so the item says so first. */
   locked: boolean;
+  /**
+   * The Clicker is on: the steps are not the user's to change then, as everywhere in the shell, so
+   * the revert and the clear wait for it too (casca-060; today's Clear all is off in the Clicker).
+   */
+  clicker: boolean;
   /**
    * The open macro has steps (Clear all steps… is off with none). A yes or no, not the count: the
    * count changes with every switch, and the library would draw once more for nothing.
@@ -40,6 +45,9 @@ export function macroMenuEntries({ name, profiles, order, active, locked, hasSte
     selection.clear();
     openMacroSettings(name, section);
   };
+  // Why the steps can't change now: a run or a recording first, then the Clicker.
+  const stepsLocked = locked || clicker;
+  const lockTip = locked ? tt('Stop the run first', 'Pare a execução antes') : tt('The Clicker is on', 'O Clicker está ligado');
   return [
     { label: 'Rename…', icon: Pencil, onSelect: () => (isOpen ? focusName(name) : openDialog({ kind: 'renameMacro', name })) },
     { label: 'Duplicate', icon: Copy, onSelect: () => macro.duplicate(name) },
@@ -76,15 +84,15 @@ export function macroMenuEntries({ name, profiles, order, active, locked, hasSte
       {
         label: 'Revert to when I opened it',
         icon: RotateCcw,
-        disabled: locked,
-        tip: locked ? tt('Stop the run first', 'Pare a execução antes') : undefined,
+        disabled: stepsLocked,
+        tip: stepsLocked ? lockTip : undefined,
         onSelect: () => openDialog({ kind: 'revertMacro', name }),
       },
       {
         label: 'Clear all steps…',
         icon: Eraser,
-        disabled: locked || !hasSteps,
-        tip: locked ? tt('Stop the run first', 'Pare a execução antes')
+        disabled: stepsLocked || !hasSteps,
+        tip: stepsLocked ? lockTip
           : !hasSteps ? tt('There are no steps to clear', 'Não há passos para limpar') : undefined,
         onSelect: () => openDialog({ kind: 'clearSteps', name }),
       },

@@ -374,7 +374,7 @@ function flush(timer: MutableRefObject<ReturnType<typeof setTimeout> | null>, ed
 // ── Capturing a key in the panel ──
 
 // The wheel and the side buttons arrive through the same hook (InputHookManager composes them like
-// keys, for hotkeys), but no step can press them.
+// keys, for hotkeys): a macro's hotkey takes them, but no step can press them.
 const NOT_A_KEY = new Set(['ScrollUp', 'ScrollDown', 'XButton1', 'XButton2']);
 
 /** A combo as key caps. */
@@ -395,10 +395,12 @@ export function Keys({ combo }: { combo: string }) {
  * 4 s with no key or the panel going away stop listening without changing anything — Esc itself is
  * typed in the field beside it.
  */
-export function KeyCapture({ value, single, label, onCapture, onCancel, autoListen, disabled }: {
+export function KeyCapture({ value, single, mouse, label, onCapture, onCancel, autoListen, disabled }: {
   value: string;
   /** One key, not a combo (Key Down / Key Up): the key that went down. */
   single?: boolean;
+  /** The side buttons and the wheel count too (a macro's hotkey: the engine fires on them). */
+  mouse?: boolean;
   label: string;
   onCapture: (key: string) => void;
   /** Esc while listening, besides stopping: a step still being made goes with it. */
@@ -427,7 +429,7 @@ export function KeyCapture({ value, single, label, onCapture, onCancel, autoList
       if (typeof combo !== 'string' || combo === '') return;
       const parts = splitCombo(combo);
       const key = parts[parts.length - 1];
-      if (!key || NOT_A_KEY.has(key)) return;
+      if (!key || (!mouse && NOT_A_KEY.has(key))) return;
       if (key === 'Escape' || key === 'Esc') {
         stop();
         onCaptureRef.current.onCancel?.();
@@ -447,7 +449,7 @@ export function KeyCapture({ value, single, label, onCapture, onCancel, autoList
       off();
       capture.release(owner);
     };
-  }, [listening, capture, owner, single]);
+  }, [listening, capture, owner, single, mouse]);
 
   const shown = held ?? value;
   return (
@@ -463,7 +465,11 @@ export function KeyCapture({ value, single, label, onCapture, onCancel, autoList
     >
       {shown ? <Keys combo={shown} /> : <span className="insp-capture-none">No key yet</span>}
       <span className="insp-capture-hint">
-        {listening ? (single ? 'Listening — press a key · Esc cancels' : 'Listening — press a key or a combo · Esc cancels') : 'Click to capture a key'}
+        {listening
+          ? (single ? 'Listening — press a key · Esc cancels'
+            : mouse ? 'Listening — press a key, a combo, a side button or the wheel · Esc cancels'
+            : 'Listening — press a key or a combo · Esc cancels')
+          : 'Click to capture a key'}
       </span>
     </button>
   );

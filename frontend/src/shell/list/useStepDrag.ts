@@ -196,17 +196,37 @@ export function slotAt(body: HTMLElement, x: number, y: number, count: number): 
     target = y < r.top ? 0 : count;
   }
   const row = body.querySelector<HTMLElement>(`.step[data-index="${target < count ? target : count - 1}"]`);
-  return row ? { index: target, top: target < count ? row.offsetTop : row.offsetTop + row.offsetHeight } : null;
+  if (!row) return null;
+  const top = topIn(body, row);
+  return { index: target, top: target < count ? top : top + row.offsetHeight };
 }
 
-/** The step rows inside the scrolled view — the only ones worth measuring in a long list. */
+/**
+ * A row's top in the list's body, where the insertion point and the drop line are drawn. Not its
+ * offsetTop alone: the block of rows it sits in (StepList's chunked) can be its offset parent.
+ */
+export function topIn(body: HTMLElement, row: HTMLElement): number {
+  let top = 0;
+  for (let el: HTMLElement | null = row; el && el !== body; el = el.offsetParent as HTMLElement | null) top += el.offsetTop;
+  return top;
+}
+
+/**
+ * The step rows inside the scrolled view — the only ones worth measuring in a long list. Block by
+ * block: measuring a row of a block off screen would make the browser lay that block out.
+ */
 function visibleRows(body: HTMLElement, view: DOMRect): HTMLElement[] {
   const out: HTMLElement[] = [];
-  for (const el of body.querySelectorAll<HTMLElement>('.step')) {
-    const r = el.getBoundingClientRect();
-    if (r.bottom < view.top) continue;
-    if (r.top > view.bottom) break;
-    out.push(el);
+  for (const chunk of body.querySelectorAll<HTMLElement>('.steps-chunk')) {
+    const c = chunk.getBoundingClientRect();
+    if (c.bottom < view.top) continue;
+    if (c.top > view.bottom) break;
+    for (const el of chunk.querySelectorAll<HTMLElement>('.step')) {
+      const r = el.getBoundingClientRect();
+      if (r.bottom < view.top) continue;
+      if (r.top > view.bottom) break;
+      out.push(el);
+    }
   }
   return out;
 }

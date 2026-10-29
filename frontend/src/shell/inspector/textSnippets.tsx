@@ -55,6 +55,13 @@ export function SnippetsTab({ api, hasText, locked }: {
   const needsText = hasText ? undefined : tt('Type something first', 'Digite algo primeiro');
 
   const store = (next: Snippet[]) => { setSnippets(next); saveSnippets(next); };
+  // A form or the delete's question that closes gives the keyboard back to the message, with its
+  // caret where it was (the editor's own focus), as today's dialog did: the focus would drop to the
+  // page, and the next Esc would not reach the Inspector.
+  const back = () => api.current?.focus();
+  const closeSaving = () => { setSaving(false); back(); };
+  const closeEditing = () => { setEditing(null); back(); };
+  const closeDeleting = () => { setDeleting(null); back(); };
   const save = () => {
     const n = name.trim();
     const text = api.current?.getText() ?? '';
@@ -63,19 +70,19 @@ export function SnippetsTab({ api, hasText, locked }: {
     const html = api.current?.getHtml() ?? undefined;
     store([...snippets, { id: newSnippetId(), name: n, text, ...(html ? { html } : {}) }]);
     setName('');
-    setSaving(false);
+    closeSaving();
   };
   const update = (id: string, nextName: string, nextText: string) => {
     const n = nextName.trim();
     if (!n || !nextText.trim()) return;
     // A new text drops the formatting it no longer matches; a new name alone keeps it.
     store(snippets.map(s => (s.id !== id ? s : nextText === s.text ? { ...s, name: n } : { id: s.id, name: n, text: nextText })));
-    setEditing(null);
+    closeEditing();
   };
   const remove = (id: string) => {
     store(snippets.filter(s => s.id !== id));
-    setDeleting(null);
     if (editing === id) setEditing(null);
+    closeDeleting();
   };
   const insert = (s: Snippet) => {
     if (s.html) api.current?.insertHtml(s.html);
@@ -171,11 +178,11 @@ export function SnippetsTab({ api, hasText, locked }: {
             onKeyDown={(e) => {
               // Ctrl+Enter is the Inspector's (back to the list); Enter alone saves.
               if (e.key === 'Enter' && !e.ctrlKey) { e.preventDefault(); save(); return; }
-              escTo(() => setSaving(false))(e);
+              escTo(closeSaving)(e);
             }}
           />
           <div className="stx-form-actions">
-            <button type="button" className="insp-button" onClick={() => setSaving(false)}>Cancel</button>
+            <button type="button" className="insp-button" onClick={closeSaving}>Cancel</button>
             <button type="button" className="insp-primary" disabled={!name.trim() || !hasText} onClick={save}>Save snippet</button>
           </div>
         </div>
@@ -192,7 +199,7 @@ export function SnippetsTab({ api, hasText, locked }: {
         ) : shown.length === 0 ? (
           <div className="stx-empty">No snippets match “{filter}”</div>
         ) : shown.map(s => editing === s.id ? (
-          <SnippetForm key={s.id} snippet={s} onSave={(n, t) => update(s.id, n, t)} onCancel={() => setEditing(null)} />
+          <SnippetForm key={s.id} snippet={s} onSave={(n, t) => update(s.id, n, t)} onCancel={closeEditing} />
         ) : (
           <div key={s.id} className="stx-snippet" data-deleting={deleting === s.id || undefined}>
             <button type="button" className="stx-snippet-insert" disabled={locked || deleting === s.id} data-tip={s.text} onMouseDown={(e) => e.preventDefault()} onClick={() => insert(s)}>
@@ -200,12 +207,12 @@ export function SnippetsTab({ api, hasText, locked }: {
               <span className="stx-snippet-text"><SnippetText text={s.text} /></span>
             </button>
             {deleting === s.id ? (
-              <span className="stx-snippet-ask" onKeyDown={escTo(() => setDeleting(null))}>
+              <span className="stx-snippet-ask" onKeyDown={escTo(closeDeleting)}>
                 <span>Delete snippet?</span>
                 <button type="button" className="insp-icon-button" data-danger="" aria-label="Delete snippet" data-tip={tt('Delete', 'Excluir')} autoFocus onClick={() => remove(s.id)}>
                   <span className="step-icon" data-icon="check" />
                 </button>
-                <button type="button" className="insp-icon-button" aria-label="Cancel" data-tip={tt('Cancel (Esc)', 'Cancelar (Esc)')} onClick={() => setDeleting(null)}>
+                <button type="button" className="insp-icon-button" aria-label="Cancel" data-tip={tt('Cancel (Esc)', 'Cancelar (Esc)')} onClick={closeDeleting}>
                   <span className="step-icon" data-icon="x" />
                 </button>
               </span>

@@ -49,6 +49,7 @@ export function StepRow({ step, index, k, depth, kind, owner, rails, broken, tip
       role="option"
       id={`step-${k}`}
       aria-selected={selected}
+      aria-posinset={index + 1}
       className="step"
       data-cursor={cursor || undefined}
       data-key={k}

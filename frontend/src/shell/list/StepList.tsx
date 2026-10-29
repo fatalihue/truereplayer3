@@ -13,14 +13,14 @@ import { useApp, useShell } from '../store';
 import { blockColor, blockMap, type BlockMap, type GhostRow } from './blocks';
 import { drafts, focusInspector, loadInspectorBody } from '../inspector/inspectorState';
 import { preload } from '../lazyModule';
-import { useArrival, useInsertFlash, useLitBlocks, useRunFollow } from './listEffects';
+import { useArrival, useInsertFlash, useLitBlocks, useRunFollow, useSetSize } from './listEffects';
 import { useMacroDrop } from './macroDrop';
 import { deleteSteps } from './moves';
 import { arrival, insertPoint, selectedIndices, selection, useSelection } from './selection';
 import { StepGhost } from './StepGhost';
 import { StepRow } from './StepRow';
 import { stepKey, stepName } from './stepTypes';
-import { useStepDrag } from './useStepDrag';
+import { topIn, useStepDrag } from './useStepDrag';
 import './stepIcons.css';
 import './list.css';
 
@@ -79,6 +79,7 @@ export function StepList() {
   const lit = useLitBlocks(bodyRef, steps, owners);
   useInsertFlash(bodyRef, steps, status === 'recording');
   useArrival(bodyRef, steps, open);
+  useSetSize(bodyRef, steps, open);
   useRunFollow(scrollRef, bodyRef);
 
   // Another macro: nothing selected, and the list from its top (lista-112).
@@ -319,7 +320,7 @@ export function StepList() {
           onMouseEnter={() => { void loadStepMenu(); void preload(loadInspectorBody); }}
           onFocus={() => { void loadStepMenu(); void preload(loadInspectorBody); }}
         >
-          {steps.map((step, i) => {
+          {chunked(steps, blocks, (step, i) => {
             const k = stepKey(step, i);
             const b = blocks.rows[i];
             const ghost = blocks.ghostBefore.get(i);
@@ -369,6 +370,34 @@ export function StepList() {
   );
 }
 
+/** Steps per block of the list (see chunked). */
+const CHUNK = 50;
+
+/**
+ * The rows in blocks of 50 steps. A block off screen skips layout and paint as one (rule 7,
+ * content-visibility), so a scroll lays out the body again only when a block comes into view. One
+ * box per step made it lay out its thousand children on every frame: ~7 ms, 75 frames a second in
+ * the app. A block's size before it is drawn is its rows' (--chunk-rows, the If's ghost rows too).
+ */
+function chunked(steps: ActionItem[], blocks: BlockMap, row: (step: ActionItem, index: number) => React.ReactNode) {
+  const out: React.ReactNode[] = [];
+  for (let at = 0; at < steps.length; at += CHUNK) {
+    const end = Math.min(at + CHUNK, steps.length);
+    const rows: React.ReactNode[] = [];
+    let ghosts = 0;
+    for (let i = at; i < end; i++) {
+      if (blocks.ghostBefore.has(i)) ghosts++;
+      rows.push(row(steps[i], i));
+    }
+    out.push(
+      <div key={at} className="steps-chunk" role="none" style={{ '--chunk-rows': end - at + ghosts } as CSSProperties}>
+        {rows}
+      </div>,
+    );
+  }
+  return out;
+}
+
 /** The header's checkbox: all steps, or none; a dash when some are selected. Works during a run too. */
 function SelectAll({ steps }: { steps: ActionItem[] }) {
   const count = useSelection(s => selectedIndices(steps, s.keys).length);
@@ -402,7 +431,7 @@ function InsertLine({ steps, bodyRef }: { steps: ActionItem[]; bodyRef: React.Re
     const row = last < 0 ? null : bodyRef.current?.querySelector<HTMLElement>(`.step[data-index="${last}"]`);
     if (!line) return;
     line.style.display = row ? '' : 'none';
-    if (row) line.style.top = `${row.offsetTop + row.offsetHeight - 1}px`;
+    if (row && bodyRef.current) line.style.top = `${topIn(bodyRef.current, row) + row.offsetHeight - 1}px`;
   });
   return (
     <div ref={ref} className="steps-insert" style={{ display: 'none' }} aria-hidden="true">

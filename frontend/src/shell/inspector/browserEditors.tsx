@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useBridge } from '../../bridge/BridgeContext';
 import type { ActionItem, BrowserTestResult, SelectorAlternative } from '../../bridge/messageTypes';
 import { newRequestId, useEditorTools } from '../../logic/useEditorTools';
@@ -7,7 +7,7 @@ import { useTt } from '../../state/LanguageContext';
 import { typeBudgetMs } from '../../utils/typeBudget';
 import { useShell } from '../store';
 import { DraftField, Section, Segmented, Switch } from './fields';
-import { applyEdits, lastEdit, type StepEdit } from './inspectorState';
+import { applyEdits, lastEdit, takeFieldAsk, type StepEdit } from './inspectorState';
 import { ResultCard } from './probeKit';
 import { SelectorField, Tier } from './selectorField';
 import './browserEditors.css';
@@ -84,6 +84,10 @@ function OpenUrlFields({ step, locked }: { step: ActionItem; locked: boolean }) 
   const edit = useEdit(step);
   const id = step.id ?? '';
   const url = step.key ?? '';
+  // Just added, it asks for its address first, as today's dialog did (dialogos-075).
+  useLayoutEffect(() => {
+    if (takeFieldAsk(id, 'key')) document.querySelector<HTMLInputElement>('.insp-body input[aria-label="URL"]')?.focus();
+  }, [id]);
   return (
     <>
       <Section label="URL" hint={url.trim() ? 'https:// is added if omitted.' : <span data-error="">Enter the address to open.</span>}>

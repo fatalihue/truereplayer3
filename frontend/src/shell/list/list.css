@@ -27,6 +27,12 @@
 .steps-head-num { display: grid; place-items: center; }
 .steps-head-delay { text-align: right; padding-right: 0.875rem; }
 .steps-body { position: relative; padding-bottom: 0.5rem; outline: none; }
+/* Rule 7: a block of 50 steps off screen skips layout and paint as one, with no virtualization in
+   script (StepList's chunked). Before it is drawn, it is as tall as its rows. */
+.steps-chunk {
+  content-visibility: auto;
+  contain-intrinsic-height: auto calc(var(--chunk-rows) * var(--ui-row-height));
+}
 
 /* ── A step ── */
 .step {
@@ -34,9 +40,6 @@
   min-height: var(--ui-row-height);
   border-bottom: 1px solid color-mix(in srgb, var(--color-border-subtle) 60%, transparent);
   font-size: var(--text-body);
-  /* Rule 7: steps off screen skip layout and paint, with no virtualization in script. */
-  content-visibility: auto;
-  contain-intrinsic-size: auto var(--ui-row-height);
 }
 .step[data-block-open] { background: color-mix(in srgb, var(--row-block-color) 3%, transparent); }
 .step[data-kind] { background: color-mix(in srgb, var(--row-block-color) 6%, transparent); }

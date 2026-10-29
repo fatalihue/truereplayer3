@@ -293,7 +293,15 @@ function NamePrompt({ kind, anchor, toggle, onInsert, onTransform, onClose }: {
           spellCheck={false}
           value={name}
           onChange={(e) => setName(e.target.value.replace(PROMPT_STRIP[kind], ''))}
-          onKeyDown={(e) => { if (e.key === 'Enter' && !e.ctrlKey) { e.preventDefault(); e.stopPropagation(); insert(); } }}
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter') return;
+            // Ctrl+Enter inserts too, as today's prompt did: going on to the Inspector's Ctrl+Enter
+            // (D12) would drop the name typed. With nothing typed, it goes on.
+            if (e.ctrlKey && !n) return;
+            e.preventDefault();
+            e.stopPropagation();
+            insert();
+          }}
         />
         {PROMPT_HINT[kind] && <span className="insp-hint">{PROMPT_HINT[kind]}</span>}
         <div className="stx-prompt-actions">

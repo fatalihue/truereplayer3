@@ -129,6 +129,21 @@ export function focusInspector() {
   focusAsked = true;
   requestAnimationFrame(takeFocusAsk);
 }
+/**
+ * A step's own field asked to take the focus when that step's editor comes up: an Open URL just
+ * added takes its address (dialogos-075). Asked when the step lands and taken by its editor, since
+ * the step lands before the selection moves to it — "the first field" would still be the last one's.
+ */
+let fieldAsk: { stepId: string; field: string } | null = null;
+export function askFieldFocus(stepId: string, field: string) {
+  fieldAsk = { stepId, field };
+}
+/** True once, for the field asked for: its editor then gives it the focus. */
+export function takeFieldAsk(stepId: string, field: string): boolean {
+  if (fieldAsk?.stepId !== stepId || fieldAsk.field !== field) return false;
+  fieldAsk = null;
+  return true;
+}
 /** Gives the asked-for focus to the first field, once there is one. */
 export function takeFocusAsk() {
   if (!focusAsked) return;

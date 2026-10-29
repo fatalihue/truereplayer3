@@ -103,6 +103,9 @@ export function TriggerSection({ facts, locked, focus }: { facts: MacroFacts; lo
             key={listenSeq}
             value={facts.hotkey ?? ''}
             label="Hotkey"
+            // Today's Assign hotkey took the side buttons and the wheel (Ctrl+ScrollDown, XButton1):
+            // the engine fires a macro on them (biblioteca-077 and 078).
+            mouse
             autoListen={listenSeq > 0}
             onCapture={(combo) => macro.assignHotkey(name, combo, mode)}
             disabled={locked}

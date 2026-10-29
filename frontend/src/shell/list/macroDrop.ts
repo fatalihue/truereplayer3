@@ -26,8 +26,8 @@ const panelUnder = () => {
 };
 
 function measure(): DropSlot | null {
-  const { status, actions } = useShell.getState().app;
-  if (status !== 'ready') return null;
+  const { status, actions, settings } = useShell.getState().app;
+  if (status !== 'ready' || settings.useCursorClick) return null;
   const panel = panelUnder();
   if (!panel) return null;
   const body = panel.querySelector<HTMLElement>('.steps-body');

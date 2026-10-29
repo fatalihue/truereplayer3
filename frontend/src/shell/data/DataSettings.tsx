@@ -19,6 +19,8 @@ function stepsText(steps: number[]): string {
 
 /** The table's first filled cell in a row: what names the row ("row 3 (João Pereira)"). */
 const rowName = (row: string[] | undefined) => row?.find(cell => cell.trim() !== '')?.trim() ?? '';
+/** From here a table is a large one (today's LARGE_TABLE_WARN). */
+const LARGE_TABLE = 1000;
 
 /**
  * ⑧ The Inspector on the Data Loop tab ("Data Loop settings"): how replay uses the rows — the next
@@ -95,6 +97,8 @@ export function DataSettings({ locked, note }: { locked: boolean; note: string |
       </div>
       <div className="insp-body">
         {none && <p className="insp-hint">With a table, how replay walks its rows is set here.</p>}
+        {/* Today's note from 1,000 rows (paineis-118): the whole table lives in the macro's file. */}
+        {rows >= LARGE_TABLE && <p className="insp-hint" role="status">Large table — the macro’s file grows with it.</p>}
         {!none && <Section label="How replay uses the rows">
           <Segmented
             label="How replay uses the rows"
@@ -107,7 +111,7 @@ export function DataSettings({ locked, note }: { locked: boolean; note: string |
             onChange={(v) => ops.setLoop(v === 'all')}
           />
           {rows === 0 ? (
-            <div className="dl-card" data-tone={shown.loopOverData ? 'error' : undefined}>
+            <div className="dl-card" data-tone={shown.loopOverData ? 'error' : undefined} role="status">
               {shown.loopOverData ? 'No rows — replay won’t start.' : 'The table has no rows yet: each replay will use the next one.'}
             </div>
           ) : cursorMode ? (

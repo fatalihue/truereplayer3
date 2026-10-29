@@ -1,5 +1,5 @@
 import type { useSteps } from '../../logic/useSteps';
-import { drafts, loadBrowserEditors, loadInspectorBody, loadProbeEditors, loadSendTextEditor, loadSimpleEditors, loadWindowEditors } from '../inspector/inspectorState';
+import { askFieldFocus, drafts, loadBrowserEditors, loadInspectorBody, loadProbeEditors, loadSendTextEditor, loadSimpleEditors, loadWindowEditors } from '../inspector/inspectorState';
 import { preload } from '../lazyModule';
 import { arrival, insertPoint } from '../list/selection';
 import { useShell } from '../store';
@@ -23,9 +23,14 @@ const plain = (actionType: string, editors?: () => Promise<unknown>): Insert =>
     if (editors) void preload(editors);
   };
 
-/** A browser step, born empty — no selector, no address — and filled in the Inspector. */
-const browser = (actionType: string): Insert =>
+/**
+ * A browser step, born empty — no selector, no address — and filled in the Inspector. An Open URL
+ * is nothing without its address, which today's dialog asked for first: its field takes the
+ * keyboard when the step lands (dialogos-075).
+ */
+const browser = (actionType: string, askFirst = false): Insert =>
   (cmds, at) => {
+    if (askFirst) arrival.expect(at, useShell.getState().app.activeProfile, (step) => { if (step.id) askFieldFocus(step.id, 'key'); });
     cmds.addBrowserAction({ actionType, selector: '', insertIndex: at });
     void preload(loadInspectorBody);
     void preload(loadBrowserEditors);
@@ -66,7 +71,7 @@ export const inserts = {
   copyToSlot: plain('CopyToSlot', loadSimpleEditors),
   activateWindow: plain('ActivateWindow', loadWindowEditors),
   runMacro: draft((at, macro) => ({ kind: 'macro', at, macro }), loadWindowEditors),
-  openUrl: browser('BrowserNavigate'),
+  openUrl: browser('BrowserNavigate', true),
   clickElement: browser('BrowserClick'),
   rightClickElement: browser('BrowserRightClick'),
   typeText: browser('BrowserType'),

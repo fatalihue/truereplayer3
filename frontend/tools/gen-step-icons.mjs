@@ -34,9 +34,9 @@ const EDITOR_NAMES = [
   'maximize-2', 'minimize-2', 'refresh-cw', 'square-arrow-out-up-right', 'square-dashed', 'variable',
 ];
 const editorOut = path.join(front, 'src', 'shell', 'inspector', 'editorIcons.css');
-// …and the ones only the expanded Send Text draws (the snippets' tools, Transform…), which load
-// with it.
-const TEXT_NAMES = ['bookmark-plus', 'download', 'pencil', 'trash-2', 'upload', 'wand-sparkles'];
+// …and the ones only the expanded Send Text draws (the snippets' tools, Transform…, the delivery's
+// formatting warning), which load with it.
+const TEXT_NAMES = ['bookmark-plus', 'download', 'pencil', 'trash-2', 'triangle-alert', 'upload', 'wand-sparkles'];
 const textOut = path.join(front, 'src', 'shell', 'inspector', 'textIcons.css');
 // …and the ones the dock's panel draws (a run step's state), which load with that panel.
 const DOCK_NAMES = ['circle-check', 'circle-dashed', 'circle-minus', 'circle-x', 'triangle-alert'];

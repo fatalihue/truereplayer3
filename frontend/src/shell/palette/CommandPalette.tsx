@@ -19,8 +19,8 @@ import { insertHere } from '../insert/inserts';
 import { drafts, focusInspector, focusList } from '../inspector/inspectorState';
 import { libraryMenus } from '../library/libraryMenus';
 import { displayOrder, sectionsOf } from '../library/model';
-import { blockMap } from '../list/blocks';
-import { selectedIndices, selection, useSelection } from '../list/selection';
+import { blockMap, insideLoop } from '../list/blocks';
+import { insertPoint, selectedIndices, selection, useSelection } from '../list/selection';
 import { stepMenuEntries } from '../list/stepMenu';
 import { stepIcon } from '../list/stepTypes';
 import { macroMenuEntries } from '../macroMenu';
@@ -218,12 +218,15 @@ function useItems(): PaletteItem[] {
       : cmd('record', `Record into ${active}`, recording.toggle, { icon: SquareDot, keys: shortcut(recordKey), disabled: status === 'replaying', hint: tt('Stop the run first', 'Pare a execução antes') }));
   }
 
-  // The steps the insert row and Add step make, at the insertion point.
+  // The steps the insert row and Add step make, at the insertion point. Break loop and Next
+  // iteration only inside a loop, as in Add step (casca-079 and 080).
   if (active) {
+    const inLoop = insideLoop(steps, insertPoint(steps, keys));
     for (const item of ITEMS) {
       if (!item.insert) continue;
       const insert = item.insert;
-      out.push(lock(cmd(`add:${item.id}`, `Add ${item.name}`, () => insertHere(insert, cmds), { stepIcon: stepIcon(item.type), detail: item.desc, words: item.words })));
+      const add = cmd(`add:${item.id}`, `Add ${item.name}`, () => insertHere(insert, cmds), { stepIcon: stepIcon(item.type), detail: item.desc, words: item.words });
+      out.push(lock(item.inLoop && !inLoop ? { ...add, disabled: true, hint: tt('Only inside a loop', 'Só dentro de um laço') } : add));
     }
   }
 
@@ -273,7 +276,7 @@ function useItems(): PaletteItem[] {
 
   // The open macro's menu, said with its name.
   if (active) {
-    out.push(...fromMenu('macro', macroMenuEntries({ name: active, profiles, order, active, locked: status !== 'ready', hasSteps: steps.length > 0, macro, tt }), (item, path) => ({ label: macroPhrase(item.label, path, active), detail: 'Macro' })));
+    out.push(...fromMenu('macro', macroMenuEntries({ name: active, profiles, order, active, locked: status !== 'ready', clicker, hasSteps: steps.length > 0, macro, tt }), (item, path) => ({ label: macroPhrase(item.label, path, active), detail: 'Macro' })));
   }
 
   // The library's New ▾ and ⋯.

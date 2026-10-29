@@ -44,12 +44,16 @@ export function WindowCheck({ step, locked, activate = false }: Props & { activa
   const test = useAsk('window:testProbeResult', setResult);
   const { subscribe } = useBridge();
   // Detect window: the id of the detection waiting for its click. The answer fills both fields in
-  // one edit; the engine also says when it ends some other way.
+  // one edit; the engine also says when it ends some other way. The answer's id outlives the wait:
+  // on a click the engine says the detection ended (detectState false) just BEFORE it sends the
+  // window it took, so the window must still find its request.
   const [detecting, setDetecting] = useState<string | null>(null);
+  const answerId = useRef<string | null>(null);
   const live = useRef({ detecting, edit });
   useEffect(() => { live.current = { detecting, edit }; });
   useEffect(() => subscribe((message) => {
-    if (message.type === 'windowTarget:detected' && message.payload.requestId === live.current.detecting) {
+    if (message.type === 'windowTarget:detected' && message.payload.requestId === answerId.current) {
+      answerId.current = null;
       setDetecting(null);
       live.current.edit([{ field: 'windowProcessName', value: message.payload.processName }, { field: 'windowTitle', value: message.payload.windowTitle }]);
     } else if (message.type === 'windowTarget:detectState' && message.payload.requestId === live.current.detecting && !message.payload.detecting) {
@@ -58,6 +62,8 @@ export function WindowCheck({ step, locked, activate = false }: Props & { activa
   }), [subscribe]);
   const stopDetecting = () => {
     if (!detecting) return;
+    // Cancelled: a window a click took just before the stop is not wanted any more.
+    answerId.current = null;
     tools.detectWindow({ requestId: detecting, enabled: false });
     setDetecting(null);
   };
@@ -124,6 +130,7 @@ export function WindowCheck({ step, locked, activate = false }: Props & { activa
             const requestId = newRequestId();
             setDetecting(requestId);
             live.current.detecting = requestId;
+            answerId.current = requestId;
             tools.detectWindow({ requestId, enabled: true });
           }}
         >

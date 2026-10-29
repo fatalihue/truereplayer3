@@ -46,11 +46,13 @@ export function TargetFields({ id, value, disabled, onChange }: {
     return regex && title && !compiles(title) ? null : title;
   };
 
-  // Detect window: the id of the detection waiting for its click (nativo-126).
+  // Detect window: the id of the detection waiting for its click (nativo-126). The answer's id
+  // (answerId) outlives it: on a click the engine says the detection ended (detectState false)
+  // just BEFORE it sends the window it took, so the window must still find its request.
   const [detecting, setDetecting] = useState<string | null>(null);
   // Test: windowTarget:testResult carries no id, so a change since the press makes its answer stale.
   const [test, setTest] = useState<{ waiting: boolean; result: TestResult | null }>({ waiting: false, result: null });
-  const live = useRef({ detecting, onChange, seq: 0, asked: -1 });
+  const live = useRef({ detecting, answerId: null as string | null, onChange, seq: 0, asked: -1 });
   useEffect(() => { live.current.detecting = detecting; live.current.onChange = onChange; });
   const change = (patch: Partial<TargetValue>) => {
     live.current.seq++;
@@ -60,7 +62,8 @@ export function TargetFields({ id, value, disabled, onChange }: {
 
   useEffect(() => subscribe((message) => {
     const l = live.current;
-    if (message.type === 'windowTarget:detected' && message.payload.requestId === l.detecting) {
+    if (message.type === 'windowTarget:detected' && message.payload.requestId === l.answerId) {
+      l.answerId = null;
       l.detecting = null;
       setDetecting(null);
       l.seq++;
@@ -84,6 +87,8 @@ export function TargetFields({ id, value, disabled, onChange }: {
   const stopDetecting = () => {
     const requestId = live.current.detecting;
     if (!requestId) return;
+    // Cancelled: a window a click took just before the stop is not wanted any more.
+    live.current.answerId = null;
     live.current.detecting = null;
     setDetecting(null);
     tools.detectWindow({ requestId, enabled: false });
@@ -168,6 +173,7 @@ export function TargetFields({ id, value, disabled, onChange }: {
             if (detecting) { stopDetecting(); return; }
             const requestId = newRequestId();
             live.current.detecting = requestId;
+            live.current.answerId = requestId;
             setDetecting(requestId);
             tools.detectWindow({ requestId, enabled: true });
           }}

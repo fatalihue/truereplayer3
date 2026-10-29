@@ -196,7 +196,9 @@ export function Inspector() {
               </button>
             )}
           </div>
-          {open && Settings ? <Settings name={open} locked={locked} /> : <div className="insp-body" />}
+          {/* The macro's own settings are not its steps: as today's dialogs, they stay editable with
+              the Clicker on, and wait only for a run or a recording (biblioteca-014). */}
+          {open && Settings ? <Settings name={open} locked={status !== 'ready'} /> : <div className="insp-body" />}
         </>
       ) : Body ? (
         // The header, the editors and the footer come with the editors' chunk.

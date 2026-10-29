@@ -48,7 +48,8 @@ export function TagEditor({ tags, onChange, disabled }: { tags: string[]; onChan
     if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && listOpen) {
       e.preventDefault();
       const step = e.key === 'ArrowDown' ? 1 : -1;
-      setActive(i => (i + step + suggestions.length) % suggestions.length);
+      // With none lit, ↓ lights the first and ↑ the last (biblioteca-149).
+      setActive(i => (i < 0 ? (step > 0 ? 0 : suggestions.length - 1) : (i + step + suggestions.length) % suggestions.length));
     } else if (e.key === 'Enter' || e.key === ',' || e.key === 'Tab') {
       const picked = active >= 0 ? suggestions[active]?.tag : null;
       if (picked) { e.preventDefault(); add(picked); }
@@ -134,7 +135,10 @@ export function TagEditor({ tags, onChange, disabled }: { tags: string[]; onChan
           </div>
         )}
       </div>
-      {error && <span className="insp-hint"><span data-error="">{TAG_MESSAGE[error]}</span></span>}
+      {/* The field's rule at rest, and why a tag was refused in its place (biblioteca-147). */}
+      <span className="insp-hint">
+        {error ? <span data-error="">{TAG_MESSAGE[error]}</span> : 'Press Enter or comma to add. Spaces and accents are converted.'}
+      </span>
       {top.length > 0 && (
         <div className="mset-tag-top" role="group" aria-label="Most used tags">
           <span className="insp-hint">Most used</span>

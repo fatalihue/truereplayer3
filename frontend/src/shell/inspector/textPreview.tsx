@@ -105,6 +105,8 @@ export function TextPreview({ text, mode, method, delay, hasFormatting, tokens, 
         <dd>{facts.flavor}</dd>
         <dt>Formatting</dt>
         <dd data-tone={facts.formatting.tone}>
+          {/* A warning in two channels, the glyph and the ink, as today's. */}
+          {facts.formatting.tone === 'warn' && <span className="step-icon stx-facts-warn" data-icon="triangle-alert" role="img" aria-label="Warning" />}
           {facts.formatting.verdict}
           {facts.formatting.why && <span className="stx-facts-why">{facts.formatting.why}</span>}
         </dd>

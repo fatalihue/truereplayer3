@@ -55,6 +55,7 @@ export function Library() {
   const active = useApp(a => a.activeProfile);
   const locked = useApp(a => a.buttonStates.recordingActive || a.buttonStates.replayActive);
   const hasSteps = useApp(a => a.actions.length > 0);
+  const clicker = useApp(a => a.settings.useCursorClick);
   const macro = useMacro();
   const steps = useSteps();
   const { showToast } = useToast();
@@ -148,7 +149,7 @@ export function Library() {
     setMenu({ kind, button, anchor: anchorBelow(button, kind === 'new' ? 'start' : 'end'), keyboard, seq: ++seq.current });
   };
 
-  const macroEntries = (name: string) => macroMenuEntries({ name, profiles, order, active, locked, hasSteps, macro, tt });
+  const macroEntries = (name: string) => macroMenuEntries({ name, profiles, order, active, locked, clicker, hasSteps, macro, tt });
 
   const folderEntries = (name: string): MenuEntry[] => {
     const folder = order.folders.find(f => f.name === name);
