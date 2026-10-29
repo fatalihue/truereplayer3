@@ -9,6 +9,7 @@ import { ocrLanguageNote, ocrLanguageOptions, ocrPickerLanguages } from '../../.
 import { DraftField, Segmented, Switch } from '../../inspector/fields';
 import { Menu } from '../../Menu';
 import { anchorBelow } from '../../menuAnchor';
+import { preload, useLoaded } from '../../lazyModule';
 import { useExtension } from '../../statusbar/extensionState';
 import { useApp } from '../../store';
 import type { SettingsCategory } from '../../ui';
@@ -45,6 +46,8 @@ export interface Category {
   Intro?: ComponentType;
   /** Beside the name in the categories: a count that asks for a look. */
   Badge?: ComponentType;
+  /** Starts loading the category's own chunk (rule 6): the page calls it when idle, and its tab sooner. */
+  warm?: () => void;
 }
 
 // ── The controls. Each reads only what it shows (rule 1) and sends what the panel of today sent. ──
@@ -342,6 +345,21 @@ function ReloadControl() {
   return <button type="button" className="insp-button" onClick={app.reloadUI}><RefreshCw aria-hidden="true" />Reload UI</button>;
 }
 
+/**
+ * Appearance (appearance.tsx) comes in a chunk of its own, with the 37 presets: the start never loads
+ * them. Settings brings it when the page has nothing to do, or the pointer or the focus on its tab
+ * sooner. Opened straight on it (Ctrl+K), the page draws once the chunk is in.
+ */
+const loadAppearance = () => import('./appearance');
+function AppearanceLoader() {
+  const mod = useLoaded(loadAppearance);
+  useEffect(() => { if (!mod) void preload(loadAppearance); }, [mod]);
+  return mod ? <mod.AppearancePanel /> : null;
+}
+function AppearanceIntro() {
+  return <p className="set-intro">Themes, density and motion. Every change shows at once, in the whole app.</p>;
+}
+
 /** A hotkey's row (hotkeys.tsx): its key with Change and ✕, and under the description its conflict. */
 function hotkeyRow(id: string, settingKey: HotkeySettingKey, label: string, more: { hint?: string; words: string; noKeyWhy?: string }): Row {
   return {
@@ -439,7 +457,15 @@ export const CATEGORIES: Category[] = [
       },
     ],
   },
-  { id: 'appearance', label: 'Appearance', built: false },
+  {
+    id: 'appearance',
+    label: 'Appearance',
+    built: true,
+    Intro: AppearanceIntro,
+    Panel: AppearanceLoader,
+    warm: () => { void preload(loadAppearance); },
+    words: 'theme themes color colour accent dark light follow windows vivid pastel monochrome random my own save custom density compact normal spacious motion animations text size font corner roundness radius zoom scale data monospace',
+  },
   {
     id: 'recording',
     label: 'Recording and playback',

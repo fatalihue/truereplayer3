@@ -292,6 +292,7 @@ function useItems(): PaletteItem[] {
     cmd('remaps', remapsOn ? 'Turn Key Remaps off' : 'Turn Key Remaps on', () => remaps.setEnabled(!remapsOn), { icon: CornerDownRight, words: 'remap keys' }),
     cmd('settings', 'Settings', () => openSettings(), { icon: Settings, words: 'preferences options configuration' }),
     cmd('settings-hotkeys', 'Hotkeys', () => openSettings('hotkeys'), { icon: Settings, detail: 'Settings', words: 'shortcut keys global record replay foreground clicker conflict suggested' }),
+    cmd('settings-appearance', 'Appearance', () => openSettings('appearance'), { icon: Settings, detail: 'Settings', words: 'theme themes dark light accent color colour density text size font zoom motion animations corner' }),
     cmd('settings-recording', 'Recording and playback', () => openSettings('recording'), { icon: Settings, detail: 'Settings', words: 'delay timing jitter game mode return cursor fast approach' }),
     cmd('settings-screen', 'Screen Text', () => openSettings('screen'), { icon: Settings, detail: 'Settings', words: 'ocr language install read text' }),
     // casca-139: the reset of today, from the palette too; Settings asks before it resets.

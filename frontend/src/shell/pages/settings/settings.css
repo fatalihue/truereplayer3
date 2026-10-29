@@ -146,6 +146,7 @@
 .set-notice-text { margin: 0; color: var(--color-text-primary); }
 .set .insp-button[data-variant='primary'] { border-color: var(--color-accent-solid); background: var(--color-accent-solid); color: var(--color-accent-ink); font-weight: 600; }
 .set .insp-button[data-variant='primary']:not(:disabled):hover { border-color: var(--color-accent-solid-hover); background: var(--color-accent-solid-hover); }
+.set .insp-button[data-variant='primary']:disabled { border-color: var(--color-border-default); background: var(--color-bg-elevated); color: var(--color-text-disabled); }
 .set-hotkey { display: flex; align-items: center; gap: 0.5rem; }
 .set-hotkey-keys { display: flex; justify-content: flex-end; min-width: 6rem; }
 .set-hotkey .kbd { height: 1.5rem; padding: 0 0.5rem; font-size: var(--text-minor); color: var(--color-text-primary); }

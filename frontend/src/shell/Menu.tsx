@@ -23,6 +23,8 @@ export interface MenuItem {
   shortcut?: string;
   /** Asks twice: the first press turns the item into this question, in red, and the second does it. */
   confirm?: string;
+  /** The label drawn in this monospace font: the choice is the font (Settings › Appearance's Font for data). */
+  font?: string;
 }
 export type MenuEntry = MenuItem | 'separator';
 
@@ -238,7 +240,9 @@ function MenuList({ entries, label, place, focusFirst, onClose, onBack, panel }:
               }}
             >
               <span className="shell-menu-icon" style={entry.iconColor ? { color: entry.iconColor } : undefined}>{Icon && <Icon aria-hidden="true" />}</span>
-              <span className="shell-menu-label">{entry.notBuilt ? `${entry.label} — not built yet` : armed === i ? entry.confirm : entry.label}</span>
+              <span className="shell-menu-label" style={entry.font ? { fontFamily: `'${entry.font}', monospace` } : undefined}>
+                {entry.notBuilt ? `${entry.label} — not built yet` : armed === i ? entry.confirm : entry.label}
+              </span>
               {entry.shortcut && <kbd className="kbd shell-menu-kbd" aria-hidden="true">{entry.shortcut}</kbd>}
               {entry.checked && <Check className="shell-menu-end" aria-hidden="true" />}
               {hasSub && <ChevronRight className="shell-menu-end" aria-hidden="true" />}

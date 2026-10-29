@@ -210,6 +210,36 @@ export const DEFAULT_UI_SETTINGS: ThemeUISettings = {
 // v7 = default monospace font Consolas → Cascadia Mono (2026-09-04 main-window polish).
 export const CURRENT_THEME_CONFIG_VERSION = 7;
 
+/**
+ * The type ramp at the default Text size, in px at 100 %: [role, size, line height]. index.css holds
+ * the same values in rem (the boot mirror's generator fails the build when they drift). Another Text
+ * size scales it, written on <html> by applyThemeConfig and the boot mirror (rampDeclarations).
+ */
+export const TEXT_RAMP: readonly (readonly [string, number, number])[] = [
+  ['caption', 11, 16], ['minor', 12, 16], ['body', 13, 18], ['subtitle', 15, 20], ['title', 20, 28],
+];
+/** 11 px is the floor for text that carries meaning: a smaller Text size never takes the ramp under it. */
+export const TEXT_FLOOR_PX = 11;
+
+/**
+ * The declarations the Text size and Corner roundness settings add to <html>: the scaled ramp and the
+ * controls' corners (4/3 of the setting), as plain lengths, so no element resolves a calc to read its
+ * font or its corner. Nothing at the defaults, where index.css already holds the values.
+ */
+export function rampDeclarations(ui: Pick<ThemeUISettings, 'fontSize' | 'borderRadius'>): string[] {
+  const out: string[] = [];
+  const base = DEFAULT_UI_SETTINGS.fontSize;
+  if (ui.fontSize !== base) {
+    for (const [role, size, line] of TEXT_RAMP) {
+      // Smaller never goes under the floor, and the lines never get tighter than the default's.
+      out.push(`--text-${role}: ${Math.max(TEXT_FLOOR_PX, (size * ui.fontSize) / base) / 16}rem;`);
+      out.push(`--text-${role}--line-height: ${Math.max(line, (line * ui.fontSize) / base) / 16}rem;`);
+    }
+  }
+  if (ui.borderRadius !== DEFAULT_UI_SETTINGS.borderRadius) out.push(`--radius-control: ${(ui.borderRadius * 4) / 3 / 16}rem;`);
+  return out;
+}
+
 export interface ThemeConfig {
   // Schema version. v1 = original; v2 = palette pass (PixelColor / Scroll / Pause
   // defaults swapped); v3 = If color moved from amber to teal to resolve hue
@@ -988,6 +1018,8 @@ export function applyThemeConfig(colors: ThemeColors, uiSettings: ThemeUISetting
   // In rem (the settings are px at 100 %), so they follow the scale like everything else.
   parts.push(`--ui-font-size: ${uiSettings.fontSize / 16}rem;`);
   parts.push(`--ui-border-radius: ${uiSettings.borderRadius / 16}rem;`);
+  // The new shell's type ramp and control corners, when Text size or Corner roundness is not the default.
+  parts.push(...rampDeclarations(uiSettings));
   parts.push(`--ui-row-height: ${uiSettings.rowHeight / 16}rem;`);
   // Semantic colors + auto-derived backgrounds
   parts.push(`--color-recording: ${uiSettings.recordingColor};`);

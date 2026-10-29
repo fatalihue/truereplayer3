@@ -993,3 +993,20 @@ export function getThemeTags(id: string): ThemeTag[] {
 export function getThemeById(id: string): ThemePreset | undefined {
   return themes.find(t => t.id === id);
 }
+
+// The themes Settings › Appearance shows before "Show all": the concept's eight (SettingsAppearance
+// board), the default first. The rest follow in the order above.
+export const FEATURED_THEMES = [
+  'lavender-coal', 'one-dark-pro', 'tokyo-night', 'catppuccin-mocha', 'dracula', 'nord', 'gruvbox-dark', 'catppuccin-latte',
+];
+
+// The accent swatches of Settings › Appearance, as their hue on a dark theme. The page shows each as
+// it reads on the open theme: lighter or darker, never another hue (appearance.tsx, adaptAccent).
+export const ACCENT_SWATCHES: { name: string; hex: string }[] = [
+  { name: 'Periwinkle', hex: '#7aa2f7' },
+  { name: 'Teal', hex: '#80cbc4' },
+  { name: 'Violet', hex: '#bd93f9' },
+  { name: 'Amber', hex: '#fabd2f' },
+  { name: 'Lime', hex: '#a6e22e' },
+  { name: 'Red', hex: '#ef4444' },
+];

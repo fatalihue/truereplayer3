@@ -32,6 +32,12 @@ export function SettingsPage() {
     onResetAsked(() => setConfirm(true));
     return () => onResetAsked(() => {});
   }, []);
+  // The categories in chunks of their own come in once the page is up, when the page has nothing to
+  // do: the arrows and Ctrl+K reach a category without the pointer passing over its tab first.
+  useEffect(() => {
+    const id = requestIdleCallback(() => { for (const c of BUILT) c.warm?.(); }, { timeout: 2000 });
+    return () => cancelIdleCallback(id);
+  }, []);
   // The confirmation, asked by the row's Reset… or by Ctrl+K's Reset all settings… (settingsReset,
   // set before the page was here); closing it answers both.
   const closeReset = () => {
@@ -87,7 +93,7 @@ function Categories({ current, onPick }: { current: SettingsCategory; onPick: (i
   };
   return (
     <div ref={listRef} className="set-cats" role="tablist" aria-orientation="vertical" aria-label="Settings categories" onKeyDown={onKeyDown}>
-      {SHOWN.map(({ id, label, built, Badge }) => (
+      {SHOWN.map(({ id, label, built, Badge, warm }) => (
         <button
           key={id}
           id={`set-tab-${id}`}
@@ -99,6 +105,8 @@ function Categories({ current, onPick }: { current: SettingsCategory; onPick: (i
           tabIndex={id === current ? 0 : -1}
           disabled={!built}
           data-tip={built ? undefined : tt(`${label} — not built yet`, `${label} — ainda não feito`)}
+          onPointerEnter={warm}
+          onFocus={warm}
           onClick={() => onPick(id)}
         >
           {label}

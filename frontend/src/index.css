@@ -186,7 +186,10 @@
      the floor for text that carries meaning; body matches --ui-font-size's 13px
      default. Weights: 400/500/600 only, sentence case (platform convention). */
   /* In rem since the new shell (rule 9 of the interface plan): the zoom setting is the root font
-     size, so every size follows it. Each value is the px it was, over 16. */
+     size, so every size follows it. Each value is the px it was, over 16.
+     These are the ramp at the default Text size (13). Another Text size scales it: applyThemeConfig
+     and the boot mirror write the scaled values on <html>, as plain lengths (TEXT_RAMP in themes.ts,
+     which the mirror's generator checks against these), so no element resolves a calc for its font. */
   --text-caption: 0.6875rem;
   /* 16, not the 14 first drafted: the ~350 call sites that moved onto the ramp in the 2026-10-13
      rework had been inheriting 1.5 (16.5 px at 11 px), and multi-line hints read cramped at 14. */
@@ -226,11 +229,14 @@
   --spacing-statusbar: 1.625rem;
 
   /* Radius scale — four roles in place of the eight ad-hoc values the audit of 2026-09-03
-     counted. Control = buttons, chips, pills, inputs (Tailwind `rounded`, 4px). The SHELL radius
+     counted. Control = buttons, chips, pills, inputs (4px by default). The SHELL radius
      (panels, the centre card) follows the user's border-radius setting at twice the control
      value, so the 3px default draws the 6px shell the design was made at and a user who picks
      0 still gets square panels. Overlays (menus, flyouts, tooltip, toast) and dialogs (palette,
-     DialogShell, sheet) are fixed: they float, so the user's shell setting is not about them. */
+     DialogShell, sheet) are fixed: they float, so the user's shell setting is not about them.
+     The new shell's corners are its controls', so they follow the setting too (Corner roundness),
+     at 4/3 of it: applyThemeConfig and the boot mirror write it on <html> when the setting is not the
+     default 3, which is the 4px here; 0 draws square ones. */
   --radius-control: 0.25rem;
   --radius-shell: calc(var(--ui-border-radius) * 2);
   --radius-overlay: 0.5rem;

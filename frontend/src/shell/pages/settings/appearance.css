@@ -1,0 +1,197 @@
+/* Settings › Appearance (phase 3, slice 3; the concept's SettingsAppearance board). Comes with the
+   page's chunk. Sizes in rem, theme tokens only; the controls are the Inspector's (editors.css). */
+
+.ap { display: flex; flex-direction: column; gap: 1.5rem; }
+.ap-section { display: flex; flex-direction: column; gap: 0.625rem; }
+.ap-title { margin: 0; font-size: var(--text-body); font-weight: 600; color: var(--color-text-primary); }
+.ap-subtitle { margin: 0.25rem 0 0; font-size: var(--text-minor); font-weight: 600; color: var(--color-text-tertiary); }
+.ap-subtitle-note { font-weight: 400; }
+
+/* Follow Windows light and dark, with the theme for each. */
+.ap-follow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-shell);
+  background: var(--color-bg-surface);
+}
+.ap-follow-switch { display: flex; align-items: center; gap: 0.625rem; flex: 1 1 12rem; min-width: 0; color: var(--color-text-primary); cursor: pointer; }
+.ap-pick { display: flex; align-items: center; gap: 0.375rem; min-width: 0; }
+.ap-pick-label { font-size: var(--text-minor); color: var(--color-text-tertiary); }
+.ap-pick .set-choice { min-width: 9.5rem; height: 1.75rem; font-size: var(--text-minor); }
+
+/* The filters, the random theme and the search. */
+.ap-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem; }
+.ap-chips { display: flex; flex-wrap: wrap; gap: 0.375rem; }
+.ap-chip {
+  height: 1.75rem;
+  padding: 0 0.625rem;
+  border: 1px solid var(--color-border-default);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: var(--text-minor);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ap-chip:not([aria-pressed='true']):hover { background: var(--color-bg-elevated); color: var(--color-text-primary); }
+.ap-chip[aria-pressed='true'] {
+  border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+.ap-chip:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 1px; }
+.ap-spacer { flex: 1; }
+.ap-random { width: 1.875rem; height: 1.875rem; }
+.ap-random svg { width: 0.875rem; height: 0.875rem; }
+.ap-random:not(:disabled):hover { border-color: var(--color-border-strong); color: var(--color-text-primary); }
+.ap-random:disabled { color: var(--color-text-disabled); cursor: default; }
+.ap-random:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 1px; }
+.ap-search {
+  width: 11.25rem;
+  height: 1.875rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: var(--text-minor);
+}
+.ap-search::placeholder { color: var(--color-text-tertiary); }
+.ap-search:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: -1px; }
+
+/* The gallery: four to a row; the open theme marked in the accent. */
+.ap-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.75rem; }
+.ap-card-slot { position: relative; min-width: 0; }
+.ap-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  width: 100%;
+  padding: 0.375rem;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-shell);
+  background: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: var(--text-minor);
+  text-align: left;
+  cursor: pointer;
+}
+.ap-card:not([aria-pressed='true']):hover { border-color: var(--color-border-strong); color: var(--color-text-primary); }
+.ap-card[aria-pressed='true'] {
+  border-color: var(--color-accent);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+.ap-card:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 2px; }
+/* A small window in the theme's own colours: the sidebar, a bar, the accent and a line. */
+.ap-card-preview { position: relative; display: block; height: 4rem; overflow: hidden; border-radius: var(--radius-control); background: var(--p-surface); }
+.ap-card-preview span { position: absolute; border-radius: 0.1875rem; }
+.ap-card-preview .ap-p-side { left: 0; top: 0; bottom: 0; width: 1.375rem; border-radius: 0; background: var(--p-base); }
+.ap-p-bar { left: 1.875rem; top: 0.625rem; right: 0.625rem; height: 0.75rem; background: var(--p-card); }
+.ap-p-accent { left: 1.875rem; top: 1.75rem; width: 3.25rem; max-width: calc(100% - 2.5rem); height: 0.625rem; background: var(--p-accent); }
+.ap-p-line { left: 1.875rem; top: 2.75rem; right: 1.5rem; height: 0.5rem; background: var(--p-card); }
+.ap-card-name { display: flex; align-items: center; gap: 0.375rem; min-width: 0; }
+.ap-card-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ap-card-name svg { width: 0.75rem; height: 0.75rem; flex: none; color: var(--color-accent); }
+.ap-card-delete {
+  position: absolute;
+  top: 0.625rem;
+  right: 0.625rem;
+  display: grid;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--color-bg-base) 80%, transparent);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+.ap-card-delete svg { width: 0.75rem; height: 0.75rem; }
+.ap-card-delete:hover { color: var(--color-recording-fg); }
+.ap-card-delete:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 1px; }
+/* The ✕ shows with the pointer on the card or the focus in it. */
+.ap-card-slot:not(:hover):not(:focus-within) .ap-card-delete { opacity: 0; }
+.ap-more { align-self: flex-start; font-size: var(--text-minor); }
+
+/* The accent: the theme's own, six more, and Custom…. */
+.ap-accent { display: flex; flex-wrap: wrap; align-items: center; gap: 0.625rem; }
+.ap-swatches { display: flex; flex-wrap: wrap; gap: 0.625rem; }
+.ap-swatch {
+  width: 1.875rem;
+  height: 1.875rem;
+  padding: 0;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 50%;
+  background: var(--swatch);
+  cursor: pointer;
+}
+.ap-swatch[aria-checked='true'] { border: 2px solid var(--color-text-primary); box-shadow: inset 0 0 0 2px var(--color-bg-base); }
+.ap-swatch:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 2px; }
+.ap-custom {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 1.875rem;
+  padding: 0 0.75rem;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: 999px;
+  color: var(--color-text-secondary);
+  font-size: var(--text-minor);
+  cursor: pointer;
+}
+.ap-custom:hover { color: var(--color-text-primary); }
+.ap-custom[data-active] { border-style: solid; border-color: var(--color-text-primary); color: var(--color-text-primary); }
+.ap-custom:has(.ap-custom-input:focus-visible) { outline: 2px solid var(--color-accent-solid); outline-offset: 2px; }
+.ap-custom-dot { width: 0.75rem; height: 0.75rem; flex: none; border-radius: 50%; background: var(--swatch); }
+/* The colour picker of today, over the whole pill: a press anywhere on it opens the picker. */
+.ap-custom-input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; opacity: 0; cursor: pointer; }
+
+/* The interface: two columns of settings. */
+.ap-ui { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.875rem 1.25rem; }
+.ap-field { display: flex; flex-direction: column; gap: 0.375rem; min-width: 0; }
+.ap-field-row { flex-direction: row; align-items: center; justify-content: space-between; gap: 0.625rem; }
+.ap-field-label { display: flex; justify-content: space-between; gap: 0.5rem; font-size: var(--text-minor); font-weight: 600; color: var(--color-text-secondary); }
+.ap-field-value { font-family: var(--font-mono); font-weight: 400; color: var(--color-text-primary); }
+.ap-field-hint { font-size: var(--text-minor); color: var(--color-text-tertiary); }
+.ap-range { width: 100%; margin: 0; accent-color: var(--color-accent-solid); cursor: pointer; }
+.ap-range:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 2px; }
+.ap-choice { min-width: 8.5rem; font-size: var(--text-minor); }
+
+/* Save as my theme…, and what slice 4 brings. */
+.ap-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.ap-naming { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.ap-name {
+  width: 14rem;
+  height: 2rem;
+  padding: 0 0.625rem;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
+  font: inherit;
+}
+.ap-name::placeholder { color: var(--color-text-tertiary); }
+.ap-name:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: -1px; }
+.ap-saved { flex-basis: 100%; margin: 0; font-size: var(--text-minor); color: var(--color-text-secondary); }
+.ap-saved:focus { outline: none; }
+
+/* One pane at a time (520–759 px): two themes to a row, one column of settings, the search on a line
+   of its own. */
+@container shell (max-width: 47.49rem) {
+  .ap-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ap-ui { grid-template-columns: minmax(0, 1fr); }
+  .ap-spacer { display: none; }
+  .ap-search { flex: 1 1 100%; width: auto; }
+}

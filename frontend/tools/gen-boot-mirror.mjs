@@ -31,8 +31,24 @@ const presetsPath = path.join(here, '..', 'src', 'themePresets.ts');
 // Node imports the .ts directly (type stripping). themes.ts has no imports of its own, and
 // themePresets.ts only a type one, so there is nothing to resolve — if this ever throws, the build
 // SHOULD fail rather than ship a stale mirror silently, which is the whole point of the file.
-const { DEFAULT_PALETTE, DEFAULT_THEME_ID, DEFAULT_UI_SETTINGS, REMOVED_THEME_FALLBACKS, THEME_COLOR_KEYS, UI_NUMBER_BOUNDS } =
+const { DEFAULT_PALETTE, DEFAULT_THEME_ID, DEFAULT_UI_SETTINGS, REMOVED_THEME_FALLBACKS, THEME_COLOR_KEYS, UI_NUMBER_BOUNDS, TEXT_RAMP, TEXT_FLOOR_PX } =
   await import(pathToFileURL(themesPath).href);
+
+// The type ramp and the controls' corner at the defaults live in index.css as plain rem, and the
+// mirror (like applyThemeConfig) writes only what another Text size or Corner roundness changes. The
+// two copies must agree, or a default would paint one size before React and another after it.
+{
+  const css = fs.readFileSync(path.join(here, '..', 'src', 'index.css'), 'utf8');
+  const want = [
+    ...TEXT_RAMP.flatMap(([role, size, line]) => [`--text-${role}: ${size / 16}rem;`, `--text-${role}--line-height: ${line / 16}rem;`]),
+    `--radius-control: ${(DEFAULT_UI_SETTINGS.borderRadius * 4) / 3 / 16}rem;`,
+  ];
+  const missing = want.filter((d) => !css.includes(d));
+  if (missing.length) {
+    console.error('[boot-mirror] index.css differs from TEXT_RAMP or the default corner in themes.ts: %s', missing.join(' '));
+    process.exit(1);
+  }
+}
 const { themes } = await import(pathToFileURL(presetsPath).href);
 
 // The app paints from the mirror's palettes (window.__trPalettes, read by themes.ts) and keeps only
@@ -159,6 +175,16 @@ ${presets}
         for (var k3 in colors) s.setProperty('--color-' + k3, colors[k3]);
         s.setProperty('--ui-font-size', ui.fontSize / 16 + 'rem');
         s.setProperty('--ui-border-radius', ui.borderRadius / 16 + 'rem');
+        // Another Text size scales the type ramp, and another Corner roundness the controls' corner,
+        // as applyThemeConfig writes them (rampDeclarations); the defaults are index.css's.
+        var RAMP = ${JSON.stringify(TEXT_RAMP)};
+        if (ui.fontSize !== DEF.fontSize) {
+          for (var ri = 0; ri < RAMP.length; ri++) {
+            s.setProperty('--text-' + RAMP[ri][0], Math.max(${TEXT_FLOOR_PX}, RAMP[ri][1] * ui.fontSize / DEF.fontSize) / 16 + 'rem');
+            s.setProperty('--text-' + RAMP[ri][0] + '--line-height', Math.max(RAMP[ri][2], RAMP[ri][2] * ui.fontSize / DEF.fontSize) / 16 + 'rem');
+          }
+        }
+        if (ui.borderRadius !== DEF.borderRadius) s.setProperty('--radius-control', ui.borderRadius * 4 / 3 / 16 + 'rem');
         s.setProperty('--ui-row-height', ui.rowHeight / 16 + 'rem');
         // The scale too, or the first frame paints at 100 % and snaps to the user's scale the moment
         // applyThemeConfig runs. The new shell scales by rem (themes.ts, setScaleMode): the zoom

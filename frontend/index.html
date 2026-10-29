@@ -145,6 +145,16 @@
         for (var k3 in colors) s.setProperty('--color-' + k3, colors[k3]);
         s.setProperty('--ui-font-size', ui.fontSize / 16 + 'rem');
         s.setProperty('--ui-border-radius', ui.borderRadius / 16 + 'rem');
+        // Another Text size scales the type ramp, and another Corner roundness the controls' corner,
+        // as applyThemeConfig writes them (rampDeclarations); the defaults are index.css's.
+        var RAMP = [["caption",11,16],["minor",12,16],["body",13,18],["subtitle",15,20],["title",20,28]];
+        if (ui.fontSize !== DEF.fontSize) {
+          for (var ri = 0; ri < RAMP.length; ri++) {
+            s.setProperty('--text-' + RAMP[ri][0], Math.max(11, RAMP[ri][1] * ui.fontSize / DEF.fontSize) / 16 + 'rem');
+            s.setProperty('--text-' + RAMP[ri][0] + '--line-height', Math.max(RAMP[ri][2], RAMP[ri][2] * ui.fontSize / DEF.fontSize) / 16 + 'rem');
+          }
+        }
+        if (ui.borderRadius !== DEF.borderRadius) s.setProperty('--radius-control', ui.borderRadius * 4 / 3 / 16 + 'rem');
         s.setProperty('--ui-row-height', ui.rowHeight / 16 + 'rem');
         // The scale too, or the first frame paints at 100 % and snaps to the user's scale the moment
         // applyThemeConfig runs. The new shell scales by rem (themes.ts, setScaleMode): the zoom
