@@ -14,14 +14,15 @@ import { StatusBar } from './StatusBar';
 import { StepList } from './list/StepList';
 import { useApp } from './store';
 import { TitleBar } from './TitleBar';
-import { inspectorWide, loadDataLoop, useUi } from './ui';
+import { inspectorWide, loadDataLoop, loadSettingsPage, useUi } from './ui';
 import './shell.css';
 
 /**
  * The new shell (phase 1 of the interface plan). The zones are numbered as in the concept: ① title
  * bar, ② rail, ③ library, ④ macro header with ⑤ its transport, ⑥ the tabs and the insert row,
  * ⑦ steps with ⑨ the dock under them, ⑧ Inspector, ⑩ status bar. Which of them show, and how wide,
- * follows the window in five bands (shell.css). Ctrl+K and "Input needed" open over all of it.
+ * follows the window in five bands (shell.css). Ctrl+K and "Input needed" open over all of it. The
+ * rail's other destinations (phase 3) take the place of ③ to ⑧.
  *
  * The expanded Inspector narrows what is beside it (the insert row, the list): one attribute here,
  * changed only when the mode changes. A :has() on the Inspector restyled the whole body on every
@@ -29,19 +30,25 @@ import './shell.css';
  */
 export function Shell() {
   const wide = useUi(inspectorWide);
+  const page = useUi(s => s.page);
+  const away = page !== 'macros';
   return (
     <div className="shell">
       <TitleBar />
-      <div className="shell-body" data-wide={wide || undefined}>
+      <div className="shell-body" data-wide={wide || undefined} data-page={away ? page : undefined}>
         <Rail />
-        <Library />
-        <main className="shell-main">
-          <MacroHeader />
-          <InsertRow />
-          <MacroViews />
-          <Dock />
-        </main>
-        <Inspector />
+        {/* The macros' screen stays mounted under another page: coming back finds it as it was. */}
+        <div className="shell-macros" hidden={away}>
+          <Library />
+          <main className="shell-main">
+            <MacroHeader />
+            <InsertRow />
+            <MacroViews />
+            <Dock />
+          </main>
+          <Inspector />
+        </div>
+        {away && <Pages />}
       </div>
       <StatusBar />
       <ShellKeys />
@@ -50,6 +57,16 @@ export function Shell() {
       <TooltipLayer />
     </div>
   );
+}
+
+/** ② The page of the destination on screen, in its own chunk (rule 6); a frame holds its place until it comes. */
+function Pages() {
+  const settings = useLoaded(loadSettingsPage);
+  useEffect(() => {
+    if (!settings) void preload(loadSettingsPage);
+  }, [settings]);
+  const SettingsPage = settings?.SettingsPage;
+  return SettingsPage ? <SettingsPage /> : <section className="shell-page" aria-label="Settings" />;
 }
 
 /**

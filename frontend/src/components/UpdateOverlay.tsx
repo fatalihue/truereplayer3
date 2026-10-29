@@ -1,6 +1,7 @@
 import { useState, useEffect, useId, useRef } from 'react';
 import { Download } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
+import type { IncomingMessage } from '../bridge/messageTypes';
 import { useAppActions } from '../logic/useSettings';
 import { Button } from './common/Button';
 
@@ -29,94 +30,94 @@ const UPDATE_OVERLAY_ENABLED = true;
  * dialog tokens (--radius-dialog, --shadow-dialog, the app's Button) with every motion gated
  * in index.css like the dialogs' own.
  */
-export function UpdateOverlay() {
+/** The splash's next phase for one update:* message from the engine (any other leaves it as it is). */
+function nextPhase(prev: Phase, msg: IncomingMessage): Phase {
+  switch (msg.type) {
+    case 'update:checking':
+      // Non-blocking by design. The startup update check runs in the background, so the
+      // app must be visible and usable immediately — a slow or unreachable release server
+      // used to trap the user behind a full-screen blur before they could even see the UI.
+      // We show NOTHING during checking; the overlay appears only once an update is actually
+      // being downloaded/installed (or offered, in manual-gate mode). Manual "Check for
+      // Updates" still gets feedback from the Settings panel's own button state.
+      return prev;
+    case 'update:available':
+      // In silent (auto-apply) mode, skip the gate and transition straight into the
+      // downloading splash — the backend has already kicked off HandleUpdateApply.
+      // Without this, the user would see the "Download and install" button briefly and
+      // then the splash would jump as the download started without their click.
+      //
+      // Never walk the flow BACKWARDS. The overlay renders nothing during 'checking'
+      // by design, so the Settings panel's "Check for Updates" button stays clickable
+      // while the startup check is still in flight. Click it there and a second check
+      // runs in parallel; both find the same new version and both send update:available.
+      // This handler used to apply unconditionally, so the late one reset a splash that
+      // had already reached 'installing' or 'complete' back to "downloading, 0%" —
+      // with the process about to restart. _updateInProgress on the backend stops the
+      // second DOWNLOAD; nothing stopped the second message.
+      if (prev.step === 'downloading' || prev.step === 'installing' || prev.step === 'complete') {
+        return prev;
+      }
+      if (msg.payload.autoApply) {
+        return {
+          step: 'downloading',
+          percent: 0,
+          version: msg.payload.version,
+          currentVersion: msg.payload.currentVersion,
+        };
+      }
+      return {
+        step: 'available',
+        version: msg.payload.version,
+        currentVersion: msg.payload.currentVersion,
+        notes: msg.payload.notes ?? [],
+      };
+    case 'update:progress':
+      if (prev.step === 'downloading') {
+        // Clamp to [0,100]: a malformed/out-of-range backend percent would otherwise
+        // overflow the progress-bar width and could spuriously trip the >=100 install gate.
+        const percent = Math.max(0, Math.min(100, msg.payload.percent));
+        return { ...prev, percent };
+      }
+      return prev;
+    case 'update:ready':
+      if (prev.step === 'downloading' || prev.step === 'installing') {
+        return { step: 'complete', version: prev.version, currentVersion: prev.currentVersion };
+      }
+      return prev;
+    case 'update:none':
+      // No update: hide the splash — unless one is already being downloaded or installed.
+      // update:none only ever answers a CHECK, and a check can overlap an apply (the backend
+      // now runs one check at a time and none during an apply, and this is the other half):
+      // a second check timing out answered "none" mid-download, the splash vanished, and the
+      // install carried on underneath until the process simply restarted.
+      return prev.step === 'downloading' || prev.step === 'installing' || prev.step === 'complete' ? prev : { step: 'hidden' };
+    case 'update:error':
+      // Failure: hide the splash, in EVERY phase. Unlike update:none this is also how the
+      // apply itself says it failed (download failed, apply threw, postponed at the last
+      // gate), so it must be able to take down a splash mid-download. Errors fall back to
+      // silent so the user can keep using the app — they'll get the update on the next check.
+      return { step: 'hidden' };
+    default:
+      return prev;
+  }
+}
+
+/**
+ * `pending`: the update:* messages that came before this component did (the new shell loads it in
+ * a chunk of its own), walked in order before it listens.
+ */
+export function UpdateOverlay({ pending }: { pending?: readonly IncomingMessage[] } = {}) {
   const { subscribe } = useBridge();
   const appActions = useAppActions();
-  const [phase, setPhase] = useState<Phase>({ step: 'hidden' });
+  const [phase, setPhase] = useState<Phase>(() => (UPDATE_OVERLAY_ENABLED && pending ? pending.reduce(nextPhase, { step: 'hidden' }) : { step: 'hidden' }));
 
   useEffect(() => {
     return subscribe((msg) => {
       // When disabled, swallow every update event so the overlay never appears.
       // The backend will trigger download + apply automatically.
       if (!UPDATE_OVERLAY_ENABLED) return;
-
-      switch (msg.type) {
-        case 'update:checking':
-          // Non-blocking by design. The startup update check runs in the background, so the
-          // app must be visible and usable immediately — a slow or unreachable release server
-          // used to trap the user behind a full-screen blur before they could even see the UI.
-          // We show NOTHING during checking; the overlay appears only once an update is actually
-          // being downloaded/installed (or offered, in manual-gate mode). Manual "Check for
-          // Updates" still gets feedback from the Settings panel's own button state.
-          break;
-        case 'update:available':
-          // In silent (auto-apply) mode, skip the gate and transition straight into the
-          // downloading splash — the backend has already kicked off HandleUpdateApply.
-          // Without this, the user would see the "Download and install" button briefly and
-          // then the splash would jump as the download started without their click.
-          setPhase((prev) => {
-            // Never walk the flow BACKWARDS. The overlay renders nothing during 'checking'
-            // by design, so the Settings panel's "Check for Updates" button stays clickable
-            // while the startup check is still in flight. Click it there and a second check
-            // runs in parallel; both find the same new version and both send update:available.
-            // This handler used to apply unconditionally, so the late one reset a splash that
-            // had already reached 'installing' or 'complete' back to "downloading, 0%" —
-            // with the process about to restart. _updateInProgress on the backend stops the
-            // second DOWNLOAD; nothing stopped the second message.
-            if (prev.step === 'downloading' || prev.step === 'installing' || prev.step === 'complete') {
-              return prev;
-            }
-            if (msg.payload.autoApply) {
-              return {
-                step: 'downloading',
-                percent: 0,
-                version: msg.payload.version,
-                currentVersion: msg.payload.currentVersion,
-              };
-            }
-            return {
-              step: 'available',
-              version: msg.payload.version,
-              currentVersion: msg.payload.currentVersion,
-              notes: msg.payload.notes ?? [],
-            };
-          });
-          break;
-        case 'update:progress':
-          setPhase((prev) => {
-            if (prev.step === 'downloading') {
-              // Clamp to [0,100]: a malformed/out-of-range backend percent would otherwise
-              // overflow the progress-bar width and could spuriously trip the >=100 install gate.
-              const percent = Math.max(0, Math.min(100, msg.payload.percent));
-              return { ...prev, percent };
-            }
-            return prev;
-          });
-          break;
-        case 'update:ready':
-          setPhase((prev) => {
-            if (prev.step === 'downloading' || prev.step === 'installing') {
-              return { step: 'complete', version: prev.version, currentVersion: prev.currentVersion };
-            }
-            return prev;
-          });
-          break;
-        case 'update:none':
-          // No update: hide the splash — unless one is already being downloaded or installed.
-          // update:none only ever answers a CHECK, and a check can overlap an apply (the backend
-          // now runs one check at a time and none during an apply, and this is the other half):
-          // a second check timing out answered "none" mid-download, the splash vanished, and the
-          // install carried on underneath until the process simply restarted.
-          setPhase((prev) => (prev.step === 'downloading' || prev.step === 'installing' || prev.step === 'complete' ? prev : { step: 'hidden' }));
-          break;
-        case 'update:error':
-          // Failure: hide the splash, in EVERY phase. Unlike update:none this is also how the
-          // apply itself says it failed (download failed, apply threw, postponed at the last
-          // gate), so it must be able to take down a splash mid-download. Errors fall back to
-          // silent so the user can keep using the app — they'll get the update on the next check.
-          setPhase({ step: 'hidden' });
-          break;
-      }
+      setPhase((prev) => nextPhase(prev, msg));
     });
   }, [subscribe]);
 

@@ -999,7 +999,8 @@ export type IncomingMessage =
   | { type: 'update:available'; payload: { version: string; currentVersion: string; notes: string[]; autoApply?: boolean } }
   | { type: 'update:progress'; payload: { percent: number } }
   | { type: 'update:ready'; payload: Record<string, never> }
-  | { type: 'update:error'; payload: { message: string } }
+  // version: on "Update postponed: …", the version put off, when the engine knows it.
+  | { type: 'update:error'; payload: { message: string; version?: string } }
   | { type: 'update:none'; payload: { currentVersion: string } }
   | { type: 'browser:status'; payload: { connected: boolean } }
   | { type: 'browser:pickResult'; payload: { requestId?: string; selector: string | null; alternatives?: SelectorAlternative[]; error?: string } }
@@ -1397,7 +1398,9 @@ export type OutgoingMessage =
   | { type: 'logs:openFolder'; payload: Record<string, never> }
   // The Browser extension dialog: help copies the extension folder's path to the clipboard and
   // answers with extension:help; openFolder shows that folder in Explorer.
-  | { type: 'extension:help'; payload: Record<string, never> }
+  // copy: false asks for the folder without putting its path on the clipboard (Settings › Browser
+  // extension, which has its own Copy path); left out, the path is copied, as the dialog of today wants.
+  | { type: 'extension:help'; payload: { copy?: boolean } }
   | { type: 'extension:openFolder'; payload: Record<string, never> }
   // Open an https URL in the default browser. The backend allow-lists the host (the project's
   // own pages only), so this is a door to the manual, not a general launcher.

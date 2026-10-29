@@ -1,12 +1,10 @@
-import { useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { useAutomations } from '../../logic/useAutomations';
 import { useRemaps } from '../../logic/useRemaps';
 import { useSettings } from '../../logic/useSettings';
 import { useTt } from '../../state/LanguageContext';
-import { preload, useLoaded } from '../lazyModule';
+import { preload } from '../lazyModule';
 import { useApp } from '../store';
-import { loadExtensionHelp, setExtensionHelp, useUi } from '../ui';
+import { loadSettingsPage, openSettings } from '../ui';
 import { useExtension } from './extensionState';
 
 /**
@@ -74,22 +72,14 @@ export function Switches() {
 
 /**
  * The browser extension: connected, not connected, or loaded in an older version than this app
- * expects (D25 — a state that goes by itself once it is reloaded; nothing to dismiss). A click opens
- * how to connect it, the dialog of today, until Settings › Browser extension (phase 3).
+ * expects (D25 — a state that goes by itself once it is reloaded; nothing to dismiss). A click goes
+ * to Settings › Browser extension, where its folder and how to load it are.
  */
 export function Extension() {
   const connection = useExtension(s => s.connection);
   const outdated = useExtension(s => s.outdated);
-  const open = useUi(s => s.extensionHelp);
-  const dialog = useLoaded(loadExtensionHelp);
   const tt = useTt();
-  useEffect(() => {
-    if (open && !dialog) void preload(loadExtensionHelp);
-  }, [open, dialog]);
-  const Dialog = dialog?.ExtensionHelpDialog;
-  // In a portal, like the library's dialogs: nothing in the bar may clip or contain it.
-  const shown = open && Dialog ? createPortal(<Dialog onClose={() => setExtensionHelp(false)} />, document.body) : null;
-  if (connection === 'unknown' && !outdated) return shown;
+  if (connection === 'unknown' && !outdated) return null;
   const state = outdated ? 'reload' : connection;
   const text = state === 'reload' ? 'Extension needs reload' : state === 'connected' ? 'Extension connected' : 'Extension not connected';
   const tip = state === 'reload'
@@ -100,12 +90,16 @@ export function Extension() {
       : tt('Browser actions fail and browser conditions read as not found. Click to connect the extension.',
            'Ações de navegador falham e condições de navegador leem como não encontradas. Clique para conectar a extensão.');
   return (
-    <>
-      <button type="button" className="sb-extension" data-state={state} data-tip={tip} onClick={() => setExtensionHelp(true)}>
-        <span className="sb-dot" />
-        {text}
-      </button>
-      {shown}
-    </>
+    <button
+      type="button"
+      className="sb-extension"
+      data-state={state}
+      data-tip={tip}
+      onPointerEnter={() => { void preload(loadSettingsPage); }}
+      onClick={() => openSettings('browser')}
+    >
+      <span className="sb-dot" />
+      {text}
+    </button>
   );
 }

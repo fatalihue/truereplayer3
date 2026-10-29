@@ -87,8 +87,10 @@ export type ExtensionHelp = Extract<IncomingMessage, { type: 'extension:help' }>
 /**
  * Where the browser extension lives, for the "load unpacked" steps. Asking IS the copy: the engine
  * puts the folder's path on the clipboard (extension:help) and answers with it. null until then.
+ * `copy` false only asks (Settings › Browser extension, which copies on its own Copy path); an
+ * extension:help asked with the copy later updates the answer.
  */
-export function useExtensionHelp(): ExtensionHelp | null {
+export function useExtensionHelp(copy = true): ExtensionHelp | null {
   const { send, subscribe } = useBridge();
   const [reply, setReply] = useState<ExtensionHelp | null>(null);
   useEffect(() => {
@@ -98,8 +100,8 @@ export function useExtensionHelp(): ExtensionHelp | null {
       if (typeof p?.path !== 'string') return;
       setReply({ path: p.path, exists: p.exists === true, copied: p.copied === true, connected: p.connected === true });
     });
-    send({ type: 'extension:help', payload: {} });
+    send({ type: 'extension:help', payload: copy ? {} : { copy: false } });
     return unsubscribe;
-  }, [send, subscribe]);
+  }, [send, subscribe, copy]);
   return reply;
 }

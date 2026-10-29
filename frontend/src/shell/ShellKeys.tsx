@@ -103,6 +103,9 @@ export function ShellKeys() {
         return;
       }
       if (typing(e.target)) return;
+      // On another page (Settings…) the macro is out of sight: its keys stand down, Ctrl+Z
+      // included (Settings has no undo, as today's).
+      if (useUi.getState().page !== 'macros') return;
       const steps = app.actions;
       // On the Data Loop tab the steps are out of sight: their keys stand down, and Ctrl+Z and
       // Ctrl+Y go on undoing the macro's history, the table's edits included.

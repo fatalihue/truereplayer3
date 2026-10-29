@@ -1,0 +1,151 @@
+/* ② Settings (phase 3): the categories on the left, the chosen one's settings on the right. Sizes
+   in rem, theme tokens only; the controls are the Inspector's (inspector/editors.css). */
+
+.set {
+  display: grid;
+  grid-template-columns: 14rem minmax(0, 1fr);
+  min-height: 0;
+  background: var(--color-bg-base);
+}
+
+/* ── The categories ── */
+.set-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+  padding: 1rem 0.75rem 0.75rem;
+  border-right: 1px solid var(--color-border-subtle);
+}
+.set-title { padding: 0 0.5rem; font-size: var(--text-subtitle); font-weight: 600; }
+.set-search {
+  height: 2rem;
+  padding: 0 0.625rem;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: var(--text-body);
+}
+.set-search::placeholder { color: var(--color-text-tertiary); }
+.set-search:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: -1px; }
+.set-cats { display: flex; flex-direction: column; gap: 0.125rem; flex: 1; min-height: 0; overflow-y: auto; }
+.set-cat {
+  display: flex;
+  align-items: center;
+  flex: none;
+  height: 2rem;
+  padding: 0 0.625rem;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.set-cat:not(:disabled):hover { background: var(--color-bg-elevated); color: var(--color-text-primary); }
+.set-cat[aria-selected='true'] { background: color-mix(in srgb, var(--color-accent) 12%, transparent); color: var(--color-accent); font-weight: 500; }
+.set-cat:disabled { color: var(--color-text-disabled); cursor: default; }
+.set-cat:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: -2px; }
+
+/* The version and the update. */
+.set-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  padding: 0.625rem 0.625rem 0;
+  border-top: 1px solid var(--color-border-subtle);
+  font-size: var(--text-minor);
+  color: var(--color-text-tertiary);
+}
+.set-version { font-family: var(--font-mono); }
+.set-update { color: var(--color-text-primary); }
+.set-link { padding: 0; border: 0; background: none; color: var(--color-accent-solid); font: inherit; cursor: pointer; }
+.set-link:not(:disabled):hover { text-decoration: underline; }
+.set-link:disabled { color: var(--color-text-disabled); cursor: default; }
+.set-link:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 2px; }
+
+/* ── The settings ── */
+.set-body { min-width: 0; min-height: 0; overflow-y: auto; padding: 1.25rem 1.5rem 2rem; }
+.set-content { display: flex; flex-direction: column; gap: 1.25rem; max-width: 46rem; }
+.set-heading { margin: 0; font-size: var(--text-title); font-weight: 600; color: var(--color-text-primary); }
+.set-group { display: flex; flex-direction: column; }
+.set-group-title { margin: 0 0 0.25rem; font-size: var(--text-minor); font-weight: 600; color: var(--color-text-tertiary); }
+.set-group-note { margin: 0 0 0.25rem; font-size: var(--text-minor); color: var(--color-text-tertiary); }
+.set-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+  min-height: 2.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border-subtle) 60%, transparent);
+}
+.set-row-text { display: flex; flex-direction: column; gap: 0.125rem; min-width: 0; }
+.set-row-label { color: var(--color-text-primary); }
+.set-row-hint { font-size: var(--text-minor); color: var(--color-text-tertiary); }
+.set-row-control { display: flex; justify-content: flex-end; min-width: 0; }
+.set-num { display: block; width: 7.5rem; }
+.set-pair { display: flex; align-items: center; gap: 0.625rem; }
+.set-stack { display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem; }
+.set-choice { min-width: 10rem; justify-content: space-between; }
+.set-choice-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.set .insp-button svg { width: 0.875rem; height: 0.875rem; flex: none; }
+.set-note { display: flex; align-items: baseline; gap: 0.5rem; font-size: var(--text-minor); color: var(--color-text-tertiary); }
+.set-note[data-tone='warn'] { color: var(--color-warning-ink); }
+.set-empty { margin: 0; color: var(--color-text-tertiary); }
+.set-go {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 0.25rem;
+  margin-bottom: 0.25rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-text-tertiary);
+  font: inherit;
+  font-size: var(--text-minor);
+  font-weight: 600;
+  cursor: pointer;
+}
+.set-go:hover { color: var(--color-accent-solid); }
+.set-go svg { width: 0.75rem; height: 0.75rem; }
+
+/* The browser extension's panel. */
+.set-panel { display: flex; flex-direction: column; gap: 0.75rem; }
+.set-state { display: flex; align-items: center; gap: 0.5rem; min-height: 1.25rem; margin: 0; font-weight: 500; }
+.set-state::before { content: ''; width: 0.5rem; height: 0.5rem; flex: none; border-radius: 50%; background: var(--color-text-disabled); }
+.set-state:not([data-state])::before { visibility: hidden; }
+.set-state[data-state='connected']::before { background: var(--color-replay); }
+.set-state[data-state='off']::before { background: var(--color-warning); }
+.set-state[data-state='reload']::before { background: var(--color-warning); }
+.set-steps { display: flex; flex-direction: column; gap: 0.25rem; margin: 0; padding-left: 1.25rem; color: var(--color-text-secondary); }
+.set-path {
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-elevated);
+  font-family: var(--font-mono);
+  font-size: var(--text-minor);
+  user-select: text;
+  overflow-wrap: anywhere;
+}
+.set-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+/* One pane at a time (520–759 px): the categories in a row on top, the settings under them; a
+   setting's control goes under its name. */
+@container shell (max-width: 47.49rem) {
+  .set { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .set-nav { padding: 0.75rem; border-right: 0; border-bottom: 1px solid var(--color-border-subtle); }
+  .set-cats { flex: none; flex-direction: row; overflow-x: auto; }
+  .set-foot { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.75rem; }
+  .set-body { padding: 1rem; }
+  .set-row { grid-template-columns: minmax(0, 1fr); gap: 0.5rem; }
+  .set-row-control { justify-content: flex-start; }
+  .set-stack { align-items: flex-start; }
+}

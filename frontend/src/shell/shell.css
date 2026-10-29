@@ -127,6 +127,13 @@ html[data-animations='true'] .shell-state[data-done]::after { border-color: var(
   position: relative;
 }
 
+/* Another destination (②): the macros' screen stays mounted, out of the grid, and the page takes
+   its place beside the rail. The pages' own rules come with their chunks (pages/). */
+.shell-macros { display: contents; }
+.shell-macros[hidden] { display: none; }
+.shell-body[data-page] { grid-template-columns: 3.5rem minmax(0, 1fr); }
+.shell-page { min-width: 0; min-height: 0; }
+
 /* ── ② Rail ── */
 .shell-rail {
   display: flex;
@@ -294,6 +301,7 @@ html[data-animations='true'] .shell-state[data-done]::after { border-color: var(
 }
 /* Under 520: the compact layout (the compact view itself is phase 4). */
 @container shell (max-width: 32.49rem) {
-  .shell-body { grid-template-columns: minmax(0, 1fr); }
+  .shell-body,
+  .shell-body[data-page] { grid-template-columns: minmax(0, 1fr); }
   .shell-rail { display: none; }
 }

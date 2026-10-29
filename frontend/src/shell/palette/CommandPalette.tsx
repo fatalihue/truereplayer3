@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
   BookOpen, Chrome, ClipboardCopy, ClipboardPaste, Combine, CornerDownRight, Keyboard, ListChecks, Play, Redo2, RefreshCw,
-  Replace, ScrollText, Split, Square, SquareDot, Table2, Undo2, Variable, Zap,
+  Replace, RotateCcw, ScrollText, Settings, Split, Square, SquareDot, Table2, Undo2, Variable, Zap,
 } from 'lucide-react';
 import { useAutomations } from '../../logic/useAutomations';
 import { useMacro } from '../../logic/useMacro';
@@ -25,7 +25,7 @@ import { stepMenuEntries } from '../list/stepMenu';
 import { stepIcon } from '../list/stepTypes';
 import { macroMenuEntries } from '../macroMenu';
 import { useApp } from '../store';
-import { setExtensionHelp, useUi } from '../ui';
+import { openSettings, useUi } from '../ui';
 import { fromMenu, macroItems, macroPhrase, scoreOf, shortcut, stepItems, tokensOf, type PaletteItem } from './commands';
 import { palette } from './paletteState';
 import './palette.css';
@@ -290,7 +290,12 @@ function useItems(): PaletteItem[] {
     cmd('shortcuts', shortcuts ? 'Turn Shortcuts off' : 'Turn Shortcuts on', () => settings.change('profileKeyEnabled', !shortcuts), { icon: Keyboard, words: 'profile keys hotkeys hotstrings pause' }),
     cmd('automations', automationsOn ? 'Turn Automations off' : 'Turn Automations on', () => automations.setEnabled(!automationsOn), { icon: Zap, words: 'triggers armed' }),
     cmd('remaps', remapsOn ? 'Turn Key Remaps off' : 'Turn Key Remaps on', () => remaps.setEnabled(!remapsOn), { icon: CornerDownRight, words: 'remap keys' }),
-    cmd('extension', 'Connect browser extension', () => setExtensionHelp(true), { icon: Chrome, words: 'chrome edge brave extension unpacked install disconnected' }),
+    cmd('settings', 'Settings', () => openSettings(), { icon: Settings, words: 'preferences options configuration' }),
+    cmd('settings-recording', 'Recording and playback', () => openSettings('recording'), { icon: Settings, detail: 'Settings', words: 'delay timing jitter game mode return cursor fast approach' }),
+    cmd('settings-screen', 'Screen Text', () => openSettings('screen'), { icon: Settings, detail: 'Settings', words: 'ocr language install read text' }),
+    // casca-139: the reset of today, from the palette too; Settings asks before it resets.
+    cmd('resetall', 'Reset all settings…', () => useUi.setState({ page: 'settings', settingsCategory: 'general', settingsReset: true, libraryPeek: false }), { icon: RotateCcw, detail: 'Settings', words: 'defaults restore factory' }),
+    cmd('extension', 'Connect browser extension', () => openSettings('browser'), { icon: Chrome, detail: 'Settings', words: 'chrome edge brave extension unpacked install disconnected' }),
     cmd('reload', 'Reload UI', app.reloadUI, { icon: RefreshCw, words: 'refresh stuck frozen' }),
     cmd('logs', 'Open logs folder', app.openLogsFolder, { icon: ScrollText, words: 'diagnostics session log support' }),
     cmd('diagnostics', 'Copy diagnostics', app.copyDiagnostics, { icon: ClipboardCopy, words: 'support version bug report system info about' }),

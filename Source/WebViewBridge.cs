@@ -1286,7 +1286,7 @@ namespace TrueReplayer
                         }
                         catch (Exception ex) { DiagnosticLog.Error("logs:openFolder failed", ex); }
                         break;
-                    case "extension:help": HandleExtensionHelp(); break;
+                    case "extension:help": HandleExtensionHelp(payload); break;
                     case "extension:openFolder": HandleExtensionOpenFolder(); break;
                     case "clipboard:read": _ = HandleClipboardRead(); break;
                     case "shell:openUrl": HandleShellOpenUrl(payload); break;
@@ -4470,10 +4470,12 @@ namespace TrueReplayer
         // disabled state, but the frontend never renders its payload text — so the toast beside it
         // is the only thing that actually tells the user WHY. Skipping the toast is how a blocked
         // update turns into an update the user never learns about.
-        private void ReportUpdatePostponed(string reason)
+        private void ReportUpdatePostponed(string reason, string? version = null)
         {
             DiagnosticLog.Info($"[Update] Apply postponed — {reason}");
-            SendMessage("update:error", new { message = $"Update postponed: {reason}" });
+            // The version lets Settings say which one is ready to install (D24); the new shell reads
+            // it, today's ignores the field.
+            SendMessage("update:error", new { message = $"Update postponed: {reason}", version });
             SendMessage("alert:show", new
             {
                 message = $"An update is ready but was not installed because {reason}. It will be offered again once the app is idle — or apply it any time from Settings → Check for updates.",
@@ -4570,7 +4572,7 @@ namespace TrueReplayer
                     if (gate == UpdateGate.Busy)
                     {
                         _deferredUpdate = new PendingUpdate(newVersion, currentVersion, notes);
-                        ReportUpdatePostponed(reason);
+                        ReportUpdatePostponed(reason, newVersion);
                         return;
                     }
 
@@ -5063,12 +5065,17 @@ namespace TrueReplayer
         // chrome://extensions, already on the clipboard. Copied HERE rather than with
         // navigator.clipboard so the tray's entry works the same — the window it just restored
         // may not have document focus yet, and the web clipboard refuses a page without it.
-        private void HandleExtensionHelp()
+        private void HandleExtensionHelp(JsonElement payload)
         {
             var dir = BrowserBridgeService.ExtensionDirectory;
             bool exists = System.IO.Directory.Exists(dir);
             bool copied = false;
-            if (exists)
+            // copy: false only asks where the folder is (Settings › Browser extension, a category the
+            // user may be just passing through, copies on its own button); left out, it copies, as
+            // the dialog of today wants.
+            bool copy = !(payload.ValueKind == JsonValueKind.Object
+                && payload.TryGetProperty("copy", out var copyEl) && copyEl.ValueKind == JsonValueKind.False);
+            if (exists && copy)
             {
                 try
                 {
@@ -5081,7 +5088,7 @@ namespace TrueReplayer
                     DiagnosticLog.Warn($"extension:help — clipboard copy failed: {ex.Message}");
                 }
             }
-            else
+            else if (!exists)
             {
                 DiagnosticLog.Warn($"extension:help — extension folder missing: {dir}");
             }
