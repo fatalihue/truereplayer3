@@ -99,8 +99,8 @@ namespace TrueReplayer.Services
             public bool CursorClickGameMove { get; set; } = false;
             // Clicker-exclusive hotkeys — fully decoupled from the global macro hotkeys.
             // Default PageDown = Start/Stop, PageUp = Pause/Resume. Active only in Clicker mode.
-            public string CursorClickStartHotkey { get; set; } = "PageDown";
-            public string CursorClickPauseHotkey { get; set; } = "PageUp";
+            public string CursorClickStartHotkey { get; set; } = HotkeyDefaults.ClickerStart;
+            public string CursorClickPauseHotkey { get; set; } = HotkeyDefaults.ClickerPause;
             // Named snapshots of the Clicker settings above (WebViewBridge.HandleSaveClickerPreset).
             // Absent on an older appsettings.json → empty list, no migration.
             public List<ClickerPreset> ClickerPresets { get; set; } = new();

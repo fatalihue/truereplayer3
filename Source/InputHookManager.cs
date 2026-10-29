@@ -243,8 +243,8 @@ namespace TrueReplayer
         // Clicker-exclusive hotkeys. Mirrored here from the bridge (like IsCursorClickMode) so the
         // hook can match them with zero per-press allocation. Active ONLY while IsCursorClickMode;
         // in macro mode they're inert (the global Recording/Replay hotkeys take over instead).
-        public static volatile string CursorClickStartHotkey = "PageDown";
-        public static volatile string CursorClickPauseHotkey = "PageUp";
+        public static volatile string CursorClickStartHotkey = HotkeyDefaults.ClickerStart;
+        public static volatile string CursorClickPauseHotkey = HotkeyDefaults.ClickerPause;
 
         // Tracks VK codes currently held down to suppress Windows auto-repeat. Keyed by vkCode
         // (physical key) rather than the composed hotkey string, because the composed string can

@@ -235,13 +235,13 @@ namespace TrueReplayer
         // Clicker-exclusive hotkeys — mirrored to the hook on set (same pattern as
         // UseCursorClick → IsCursorClickMode) so a global keypress matches with no per-press
         // lookup. Default PageDown = Start/Stop, PageUp = Pause/Resume.
-        private string _cursorClickStartHotkey = "PageDown";
+        private string _cursorClickStartHotkey = HotkeyDefaults.ClickerStart;
         public string CursorClickStartHotkey
         {
             get => _cursorClickStartHotkey;
             set { _cursorClickStartHotkey = value; InputHookManager.CursorClickStartHotkey = value; }
         }
-        private string _cursorClickPauseHotkey = "PageUp";
+        private string _cursorClickPauseHotkey = HotkeyDefaults.ClickerPause;
         public string CursorClickPauseHotkey
         {
             get => _cursorClickPauseHotkey;
@@ -1294,6 +1294,7 @@ namespace TrueReplayer
                     case "hotkey:suppress": HandleHotkeySuppress(payload); break;
                     case "editor:pendingEdits": HandleEditorPendingEdits(payload); break;
                     case "hotkey:capture": HandleHotkeyCapture(payload); break;
+                    case "hotkeys:useSuggested": HandleUseSuggestedHotkeys(payload); break;
                     case "theme:colors": HandleThemeColors(payload); break;
                     default:
                         System.Diagnostics.Debug.WriteLine($"[Bridge] Unknown message type: {type}");
@@ -3573,6 +3574,20 @@ namespace TrueReplayer
                 captureSlotHotkey = profile.CaptureSlotHotkey,
                 copyScreenTextHotkey = profile.CopyScreenTextHotkey,
                 copyScreenTextRegion = profile.CopyScreenTextRegion,
+                // What a new install gets, by the same keys: Settings › Hotkeys suggests them, and
+                // its "Use the suggested keys" (hotkeys:useSuggested) applies them.
+                hotkeyDefaults = new
+                {
+                    recordingHotkey = HotkeyDefaults.Recording,
+                    replayHotkey = HotkeyDefaults.Replay,
+                    profileKeyToggleHotkey = HotkeyDefaults.ProfileKeyToggle,
+                    foregroundHotkey = HotkeyDefaults.Foreground,
+                    modeToggleHotkey = HotkeyDefaults.ModeToggle,
+                    captureSlotHotkey = HotkeyDefaults.CaptureSlot,
+                    copyScreenTextHotkey = HotkeyDefaults.CopyScreenText,
+                    cursorClickStartHotkey = HotkeyDefaults.ClickerStart,
+                    cursorClickPauseHotkey = HotkeyDefaults.ClickerPause,
+                },
                 ocrLanguage = OcrService.PreferredLanguage,
                 alwaysOnTop = profile.AlwaysOnTop,
                 minimizeToTray = profile.MinimizeToTray,
@@ -14244,26 +14259,58 @@ namespace TrueReplayer
             "profileKeyToggleHotkey", "foregroundHotkey", "modeToggleHotkey", "captureSlotHotkey", "copyScreenTextHotkey",
         };
 
+        // Every hotkey setting, by its settings:change key: the seven global ones, then the
+        // Clicker's pair.
+        private static readonly string[] AllHotkeyKeys =
+        {
+            "recordingHotkey", "replayHotkey", "profileKeyToggleHotkey", "foregroundHotkey", "modeToggleHotkey",
+            "captureSlotHotkey", "copyScreenTextHotkey", "cursorClickStartHotkey", "cursorClickPauseHotkey",
+        };
+
+        // The key a hotkey setting holds now ("" for a key that is not one).
+        private string CurrentHotkey(string settingKey) => settingKey switch
+        {
+            "recordingHotkey" => UserProfile.Current.RecordingHotkey,
+            "replayHotkey" => UserProfile.Current.ReplayHotkey,
+            "profileKeyToggleHotkey" => UserProfile.Current.ProfileKeyToggleHotkey,
+            "foregroundHotkey" => UserProfile.Current.ForegroundHotkey,
+            "modeToggleHotkey" => UserProfile.Current.ModeToggleHotkey,
+            "captureSlotHotkey" => UserProfile.Current.CaptureSlotHotkey,
+            "copyScreenTextHotkey" => UserProfile.Current.CopyScreenTextHotkey,
+            "cursorClickStartHotkey" => CursorClickStartHotkey,
+            "cursorClickPauseHotkey" => CursorClickPauseHotkey,
+            _ => "",
+        };
+
+        // The key a new install gets for a hotkey setting; null for a key that is not one.
+        private static string? SuggestedHotkey(string settingKey) => settingKey switch
+        {
+            "recordingHotkey" => HotkeyDefaults.Recording,
+            "replayHotkey" => HotkeyDefaults.Replay,
+            "profileKeyToggleHotkey" => HotkeyDefaults.ProfileKeyToggle,
+            "foregroundHotkey" => HotkeyDefaults.Foreground,
+            "modeToggleHotkey" => HotkeyDefaults.ModeToggle,
+            "captureSlotHotkey" => HotkeyDefaults.CaptureSlot,
+            "copyScreenTextHotkey" => HotkeyDefaults.CopyScreenText,
+            "cursorClickStartHotkey" => HotkeyDefaults.ClickerStart,
+            "cursorClickPauseHotkey" => HotkeyDefaults.ClickerPause,
+            _ => null,
+        };
+
         // Conflict check for the two Clicker hotkeys: each other, plus the four mode-agnostic
-        // utilities above. Returns the display name of the holder, or null.
-        private string? GetClickerHotkeyConflict(string hotkey, string editingKey)
+        // utilities above. Returns the display name of the holder, or null. `valueOf` gives the
+        // other hotkeys as a set about to be applied holds them (hotkeys:useSuggested); left out,
+        // as they are now.
+        private string? GetClickerHotkeyConflict(string hotkey, string editingKey, Func<string, string>? valueOf = null)
         {
             if (string.IsNullOrEmpty(hotkey)) return null;
+            Func<string, string> read = valueOf ?? new Func<string, string>(CurrentHotkey);
             string otherKey = editingKey == "cursorClickStartHotkey" ? "cursorClickPauseHotkey" : "cursorClickStartHotkey";
-            string otherValue = otherKey == "cursorClickStartHotkey" ? CursorClickStartHotkey : CursorClickPauseHotkey;
-            if (string.Equals(otherValue, hotkey, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(read(otherKey), hotkey, StringComparison.OrdinalIgnoreCase))
                 return HotkeyDisplayNames[otherKey];
             foreach (var k in ModeAgnosticHotkeyKeys)
             {
-                string current = k switch
-                {
-                    "profileKeyToggleHotkey" => UserProfile.Current.ProfileKeyToggleHotkey,
-                    "foregroundHotkey" => UserProfile.Current.ForegroundHotkey,
-                    "modeToggleHotkey" => UserProfile.Current.ModeToggleHotkey,
-                    "copyScreenTextHotkey" => UserProfile.Current.CopyScreenTextHotkey,
-                    _ => UserProfile.Current.CaptureSlotHotkey,
-                };
-                if (string.Equals(current, hotkey, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(read(k), hotkey, StringComparison.OrdinalIgnoreCase))
                     return HotkeyDisplayNames[k];
             }
             return null;
@@ -14310,20 +14357,23 @@ namespace TrueReplayer
                 || bTitle.IndexOf(aTitle, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
-        private string? GetHotkeyConflict(string hotkey, string? excludeSettingKey, string? excludeProfileName = null, WindowTarget? effectiveTarget = null)
+        // `valueOf`: the app's hotkeys as a set about to be applied holds them (hotkeys:useSuggested);
+        // left out, as they are now.
+        private string? GetHotkeyConflict(string hotkey, string? excludeSettingKey, string? excludeProfileName = null, WindowTarget? effectiveTarget = null, Func<string, string>? valueOf = null)
         {
             if (string.IsNullOrEmpty(hotkey)) return null;
+            Func<string, string> read = valueOf ?? new Func<string, string>(CurrentHotkey);
 
             // Global hotkeys always conflict (they have no window target)
             var globalHotkeys = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
-                ["recordingHotkey"] = UserProfile.Current.RecordingHotkey,
-                ["replayHotkey"] = UserProfile.Current.ReplayHotkey,
-                ["profileKeyToggleHotkey"] = UserProfile.Current.ProfileKeyToggleHotkey,
-                ["foregroundHotkey"] = UserProfile.Current.ForegroundHotkey,
-                ["modeToggleHotkey"] = UserProfile.Current.ModeToggleHotkey,
-                ["captureSlotHotkey"] = UserProfile.Current.CaptureSlotHotkey,
-                ["copyScreenTextHotkey"] = UserProfile.Current.CopyScreenTextHotkey,
+                ["recordingHotkey"] = read("recordingHotkey"),
+                ["replayHotkey"] = read("replayHotkey"),
+                ["profileKeyToggleHotkey"] = read("profileKeyToggleHotkey"),
+                ["foregroundHotkey"] = read("foregroundHotkey"),
+                ["modeToggleHotkey"] = read("modeToggleHotkey"),
+                ["captureSlotHotkey"] = read("captureSlotHotkey"),
+                ["copyScreenTextHotkey"] = read("copyScreenTextHotkey"),
             };
 
             foreach (var kv in globalHotkeys)
@@ -14338,9 +14388,9 @@ namespace TrueReplayer
             // hotkeys) are mode-exclusive with the Clicker pair, so they skip this on purpose.
             if (excludeSettingKey != null && Array.IndexOf(ModeAgnosticHotkeyKeys, excludeSettingKey) >= 0)
             {
-                if (string.Equals(CursorClickStartHotkey, hotkey, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(read("cursorClickStartHotkey"), hotkey, StringComparison.OrdinalIgnoreCase))
                     return HotkeyDisplayNames["cursorClickStartHotkey"];
-                if (string.Equals(CursorClickPauseHotkey, hotkey, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(read("cursorClickPauseHotkey"), hotkey, StringComparison.OrdinalIgnoreCase))
                     return HotkeyDisplayNames["cursorClickPauseHotkey"];
             }
 
@@ -14355,6 +14405,64 @@ namespace TrueReplayer
             }
 
             return null;
+        }
+
+        // hotkeys:useSuggested — Settings › Hotkeys' "Use the suggested keys": each hotkey named in
+        // `keys` goes to the key a new install gets (HotkeyDefaults, sent as hotkeyDefaults). It is
+        // checked as one settings:change would be, but against the set as it will be, so two of them
+        // may trade keys; one that would collide keeps its key, and the notice says why. One save.
+        private void HandleUseSuggestedHotkeys(JsonElement payload)
+        {
+            if (payload.ValueKind != JsonValueKind.Object
+                || !payload.TryGetProperty("keys", out var keysEl) || keysEl.ValueKind != JsonValueKind.Array) return;
+            var wanted = new List<string>();
+            foreach (var el in keysEl.EnumerateArray())
+            {
+                string k = el.ValueKind == JsonValueKind.String ? el.GetString() ?? "" : "";
+                if (SuggestedHotkey(k) != null && !wanted.Contains(k)) wanted.Add(k);
+            }
+            if (wanted.Count == 0) return;
+
+            var next = new Dictionary<string, string>();
+            foreach (var k in AllHotkeyKeys) next[k] = CurrentHotkey(k);
+            foreach (var k in wanted) next[k] = SuggestedHotkey(k)!;
+            // A key that would collide goes back to the one it has, which can make another collide
+            // in turn (two trading keys, one of them refused): again until nothing moves.
+            var refused = new List<string>();
+            for (bool moved = true; moved;)
+            {
+                moved = false;
+                foreach (var k in wanted)
+                {
+                    if (next[k] == CurrentHotkey(k)) continue;
+                    string? conflict = k is "cursorClickStartHotkey" or "cursorClickPauseHotkey"
+                        ? GetClickerHotkeyConflict(next[k], k, s => next[s])
+                        : GetHotkeyConflict(next[k], excludeSettingKey: k, valueOf: s => next[s]);
+                    if (conflict == null) continue;
+                    refused.Add($"\"{next[k]}\" is already used by {conflict}.");
+                    next[k] = CurrentHotkey(k);
+                    moved = true;
+                }
+            }
+            DiagnosticLog.Info($"[Hotkeys] Suggested keys: {string.Join(", ", wanted.Select(k => $"{k}={next[k]}"))}");
+            foreach (var k in wanted)
+            {
+                string v = next[k];
+                switch (k)
+                {
+                    case "recordingHotkey": UserProfile.Current.RecordingHotkey = v; break;
+                    case "replayHotkey": UserProfile.Current.ReplayHotkey = v; break;
+                    case "profileKeyToggleHotkey": UserProfile.Current.ProfileKeyToggleHotkey = v; break;
+                    case "foregroundHotkey": UserProfile.Current.ForegroundHotkey = v; break;
+                    case "modeToggleHotkey": UserProfile.Current.ModeToggleHotkey = v; break;
+                    case "captureSlotHotkey": UserProfile.Current.CaptureSlotHotkey = v; break;
+                    case "copyScreenTextHotkey": UserProfile.Current.CopyScreenTextHotkey = v; break;
+                    case "cursorClickStartHotkey": CursorClickStartHotkey = v; break;
+                    case "cursorClickPauseHotkey": CursorClickPauseHotkey = v; break;
+                }
+            }
+            PushSettingsLoaded(SaveGlobalSettings());
+            if (refused.Count > 0) SendMessage("alert:show", new { message = string.Join(" ", refused) });
         }
 
         private void HandleSettingsChange(JsonElement payload)
@@ -14468,10 +14576,10 @@ namespace TrueReplayer
                 // can never fire. The capture UI already refuses it; this is the same guard on
                 // the message boundary, for a payload that did not come from that UI.
                 case "cursorClickStartHotkey":
-                    CursorClickStartHotkey = DropBareWheelHotkey(valueElement.GetString() ?? "PageDown", key);
+                    CursorClickStartHotkey = DropBareWheelHotkey(valueElement.GetString() ?? HotkeyDefaults.ClickerStart, key);
                     break;
                 case "cursorClickPauseHotkey":
-                    CursorClickPauseHotkey = DropBareWheelHotkey(valueElement.GetString() ?? "PageUp", key);
+                    CursorClickPauseHotkey = DropBareWheelHotkey(valueElement.GetString() ?? HotkeyDefaults.ClickerPause, key);
                     break;
                 // ── Clicker v2 settings (dedicated, decoupled from profile) ──
                 // Every numeric goes through ClampNumeric so the value that lands on disk is

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type RefObject } from 'react';
 import { useEditorClaim } from '../../logic/useEditorClaim';
 import { preload, useLoaded } from '../lazyModule';
-import { keycaps } from '../library/model';
+import { clickerOnNote } from '../library/model';
 import { arrival, selectedIndices, selection, useSelection } from '../list/selection';
 import { useApp, useShell } from '../store';
 import { closeMacroSettings, collapseInspector, loadDataLoop, useUi } from '../ui';
@@ -135,7 +135,7 @@ export function Inspector() {
   }), []);
 
   const note = clicker
-    ? `The Clicker is on — ${keycaps(modeKey || 'ScrollLock')} brings the macros back`
+    ? clickerOnNote(modeKey)
     : status === 'recording' ? 'Read-only while recording'
     : status === 'replaying' ? 'Read-only while it runs'
     : null;

@@ -61,8 +61,10 @@ export function Transport({ name }: { name: string }) {
   const isReplaying = status === 'replaying';
   // In the Clicker mode the engine's Replay starts the Clicker, which has no page yet (phase 3): the
   // button waits for the macros to come back, and says how.
-  const clickerTip = tt(`The Clicker is on — ${keycaps(settings.modeToggleHotkey || 'ScrollLock')} brings the macros back`,
-                        `O Clicker está ligado — ${keycaps(settings.modeToggleHotkey || 'ScrollLock')} traz os macros de volta`);
+  const clickerTip = settings.modeToggleHotkey
+    ? tt(`The Clicker is on — ${keycaps(settings.modeToggleHotkey)} brings the macros back`,
+         `O Clicker está ligado — ${keycaps(settings.modeToggleHotkey)} traz os macros de volta`)
+    : tt('The Clicker is on — Macros, in the rail, brings them back', 'O Clicker está ligado — o Macros, no trilho, traz os macros de volta');
   const count = perRow ? 'per row' : passes > 1 ? `×${passes}` : null;
 
   return (

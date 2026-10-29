@@ -31,24 +31,32 @@ namespace TrueReplayer.Models
     /// <summary>
     /// The shipped default of each global hotkey — the one place these strings live on the C# side.
     /// AppSettings (fresh install and Reset settings), the UserProfile initializers and the bridge's
-    /// null fallbacks all read from here. Each site used to restate its literal, and a default change
-    /// reached some copies and not others: Foreground moved to Insert on 2026-05-22 and
-    /// UserProfile.Default kept Ctrl+Insert; Capture Slot moved to Win+Ctrl+C on 2026-07-19 and the
-    /// bridge's null fallback kept "". The frontend's pre-load placeholders (AppStateContext.tsx) are
-    /// a second copy by necessity (TS×C#), overwritten as soon as settings:loaded arrives.
+    /// null fallbacks all read from here, and Settings › Hotkeys gets them (settings `hotkeyDefaults`)
+    /// as the suggested keys. Each site used to restate its literal, and a default change reached some
+    /// copies and not others: Foreground moved to Insert on 2026-05-22 and UserProfile.Default kept
+    /// Ctrl+Insert; Capture Slot moved to Win+Ctrl+C on 2026-07-19 and the bridge's null fallback
+    /// kept "". The frontend's pre-load placeholders (appStateReducers.ts) are a second copy by
+    /// necessity (TS×C#), overwritten as soon as settings:loaded arrives.
+    /// The suggested keys of the new interface (phase 3): Record and Replay off the tab keys of
+    /// Chrome, Edge and VS Code, and no key for Foreground (the tray icon does it) or the Clicker
+    /// (Insert is overwrite, Excel uses ScrollLock). A default reaches new installs and Reset only:
+    /// appsettings.json stores every hotkey, so whoever updates keeps theirs.
     /// </summary>
     public static class HotkeyDefaults
     {
-        public const string Recording = "Ctrl+PageUp";
-        public const string Replay = "Ctrl+PageDown";
+        public const string Recording = "Ctrl+F9";
+        public const string Replay = "Ctrl+F10";
         public const string ProfileKeyToggle = "Pause";
-        public const string Foreground = "Insert";
-        public const string ModeToggle = "ScrollLock";
+        public const string Foreground = "";
+        public const string ModeToggle = "";
         public const string CaptureSlot = "Win+Ctrl+C";
         // Copy screen text (OCR → clipboard). A Win combo for the same reason as Capture Slot: the
         // shell binds nothing to Win+F12 out of the box (PowerToys Text Extractor sits on
         // Win+Shift+T, so not that one). Empty still means disabled if the user clears it.
         public const string CopyScreenText = "Win+F12";
+        // The Clicker's pair, live only in the Clicker mode.
+        public const string ClickerStart = "PageDown";
+        public const string ClickerPause = "PageUp";
     }
 
     public class UserProfile
@@ -69,9 +77,8 @@ namespace TrueReplayer.Models
         [JsonIgnore]
         public string ForegroundHotkey { get; set; } = HotkeyDefaults.Foreground;
 
-        // Flips UseCursorClick (Macro ↔ Clicker). Default ScrollLock — pairs with Pause as
-        // the other single-key status-indicator hotkey already in use, and is almost
-        // universally unused by other apps.
+        // Flips UseCursorClick (Macro ↔ Clicker). No key by default (Excel uses ScrollLock, the
+        // key it had until phase 3); empty never matches a keypress.
         [JsonIgnore]
         public string ModeToggleHotkey { get; set; } = HotkeyDefaults.ModeToggle;
 

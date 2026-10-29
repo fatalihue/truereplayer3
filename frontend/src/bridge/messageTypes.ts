@@ -446,6 +446,11 @@ export interface ClickerPreset extends ClickerPresetFields {
   name: string;
 }
 
+/** The hotkey settings, by their settings:change key: the seven global ones and the Clicker's pair. */
+export type HotkeySettingKey =
+  | 'recordingHotkey' | 'replayHotkey' | 'profileKeyToggleHotkey' | 'foregroundHotkey' | 'modeToggleHotkey'
+  | 'captureSlotHotkey' | 'copyScreenTextHotkey' | 'cursorClickStartHotkey' | 'cursorClickPauseHotkey';
+
 export interface SettingsState {
   customDelay: string;
   useCustomDelay: boolean;
@@ -519,6 +524,8 @@ export interface SettingsState {
   // (absolute) = always read that region. ocrLanguage '' = Auto; 'pt-BR' is the default.
   copyScreenTextHotkey: string;
   copyScreenTextRegion: string;
+  /** What a new install gets (the engine's HotkeyDefaults): Settings › Hotkeys suggests these. */
+  hotkeyDefaults?: Record<HotkeySettingKey, string>;
   ocrLanguage: string;
   alwaysOnTop: boolean;
   minimizeToTray: boolean;
@@ -1224,6 +1231,9 @@ export type OutgoingMessage =
   // Every app setting back to its default, without touching the open macro or the Automations
   // master switch (D23). The page confirms; there is no native dialog.
   | { type: 'settings:resetAll'; payload: Record<string, never> }
+  // Settings › Hotkeys' "Use the suggested keys": the hotkeys named go to hotkeyDefaults, checked as
+  // a set (one that would collide keeps its key, with an alert:show); echoed as settings:loaded.
+  | { type: 'hotkeys:useSuggested'; payload: { keys: HotkeySettingKey[] } }
   // The example macros inside the app (decision 4): the list, and "Use this example", which copies
   // one (and the examples it runs) into the library's Examples folder.
   | { type: 'examples:list'; payload: Record<string, never> }

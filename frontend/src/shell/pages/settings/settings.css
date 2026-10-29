@@ -116,6 +116,63 @@
 .set-go:hover { color: var(--color-accent-solid); }
 .set-go svg { width: 0.75rem; height: 0.75rem; }
 
+/* A category's lead, under its heading. */
+.set-intro { margin: 0; color: var(--color-text-secondary); }
+.set-intro:focus { outline: none; }
+.set-row-hint[data-tone='warn'] { color: var(--color-warning-ink); }
+.set-cat-badge {
+  margin-left: auto;
+  min-width: 1.125rem;
+  padding: 0 0.3125rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-warning) 22%, transparent);
+  color: var(--color-warning-ink);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  line-height: 1.125rem;
+  text-align: center;
+}
+
+/* Hotkeys: the notice of the keys other apps use, and each hotkey's key, Change and ✕. */
+.set-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid color-mix(in srgb, var(--color-warning) 45%, transparent);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--color-warning) 8%, transparent);
+}
+.set-notice-text { margin: 0; color: var(--color-text-primary); }
+.set .insp-button[data-variant='primary'] { border-color: var(--color-accent-solid); background: var(--color-accent-solid); color: var(--color-accent-ink); font-weight: 600; }
+.set .insp-button[data-variant='primary']:not(:disabled):hover { border-color: var(--color-accent-solid-hover); background: var(--color-accent-solid-hover); }
+.set-hotkey { display: flex; align-items: center; gap: 0.5rem; }
+.set-hotkey-keys { display: flex; justify-content: flex-end; min-width: 6rem; }
+.set-hotkey .kbd { height: 1.5rem; padding: 0 0.5rem; font-size: var(--text-minor); color: var(--color-text-primary); }
+.set-hotkey-none { font-size: var(--text-minor); color: var(--color-text-tertiary); }
+.set-hotkey-wait { font-size: var(--text-minor); color: var(--color-accent); }
+html[data-animations='true'] .set-hotkey-wait { animation: pulse-dot 2s ease-in-out infinite; }
+.set-hotkey[data-listening] .insp-button { border-color: var(--color-accent-solid); color: var(--color-accent); }
+.set-hotkey-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+}
+.set-hotkey-clear svg { width: 0.75rem; height: 0.75rem; }
+.set-hotkey-slot { width: 1.5rem; flex: none; }
+.set-hotkey-clear:hover { background: var(--color-bg-elevated); color: var(--color-text-primary); }
+.set-hotkey-clear:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 1px; }
+/* The ✕ shows with the pointer on the row or the focus in it: a clean column of keys at rest. */
+.set-row:not(:hover):not(:focus-within) .set-hotkey-clear { opacity: 0; }
+
 /* The browser extension's panel. */
 .set-panel { display: flex; flex-direction: column; gap: 0.75rem; }
 .set-state { display: flex; align-items: center; gap: 0.5rem; min-height: 1.25rem; margin: 0; font-weight: 500; }

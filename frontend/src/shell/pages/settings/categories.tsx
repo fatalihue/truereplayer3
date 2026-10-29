@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ComponentType } from 'react';
 import { ChevronDown, ClipboardCopy, FolderOpen, RefreshCw, ScrollText } from 'lucide-react';
 import { useBridge } from '../../../bridge/BridgeContext';
-import type { OcrLanguagesPayload, SettingsState } from '../../../bridge/messageTypes';
+import type { HotkeySettingKey, OcrLanguagesPayload, SettingsState } from '../../../bridge/messageTypes';
 import { useAppActions, useExtensionHelp, useOcrLanguages, useSettings } from '../../../logic/useSettings';
 import { useLanguage, useTt } from '../../../state/LanguageContext';
 import { useToast } from '../../../state/ToastContext';
@@ -12,6 +12,7 @@ import { anchorBelow } from '../../menuAnchor';
 import { useExtension } from '../../statusbar/extensionState';
 import { useApp } from '../../store';
 import type { SettingsCategory } from '../../ui';
+import { ConflictNote, HotkeyField, HotkeysBadge, HotkeysIntro, ScreenTextNote } from './hotkeys';
 
 /**
  * A setting of the page: its name, what it does (under the name, and what the search reads besides
@@ -25,6 +26,8 @@ export interface Row {
   /** More for the search to find it by. */
   words?: string;
   Control: ComponentType;
+  /** Under the hint, what changes with the setting (a hotkey's conflict, the region it reads). */
+  Note?: ComponentType;
   shown?: (s: SettingsState) => boolean;
 }
 export interface Group { title: string; note?: string; rows: Row[] }
@@ -38,6 +41,10 @@ export interface Category {
   Panel?: ComponentType;
   /** For the search to find a Panel category by. */
   words?: string;
+  /** Above the groups: what the category is, and a notice (Hotkeys' keys other apps use). */
+  Intro?: ComponentType;
+  /** Beside the name in the categories: a count that asks for a look. */
+  Badge?: ComponentType;
 }
 
 // ── The controls. Each reads only what it shows (rule 1) and sends what the panel of today sent. ──
@@ -335,6 +342,20 @@ function ReloadControl() {
   return <button type="button" className="insp-button" onClick={app.reloadUI}><RefreshCw aria-hidden="true" />Reload UI</button>;
 }
 
+/** A hotkey's row (hotkeys.tsx): its key with Change and ✕, and under the description its conflict. */
+function hotkeyRow(id: string, settingKey: HotkeySettingKey, label: string, more: { hint?: string; words: string; noKeyWhy?: string }): Row {
+  return {
+    id,
+    label,
+    hint: more.hint,
+    words: `hotkey shortcut key ${more.words}`,
+    Control: function Hotkey() { return <HotkeyField settingKey={settingKey} label={label} />; },
+    Note: settingKey === 'copyScreenTextHotkey'
+      ? ScreenTextNote
+      : function Conflict() { return <ConflictNote settingKey={settingKey} noKeyWhy={more.noKeyWhy} />; },
+  };
+}
+
 // ── The categories, in the concept's order (SettingsHotkeys board). ──
 
 export const CATEGORIES: Category[] = [
@@ -379,7 +400,45 @@ export const CATEGORIES: Category[] = [
       },
     ],
   },
-  { id: 'hotkeys', label: 'Hotkeys', built: false },
+  {
+    id: 'hotkeys',
+    label: 'Hotkeys',
+    built: true,
+    Intro: HotkeysIntro,
+    Badge: HotkeysBadge,
+    groups: [
+      {
+        title: 'Recording and replay',
+        rows: [
+          hotkeyRow('record', 'recordingHotkey', 'Record', { hint: 'Starts and stops recording into the open macro', words: 'recording' }),
+          hotkeyRow('replay', 'replayHotkey', 'Replay or stop', { hint: 'Runs the open macro, or stops whatever is running', words: 'run play' }),
+          hotkeyRow('shortcuts', 'profileKeyToggleHotkey', 'Shortcuts on or off', { hint: 'Silences macro hotkeys, hotstrings and Key Remaps at once', words: 'profile keys toggle silence pause' }),
+        ],
+      },
+      {
+        title: 'Window',
+        rows: [
+          hotkeyRow('front', 'foregroundHotkey', 'Bring TrueReplayer to the front', { words: 'foreground focus show window', noKeyWhy: 'the tray icon does it' }),
+          hotkeyRow('clicker', 'modeToggleHotkey', 'Open the Clicker', { hint: 'Pressed again, back to the macros', words: 'mode toggle clicker macro' }),
+        ],
+      },
+      {
+        title: 'Clicker',
+        note: 'Only while the Clicker is on.',
+        rows: [
+          hotkeyRow('clickerStart', 'cursorClickStartHotkey', 'Start and stop', { hint: 'Starts the clicks, or stops them', words: 'clicker autoclicker' }),
+          hotkeyRow('clickerPause', 'cursorClickPauseHotkey', 'Pause', { hint: 'Pauses the clicks, or resumes them', words: 'clicker autoclicker resume' }),
+        ],
+      },
+      {
+        title: 'Screen and clipboard',
+        rows: [
+          hotkeyRow('clip', 'captureSlotHotkey', 'Copy the selection to a clip slot', { hint: 'Fills the next {clip:N} for Send Text', words: 'capture slot clipboard selection' }),
+          hotkeyRow('screenText', 'copyScreenTextHotkey', 'Copy text from the screen', { hint: 'Reads a region with Screen Text', words: 'ocr read region clipboard' }),
+        ],
+      },
+    ],
+  },
   { id: 'appearance', label: 'Appearance', built: false },
   {
     id: 'recording',

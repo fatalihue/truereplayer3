@@ -32,12 +32,12 @@ export function SettingsPage() {
     onResetAsked(() => setConfirm(true));
     return () => onResetAsked(() => {});
   }, []);
-  // Ctrl+K's Reset all settings…: the confirmation, once the page is here.
-  useEffect(() => {
-    if (!resetAsked) return;
+  // The confirmation, asked by the row's Reset… or by Ctrl+K's Reset all settings… (settingsReset,
+  // set before the page was here); closing it answers both.
+  const closeReset = () => {
+    setConfirm(false);
     useUi.setState({ settingsReset: false });
-    setConfirm(true);
-  }, [resetAsked]);
+  };
   const current = BUILT.find(c => c.id === category) ?? BUILT[0];
   const pick = (id: SettingsCategory) => {
     setQuery('');
@@ -68,7 +68,7 @@ export function SettingsPage() {
       <div className="set-body">
         {query.trim() ? <Results query={query} onGo={pick} /> : <CategoryView key={current.id} category={current} />}
       </div>
-      {confirm && <ResetDialog onClose={() => setConfirm(false)} />}
+      {(confirm || resetAsked) && <ResetDialog onClose={closeReset} />}
     </section>
   );
 }
@@ -87,21 +87,22 @@ function Categories({ current, onPick }: { current: SettingsCategory; onPick: (i
   };
   return (
     <div ref={listRef} className="set-cats" role="tablist" aria-orientation="vertical" aria-label="Settings categories" onKeyDown={onKeyDown}>
-      {SHOWN.map(c => (
+      {SHOWN.map(({ id, label, built, Badge }) => (
         <button
-          key={c.id}
-          id={`set-tab-${c.id}`}
+          key={id}
+          id={`set-tab-${id}`}
           type="button"
           role="tab"
           className="set-cat"
-          aria-selected={c.id === current}
+          aria-selected={id === current}
           aria-controls="set-panel"
-          tabIndex={c.id === current ? 0 : -1}
-          disabled={!c.built}
-          data-tip={c.built ? undefined : tt(`${c.label} — not built yet`, `${c.label} — ainda não feito`)}
-          onClick={() => onPick(c.id)}
+          tabIndex={id === current ? 0 : -1}
+          disabled={!built}
+          data-tip={built ? undefined : tt(`${label} — not built yet`, `${label} — ainda não feito`)}
+          onClick={() => onPick(id)}
         >
-          {c.label}
+          {label}
+          {Badge && <Badge />}
         </button>
       ))}
     </div>
@@ -110,10 +111,11 @@ function Categories({ current, onPick }: { current: SettingsCategory; onPick: (i
 
 /** A category: its groups of settings, or its panel (the browser extension). */
 function CategoryView({ category }: { category: Category }) {
-  const { Panel } = category;
+  const { Panel, Intro } = category;
   return (
     <div id="set-panel" className="set-content" role="tabpanel" aria-labelledby={`set-tab-${category.id}`}>
       <h2 className="set-heading">{category.label}</h2>
+      {Intro && <Intro />}
       {Panel ? <Panel /> : category.groups?.map(g => <GroupView key={g.title} group={g} />)}
     </div>
   );
@@ -135,12 +137,13 @@ function GroupView({ group }: { group: Group }) {
 }
 
 function RowView({ row }: { row: Row }) {
-  const { Control } = row;
+  const { Control, Note } = row;
   return (
     <div className="set-row" data-row={row.id}>
       <div className="set-row-text">
         <span className="set-row-label">{row.label}</span>
         {row.hint && <span className="set-row-hint">{row.hint}</span>}
+        {Note && <Note />}
       </div>
       <div className="set-row-control"><Control /></div>
     </div>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useBridge } from '../bridge/BridgeContext';
 import { useGetAppState } from '../state/AppStateContext';
-import type { IncomingMessage, OcrLanguagesPayload } from '../bridge/messageTypes';
+import type { HotkeySettingKey, IncomingMessage, OcrLanguagesPayload } from '../bridge/messageTypes';
 
 /**
  * The app's settings, as commands. Every write is echoed back as settings:loaded, which is what
@@ -37,6 +37,11 @@ export function useSettings() {
     setStartMinimized: (enabled: boolean) => send({ type: 'window:startMinimized', payload: { enabled } }),
     setRunEndFlash: (enabled: boolean) => send({ type: 'window:runEndFlash', payload: { enabled } }),
     setRunEndSound: (enabled: boolean) => send({ type: 'window:runEndSound', payload: { enabled } }),
+    /**
+     * Puts the hotkeys named on the keys a new install gets (the settings' hotkeyDefaults), in one
+     * go; one the engine finds taken keeps its key, with a toast saying by what.
+     */
+    useSuggestedHotkeys: (keys: HotkeySettingKey[]) => send({ type: 'hotkeys:useSuggested', payload: { keys } }),
     /** Draws the fixed region the Copy Screen Text hotkey reads, on screen. */
     pickCopyScreenTextRegion: () => send({ type: 'ocr:configureHotkeyRegion', payload: {} }),
     /** Installs a Windows OCR language pack. The outcome arrives as ocr:installResult. */

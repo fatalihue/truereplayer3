@@ -3,7 +3,7 @@ import { useRovingToolbar } from '../../hooks/useRovingToolbar';
 import { useSteps } from '../../logic/useSteps';
 import { useTt } from '../../state/LanguageContext';
 import { preload, useLoaded } from '../lazyModule';
-import { keycaps } from '../library/model';
+import { clickerOnNote } from '../library/model';
 import { anchorBelow, type MenuAnchor } from '../menuAnchor';
 import { useApp } from '../store';
 import { loadDataLoop, showMacroTab, useUi, type MacroTab } from '../ui';
@@ -69,7 +69,7 @@ export function InsertRow() {
   };
 
   const note = clicker
-    ? `The Clicker is on — ${keycaps(modeKey || 'ScrollLock')} brings the macros back`
+    ? clickerOnNote(modeKey)
     : status === 'recording' ? 'Read-only while recording' : 'Read-only while it runs';
 
   // ← → Home End choose a tab, as they move to it (the panel draws at once).

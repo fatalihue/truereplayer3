@@ -59,11 +59,12 @@ const defaultSettings = {
   recordCombinedInput: true,
   profileKeyEnabled: true,
   browserSelectorEnabled: true,
-  recordingHotkey: 'Ctrl+PageUp',
-  replayHotkey: 'Ctrl+PageDown',
+  // Mirror the engine's HotkeyDefaults (a new install's keys; whoever updates keeps theirs).
+  recordingHotkey: 'Ctrl+F9',
+  replayHotkey: 'Ctrl+F10',
   profileKeyToggleHotkey: 'Pause',
-  foregroundHotkey: 'Insert',
-  modeToggleHotkey: 'ScrollLock',
+  foregroundHotkey: '',
+  modeToggleHotkey: '',
   // Mirrors AppSettings.CaptureSlotHotkey so there's no wrong-value flash before
   // settings:loaded arrives. Empty still means disabled if the user clears it.
   captureSlotHotkey: 'Win+Ctrl+C',

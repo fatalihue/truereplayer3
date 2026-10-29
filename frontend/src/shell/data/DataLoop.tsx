@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useEditorClaim } from '../../logic/useEditorClaim';
 import { useTt } from '../../state/LanguageContext';
 import { useToast } from '../../state/ToastContext';
-import { keycaps } from '../library/model';
+import { clickerOnNote } from '../library/model';
 import { useApp } from '../store';
 import { useUi } from '../ui';
 import { DataGrid } from './DataGrid';
@@ -82,7 +82,7 @@ function DataEmpty({ locked }: { locked: boolean }) {
     return () => document.removeEventListener('paste', onPaste);
   }, [locked]);
 
-  const note = clicker ? `The Clicker is on — ${keycaps(modeKey || 'ScrollLock')} brings the macros back` : 'Read-only while it runs';
+  const note = clicker ? clickerOnNote(modeKey) : 'Read-only while it runs';
   return (
     <div className="dl-empty">
       <span className="step-icon dl-empty-icon" data-icon="table-2" />

@@ -124,6 +124,14 @@ export function targetLabel(processName?: string | null, windowTitle?: string | 
 /** A hotkey as its keycaps read: "Ctrl+PgDn". */
 export const keycaps = (combo: string) => splitCombo(combo).map(compactKey).join('+');
 
+/**
+ * What the zones waiting for the macros say while the Clicker is on: the way back is its hotkey,
+ * or Macros in the rail when it has none (the default of a new install; casca-101).
+ */
+export const clickerOnNote = (modeKey: string) => (modeKey
+  ? `The Clicker is on — ${keycaps(modeKey)} brings the macros back`
+  : 'The Clicker is on — Macros, in the rail, brings them back');
+
 /** The description on one tooltip line: whitespace folded, cut by what people see. */
 export function descriptionTip(description?: string | null): string {
   const line = (description ?? '').replace(/\s+/g, ' ').trim();
