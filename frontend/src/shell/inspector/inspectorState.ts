@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { useSteps } from '../../logic/useSteps';
 import { useShell } from '../store';
+import { useUi } from '../ui';
 
 /**
  * What the Inspector shares between its frame (in the opening bundle) and its editors (loaded with
@@ -112,9 +113,12 @@ export function applyEdits(cmds: ReturnType<typeof useSteps>, stepId: string, ed
   return true;
 }
 
-/** The list takes the focus back (Esc in the Inspector, D12; Close editor). */
+/** The list takes the focus back (Esc in the Inspector, D12; Close editor) — on the Data Loop tab, the table. */
 export function focusList() {
-  document.querySelector<HTMLElement>('.steps-body')?.focus({ preventScroll: true });
+  const target = useUi.getState().macroTab === 'data'
+    ? document.querySelector<HTMLElement>('.dl-sheet') ?? document.querySelector<HTMLElement>('.dl-panel')
+    : document.querySelector<HTMLElement>('.steps-body');
+  target?.focus({ preventScroll: true });
 }
 
 // Enter on a step, or Edit in its menu, asks for the Inspector's first field. The editors take the

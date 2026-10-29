@@ -10,9 +10,12 @@
   min-height: 2.9375rem;
   padding: 0 0.75rem;
   border-bottom: 1px solid var(--color-border-subtle);
+  /* The Data Loop tab's tools fit themselves to the row (data/dataLoop.css). */
+  container: insrow / inline-size;
 }
 
-.ins-tabs { display: flex; align-items: stretch; gap: 0.125rem; }
+/* As tall as the row, also on a line of its own when the tools wrap below. */
+.ins-tabs { display: flex; align-items: stretch; gap: 0.125rem; min-height: 2.9375rem; }
 .ins-tab {
   position: relative;
   display: flex;

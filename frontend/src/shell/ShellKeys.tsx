@@ -11,6 +11,7 @@ import { moveSteps } from './list/moves';
 import { insertPoint, selectedIndices } from './list/selection';
 import { loadPalette, palette, usePalette } from './palette/paletteState';
 import { useShell } from './store';
+import { useUi } from './ui';
 import { useBandEdges } from './useShellBand';
 
 // Inputs whose keys are not typing: a checkbox or a range is a control, and Ctrl+C there is ours.
@@ -40,7 +41,8 @@ const interactive = (target: EventTarget | null) => {
  * The step keys, outside a field: Ctrl+C copies the selected steps (casca-096, during a run too);
  * Ctrl+V pastes at the insertion point (casca-097); Alt+↑/↓ move the selection, whole blocks for
  * any marker it touches; Ctrl+Z and Ctrl+Y (or Ctrl+Shift+Z) undo and redo the macro's history.
- * Those that change the macro stand down during a run, in the Clicker, and behind a modal dialog.
+ * Those that change the macro stand down during a run, in the Clicker, and behind a modal dialog;
+ * the steps' own keys, on the Data Loop tab.
  */
 export function ShellKeys() {
   const macro = useMacro();
@@ -102,6 +104,10 @@ export function ShellKeys() {
       }
       if (typing(e.target)) return;
       const steps = app.actions;
+      // On the Data Loop tab the steps are out of sight: their keys stand down, and Ctrl+Z and
+      // Ctrl+Y go on undoing the macro's history, the table's edits included.
+      const table = useUi.getState().macroTab === 'data';
+      if (table && !(e.ctrlKey && !e.altKey && (key === 'z' || key === 'y'))) return;
       if (e.ctrlKey && !e.altKey && !e.shiftKey && key === 'c') {
         const sel = selectedIndices(steps);
         if (sel.length === 0) return;

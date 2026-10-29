@@ -1,0 +1,523 @@
+/* ⑥ The Data Loop tab: the table, its tools in the insert row, the paste surface, the empty state,
+   and its settings in the Inspector (DataLoop.tsx and its parts). Loads with its chunk. Sizes are
+   the concept's at 100 %, in rem; colours are theme tokens only. */
+
+.dl-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  outline: none;
+  /* A row as tall as the steps' (the density setting), the row numbers as wide as "next" needs. */
+  --dl-row-h: var(--ui-row-height);
+  --dl-head-h: 2.25rem;
+  --dl-num-w: 4.5rem;
+  --dl-col-w: 11.25rem;
+  --dl-end-w: 7.5rem;
+  --dl-line: color-mix(in srgb, var(--color-border-subtle) 60%, transparent);
+}
+
+/* ── The table ── */
+.dl-scroll { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+/* As wide as the columns (or the view): the grid, then Add row under it. */
+.dl-canvas {
+  position: relative;
+  width: max(100%, calc(var(--dl-num-w) + var(--dl-cols) * var(--dl-col-w) + var(--dl-end-w)));
+}
+.dl-sheet {
+  position: relative;
+  outline: none;
+  font-size: var(--text-minor);
+}
+.dl-head,
+.dl-row {
+  display: grid;
+  grid-template-columns: var(--dl-num-w) repeat(var(--dl-cols), var(--dl-col-w)) minmax(var(--dl-end-w), 1fr);
+}
+.dl-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: var(--dl-head-h);
+  border-bottom: 1px solid var(--color-border-default);
+  background: var(--color-bg-base);
+  user-select: none;
+}
+.dl-body { position: relative; }
+.dl-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: var(--dl-row-h);
+  border-bottom: 1px solid var(--dl-line);
+  font-family: var(--font-mono);
+}
+.dl-row[data-odd] { background: color-mix(in srgb, var(--color-text-primary) 1.5%, transparent); }
+.dl-row:hover { background: color-mix(in srgb, var(--color-text-primary) 4%, transparent); }
+.dl-row[data-editing] { z-index: 2; }
+/* The row the next replay uses: the replay's green, with a bar and the ▶ — never the colour alone. */
+.dl-row[data-cursor] {
+  background: color-mix(in srgb, var(--color-replay) 8%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--color-replay) 25%, transparent);
+}
+
+/* The row numbers, kept in view as the table scrolls sideways. */
+.dl-num {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  border-right: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-base);
+  color: var(--color-text-tertiary);
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+.dl-row .dl-num { background: inherit; }
+.dl-row[data-odd] .dl-num,
+.dl-row[data-cursor] .dl-num,
+.dl-row:hover .dl-num { background: var(--color-bg-base); }
+.dl-row[data-cursor] .dl-num { box-shadow: inset 3px 0 0 var(--color-replay); }
+.dl-row[data-cursor] .dl-num::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--color-replay) 8%, transparent);
+  pointer-events: none;
+}
+.dl-num-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.dl-num-button:not(:disabled):hover { color: var(--color-text-primary); }
+.dl-num-button:disabled { cursor: default; }
+.dl-num-button .step-icon { width: 0.5625rem; height: 0.5625rem; }
+.dl-row[data-cursor] .dl-num-button { color: var(--color-replay-fg); font-weight: 600; }
+.dl-row[data-blank] .dl-num { color: var(--color-text-disabled); }
+
+/* A header: the name (a click renames it), how many steps read it, its ⋯. */
+.dl-hcell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+  padding: 0 0.25rem 0 0.625rem;
+  border-right: 1px solid var(--color-border-subtle);
+}
+.dl-hname {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-minor);
+  font-weight: 600;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+}
+.dl-hname:disabled { cursor: default; }
+.dl-hname[data-dup] { text-decoration: underline dotted var(--color-warning-ink); text-underline-offset: 3px; }
+.dl-hcell[data-invalid] .dl-hname { color: var(--color-warning-ink); }
+.dl-empty-name { color: var(--color-text-disabled); font-style: italic; font-weight: 400; }
+.dl-uses {
+  flex: none;
+  padding: 0 0.3125rem;
+  border-radius: 0.5rem;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-caption);
+  line-height: 1rem;
+}
+.dl-uses[data-used] {
+  background: color-mix(in srgb, var(--color-action-loop-fg) 14%, transparent);
+  color: var(--color-action-loop-fg);
+}
+.dl-hmenu {
+  width: 1.375rem;
+  height: 1.375rem;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+}
+.dl-hmenu .step-icon { width: 0.875rem; height: 0.875rem; }
+.dl-hmenu:hover { background: var(--color-bg-elevated); color: var(--color-text-primary); }
+.dl-warn { width: 0.75rem; height: 0.75rem; flex: none; color: var(--color-warning-ink); }
+
+/* A cell: one line, what it holds and does not show made visible. */
+.dl-cell {
+  position: relative;
+  min-width: 0;
+  padding: 0 0.625rem;
+  border-right: 1px solid color-mix(in srgb, var(--color-border-subtle) 40%, transparent);
+  color: var(--color-text-primary);
+  line-height: var(--dl-row-h);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+}
+.dl-sheet[data-locked] .dl-cell { cursor: default; }
+.dl-glyph { color: var(--color-text-disabled); }
+/* A search's matches share the warning tint; the row its count points at also has the ring. */
+.dl-cell[data-hit] { background: color-mix(in srgb, var(--color-warning) 22%, transparent); }
+.dl-cell[data-current] { box-shadow: inset 0 0 0 1px var(--color-warning-ink); }
+/* The keys' cell, while the table has the focus. */
+.dl-sheet:focus .dl-cell[data-active],
+.dl-sheet:focus .dl-hcell[data-active],
+.dl-sheet:focus .dl-num[data-active] { box-shadow: inset 0 0 0 2px var(--color-accent-solid); }
+.dl-cell[data-editing] { overflow: visible; }
+
+/* The open cell, over its own: as tall as its lines, up to four. */
+.dl-editor {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 100%;
+  max-height: calc(4lh + 0.75rem);
+  field-sizing: content;
+  margin: 0;
+  padding: calc((var(--dl-row-h) - 1lh) / 2 - 2px) calc(0.625rem - 2px);
+  border: 2px solid var(--color-accent-solid);
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
+  font: inherit;
+  line-height: 1.25rem;
+  resize: none;
+  outline: none;
+  white-space: pre-wrap;
+}
+.dl-hcell[data-editing] { padding: 0; }
+.dl-input {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 0 calc(0.625rem - 2px);
+  border: 2px solid var(--color-accent-solid);
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-minor);
+  font-weight: 600;
+  outline: none;
+}
+.dl-input[aria-invalid] { border-color: var(--color-recording); }
+.dl-problem {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 0.25rem);
+  z-index: 4;
+  max-width: 18rem;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--color-recording) 50%, transparent);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-elevated);
+  box-shadow: var(--shadow-overlay);
+  color: var(--color-recording-fg);
+  font-family: var(--font-sans);
+  font-size: var(--text-minor);
+  font-weight: 400;
+  white-space: normal;
+}
+
+/* The last column: "next replay" on the cursor's row, the row's tools on hover. */
+.dl-end {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+  padding: 0 0.5rem;
+}
+.dl-next { color: var(--color-replay-fg); font-family: var(--font-sans); font-size: var(--text-minor); white-space: nowrap; }
+.dl-acts { display: none; margin-left: auto; gap: 0.125rem; }
+.dl-row:hover .dl-acts { display: flex; }
+.dl-act {
+  width: 1.5rem;
+  height: 1.5rem;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+}
+.dl-act .step-icon { width: 0.75rem; height: 0.75rem; }
+.dl-act:hover { color: var(--color-text-primary); }
+.dl-act[data-danger]:hover { color: var(--color-recording-fg); }
+
+/* + Column, + Add row: dashed, as the concept draws them. */
+.dl-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 1.625rem;
+  padding: 0 0.625rem;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-tertiary);
+  font: inherit;
+  font-family: var(--font-sans);
+  font-size: var(--text-minor);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.dl-add .step-icon { width: 0.75rem; height: 0.75rem; }
+.dl-add:hover { color: var(--color-text-primary); border-color: var(--color-text-tertiary); }
+.dl-add:focus-visible,
+.dl-hmenu:focus-visible,
+.dl-act:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 1px; }
+.dl-foot { display: flex; align-items: center; height: 2.25rem; padding: 0 0.375rem 1rem calc(var(--dl-num-w) + 0.375rem); }
+.dl-probe { position: absolute; visibility: hidden; height: var(--dl-row-h); width: 1px; top: 0; pointer-events: none; }
+
+/* ── The tools, in the insert row ── */
+.dl-tools { gap: 0.375rem; }
+.dl-find {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  width: 11.875rem;
+  height: 2rem;
+  padding: 0 0.25rem 0 0.5rem;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-input);
+  color: var(--color-text-tertiary);
+}
+.dl-find:focus-within { border-color: var(--color-accent-solid); }
+.dl-find { overflow: hidden; }
+.dl-find:has(.dl-find-count) { width: auto; min-width: 11.875rem; }
+.dl-find[data-disabled] { opacity: 0.5; }
+.dl-find > .step-icon { width: 0.875rem; height: 0.875rem; flex: none; }
+.dl-find input {
+  flex: 1;
+  min-width: 5rem;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+}
+.dl-find input::placeholder { color: var(--color-text-tertiary); }
+.dl-find-count { flex: none; font-size: var(--text-minor); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dl-find-step {
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+}
+.dl-find-step .step-icon { width: 0.8125rem; height: 0.8125rem; }
+.dl-find-step:hover { background: var(--color-bg-elevated); color: var(--color-text-primary); }
+.dl-find-step:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 1px; }
+.dl-tool { border: 1px solid var(--color-border-default); background: var(--color-bg-elevated); color: var(--color-text-primary); }
+.dl-tool .dl-caret { width: 0.75rem; height: 0.75rem; color: var(--color-text-tertiary); }
+.dl-tools .ins-icon[aria-pressed='true'] { background: color-mix(in srgb, var(--color-accent) 12%, transparent); color: var(--color-accent); }
+/* A narrow row (the library and the Inspector both open, or a narrow window): the search box
+   narrows and the paste tool keeps its icon and its caret, so the tools stay beside the tabs. */
+@container insrow (max-width: 44rem) {
+  .dl-tool { width: auto; padding: 0 0.375rem; font-size: 0; gap: 0.125rem; }
+  /* Room for the count while searching; the previous and next buttons give way to Enter and
+     Shift+Enter. */
+  .dl-find { width: 8rem; min-width: 0; }
+  .dl-find:has(.dl-find-count) { width: 11.25rem; min-width: 0; }
+  .dl-find input { width: 0; min-width: 0; }
+  .dl-find-step[data-nav] { display: none; }
+}
+
+/* ── Paste or import ── */
+.dl-paste { flex: 1; min-height: 0; display: flex; flex-direction: column; container: dlpaste / inline-size; }
+.dl-paste-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  min-height: 2.75rem;
+  padding: 0.375rem 0.75rem;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.dl-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: 1.75rem;
+  padding: 0 0.5rem 0 0.25rem;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-accent);
+  font: inherit;
+  font-size: var(--text-minor);
+  cursor: pointer;
+}
+.dl-back .step-icon { width: 0.875rem; height: 0.875rem; transform: scaleX(-1); }
+.dl-back:hover { background: var(--color-bg-elevated); }
+.dl-back:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 1px; }
+.dl-paste-title { flex: 1; min-width: 8rem; font-weight: 600; }
+.dl-paste-mode { width: 16rem; flex: none; }
+.dl-paste-body { flex: 1; min-height: 0; display: flex; }
+.dl-paste-box {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 1rem;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-minor);
+  line-height: 1.25rem;
+  white-space: pre;
+  overflow: auto;
+  tab-size: 12;
+}
+.dl-paste-box:focus { box-shadow: inset 0 0 0 1px var(--color-accent-solid); }
+.dl-paste-box::placeholder { color: var(--color-text-disabled); }
+.dl-paste-side {
+  width: 17.5rem;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  overflow-y: auto;
+  border-left: 1px solid var(--color-border-subtle);
+}
+.dl-check { display: flex; align-items: center; gap: 0.5rem; color: var(--color-text-secondary); cursor: pointer; }
+.dl-check input { width: 0.9375rem; height: 0.9375rem; margin: 0; accent-color: var(--color-accent-solid); }
+.dl-paste-count { color: var(--color-text-tertiary); font-size: var(--text-minor); font-variant-numeric: tabular-nums; }
+.dl-paste-cols { display: flex; flex-direction: column; gap: 0.25rem; }
+.dl-paste-col { display: flex; align-items: center; gap: 0.375rem; font-family: var(--font-mono); font-size: var(--text-minor); color: var(--color-text-secondary); }
+.dl-paste-col .step-icon { width: 0.75rem; height: 0.75rem; color: var(--color-replay-fg); }
+.dl-paste-col[data-invalid] { color: var(--color-warning-ink); }
+.dl-paste-col[data-invalid] .step-icon { color: var(--color-warning-ink); }
+.dl-paste-tail { margin-top: auto; }
+.dl-paste-foot {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  border-top: 1px solid var(--color-border-subtle);
+}
+.dl-paste-hint { flex: 1; min-width: 0; color: var(--color-text-tertiary); font-size: var(--text-minor); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dl-primary { border-color: var(--color-accent-solid); background: var(--color-accent-solid); color: var(--color-accent-ink); font-weight: 600; }
+.dl-primary:not(:disabled):hover { background: var(--color-accent-solid-hover); border-color: var(--color-accent-solid-hover); }
+.dl-primary:disabled { opacity: 0.5; color: var(--color-accent-ink); }
+@container dlpaste (max-width: 40rem) {
+  .dl-paste-body { flex-direction: column; }
+  .dl-paste-side { width: auto; max-height: 40%; border-left: 0; border-top: 1px solid var(--color-border-subtle); }
+}
+
+/* ── No table yet ── */
+.dl-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 2rem 1.5rem;
+  text-align: center;
+}
+.dl-empty-icon { width: 1.75rem; height: 1.75rem; color: var(--color-text-tertiary); }
+.dl-empty-title { margin: 0; font-size: var(--text-subtitle); font-weight: 600; }
+.dl-empty-text { margin: 0; max-width: 26rem; color: var(--color-text-secondary); line-height: 1.25rem; }
+.dl-empty-text code { font-family: var(--font-mono); color: var(--color-action-loop-fg); }
+.dl-empty-actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0.5rem; }
+.dl-empty-actions .kbd { margin-left: 0.25rem; background: color-mix(in srgb, var(--color-accent-ink) 14%, transparent); color: inherit; border-color: transparent; }
+.dl-empty-actions .insp-link { align-self: center; }
+.dl-empty-sep { color: var(--color-text-disabled); }
+
+/* ── Data Loop settings, in the Inspector ── */
+.dl-tile { background: color-mix(in srgb, var(--color-action-loop-fg) 14%, transparent); color: var(--color-action-loop-fg); }
+.dl-card {
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--color-border-default);
+  border-radius: 0.375rem;
+  color: var(--color-text-secondary);
+  font-size: var(--text-minor);
+  line-height: 1.0625rem;
+}
+.dl-card strong { color: var(--color-text-primary); font-weight: 600; }
+.dl-card[data-tone='ok'] { border-color: color-mix(in srgb, var(--color-replay) 35%, transparent); background: color-mix(in srgb, var(--color-replay) 7%, transparent); }
+.dl-card[data-tone='error'] { border-color: color-mix(in srgb, var(--color-recording) 40%, transparent); background: color-mix(in srgb, var(--color-recording) 8%, transparent); color: var(--color-recording-fg); }
+.dl-next-row { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.dl-col { display: flex; align-items: center; gap: 0.5rem; min-height: 1.875rem; min-width: 0; }
+.dl-token {
+  flex: none;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0.0625rem 0.375rem;
+  border: 1px solid var(--color-border-default);
+  border-radius: 0.25rem;
+  background: var(--color-bg-elevated);
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-minor);
+}
+.dl-token[data-used] {
+  border-color: color-mix(in srgb, var(--color-action-loop-fg) 35%, transparent);
+  background: color-mix(in srgb, var(--color-action-loop-fg) 12%, transparent);
+  color: var(--color-action-loop-fg);
+}
+.dl-col-what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-secondary); font-size: var(--text-minor); }
+.dl-col[data-invalid] .dl-col-name { font-family: var(--font-mono); font-size: var(--text-minor); color: var(--color-warning-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dl-col[data-invalid] .dl-col-what { flex: 1; color: var(--color-text-tertiary); }
+.dl-col .insp-button { height: 1.75rem; padding: 0 0.625rem; }
+.dl-orphan {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid color-mix(in srgb, var(--color-warning) 40%, transparent);
+  border-radius: 0.375rem;
+  background: color-mix(in srgb, var(--color-warning) 8%, transparent);
+}
+.dl-orphan > .step-icon { width: 0.875rem; height: 0.875rem; flex: none; margin-top: 0.0625rem; color: var(--color-warning); }
+.dl-orphan-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.375rem; font-size: var(--text-minor); line-height: 1rem; color: var(--color-warning-ink); }
+.dl-orphan-body code { font-family: var(--font-mono); }
+.dl-orphan-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.dl-orphan-actions .insp-button { height: 1.625rem; padding: 0 0.625rem; font-size: var(--text-minor); }

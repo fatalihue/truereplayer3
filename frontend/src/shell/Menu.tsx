@@ -21,6 +21,8 @@ export interface MenuItem {
   tip?: string;
   /** The key that does the same from the list ("Ctrl+C", "Del"), drawn at the end. */
   shortcut?: string;
+  /** Asks twice: the first press turns the item into this question, in red, and the second does it. */
+  confirm?: string;
 }
 export type MenuEntry = MenuItem | 'separator';
 
@@ -130,6 +132,8 @@ function MenuList({ entries, label, place, focusFirst, onClose, onBack, panel }:
   const listRef = useRef<HTMLDivElement>(null);
   const placed = useRef(false);
   const [open, setOpen] = useState<{ index: number; rect: DOMRect; focusFirst: boolean } | null>(null);
+  // The item that asked its question (confirm) and waits for the second press.
+  const [armed, setArmed] = useState<number | null>(null);
 
   // Laid out out of sight, measured, then placed and focused — before the first paint, and once:
   // a re-render (a submenu opening) must not move the list or take the focus back.
@@ -204,7 +208,7 @@ function MenuList({ entries, label, place, focusFirst, onClose, onBack, panel }:
               type="button"
               role="menuitem"
               className="menu-item shell-menu-item"
-              data-danger={entry.danger || undefined}
+              data-danger={entry.danger || armed === i || undefined}
               data-menu-index={i}
               data-submenu={hasSub || undefined}
               aria-haspopup={hasSub ? 'menu' : undefined}
@@ -225,12 +229,16 @@ function MenuList({ entries, label, place, focusFirst, onClose, onBack, panel }:
                   setOpen({ index: i, rect: e.currentTarget.getBoundingClientRect(), focusFirst: true });
                   return;
                 }
+                if (entry.confirm && armed !== i) {
+                  setArmed(i);
+                  return;
+                }
                 onClose();
                 entry.onSelect?.();
               }}
             >
               <span className="shell-menu-icon" style={entry.iconColor ? { color: entry.iconColor } : undefined}>{Icon && <Icon aria-hidden="true" />}</span>
-              <span className="shell-menu-label">{entry.notBuilt ? `${entry.label} — not built yet` : entry.label}</span>
+              <span className="shell-menu-label">{entry.notBuilt ? `${entry.label} — not built yet` : armed === i ? entry.confirm : entry.label}</span>
               {entry.shortcut && <kbd className="kbd shell-menu-kbd" aria-hidden="true">{entry.shortcut}</kbd>}
               {entry.checked && <Check className="shell-menu-end" aria-hidden="true" />}
               {hasSub && <ChevronRight className="shell-menu-end" aria-hidden="true" />}

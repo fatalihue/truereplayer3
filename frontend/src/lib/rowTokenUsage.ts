@@ -23,6 +23,10 @@ export interface ColumnUsage {
   count: number;
   /** Which heads referenced the column — an orphan row is drawn with the head it was written with. */
   heads: Set<RowTokenHead>;
+  /** The actions that read it (0-based, in order, each once): "used by steps 4 and 15". */
+  steps: number[];
+  /** The column as the first token wrote it (trimmed), for a column added to match it. */
+  name: string;
 }
 
 const ROW_TOKEN_SOURCE = /\{(row|rownext):([^:}]+)(?::[^}]+)?\}/.source;
@@ -88,7 +92,7 @@ function tokenFields(action: unknown): unknown[] {
 /** Lower-cased column name → usage, scanning the fields the engine resolves on each action. */
 export function scanRowTokenUsage(actions: readonly unknown[]): Map<string, ColumnUsage> {
   const usage = new Map<string, ColumnUsage>();
-  for (const a of actions) {
+  actions.forEach((a, index) => {
     const fields: string[] = [];
     collectStrings(tokenFields(a), fields);
     for (const s of fields) {
@@ -96,14 +100,16 @@ export function scanRowTokenUsage(actions: readonly unknown[]): Map<string, Colu
       const re = new RegExp(ROW_TOKEN_SOURCE, 'gi');
       let m: RegExpExecArray | null;
       while ((m = re.exec(s)) !== null) {
-        const key = m[2].trim().toLowerCase();
-        const entry = usage.get(key) ?? { count: 0, heads: new Set<RowTokenHead>() };
+        const name = m[2].trim();
+        const key = name.toLowerCase();
+        const entry = usage.get(key) ?? { count: 0, heads: new Set<RowTokenHead>(), steps: [], name };
         entry.count++;
         entry.heads.add(m[1].toLowerCase() as RowTokenHead);
+        if (entry.steps[entry.steps.length - 1] !== index) entry.steps.push(index);
         usage.set(key, entry);
       }
     }
-  }
+  });
   return usage;
 }
 

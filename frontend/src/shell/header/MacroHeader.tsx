@@ -210,9 +210,21 @@ function MacroMeta({ name }: { name: string }) {
   const loop = useApp(a => a.profileLoop);
   const table = useApp(a => a.dataTable);
   const lastRun = useShell(s => s.lastRun);
+  const dataTab = useUi(s => s.macroTab === 'data');
   const tt = useTt();
   const { language } = useLanguage();
   if (status === 'recording') return <RecordingMeta steps={actions.length} />;
+  // On the Data Loop tab, in the mode that walks the rows one run at a time: the row the next
+  // replay uses ("18 steps · next replay uses row 3, João Pereira").
+  if (dataTab && !table.loopOverData && table.rows.length > 0) {
+    const row = Math.max(0, table.cursorRow ?? 0);
+    const first = table.rows[row]?.find(cell => cell.trim() !== '')?.trim();
+    return (
+      <p className="hdr-meta">
+        {actions.length === 0 ? 'No steps yet' : stepCount(actions.length)} · next replay uses row {row + 1}{first ? <>, <bdi>{first}</bdi></> : null}
+      </p>
+    );
+  }
   if (actions.length === 0) return <p className="hdr-meta">No steps yet</p>;
   const pass = onePassMs(actions);
   const perRow = runsPerRow(table);

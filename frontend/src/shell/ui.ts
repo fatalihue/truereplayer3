@@ -32,13 +32,20 @@ interface ShellUi {
   expanded: boolean;
   /** The step whose reference image is being cropped, in the expanded Inspector. */
   crop: string | null;
+  /** The open macro's view (⑥): its steps, or its Data Loop table. It stays as macros change. */
+  macroTab: MacroTab;
+  /** Below 1024 px, the Data Loop settings asked for: they lie over the table until closed. */
+  dataSettings: boolean;
+  /** What the dock says on the Data Loop tab (the cell editor's keys), or null for its usual line. */
+  dataHint: string | null;
 }
 
 export type SettingsSection = 'hotkey' | 'hotstring' | 'target' | 'info';
+export type MacroTab = 'steps' | 'data';
 
 export const useUi = create<ShellUi>(() => ({
   dialog: null, nameFocus: null, libraryPeek: false, extensionHelp: false, startImport: null, settingsOpen: false, settingsFocus: null,
-  expanded: false, crop: null,
+  expanded: false, crop: null, macroTab: 'steps', dataSettings: false, dataHint: null,
 }));
 
 export const openDialog = (dialog: LibraryDialogState) => useUi.setState({ dialog });
@@ -61,6 +68,14 @@ export const collapseInspector = () => {
 };
 export const openCrop = (stepId: string) => useUi.setState({ crop: stepId });
 export const closeCrop = () => { if (useUi.getState().crop !== null) useUi.setState({ crop: null }); };
+/** Steps or Data Loop. The expanded editor is the Steps tab's, and goes with it. */
+export const showMacroTab = (macroTab: MacroTab) => {
+  if (useUi.getState().macroTab === macroTab) return;
+  useUi.setState({ macroTab, dataSettings: false, dataHint: null, expanded: false, crop: null });
+};
+// The Data Loop tab: its table, its tools in the insert row and its settings in the Inspector, in
+// one chunk that comes when the tab is pointed at or opened (rule 6).
+export const loadDataLoop = () => import('./data/DataLoop');
 
 // The extension's dialog of today (copy the folder, load it unpacked), until Settings › Browser
 // extension exists (phase 3). Its code comes when it is first opened.

@@ -1,4 +1,4 @@
-import { useRef, useState, type MouseEvent } from 'react';
+import { useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { useRovingToolbar } from '../../hooks/useRovingToolbar';
 import { useSteps } from '../../logic/useSteps';
 import { useTt } from '../../state/LanguageContext';
@@ -6,6 +6,7 @@ import { preload, useLoaded } from '../lazyModule';
 import { keycaps } from '../library/model';
 import { anchorBelow, type MenuAnchor } from '../menuAnchor';
 import { useApp } from '../store';
+import { loadDataLoop, showMacroTab, useUi, type MacroTab } from '../ui';
 import { insertHere, inserts } from './inserts';
 import './insert.css';
 
@@ -13,6 +14,9 @@ import './insert.css';
 // or the focus reaches Add step, so it is there by the press, and drawn on it (lazyModule).
 const loadCatalog = () => import('./AddStepCatalog');
 const loadNow = () => { void preload(loadCatalog); };
+// The Data Loop tab's chunk, the same way: the pointer or the focus on its tab starts it.
+const warmData = () => { void preload(loadDataLoop); };
+const TABS: MacroTab[] = ['steps', 'data'];
 
 interface Opened {
   anchor: MenuAnchor;
@@ -21,17 +25,24 @@ interface Opened {
 }
 
 /**
- * ⑥ The row over the steps: the Steps tab (the Data Loop tab is phase 2) and the insert tools —
- * Add step, which opens the catalog, then Click, Key, Text and Pause at one click, then Undo and
- * Redo. A new step goes to the insertion point and the list selects it when it lands.
+ * ⑥ The row over the steps: the tabs — Steps, and the Data Loop table with its row count — and the
+ * tools of the one shown. On Steps: Add step, which opens the catalog, then Click, Key, Text and
+ * Pause at one click, then Undo and Redo; a new step goes to the insertion point and the list
+ * selects it when it lands. On Data Loop: Find in table, Paste or import and the table's ⋯.
  *
- * The tools are one Tab stop with ← → Home End inside (casca-100, D2), and a click on one leaves
- * the focus where it was. While a recording or a run is on, or the Clicker, the row says it is
- * read-only instead of offering tools that would be refused (casca-021 to casca-026).
+ * The tabs are one Tab stop, and so are the tools, with ← → Home End inside (casca-100, D2); a
+ * click on a tool leaves the focus where it was. While a recording or a run is on, or the Clicker,
+ * the row says it is read-only instead of offering tools that would be refused (casca-021 to
+ * casca-026).
  */
 export function InsertRow() {
   const open = useApp(a => a.activeProfile);
   const count = useApp(a => a.actions.length);
+  const rows = useApp(a => a.dataTable.rows.length);
+  const hasTable = useApp(a => a.dataTable.headers.length > 0 || a.dataTable.rows.length > 0);
+  const tab = useUi(s => s.macroTab);
+  const data = useLoaded(loadDataLoop);
+  const DataTools = data?.DataTools;
   const status = useApp(a => a.status);
   const clicker = useApp(a => a.settings.useCursorClick);
   const modeKey = useApp(a => a.settings.modeToggleHotkey);
@@ -44,9 +55,9 @@ export function InsertRow() {
   const [catalog, setCatalog] = useState<Opened | null>(null);
   const AddStepCatalog = useLoaded(loadCatalog)?.default;
   const locked = status !== 'ready' || clicker;
-  // The catalog does not outlive its macro, and closes when a run, a recording or the Clicker
-  // starts (casca-027).
-  if (catalog && (locked || catalog.macro !== open)) setCatalog(null);
+  // The catalog does not outlive its macro or its tab, and closes when a run, a recording or the
+  // Clicker starts (casca-027).
+  if (catalog && (locked || catalog.macro !== open || tab === 'data')) setCatalog(null);
 
   if (!open) return null;
 
@@ -61,21 +72,52 @@ export function InsertRow() {
     ? `The Clicker is on — ${keycaps(modeKey || 'ScrollLock')} brings the macros back`
     : status === 'recording' ? 'Read-only while recording' : 'Read-only while it runs';
 
+  // ← → Home End choose a tab, as they move to it (the panel draws at once).
+  const onTabsKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Home' && e.key !== 'End') return;
+    e.preventDefault();
+    const at = TABS.indexOf(tab);
+    const next = TABS[e.key === 'Home' ? 0 : e.key === 'End' ? TABS.length - 1 : (at + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length];
+    if (next === 'data') warmData();
+    showMacroTab(next);
+    e.currentTarget.querySelector<HTMLElement>(`#macro-tab-${next}`)?.focus();
+  };
+
   return (
     <div className="ins">
-      <div role="tablist" aria-label="Macro views" className="ins-tabs">
-        <button type="button" role="tab" id="macro-tab-steps" aria-selected="true" aria-controls="macro-panel-steps" className="ins-tab">
+      <div role="tablist" aria-label="Macro views" className="ins-tabs" onKeyDown={onTabsKey}>
+        <button
+          type="button"
+          role="tab"
+          id="macro-tab-steps"
+          aria-selected={tab === 'steps'}
+          aria-controls="macro-panel-steps"
+          tabIndex={tab === 'steps' ? 0 : -1}
+          className="ins-tab"
+          onClick={() => showMacroTab('steps')}
+        >
           Steps<span className="ins-count">{count}</span>
         </button>
-        {import.meta.env.DEV && (
-          <button type="button" role="tab" aria-selected="false" className="ins-tab" tabIndex={-1} disabled>
-            Data Loop — not built yet
-          </button>
-        )}
+        <button
+          type="button"
+          role="tab"
+          id="macro-tab-data"
+          aria-selected={tab === 'data'}
+          aria-controls="macro-panel-data"
+          tabIndex={tab === 'data' ? 0 : -1}
+          className="ins-tab"
+          onPointerEnter={warmData}
+          onFocus={warmData}
+          onClick={() => { warmData(); showMacroTab('data'); }}
+        >
+          Data Loop{hasTable && <span className="ins-count">{rows === 1 ? '1 row' : `${rows} rows`}</span>}
+        </button>
       </div>
       <span className="ins-spacer" />
       {locked ? (
         <span className="ins-note">{note}</span>
+      ) : tab === 'data' ? (
+        DataTools && <DataTools />
       ) : (
         <div
           ref={toolsRef}

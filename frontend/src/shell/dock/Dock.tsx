@@ -3,6 +3,7 @@ import { useLanguage, useTt } from '../../state/LanguageContext';
 import { formatDuration, lastRunOutcome, timeOfDay } from '../header/model';
 import { preload, useLoaded } from '../lazyModule';
 import { useApp, useShell } from '../store';
+import { useUi } from '../ui';
 import { dock, loadDockPanel, useDock, useDockPx, type DockTab } from './dockState';
 import './dock.css';
 
@@ -24,6 +25,7 @@ export function Dock() {
   const open = useDock(s => s.open);
   const tab = useDock(s => s.tab);
   const height = useDock(s => s.height);
+  const tableHint = useUi(s => (s.macroTab === 'data' ? s.dataHint : null));
   const { language } = useLanguage();
   const tt = useTt();
   const ref = useRef<HTMLElement>(null);
@@ -51,6 +53,9 @@ export function Dock() {
   const summary = status === 'replaying' ? 'Running'
     : run ? `Last run ${timeOfDay(run.startedAt)} · ${run.ok} of ${run.total} steps · ${formatDuration(run.durationMs, language)} · ${lastRunOutcome(run, active)}`
     : 'No run yet';
+  // On the Data Loop tab, the bar says what the table's keys and clicks do (the concept's "Click a
+  // row number to make it the next row") in place of the run's line.
+  const hint = status === 'ready' ? tableHint : null;
   const Panel = panel?.default;
 
   const onTabKey = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -83,15 +88,19 @@ export function Dock() {
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          className="dock-summary"
-          data-run={run && status !== 'replaying' ? (run.failedCount > 0 || run.outcome === 'failed' ? 'failed' : run.outcome === 'stopped' ? 'stopped' : 'ok') : undefined}
-          data-tip={tt('Open the run report', 'Abrir o relatório da execução')}
-          onClick={() => dock.show('report')}
-        >
-          {summary}
-        </button>
+        {hint ? (
+          <span className="dock-summary" data-hint="">{hint}</span>
+        ) : (
+          <button
+            type="button"
+            className="dock-summary"
+            data-run={run && status !== 'replaying' ? (run.failedCount > 0 || run.outcome === 'failed' ? 'failed' : run.outcome === 'stopped' ? 'stopped' : 'ok') : undefined}
+            data-tip={tt('Open the run report', 'Abrir o relatório da execução')}
+            onClick={() => dock.show('report')}
+          >
+            {summary}
+          </button>
+        )}
         <button
           type="button"
           className="dock-toggle"

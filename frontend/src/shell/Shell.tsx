@@ -1,8 +1,10 @@
+import { useEffect } from 'react';
 import { TooltipLayer } from '../components/common/TooltipLayer';
 import { Toast } from '../components/Toast';
 import { Dock } from './dock/Dock';
 import { Inspector } from './inspector/Inspector';
 import { InsertRow } from './insert/InsertRow';
+import { preload, useLoaded } from './lazyModule';
 import { Library } from './library/Library';
 import { MacroHeader } from './header/MacroHeader';
 import { Overlays } from './Overlays';
@@ -10,8 +12,9 @@ import { Rail } from './Rail';
 import { ShellKeys } from './ShellKeys';
 import { StatusBar } from './StatusBar';
 import { StepList } from './list/StepList';
+import { useApp } from './store';
 import { TitleBar } from './TitleBar';
-import { inspectorWide, useUi } from './ui';
+import { inspectorWide, loadDataLoop, useUi } from './ui';
 import './shell.css';
 
 /**
@@ -35,7 +38,7 @@ export function Shell() {
         <main className="shell-main">
           <MacroHeader />
           <InsertRow />
-          <StepList />
+          <MacroViews />
           <Dock />
         </main>
         <Inspector />
@@ -46,5 +49,30 @@ export function Shell() {
       <Toast />
       <TooltipLayer />
     </div>
+  );
+}
+
+/**
+ * ⑦ under the tabs: the steps, or the Data Loop table. The list stays mounted under the table, so
+ * coming back finds it as it was (the selection, where it was scrolled to).
+ */
+function MacroViews() {
+  const tab = useUi(s => s.macroTab);
+  const open = useApp(a => a.activeProfile);
+  const data = useLoaded(loadDataLoop);
+  const table = tab === 'data' && !!open;
+  useEffect(() => {
+    if (table && !data) void preload(loadDataLoop);
+  }, [table, data]);
+  const DataMain = data?.DataMain;
+  return (
+    <>
+      <div className="shell-view" hidden={table}>
+        <StepList />
+      </div>
+      {table && (DataMain
+        ? <DataMain />
+        : <div className="shell-view-wait" id="macro-panel-data" role="tabpanel" aria-labelledby="macro-tab-data" />)}
+    </>
   );
 }

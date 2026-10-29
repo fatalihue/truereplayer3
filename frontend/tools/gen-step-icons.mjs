@@ -41,6 +41,10 @@ const textOut = path.join(front, 'src', 'shell', 'inspector', 'textIcons.css');
 // …and the ones the dock's panel draws (a run step's state), which load with that panel.
 const DOCK_NAMES = ['circle-check', 'circle-dashed', 'circle-minus', 'circle-x', 'triangle-alert'];
 const dockOut = path.join(front, 'src', 'shell', 'dock', 'dockIcons.css');
+// …and the Data Loop tab's (its table, its tools, its settings), which load with that tab. Some are
+// also another chunk's: each chunk carries the ones it draws.
+const DATA_NAMES = ['check', 'chevron-down', 'chevron-up', 'copy', 'ellipsis', 'sliders-horizontal', 'trash-2', 'triangle-alert'];
+const dataOut = path.join(front, 'src', 'shell', 'data', 'dataIcons.css');
 
 const version = JSON.parse(fs.readFileSync(path.join(front, 'node_modules', 'lucide-react', 'package.json'), 'utf8')).version;
 const attrs = (o) => Object.entries(o).filter(([k]) => k !== 'key').map(([k, v]) => `${k}='${v}'`).join(' ');
@@ -61,3 +65,4 @@ await write(NAMES, out);
 await write(EDITOR_NAMES, editorOut);
 await write(TEXT_NAMES, textOut);
 await write(DOCK_NAMES, dockOut);
+await write(DATA_NAMES, dataOut);

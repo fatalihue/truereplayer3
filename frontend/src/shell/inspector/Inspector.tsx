@@ -4,7 +4,7 @@ import { preload, useLoaded } from '../lazyModule';
 import { keycaps } from '../library/model';
 import { arrival, selectedIndices, selection, useSelection } from '../list/selection';
 import { useApp, useShell } from '../store';
-import { closeMacroSettings, collapseInspector, useUi } from '../ui';
+import { closeMacroSettings, collapseInspector, loadDataLoop, useUi } from '../ui';
 import { useShellBand } from '../useShellBand';
 import { drafts, focusList, loadInspectorBody, loadMacroSettings, useDraft, usePendingEdits } from './inspectorState';
 import './inspector.css';
@@ -48,6 +48,9 @@ function writeWidth(r: WidthRange, rem: number) {
  * the window allows beside the list, the library folds into avatars, and Esc or Ctrl+Enter
  * collapse it as they give the focus back to the list (D12). It lasts while the selection stays on
  * what it was opened for.
+ *
+ * On the Data Loop tab it holds the table's settings ("Data Loop settings"), whatever is selected
+ * in the steps; below 1024 px they lie over the table when asked for.
  */
 export function Inspector() {
   const steps = useApp(a => a.actions);
@@ -70,9 +73,13 @@ export function Inspector() {
   // is being cropped, never while it runs. Anything else selected takes the expansion away.
   const expanded = useUi(s => s.expanded);
   const crop = useUi(s => s.crop);
+  const dataTab = useUi(s => s.macroTab === 'data') && !!open;
+  const dataAsked = useUi(s => s.dataSettings);
+  const data = useLoaded(loadDataLoop);
+  const DataSettings = data?.DataSettings;
   const one = !draft && sel.length === 1 ? steps[sel[0]] : null;
-  const textShown = draft ? draft.kind === 'text' : one?.actionType === 'SendText';
-  const cropShown = crop !== null && !locked && one?.id === crop;
+  const textShown = !dataTab && (draft ? draft.kind === 'text' : one?.actionType === 'SendText');
+  const cropShown = !dataTab && crop !== null && !locked && one?.id === crop;
   const wide = (expanded && textShown) || cropShown;
   useEffect(() => {
     if (expanded && !textShown) useUi.setState({ expanded: false });
@@ -116,8 +123,8 @@ export function Inspector() {
   // a step and is still being typed: its editor stays while that step is the one selected.
   const adoptedGone = draft?.kind === 'text' && !!draft.stepId && !steps.some(s => s.id === draft.stepId);
   useEffect(() => {
-    if (draft && (draft.macro !== open || locked || adoptedGone)) cancelDraft();
-  }, [draft, open, locked, adoptedGone]);
+    if (draft && (draft.macro !== open || locked || adoptedGone || dataTab)) cancelDraft();
+  }, [draft, open, locked, adoptedGone, dataTab]);
   useEffect(() => useSelection.subscribe((s, prev) => {
     if (s.keys === prev.keys) return;
     // A step chosen takes the Inspector from the macro's settings.
@@ -142,6 +149,7 @@ export function Inspector() {
     e.preventDefault();
     if (!done) cancelDraft();
     collapseInspector();
+    if (dataTab) useUi.setState({ dataSettings: false });
     focusList();
   };
 
@@ -150,7 +158,7 @@ export function Inspector() {
       ref={asideRef}
       className="shell-inspector insp"
       aria-label="Inspector"
-      data-open={showing || settingsOpen || undefined}
+      data-open={(dataTab ? dataAsked : showing || settingsOpen) || undefined}
       data-expanded={wide || undefined}
       style={{ '--inspector-width': `${width}rem`, '--inspector-expanded-width': `${wideWidth}rem` } as CSSProperties}
       onKeyDown={onKeyDown}
@@ -160,14 +168,21 @@ export function Inspector() {
       ) : (
         <Grip key="normal" asideRef={asideRef} range={NORMAL} cssVar="--inspector-width" width={width} onWidth={(rem) => { setWidth(rem); writeWidth(NORMAL, rem); }} />
       )}
-      {/* One pane at a time (520–759 px): the Inspector covers the steps, and this goes back. */}
-      {(showing || settingsOpen) && (band === 'single' || band === 'compact') && (
+      {/* One pane at a time (520–759 px): the Inspector covers the steps (or the table), and this goes back. */}
+      {dataTab ? dataAsked && (band === 'single' || band === 'compact') && (
+        <button type="button" className="insp-back" onClick={() => { useUi.setState({ dataSettings: false }); focusList(); }}>
+          <span className="step-icon" data-icon="chevron-right" />
+          Table
+        </button>
+      ) : (showing || settingsOpen) && (band === 'single' || band === 'compact') && (
         <button type="button" className="insp-back" onClick={() => { cancelDraft(); selection.clear(); closeMacroSettings(); focusList(); }}>
           <span className="step-icon" data-icon="chevron-right" />
           Steps
         </button>
       )}
-      {!showing ? (
+      {dataTab ? (
+        DataSettings ? <DataSettings locked={locked} note={note} /> : <div className="insp-head" />
+      ) : !showing ? (
         <>
           <div className="insp-head">
             <div className="insp-title">

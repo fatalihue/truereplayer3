@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ActionItem, AppState, IncomingMessage, ProfileEntry } from '../bridge/messageTypes';
+import type { ActionItem, AppState, IncomingMessage, ProfileDataTable, ProfileEntry } from '../bridge/messageTypes';
 import { summarizeRun, type LastRunSummary } from '../logic/useReplay';
 import {
   appStateReducer,
@@ -123,6 +123,12 @@ function flush() {
   if (app.profileOrder !== before.app.profileOrder && sameValue(before.app.profileOrder, app.profileOrder)) {
     app = { ...app, profileOrder: before.app.profileOrder };
   }
+  // The Data Loop table rides on every change of the list, whole: rows equal to the ones it had
+  // keep their arrays, so the table redraws the rows that changed, and nothing when none did.
+  if (app.dataTable !== before.app.dataTable) {
+    const dataTable = reconcileTable(before.app.dataTable, app.dataTable);
+    if (dataTable !== app.dataTable) app = { ...app, dataTable };
+  }
   const runClock = clockOf(before.runClock, before.app, app);
   const booted = before.booted || batch.some(m => m.type === 'state:init');
   if (app !== before.app || live !== before.live || highlight !== before.highlight || saved !== before.saved
@@ -168,6 +174,29 @@ function reconcile<T>(before: T[], next: T[], key: (item: T) => string | undefin
     return kept;
   });
   return unchanged ? before : out;
+}
+
+const sameCells = (a: string[], b: string[]) => a === b || (a.length === b.length && a.every((v, i) => v === b[i]));
+
+/** The table with the rows and headers it already had where they are equal (row by row, by position). */
+function reconcileTable(before: ProfileDataTable, next: ProfileDataTable): ProfileDataTable {
+  const headers = sameCells(before.headers, next.headers) ? before.headers : next.headers;
+  let same = before.rows.length === next.rows.length;
+  let reused = 0;
+  const kept = next.rows.map((row, i) => {
+    const old = before.rows[i];
+    if (old && sameCells(old, row)) {
+      reused++;
+      return old;
+    }
+    same = false;
+    return row;
+  });
+  const rows = same ? before.rows : reused > 0 ? kept : next.rows;
+  if (rows === before.rows && headers === before.headers && before.loopOverData === next.loopOverData
+    && before.onRowError === next.onRowError && before.notifyOnLapComplete === next.notifyOnLapComplete
+    && before.cursorRow === next.cursorRow) return before;
+  return rows === next.rows && headers === next.headers ? next : { ...next, headers, rows };
 }
 
 /** Deep equality for JSON values, which is all the engine sends. */

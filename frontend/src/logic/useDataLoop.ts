@@ -8,15 +8,17 @@ export type DataTableToSave = Omit<ProfileDataTable, 'cursorRow'>;
 
 /**
  * The rows the engine stores. Parity with the old parseTsv: trailing all-empty rows are dropped,
- * and the kept rows are padded to the header count so the wire shape is rectangular.
+ * and the kept rows are padded to the header count so the wire shape is rectangular. A row already
+ * as wide is kept as it is (the same array), so a table edited cell by cell redraws one row.
  */
 export function rowsToSave(headers: string[], rows: string[][]): string[][] {
-  const kept = [...rows];
-  while (kept.length && kept[kept.length - 1].every((c) => c.trim() === '')) kept.pop();
-  return kept.map((r) => {
+  let end = rows.length;
+  while (end > 0 && rows[end - 1].every((c) => c.trim() === '')) end--;
+  return rows.slice(0, end).map((r) => {
+    if (r.length >= headers.length) return r;
     const row = [...r];
     while (row.length < headers.length) row.push('');
-    return row.slice(0, Math.max(headers.length, row.length));
+    return row;
   });
 }
 
@@ -40,5 +42,7 @@ export function useDataLoop() {
       send({ type: 'actions:resetRow', payload: { row } });
       return true;
     },
+    /** Back to row 1: the next run starts at the top of the table. */
+    resetCursor: () => send({ type: 'actions:resetRow', payload: {} }),
   }), [send, getState]);
 }

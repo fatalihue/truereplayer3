@@ -2571,8 +2571,8 @@ namespace TrueReplayer
         // table, its automation, its info, its hotkey and hotstring, and its window target. The
         // entry carries only the part that changed, as it was before; undo puts that part back the
         // way its editor writes it, and the part as it stands goes to the other stack. Edits of the
-        // same part less than PartMergeMs apart are one step (typing in a cell or a field). Off until
-        // the page asks for it; ui:ready turns it off and drops the part entries, so the shell of
+        // same part less than PartMergeMs apart are one step (typing in a field) — but not the Data
+        // Loop table's, whose cells are confirmed one by one. Off until the page asks for it; ui:ready turns it off and drops the part entries, so the shell of
         // today keeps a history of steps only. Another macro's settings (an automation edited from
         // the Automations page) are not in the open macro's history.
         public bool ExtendedUndoEnabled { get; private set; }
@@ -2590,7 +2590,10 @@ namespace TrueReplayer
         {
             if (!ExtendedUndoEnabled || name != CurrentProfileName || name == "No Profile" || before == after) return;
             var now = DateTime.UtcNow;
-            if (_undoStack.TryPeek(out var top) && top.Part?.GetType() == before.GetType()
+            // The table's edits each go back one at a time, as a spreadsheet's do: the grid saves a
+            // cell when it is confirmed (Enter, Tab, leaving it), a column or a row when it changes,
+            // and quick ones in a row — Tab from cell to cell — are still separate edits.
+            if (before is not DataPart && _undoStack.TryPeek(out var top) && top.Part?.GetType() == before.GetType()
                 && (now - top.At).TotalMilliseconds < PartMergeMs)
             {
                 // Same part again within the burst: one step, which still goes back to where the
