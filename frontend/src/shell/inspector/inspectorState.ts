@@ -22,6 +22,15 @@ export const loadSimpleEditors = () => import('./simpleEditors');
 export const loadWindowEditors = () => import('./windowEditors');
 /** …and the browser steps' (Open URL and the six that act on an element), likewise. */
 export const loadBrowserEditors = () => import('./browserEditors');
+/** The expanded Send Text's parts (Insert, the preview, Transform…, the snippets): with Expand editor. */
+export const loadTextExpanded = () => import('./textExpanded');
+/** The reference image's cropper: with the first press on the image. */
+export const loadReferenceCrop = () => import('./ReferenceCrop');
+/** The emoji picker (the macro's icon, the Send Text's Emoji tab): when first pointed at. */
+export const loadEmojiPicker = () => import('emoji-picker-react');
+/** The light or dark of the app's own palette (the root's color-scheme), not the system's: the
+ *  emoji picker's theme. */
+export const appIsLight = () => (getComputedStyle(document.documentElement).colorScheme || '').includes('light');
 /** The macro's own settings, shown with no step chosen: the page's first idle moment once the app's
  *  state is drawn, as the status bar's switches (never ahead of the library). */
 export const loadMacroSettings = () => import('./macro/MacroSettings');

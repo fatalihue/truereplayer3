@@ -125,6 +125,9 @@ interface ClipboardSurfaceProps {
   onReset: () => void;
   /** The token as the user actually has it, used ONLY by the read-only panel — see `token` below. */
   originalToken?: string;
+  /** What `‹ Editor` says it does. A host that applies each change as it is made (the expanded
+   *  Inspector) discards nothing on the way back. */
+  backTip?: string;
 }
 
 // Full-body "Advanced Clipboard" sub-surface of the Insert Text dialog — the
@@ -139,9 +142,10 @@ interface ClipboardSurfaceProps {
 // active, so the UI reads as the data flow it actually is. sn() renumbers when the head is not
 // the clipboard, because a gap at the top would say nothing true. Serialization stays
 // exclusively in buildClipboardToken — this component emits no token strings of its own.
-export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onBack, onReset, originalToken }: ClipboardSurfaceProps) {
+export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onBack, onReset, originalToken, backTip }: ClipboardSurfaceProps) {
   const tt = useTt();
-  const { clipRaw, clipReady, refresh } = useClipboardContent();
+  // Only a chain on the clipboard previews against it: the other sources never read it.
+  const { clipRaw, clipReady, refresh } = useClipboardContent(head.kind === 'clipboard');
   const runState = useRunState(head.kind === 'clip' || head.kind === 'var');
   const { dataTable } = useAppState();
   // While editable, the rebuilt token is correct — it is what an edit will write. While READ-ONLY
@@ -287,7 +291,7 @@ export function ClipboardSurface({ state, onStateChange, head, onHeadChange, onB
           type="button"
           onClick={onBack}
           className="flex items-center gap-1 h-6 px-1.5 text-caption rounded text-text-tertiary hover:text-text-primary hover:bg-bg-card transition-colors"
-          data-tip={tt('Discards changes', 'Descarta as alterações')}
+          data-tip={backTip ?? tt('Discards changes', 'Descarta as alterações')}
         >
           <ChevronLeft size={13} />
           Editor

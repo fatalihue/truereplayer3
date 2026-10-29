@@ -308,7 +308,45 @@ span.insp-mono { font-family: var(--font-mono); }
 .insp-icon-button[aria-pressed='true'] { border-color: var(--color-accent-solid); color: var(--color-accent); }
 .insp-icon-button:disabled { color: var(--color-text-disabled); cursor: default; }
 .insp-icon-button:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 1px; }
+.insp-icon-button[data-danger] { border-color: color-mix(in srgb, var(--color-recording) 45%, transparent); color: var(--color-recording-fg); }
 .insp-button[data-armed] { border-color: var(--color-recording); color: var(--color-recording-fg); }
+/* The one action a form or a builder ends with (Insert, Save snippet, Done): the accent's fill. */
+.insp-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  height: 2rem;
+  padding: 0 0.875rem;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: var(--color-accent-solid);
+  color: var(--color-accent-ink);
+  font: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.insp-primary:not(:disabled):hover { background: var(--color-accent-solid-hover); }
+.insp-primary:disabled { background: var(--color-bg-elevated); color: var(--color-text-disabled); cursor: default; }
+.insp-primary:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 2px; }
+
+/* The editor's fields and, expanded, the column beside them (InspectorBody's Split): side by side
+   while the Inspector has room for both, one under the other in a narrower one. */
+.insp-split { position: relative; flex: 1 1 auto; min-height: 0; display: flex; }
+.insp-split > .insp-body { min-width: 0; }
+.insp-side {
+  flex: 0 0 17.5rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--color-border-subtle);
+}
+@container insp (max-width: 41.24rem) {
+  .insp-split[data-expanded] { flex-direction: column; overflow-y: auto; overscroll-behavior: contain; }
+  .insp-split[data-expanded] > .insp-body { flex: none; overflow: visible; }
+  .insp-split[data-expanded] > .insp-side { flex: none; height: 26rem; border-left: 0; border-top: 1px solid var(--color-border-subtle); }
+}
 
 /* The message: the rich editor in a field's frame, its bar on top. */
 .insp-text {
@@ -426,6 +464,11 @@ span.insp-mono { font-family: var(--font-mono); }
 }
 .insp-image[data-none] { border-style: dashed; }
 .insp-image img { max-width: 100%; max-height: 8.75rem; object-fit: contain; }
+/* With an image, it is the press that crops it. */
+button.insp-image { width: 100%; font: inherit; cursor: zoom-in; }
+button.insp-image:not(:disabled):hover { border-color: color-mix(in srgb, var(--color-accent-solid) 60%, transparent); }
+button.insp-image:disabled { cursor: default; }
+button.insp-image:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 1px; }
 
 /* What a test answered. */
 .insp-result {

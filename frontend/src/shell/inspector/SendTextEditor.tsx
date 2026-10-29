@@ -1,15 +1,19 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type MutableRefObject } from 'react';
 import type { ActionItem } from '../../bridge/messageTypes';
 import { countKnownTokens, LexicalTokenEditor, type LexicalEditorHandle } from '../../components/lexical/LexicalTokenEditor';
+import type { ClipboardChipEditRequest } from '../../components/lexical/TokenChip';
 import { parseSendTextSegments, richFlavorSurvives } from '../../components/lexical/tokenNormalize';
 import { useSteps } from '../../logic/useSteps';
 import { useTt } from '../../state/LanguageContext';
 import { pickStatusNote } from '../../utils/sendTextStatus';
 import type { SendMethod, SendMode } from '../../utils/sendTextTypes';
+import { useLoaded } from '../lazyModule';
 import { arrival } from '../list/selection';
 import { useShell } from '../store';
+import { collapseInspector } from '../ui';
 import { DraftField, Section, Segmented } from './fields';
-import { drafts, focusList, pendingEdits, type TextDraft } from './inspectorState';
+import { drafts, focusList, loadTextExpanded, pendingEdits, type TextDraft } from './inspectorState';
+import { useInspectorSlots } from './inspectorSlots';
 
 /** Typing applies this long after the last key, like every field of the Inspector (rule 3). */
 const IDLE_MS = 600;
@@ -75,11 +79,21 @@ interface Editor {
  *
  * Once seeded the editor is uncontrolled, so the step moving under it some other way (Ctrl+Z, Redo)
  * starts it again from the step; the step answering what was just sent does not.
+ *
+ * Expanded (Expand editor), the same editor gets the preview under the message and the Insert
+ * panel beside it (the textExpanded chunk), and a token with a chain opens Transform… instead of its
+ * popover. Nothing here starts again on the way in or out.
  */
 export default function SendTextEditor({ step, draft, locked }: { step: ActionItem | null; draft: TextDraft | null; locked: boolean }) {
   const cmds = useSteps();
   const tt = useTt();
   const apiRef = useRef<LexicalEditorHandle | null>(null);
+  const slots = useInspectorSlots();
+  const expanded = useLoaded(loadTextExpanded);
+  const wide = slots.side !== null && expanded !== null;
+  // Transform… (in the expanded chunk) takes the chips' edits while it is up.
+  const chipEdit = useRef<((req: ClipboardChipEditRequest) => void) | null>(null);
+  const routeChipEdit = (req: ClipboardChipEditRequest) => chipEdit.current?.(req);
   const [seed, setSeed] = useState(() => ({ nonce: 0, ...(step ? stepPayload(step) : EMPTY) }));
   const [text, setText] = useState(seed.text);
   const [hasFormatting, setHasFormatting] = useState(!!seed.html);
@@ -256,12 +270,15 @@ export default function SendTextEditor({ step, draft, locked }: { step: ActionIt
           formattingDelivered={mode !== 'plain' && !(method === 'type' && mode === 'rich')}
           onChange={(t) => { setText(t); typed(); }}
           onFormattingChange={(f) => { setHasFormatting(f); typed(); }}
-          onSubmit={() => { commit(); focusList(); }}
+          // Ctrl+Enter in the message: the editor keeps the key, so the Inspector's own "done"
+          // (D12) is done here — the text goes, the expanded editor collapses, the list takes over.
+          onSubmit={() => { commit(); collapseInspector(); focusList(); }}
           apiRef={apiRef}
           density="sheet"
           contentClassName="insp-text-content"
           placeholderClassName="insp-text-placeholder"
           tokenAutocomplete
+          onClipboardChipEdit={wide ? routeChipEdit : undefined}
           placeholder={<>Type the text to send…<span className="insp-text-placeholder-tip">Type {'{'} for tokens, like {'{enter}'} or {'{date}'}</span></>}
         />
       </div>
@@ -271,6 +288,23 @@ export default function SendTextEditor({ step, draft, locked }: { step: ActionIt
         </span>
         {note && <span className="insp-text-note" data-tone={note.tone} data-tip={note.tip}>{note.text}</span>}
       </div>
+      {expanded && slots.side && (
+        <expanded.TextExpanded
+          apiRef={apiRef}
+          chipEdit={chipEdit}
+          seed={seed.nonce}
+          text={text}
+          mode={mode}
+          method={method}
+          delay={delay}
+          hasFormatting={hasFormatting}
+          tokens={tokens}
+          richWillDegrade={hasFormatting && mode === 'rich' && !richFlavorSurvives(text)}
+          locked={locked}
+          side={slots.side}
+          over={slots.over}
+        />
+      )}
       <Section
         label="Delivery"
         hint={method === 'type' ? 'Type sends key by key, for apps that block pasting.' : 'Paste goes through the clipboard and puts it back after.'}

@@ -274,6 +274,8 @@ html[data-animations='true'] .shell-state[data-done]::after { border-color: var(
     z-index: 4;
   }
   .shell-inspector:not([data-open]) { display: none; }
+  /* Expanded, it covers the list too, and leaves the rail and the folded library. */
+  .shell-body > .shell-inspector[data-expanded] { width: min(var(--inspector-expanded-width, 47.5rem), calc(100% - 6.5rem)); }
 }
 /* 520–759: one pane at a time — the list; the rail's Macros lays the library over it (a peek), and
    a step opens the Inspector over all of it, with "← Steps" to go back (Responsive board). */
@@ -282,6 +284,7 @@ html[data-animations='true'] .shell-state[data-done]::after { border-color: var(
   .shell-library { display: none; }
   .shell-library[data-peek] { display: block; position: absolute; inset: 0 auto 0 3.5rem; width: 15.5rem; z-index: var(--z-floating-panel); border-right: 0; }
   .shell-inspector { inset: 0 0 0 3.5rem; width: auto; box-shadow: none; }
+  .shell-body > .shell-inspector[data-expanded] { width: auto; box-shadow: none; }
 }
 /* Under 520: the compact layout (the compact view itself is phase 4). */
 @container shell (max-width: 32.49rem) {

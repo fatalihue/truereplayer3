@@ -10,6 +10,14 @@
   min-height: 0;
   border-left: 1px solid var(--color-border-subtle);
   background: var(--color-bg-surface);
+  /* The expanded Send Text lays its two columns by the Inspector's own width (editors.css). */
+  container: insp / inline-size;
+}
+/* Expanded: as wide as it was dragged (47.5 rem at first, the concept's 760 px), while the list keeps
+   22.5 rem beside the rail and the folded library. The narrower bands are in shell.css. */
+.insp[data-expanded] {
+  width: min(var(--inspector-expanded-width, 47.5rem), calc(100cqw - 29rem));
+  box-shadow: var(--shadow-overlay);
 }
 
 /* The left edge: drag to widen or narrow (the bar shows on hover and on focus). */
@@ -91,6 +99,8 @@
 }
 .insp-close:hover { background: var(--color-bg-elevated); color: var(--color-text-primary); }
 .insp-close:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 1px; }
+/* Collapse editor, while expanded: lit, as the mode it turns off. */
+.insp-close[data-on] { background: color-mix(in srgb, var(--color-accent) 12%, transparent); color: var(--color-accent); }
 
 .insp-body {
   flex: 1 1 auto;

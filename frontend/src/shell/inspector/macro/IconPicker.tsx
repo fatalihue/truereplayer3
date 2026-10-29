@@ -4,13 +4,9 @@ import { useTt } from '../../../state/LanguageContext';
 import { preload, useLoaded } from '../../lazyModule';
 import { anchorBelow, type MenuAnchor } from '../../menuAnchor';
 import { Popover } from '../../Popover';
-
 // The emoji picker is not part of opening anything but itself (rule 6): it comes when the button is
 // first pointed at or pressed, and the panel opens once it is in (it is placed once, by its size).
-const loadEmojiPicker = () => import('emoji-picker-react');
-
-/** The light or dark of the app's own palette (the root's color-scheme), not the system's. */
-const appIsLight = () => (getComputedStyle(document.documentElement).colorScheme || '').includes('light');
+import { appIsLight, loadEmojiPicker } from '../inspectorState';
 
 /**
  * Info › icon: the macro's emoji, which the folded library and the import and export lists show. A

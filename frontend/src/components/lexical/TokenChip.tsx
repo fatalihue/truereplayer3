@@ -10,6 +10,7 @@ import { TokenNode } from './TokenNode';
 import { TokenChipPopover } from './TokenChipPopover';
 import { tokenTip } from './tokenDescriptions';
 import { chainHeadKind } from './clipboardModifiers';
+import { normalizeToken } from './tokenNormalize';
 
 // Host-provided handler for editing a chain-bearing chip ({clipboard}, {row:col}, {rownext:col},
 // {var:name}, {clip:name}, {winclip:N}) in a LARGER surface than the default 300px popover.
@@ -113,11 +114,13 @@ export function TokenChip({ nodeKey, token }: { nodeKey: NodeKey; token: string 
     if (onClipboardChipEdit && chainHeadKind(token) !== null) {
       onClipboardChipEdit({
         token,
+        // Against what the chip holds NOW, not the token it opened with: a host that applies each
+        // change as it is made (the expanded Inspector's Transform…) commits many times, and going
+        // back to the opening token is a change like any other.
         commit: (next: string) => {
-          if (next === token) return;
           editor.update(() => {
             const node = $getNodeByKey(nodeKey);
-            if (node instanceof TokenNode) node.setToken(next);
+            if (node instanceof TokenNode && node.getTextContent() !== normalizeToken(next)) node.setToken(next);
           });
         },
         remove: handleDelete,

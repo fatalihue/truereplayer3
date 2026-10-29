@@ -1,17 +1,23 @@
-import { useEffect, useLayoutEffect } from 'react';
+import { useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
 import type { ActionItem } from '../../bridge/messageTypes';
+import { useTt } from '../../state/LanguageContext';
 import { getActionTypeColors, isCoordinateClick } from '../../utils/displayUtils';
 import { preload, useLoaded } from '../lazyModule';
 import { arrival, selection } from '../list/selection';
 import { stepIcon, stepKey, stepName } from '../list/stepTypes';
 import { NotBuilt } from '../NotBuilt';
 import { useApp } from '../store';
+import { collapseInspector, expandInspector, useUi } from '../ui';
 import { BatchEditor } from './BatchEditor';
 import { CheckDraft } from './CheckDraft';
 import { openerType } from './checks';
 import { ClickEditor } from './ClickEditor';
 import { DraftField, Section } from './fields';
-import { drafts, focusList, loadBrowserEditors, loadProbeEditors, loadSendTextEditor, loadSimpleEditors, loadWindowEditors, takeFocusAsk, type Draft, type TextDraft } from './inspectorState';
+import {
+  drafts, focusList, loadBrowserEditors, loadProbeEditors, loadReferenceCrop, loadSendTextEditor, loadSimpleEditors, loadTextExpanded,
+  loadWindowEditors, takeFocusAsk, type Draft, type TextDraft,
+} from './inspectorState';
+import { InspectorSlotsContext } from './inspectorSlots';
 import { DraftKeyEditor, KeyEditor, KeyHalfEditor } from './KeyEditor';
 import { PauseEditor } from './PauseEditor';
 import './editors.css';
@@ -44,9 +50,14 @@ const MARKER_NOTES: Record<string, string> = {
  * Clicker is on, the note that it is read-only. Each step's editor is keyed by the step, so its
  * fields start from that step and send what was typed when another one is selected. A step being
  * made (a draft) has its own view, with what it needs before it can exist.
+ *
+ * Expanded, a Send Text has a second column beside its fields (Split), and a reference image being
+ * cropped takes the whole Inspector (the cropper's own chunk).
  */
 export default function InspectorBody({ indices, locked, note, draft }: { indices: number[]; locked: boolean; note: string | null; draft: Draft | null }) {
   const steps = useApp(a => a.actions);
+  const expandedOn = useUi(s => s.expanded);
+  const crop = useUi(s => s.crop);
   // Enter on a step (or Edit in its menu) asked for the first field before this was drawn.
   useLayoutEffect(() => { takeFocusAsk(); });
   // The chunks of the Send Text editor and of the probes, once the Inspector is up and the page is
@@ -68,23 +79,75 @@ export default function InspectorBody({ indices, locked, note, draft }: { indice
     return () => cancelIdleCallback(id);
   }, [hasText, hasProbe, hasSimple, hasWindow, hasBrowser]);
 
-  if (draft) return <DraftView draft={draft} steps={steps} locked={locked} note={note} />;
+  if (draft) return <DraftView draft={draft} steps={steps} locked={locked} note={note} expanded={expandedOn && draft.kind === 'text'} />;
   const one = indices.length === 1 ? steps[indices[0]] : null;
+  if (one && !locked && crop !== null && one.id === crop) return <CropSlot step={one} index={indices[0]} count={steps.length} />;
+  const text = one?.actionType === 'SendText';
+  const expanded = expandedOn && text;
   return (
     <>
-      {one ? <StepHeader step={one} index={indices[0]} count={steps.length} /> : <BatchHeader sel={indices} />}
-      <div className="insp-body">
+      {one ? <StepHeader step={one} index={indices[0]} count={steps.length} expandable={text} expanded={expanded} /> : <BatchHeader sel={indices} />}
+      <Split expanded={expanded}>
         {one
           ? <StepEditor key={stepKey(one, indices[0])} step={one} index={indices[0]} steps={steps} locked={locked} />
           : <BatchEditor indices={indices} steps={steps} locked={locked} />}
-      </div>
-      <Foot note={note} text={one ? 'Applies as you type and saves on its own · Ctrl+Z undoes' : 'Each change is one undo step · Ctrl+Z undoes'} />
+      </Split>
+      <Foot
+        note={note}
+        text={expanded ? WIDE_FOOT : one ? 'Applies as you type and saves on its own · Ctrl+Z undoes' : 'Each change is one undo step · Ctrl+Z undoes'}
+      />
     </>
   );
 }
 
+const WIDE_FOOT = 'Applies as you type · Ctrl+Z undoes · drag the left edge to resize';
+
 function Foot({ note, text }: { note: string | null; text: string }) {
   return <div className="insp-foot" data-locked={note ? '' : undefined}>{note ?? text}</div>;
+}
+
+/**
+ * The editor's fields, and — expanded — the column beside them and the area over both, handed to
+ * the editor (InspectorSlotsContext) to draw into. The fields keep their place either way, so
+ * expanding never starts the editor again (the message keeps its caret and its Ctrl+Z).
+ */
+function Split({ expanded, children }: { expanded: boolean; children: ReactNode }) {
+  const [split, setSplit] = useState<HTMLElement | null>(null);
+  const [side, setSide] = useState<HTMLElement | null>(null);
+  const slots = { side: expanded ? side : null, over: expanded ? split : null };
+  return (
+    <div className="insp-split" ref={setSplit} data-expanded={expanded || undefined}>
+      <InspectorSlotsContext.Provider value={slots}>
+        <div className="insp-body">{children}</div>
+      </InspectorSlotsContext.Provider>
+      {expanded && <div className="insp-side" ref={setSide} />}
+    </div>
+  );
+}
+
+/** Expand editor / Collapse editor: the expanded parts come in first, so the editor widens once. */
+function ExpandButton({ expanded }: { expanded: boolean }) {
+  const tt = useTt();
+  const warm = () => { void preload(loadTextExpanded); };
+  return (
+    <button
+      type="button"
+      className="insp-close"
+      data-on={expanded || undefined}
+      aria-label={expanded ? 'Collapse editor' : 'Expand editor'}
+      data-tip={expanded
+        ? tt('Back to the narrow editor (Esc)', 'Voltar ao editor estreito (Esc)')
+        : tt('Room for the tokens, the snippets, the emoji and a preview', 'Espaço para os tokens, os snippets, os emoji e uma prévia')}
+      onPointerEnter={warm}
+      onFocus={warm}
+      onClick={() => {
+        if (expanded) collapseInspector();
+        else void preload(loadTextExpanded).then(expandInspector);
+      }}
+    >
+      <span className="step-icon" data-icon={expanded ? 'minimize-2' : 'maximize-2'} />
+    </button>
+  );
 }
 
 /** Where a step being made goes, said in its header. */
@@ -98,36 +161,43 @@ const DRAFT_TYPE: Record<string, string> = { key: 'Keystroke', text: 'SendText',
  * A step being made: a Key waiting for its key, a Text for its first text — which then goes on as
  * the step it became, in the same editor —, an If, a While, an Else If, an Assert or a Wait until
  * for its check, and a Run Macro for the macro it runs. A Wait until becomes an Assert, and says it
- * is a wait until then.
+ * is a wait until then. A Text can be made expanded, as a Send Text is edited.
  */
-function DraftView({ draft, steps, locked, note }: { draft: Draft; steps: ActionItem[]; locked: boolean; note: string | null }) {
+function DraftView({ draft, steps, locked, note, expanded }: { draft: Draft; steps: ActionItem[]; locked: boolean; note: string | null; expanded: boolean }) {
   const born = draft.kind === 'text' && draft.stepId ? steps.find(s => s.id === draft.stepId) ?? null : null;
   const index = born ? steps.indexOf(born) : -1;
   const type = draft.kind === 'check' ? openerType(draft.opener) : DRAFT_TYPE[draft.kind];
   const waitUntil = draft.kind === 'check' && draft.opener === 'WaitUntil';
   const foot = draft.kind === 'key' ? 'The step is added with its key · Esc cancels'
-    : draft.kind === 'text' ? (born ? 'Applies as you type and saves on its own · Ctrl+Z undoes' : 'The step is added with its first text · Esc cancels while it is empty')
+    : draft.kind === 'text' ? (born ? (expanded ? WIDE_FOOT : 'Applies as you type and saves on its own · Ctrl+Z undoes') : 'The step is added with its first text · Esc cancels while it is empty')
     : draft.kind === 'macro' ? 'Choose the macro it runs · Esc cancels'
     : waitUntil ? 'Choose what it waits for · Esc cancels'
     : 'Choose what it checks · Esc cancels';
   return (
     <>
-      {born ? <StepHeader step={born} index={index} count={steps.length} />
-        : <DraftHeader type={type} where={whereOf(draft.at, steps.length)} name={waitUntil ? 'Wait until…' : undefined} icon={waitUntil ? 'clock' : undefined} />}
-      <div className="insp-body">
+      {born ? <StepHeader step={born} index={index} count={steps.length} expandable expanded={expanded} />
+        : <DraftHeader type={type} where={whereOf(draft.at, steps.length)} name={waitUntil ? 'Wait until…' : undefined} icon={waitUntil ? 'clock' : undefined} expandable={draft.kind === 'text'} expanded={expanded} />}
+      <Split expanded={expanded}>
         {draft.kind === 'key' && <DraftKeyEditor draft={draft} locked={locked} />}
         {draft.kind === 'text' && <TextEditorSlot key={draft.serial} step={born} draft={draft} locked={locked} />}
         {draft.kind === 'text' && born && <CommonFields step={born} locked={locked} />}
         {draft.kind === 'check' && <CheckDraft draft={draft} locked={locked} />}
         {draft.kind === 'macro' && <MacroDraftSlot key={draft.serial} draft={draft} locked={locked} />}
-      </div>
+      </Split>
       <Foot note={note} text={foot} />
     </>
   );
 }
 
 /** The header of a step being made; a Wait until names itself and draws the catalog's clock. */
-function DraftHeader({ type, where, name, icon = stepIcon(type) }: { type: string; where: string; name?: string; icon?: string | null }) {
+function DraftHeader({ type, where, name, icon = stepIcon(type), expandable = false, expanded = false }: {
+  type: string;
+  where: string;
+  name?: string;
+  icon?: string | null;
+  expandable?: boolean;
+  expanded?: boolean;
+}) {
   const colors = getActionTypeColors(type);
   return (
     <div className="insp-head">
@@ -136,8 +206,9 @@ function DraftHeader({ type, where, name, icon = stepIcon(type) }: { type: strin
       </span>
       <div className="insp-title">
         <span className="insp-name" data-display="">{name ?? stepName(type)}</span>
-        <span className="insp-sub">New step · {where}</span>
+        <span className="insp-sub">New step · {where}{expanded ? ' · expanded' : ''}</span>
       </div>
+      {expandable && <ExpandButton expanded={expanded} />}
       <button type="button" className="insp-close" aria-label="Cancel the new step" onClick={() => { drafts.end(); arrival.clear(); focusList(); }}>
         <span className="step-icon" data-icon="x" />
       </button>
@@ -145,7 +216,14 @@ function DraftHeader({ type, where, name, icon = stepIcon(type) }: { type: strin
   );
 }
 
-function StepHeader({ step, index, count }: { step: ActionItem; index: number; count: number }) {
+function StepHeader({ step, index, count, expandable = false, expanded = false }: {
+  step: ActionItem;
+  index: number;
+  count: number;
+  /** A Send Text: Expand editor, beside Close editor. */
+  expandable?: boolean;
+  expanded?: boolean;
+}) {
   const t = step.actionType;
   const colors = getActionTypeColors(t);
   const icon = stepIcon(t);
@@ -160,13 +238,24 @@ function StepHeader({ step, index, count }: { step: ActionItem; index: number; c
       </span>
       <div className="insp-title">
         <span className="insp-name" data-display="">{stepName(t)}</span>
-        <span className="insp-sub">Step {index + 1} of {count}{half}</span>
+        <span className="insp-sub">Step {index + 1} of {count}{half}{expanded ? ' · expanded' : ''}</span>
       </div>
+      {expandable && <ExpandButton expanded={expanded} />}
       <button type="button" className="insp-close" aria-label="Close editor" onClick={() => { selection.clear(); focusList(); }}>
         <span className="step-icon" data-icon="x" />
       </button>
     </div>
   );
+}
+
+/** A reference image being cropped, from the cropper's chunk (it is usually in: the press on the
+ *  image started it). The header holds until then. */
+function CropSlot({ step, index, count }: { step: ActionItem; index: number; count: number }) {
+  const mod = useLoaded(loadReferenceCrop);
+  useEffect(() => {
+    if (!mod) void preload(loadReferenceCrop);
+  }, [mod]);
+  return mod ? <mod.default step={step} index={index} count={count} /> : <div className="insp-head" />;
 }
 
 /** "Steps 2, 3, 7, 12 and 16", or the first four and how many more. */

@@ -71,6 +71,70 @@ export type PreviewPiece =
   | { kind: 'resolved'; text: string; token: string; note?: string }
   | { kind: 'pending'; token: string; label: string; reason: PendingReason };
 
+/** Why a placeholder is one, said in its tip — [English, Portuguese]. */
+export const PREVIEW_REASON_TIP: Record<PendingReason, [string, string]> = {
+  literal: [
+    'Sent verbatim, braces included — the argument is not a shape the engine accepts.',
+    'Enviado literalmente, com as chaves — o argumento não está numa forma que o motor aceita.',
+  ],
+  'key-press': [
+    'Sent as a key press between the text blocks, not as characters.',
+    'Enviado como tecla entre os blocos de texto, não como caracteres.',
+  ],
+  delay: ['A pause in the typing, not text.', 'Uma pausa na digitação, não texto.'],
+  random: ['Drawn fresh every run.', 'Sorteado a cada execução.'],
+  pick: ['One of the options, drawn fresh every run.', 'Uma das opções, sorteada a cada execução.'],
+  ask: [
+    'The run pauses and asks you for this value.',
+    'A execução pausa e pergunta este valor.',
+  ],
+  runtime: ['Only the engine has this value, and only while the macro runs.', 'Só o motor tem este valor, e só enquanto a macro roda.'],
+  'runtime-clipreading': ['Reading the clipboard…', 'Lendo a área de transferência…'],
+  'runtime-counter': ['The run repeat number — there is no value outside a run.', 'O número da repetição da execução — não existe valor fora de uma execução.'],
+  'runtime-loop': ['The iteration of the innermost While / For Each block — there is no value outside a run.', 'A volta do bloco While / For Each mais interno — não existe valor fora de uma execução.'],
+  'runtime-datarow': ['The number of the current data row — there is no value outside a run.', 'O número da linha de dados atual — não existe valor fora de uma execução.'],
+  'runtime-row': ["The action's own grid row — there is no value outside a run.", 'A linha da action na grade — não existe valor fora de uma execução.'],
+  'runtime-rowcursor': [
+    'Loop over data is off: each run takes the NEXT row, and that position lives between runs.',
+    'Loop over data desligado: cada execução pega a PRÓXIMA linha, e essa posição vive entre as execuções.',
+  ],
+  'runtime-norows': [
+    'The Data table has no rows, so this resolves to nothing at replay.',
+    'A tabela de dados não tem linhas, então isto resolve como vazio no replay.',
+  ],
+  'runtime-cursor': [
+    'Auto-advancing: the line depends on how many runs came before.',
+    'Auto-avança: a linha depende de quantas execuções já houve.',
+  ],
+  'unmodeled-chain': [
+    'The builder cannot model this chain, so it shows no result. It still runs.',
+    'O construtor não consegue modelar esta cadeia, então não mostra resultado. Ela roda normalmente.',
+  ],
+  'unknown-column': ['No column by that name in the Data table.', 'Nenhuma coluna com esse nome na tabela de dados.'],
+  unset: ['Nothing stored under that name yet.', 'Nada guardado com esse nome ainda.'],
+  generated: ['A fresh identifier at every use — store it in a variable to reuse one.', 'Um identificador novo a cada uso — guarde numa variável para reaproveitar.'],
+  'runtime-env': [
+    'Read from this machine’s environment when the macro runs; the editor cannot see it.',
+    'Lido do ambiente desta máquina quando a macro roda; o editor não enxerga.',
+  ],
+};
+
+/** Where a resolved value came from, said in its tip — [English, Portuguese]. */
+export const PREVIEW_NOTE_TIP: Record<string, [string, string]> = {
+  clock: [
+    'Preview time. Month and day names follow the machine locale at replay.',
+    'Hora da prévia. Nomes de mês e dia seguem o idioma da máquina no replay.',
+  ],
+  'first-data-row': [
+    'The FIRST data row. A run uses the row it is on; ForEach and Run Profile can use another table.',
+    'A PRIMEIRA linha de dados. A execução usa a linha em que está; ForEach e Run Profile podem usar outra tabela.',
+  ],
+  'last-run': [
+    'From the LAST run — variables reset at every start.',
+    'Da ÚLTIMA execução — as variáveis zeram a cada início.',
+  ],
+};
+
 export interface PreviewSources {
   /** Current clipboard text, and whether the read has come back. */
   clipRaw: string;

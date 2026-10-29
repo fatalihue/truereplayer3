@@ -6,12 +6,17 @@ import { useBridge } from '../bridge/BridgeContext';
 // what the user would actually paste at runtime. `refresh` re-reads on demand
 // (the Clipboard Surface's ⟳ button) — the old content stays visible until the
 // fresh read lands, so no flicker.
-export function useClipboardContent() {
+//
+// `enabled` false reads nothing, until it turns true: a surface that only sometimes shows the
+// clipboard (the chain builder on another source, the expanded Send Text's preview of a text with
+// no clipboard token) does not read it for nothing.
+export function useClipboardContent(enabled = true) {
   const { send, subscribe } = useBridge();
   const [clipRaw, setClipRaw] = useState<string>('');
   const [clipReady, setClipReady] = useState(false);
 
   useEffect(() => {
+    if (!enabled) return;
     const off = subscribe((msg) => {
       if (msg.type === 'clipboard:content') {
         setClipRaw(msg.payload.text || '');
@@ -20,7 +25,7 @@ export function useClipboardContent() {
     });
     send({ type: 'clipboard:read', payload: {} });
     return off;
-  }, [send, subscribe]);
+  }, [enabled, send, subscribe]);
 
   const refresh = useCallback(() => {
     send({ type: 'clipboard:read', payload: {} });

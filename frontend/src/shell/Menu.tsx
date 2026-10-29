@@ -44,8 +44,9 @@ function visible(entries: MenuEntry[]): MenuEntry[] {
  * out out of sight, measured, then put where it fits — before the first paint.
  *
  * Keys: ↑ ↓ Home End move, → opens a submenu and ← closes it, Enter and Space choose (they are
- * buttons), Esc closes the submenu and then the menu, Tab closes. A press outside, a scroll or a
- * resize closes it too. The focus goes back to whatever had it when the menu opened.
+ * buttons), Esc closes the submenu and then the menu, Tab closes. A press outside, a scroll that
+ * moves what opened it or a resize closes it too. The focus goes back to whatever had it when the
+ * menu opened.
  */
 export function Menu({ anchor, entries, label, onClose, focusFirst = false, toggle }: {
   anchor: MenuAnchor;
@@ -59,11 +60,24 @@ export function Menu({ anchor, entries, label, onClose, focusFirst = false, togg
 }) {
   const layerRef = useRef<HTMLDivElement>(null);
   const [opener] = useState(() => (document.activeElement instanceof HTMLElement ? document.activeElement : null));
+  // Where what opened it stood when it opened.
+  const openerAt = useRef<DOMRect | null>(null);
+  useLayoutEffect(() => {
+    openerAt.current = opener?.getBoundingClientRect() ?? null;
+  }, [opener]);
 
   useEffect(() => {
     const outside = (e: Event) => {
       const target = e.target as Node;
       if (layerRef.current?.contains(target) || (e.type === 'mousedown' && toggle?.contains(target))) return;
+      // A scroll closes it only once it has moved what opened it, so the menu never floats away
+      // from it. Any scroll used to: one elsewhere (the Inspector settling, a list following a run),
+      // or one already on its way when the menu opened, shut it at once.
+      const at = openerAt.current;
+      if (e.type === 'scroll' && at && opener?.isConnected) {
+        const now = opener.getBoundingClientRect();
+        if (Math.abs(now.top - at.top) < 1 && Math.abs(now.left - at.left) < 1) return;
+      }
       onClose();
     };
     document.addEventListener('mousedown', outside, true);
@@ -76,7 +90,7 @@ export function Menu({ anchor, entries, label, onClose, focusFirst = false, togg
       window.removeEventListener('resize', onClose);
       window.removeEventListener('blur', onClose);
     };
-  }, [onClose, toggle]);
+  }, [onClose, toggle, opener]);
 
   // The focus returns to the opener when the menu goes — unless the choice already moved it
   // somewhere real (a dialog the item opened takes it, and keeps it).

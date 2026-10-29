@@ -11,8 +11,11 @@ import { placeAtAnchor, type MenuAnchor } from './menuAnchor';
  * menu one of its fields opened, which lives in the same layer — and so does the focus leaving it
  * for something else, or a resize. The fields send what they hold when they go (they commit on
  * unmount), so closing never drops a number that was typed.
+ *
+ * A host that puts the focus back itself says so (`restoreFocus` false): a rich text editor, whose
+ * caret a plain focus() would move to its start.
  */
-export function Popover({ anchor, label, toggle, focusFirst, onClose, children }: {
+export function Popover({ anchor, label, toggle, focusFirst, onClose, restoreFocus = true, children }: {
   anchor: MenuAnchor;
   label: string;
   /** The button that opened it and closes it again: a press there is the button's. */
@@ -20,11 +23,12 @@ export function Popover({ anchor, label, toggle, focusFirst, onClose, children }
   /** Opened from the keyboard: the first field takes the focus. */
   focusFirst: boolean;
   onClose: () => void;
+  restoreFocus?: boolean;
   children: ReactNode;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const placed = useRef(false);
-  const [opener] = useState(() => (document.activeElement instanceof HTMLElement ? document.activeElement : null));
+  const [opener] = useState(() => (restoreFocus && document.activeElement instanceof HTMLElement ? document.activeElement : null));
 
   useEffect(() => {
     const outside = (e: MouseEvent) => {

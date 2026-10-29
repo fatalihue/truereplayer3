@@ -4,7 +4,7 @@ import { preload, useLoaded } from '../lazyModule';
 import { keycaps } from '../library/model';
 import { arrival, selectedIndices, selection, useSelection } from '../list/selection';
 import { useApp, useShell } from '../store';
-import { closeMacroSettings, useUi } from '../ui';
+import { closeMacroSettings, collapseInspector, useUi } from '../ui';
 import { useShellBand } from '../useShellBand';
 import { drafts, focusList, loadInspectorBody, loadMacroSettings, useDraft, usePendingEdits } from './inspectorState';
 import './inspector.css';
@@ -16,20 +16,21 @@ function cancelDraft() {
   arrival.clear();
 }
 
-// The column's width, in rem so it follows the scale (rule 9), kept between sessions.
-const WIDTH_KEY = 'ui:inspectorWidth';
-const MIN_REM = 18;
-const MAX_REM = 40;
-const DEFAULT_REM = 22.5;
-const clampWidth = (rem: number) => Math.round(Math.min(MAX_REM, Math.max(MIN_REM, rem)) * 4) / 4;
-function readWidth(): number {
+// The column's width, in rem so it follows the scale (rule 9), kept between sessions: one as the
+// column is, one for the expanded editor (as wide as the concept's 760 px at first), each dragged
+// on its own. The expanded one never takes the list below 22.5 rem (shell.css).
+interface WidthRange { key: string; min: number; max: number; def: number }
+const NORMAL: WidthRange = { key: 'ui:inspectorWidth', min: 18, max: 40, def: 22.5 };
+const EXPANDED: WidthRange = { key: 'ui:inspectorExpandedWidth', min: 30, max: 64, def: 47.5 };
+const clampWidth = (rem: number, r: WidthRange) => Math.round(Math.min(r.max, Math.max(r.min, rem)) * 4) / 4;
+function readWidth(r: WidthRange): number {
   try {
-    const n = Number(localStorage.getItem(WIDTH_KEY));
-    return n >= MIN_REM && n <= MAX_REM ? n : DEFAULT_REM;
-  } catch { return DEFAULT_REM; }
+    const n = Number(localStorage.getItem(r.key));
+    return n >= r.min && n <= r.max ? n : r.def;
+  } catch { return r.def; }
 }
-function writeWidth(rem: number) {
-  try { localStorage.setItem(WIDTH_KEY, String(rem)); } catch { /* storage off: the width lasts the session */ }
+function writeWidth(r: WidthRange, rem: number) {
+  try { localStorage.setItem(r.key, String(rem)); } catch { /* storage off: the width lasts the session */ }
 }
 
 /**
@@ -42,6 +43,11 @@ function writeWidth(rem: number) {
  * The frame is in the opening bundle; the editors load with the first step (rule 6). The column is
  * as wide as the user drags it, from 18 to 40 rem. While a run or a recording is on, or the Clicker,
  * it is read-only.
+ *
+ * Expanded (a Send Text's Expand editor, or its reference image being cropped), it is as wide as
+ * the window allows beside the list, the library folds into avatars, and Esc or Ctrl+Enter
+ * collapse it as they give the focus back to the list (D12). It lasts while the selection stays on
+ * what it was opened for.
  */
 export function Inspector() {
   const steps = useApp(a => a.actions);
@@ -53,12 +59,25 @@ export function Inspector() {
   // Automations wait only while typing has not reached the engine (D12).
   useEditorClaim('inspector', pending);
   const band = useShellBand();
-  const [width, setWidth] = useState(readWidth);
+  const [width, setWidth] = useState(() => readWidth(NORMAL));
+  const [wideWidth, setWideWidth] = useState(() => readWidth(EXPANDED));
   const asideRef = useRef<HTMLElement>(null);
   const open = useApp(a => a.activeProfile);
   const draft = useDraft(s => s.draft);
   const sel = selectedIndices(steps, keys);
   const locked = status !== 'ready' || clicker;
+  // What the expanded editor is for: a Send Text (or a Text being made), and the step whose image
+  // is being cropped, never while it runs. Anything else selected takes the expansion away.
+  const expanded = useUi(s => s.expanded);
+  const crop = useUi(s => s.crop);
+  const one = !draft && sel.length === 1 ? steps[sel[0]] : null;
+  const textShown = draft ? draft.kind === 'text' : one?.actionType === 'SendText';
+  const cropShown = crop !== null && !locked && one?.id === crop;
+  const wide = (expanded && textShown) || cropShown;
+  useEffect(() => {
+    if (expanded && !textShown) useUi.setState({ expanded: false });
+    if (crop !== null && !cropShown) useUi.setState({ crop: null });
+  }, [expanded, textShown, crop, cropShown]);
   // The editors: usually in already (the pointer or the focus reached the list first); a selection
   // that came another way loads them now.
   const editors = useLoaded(loadInspectorBody);
@@ -115,12 +134,14 @@ export function Inspector() {
     : null;
 
   const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
-    // An Esc no field kept for itself gives the focus back to the list (D12), and drops a step
-    // still being made; Ctrl+Enter, the "done" of today's dialogs, gives it back from any field.
+    // An Esc no field kept for itself gives the focus back to the list (D12), drops a step still
+    // being made and collapses the expanded editor; Ctrl+Enter, the "done" of today's dialogs,
+    // does the same from any field, the step kept.
     const done = e.key === 'Enter' && e.ctrlKey && !e.altKey && !e.shiftKey;
     if ((e.key !== 'Escape' && !done) || e.defaultPrevented) return;
     e.preventDefault();
     if (!done) cancelDraft();
+    collapseInspector();
     focusList();
   };
 
@@ -130,10 +151,15 @@ export function Inspector() {
       className="shell-inspector insp"
       aria-label="Inspector"
       data-open={showing || settingsOpen || undefined}
-      style={{ '--inspector-width': `${width}rem` } as CSSProperties}
+      data-expanded={wide || undefined}
+      style={{ '--inspector-width': `${width}rem`, '--inspector-expanded-width': `${wideWidth}rem` } as CSSProperties}
       onKeyDown={onKeyDown}
     >
-      <Grip asideRef={asideRef} width={width} onWidth={(rem) => { setWidth(rem); writeWidth(rem); }} />
+      {wide ? (
+        <Grip key="wide" asideRef={asideRef} range={EXPANDED} cssVar="--inspector-expanded-width" width={wideWidth} onWidth={(rem) => { setWideWidth(rem); writeWidth(EXPANDED, rem); }} />
+      ) : (
+        <Grip key="normal" asideRef={asideRef} range={NORMAL} cssVar="--inspector-width" width={width} onWidth={(rem) => { setWidth(rem); writeWidth(NORMAL, rem); }} />
+      )}
       {/* One pane at a time (520–759 px): the Inspector covers the steps, and this goes back. */}
       {(showing || settingsOpen) && (band === 'single' || band === 'compact') && (
         <button type="button" className="insp-back" onClick={() => { cancelDraft(); selection.clear(); closeMacroSettings(); focusList(); }}>
@@ -170,9 +196,15 @@ export function Inspector() {
 /**
  * The left edge of the column: a drag widens or narrows it, the arrows do it by 1 rem, and a double
  * click puts the default back. While dragging, the width goes straight to the element; it is kept
- * once, on release.
+ * once, on release. Expanded, it moves the expanded width.
  */
-function Grip({ asideRef, width, onWidth }: { asideRef: RefObject<HTMLElement | null>; width: number; onWidth: (rem: number) => void }) {
+function Grip({ asideRef, range, cssVar, width, onWidth }: {
+  asideRef: RefObject<HTMLElement | null>;
+  range: WidthRange;
+  cssVar: string;
+  width: number;
+  onWidth: (rem: number) => void;
+}) {
   const drag = useRef<{ startX: number; startRem: number; rem: number; root: number } | null>(null);
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
@@ -185,10 +217,10 @@ function Grip({ asideRef, width, onWidth }: { asideRef: RefObject<HTMLElement | 
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
     const d = drag.current;
     if (!d) return;
-    const rem = clampWidth(d.startRem + (d.startX - e.clientX) / d.root);
+    const rem = clampWidth(d.startRem + (d.startX - e.clientX) / d.root, range);
     if (rem === d.rem) return;
     d.rem = rem;
-    asideRef.current?.style.setProperty('--inspector-width', `${rem}rem`);
+    asideRef.current?.style.setProperty(cssVar, `${rem}rem`);
   };
   const onPointerUp = () => {
     const d = drag.current;
@@ -197,11 +229,11 @@ function Grip({ asideRef, width, onWidth }: { asideRef: RefObject<HTMLElement | 
   };
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     const next = e.key === 'ArrowLeft' ? width + 1 : e.key === 'ArrowRight' ? width - 1
-      : e.key === 'Home' ? MIN_REM : e.key === 'End' ? MAX_REM : null;
+      : e.key === 'Home' ? range.min : e.key === 'End' ? range.max : null;
     if (next === null) return;
     e.preventDefault();
     e.stopPropagation();
-    onWidth(clampWidth(next));
+    onWidth(clampWidth(next, range));
   };
 
   return (
@@ -210,15 +242,15 @@ function Grip({ asideRef, width, onWidth }: { asideRef: RefObject<HTMLElement | 
       role="separator"
       aria-orientation="vertical"
       aria-label="Inspector width"
-      aria-valuemin={MIN_REM * 16}
-      aria-valuemax={MAX_REM * 16}
+      aria-valuemin={range.min * 16}
+      aria-valuemax={range.max * 16}
       aria-valuenow={Math.round(width * 16)}
       tabIndex={0}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
-      onDoubleClick={() => onWidth(DEFAULT_REM)}
+      onDoubleClick={() => onWidth(range.def)}
       onKeyDown={onKeyDown}
     />
   );

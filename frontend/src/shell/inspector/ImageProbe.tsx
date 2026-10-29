@@ -3,21 +3,22 @@ import type { ActionItem } from '../../bridge/messageTypes';
 import { useEditorTools } from '../../logic/useEditorTools';
 import { useSteps } from '../../logic/useSteps';
 import { useTt } from '../../state/LanguageContext';
-import { NotBuilt } from '../NotBuilt';
+import { preload } from '../lazyModule';
 import { useShell } from '../store';
+import { openCrop } from '../ui';
 import { Section } from './fields';
-import { applyEdits } from './inspectorState';
+import { applyEdits, loadReferenceCrop } from './inspectorState';
 import { RailField, RegionField, ResultCard } from './probeKit';
 import { around, regionOf, regionValue, useAsk } from './probes';
 
 interface Match { found: boolean; score: number; x: number; y: number; w: number; h: number; error?: string }
 
 /**
- * The reference image of a Wait Image or of an If that checks for one: the image, Recapture (the
- * engine's capture writes it straight into the step), Test match against the screen now — which
- * also sets the search region around what it found — the search region, and the tolerance.
- * `reads` says how the verdict turns: a check that passes when the image is not found, or a wait
- * for the image to go.
+ * The reference image of a Wait Image or of an If that checks for one: the image — a press on it
+ * crops it, in the expanded Inspector —, Recapture (the engine's capture writes it straight into
+ * the step), Test match against the screen now — which also sets the search region around what it
+ * found — the search region, and the tolerance. `reads` says how the verdict turns: a check that
+ * passes when the image is not found, or a wait for the image to go.
  */
 export function ImageProbe({ step, locked, reads }: { step: ActionItem; locked: boolean; reads: 'found' | 'not found' | 'gone' }) {
   const cmds = useSteps();
@@ -28,6 +29,10 @@ export function ImageProbe({ step, locked, reads }: { step: ActionItem; locked: 
   const tolerance = Math.round((step.confidence || 0.8) * 100);
   const [result, setResult] = useState<Match | null>(null);
   const [snapped, setSnapped] = useState(false);
+  // The image's own size, once it is drawn: what a crop makes smaller.
+  const [size, setSize] = useState<{ w: number; h: number; of: string } | null>(null);
+  const known = size && size.of === step.imagePath ? size : null;
+  const warm = () => { void preload(loadReferenceCrop); };
   const test = useAsk('image:testMatchResult', (r) => {
     setResult(r);
     setSnapped(false);
@@ -38,13 +43,30 @@ export function ImageProbe({ step, locked, reads }: { step: ActionItem; locked: 
 
   return (
     <>
-      <Section label="Reference image">
-        <div className="insp-image" data-none={step.imageBase64 ? undefined : ''}>
-          {step.imageBase64
-            ? <img src={`data:image/png;base64,${step.imageBase64}`} alt="The reference image" />
-            : <span>No image yet</span>}
-        </div>
-        <NotBuilt what="Crop the reference image" />
+      <Section label="Reference image" hint={step.imageBase64 && known ? `${known.w} × ${known.h} px · press the image to crop it` : undefined}>
+        {step.imageBase64 ? (
+          <button
+            type="button"
+            className="insp-image"
+            data-crop-open=""
+            aria-label="Crop reference image"
+            data-tip={tt('Crop it to the part that matters', 'Recortar só a parte que importa')}
+            disabled={locked}
+            onPointerEnter={warm}
+            onFocus={warm}
+            onClick={() => { if (id) void preload(loadReferenceCrop).then(() => openCrop(id)); }}
+          >
+            <img
+              src={`data:image/png;base64,${step.imageBase64}`}
+              alt="The reference image"
+              onLoad={(e) => setSize({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight, of: step.imagePath })}
+            />
+          </button>
+        ) : (
+          <div className="insp-image" data-none="">
+            <span>No image yet</span>
+          </div>
+        )}
         <div className="insp-pair">
           <button
             type="button"

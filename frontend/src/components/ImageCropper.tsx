@@ -1,21 +1,9 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Crop } from 'lucide-react';
 import { useTt } from '../state/LanguageContext';
+import { applyCropMode, cropIsUsable, type CropRect, type DragMode } from '../utils/cropRect';
 import { uiZoom } from '../utils/zoomSpace';
 import { DialogShell, DialogFooter } from './common/DialogShell';
-
-interface CropRect {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
-type DragMode =
-  | 'move'
-  | 'nw' | 'n' | 'ne'
-  | 'w' | 'e'
-  | 'sw' | 's' | 'se';
 
 interface ImageCropperProps {
   imageBase64: string;
@@ -23,7 +11,6 @@ interface ImageCropperProps {
   onCancel: () => void;
 }
 
-const MIN_SIZE = 10;
 const MAX_DISPLAY_W = 900;
 const MAX_DISPLAY_H = 600;
 /** Never squeeze the working area below this, however short the window gets. */
@@ -55,72 +42,9 @@ const ARROW_DELTA: Record<string, [number, number]> = {
   ArrowDown: [0, 1],
 };
 
-function clamp(v: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, v));
-}
-
-/**
- * The crop after moving `mode`'s edge(s) by (dx, dy) image px from `start`, clamped to the image
- * and to MIN_SIZE. ONE function for both doors — the mouse drag and the arrow keys — so the keyboard
- * can never reach a rectangle the handles could not.
- */
-function applyCropMode(
-  mode: DragMode,
-  start: CropRect,
-  dx: number,
-  dy: number,
-  natural: { w: number; h: number },
-): CropRect {
-  let { x, y, w, h } = start;
-  const right = start.x + start.w;
-  const bottom = start.y + start.h;
-  switch (mode) {
-    case 'move':
-      x = clamp(x + dx, 0, natural.w - w);
-      y = clamp(y + dy, 0, natural.h - h);
-      break;
-    case 'nw':
-      x = clamp(start.x + dx, 0, right - MIN_SIZE);
-      y = clamp(start.y + dy, 0, bottom - MIN_SIZE);
-      w = right - x;
-      h = bottom - y;
-      break;
-    case 'n':
-      y = clamp(start.y + dy, 0, bottom - MIN_SIZE);
-      h = bottom - y;
-      break;
-    case 'ne':
-      y = clamp(start.y + dy, 0, bottom - MIN_SIZE);
-      h = bottom - y;
-      w = clamp(start.w + dx, MIN_SIZE, natural.w - x);
-      break;
-    case 'w':
-      x = clamp(start.x + dx, 0, right - MIN_SIZE);
-      w = right - x;
-      break;
-    case 'e':
-      w = clamp(start.w + dx, MIN_SIZE, natural.w - x);
-      break;
-    case 'sw':
-      x = clamp(start.x + dx, 0, right - MIN_SIZE);
-      w = right - x;
-      h = clamp(start.h + dy, MIN_SIZE, natural.h - y);
-      break;
-    case 's':
-      h = clamp(start.h + dy, MIN_SIZE, natural.h - y);
-      break;
-    case 'se':
-      w = clamp(start.w + dx, MIN_SIZE, natural.w - x);
-      h = clamp(start.h + dy, MIN_SIZE, natural.h - y);
-      break;
-  }
-  return {
-    x: Math.round(x),
-    y: Math.round(y),
-    w: Math.round(w),
-    h: Math.round(h),
-  };
-}
+// The crop's rule (applyCropMode) is shared with the expanded Inspector's cropper (utils/cropRect):
+// ONE function for every door — the mouse drag and the arrow keys — so the keyboard can never reach
+// a rectangle the handles could not.
 
 // Modal cropper for tightening an existing reference image. Operates purely in image-pixel
 // coordinates (the parent persists those via the bridge); display scaling is calculated
@@ -308,11 +232,7 @@ export function ImageCropper({ imageBase64, onSave, onCancel }: ImageCropperProp
     height: crop.h * displayScale,
   };
 
-  const canSave =
-    natural !== null &&
-    crop.w >= MIN_SIZE &&
-    crop.h >= MIN_SIZE &&
-    !(crop.x === 0 && crop.y === 0 && crop.w === natural.w && crop.h === natural.h);
+  const canSave = natural !== null && cropIsUsable(crop, natural);
 
   // Each handle is a 12 px square positioned so its CENTRE sits on the edge/corner of the crop
   // rect (the negative half-size offset). Solid accent with a 2 px ring in the card colour so it

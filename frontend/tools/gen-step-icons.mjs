@@ -26,13 +26,18 @@ const NAMES = [
 ];
 
 // The ones only the step editors draw (the checks of an If, the probes' tools, Activate Window's
-// Browse… and Read from window, Run Macro's Open macro), which load with the editors and not with
-// the app: src/shell/inspector/editorIcons.css.
+// Browse… and Read from window, Run Macro's Open macro, the header's Expand and Collapse editor,
+// the reference image's crop), which load with the editors and not with the app:
+// src/shell/inspector/editorIcons.css.
 const EDITOR_NAMES = [
-  'check', 'chevron-down', 'clipboard', 'cpu', 'dices', 'file-check', 'folder-open', 'frame', 'image', 'list',
-  'refresh-cw', 'square-arrow-out-up-right', 'square-dashed', 'variable',
+  'check', 'chevron-down', 'clipboard', 'cpu', 'crop', 'dices', 'file-check', 'folder-open', 'frame', 'image', 'list',
+  'maximize-2', 'minimize-2', 'refresh-cw', 'square-arrow-out-up-right', 'square-dashed', 'variable',
 ];
 const editorOut = path.join(front, 'src', 'shell', 'inspector', 'editorIcons.css');
+// …and the ones only the expanded Send Text draws (the snippets' tools, Transform…), which load
+// with it.
+const TEXT_NAMES = ['bookmark-plus', 'download', 'pencil', 'trash-2', 'upload', 'wand-sparkles'];
+const textOut = path.join(front, 'src', 'shell', 'inspector', 'textIcons.css');
 // …and the ones the dock's panel draws (a run step's state), which load with that panel.
 const DOCK_NAMES = ['circle-check', 'circle-dashed', 'circle-minus', 'circle-x', 'triangle-alert'];
 const dockOut = path.join(front, 'src', 'shell', 'dock', 'dockIcons.css');
@@ -54,4 +59,5 @@ async function write(names, file) {
 }
 await write(NAMES, out);
 await write(EDITOR_NAMES, editorOut);
+await write(TEXT_NAMES, textOut);
 await write(DOCK_NAMES, dockOut);

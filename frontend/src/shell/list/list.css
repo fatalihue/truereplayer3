@@ -329,3 +329,7 @@ html[data-animations='true'] .step[data-inserted='fade'] { transition: backgroun
   .step-delay,
   .steps-head-delay { display: none; }
 }
+/* Beside the expanded Inspector the list keeps the number, the step and its details, as on the
+   concept's SendText board: the Note and the Delay give way. */
+.shell-body[data-wide] :is(.steps-head, .step, .step-ghost) { grid-template-columns: 1.75rem minmax(0, 9rem) minmax(0, 1fr); }
+.shell-body[data-wide] :is(.step-note, .step-delay, .steps-head-delay, .steps-head > :last-child) { display: none; }

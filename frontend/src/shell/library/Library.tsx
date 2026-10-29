@@ -15,7 +15,7 @@ import { macroMenuEntries } from '../macroMenu';
 import { Menu, type MenuEntry } from '../Menu';
 import { anchorBelow, anchorFromEvent, fromKeyboard, type MenuAnchor } from '../menuAnchor';
 import { useApp } from '../store';
-import { closeDialog, openDialog, setLibraryPeek, useUi } from '../ui';
+import { closeDialog, inspectorWide, openDialog, setLibraryPeek, useUi } from '../ui';
 import { useShellBand } from '../useShellBand';
 import { ColorGrid } from './ColorGrid';
 import { LibraryFolded } from './LibraryFolded';
@@ -70,7 +70,10 @@ export function Library() {
   const seq = useRef(0);
 
   const hidden = band === 'single' || band === 'compact';
-  const bandFolds = band !== 'wide';
+  // The expanded Inspector takes the room of the open library, as the narrower windows do: folded,
+  // with Expand laying it over the steps. The fold chosen by hand is kept for after.
+  const wide = useUi(inspectorWide);
+  const bandFolds = band !== 'wide' || wide;
   // A peek only lives while the window keeps the library folded.
   useEffect(() => {
     if (peek && !bandFolds) setLibraryPeek(false);
