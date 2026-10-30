@@ -67,10 +67,14 @@ namespace TrueReplayer
         public static string LocalRoot => _localRoot.Value;
 
         /// <summary>
-        /// The local Velopack feed the previews are packed into (decision 2). A sibling of
-        /// <see cref="LocalRoot"/>, not inside it: an uninstall may remove that whole folder.
+        /// Documents\TrueReplayer3-feed: the local Velopack feed the previews are packed into
+        /// (decision 2). Outside AppData on purpose. The sessions that build the previews run inside
+        /// the Claude app's MSIX container, which keeps every file they create under AppData in a
+        /// private copy only they can see: a feed packed into %LOCALAPPDATA% never reached the copy
+        /// the owner opens from the Start menu. Documents is the same folder for both. Not inside
+        /// <see cref="LocalRoot"/> either, which an uninstall deletes whole.
         /// </summary>
-        public static string UpdateFeedDir => LocalRoot + "-feed";
+        public static string UpdateFeedDir => DocumentsRoot + "-feed";
 
         /// <summary>
         /// TrueReplayer 2. Only the coexistence guard (its mutex and its exe) and the import (its

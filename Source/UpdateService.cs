@@ -16,7 +16,9 @@ namespace TrueReplayer.Services
         /// decision 2). TrueReplayer 3 has no public release while it runs beside TrueReplayer 2, and
         /// it must never read TrueReplayer 2's feed: every installed TrueReplayer 2 reads the newest
         /// release of TrueReplayer-releases, so that repository can only ever carry TrueReplayer 2.
-        /// A missing folder is an ordinary "no update" — the check logs the failure and moves on.
+        /// A missing folder is an ordinary "no update": SimpleFileSource reads it as an empty feed and
+        /// says so only to Velopack's own logger, so <see cref="CheckForUpdateAsync"/> logs which
+        /// folder it reads.
         /// </summary>
         private static readonly UpdateManager _manager = new(
             new SimpleFileSource(new DirectoryInfo(AppIdentity.UpdateFeedDir)));
@@ -52,6 +54,9 @@ namespace TrueReplayer.Services
 
         public static async Task<string?> CheckForUpdateAsync()
         {
+            // The feed, whether it is there, and whether this copy is the installed one: a preview
+            // packed where this copy cannot see it is otherwise a silent "up to date".
+            DiagnosticLog.Info($"[UpdateService] Feed {AppIdentity.UpdateFeedDir} ({(Directory.Exists(AppIdentity.UpdateFeedDir) ? "present" : "missing")}); Velopack install: {_manager.IsInstalled}; install location: {TrayIconService.IsInstalledLocation()}");
             if (!_manager.IsInstalled)
                 return null;
 
