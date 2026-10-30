@@ -995,6 +995,8 @@ export type IncomingMessage =
   // and the app does not (UIPI drops every click, SendInput says yes). The clearing message
   // arrives with the key OMITTED (the bridge serializer drops nulls) — read missing as null.
   | { type: 'clicker:warning'; payload: { code?: ClickerWarningCode | null } }
+  /** The monitors, in virtual-desktop pixels (the space the Clicker's area and point are in). */
+  | { type: 'screen:displays'; payload: { displays: { x: number; y: number; w: number; h: number; primary: boolean }[] } }
   | { type: 'macro:loopProgress'; payload: { current: number; total: number } }
   | { type: 'settings:reset'; payload: Record<string, never> }
   // Fired at the start of CheckForUpdateAsync so the overlay can show the indeterminate
@@ -1379,6 +1381,10 @@ export type OutgoingMessage =
   | { type: 'clicker:deletePreset'; payload: { name: string } }
   /** The Clicker page's Rename…: the preset keeps its slot and its settings; a name another one has is refused. */
   | { type: 'clicker:renamePreset'; payload: { name: string; newName: string } }
+  /** Answered by screen:displays. */
+  | { type: 'screen:displays'; payload: Record<string, never> }
+  /** The app again, elevated (the UAC prompt): Windows drops clicks sent to an elevated window from a process that is not. */
+  | { type: 'app:restartAsAdmin'; payload: Record<string, never> }
   /** The toast's Undo for the LAST delete: the backend puts that preset back in its slot. */
   | { type: 'clicker:undoDeletePreset'; payload: { name: string } }
   | { type: 'waitimage:cropReference'; payload: { index: number; x: number; y: number; w: number; h: number } }

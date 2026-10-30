@@ -681,9 +681,11 @@ function Actions() {
     useAp.setState({ cameFrom: null });
     (from === 'colors' ? editRef.current : shareRef.current)?.focus();
   }, []);
+  // The line says it for 6 s, then goes quiet but keeps its place: gone, the page would shrink under
+  // the pointer (and shut a menu open on it), and the focus on the line would fall to the page.
   useEffect(() => {
     if (!saved) return;
-    const id = setTimeout(() => setSaved(null), 6000);
+    const id = setTimeout(() => setSaved(''), 6000);
     return () => clearTimeout(id);
   }, [saved]);
 
@@ -785,9 +787,9 @@ function Actions() {
           onClose={() => setResetMenu(null)}
         />
       )}
-      {saved && (
+      {saved !== null && (
         <p ref={savedRef} className="ap-saved" role="status" tabIndex={-1}>
-          Saved as “{saved}”, in My themes.
+          {saved && <>Saved as “{saved}”, in My themes.</>}
         </p>
       )}
     </div>

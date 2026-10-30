@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { useApp, useShell } from '../../store';
-import { diffFields, fieldsOf, orderPatch, type FieldKey, type Fields } from './clickerModel';
+import { diffFields, fieldsOf, orderPatch, type Display, type FieldKey, type Fields } from './clickerModel';
 
 /**
  * What the Clicker page's parts share (phase 3, slice 6): the preset its edits save into, the values
@@ -28,12 +28,16 @@ interface ClickerUi {
   seeds: Partial<Record<FieldKey, string>>;
   /** The delay the last Rate entry was clamped to, for the note under it. */
   clampedAt: number | null;
+  /** The monitors (screen:displays), for the drawing of the display the area or the point is on. */
+  displays: Display[] | null;
+  /** When the last run ended (Date.now()), for "Last run 14:10 · …". */
+  endedAt: number | null;
   past: Snap[];
   future: Snap[];
 }
 export const useClickerUi = create<ClickerUi>(() => ({
   selected: null, pending: {}, expect: null, unit: 'cps', naming: false, renaming: false, peek: false,
-  seeds: {}, clampedAt: null, past: [], future: [],
+  seeds: {}, clampedAt: null, displays: null, endedAt: null, past: [], future: [],
 }));
 
 type Send = (key: FieldKey, value: unknown) => void;

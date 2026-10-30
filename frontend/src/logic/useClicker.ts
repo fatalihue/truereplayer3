@@ -89,6 +89,10 @@ export function useClicker() {
       undoDeletePreset: (name: string) => send({ type: 'clicker:undoDeletePreset', payload: { name } }),
       /** Gives a preset another name, in its slot. */
       renamePreset: (name: string, newName: string) => send({ type: 'clicker:renamePreset', payload: { name, newName } }),
+      /** Asks the engine for the monitors (screen:displays). */
+      askDisplays: () => send({ type: 'screen:displays', payload: {} }),
+      /** The app again, elevated: the clicks an elevated window drops can then go through. */
+      restartAsAdmin: () => send({ type: 'app:restartAsAdmin', payload: {} }),
     };
   }, [send, getState]);
 }

@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { ChevronDown, Crop, Crosshair, Ellipsis, Lock, MousePointerClick, Pause, Play, Plus, Square, X } from 'lucide-react';
+import { Check, ChevronDown, Crop, Crosshair, Ellipsis, Lock, MousePointerClick, Pause, Play, Plus, Square, TriangleAlert, X } from 'lucide-react';
 import type { ClickerPreset } from '../../../bridge/messageTypes';
+import { useBridge } from '../../../bridge/BridgeContext';
 import { matchingPreset, useClicker } from '../../../logic/useClicker';
 import { useReplay } from '../../../logic/useReplay';
 import { useTt } from '../../../state/LanguageContext';
 import { useToast } from '../../../state/ToastContext';
+import { formatRate } from '../../../utils/clickerFormat';
 import { isModalDialogOpen } from '../../../utils/modalDialog';
 import { DraftField, Segmented, Switch } from '../../inspector/fields';
 import { keycaps } from '../../library/model';
@@ -14,9 +16,9 @@ import { useApp, useShell } from '../../store';
 import { useUi } from '../../ui';
 import { ConflictNote, HotkeyField } from '../settings/hotkeys';
 import {
-  clicksLimit, clock, delayFor, fieldsOf, grouped, MAX_CLICKS, MAX_NAME, MAX_PRESETS, MAX_SPREAD_PX, MAX_TIME_S, presetLine,
-  quickRates, rateLine, rateNote, rateOf, rateShort, rateShown, sameFields, sentence, spreadPx, takesSec, takesWords, timeLimitS,
-  whereOf, type FieldKey, type Fields, type Where,
+  bits, clicksLimit, clock, delayFor, displayOf, endWords, fieldsOf, grouped, limitText, MAX_CLICKS, MAX_NAME, MAX_PRESETS,
+  MAX_SPREAD_PX, MAX_TIME_S, presetLine, progressOf, quickRates, rateLine, rateNote, rateOf, rateShort, rateShown, sameFields,
+  sentence, spreadPx, takesSec, takesWords, timeLimitS, whereOf, type FieldKey, type Fields, type Where,
 } from './clickerModel';
 import {
   choosePreset, commitFields, engineFields, fieldsNow, sendFields, settle, stepFields, useClickerUi, useFields,
@@ -25,7 +27,7 @@ import '../../inspector/editors.css';
 import './clicker.css';
 
 /**
- * ② The Clicker (phase 3, slice 6; the concept's Clicker board): the engine's Clicker mode as a page.
+ * ② The Clicker (phase 3, slices 6 and 7; the concept's Clicker and ClickerRunning boards): the engine's Clicker mode as a page.
  * It is open exactly while the mode is on — the rail, its hotkey and the tray turn the mode on and
  * the page comes; leaving the page turns it off ("both only while this page is open"). The presets
  * on the left, the run in the middle (Start, Pause, what it will do), "Clicker settings" on the
@@ -66,6 +68,21 @@ export default function ClickerPage() {
   }, [presets]);
   useSaveIntoPreset(running);
   useUnseedSpread();
+
+  // The monitors, for the drawing of the display the area or the point is on: asked on each visit.
+  const { subscribe } = useBridge();
+  useEffect(() => subscribe((message) => {
+    if (message.type === 'screen:displays') useClickerUi.setState({ displays: message.payload.displays });
+  }), [subscribe]);
+  useEffect(() => { latest.current.clicker.askDisplays(); }, []);
+  // When a run ends, for "Last run 14:10 · …": the moment its reason arrives (not a visit that finds it there).
+  const endReason = useShell(s => s.live.clickerStats.endReason);
+  const lastReason = useRef(endReason);
+  useEffect(() => {
+    const before = lastReason.current;
+    lastReason.current = endReason;
+    if (endReason && !before) useClickerUi.setState({ endedAt: Date.now() });
+  }, [endReason]);
 
   // Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z): the page's own history. Not while it clicks; a text field keeps its own.
   useEffect(() => {
@@ -281,14 +298,17 @@ function Head({ running }: { running: boolean }) {
   const startKey = useApp(a => a.settings.cursorClickStartHotkey);
   const pauseKey = useApp(a => a.settings.cursorClickPauseHotkey);
   const paused = useApp(a => a.pauseState.isPaused);
-  const counting = useShell(s => s.live.clickerStats.countdownMs > 0);
+  const countdownS = useShell(s => Math.ceil(s.live.clickerStats.countdownMs / 1000));
+  const startedAt = useShell(s => s.runClock.startedAt);
+  const counting = countdownS > 0;
   const replay = useReplay();
   const clicker = useClicker();
   const { showToast } = useToast();
   const [menu, setMenu] = useState<{ anchor: MenuAnchor; button: HTMLButtonElement } | null>(null);
   const takes = takesSec(fields);
+  // casca-110: the countdown of a start from the button, before the first click.
   const sub = running
-    ? (paused ? 'Paused' : counting ? 'Starting — move the mouse to the target' : 'Clicking')
+    ? (paused ? 'Paused' : counting ? `Starting in ${countdownS} s — move the mouse to the target` : `Clicking since ${hhmm(startedAt)}`)
     : `${selected ? 'Clicker preset' : 'No preset'} · ${takes === null ? 'runs until you stop it' : `takes ${takesWords(takes)}`}`;
   const remove = () => {
     if (!selected) return;
@@ -313,7 +333,7 @@ function Head({ running }: { running: boolean }) {
           <ChevronDown aria-hidden="true" />
         </button>
         <button type="button" className="ck-start" data-running={running || undefined} onClick={replay.toggle}>
-          {running ? <Square aria-hidden="true" /> : <Play aria-hidden="true" />}
+          {running ? <span className="ck-stop-square" aria-hidden="true" /> : <Play aria-hidden="true" />}
           {running ? 'Stop' : 'Start'}
           {startKey && <kbd className="ck-key">{keycaps(startKey)}</kbd>}
         </button>
@@ -322,6 +342,7 @@ function Head({ running }: { running: boolean }) {
           {paused ? 'Resume' : 'Pause'}
           {pauseKey && <kbd className="ck-key">{keycaps(pauseKey)}</kbd>}
         </button>
+        {running && !counting && <HeadProgress />}
         <button
           type="button"
           className="insp-icon-button"
@@ -394,25 +415,94 @@ function RenameField({ name }: { name: string }) {
   );
 }
 
-function Center({ running }: { running: boolean }) {
+const hhmm = (at: number) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+/** In the header while it clicks: "412 of 1,000 · ~0:29 left", over a thin bar (paineis-144). Only with a limit. */
+function HeadProgress() {
   const fields = useFields();
   const count = useShell(s => s.live.clickerStats.count);
+  const elapsed = useShell(s => s.live.clickerStats.elapsedMs);
+  const p = progressOf(fields, count, elapsed);
+  if (!p) return null;
+  return (
+    <div className="ck-progress" role="progressbar" aria-label="Run progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(p.pct * 100)}>
+      <span className="ck-progress-text">
+        <span>{p.text}</span>
+        {p.leftSec !== null && <span className="ck-progress-left">~{clock(p.leftSec)} left</span>}
+      </span>
+      <span className="ck-bar"><span style={{ width: `${p.pct * 100}%` }} /></span>
+    </div>
+  );
+}
+
+function Center({ running }: { running: boolean }) {
+  return running ? <Run /> : <Ready />;
+}
+
+/** Stopped: what a run will do, on the display it will do it on, and how the last one went. */
+function Ready() {
+  const fields = useFields();
   const c = clicksLimit(fields);
   const t = timeLimitS(fields);
   const takes = takesSec(fields);
   return (
     <div className="ck-center">
       <div className="ck-ready">
-        <span className="ck-ready-title">{running ? 'Clicking' : 'Ready to click'}</span>
-        <span className="ck-sentence">{running ? `${grouped(count)} click${count === 1 ? '' : 's'} so far. ${sentence(fields)}` : sentence(fields)}</span>
+        <span className="ck-ready-title">Ready to click</span>
+        <span className="ck-sentence">{sentence(fields)}</span>
       </div>
+      <Figure />
       <div className="ck-cells">
         <Cell value={rateShort(rateOf(fields))} label="Rate" />
         <Cell value={c ? grouped(c) : '∞'} label="Clicks" off={!c} />
         <Cell value={t ? clock(t) : '∞'} label="Time limit" off={!t} />
         <Cell value={takes === null ? '—' : `~${clock(takes)}`} label="Takes" off={takes === null} />
       </div>
-      <HotkeyLine running={running} />
+      <HotkeyLine running={false} paused={false} />
+      <LastRun />
+    </div>
+  );
+}
+
+/**
+ * Clicking (the ClickerRunning board; paineis-140 to 144, 147 and 150): the count, or the seconds
+ * of the countdown; the measured rate, the time, the limit and what is left; the settings in one
+ * line; and the window that runs as administrator, whose clicks Windows drops.
+ */
+function Run() {
+  const fields = useFields();
+  const stats = useShell(s => s.live.clickerStats);
+  const paused = useApp(a => a.pauseState.isPaused);
+  const clicker = useClicker();
+  const counting = stats.countdownMs > 0;
+  const rate = stats.elapsedMs > 0 ? (stats.count * 1000) / stats.elapsedMs : 0;
+  const p = progressOf(fields, stats.count, stats.elapsedMs);
+  const left = counting || !p || p.leftSec === null ? null : p.leftSec;
+  const limit = limitText(fields);
+  return (
+    <div className="ck-center">
+      <div className="ck-hero">
+        <span className="ck-hero-n">{counting ? Math.ceil(stats.countdownMs / 1000) : grouped(stats.count)}</span>
+        <span className="ck-hero-label">{counting ? 'starting in' : paused ? 'clicks · paused' : 'clicks'}</span>
+      </div>
+      <div className="ck-cells">
+        <Cell value={counting ? '—' : `${formatRate(rate)}/s`} label="Rate" off={counting} />
+        <Cell value={clock(stats.elapsedMs / 1000)} label="Elapsed" />
+        <Cell value={limit} label="Limit" off={limit === '∞'} />
+        <Cell value={left === null ? '—' : `~${clock(left)}`} label="Left" off={left === null} />
+      </div>
+      {p && <span className="ck-bar ck-bar-wide"><span style={{ width: `${p.pct * 100}%` }} /></span>}
+      <span className="ck-bits">{bits(fields)}</span>
+      {stats.warning === 'elevatedTarget' && (
+        <div className="ck-alert" role="alert">
+          <TriangleAlert aria-hidden="true" />
+          <div className="ck-alert-body">
+            <span className="ck-alert-text">The window under the cursor runs as administrator, so Windows drops these clicks.</span>
+            <span><button type="button" className="insp-button ck-small" onClick={clicker.restartAsAdmin}>Restart as administrator</button></span>
+          </div>
+        </div>
+      )}
+      <HotkeyLine running paused={paused} />
     </div>
   );
 }
@@ -427,7 +517,7 @@ function Cell({ value, label, off }: { value: string; label: string; off?: boole
 }
 
 /** "PgDn starts and stops · PgUp pauses · both only while this page is open" (paineis-149, nativo-110 and 111). */
-function HotkeyLine({ running }: { running: boolean }) {
+function HotkeyLine({ running, paused }: { running: boolean; paused: boolean }) {
   const startKey = useApp(a => a.settings.cursorClickStartHotkey);
   const pauseKey = useApp(a => a.settings.cursorClickPauseHotkey);
   if (!startKey && !pauseKey) return <p className="ck-keys">No Clicker hotkeys: Start and Pause above do it.</p>;
@@ -435,9 +525,72 @@ function HotkeyLine({ running }: { running: boolean }) {
     <p className="ck-keys">
       {startKey && <><kbd className="ck-key">{keycaps(startKey)}</kbd>{running ? 'stops' : 'starts and stops'}</>}
       {startKey && pauseKey && <span className="ck-dot" aria-hidden="true">·</span>}
-      {pauseKey && <><kbd className="ck-key">{keycaps(pauseKey)}</kbd>pauses</>}
+      {pauseKey && <><kbd className="ck-key">{keycaps(pauseKey)}</kbd>{paused ? 'resumes' : 'pauses'}</>}
       {!running && <><span className="ck-dot" aria-hidden="true">·</span>{startKey && pauseKey ? 'both only while this page is open' : 'only while this page is open'}</>}
     </p>
+  );
+}
+
+/**
+ * "Last run 14:10 · 1,000 clicks in 0:51 · limit reached" (paineis-142), and the clicks Windows
+ * refused because another app blocked the input (paineis-146). A run stopped in its countdown, with
+ * nothing clicked and nothing refused, leaves no line.
+ */
+function LastRun() {
+  const stats = useShell(s => s.live.clickerStats);
+  const endedAt = useClickerUi(s => s.endedAt);
+  if (stats.count === 0 && stats.blocked === 0) return null;
+  const reason = stats.endReason;
+  const Icon = reason === 'stopped' ? Square : reason === 'error' ? TriangleAlert : Check;
+  return (
+    <p className="ck-last">
+      <Icon aria-hidden="true" />
+      <span>
+        {`Last run${endedAt ? ` ${hhmm(endedAt)}` : ''} · ${grouped(stats.count)} click${stats.count === 1 ? '' : 's'} in ${clock(stats.elapsedMs / 1000)} · ${endWords(reason)}`}
+        {stats.blocked > 0 && (
+          <span className="ck-last-warn">{` · ${grouped(stats.blocked)} ${stats.blocked === 1 ? 'click was' : 'clicks were'} rejected by Windows — input was blocked`}</span>
+        )}
+      </span>
+    </p>
+  );
+}
+
+// The points a run might click, drawn inside the area: fixed, the drawing is a picture, not a forecast.
+const DOTS: [number, number, number][] = [[0.3, 0.3, 1], [0.66, 0.6, 0.6], [0.14, 0.74, 0.4]];
+
+/**
+ * The display the area or the point is on, with it drawn to scale (the Clicker board: "Display 1 ·
+ * 1920 × 1080 · area at 760, 390"). In cursor mode there is nothing to draw.
+ */
+function Figure() {
+  const fields = useFields();
+  const displays = useClickerUi(s => s.displays);
+  const on = displayOf(displays, fields);
+  if (!on) return null;
+  const { display: d, n } = on;
+  const area = whereOf(fields) === 'area' ? fields.cursorClickArea : null;
+  const point = area ? null : fields.cursorClickFixedPoint;
+  // 25 × 14 rem at most, in the display's own proportions (narrower with the page, never taller).
+  const size = { width: d.w / d.h >= 25 / 14 ? '25rem' : `${(14 * d.w) / d.h}rem`, aspectRatio: `${d.w} / ${d.h}` };
+  const pct = (v: number, of: number) => `${(v / of) * 100}%`;
+  return (
+    <figure className="ck-figure">
+      <div className="ck-display" role="img" style={size}
+        aria-label={`Display ${n} with the click ${area ? 'area drawn' : 'point marked'} on it`}>
+        <span className="ck-taskbar" />
+        {area && (
+          <span className="ck-area" data-label-in={(area.y - d.y) / d.h < 0.12 || undefined}
+            style={{ left: pct(area.x - d.x, d.w), top: pct(area.y - d.y, d.h), width: pct(area.w, d.w), height: pct(area.h, d.h) }}>
+            <span className="ck-area-label">{area.w} × {area.h}</span>
+            {DOTS.map(([x, y, o]) => <span key={x} className="ck-area-dot" style={{ left: pct(x, 1), top: pct(y, 1), opacity: o }} />)}
+          </span>
+        )}
+        {point && <span className="ck-point" style={{ left: pct(point.x - d.x, d.w), top: pct(point.y - d.y, d.h) }} />}
+      </div>
+      <figcaption className="ck-figure-caption">
+        {`Display ${n} · ${d.w} × ${d.h} · ${area ? `area at ${area.x}, ${area.y}` : point ? `point at ${point.x}, ${point.y}` : ''}`}
+      </figcaption>
+    </figure>
   );
 }
 

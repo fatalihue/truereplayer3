@@ -305,6 +305,26 @@ namespace TrueReplayer.Interop
             public int Left, Top, Right, Bottom;
         }
 
+        // The monitors, in virtual-desktop pixels (the Clicker page draws the one its area is on).
+        public delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdc, ref RECT lprcMonitor, IntPtr dwData);
+
+        [DllImport("user32.dll")]
+        public static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumProc lpfnEnum, IntPtr dwData);
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct MONITORINFO
+        {
+            public int cbSize;
+            public RECT rcMonitor;
+            public RECT rcWork;
+            public uint dwFlags;
+        }
+
+        public const uint MONITORINFOF_PRIMARY = 1;
+
+        [DllImport("user32.dll")]
+        public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+
         // Reports the window's RESTORED placement (rcNormalPosition) even while it is
         // minimised — GetWindowRect would answer with the off-screen (-32000,-32000) parking
         // rect instead, which loses the monitor the window actually lives on.

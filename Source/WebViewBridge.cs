@@ -1186,6 +1186,8 @@ namespace TrueReplayer
                     case "clicker:applyPreset": HandleApplyClickerPreset(payload); break;
                     case "clicker:deletePreset": HandleDeleteClickerPreset(payload); break;
                     case "clicker:renamePreset": HandleRenameClickerPreset(payload); break;
+                    case "screen:displays": HandleScreenDisplays(); break;
+                    case "app:restartAsAdmin": _ = HandleRestartAsAdminAsync(); break;
                 case "clicker:undoDeletePreset": HandleUndoDeleteClickerPreset(payload); break;
                     case "waitimage:cropReference": HandleCropReference(payload); break;
                     case "image:testMatch": _ = HandleTestMatchAsync(payload); break;
@@ -9518,6 +9520,64 @@ namespace TrueReplayer
             p.Name = newName;
             DiagnosticLog.Info($"Clicker preset renamed: \"{old}\" to \"{newName}\".");
             PushSettingsLoaded(SaveGlobalSettings());
+        }
+
+        // The monitors, in virtual-desktop pixels — the space the Clicker's area and point are stored
+        // in — for the Clicker page's drawing of the display its area or point is on.
+        private void HandleScreenDisplays()
+        {
+            var displays = new List<object>();
+            NativeMethods.MonitorEnumProc onMonitor = (IntPtr monitor, IntPtr hdc, ref NativeMethods.RECT rect, IntPtr data) =>
+            {
+                var info = new NativeMethods.MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.MONITORINFO>() };
+                if (NativeMethods.GetMonitorInfo(monitor, ref info))
+                {
+                    var r = info.rcMonitor;
+                    displays.Add(new { x = r.Left, y = r.Top, w = r.Right - r.Left, h = r.Bottom - r.Top, primary = (info.dwFlags & NativeMethods.MONITORINFOF_PRIMARY) != 0 });
+                }
+                return true;
+            };
+            NativeMethods.EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, onMonitor, IntPtr.Zero);
+            GC.KeepAlive(onMonitor);
+            SendMessage("screen:displays", new { displays });
+        }
+
+        // The Clicker's "Restart as administrator": Windows drops the clicks a process sends to a
+        // window that runs elevated when the sender does not, and the page offers the way out. The same
+        // app again, elevated (the UAC prompt), and this one exits once it has started; the replacement
+        // waits for this process to be gone before it claims the instance, as the recovery relaunch
+        // does (Program.WaitForPredecessor). The prompt is answered off the UI thread, so the window
+        // and the UI watchdog do not wait on it. Declined, this one keeps running and the page says so.
+        private async Task HandleRestartAsAdminAsync()
+        {
+            var exe = Environment.ProcessPath ?? System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
+            if (string.IsNullOrEmpty(exe)) return;
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = exe,
+                Arguments = Program.WaitForPidArg + Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                UseShellExecute = true,
+                Verb = "runas",
+            };
+            AppExit.FlushState();
+            try
+            {
+                await Task.Run(() => System.Diagnostics.Process.Start(startInfo));
+            }
+            catch (System.ComponentModel.Win32Exception wex) when (wex.NativeErrorCode == 1223)
+            {
+                SendMessage("alert:show", new { message = "Restart as administrator was cancelled.", type = "info" });
+                return;
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Error("Restart as administrator failed", ex);
+                SendMessage("alert:show", new { message = "Could not restart as administrator.", type = "error" });
+                return;
+            }
+            DiagnosticLog.Info("Restart as administrator: the elevated replacement started, exiting");
+            AppExit.ReleaseSystem();
+            Environment.Exit(0);
         }
 
         private void HandleDuplicateActions(JsonElement payload)

@@ -159,6 +159,71 @@ export function delayFor(raw: string, unit: 'cps' | 'ms', f: Fields): { ms: numb
   return { ms, clamped: ms !== asked };
 }
 
+// ── A run (slice 7) ──
+
+/** The settings in one line while it clicks (paineis-145): "Left · 20/s · 1,000 clicks · area 400×300 · ±10% rate". */
+export function bits(f: Fields): string {
+  const c = clicksLimit(f);
+  const t = timeLimitS(f);
+  const limit = c && t ? `${grouped(c)} clicks or ${clock(t)}` : c ? `${grouped(c)} clicks` : t ? clock(t) : 'no limit';
+  const where = whereOf(f);
+  const at = where === 'area' && f.cursorClickArea ? `area ${f.cursorClickArea.w}×${f.cursorClickArea.h}`
+    : where === 'fixed' ? (f.cursorClickFixedPoint ? `point ${f.cursorClickFixedPoint.x}, ${f.cursorClickFixedPoint.y}` : 'point at start')
+    : spreadPx(f) > 0 ? `±${spreadPx(f)} px` : null;
+  const jitter = f.cursorClickUseJitter ? num(f.cursorClickDelayJitter) : 0;
+  return [f.cursorClickButton, rateShort(rateOf(f)), limit, at, jitter ? `±${jitter}% rate` : null, gapMs(f) ? `+${gapMs(f)} ms gap` : null]
+    .filter(Boolean).join(' · ');
+}
+
+/** Why a run ended (clicker:ended; paineis-142). */
+export function endWords(reason: string | null): string {
+  return reason === 'stopped' ? 'stopped' : reason === 'time' ? "time's up" : reason === 'clicks' ? 'limit reached' : reason === 'error' ? 'failed' : 'finished';
+}
+
+/** The limit while it clicks: "1,000", "1:00", "1,000 · 1:00", "∞". */
+export function limitText(f: Fields): string {
+  const c = clicksLimit(f);
+  const t = timeLimitS(f);
+  return c && t ? `${grouped(c)} · ${clock(t)}` : c ? grouped(c) : t ? clock(t) : '∞';
+}
+
+/**
+ * How far a run is, toward the limit nearest to ending it: the share done, "412 of 1,000" or
+ * "0:21 of 1:00", and the seconds left (the clicks left at the measured rate, the time left; null
+ * with no sample yet or no limit). Null with no limit armed.
+ */
+export function progressOf(f: Fields, count: number, elapsedMs: number): { pct: number; text: string; leftSec: number | null } | null {
+  const c = clicksLimit(f);
+  const t = timeLimitS(f);
+  if (!c && !t) return null;
+  const rate = elapsedMs > 0 ? (count * 1000) / elapsedMs : 0;
+  const byClicks = c ? count / c : -1;
+  const byTime = t ? elapsedMs / (t * 1000) : -1;
+  const left = [...(c && rate > 0 && count > 0 ? [Math.max(0, c - count) / rate] : []), ...(t ? [Math.max(0, t - elapsedMs / 1000)] : [])];
+  const leftSec = left.length ? Math.ceil(Math.min(...left)) : null;
+  const pct = Math.min(1, Math.max(byClicks, byTime));
+  const text = byClicks >= byTime ? `${grouped(count)} of ${grouped(c)}` : `${clock(elapsedMs / 1000)} of ${clock(t)}`;
+  return { pct, text, leftSec };
+}
+
+/** A monitor, in virtual-desktop pixels (screen:displays). */
+export interface Display { x: number; y: number; w: number; h: number; primary: boolean }
+/**
+ * The display the area or the point is on, with its number (the main one first, then left to
+ * right): null in cursor mode, before the engine has said its monitors, or off every one of them.
+ */
+export function displayOf(displays: Display[] | null, f: Fields): { display: Display; n: number } | null {
+  if (!displays?.length) return null;
+  const where = whereOf(f);
+  const at = where === 'area' && f.cursorClickArea ? { x: f.cursorClickArea.x + f.cursorClickArea.w / 2, y: f.cursorClickArea.y + f.cursorClickArea.h / 2 }
+    : where === 'fixed' && f.cursorClickFixedPoint ? f.cursorClickFixedPoint
+    : null;
+  if (!at) return null;
+  const sorted = [...displays].sort((a, b) => Number(b.primary) - Number(a.primary) || a.x - b.x || a.y - b.y);
+  const i = sorted.findIndex(d => at.x >= d.x && at.x < d.x + d.w && at.y >= d.y && at.y < d.y + d.h);
+  return i < 0 ? null : { display: sorted[i], n: i + 1 };
+}
+
 /** The ready-made rates (settings-052): the ones the hold and the gap allow, or common delays. */
 export const quickRates = (f: Fields, unit: 'cps' | 'ms') => (unit === 'cps'
   ? [1, 2, 5, 10, 20, 50].filter(c => c <= maxCps(holdMs(f), gapMs(f))).map(c => ({ value: String(c), label: `${c}/s` }))
