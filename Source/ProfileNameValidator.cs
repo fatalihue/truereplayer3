@@ -40,17 +40,17 @@ namespace TrueReplayer.Services
         /// number in an error message instead of a bare "Invalid profile name".
         ///
         /// Where 120 comes from. The longest path a profile name feeds is NOT its own .json — it is
-        /// the reference image, %LocalAppData%\TrueReplayer3\Images\&lt;name&gt;\wait-&lt;32 hex&gt;.png, whose
-        /// fixed parts total 87 chars ("C:\Users\" 9 + "\AppData\Local\TrueReplayer3\Images\" 36 +
+        /// the reference image, Documents\TrueReplayer3\Images\&lt;name&gt;\wait-&lt;32 hex&gt;.png, whose
+        /// fixed parts total 83 chars ("C:\Users\" 9 + "\Documents\TrueReplayer3\Images\" 32 +
         /// the separator 1 + "wait-" 5 + 32 hex + ".png" 4). The profile file itself is cheaper: 53
         /// fixed chars even after ".json" AND the " (99)" suffix ProfileController's
         /// AllocateImportName appends on a name collision. app.manifest declares no
         /// &lt;longPathAware&gt;, so the usable limit stays MAX_PATH's 259 (260 including the NUL).
-        /// 259 - 87 leaves 172 to split between the user-profile folder and the name; reserving a
-        /// generous 40 for "C:\Users\&lt;user&gt;" (a domain-suffixed or redirected profile folder runs
-        /// past the 20-char SAM account limit) leaves 132, rounded down to 120 for slack. Still
-        /// five times the longest name in a real profile set — and the same limit as TrueReplayer 2,
-        /// whose folder name is one character shorter, so every imported name fits.
+        /// 259 - 83 leaves 176 to split between the user's Documents folder and the name; reserving
+        /// a generous 40 for "C:\Users\&lt;user&gt;" (a domain-suffixed profile folder runs past the
+        /// 20-char SAM account limit, and OneDrive moves Documents a folder deeper) leaves 136,
+        /// rounded down to 120 for slack. Still five times the longest name in a real profile set —
+        /// and the same limit as TrueReplayer 2, so every imported name fits.
         /// </summary>
         public const int MaxNameLength = 120;
 

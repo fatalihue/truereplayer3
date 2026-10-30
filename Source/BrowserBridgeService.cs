@@ -120,7 +120,7 @@ namespace TrueReplayer.Services
         public const string ExpectedExtensionVersion = "1.4.26";
 
         // The folder the user loads in chrome://extensions. Next to the exe on purpose: Velopack
-        // installs to %LocalAppData%\TrueReplayer\current\ and swaps that folder's contents on an
+        // installs to %LocalAppData%\TrueReplayer3\current\ and swaps that folder's contents on an
         // update without moving it, so this path survives every update and needs no copy anywhere
         // else. A dev build points at its own bin\ copy, which the csproj refreshes on each build.
         public static string ExtensionDirectory => Path.Combine(AppContext.BaseDirectory, "ChromeExtension");

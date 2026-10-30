@@ -53,8 +53,16 @@ namespace TrueReplayer
         public static string ProfilesDir => Path.Combine(DocumentsRoot, "Profiles");
 
         /// <summary>
+        /// Documents\TrueReplayer3\Images: the macros' reference images, beside the macros that need
+        /// them. Not in <see cref="LocalRoot"/>: uninstalling deletes that folder whole (seen on
+        /// preview.2), and a reinstall would bring the macros back without their images.
+        /// </summary>
+        public static string ImagesDir => Path.Combine(DocumentsRoot, "Images");
+
+        /// <summary>
         /// %LOCALAPPDATA%\TrueReplayer3: Velopack's install root, and the app's own machine-local
-        /// storage beside it — WebView2, Logs, Images and Debug.
+        /// storage beside it — WebView2, Logs and Debug. An uninstall deletes it whole: nothing the
+        /// user would miss lives here.
         /// </summary>
         public static string LocalRoot => _localRoot.Value;
 

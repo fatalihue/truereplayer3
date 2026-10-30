@@ -136,7 +136,8 @@ namespace TrueReplayer.Services
                 if (parts.HasFlag(Parts.Macros))
                 {
                     if (Directory.Exists(Tr2Profiles)) CopyTree(Tr2Profiles, Path.Combine(docsStage, "Profiles"));
-                    if (Directory.Exists(Tr2Images)) CopyTree(Tr2Images, Path.Combine(localStage, "Images"));
+                    // TrueReplayer 2 keeps them in Local; here they go beside the macros (AppIdentity.ImagesDir).
+                    if (Directory.Exists(Tr2Images)) CopyTree(Tr2Images, Path.Combine(docsStage, "Images"));
                     foreach (var name in MacroSidecars) CopyIfExists(Path.Combine(AppIdentity.Tr2.DocumentsRoot, name), Path.Combine(docsStage, name));
                 }
                 if (parts.HasFlag(Parts.Settings))
@@ -292,9 +293,6 @@ namespace TrueReplayer.Services
                 }
                 if (Directory.Exists(localStage))
                 {
-                    string images = Path.Combine(localStage, "Images");
-                    if (Directory.Exists(images))
-                        Swap(images, Path.Combine(AppIdentity.LocalRoot, "Images"), Path.Combine(backup, "Images"));
                     string web = Path.Combine(localStage, "webstorage.json");
                     if (File.Exists(web))
                     {

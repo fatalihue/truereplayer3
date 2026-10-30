@@ -11,16 +11,16 @@ namespace TrueReplayer.Services
 {
     public static class ImageStorageService
     {
-        // Reference images live under %LocalAppData%\TrueReplayer3\Images — the same
-        // machine-local root as the WebView2 data and logs. Roaming is the wrong home for
-        // large binary crops (it bloats the roaming profile and slows domain logins), and
-        // keeping them in Local consolidates all app-internal storage to one place (only
-        // Documents — perfis/settings — stays separate as user-facing data).
+        // Reference images live under Documents\TrueReplayer3\Images (AppIdentity.ImagesDir),
+        // beside the macros that reference them. Not in %LocalAppData%\TrueReplayer3: an
+        // uninstall deletes that folder whole, and a reinstall would find the macros in Documents
+        // with every Wait Image broken. Not in Roaming either: large binary crops bloat the
+        // roaming profile and slow domain logins.
         //
         // TrueReplayer 2 still moves images it once kept in Roaming; that migration is not
         // here: the Roaming folder it reads belongs to TrueReplayer 2, and this app never
         // writes there.
-        private static string GetBaseDirectory() => Path.Combine(AppIdentity.LocalRoot, "Images");
+        private static string GetBaseDirectory() => AppIdentity.ImagesDir;
 
         public static string GetImageDirectory(string profileName)
         {
@@ -480,13 +480,13 @@ namespace TrueReplayer.Services
             // GetImageDirectory (SaveReferenceImage, CloneReferenceImage, RenameProfileDirectory,
             // DeleteProfileDirectory, GetSanitizedProfileFolder) feeds the folder straight into
             // Path.Combine with no check of its own. Verified against the real APIs:
-            //   Combine(...\Images, "..")  -> %LocalAppData%\TrueReplayer
-            //   Combine(...\Images, ".")   -> %LocalAppData%\TrueReplayer\Images
-            //   Combine(...\Images, "")    -> %LocalAppData%\TrueReplayer\Images
-            //   Combine(...\Images, "   ") -> %LocalAppData%\TrueReplayer\Images\  (spaces stripped)
-            // so DeleteProfileDirectory("..") is Directory.Delete(recursive: true) on the entire
-            // app-local root — WebView2 data, Logs, Images, run cursors, automation stats,
-            // appsettings, remaps — and "." / "" / "   " wipe the whole Images tree.
+            //   Combine(...\Images, "..")  -> Documents\TrueReplayer3
+            //   Combine(...\Images, ".")   -> Documents\TrueReplayer3\Images
+            //   Combine(...\Images, "")    -> Documents\TrueReplayer3\Images
+            //   Combine(...\Images, "   ") -> Documents\TrueReplayer3\Images\  (spaces stripped)
+            // so DeleteProfileDirectory("..") is Directory.Delete(recursive: true) on the user's
+            // whole data root — the macros themselves, Images, settings, remaps, run cursors,
+            // automation stats, Backups — and "." / "" / "   " wipe the whole Images tree.
             //
             // ProfileNameValidator.IsSafe rejects "." and "..", so this is NOT reachable from an
             // imported .trprofile (import also always writes entry.Name + ".json"). But the
@@ -505,7 +505,7 @@ namespace TrueReplayer.Services
             // CleanupOrphanImages stops matching existing folders and deletes every reference PNG
             // the user has. (The degenerate names do collide with each other — "" and "." both map
             // to "_" — which is fine: none of them should exist, and sharing one junk folder is not
-            // in the same universe as erasing LocalAppData.)
+            // in the same universe as erasing the macros.)
             if (name.TrimEnd('.', ' ').Length == 0)
                 name = name.Length == 0 ? "_" : name.Replace('.', '_').Replace(' ', '_');
 

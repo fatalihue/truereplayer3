@@ -57,7 +57,7 @@ export function useAppActions() {
   return useMemo(() => ({
     /** Reloads the page: the recovery hatch for a wedged UI. Typed fields in open editors are lost. */
     reloadUI: () => send({ type: 'window:reloadUI', payload: {} }),
-    /** Opens %LocalAppData%\TrueReplayer\Logs in Explorer. */
+    /** Opens %LocalAppData%\TrueReplayer3\Logs in Explorer. */
     openLogsFolder: () => send({ type: 'logs:openFolder', payload: {} }),
     /** Puts version, OS, WebView2 and state on the clipboard, then confirms with a toast. */
     copyDiagnostics: () => send({ type: 'diagnostics:copy', payload: {} }),

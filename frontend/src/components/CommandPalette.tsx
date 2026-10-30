@@ -272,7 +272,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             onAction: () => { if (!sheetAllows()) return; appActions.reloadUI(); onClose(); },
           },
           {
-            // Opens %LocalAppData%\TrueReplayer\Logs in Explorer. Otherwise reachable only
+            // Opens %LocalAppData%\TrueReplayer3\Logs in Explorer. Otherwise reachable only
             // from the tray menu — surfaced here so users/support can grab the session log
             // for diagnosing silent hotkey / replay issues without hunting for the folder.
             id: 'openlogs', label: 'Open logs folder',
