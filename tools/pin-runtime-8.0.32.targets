@@ -1,0 +1,20 @@
+<!--
+  Pins the .NET 8 runtime a preview carries to 8.0.32, the one TrueReplayer 2.50 ships. This PC's SDK
+  (10.0.400) brings 8.0.30 as the "latest" .NET 8 runtime, and a ReadyToRun publish follows it in
+  three packs: Microsoft.NETCore.App, Microsoft.WindowsDesktop.App and crossgen2.
+  -p:RuntimeFrameworkVersion would also catch Microsoft.Windows.SDK.NET.Ref and break the restore.
+    dotnet publish TrueReplayer.csproj -c Release -p:PublishProfile=Properties/PublishProfiles/win-x64.pubxml
+      -p:CustomAfterMicrosoftCommonTargets=<repo>\tools\pin-runtime-8.0.32.targets
+-->
+<Project>
+  <Target Name="ZzPinNetCoreRuntime" BeforeTargets="ProcessFrameworkReferences">
+    <ItemGroup>
+      <KnownFrameworkReference Condition="('%(Identity)' == 'Microsoft.NETCore.App' or '%(Identity)' == 'Microsoft.WindowsDesktop.App' or '%(Identity)' == 'Microsoft.WindowsDesktop.App.WPF' or '%(Identity)' == 'Microsoft.WindowsDesktop.App.WindowsForms') and '%(TargetFramework)' == 'net8.0'">
+        <LatestRuntimeFrameworkVersion>8.0.32</LatestRuntimeFrameworkVersion>
+      </KnownFrameworkReference>
+      <KnownCrossgen2Pack Condition="'%(TargetFramework)' == 'net8.0'">
+        <Crossgen2PackVersion>8.0.32</Crossgen2PackVersion>
+      </KnownCrossgen2Pack>
+    </ItemGroup>
+  </Target>
+</Project>

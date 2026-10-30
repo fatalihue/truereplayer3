@@ -518,7 +518,7 @@ namespace TrueReplayer.Services
                         // A self-stop like the three in the loops below, and announced like them:
                         // a profile saved by a newer build (a Kind this one does not know) stays
                         // armed on every surface while watching nothing.
-                        AnnounceWatcherStopped(name, $"Its trigger kind '{rt.Config.Kind}' is not known to this version of TrueReplayer.");
+                        AnnounceWatcherStopped(name, $"Its trigger kind '{rt.Config.Kind}' is not known to this version of {AppIdentity.DisplayName}.");
                         break;
                 }
             }
@@ -1997,8 +1997,7 @@ namespace TrueReplayer.Services
 
         private static string StatsPath()
         {
-            string dir = System.IO.Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "TrueReplayer");
+            string dir = AppIdentity.DocumentsRoot;
             System.IO.Directory.CreateDirectory(dir);
             return System.IO.Path.Combine(dir, StatsFileName);
         }

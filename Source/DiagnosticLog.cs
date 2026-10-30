@@ -10,7 +10,7 @@ namespace TrueReplayer.Services
     /// <summary>
     /// Lightweight file-based logger for user-reportable diagnostics — WebView2 crashes,
     /// recovery attempts, unhandled exceptions, etc. Writes to
-    /// %LOCALAPPDATA%\TrueReplayer\Logs\Session-YYYYMMDD-HHmmss.log with automatic rotation
+    /// %LOCALAPPDATA%\TrueReplayer3\Logs\Session-YYYYMMDD-HHmmss.log with automatic rotation
     /// (keeps the last N sessions).
     ///
     /// CALLERS NEVER TOUCH THE DISK. Every entry is handed to a queue and written by one
@@ -66,9 +66,7 @@ namespace TrueReplayer.Services
         {
             try
             {
-                LogDirectory = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "TrueReplayer", "Logs");
+                LogDirectory = Path.Combine(AppIdentity.LocalRoot, "Logs");
                 Directory.CreateDirectory(LogDirectory);
 
                 // Prune old sessions
@@ -87,7 +85,7 @@ namespace TrueReplayer.Services
 
                 var os = Environment.OSVersion.VersionString;
                 var arch = RuntimeArchString();
-                WriteHeader($"TrueReplayer v{appVersion} | {os} | {arch}");
+                WriteHeader($"{AppIdentity.DisplayName} v{appVersion} | {os} | {arch}");
                 // Their own timestamps say they came first.
                 while (_preInit.TryDequeue(out var early)) WriteRaw(early);
             }

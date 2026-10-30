@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { ChevronRight, RotateCcw } from 'lucide-react';
+import { APP_NAME } from '../../../appIdentity';
 import { APP_VERSION } from '../../../appVersion';
 import { useBridge } from '../../../bridge/BridgeContext';
 import type { SettingsState } from '../../../bridge/messageTypes';
@@ -206,7 +207,7 @@ function Foot() {
   }), [subscribe]);
   return (
     <div className="set-foot">
-      <span className="set-version">TrueReplayer {APP_VERSION.replace(/^v/, '')}</span>
+      <span className="set-version">{APP_NAME} · {APP_VERSION.replace(/^v/, '')}</span>
       {postponed ? (
         <>
           <span className="set-update" role="status">{postponed.version ? `${postponed.version} is ready to install` : 'An update is ready to install'}</span>

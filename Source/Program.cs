@@ -20,7 +20,9 @@ namespace TrueReplayer
             // Velopack must run before any WinUI/XAML initialization.
             // It handles install/uninstall/update hooks and exits early when
             // invoked by the updater (e.g. --velopack-install).
-            VelopackApp.Build().Run();
+            VelopackApp.Build()
+                .OnBeforeUninstallFastCallback(_ => RemoveSystemEntries())
+                .Run();
 
             // A recovery relaunch: let the process that launched it finish dying first.
             WaitForPredecessor(args);
@@ -66,14 +68,23 @@ namespace TrueReplayer
                 }
             }
 
+            // One of TrueReplayer 2 and 3 at a time (CoexistenceGuard): before any hook, hotkey,
+            // automation or the extension's pipe exists. After the elevation step, so the dialog it
+            // may show comes up once, in the process that stays.
+            if (!CoexistenceGuard.Acquire(App.HasStartupFlag())) return;
+
+            // An import from TrueReplayer 2 staged by the previous run is put in place now, before the
+            // settings, the remaps or the library are read (Tr2Import).
+            Tr2Import.FinishPending();
+
             // Check WebView2 Runtime before initializing UI
             if (!IsWebView2Available())
             {
                 NativeMessageBox(
-                    "TrueReplayer requires Microsoft Edge WebView2 Runtime.\n\n" +
+                    $"{AppIdentity.DisplayName} requires Microsoft Edge WebView2 Runtime.\n\n" +
                     "Click OK to open the download page.\n" +
-                    "After installing, restart TrueReplayer.",
-                    "TrueReplayer — Missing Dependency");
+                    $"After installing, restart {AppIdentity.DisplayName}.",
+                    $"{AppIdentity.DisplayName} — Missing Dependency");
                 Process.Start(new ProcessStartInfo
                 {
                     FileName = "https://developer.microsoft.com/en-us/microsoft-edge/webview2/",
@@ -114,7 +125,7 @@ namespace TrueReplayer
         /// <summary>Handed to a recovery relaunch by MainWindow.TryRestartProcess: "--wait-pid=&lt;pid&gt;".</summary>
         internal const string WaitForPidArg = "--wait-pid=";
 
-        private const string InstanceMutexName = "TrueReplayer_SingleInstance_Mutex";
+        private const string InstanceMutexName = AppIdentity.InstanceMutexName;
 
         /// <summary>
         /// Blocks (bounded) until the process named by <see cref="WaitForPidArg"/> has exited. The
@@ -132,7 +143,7 @@ namespace TrueReplayer
             {
                 using var predecessor = Process.GetProcessById(pid);
                 // A recycled pid belongs to someone else — nothing to wait for.
-                if (!predecessor.ProcessName.Equals("TrueReplayer", StringComparison.OrdinalIgnoreCase)) return;
+                if (!predecessor.ProcessName.Equals(AppIdentity.ProcessName, StringComparison.OrdinalIgnoreCase)) return;
                 if (!predecessor.WaitForExit(15000))
                     DiagnosticLog.Warn($"[Startup] Predecessor {pid} still alive after 15 s; starting anyway.");
             }
@@ -197,13 +208,14 @@ namespace TrueReplayer
         private static bool SignalRunningInstance()
         {
             bool signalled = false;
-            foreach (var proc in Process.GetProcessesByName("TrueReplayer"))
+            foreach (var proc in Process.GetProcessesByName(AppIdentity.ProcessName))
             {
                 using (proc) // Process objects from GetProcessesByName own a native handle — dispose them
                 {
-                    if (proc.Id == Environment.ProcessId) continue;
+                    // TrueReplayer 2's exe has the same name: its window is not ours to restore.
+                    if (proc.Id == Environment.ProcessId || !CoexistenceGuard.IsThisApp(proc.Id)) continue;
                     IntPtr hwnd = proc.MainWindowHandle;
-                    if (hwnd == IntPtr.Zero) hwnd = FindTopLevelWindow(proc.Id);
+                    if (hwnd == IntPtr.Zero) hwnd = CoexistenceGuard.FindMainWindow(proc.Id);
                     if (hwnd == IntPtr.Zero) continue;
                     ShowWindow(hwnd, 9); // SW_RESTORE
                     SetForegroundWindow(hwnd);
@@ -213,7 +225,7 @@ namespace TrueReplayer
                     // ShowWindow alone. The receiver opens this message to UIPI when it creates
                     // the tray icon, so it also arrives when that instance is elevated and this
                     // one is not (self-elevation happens after this gate).
-                    PostMessage(hwnd, WM_USER_TRAY, IntPtr.Zero, (IntPtr)WM_LBUTTONDBLCLK);
+                    PostMessage(hwnd, (uint)CoexistenceGuard.TrayMessage, IntPtr.Zero, (IntPtr)CoexistenceGuard.WM_LBUTTONDBLCLK);
                     signalled = true;
                 }
             }
@@ -223,8 +235,8 @@ namespace TrueReplayer
         private static bool AnotherInstanceAlive()
         {
             bool alive = false;
-            foreach (var proc in Process.GetProcessesByName("TrueReplayer"))
-                using (proc) alive |= proc.Id != Environment.ProcessId;
+            foreach (var proc in Process.GetProcessesByName(AppIdentity.ProcessName))
+                using (proc) alive |= proc.Id != Environment.ProcessId && CoexistenceGuard.IsThisApp(proc.Id);
             return alive;
         }
 
@@ -238,61 +250,8 @@ namespace TrueReplayer
             return !principal.IsInRole(WindowsBuiltInRole.Administrator);
         }
 
-        // The tray icon's callback message and the click it answers — kept in lockstep with
-        // TrayIconService (uCallbackMessage = WM_USER + 1) and its WndProc.
-        private const uint WM_USER_TRAY = 0x0400 + 1;
-        private const int WM_LBUTTONDBLCLK = 0x0203;
-
-        private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
-
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
-
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
-
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
-
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
-
-        /// <summary>
-        /// The first unowned top-level window belonging to <paramref name="pid"/>, visible or not.
-        /// This is the part MainWindowHandle cannot do: it filters to visible windows, which is
-        /// exactly wrong for an app that lives in the tray.
-        /// </summary>
-        private static IntPtr FindTopLevelWindow(int pid)
-        {
-            const uint GW_OWNER = 4;
-            IntPtr found = IntPtr.Zero;
-            var cls = new System.Text.StringBuilder(256);
-            // Held in a local so the GC cannot collect the delegate while EnumWindows is calling it.
-            EnumWindowsProc callback = (hwnd, _) =>
-            {
-                GetWindowThreadProcessId(hwnd, out uint owner);
-                if (owner != (uint)pid) return true;
-                // Skip tooltips, menus and other owned popups — the main window owns them, not the
-                // other way round.
-                if (GetWindow(hwnd, GW_OWNER) != IntPtr.Zero) return true;
-                // And skip everything that is not the WinUI window itself. The process also owns
-                // unowned, invisible helper windows — GDI+ and the WinForms message pump each keep
-                // one — and picking one of those made the relaunch do nothing. Worse, the
-                // SW_RESTORE below would make it VISIBLE, which poisons Process.MainWindowHandle
-                // for the rest of the process's life: from then on even the visible-window path
-                // resolves to a helper. Matching the class is what keeps that from happening.
-                cls.Clear();
-                if (GetClassName(hwnd, cls, cls.Capacity) == 0) return true;
-                if (cls.ToString() != "WinUIDesktopWin32WindowClass") return true;
-                found = hwnd;
-                return false;
-            };
-            EnumWindows(callback, IntPtr.Zero);
-            return found;
-        }
-
-        [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
-        private static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder lpClassName, int nMaxCount);
 
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
@@ -336,7 +295,7 @@ namespace TrueReplayer
                 string manifest = $$"""
                 {
                   "name": "com.truereplayer.native",
-                  "description": "TrueReplayer Native Messaging Host",
+                  "description": "{{AppIdentity.DisplayName}} Native Messaging Host",
                   "path": "{{hostExe.Replace("\\", "\\\\")}}",
                   "type": "stdio",
                   "allowed_origins": ["chrome-extension://akbcjaimplfchfaeoedhgkebhjaeebko/"]
@@ -356,12 +315,7 @@ namespace TrueReplayer
                 // would then have no extension at all. The host is a relay, so a copy running from
                 // elsewhere is served just as well by the installed one's.
                 bool installed = TrueReplayer.Services.TrayIconService.IsInstalledLocation();
-                foreach (var subKey in new[]
-                {
-                    @"Software\Google\Chrome\NativeMessagingHosts\com.truereplayer.native",
-                    @"Software\Microsoft\Edge\NativeMessagingHosts\com.truereplayer.native",
-                    @"Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\com.truereplayer.native",
-                })
+                foreach (var subKey in NativeHostKeys)
                 {
                     if (!installed && PointsAtWorkingHost(subKey)) continue;
                     using var key = Registry.CurrentUser.CreateSubKey(subKey);
@@ -375,6 +329,42 @@ namespace TrueReplayer
                 TrueReplayer.Services.DiagnosticLog.Warn($"[NativeHost] Registry registration failed: {ex.Message}");
             }
         }
+
+        /// <summary>
+        /// Uninstalling: what this app wrote outside its folders goes with it — its Run value, and the
+        /// browser extension's host registration when it still points into this install. The host is
+        /// shared with TrueReplayer 2 (the same name); left pointing here it would dangle, while
+        /// removed, TrueReplayer 2 registers its own again the next time it opens. Velopack gives a
+        /// fast callback 30 s and then exits the process, so this only deletes keys.
+        /// </summary>
+        private static void RemoveSystemEntries()
+        {
+            try
+            {
+                using var run = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true);
+                run?.DeleteValue(AppIdentity.RunValueName, false);
+            }
+            catch { /* best effort: an uninstall must not fail on this */ }
+            foreach (var subKey in NativeHostKeys)
+            {
+                try
+                {
+                    using var key = Registry.CurrentUser.OpenSubKey(subKey);
+                    if (key?.GetValue("") is not string manifest) continue;
+                    if (!manifest.StartsWith(AppIdentity.LocalRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) continue;
+                    key.Dispose();
+                    Registry.CurrentUser.DeleteSubKeyTree(subKey, false);
+                }
+                catch { /* best effort */ }
+            }
+        }
+
+        private static readonly string[] NativeHostKeys =
+        {
+            @"Software\Google\Chrome\NativeMessagingHosts\com.truereplayer.native",
+            @"Software\Microsoft\Edge\NativeMessagingHosts\com.truereplayer.native",
+            @"Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\com.truereplayer.native",
+        };
 
         // True when the key names a manifest that exists and whose "path" is a host exe that
         // exists — a registration a browser can actually use, whoever wrote it.

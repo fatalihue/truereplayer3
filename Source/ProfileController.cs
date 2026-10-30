@@ -120,9 +120,7 @@ namespace TrueReplayer.Controllers
             TypeInfoResolver = new DefaultJsonTypeInfoResolver()
         };
 
-        private string ProfileOrderPath => Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-            "TrueReplayer", "Profiles", "profile-order.json");
+        private string ProfileOrderPath => Path.Combine(AppIdentity.ProfilesDir, "profile-order.json");
 
         // Theme colors for native dialogs (sent from React frontend)
         private SolidColorBrush? _dialogBackground;
@@ -293,10 +291,7 @@ namespace TrueReplayer.Controllers
 
         public async Task<bool> SaveProfileAsync()
         {
-            string profileDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                "TrueReplayer", "Profiles"
-            );
+            string profileDir = AppIdentity.ProfilesDir;
 
             Directory.CreateDirectory(profileDir);
 
@@ -575,10 +570,7 @@ namespace TrueReplayer.Controllers
 
         public async Task<string?> LoadProfileAsync()
         {
-            string profileDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                "TrueReplayer", "Profiles"
-            );
+            string profileDir = AppIdentity.ProfilesDir;
 
             var path = await ShowFileDialogAsync(new WinForms.OpenFileDialog
             {
@@ -821,10 +813,7 @@ namespace TrueReplayer.Controllers
 
         private async Task LoadProfileListAsync()
         {
-            string profileDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                "TrueReplayer", "Profiles"
-            );
+            string profileDir = AppIdentity.ProfilesDir;
 
             Directory.CreateDirectory(profileDir);
 
@@ -1278,10 +1267,7 @@ namespace TrueReplayer.Controllers
 
         private void SetupProfileWatcher()
         {
-            string profileDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                "TrueReplayer", "Profiles"
-            );
+            string profileDir = AppIdentity.ProfilesDir;
 
             if (!Directory.Exists(profileDir))
                 Directory.CreateDirectory(profileDir);
@@ -1379,10 +1365,7 @@ namespace TrueReplayer.Controllers
         // could never give.
         private static string ProfileFolderState()
         {
-            string profileDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                "TrueReplayer", "Profiles"
-            );
+            string profileDir = AppIdentity.ProfilesDir;
             try
             {
                 var state = new System.Text.StringBuilder();
@@ -2371,9 +2354,7 @@ namespace TrueReplayer.Controllers
             Dictionary<string, ImportConflictResult> conflictResolutions)
         {
             bool hasOrganization = envelope.Organization != null;
-            string profileDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                "TrueReplayer", "Profiles");
+            string profileDir = AppIdentity.ProfilesDir;
             Directory.CreateDirectory(profileDir);
 
             string runningVersion = typeof(ProfileController).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";

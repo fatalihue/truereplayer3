@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ComponentType } from 'react';
 import { ChevronDown, ClipboardCopy, FolderOpen, RefreshCw, ScrollText } from 'lucide-react';
+import { APP_NAME, TR2_NAME } from '../../../appIdentity';
 import { useBridge } from '../../../bridge/BridgeContext';
 import type { HotkeySettingKey, OcrLanguagesPayload, SettingsState } from '../../../bridge/messageTypes';
 import { useAppActions, useExtensionHelp, useOcrLanguages, useSettings } from '../../../logic/useSettings';
@@ -10,6 +11,7 @@ import { DraftField, Segmented, Switch } from '../../inspector/fields';
 import { Menu } from '../../Menu';
 import { anchorBelow } from '../../menuAnchor';
 import { preload, useLoaded } from '../../lazyModule';
+import { openImport } from '../../importState';
 import { useExtension } from '../../statusbar/extensionState';
 import { useApp } from '../../store';
 import type { SettingsCategory } from '../../ui';
@@ -79,7 +81,7 @@ function settingNumber(key: keyof SettingsState & string, label: string, max: nu
 function TrayControl() {
   const on = useSetting('minimizeToTray');
   const settings = useSettings();
-  return <Switch label="Close keeps TrueReplayer in the tray" checked={on} onChange={settings.setMinimizeToTray} />;
+  return <Switch label={`Close keeps ${APP_NAME} in the tray`} checked={on} onChange={settings.setMinimizeToTray} />;
 }
 function RunOnStartupControl() {
   const on = useSetting('runOnStartup');
@@ -141,6 +143,23 @@ function ResetControl() {
 // The confirmation lives in the page; the row asks for it through here.
 let askReset: () => void = () => {};
 export const onResetAsked = (ask: () => void) => { askReset = ask; };
+
+/** Import from TrueReplayer 2… (Tr2Import): the dialog that also makes the first-run offer. */
+function ImportTr2Control() {
+  const busy = useApp(a => a.status !== 'ready');
+  const tt = useTt();
+  return (
+    <button
+      type="button"
+      className="insp-button"
+      disabled={busy}
+      data-tip={busy ? tt('Stop the run or the recording first', 'Pare a execução ou a gravação antes') : undefined}
+      onClick={() => openImport('settings')}
+    >
+      Import…
+    </button>
+  );
+}
 
 /** Jitter, the app's: its switch and its percentage (today's Delay variation chip, settings-030). */
 function JitterControl() {
@@ -256,7 +275,7 @@ function useInstallToasts(langs: OcrLanguagesPayload | null) {
     const name = opt?.label ?? r.tag;
     if (r.ok) {
       toast(r.restartApp
-        ? t(`${name} text recognition installed — restart TrueReplayer to use it.`, `Reconhecimento de texto em ${name} instalado — reinicie o TrueReplayer para usar.`)
+        ? t(`${name} text recognition installed — restart ${APP_NAME} to use it.`, `Reconhecimento de texto em ${name} instalado — reinicie o ${APP_NAME} para usar.`)
         : r.restartWindows
           ? t(`${name} text recognition installed — restart Windows to finish.`, `Reconhecimento de texto em ${name} instalado — reinicie o Windows para concluir.`)
           : t(`${name} text recognition installed.`, `Reconhecimento de texto em ${name} instalado.`),
@@ -326,10 +345,10 @@ function BrowserPanel() {
       </div>
       <p className="insp-hint" role="status">
         {!reply ? null
-          : !reply.exists ? <span data-error="">{tt('This folder is missing. Reinstall TrueReplayer to restore it.', 'Esta pasta não existe. Reinstale o TrueReplayer para restaurá-la.')}</span>
-          : answered && reply.copied ? tt('The path is copied. The extension updates itself along with TrueReplayer.', 'O caminho foi copiado. A extensão se atualiza sozinha junto com o TrueReplayer.')
-          : answered ? tt('Could not copy the path — select it above. The extension updates itself along with TrueReplayer.', 'Não deu para copiar o caminho — selecione-o acima. A extensão se atualiza sozinha junto com o TrueReplayer.')
-          : tt('The extension updates itself along with TrueReplayer.', 'A extensão se atualiza sozinha junto com o TrueReplayer.')}
+          : !reply.exists ? <span data-error="">{tt(`This folder is missing. Reinstall ${APP_NAME} to restore it.`, `Esta pasta não existe. Reinstale o ${APP_NAME} para restaurá-la.`)}</span>
+          : answered && reply.copied ? tt(`The path is copied. The extension updates itself along with ${APP_NAME}.`, `O caminho foi copiado. A extensão se atualiza sozinha junto com o ${APP_NAME}.`)
+          : answered ? tt(`Could not copy the path — select it above. The extension updates itself along with ${APP_NAME}.`, `Não deu para copiar o caminho — selecione-o acima. A extensão se atualiza sozinha junto com o ${APP_NAME}.`)
+          : tt(`The extension updates itself along with ${APP_NAME}.`, `A extensão se atualiza sozinha junto com o ${APP_NAME}.`)}
       </p>
     </div>
   );
@@ -388,7 +407,7 @@ export const CATEGORIES: Category[] = [
       {
         title: 'Window',
         rows: [
-          { id: 'tray', label: 'Close keeps TrueReplayer in the tray', hint: 'The X hides the window in the tray instead of closing the app.', words: 'system tray minimize close', Control: TrayControl },
+          { id: 'tray', label: `Close keeps ${APP_NAME} in the tray`, hint: 'The X hides the window in the tray instead of closing the app.', words: 'system tray minimize close', Control: TrayControl },
         ],
       },
       {
@@ -396,7 +415,7 @@ export const CATEGORIES: Category[] = [
         rows: [
           { id: 'runOnStartup', label: 'Run on startup', hint: 'Opens with Windows.', words: 'boot login autostart', Control: RunOnStartupControl },
           { id: 'startMinimized', label: 'Startup minimized', hint: 'Opened with Windows, it starts in the tray.', words: 'hidden tray', Control: StartMinimizedControl },
-          { id: 'runAsAdmin', label: 'Run as administrator', hint: 'From the next time TrueReplayer opens; Windows asks for permission. Needed to click in windows that run as administrator.', words: 'elevated uac admin', Control: settingSwitch('runAsAdmin', 'Run as administrator') },
+          { id: 'runAsAdmin', label: 'Run as administrator', hint: `From the next time ${APP_NAME} opens; Windows asks for permission. Needed to click in windows that run as administrator.`, words: 'elevated uac admin', Control: settingSwitch('runAsAdmin', 'Run as administrator') },
         ],
       },
       {
@@ -411,6 +430,12 @@ export const CATEGORIES: Category[] = [
         title: 'Interface',
         rows: [
           { id: 'tooltips', label: 'Tooltips', hint: 'The language of the tips; names and labels stay in English.', words: 'language portuguese english idioma', Control: TooltipsControl },
+        ],
+      },
+      {
+        title: TR2_NAME,
+        rows: [
+          { id: 'importTr2', label: `Import from ${TR2_NAME}`, hint: `A copy of its macros, settings, remaps, theme and snippets. ${TR2_NAME} is not changed.`, words: 'import copy migrate old version previous', Control: ImportTr2Control },
         ],
       },
       {
@@ -439,7 +464,7 @@ export const CATEGORIES: Category[] = [
       {
         title: 'Window',
         rows: [
-          hotkeyRow('front', 'foregroundHotkey', 'Bring TrueReplayer to the front', { words: 'foreground focus show window', noKeyWhy: 'the tray icon does it' }),
+          hotkeyRow('front', 'foregroundHotkey', `Bring ${APP_NAME} to the front`, { words: 'foreground focus show window', noKeyWhy: 'the tray icon does it' }),
           hotkeyRow('clicker', 'modeToggleHotkey', 'Open the Clicker', { hint: 'Pressed again, back to the macros', words: 'mode toggle clicker macro' }),
         ],
       },

@@ -1,11 +1,11 @@
 {
   "name": "frontend",
   "private": true,
-  "version": "2.50.0",
+  "version": "3.0.0-preview.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run mirror && npm run lint:gate && tsc -b && vite build",
+    "build": "npm run mirror && npm run lint:gate && tsc -b && vite build && node ../tools/identidade-gate.mjs dist",
     "lint": "eslint .",
     "preview": "vite preview",
     "mirror": "node tools/gen-boot-mirror.mjs",

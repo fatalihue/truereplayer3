@@ -954,7 +954,7 @@ namespace TrueReplayer.Services
                                 {
                                     reportedElevated = elevated;
                                     if (elevated)
-                                        DiagnosticLog.Warn("Clicker: the window under the cursor runs elevated and this process does not — SendInput reports success but UIPI drops every click. Run TrueReplayer as administrator.");
+                                        DiagnosticLog.Warn("Clicker: the window under the cursor runs elevated and this process does not — SendInput reports success but UIPI drops every click. Run " + AppIdentity.DisplayName + " as administrator.");
                                     dispatcherQueue.TryEnqueue(() => OnClickerWarning?.Invoke(elevated ? "elevatedTarget" : null));
                                 }
                             }
@@ -9060,7 +9060,7 @@ namespace TrueReplayer.Services
         // Two branches: explicit "Continue" silently moves on to the next action; everything
         // else (null default / "StopReplay" / anything legacy) cancels the shared CTS so the
         // replay halts cleanly mid-iteration, equivalent to pressing the Stop button. A debug
-        // screenshot is dumped to %APPDATA%\TrueReplayer\Debug\ regardless, so the user can
+        // screenshot is dumped to %LOCALAPPDATA%\TrueReplayer3\Debug\ regardless, so the user can
         // diagnose why the match failed.
         /// <summary>
         /// The step record currently executing, or null between steps. Exists so the paths that end
@@ -9940,9 +9940,7 @@ namespace TrueReplayer.Services
             // Diagnostic-only — never let a screenshot failure bubble up and break the replay.
             try
             {
-                var dir = System.IO.Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                    "TrueReplayer", "Debug");
+                var dir = System.IO.Path.Combine(AppIdentity.LocalRoot, "Debug");
                 System.IO.Directory.CreateDirectory(dir);
 
                 var refName = System.IO.Path.GetFileNameWithoutExtension(action.ImagePath ?? "unknown");
@@ -9963,7 +9961,7 @@ namespace TrueReplayer.Services
             }
         }
 
-        // How many timeout screenshots survive in %APPDATA%\TrueReplayer\Debug. Same posture as
+        // How many timeout screenshots survive in %LOCALAPPDATA%\TrueReplayer3\Debug. Same posture as
         // DiagnosticLog's MaxSessionFiles: a diagnostic artefact is worth keeping until it is
         // stale, never worth unbounded disk. Desktop-sized PNGs, so the count is small.
         internal const int MaxTimeoutScreenshots = 20;

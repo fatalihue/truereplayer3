@@ -200,7 +200,7 @@ namespace TrueReplayer.Services
         public static Task<InstallResult> InstallLanguageAsync(string tag) => Task.Run(async () =>
         {
             var offered = OfferedLanguages.FirstOrDefault(l => string.Equals(l.Tag, tag, StringComparison.OrdinalIgnoreCase));
-            if (offered.Tag == null) return new InstallResult(false, Error: $"'{tag}' is not a language TrueReplayer installs.");
+            if (offered.Tag == null) return new InstallResult(false, Error: $"'{tag}' is not a language {AppIdentity.DisplayName} installs.");
             string capability = $"Language.OCR~~~{offered.Tag}~0.0.1.0";
             var psi = new ProcessStartInfo
             {

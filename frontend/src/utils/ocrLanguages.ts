@@ -1,4 +1,5 @@
 import type { OcrLanguage, OcrLanguagesPayload } from '../bridge/messageTypes';
+import { APP_NAME } from '../appIdentity';
 
 // OCR language picker labels. Windows' display names carry the region ("English (United
 // States)", 176 px) and never fit a settings field, so a pack shows its bare language name —
@@ -52,7 +53,7 @@ export function ocrLanguageNote(pick: string, langs: OcrLanguagesPayload): OcrLa
   if (!pick) return langs.auto ? null : { kind: 'missing', text: 'No OCR language on this PC', install: null };
   if (langs.available.some(a => sameTag(a.tag, pick))) return null;
   if (langs.installing && sameTag(langs.installing, pick)) return { kind: 'installing', text: 'Installing…' };
-  if (langs.pendingRestart.some(t => sameTag(t, pick))) return { kind: 'restart', text: 'Installed — restart TrueReplayer' };
+  if (langs.pendingRestart.some(t => sameTag(t, pick))) return { kind: 'restart', text: `Installed — restart ${APP_NAME}` };
   return {
     kind: 'missing',
     text: langs.effective ? `Missing — uses ${label(langs.effective)}` : 'Missing — no OCR yet',

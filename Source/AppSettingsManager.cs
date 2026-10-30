@@ -15,7 +15,9 @@ namespace TrueReplayer.Services
             // Window
             public bool AlwaysOnTop { get; set; } = false;
             public bool MinimizeToTray { get; set; } = true;
-            public bool RunOnStartup { get; set; } = true;
+            // Off for a new install of TrueReplayer 3: it is installed beside TrueReplayer 2, which
+            // starts with Windows, and only one of the two can run (CoexistenceGuard).
+            public bool RunOnStartup { get; set; } = false;
             public bool StartMinimized { get; set; } = true;
             // Notifications — out-of-window run-end cues (UI Wave 3). The window is
             // usually BEHIND the game while a replay runs, so the in-window status
@@ -256,7 +258,7 @@ namespace TrueReplayer.Services
                 _unwrittenJson = json;
                 TrueReplayer.Services.DiagnosticLog.Warn(
                     "appsettings.json NOT written: it could not be read when this session started, so these values " +
-                    "were built on defaults. Restart TrueReplayer to load the file.");
+                    $"were built on defaults. Restart {AppIdentity.DisplayName} to load the file.");
                 return false;
             }
             try
@@ -316,7 +318,7 @@ namespace TrueReplayer.Services
                 }
                 TrueReplayer.Services.DiagnosticLog.Error(
                     "appsettings.json exists but could not be read — running on defaults this session, and the file " +
-                    "will NOT be written until TrueReplayer is restarted", readError ?? new IOException("unknown read failure"));
+                    $"will NOT be written until {AppIdentity.DisplayName} is restarted", readError ?? new IOException("unknown read failure"));
                 return new AppSettings();
             }
 
@@ -422,33 +424,20 @@ namespace TrueReplayer.Services
 
         // Resolved once per process. Load() is not cached and is called from ~25 sites (seven of
         // them before the window is even interactive), and every one of those paid the
-        // CreateDirectory + two File.Exists below — for a path that cannot change and a one-shot
-        // migration that can only ever fire on the FIRST call: once the file has moved, or was
-        // already at the new location, File.Exists(oldPath) && !File.Exists(newPath) is false
-        // forever. Lazy, not a field initializer, so the directory work still happens on first
-        // use rather than at type load.
+        // CreateDirectory below for a path that cannot change. Lazy, not a field initializer, so
+        // the directory work still happens on first use rather than at type load.
         private static string? _cachedPath;
 
         private static string GetPath() => _cachedPath ??= ResolvePath();
 
         private static string ResolvePath()
         {
-            // Store in Documents/TrueReplayer so settings survive app updates
-            string dir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                "TrueReplayer");
+            // Store in Documents/TrueReplayer3 so settings survive app updates. TrueReplayer 3 has no
+            // settings file of its own from before Documents, so the move from the install folder
+            // TrueReplayer 2 still does is not here.
+            string dir = AppIdentity.DocumentsRoot;
             Directory.CreateDirectory(dir);
-
-            // Migrate from old location (app install folder) if exists
-            string oldPath = Path.Combine(AppContext.BaseDirectory, FileName);
-            string newPath = Path.Combine(dir, FileName);
-            if (File.Exists(oldPath) && !File.Exists(newPath))
-            {
-                try { File.Move(oldPath, newPath); }
-                catch { /* best effort */ }
-            }
-
-            return newPath;
+            return Path.Combine(dir, FileName);
         }
     }
 }

@@ -3,6 +3,7 @@ import { Download } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
 import type { IncomingMessage } from '../bridge/messageTypes';
 import { useAppActions } from '../logic/useSettings';
+import { APP_NAME } from '../appIdentity';
 import { Button } from './common/Button';
 
 type Phase =
@@ -210,7 +211,7 @@ export function UpdateOverlay({ pending }: { pending?: readonly IncomingMessage[
         <div className="relative w-14 h-14 mx-auto mb-3.5">
           <img
             src="app-icon.png"
-            alt="TrueReplayer"
+            alt={APP_NAME}
             className={`block w-14 h-14 rounded-[14px] object-cover shadow-overlay ${isComplete ? '' : 'update-logo-pulse'}`}
           />
           {isComplete && (
@@ -241,9 +242,9 @@ export function UpdateOverlay({ pending }: { pending?: readonly IncomingMessage[
             {phase.step === 'complete' && 'Update complete'}
           </div>
           <div id={subtitleId} className="text-center text-[11px] text-text-tertiary mb-[18px]">
-            {phase.step === 'available' && 'A new version of TrueReplayer is ready'}
+            {phase.step === 'available' && `A new version of ${APP_NAME} is ready`}
             {phase.step === 'downloading' && 'Do not close the app'}
-            {phase.step === 'installing' && 'Closing TrueReplayer…'}
+            {phase.step === 'installing' && `Closing ${APP_NAME}…`}
             {phase.step === 'complete' && 'You are now on the latest version'}
           </div>
         </div>

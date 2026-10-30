@@ -1120,6 +1120,10 @@ namespace TrueReplayer
                 {
                     case "ui:ready": HandleUIReady(); break;
                     case "ui:capabilities": HandleUICapabilities(payload); break;
+                    // "Import from TrueReplayer 2" (Tr2Import): what there is, the copy, and "Start fresh".
+                    case "import:scan": SendMessage("import:summary", Tr2Import.Scan()); break;
+                    case "import:run": HandleImportRun(payload); break;
+                    case "import:dismiss": Tr2Import.DismissOffer(); break;
                     case "recording:toggle": HandleRecordingToggle(payload); break;
                     case "replay:toggle": HandleReplayToggle(); break;
                     case "replay:resume": HandleReplayResume(payload); break;
@@ -1265,6 +1269,12 @@ namespace TrueReplayer
                     case "window:alwaysOnTop": HandleAlwaysOnTop(payload); break;
                     case "window:snapWidths": HandleSnapWidths(payload); break;
                     case "window:minimizeToTray": HandleMinimizeToTray(payload); break;
+                    // "Switch to TrueReplayer 2" after it knocked (CoexistenceGuard): this app exits, and
+                    // opens TrueReplayer 2 when it is installed.
+                    case "coexist:switch":
+                        _ = TrayIconService.SwitchToTr2Async(
+                            payload.TryGetProperty("openTr2", out var openTr2) && openTr2.ValueKind == JsonValueKind.True);
+                        break;
                     case "window:runOnStartup": HandleRunOnStartup(payload); break;
                     case "window:startMinimized": HandleStartMinimized(payload); break;
                     case "window:runEndFlash": HandleRunEndFlash(payload); break;
@@ -3695,9 +3705,7 @@ namespace TrueReplayer
 
         // Environment.GetFolderPath is a shell lookup, and this ran on every action recorded, every
         // row deleted and every edit. The Documents path cannot move while the process is alive.
-        private static readonly string StatusBarProfileDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-            "TrueReplayer", "Profiles");
+        private static readonly string StatusBarProfileDir = AppIdentity.ProfilesDir;
 
         public void PushStatusBarUpdate()
         {
@@ -3808,6 +3816,34 @@ namespace TrueReplayer
                 && payload.TryGetProperty("extendedUndo", out var undo) && undo.ValueKind == JsonValueKind.True;
             if (ExtendedUndoEnabled && !extendedUndo) DropPartEntries();
             ExtendedUndoEnabled = extendedUndo;
+
+            // The import from TrueReplayer 2 (Tr2Import): the notice of one that finished on this
+            // start, or the first-run offer. The new shell asks its capabilities once it is up, so it
+            // hears either; the theme and snippets were already handed to it before its first script.
+            Tr2Import.WebStorageDelivered();
+            var imported = Tr2Import.TakeAnnouncement();
+            if (imported != null) SendMessage("import:done", new { summary = imported });
+            else if (Tr2Import.FirstRunOffer() is { } offer) SendMessage("import:offer", offer);
+        }
+
+        private async void HandleImportRun(JsonElement payload)
+        {
+            var parts = Tr2Import.Parts.None;
+            bool Flag(string name) => payload.ValueKind == JsonValueKind.Object
+                && payload.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.True;
+            if (Flag("macros")) parts |= Tr2Import.Parts.Macros;
+            if (Flag("settings")) parts |= Tr2Import.Parts.Settings;
+            if (Flag("remaps")) parts |= Tr2Import.Parts.Remaps;
+            if (Flag("appearance")) parts |= Tr2Import.Parts.Appearance;
+
+            string? error = await Tr2Import.StageAsync(parts, WinRT.Interop.WindowNative.GetWindowHandle(window));
+            if (error != null)
+            {
+                SendMessage("import:error", new { message = error });
+                return;
+            }
+            SendMessage("import:staged", new { });
+            await TrayIconService.RestartAsync($"[Import] restarting to finish the import from {AppIdentity.Tr2.DisplayName}");
         }
 
         // Restarts the countdown. Both writers of the dirty state call it: the HasUnsavedChanges
@@ -4355,7 +4391,7 @@ namespace TrueReplayer
                 toolbar = new { profileName = CurrentProfileName },
                 statusBar = new
                 {
-                    directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "TrueReplayer", "Profiles"),
+                    directory = AppIdentity.ProfilesDir,
                     profileName = CurrentProfileName == "No Profile" ? (string?)null : CurrentProfileName,
                     actionCount = actions.Count
                 },
@@ -4755,7 +4791,7 @@ namespace TrueReplayer
                 SendMessage("update:error", new { message = $"Update failed: {ex.Message}" });
                 SendMessage("alert:show", new
                 {
-                    message = $"The update could not be applied: {ex.Message}. TrueReplayer is still running the current version.",
+                    message = $"The update could not be applied: {ex.Message}. {AppIdentity.DisplayName} is still running the current version.",
                     type = "error"
                 });
             }
@@ -5071,7 +5107,7 @@ namespace TrueReplayer
             }
             var lines = new List<string>
             {
-                "TrueReplayer diagnostics",
+                $"{AppIdentity.DisplayName} diagnostics",
                 $"Version: {Safe(() => UpdateService.CurrentVersion ?? System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "unknown")}",
                 $"OS: {Safe(() => System.Runtime.InteropServices.RuntimeInformation.OSDescription)} · {(Environment.Is64BitProcess ? "x64" : "x86")} process",
                 $"WebView2: {Safe(CoreWebView2Environment.GetAvailableBrowserVersionString)}",
@@ -10203,9 +10239,7 @@ namespace TrueReplayer
                 return;
             }
 
-            string profileDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                "TrueReplayer", "Profiles");
+            string profileDir = AppIdentity.ProfilesDir;
 
             if (!name.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
                 name += ".json";
@@ -12575,9 +12609,7 @@ namespace TrueReplayer
             // (fresh install with no profiles saved yet) so Explorer doesn't pop an error.
             try
             {
-                string profileDir = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                    "TrueReplayer", "Profiles");
+                string profileDir = AppIdentity.ProfilesDir;
                 Directory.CreateDirectory(profileDir);
                 System.Diagnostics.Process.Start("explorer.exe", $"\"{profileDir}\"");
             }
@@ -14392,7 +14424,7 @@ namespace TrueReplayer
             ["recordingHotkey"] = "“Record”",
             ["replayHotkey"] = "“Replay or stop”",
             ["profileKeyToggleHotkey"] = "“Shortcuts on or off”",
-            ["foregroundHotkey"] = "“Bring TrueReplayer to the front”",
+            ["foregroundHotkey"] = $"“Bring {AppIdentity.DisplayName} to the front”",
             ["modeToggleHotkey"] = "“Open the Clicker”",
             ["captureSlotHotkey"] = "“Copy the selection to a clip slot”",
             ["copyScreenTextHotkey"] = "“Copy text from the screen”",

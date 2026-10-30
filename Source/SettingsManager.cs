@@ -52,10 +52,7 @@ namespace TrueReplayer.Services
 
         private static string GetDefaultProfilePath()
         {
-            string profileDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                "TrueReplayer", "Profiles"
-            );
+            string profileDir = AppIdentity.ProfilesDir;
 
             Directory.CreateDirectory(profileDir);
             return Path.Combine(profileDir, "profile.json");

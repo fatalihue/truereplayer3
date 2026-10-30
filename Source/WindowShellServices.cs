@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -109,7 +110,7 @@ namespace TrueReplayer.Services
         private const uint TPM_RETURNCMD = 0x0100;
 
         private const string StartupRegistryKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-        private const string StartupValueName = "TrueReplayer";
+        private const string StartupValueName = AppIdentity.RunValueName;
 
         private static IntPtr hwnd;
         private static NotifyIconData notifyIcon;
@@ -146,7 +147,8 @@ namespace TrueReplayer.Services
                 hWnd = hwnd,
                 uID = 1,
                 uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP,
-                uCallbackMessage = WM_USER + 1,
+                // Not WM_USER + 1: that one is TrueReplayer 2's, and its knock (CoexistenceGuard).
+                uCallbackMessage = CoexistenceGuard.TrayMessage,
                 hIcon = currentIconHandle,
                 szTip = ResolveTooltip(settings)
             };
@@ -163,8 +165,12 @@ namespace TrueReplayer.Services
             // window is dropped silently by User Interface Privilege Isolation — the relaunch would
             // appear to do nothing at all, which is the state it is meant to rescue the user from.
             // Best-effort: on a non-elevated instance the call is simply a no-op that returns true.
-            if (!ChangeWindowMessageFilterEx(hwnd, WM_USER + 1, MSGFLT_ALLOW, IntPtr.Zero))
+            if (!ChangeWindowMessageFilterEx(hwnd, (uint)CoexistenceGuard.TrayMessage, MSGFLT_ALLOW, IntPtr.Zero))
                 DiagnosticLog.Warn($"ChangeWindowMessageFilterEx for the tray message failed (Win32 error {Marshal.GetLastWin32Error()}) — relaunching the exe may not restore the window while elevated");
+            // TrueReplayer 2's knock (CoexistenceGuard) comes the same way, and from a process that
+            // has not elevated yet: 2.50 knocks before its own self-elevation.
+            if (!ChangeWindowMessageFilterEx(hwnd, (uint)CoexistenceGuard.Tr2TrayMessage, MSGFLT_ALLOW, IntPtr.Zero))
+                DiagnosticLog.Warn($"ChangeWindowMessageFilterEx for {AppIdentity.Tr2.DisplayName}'s knock failed (Win32 error {Marshal.GetLastWin32Error()}) — it may not reach this window while elevated");
 
             if (showNotification)
             {
@@ -200,7 +206,7 @@ namespace TrueReplayer.Services
         }
 
         public static void ShowMinimizeBalloon() => ShowBalloon(
-            "TrueReplayer is running in the background",
+            $"{AppIdentity.DisplayName} is running in the background",
             // Double-click, because that is what the WndProc actually answers: a single click is
             // WM_LBUTTONUP and nothing handles it, so the old wording sent people clicking once at
             // an icon that would not respond.
@@ -299,11 +305,11 @@ namespace TrueReplayer.Services
         {
             string fileName;
             if (settings.UseCursorClick)
-                fileName = "TrueReplayerPurple.ico";
+                fileName = AppIdentity.IconFilePurple;
             else if (UserProfile.Current.ProfileKeyEnabled)
-                fileName = "TrueReplayer.ico";
+                fileName = AppIdentity.IconFile;
             else
-                fileName = "TrueReplayerRed.ico";
+                fileName = AppIdentity.IconFileRed;
             return Path.Combine(AppContext.BaseDirectory, fileName);
         }
 
@@ -328,17 +334,18 @@ namespace TrueReplayer.Services
             // The engine reports a Clicker run as "replaying" too (one status for both loops), so
             // the mode picks the word — the icon is already purple, and "Replaying…" under a
             // purple icon contradicted it.
+            const string name = AppIdentity.DisplayName;
             if (_runState == "replaying")
-                return settings.UseCursorClick ? "TrueReplayer — Clicking…" : "TrueReplayer — Replaying…";
+                return settings.UseCursorClick ? $"{name} — Clicking…" : $"{name} — Replaying…";
             if (_runState == "recording")
-                return "TrueReplayer — Recording…";
+                return $"{name} — Recording…";
             string line;
             if (settings.UseCursorClick)
-                line = "TrueReplayer — Clicker mode";
+                line = $"{name} — Clicker mode";
             else if (!UserProfile.Current.ProfileKeyEnabled)
-                line = "TrueReplayer — Replay mode (profile keys paused)";
+                line = $"{name} — Replay mode (profile keys paused)";
             else
-                line = "TrueReplayer — Replay mode";
+                line = $"{name} — Replay mode";
             // Armed-watcher count — the tray is the daemon's only always-visible surface.
             // Configured count (not live loops) so the "paused" hint still shows when the
             // master switch is off. szTip caps at 127 chars; base lines are short.
@@ -423,15 +430,13 @@ namespace TrueReplayer.Services
         }
 
         // True only when running from the Velopack install location
-        // (%LocalAppData%\TrueReplayer\...). Dev (bin\) and portable copies return false.
+        // (%LocalAppData%\TrueReplayer3\...). Dev (bin\) and portable copies return false.
         // Also read by Program.RegisterNativeMessagingHost, the other HKCU writer with this hazard.
         internal static bool IsInstalledLocation()
         {
             var p = Environment.ProcessPath;
             if (string.IsNullOrEmpty(p)) return false;
-            string installRoot = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TrueReplayer");
-            return p.StartsWith(installRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+            return p.StartsWith(AppIdentity.LocalRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
         }
 
         /// Callback invoked after tray menu toggles a setting, so bridge can push updated state to UI.
@@ -599,6 +604,51 @@ namespace TrueReplayer.Services
                 Microsoft.UI.Xaml.Application.Current.Exit();
                 Environment.Exit(0);
             }
+        }
+
+        /// <summary>
+        /// "Switch to TrueReplayer 2", after TrueReplayer 2 knocked (CoexistenceGuard): the tray Exit,
+        /// then TrueReplayer 2 started with --wait-pid, which 2.50 already understands — it waits for
+        /// this process to be gone before it takes its mutex. With <paramref name="openTr2"/> false
+        /// (no installed TrueReplayer 2 to open) it is just the Exit.
+        /// </summary>
+        public static Task SwitchToTr2Async(bool openTr2) => ExitAndStartAsync(
+            openTr2 ? AppIdentity.Tr2.InstalledExe : null,
+            openTr2 ? $"[Coexist] switching to {AppIdentity.Tr2.DisplayName}" : $"[Coexist] closing so {AppIdentity.Tr2.DisplayName} can open");
+
+        /// <summary>The restart that finishes an import (Tr2Import): this exe again, after this process is gone.</summary>
+        public static Task RestartAsync(string reason) => ExitAndStartAsync(Environment.ProcessPath, reason);
+
+        /// <summary>
+        /// The tray Exit — the close guard, then the same teardown — and, when <paramref name="exe"/>
+        /// is given, that exe started with --wait-pid so it only takes over once this process is gone.
+        /// </summary>
+        private static async Task ExitAndStartAsync(string? exe, string reason)
+        {
+            if (OnTrayExitRequested != null && !await OnTrayExitRequested()) return;
+
+            DiagnosticLog.Info(reason);
+            AppExit.FlushState();
+            AppExit.ReleaseSystem();
+            if (exe != null)
+            {
+                try
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = exe,
+                        Arguments = Program.WaitForPidArg + Environment.ProcessId,
+                        WorkingDirectory = Path.GetDirectoryName(exe)!,
+                        UseShellExecute = true,
+                    });
+                }
+                catch (Exception ex)
+                {
+                    DiagnosticLog.Warn($"Could not start {exe}: {ex.Message}");
+                }
+            }
+            Microsoft.UI.Xaml.Application.Current.Exit();
+            Environment.Exit(0);
         }
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
@@ -898,7 +948,7 @@ namespace TrueReplayer.Services
                 return HwndHookManager.CallOriginalWndProc(hwnd, msg, wParam, lParam);
             }
 
-            if (msg == WM_USER + 1)
+            if (msg == CoexistenceGuard.TrayMessage)
             {
                 if ((int)lParam == WM_LBUTTONDBLCLK)
                 {
@@ -909,6 +959,12 @@ namespace TrueReplayer.Services
                 {
                     TrayIconService.ShowContextMenu();
                 }
+            }
+            else if (msg == CoexistenceGuard.Tr2TrayMessage && (int)lParam == WM_LBUTTONDBLCLK)
+            {
+                // TrueReplayer 2 was launched while this app runs: it found its mutex name held
+                // (CoexistenceGuard), knocked with its own tray double-click, and exited.
+                CoexistenceGuard.OnKnock();
             }
             else if (msg == WM_DISPLAYCHANGE)
             {

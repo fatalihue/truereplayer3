@@ -746,11 +746,12 @@ namespace TrueReplayer.Services
             // Per-profile jitter and fast approach. Same destroy-on-round-trip mechanism as Game
             // Mode: an older build drops the keys and runs the macro on the app's values, with
             // nothing on screen saying so. Gated on USE the same way (written only when set).
-            // Introduced after 2.50.0 — bump at release if the release number differs.
+            // TrueReplayer 3 only (plan truereplayer3-paralelo-2026-10-30.md, decision 7): pinned at
+            // 3.0.0, so TrueReplayer 2 refuses such a macro with a notice instead of misreading it.
             (p => p.DelayVariation.HasValue,
-                new Version(2, 51, 0), "Per-profile jitter"),
+                new Version(3, 0, 0), "Per-profile jitter"),
             (p => p.FastApproach.HasValue,
-                new Version(2, 51, 0), "Per-profile fast approach"),
+                new Version(3, 0, 0), "Per-profile fast approach"),
 
             // Screen text (OCR). Each family fails SILENTLY on an older build, which is the whole
             // reason for one row apiece: Wait for Text has no case in the action switch (no default),

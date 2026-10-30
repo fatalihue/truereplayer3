@@ -1,4 +1,5 @@
 import { Search } from 'lucide-react';
+import { APP_NAME } from '../appIdentity';
 import { useApp, useShell } from './store';
 import { BrandMark } from './BrandMark';
 import { preload } from './lazyModule';
@@ -17,7 +18,7 @@ export function TitleBar() {
     <header className="shell-titlebar drag-region">
       <div className="shell-brand">
         <BrandMark ring={ring} />
-        <span>TrueReplayer</span>
+        <span>{APP_NAME}</span>
       </div>
       <div className="shell-titlebar-middle">
         {/* casca-018: the search that opens Ctrl+K. Out of the drag region, or a click would move the window.

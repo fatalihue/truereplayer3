@@ -205,6 +205,21 @@ export interface SelectorAlternative {
   description: string;
 }
 
+// What "Import from TrueReplayer 2" would bring, or brought (Tr2Import.Summary in the engine).
+export interface Tr2ImportSummary {
+  tr2Found: boolean;
+  macros: number;
+  folders: number;
+  images: number;
+  settings: boolean;
+  remaps: number;
+  appearance: boolean;
+  /** TrueReplayer 2 is open: its files must not change while they are copied. */
+  tr2Running: boolean;
+  /** This app has macros and settings of its own, which an import keeps in Backups first. */
+  tr3HasData: boolean;
+}
+
 // Settings → App → Screen Text: the OCR packs (see ocr:languagesResult). The bridge serializes
 // with WhenWritingNull, so a null tag arrives as an ABSENT key — read them by truthiness.
 export interface OcrLanguage {
@@ -923,6 +938,18 @@ export type IncomingMessage =
   | { type: 'automation:open'; payload: Record<string, never> }
   // Tray "Browser extension…" clicked — restore + open the Browser extension dialog.
   | { type: 'extension:openHelp'; payload: Record<string, never> }
+  // TrueReplayer 2 was launched while this app runs (CoexistenceGuard): it found its mutex name held
+  // and exited. The page asks whether to switch; tr2Installed = there is an installed one to open.
+  | { type: 'coexist:tr2Knocked'; payload: { tr2Installed: boolean } }
+  // "Import from TrueReplayer 2" (Tr2Import). offer: on a first start with TrueReplayer 2's data on
+  // the computer and no macro here yet. summary: the answer to import:scan. staged: the copy is
+  // ready and the app restarts to put it in place. error: nothing was changed. done: on the start
+  // that finished one, once.
+  | { type: 'import:offer'; payload: Tr2ImportSummary }
+  | { type: 'import:summary'; payload: Tr2ImportSummary }
+  | { type: 'import:staged'; payload: Record<string, never> }
+  | { type: 'import:error'; payload: { message: string } }
+  | { type: 'import:done'; payload: { summary: Tr2ImportSummary | null } }
   // Reply to extension:help. path = the folder to load unpacked (already on the clipboard when
   // copied is true); exists = false only on a broken install, where the folder is missing.
   | { type: 'extension:help'; payload: { path: string; exists: boolean; copied: boolean; connected: boolean } }
@@ -1409,6 +1436,13 @@ export type OutgoingMessage =
   // The new interface's layout band edges, in DIP: a dragged window edge sticks to them (D27).
   | { type: 'window:snapWidths'; payload: { widths: number[] } }
   | { type: 'window:minimizeToTray'; payload: { enabled: boolean } }
+  // After coexist:tr2Knocked: this app exits (saving as the tray Exit does), opening TrueReplayer 2
+  // when openTr2 — one of the two at a time (plan truereplayer3-paralelo-2026-10-30.md, decision 5).
+  | { type: 'coexist:switch'; payload: { openTr2: boolean } }
+  | { type: 'import:scan'; payload: Record<string, never> }
+  | { type: 'import:run'; payload: { macros: boolean; settings: boolean; remaps: boolean; appearance: boolean } }
+  // "Start fresh" on the first-run offer: not offered again on its own.
+  | { type: 'import:dismiss'; payload: Record<string, never> }
   | { type: 'window:runOnStartup'; payload: { enabled: boolean } }
   | { type: 'window:startMinimized'; payload: { enabled: boolean } }
   | { type: 'window:runEndFlash'; payload: { enabled: boolean } }

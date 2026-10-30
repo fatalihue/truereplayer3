@@ -100,8 +100,7 @@ namespace TrueReplayer.Services
 
         private static string GetPath()
         {
-            string dir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "TrueReplayer");
+            string dir = AppIdentity.DocumentsRoot;
             Directory.CreateDirectory(dir);
             return Path.Combine(dir, FileName);
         }

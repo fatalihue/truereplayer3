@@ -154,7 +154,7 @@ namespace TrueReplayer
             // Before RemapService.Load and the input hooks below: every key name the app records
             // or resolves is read against THIS thread's layout, from whichever thread asks.
             Helpers.KeyUtils.BindUiThread();
-            this.Title = "TrueReplayer";
+            this.Title = AppIdentity.DisplayName;
 
             AppSettingsManager.ApplyGlobalSettings(UserProfile.Current);
 
@@ -170,7 +170,7 @@ namespace TrueReplayer
             // "Open Logs Folder" was a dead menu item.
             TrayIconService.OnOpenLogsFolder = OpenLogsFolder;
 
-            string iconPath = Path.Combine(AppContext.BaseDirectory, "TrueReplayer.ico");
+            string iconPath = Path.Combine(AppContext.BaseDirectory, AppIdentity.IconFile);
             // LR_LOADFROMFILE returns an HICON the window holds for its lifetime via WM_SETICON.
             // Not DestroyIcon'd: the OS reclaims per-process GDI handles on exit (each launch is a
             // fresh process), and a Closed-handler free would be preempted by WindowEventManager's
@@ -433,21 +433,12 @@ namespace TrueReplayer
         private async void InitializeWebView()
         {
             // Pin the WebView2 UserDataFolder to a stable location OUTSIDE Velopack's
-            // versioned app directory. The default location is adjacent to the executable
-            // (e.g. `.../app-2.2.0/TrueReplayer.exe.WebView2/`), which the Velopack updater
-            // discards when it swaps in a new version directory — taking the theme,
-            // SendText snippets, and any other localStorage with it. Pinning to LocalAppData
-            // means the data survives every update.
-            var userDataFolder = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "TrueReplayer", "WebView2");
-
-            // One-shot migration: if our stable location is empty (fresh install of the
-            // fix), look for the legacy default location next to a previous version's
-            // executable and copy it across. Best-effort — failures here are swallowed
-            // because the user can always re-pick their theme; we just want to spare
-            // them the round-trip if possible.
-            TryMigrateLegacyWebView2Data(userDataFolder);
+            // versioned app directory. The default location is adjacent to the executable,
+            // which the Velopack updater discards when it swaps in a new version directory —
+            // taking the theme, SendText snippets, and any other localStorage with it. Pinning
+            // to LocalAppData means the data survives every update. (TrueReplayer 2 still
+            // migrates a folder left there by versions before 2.2.1; this app has none.)
+            var userDataFolder = Path.Combine(AppIdentity.LocalRoot, "WebView2");
 
             try { Directory.CreateDirectory(userDataFolder); }
             catch (Exception ex) { Services.DiagnosticLog.Warn($"WebView2 UserDataFolder create failed: {ex.Message}"); }
@@ -493,9 +484,9 @@ namespace TrueReplayer
                 {
                     Services.DiagnosticLog.Error("InitializeWebView: WebView2 environment creation failed", ex);
                     NativeMethods.MessageBoxW(hwnd,
-                        "TrueReplayer couldn't start its UI because the Microsoft Edge WebView2 Runtime " +
-                        "failed to initialize.\n\nInstall or repair the WebView2 Runtime, then restart TrueReplayer.",
-                        "TrueReplayer", NativeMethods.MB_ICONERROR);
+                        $"{AppIdentity.DisplayName} couldn't start its UI because the Microsoft Edge WebView2 Runtime " +
+                        $"failed to initialize.\n\nInstall or repair the WebView2 Runtime, then restart {AppIdentity.DisplayName}.",
+                        AppIdentity.DisplayName, NativeMethods.MB_ICONERROR);
                     // The rest of the tray menu is wired only with the bridge, which will never
                     // exist. "Reload UI" becomes the restart the message asks for, so a repaired
                     // runtime is one click away (Open Logs Folder is already wired, and Exit never
@@ -618,6 +609,13 @@ namespace TrueReplayer
                     bridge?.SendMessage("extension:openHelp", new { });
                 });
             };
+            // TrueReplayer 2 was launched while this app runs (CoexistenceGuard): the page asks
+            // whether to switch. Raised from the window procedure, so already on this thread.
+            CoexistenceGuard.Tr2Knocked = () =>
+            {
+                windowEventManager?.BringToForeground();
+                bridge?.SendMessage("coexist:tr2Knocked", new { tr2Installed = CoexistenceGuard.Tr2Installed });
+            };
             TrayIconService.OnToggleAutomations = () =>
             {
                 DispatcherQueue.TryEnqueue(() =>
@@ -694,10 +692,10 @@ namespace TrueReplayer
                         Services.DiagnosticLog.Error("Navigation recovery exhausted — leaving the error page visible");
                         WebView.Opacity = 1;
                         NativeMethods.MessageBoxW(hwnd,
-                            "TrueReplayer couldn't load its UI files.\n\nThey may have been removed or " +
-                            "quarantined by antivirus. Reinstall or repair TrueReplayer, and allow-list " +
+                            $"{AppIdentity.DisplayName} couldn't load its UI files.\n\nThey may have been removed or " +
+                            $"quarantined by antivirus. Reinstall or repair {AppIdentity.DisplayName}, and allow-list " +
                             "its install folder if your antivirus flagged it.",
-                            "TrueReplayer", NativeMethods.MB_ICONERROR);
+                            AppIdentity.DisplayName, NativeMethods.MB_ICONERROR);
                         return;
                     }
 
@@ -723,6 +721,15 @@ namespace TrueReplayer
                     ArmUIReadyWatchdog();
                 }
             };
+
+            // The theme and snippets of an import from TrueReplayer 2 that finished on this start
+            // (Tr2Import), handed to the page before its first script: the boot mirror in index.html
+            // paints the saved theme from localStorage before React loads.
+            if (Tr2Import.WebStorageScript() is { } importScript)
+            {
+                try { await WebView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(importScript); }
+                catch (Exception ex) { Services.DiagnosticLog.Warn($"[Import] could not hand the theme and snippets to the page: {ex.Message}"); }
+            }
 
 #if DEBUG
             WebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
@@ -835,7 +842,7 @@ namespace TrueReplayer
                 if (AppSettingsManager.IsUnreadableThisSession)
                     bridge.ShowNoticeWhenSeen(
                         "Your settings file couldn't be read (another program was holding it), so this session " +
-                        "runs on default settings and won't save changes to them. Restart TrueReplayer to load your settings.");
+                        $"runs on default settings and won't save changes to them. Restart {AppIdentity.DisplayName} to load your settings.");
 
                 // Hotkeys and trigger modes are deliberately NOT re-registered here.
                 // LoadProfileListAsync arms both as the last thing it does, off the same
@@ -883,114 +890,12 @@ namespace TrueReplayer
             {
                 Services.DiagnosticLog.Error("InitializeWebView: post-environment wiring failed", ex);
                 NativeMethods.MessageBoxW(hwnd,
-                    "TrueReplayer couldn't finish starting its UI.\n\nPlease restart TrueReplayer. " +
+                    $"{AppIdentity.DisplayName} couldn't finish starting its UI.\n\nPlease restart {AppIdentity.DisplayName}. " +
                     "If the problem persists, repair the Microsoft Edge WebView2 Runtime.",
-                    "TrueReplayer", NativeMethods.MB_ICONERROR);
+                    AppIdentity.DisplayName, NativeMethods.MB_ICONERROR);
                 // Same reason as the enqueue guard: a throw before (or during) the enqueue leaves
                 // nothing that would ever complete it.
                 _initialDataLoaded.TrySetResult(true);
-            }
-        }
-
-        /// <summary>
-        /// One-shot migration of the WebView2 UserDataFolder from its legacy default location
-        /// (adjacent to the executable, inside Velopack's per-version `app-X.Y.Z/` directory)
-        /// to the stable LocalAppData location used from 2.2.1 onwards. Preserves theme,
-        /// SendText snippets, and any other localStorage on first launch after the upgrade.
-        ///
-        /// Best-effort: every exception is swallowed because the worst case is the user
-        /// re-picks their theme. Detection is heuristic — we look for sibling `app-*`
-        /// folders next to the current executable and copy the most recently modified
-        /// `*.WebView2/EBWebView` (or `EBWebView`) folder found.
-        ///
-        /// No-op if the target folder already exists and is non-empty — we never overwrite.
-        /// </summary>
-        private static void TryMigrateLegacyWebView2Data(string targetDir)
-        {
-            try
-            {
-                // Skip when the canonical folder already has data (already migrated, or
-                // fresh install with no legacy to import).
-                if (Directory.Exists(targetDir) && Directory.EnumerateFileSystemEntries(targetDir).Any())
-                    return;
-
-                var exeDir = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
-                var exeName = Path.GetFileNameWithoutExtension(
-                    System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName ?? "TrueReplayer");
-
-                // Candidate names WebView2 has used as default UserDataFolder:
-                //  1. {exe}.WebView2 — current Microsoft.UI.Xaml.Controls.WebView2 default
-                //  2. EBWebView — older WebView2 SDK default
-                // Both forms are checked next to the current exe AND every sibling
-                // app-* folder Velopack left behind from the prior install.
-                string[] candidateLeafNames = { $"{exeName}.exe.WebView2", "EBWebView" };
-
-                var searchRoots = new System.Collections.Generic.List<string> { exeDir };
-                // Velopack layout: .../current/app-X.Y.Z/. Look at every sibling app-* dir.
-                var parent = Directory.GetParent(exeDir)?.FullName;
-                if (parent != null && Directory.Exists(parent))
-                {
-                    foreach (var sibling in Directory.GetDirectories(parent, "app-*"))
-                        if (!string.Equals(sibling, exeDir, StringComparison.OrdinalIgnoreCase))
-                            searchRoots.Add(sibling);
-                }
-
-                string? best = null;
-                DateTime bestStamp = DateTime.MinValue;
-                foreach (var root in searchRoots)
-                {
-                    foreach (var leaf in candidateLeafNames)
-                    {
-                        var path = Path.Combine(root, leaf);
-                        if (!Directory.Exists(path)) continue;
-                        // Treat empty / placeholder folders as "no data here".
-                        if (!Directory.EnumerateFileSystemEntries(path).Any()) continue;
-                        var stamp = new DirectoryInfo(path).LastWriteTimeUtc;
-                        if (stamp > bestStamp) { best = path; bestStamp = stamp; }
-                    }
-                }
-
-                if (best == null) return;
-                Services.DiagnosticLog.Info($"Migrating WebView2 user data from '{best}' → '{targetDir}'");
-                // Copied into a STAGING folder and moved into place only once the whole tree made
-                // it. The guard above reads "target not empty" as "already migrated", so a copy that
-                // threw halfway (a subfolder held by antivirus, an ACL) left a partial target that
-                // was never retried — and the rest was lost when Velopack discarded the old folder.
-                var staging = targetDir.TrimEnd(Path.DirectorySeparatorChar) + ".migrating";
-                try
-                {
-                    if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
-                    CopyDirectoryRecursive(best, staging);
-                    if (Directory.Exists(targetDir)) Directory.Delete(targetDir); // empty, per the guard
-                    Directory.Move(staging, targetDir);
-                }
-                catch
-                {
-                    try { if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true); } catch { }
-                    throw;
-                }
-            }
-            catch (Exception ex)
-            {
-                Services.DiagnosticLog.Warn($"WebView2 legacy migration skipped: {ex.Message}");
-            }
-        }
-
-        private static void CopyDirectoryRecursive(string sourceDir, string destDir)
-        {
-            Directory.CreateDirectory(destDir);
-            foreach (var file in Directory.GetFiles(sourceDir))
-            {
-                var dest = Path.Combine(destDir, Path.GetFileName(file));
-                try { File.Copy(file, dest, overwrite: true); }
-                catch { /* skip locked / unreadable files — partial migration is fine */ }
-            }
-            foreach (var subDir in Directory.GetDirectories(sourceDir))
-            {
-                // Skip the LockFile / .lock equivalents that a running WebView2 might hold open.
-                var name = Path.GetFileName(subDir);
-                if (name.StartsWith("LockFile", StringComparison.OrdinalIgnoreCase)) continue;
-                CopyDirectoryRecursive(subDir, Path.Combine(destDir, name));
             }
         }
 
@@ -1056,8 +961,8 @@ namespace TrueReplayer
                         {
                             Services.DiagnosticLog.Error($"Close-guard save to '{bridge.CurrentProfilePath}' failed", ex);
                             NativeMethods.MessageBoxW(hwnd,
-                                $"Error saving profile:\n{ex.Message}\n\nTrueReplayer stayed open so your changes aren't lost.",
-                                "TrueReplayer", NativeMethods.MB_ICONERROR);
+                                $"Error saving profile:\n{ex.Message}\n\n{AppIdentity.DisplayName} stayed open so your changes aren't lost.",
+                                AppIdentity.DisplayName, NativeMethods.MB_ICONERROR);
                             canClose = false;
                         }
                     }
@@ -1096,7 +1001,7 @@ namespace TrueReplayer
                     NativeMethods.ShowWindow(hwnd, NativeMethods.SW_SHOW);
                 bool surfaced = await TrueReplayer.Helpers.WindowActivation.ActivateAsync(hwnd);
                 if (!surfaced)
-                    Services.DiagnosticLog.Info("Ask-Input: could not bring TrueReplayer to the foreground (a fullscreen app may be holding focus) — the input prompt may be hidden");
+                    Services.DiagnosticLog.Info("Ask-Input: could not bring the window to the foreground (a fullscreen app may be holding focus) — the input prompt may be hidden");
             }
             catch (Exception ex) { Services.DiagnosticLog.Warn($"Ask-Input surface failed: {ex.Message}"); }
         }
@@ -2008,12 +1913,12 @@ namespace TrueReplayer
             // Native box, matching the navigation-failure path above: at this point the React
             // UI is exactly the thing that isn't working, so it can't be asked to render this.
             NativeMethods.MessageBoxW(hwnd,
-                "TrueReplayer's interface didn't finish loading, and restarting the app didn't help.\n\n" +
+                $"{AppIdentity.DisplayName}'s interface didn't finish loading, and restarting the app didn't help.\n\n" +
                 "The app is still running — right-click its tray icon and choose \"Reload UI\" to try " +
                 "again, or \"Open logs folder\" to see what failed.\n\n" +
-                "If it keeps happening, allow-list TrueReplayer's install folder in your antivirus, " +
+                $"If it keeps happening, allow-list {AppIdentity.DisplayName}'s install folder in your antivirus, " +
                 "then reinstall or repair the app." + logsLine,
-                "TrueReplayer", NativeMethods.MB_ICONERROR);
+                AppIdentity.DisplayName, NativeMethods.MB_ICONERROR);
         }
 
         /// <summary>

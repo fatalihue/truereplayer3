@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useBridge } from '../bridge/BridgeContext';
 import type { IncomingMessage } from '../bridge/messageTypes';
 import { useAskInput } from '../logic/useReplay';
+import { useImport } from './importState';
 import { preload, useLoaded } from './lazyModule';
 import { loadPalette, usePalette } from './palette/paletteState';
 import { useShell } from './store';
@@ -63,7 +64,7 @@ function Watch() {
   const mod = useLoaded(loadWatch);
   const { subscribe } = useBridge();
   useEffect(() => (mod ? undefined : subscribe((m) => {
-    if (!m.type.startsWith('update:') && m.type !== 'extension:openHelp' && m.type !== 'automation:open') return;
+    if (!m.type.startsWith('update:') && !m.type.startsWith('coexist:') && !m.type.startsWith('import:') && m.type !== 'extension:openHelp' && m.type !== 'automation:open') return;
     early.push(m);
     void preload(loadWatch);
   })), [mod, subscribe]);
@@ -72,6 +73,9 @@ function Watch() {
     const id = requestIdleCallback(() => { void preload(loadWatch); });
     return () => cancelIdleCallback(id);
   }, [mod, booted]);
+  // Settings › General opens the import dialog, which lives in the watch's chunk.
+  const importing = useImport(s => s.mode !== null);
+  useEffect(() => { if (importing && !mod) void preload(loadWatch); }, [importing, mod]);
   const Loaded = mod?.Watch;
   return Loaded ? <Loaded early={early} /> : null;
 }

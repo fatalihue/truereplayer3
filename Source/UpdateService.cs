@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Net.Http;
-using System.Text.Json;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Velopack;
@@ -11,44 +10,18 @@ namespace TrueReplayer.Services
 {
     public static class UpdateService
     {
-        private const string RepoOwner = "fatalihue";
-        private const string RepoName = "TrueReplayer-releases";
-        private const string RepoUrl = "https://github.com/" + RepoOwner + "/" + RepoName;
-
         /// <summary>
-        /// The release feed, read as a STATIC FILE off the latest release rather than through the
-        /// GitHub REST API.
-        ///
-        /// <para>GithubSource discovers releases by calling <c>GET /repos/{owner}/{repo}/releases</c>.
-        /// On 2026-08-17 that endpoint began answering <c>200</c> with an EMPTY ARRAY for this
-        /// repository — for anonymous and authenticated callers alike — while its own <c>Link</c>
-        /// header advertised five pages of results. Everything else about the repo was healthy:
-        /// <c>/releases/latest</c>, <c>/releases/tags/{tag}</c> and the GraphQL feed behind
-        /// <c>gh release list</c> all returned the releases, and the identical list call against an
-        /// unrelated public repo worked. So the app saw "no releases at all" and offered no update,
-        /// for every user, with nothing in the log but a successful check.</para>
-        ///
-        /// <para>A retry cannot fix that: an empty list is a SUCCESSFUL response, so every attempt
-        /// returns the same nothing. The fix is to stop asking the index a question we can answer
-        /// with a file. <c>releases/latest/download/{name}</c> is a permanent GitHub redirect into
-        /// the newest release's assets, so one GET of a 759-byte JSON replaces the whole API
-        /// round-trip — and it costs no rate limit, which the anonymous 60/hour budget made a real
-        /// constraint for an app that checks on every launch.</para>
-        ///
-        /// <para>This depends on the release procedure always publishing with <c>--latest</c>, which
-        /// it does. RepoUrl stays in use for the release-notes fetch, which reads
-        /// <c>/releases/tags/{tag}</c> — a different endpoint, and one that never broke.</para>
+        /// The release feed: a folder on this machine that the previews are packed into
+        /// (<see cref="AppIdentity.UpdateFeedDir"/>; plan truereplayer3-paralelo-2026-10-30.md,
+        /// decision 2). TrueReplayer 3 has no public release while it runs beside TrueReplayer 2, and
+        /// it must never read TrueReplayer 2's feed: every installed TrueReplayer 2 reads the newest
+        /// release of TrueReplayer-releases, so that repository can only ever carry TrueReplayer 2.
+        /// A missing folder is an ordinary "no update" — the check logs the failure and moves on.
         /// </summary>
-        private const string ReleaseFeedUrl = RepoUrl + "/releases/latest/download";
-
         private static readonly UpdateManager _manager = new(
-            new SimpleWebSource(ReleaseFeedUrl));
-
-        private static readonly HttpClient _http = CreateHttpClient();
+            new SimpleFileSource(new DirectoryInfo(AppIdentity.UpdateFeedDir)));
 
         private static UpdateInfo? _pendingUpdate;
-        private static string? _cachedReleaseNotes;
-        private static string? _cachedReleaseNotesVersion;
 
         public static bool IsInstalled => _manager.IsInstalled;
 
@@ -56,17 +29,8 @@ namespace TrueReplayer.Services
             ? _manager.CurrentVersion?.ToString()
             : null;
 
-        private static HttpClient CreateHttpClient()
-        {
-            var client = new HttpClient();
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("TrueReplayer-Updater/1.0");
-            client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
-            client.Timeout = TimeSpan.FromSeconds(10);
-            return client;
-        }
-
         /// <summary>
-        /// Checks GitHub Releases for a newer version.
+        /// Checks the feed for a newer version.
         /// Returns the new version string, or null if up-to-date.
         /// </summary>
         // Bounds the GitHub round-trip. Velopack's CheckForUpdatesAsync has no hard ceiling, so a
@@ -128,48 +92,17 @@ namespace TrueReplayer.Services
         }
 
         /// <summary>
-        /// Fetches the markdown release notes from the GitHub Releases API for the
-        /// pending update. Parsed into a list of bullet points suitable for the
-        /// changelog panel. Returns an empty list on failure.
+        /// The pending update's markdown release notes, which travel inside the package
+        /// (<c>vpk pack --releaseNotes</c>), parsed into a list of bullet points suitable for the
+        /// changelog panel. Empty when the package carries none. Still a Task, so the callers that
+        /// awaited the network fetch this replaced need no change.
         /// </summary>
-        public static async Task<List<string>> GetPendingReleaseNotesAsync()
+        public static Task<List<string>> GetPendingReleaseNotesAsync()
         {
-            var version = _pendingUpdate?.TargetFullRelease?.Version?.ToString();
-            if (string.IsNullOrEmpty(version))
-                return new List<string>();
-
-            // Return cached if same version
-            if (_cachedReleaseNotesVersion == version && _cachedReleaseNotes != null)
-                return ParseMarkdownBullets(_cachedReleaseNotes);
-
-            try
-            {
-                // Try v-prefixed tag first (project convention), then fall back to bare.
-                var tags = new[] { $"v{version}", version };
-                foreach (var tag in tags)
-                {
-                    var url = $"https://api.github.com/repos/{RepoOwner}/{RepoName}/releases/tags/{tag}";
-                    using var req = new HttpRequestMessage(HttpMethod.Get, url);
-                    using var resp = await _http.SendAsync(req).ConfigureAwait(false);
-                    if (!resp.IsSuccessStatusCode)
-                        continue;
-
-                    var json = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
-                    using var doc = JsonDocument.Parse(json);
-                    if (doc.RootElement.TryGetProperty("body", out var bodyEl))
-                    {
-                        var body = bodyEl.GetString() ?? string.Empty;
-                        _cachedReleaseNotes = body;
-                        _cachedReleaseNotesVersion = version;
-                        return ParseMarkdownBullets(body);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                DiagnosticLog.Warn($"[UpdateService] Release notes fetch failed: {ex.Message}");
-            }
-            return new List<string>();
+            var notes = _pendingUpdate?.TargetFullRelease?.NotesMarkdown;
+            return Task.FromResult(string.IsNullOrWhiteSpace(notes)
+                ? new List<string>()
+                : ParseMarkdownBullets(notes));
         }
 
         /// <summary>

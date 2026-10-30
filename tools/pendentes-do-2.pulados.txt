@@ -1,0 +1,3 @@
+# TrueReplayer 2 commits deliberately not taken into TrueReplayer 3, one per line:
+# <hash> <reason>
+# (tools/pendentes-do-2.ps1 reads this file; lines starting with # are ignored.)

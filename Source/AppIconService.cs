@@ -26,7 +26,7 @@ namespace TrueReplayer.Services
     ///   3. <b>App Paths registry</b> (HKLM → HKCU) — covers most installed apps even when
     ///      they aren't running. Same lookup the Windows Run dialog uses.
     ///
-    /// On disk: <c>Documents/TrueReplayer/icon-cache.json</c>. Survives restarts so portable
+    /// On disk: <c>Documents/TrueReplayer3/icon-cache.json</c>. Survives restarts so portable
     /// apps that aren't running at startup still show their icon, and so the registry walk
     /// is skipped for known processes. Self-invalidates via file <c>LastWriteTimeUtc</c>, so
     /// app updates that change the icon get picked up on next lookup without manual TTL.
@@ -66,9 +66,7 @@ namespace TrueReplayer.Services
         // of cache work on kill — acceptable, next launch re-resolves whatever was missed.
         private const int SaveDebounceMs = 1000;
 
-        private static string CachePath => Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-            "TrueReplayer", "icon-cache.json");
+        private static string CachePath => Path.Combine(AppIdentity.DocumentsRoot, "icon-cache.json");
 
         public static string? GetIconBase64(string? processName)
         {

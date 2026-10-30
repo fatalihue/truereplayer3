@@ -1076,7 +1076,7 @@ namespace TrueReplayer
                 var ready = new System.Threading.ManualResetEventSlim();
                 var thread = new System.Threading.Thread(() => HookThreadMain(ready))
                 {
-                    Name = "TrueReplayer input hooks",
+                    Name = AppIdentity.DisplayName + " input hooks",
                     IsBackground = true,
                     // Input that waits on this thread is the whole system's input.
                     Priority = System.Threading.ThreadPriority.Highest,

@@ -15,12 +15,17 @@
 	<PropertyGroup>
 		<OutputType>WinExe</OutputType>
 		<TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
-		<Version>2.50.0</Version>
-		<AssemblyVersion>2.50.0.0</AssemblyVersion>
-		<FileVersion>2.50.0.0</FileVersion>
+		<Version>3.0.0-preview.1</Version>
+		<AssemblyVersion>3.0.0.1</AssemblyVersion>
+		<FileVersion>3.0.0.1</FileVersion>
+		<!-- TrueReplayer 3 beside TrueReplayer 2: the exe keeps its name (AssemblyName), and what
+		     Windows shows comes from these — Task Manager reads the description from AssemblyTitle.
+		     Every other name comes from Source/AppIdentity.cs. -->
+		<Product>TrueReplayer 3</Product>
+		<AssemblyTitle>TrueReplayer 3</AssemblyTitle>
 		<TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
 		<RootNamespace>TrueReplayer</RootNamespace>
-		<ApplicationIcon>TrueReplayer.ico</ApplicationIcon>
+		<ApplicationIcon>TrueReplayer3.ico</ApplicationIcon>
 		<ApplicationManifest>app.manifest</ApplicationManifest>
 		<NoWarn>$(NoWarn);MSB3243;APPX0104;APPX0107</NoWarn>
 		<Platforms>x86;x64;ARM64</Platforms>
@@ -90,7 +95,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<None Include="TrueReplayer.ico">
+		<None Include="TrueReplayer3.ico">
 			<Pack>True</Pack>
 			<PackagePath>Assets\</PackagePath>
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
@@ -259,17 +264,27 @@
     </ItemGroup>
     <RemoveDir Directories="@(RemoveDirs)" />
   </Target>
+  <!-- TrueReplayer 3's icons (AppIdentity.IconFile*), built from TrueReplayer 2's by
+       tools/icones-3.ps1; the TrueReplayer*.ico files without the 3 are only its source. -->
   <ItemGroup>
-    <None Update="TrueReplayer.ico">
+    <None Update="TrueReplayer3.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="TrueReplayerRed.ico">
+    <None Update="TrueReplayer3Red.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="TrueReplayerPurple.ico">
+    <None Update="TrueReplayer3Purple.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
+
+  <!-- The identity gate (plan truereplayer3-paralelo-2026-10-30.md, decision 3): "TrueReplayer"
+       building a path or naming the app outside Source/AppIdentity.cs fails the build, because one
+       path that slipped through would write into TrueReplayer 2's data. The page's half runs at the
+       end of npm run build. -->
+  <Target Name="IdentityGate" BeforeTargets="CoreCompile">
+    <Exec Command="node tools/identidade-gate.mjs cs" />
+  </Target>
 
   <!--
     Defining the "HasPackageAndPublishMenuAddedByProject" property here allows the Solution

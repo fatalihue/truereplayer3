@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { create } from 'zustand';
+import { APP_NAME } from '../../../appIdentity';
 import type { HotkeySettingKey, SettingsState } from '../../../bridge/messageTypes';
 import { isPureModifier, SINGLE_KEY_CAPTURE_IDLE_MS, useKeyCapture } from '../../../logic/useKeyCapture';
 import { useSettings } from '../../../logic/useSettings';
@@ -73,7 +74,7 @@ function useConflicts() {
 export function HotkeysIntro() {
   return (
     <>
-      <p className="set-intro">Keys that work anywhere in Windows, even with TrueReplayer in the background. Each macro’s own hotkey lives on the macro.</p>
+      <p className="set-intro">Keys that work anywhere in Windows, even with {APP_NAME} in the background. Each macro’s own hotkey lives on the macro.</p>
       <ConflictNotice />
     </>
   );
@@ -92,7 +93,7 @@ function ConflictNotice() {
   return (
     <div className="set-notice" role="region" aria-label="Hotkeys on keys other apps use">
       <p className="set-notice-text">
-        {n === 1 ? '1 hotkey takes a key that other apps use.' : `${n} hotkeys take keys that other apps use.`} While TrueReplayer runs, those apps stop getting them.
+        {n === 1 ? '1 hotkey takes a key that other apps use.' : `${n} hotkeys take keys that other apps use.`} While {APP_NAME} runs, those apps stop getting them.
       </p>
       <div className="set-actions">
         <button
