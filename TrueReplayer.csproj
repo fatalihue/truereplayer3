@@ -15,9 +15,9 @@
 	<PropertyGroup>
 		<OutputType>WinExe</OutputType>
 		<TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
-		<Version>3.0.0-preview.3</Version>
-		<AssemblyVersion>3.0.0.3</AssemblyVersion>
-		<FileVersion>3.0.0.3</FileVersion>
+		<Version>3.0.0-preview.4</Version>
+		<AssemblyVersion>3.0.0.4</AssemblyVersion>
+		<FileVersion>3.0.0.4</FileVersion>
 		<!-- TrueReplayer 3 beside TrueReplayer 2: the exe keeps its name (AssemblyName), and what
 		     Windows shows comes from these — Task Manager reads the description from AssemblyTitle.
 		     Every other name comes from Source/AppIdentity.cs. -->
@@ -36,6 +36,10 @@
 		<Nullable>enable</Nullable>
 		<WindowsPackagedType>None</WindowsPackagedType>
 		<WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+		<!-- WinUI and this app share the WebView2 projection that the Microsoft.Web.WebView2 package
+		     below ships for its winmd, so that one version decides both. Microsoft.WinUI.props already
+		     turns it on for SDK-style projects; stated here so it never hangs on import order. -->
+		<WebView2EnableCsWinRTProjection>true</WebView2EnableCsWinRTProjection>
 		<SatelliteResourceLanguages>en</SatelliteResourceLanguages>
 		<DefineConstants>DISABLE_XAML_GENERATED_MAIN</DefineConstants>
 		<!-- Prunes the default item globs' traversal — node_modules alone is ~12.4k items walked per evaluation. -->
@@ -136,9 +140,9 @@
          Word/Outlook/Gmail's own quirky importers. MIT, netstandard2.0, managed-only. -->
     <PackageReference Include="AngleSharp" Version="1.1.2" />
     <PackageReference Include="CommunityToolkit.WinUI.UI.Controls.DataGrid" Version="7.1.2" />
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
-    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.1742" />
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.250310001" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.4654" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.4" />
     <PackageReference Include="Velopack" Version="0.0.1298" />
     <PackageReference Include="OpenCvSharp4" Version="4.10.0.20241108" />
     <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.10.0.20241108" />
@@ -301,7 +305,11 @@
     <PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>
     <PublishTrimmed>False</PublishTrimmed>
     <PackageCertificateKeyFile>TrueReplayer_TemporaryKey.pfx</PackageCertificateKeyFile>
-    <AppxPackageSigningEnabled>True</AppxPackageSigningEnabled>
+    <!-- Off: the app ships unpackaged through Velopack and never builds an MSIX to sign, and that .pfx
+         was never in the repository. With it on, the MSIX tools Windows App SDK 2.x brings
+         (Microsoft.Windows.SDK.BuildTools.MSIX) check the certificate on every build and warn
+         SigningCertificateFileNotFound. -->
+    <AppxPackageSigningEnabled>False</AppxPackageSigningEnabled>
     <GenerateAppInstallerFile>True</GenerateAppInstallerFile>
     <AppxPackageSigningTimestampDigestAlgorithm>SHA256</AppxPackageSigningTimestampDigestAlgorithm>
     <AppxAutoIncrementPackageRevision>True</AppxAutoIncrementPackageRevision>
