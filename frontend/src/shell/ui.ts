@@ -53,8 +53,8 @@ interface ShellUi {
 
 export type SettingsSection = 'hotkey' | 'hotstring' | 'target' | 'info';
 export type MacroTab = 'steps' | 'data';
-/** The rail's destinations built so far (the Clicker and Automations come later in phase 3). */
-export type Page = 'macros' | 'settings' | 'remaps';
+/** The rail's destinations built so far (Automations comes later in phase 3). */
+export type Page = 'macros' | 'clicker' | 'settings' | 'remaps';
 export type SettingsCategory = 'general' | 'hotkeys' | 'appearance' | 'recording' | 'screen' | 'browser' | 'diagnostics';
 
 export const useUi = create<ShellUi>(() => ({
@@ -72,10 +72,11 @@ export const openSettings = (category?: SettingsCategory) =>
   useUi.setState(category ? { page: 'settings', settingsCategory: category, libraryPeek: false } : { page: 'settings', libraryPeek: false });
 /**
  * The pages besides the macros', each in a chunk of its own that the rail's pointer or focus brings
- * (rule 6): Settings with its categories, Key Remaps with its list and "Remap settings". A page's
- * module has the page as its default export.
+ * (rule 6): the Clicker with its presets and settings, Settings with its categories, Key Remaps with
+ * its list and "Remap settings". A page's module has the page as its default export.
  */
 export const PAGE_CHUNKS: Record<Exclude<Page, 'macros'>, () => Promise<{ default: ComponentType }>> = {
+  clicker: () => import('./pages/clicker/ClickerPage'),
   settings: () => import('./pages/settings/SettingsPage'),
   remaps: () => import('./pages/remaps/RemapsPage'),
 };

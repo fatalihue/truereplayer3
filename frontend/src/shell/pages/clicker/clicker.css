@@ -1,0 +1,353 @@
+/* ② The Clicker (phase 3, slice 6): the presets, the run, and "Clicker settings". In the page's chunk;
+   sizes in rem, theme tokens only; the controls are the Inspector's (inspector/editors.css). */
+
+.ck {
+  position: relative;
+  display: grid;
+  grid-template-columns: 16rem minmax(0, 1fr) 22.5rem;
+  min-height: 0;
+  background: var(--color-bg-base);
+}
+.ck svg { flex: none; }
+.ck .insp-button svg { width: 0.875rem; height: 0.875rem; }
+.ck .insp-icon-button svg { width: 1rem; height: 1rem; }
+.ck .insp-icon-button { border-color: transparent; background: transparent; }
+.ck .insp-icon-button:disabled { color: var(--color-text-disabled); cursor: default; }
+.ck-small { height: 1.75rem; padding: 0 0.625rem; gap: 0.375rem; font-size: var(--text-minor); }
+.ck-key {
+  padding: 0 0.3125rem;
+  border: 1px solid color-mix(in srgb, var(--color-clicker) 35%, transparent);
+  border-radius: 0.25rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  font-weight: 400;
+  color: var(--color-clicker-fg);
+}
+
+/* ── Presets ── */
+.ck-presets {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-surface);
+}
+.ck-presets-head {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: 2.9375rem;
+  flex: none;
+  padding: 0 0.5rem 0 1rem;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.ck-presets-title { flex: 1; margin: 0; font-size: var(--text-body); font-weight: 600; color: var(--color-text-primary); }
+.ck-presets-list { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 0.125rem; padding: 0.5rem; }
+.ck-preset {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: 0.5rem 0.625rem 0.5rem 0.75rem;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ck-preset:not(:disabled):hover { background: var(--color-wash-hover); }
+.ck-preset:disabled { cursor: default; opacity: 0.55; }
+.ck-preset[aria-current='true'] { background: color-mix(in srgb, var(--color-accent) 12%, transparent); }
+.ck-preset[aria-current='true']::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.625rem;
+  bottom: 0.625rem;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--color-accent);
+}
+.ck-preset:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: -2px; }
+.ck-preset-name { font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ck-preset[aria-current='true'] .ck-preset-name { font-weight: 600; }
+.ck-preset-line {
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  line-height: 1rem;
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ck-preset[aria-current='true'] .ck-preset-line { color: var(--color-text-secondary); }
+.ck-presets-none { margin: 0.5rem; font-size: var(--text-minor); line-height: 1rem; color: var(--color-text-tertiary); }
+.ck-presets-foot {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--color-border-subtle);
+  font-size: var(--text-minor);
+  line-height: 1rem;
+  color: var(--color-text-tertiary);
+}
+.ck-name-wrap { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.5rem 0.5rem 0; }
+.ck-name,
+.ck-title-input {
+  height: 2rem;
+  padding: 0 0.625rem;
+  box-sizing: border-box;
+  border: 1px solid var(--color-accent-solid);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
+  font: inherit;
+  outline: none;
+}
+.ck-name-error { margin: 0; font-size: var(--text-minor); line-height: 1rem; color: var(--color-recording-fg); }
+
+/* ── The run ── */
+.ck-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.ck-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  min-height: 3.25rem;
+  padding: 0.375rem 0.75rem 0.375rem 1.25rem;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.ck-titles { display: flex; flex-direction: column; gap: 0.125rem; flex: 1 1 12.5rem; min-width: 0; }
+.ck-title {
+  margin: 0;
+  font-size: var(--text-subtitle);
+  line-height: var(--text-subtitle--line-height);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ck-rename { display: flex; flex-direction: column; gap: 0.125rem; }
+.ck-title-input { height: 1.75rem; font-size: var(--text-subtitle); font-weight: 600; }
+.ck-sub { margin: 0; font-size: var(--text-minor); line-height: 1rem; color: var(--color-text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ck-head-end { display: flex; align-items: center; gap: 0.5rem; flex: none; }
+.ck-start {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 2rem;
+  padding: 0 0.625rem;
+  box-sizing: border-box;
+  border: 2px solid color-mix(in srgb, var(--color-clicker) 75%, transparent);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--color-clicker) 12%, transparent);
+  color: var(--color-clicker-fg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ck-start svg { width: 1rem; height: 1rem; }
+.ck-start:hover { background: color-mix(in srgb, var(--color-clicker) 20%, transparent); }
+.ck-start:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 2px; }
+.ck-pause .ck-key { color: var(--color-text-secondary); border-color: var(--color-border-default); }
+.ck-pause:disabled .ck-key { color: var(--color-text-disabled); }
+.ck-presets-toggle { display: none; }
+.ck-presets-toggle svg { width: 0.75rem; height: 0.75rem; }
+
+.ck-center {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.375rem;
+  padding: 2rem 1.5rem;
+  box-sizing: border-box;
+}
+.ck-ready { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; max-width: 35rem; text-align: center; }
+.ck-ready-title { font-size: 1.25rem; line-height: 1.75rem; font-weight: 600; color: var(--color-clicker-fg); }
+.ck-sentence { font-size: var(--text-subtitle); line-height: 1.375rem; color: var(--color-text-secondary); }
+.ck-cells { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.5rem; width: 100%; max-width: 30rem; }
+.ck-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.125rem;
+  padding: 0.5rem 0.25rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-surface);
+}
+.ck-cell[data-off] { opacity: 0.45; }
+.ck-cell-value { font-family: var(--font-mono); font-size: 1.0625rem; line-height: 1.375rem; font-weight: 600; color: var(--color-text-primary); }
+.ck-cell-label { font-size: var(--text-minor); line-height: 1rem; color: var(--color-text-tertiary); }
+.ck-keys {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.375rem;
+  margin: 0;
+  font-size: var(--text-minor);
+  line-height: 1rem;
+  color: var(--color-text-tertiary);
+  text-align: center;
+}
+.ck-dot { opacity: 0.5; }
+
+/* ── Clicker settings ── */
+.ck-settings {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-surface);
+}
+.ck-settings-head {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  height: 3.25rem;
+  flex: none;
+  padding: 0 1rem;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.ck-settings-icon {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  border-radius: 0.375rem;
+  background: color-mix(in srgb, var(--color-clicker) 14%, transparent);
+  color: var(--color-clicker-fg);
+}
+.ck-settings-icon svg { width: 1rem; height: 1rem; }
+.ck-settings-titles { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.ck-settings-title { font-size: var(--text-subtitle); line-height: var(--text-subtitle--line-height); font-weight: 600; color: var(--color-text-primary); }
+.ck-settings-sub { font-size: var(--text-caption); line-height: 1rem; color: var(--color-text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ck-readonly {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin: 0;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--color-border-subtle);
+  font-size: var(--text-minor);
+  color: var(--color-text-secondary);
+}
+.ck-readonly svg { width: 0.875rem; height: 0.875rem; }
+.ck-settings-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.125rem;
+  margin: 0;
+  padding: 0.875rem 1rem 1rem;
+  border: 0;
+}
+.ck-settings-body:disabled { opacity: 0.7; }
+.ck-sec { display: flex; flex-direction: column; gap: 0.375rem; }
+.ck-sec-title { margin: 0 0 0.125rem; font-size: var(--text-body); font-weight: 600; color: var(--color-text-primary); }
+.ck-label { margin-top: 0.25rem; font-size: var(--text-minor); line-height: 1rem; font-weight: 600; color: var(--color-text-secondary); }
+.ck-label:first-of-type { margin-top: 0; }
+.ck-hint { margin: 0; font-size: var(--text-minor); line-height: 1rem; color: var(--color-text-tertiary); }
+.ck-hint[data-tone='warn'] { color: var(--color-warning-ink); }
+.ck-rate { display: flex; align-items: center; gap: 0.5rem; }
+.ck-rate-field { display: flex; align-items: center; gap: 0.125rem; flex: 1; min-width: 0; }
+.ck-rate-field .insp-box { flex: 1; min-width: 0; }
+.ck-rate-menu { width: 1.75rem; height: 2rem; }
+.ck-rate .insp-seg { width: 6.5rem; flex: none; }
+.ck-row { display: flex; align-items: center; gap: 0.625rem; min-height: 2rem; }
+.ck-row-switch { display: flex; width: 2.125rem; flex: none; }
+.ck-row-label { flex: 1; min-width: 0; color: var(--color-text-secondary); }
+.ck-row-field { width: 7rem; flex: none; }
+.ck-row-field .insp-box { width: 100%; }
+.ck-row[data-off] .ck-row-field { opacity: 0.45; }
+.ck-row[data-off] .ck-row-field:focus-within { opacity: 1; }
+.ck-card {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.5rem 0.5rem 0.625rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 0.375rem;
+  background: var(--color-bg-elevated);
+}
+.ck-card-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.ck-card-value { font-family: var(--font-mono); color: var(--color-text-primary); }
+.ck-card-sub { font-size: var(--text-minor); line-height: 1rem; color: var(--color-text-tertiary); }
+.ck-clear { width: 1.75rem; height: 1.75rem; }
+.ck-hotkey { display: flex; align-items: center; gap: 0.5rem; min-height: 2rem; }
+.ck-settings-foot {
+  flex: none;
+  padding: 0.625rem 1rem;
+  border-top: 1px solid var(--color-border-subtle);
+  font-size: var(--text-minor);
+  line-height: 1rem;
+  color: var(--color-text-tertiary);
+}
+
+/* The hotkey field and its note, as Settings › Hotkeys draws them (settings.css, which does not come
+   with this page). */
+.ck .set-hotkey { display: flex; align-items: center; gap: 0.5rem; }
+.ck .set-hotkey-keys { display: flex; justify-content: flex-end; min-width: 4.5rem; }
+.ck .set-hotkey .kbd { height: 1.5rem; padding: 0 0.5rem; font-size: var(--text-minor); color: var(--color-clicker-fg); border-color: color-mix(in srgb, var(--color-clicker) 30%, transparent); background: color-mix(in srgb, var(--color-clicker) 8%, transparent); }
+.ck .set-hotkey-none { font-size: var(--text-minor); color: var(--color-text-tertiary); }
+.ck .set-hotkey-wait { font-size: var(--text-minor); color: var(--color-accent); }
+.ck .set-hotkey[data-listening] .insp-button { border-color: var(--color-accent-solid); color: var(--color-accent); }
+.ck .set-hotkey .insp-button { height: 1.75rem; padding: 0 0.625rem; font-size: var(--text-minor); }
+.ck .set-hotkey-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+}
+.ck .set-hotkey-clear svg { width: 0.75rem; height: 0.75rem; }
+.ck .set-hotkey-slot { width: 1.5rem; flex: none; }
+.ck .set-hotkey-clear:hover { background: var(--color-bg-elevated); color: var(--color-text-primary); }
+.ck-hotkey:not(:hover):not(:focus-within) .set-hotkey-clear { opacity: 0; }
+.ck .set-row-hint { font-size: var(--text-minor); color: var(--color-text-tertiary); }
+.ck .set-row-hint[data-tone='warn'] { color: var(--color-warning-ink); }
+
+/* Under 80 rem the presets leave the side, and the header's Presets lays them over the run; under
+   47.5 rem the run and its settings go one under the other, in one scroll. */
+@container shell (max-width: 79.99rem) {
+  .ck { grid-template-columns: minmax(0, 1fr) 22.5rem; }
+  .ck-presets { display: none; }
+  .ck[data-peek] .ck-presets {
+    display: flex;
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 15rem;
+    z-index: 4;
+    box-shadow: var(--shadow-overlay);
+  }
+  .ck-presets-toggle { display: inline-flex; }
+}
+@container shell (max-width: 47.49rem) {
+  .ck { grid-template-columns: minmax(0, 1fr); overflow: auto; }
+  .ck-main { min-height: auto; }
+  .ck-center { overflow: visible; }
+  .ck-settings { border-left: 0; border-top: 1px solid var(--color-border-subtle); min-height: auto; }
+  .ck-settings-body { overflow: visible; }
+}

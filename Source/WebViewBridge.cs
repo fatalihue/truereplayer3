@@ -1185,6 +1185,7 @@ namespace TrueReplayer
                     case "clicker:savePreset": HandleSaveClickerPreset(payload); break;
                     case "clicker:applyPreset": HandleApplyClickerPreset(payload); break;
                     case "clicker:deletePreset": HandleDeleteClickerPreset(payload); break;
+                    case "clicker:renamePreset": HandleRenameClickerPreset(payload); break;
                 case "clicker:undoDeletePreset": HandleUndoDeleteClickerPreset(payload); break;
                     case "waitimage:cropReference": HandleCropReference(payload); break;
                     case "image:testMatch": _ = HandleTestMatchAsync(payload); break;
@@ -9497,6 +9498,25 @@ namespace TrueReplayer
             }
             ClickerPresets.Insert(Math.Clamp(last.Index, 0, ClickerPresets.Count), last.Preset);
             DiagnosticLog.Info($"Clicker preset restored: \"{last.Preset.Name}\" ({ClickerPresets.Count} total).");
+            PushSettingsLoaded(SaveGlobalSettings());
+        }
+
+        // The new interface's Rename… on the Clicker page: the preset keeps its slot and its
+        // settings. A name another preset already has is refused (the page says so before asking);
+        // a change of case on the same preset is a rename like any other.
+        private void HandleRenameClickerPreset(JsonElement payload)
+        {
+            var name = ReadPresetName(payload);
+            var p = name == null ? null : FindClickerPreset(name);
+            if (p == null || !payload.TryGetProperty("newName", out var el) || el.ValueKind != JsonValueKind.String) return;
+            var newName = (el.GetString() ?? "").Trim();
+            if (newName.Length == 0) return;
+            if (newName.Length > MaxClickerPresetNameLength) newName = newName[..MaxClickerPresetNameLength];
+            var other = FindClickerPreset(newName);
+            if (other != null && !ReferenceEquals(other, p)) return;
+            var old = p.Name;
+            p.Name = newName;
+            DiagnosticLog.Info($"Clicker preset renamed: \"{old}\" to \"{newName}\".");
             PushSettingsLoaded(SaveGlobalSettings());
         }
 

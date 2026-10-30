@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { ArrowRightLeft, ListChecks, MousePointerClick, Settings, Zap } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
 import { useTt } from '../state/LanguageContext';
@@ -6,8 +7,8 @@ import { useApp } from './store';
 import { openPage, PAGE_CHUNKS, setLibraryPeek, useUi, type Page } from './ui';
 import { useShellBand } from './useShellBand';
 
-// ② The rail: the five destinations. Macros, Key Remaps and Settings exist; the Clicker and
-// Automations come later in phase 3, and until then they show (disabled) only in the development build.
+// ② The rail: the five destinations. Macros, the Clicker, Key Remaps and Settings exist; Automations
+// comes later in phase 3, and until then it shows (disabled) only in the development build.
 const DESTINATIONS = [
   { id: 'macros', label: 'Macros', Icon: ListChecks },
   { id: 'clicker', label: 'Clicker', Icon: MousePointerClick },
@@ -15,14 +16,15 @@ const DESTINATIONS = [
   { id: 'remaps', label: 'Key Remaps', Icon: ArrowRightLeft },
   { id: 'settings', label: 'Settings', Icon: Settings },
 ] as const;
-const BUILT = new Set<string>(['macros', 'remaps', 'settings'] satisfies Page[]);
+const BUILT = new Set<string>(['macros', 'clicker', 'remaps', 'settings'] satisfies Page[]);
 
 /**
  * Where the window folds or hides the library, Macros lays it over the steps and takes it away again
  * (the 520–759 px band: "um painel por vez"). From another page it is the way back to the macros, as
  * it was left. With the Clicker on (its hotkey, the tray), Macros is the way back to the macros
- * (casca-101), as "Macro" in today's mode switch: the Clicker stops. A page's chunk comes when the
- * pointer or the focus reaches its button (rule 6).
+ * (casca-101), as "Macro" in today's mode switch: the Clicker stops. The Clicker page is the engine's
+ * Clicker mode on screen: the mode on (this rail, its hotkey, the tray) brings it, and the mode off
+ * takes it away. A page's chunk comes when the pointer or the focus reaches its button (rule 6).
  */
 export function Rail() {
   const tt = useTt();
@@ -39,6 +41,14 @@ export function Rail() {
     if (page !== 'macros') openPage('macros');
     else if (!clicker && peeks) setLibraryPeek(!peek);
   };
+  const openClicker = () => {
+    if (!clicker) send({ type: 'settings:change', payload: { key: 'useCursorClick', value: true } });
+    openPage('clicker');
+  };
+  useEffect(() => {
+    if (clicker) openPage('clicker');
+    else if (useUi.getState().page === 'clicker') openPage('macros');
+  }, [clicker]);
   const warm = (id: string) => {
     const load = PAGE_CHUNKS[id as keyof typeof PAGE_CHUNKS];
     if (load) void preload(load);
@@ -63,7 +73,7 @@ export function Rail() {
             data-tip-pos="right"
             onPointerEnter={() => warm(id)}
             onFocus={() => warm(id)}
-            onClick={!built ? undefined : id === 'macros' ? openMacros : () => openPage(id as Page)}
+            onClick={!built ? undefined : id === 'macros' ? openMacros : id === 'clicker' ? openClicker : () => openPage(id as Page)}
           >
             <Icon aria-hidden="true" />
             <span className="shell-rail-label">{label}</span>

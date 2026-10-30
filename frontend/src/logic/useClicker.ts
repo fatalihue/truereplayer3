@@ -14,7 +14,7 @@ export type ClickerSettingKey = keyof ClickerPresetFields;
 export const CLICKER_TARGET_KEYS = ['cursorClickUsePositionJitter', 'cursorClickUseArea', 'cursorClickUseFixed'] as const;
 export type ClickerTargetKey = typeof CLICKER_TARGET_KEYS[number];
 
-const PRESET_KEYS: ClickerSettingKey[] = [
+export const PRESET_KEYS: ClickerSettingKey[] = [
   'cursorClickButton', 'cursorClickDelay', 'cursorClickDelayJitter', 'cursorClickUseJitter', 'cursorClickHold',
   'cursorClickPositionJitter', 'cursorClickUsePositionJitter', 'cursorClickUseArea', 'cursorClickArea',
   'cursorClickUseFixed', 'cursorClickFixedPoint', 'cursorClickLoops', 'cursorClickUseLoops',
@@ -87,6 +87,8 @@ export function useClicker() {
       /** Deletes at once; the backend keeps the deleted preset for undoDeletePreset. */
       deletePreset: (name: string) => send({ type: 'clicker:deletePreset', payload: { name } }),
       undoDeletePreset: (name: string) => send({ type: 'clicker:undoDeletePreset', payload: { name } }),
+      /** Gives a preset another name, in its slot. */
+      renamePreset: (name: string, newName: string) => send({ type: 'clicker:renamePreset', payload: { name, newName } }),
     };
   }, [send, getState]);
 }

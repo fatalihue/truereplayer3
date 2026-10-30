@@ -1377,6 +1377,8 @@ export type OutgoingMessage =
   | { type: 'clicker:savePreset'; payload: { name: string } }
   | { type: 'clicker:applyPreset'; payload: { name: string } }
   | { type: 'clicker:deletePreset'; payload: { name: string } }
+  /** The Clicker page's Rename…: the preset keeps its slot and its settings; a name another one has is refused. */
+  | { type: 'clicker:renamePreset'; payload: { name: string; newName: string } }
   /** The toast's Undo for the LAST delete: the backend puts that preset back in its slot. */
   | { type: 'clicker:undoDeletePreset'; payload: { name: string } }
   | { type: 'waitimage:cropReference'; payload: { index: number; x: number; y: number; w: number; h: number } }

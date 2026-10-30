@@ -2,8 +2,12 @@ import { useState } from 'react';
 import { CheckCircle2, XCircle, Info, X } from 'lucide-react';
 import { useDockPx } from '../shell/dock/dockState';
 import { useToast, useToasts, type ToastType } from '../state/ToastContext';
-import { Button } from './common/Button';
-import { iconButtonClass } from './common/IconButton';
+
+// The toast's two buttons: Button's ghost at xs and IconButton's sm, written out. Nothing else in the
+// new shell's opening bundle uses those two components, and with them came their tables of every
+// variant and size (~2.5 KB of it).
+const ACTION_CLASS = 'shrink-0 inline-flex items-center justify-center gap-1.5 rounded font-medium transition-colors h-7 px-2.5 text-minor text-text-secondary enabled:hover:text-text-primary enabled:hover:bg-bg-elevated enabled:active:bg-bg-card';
+const DISMISS_CLASS = 'inline-flex items-center justify-center gap-0.5 shrink-0 rounded transition-colors h-6 min-w-6 px-1 text-text-icon enabled:hover:bg-bg-elevated enabled:hover:text-text-primary';
 
 const iconMap: Record<ToastType, { Icon: React.ElementType; color: string }> = {
   success: { Icon: CheckCircle2, color: 'var(--color-replay-fg)' },
@@ -62,21 +66,21 @@ export function Toast() {
         <Icon size={14} className="shrink-0" style={{ color }} />
         <span className="text-ui text-text-primary flex-1">{toast.message}</span>
         {toast.action && (
-          <Button
-            variant="ghost"
-            size="xs"
-            className="shrink-0"
+          <button
+            type="button"
+            className={ACTION_CLASS}
             onClick={() => {
               toast.action!.onClick();
               dismissToast(toast.id);
             }}
           >
             {toast.action.label}
-          </Button>
+          </button>
         )}
         <button
+          type="button"
           onClick={() => dismissToast(toast.id)}
-          className={iconButtonClass('sm')}
+          className={DISMISS_CLASS}
           aria-label="Dismiss notification"
         >
           <X size={12} />

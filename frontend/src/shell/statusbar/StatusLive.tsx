@@ -14,6 +14,8 @@ import { useExtension } from './extensionState';
  */
 export function Switches() {
   const shortcuts = useApp(a => a.settings.profileKeyEnabled);
+  // On the Clicker page (its mode) the macros' hotkeys and hotstrings wait: on, but not in effect.
+  const byClicker = useApp(a => a.settings.useCursorClick) && shortcuts;
   const automationsOn = useApp(a => a.automation.enabled);
   const armed = useApp(a => a.automation.entries.filter(e => e.trigger.armed && !e.isDisabled).length);
   const remapsOn = useApp(a => a.settings.remaps.enabled);
@@ -31,13 +33,16 @@ export function Switches() {
         className="sb-switch"
         aria-pressed={shortcuts}
         data-off={shortcuts ? undefined : ''}
-        data-tip={shortcuts
+        data-paused={byClicker ? '' : undefined}
+        data-tip={byClicker
+          ? tt("Paused while the Clicker page is open: the macros' hotkeys and hotstrings wait for it to close.", 'Pausados enquanto a página do Clicker está aberta: os atalhos e hotstrings dos macros esperam ela fechar.')
+          : shortcuts
           ? tt("The macros' hotkeys and hotstrings fire. Off pauses them, and the Key Remaps too.", 'Os atalhos e hotstrings dos macros disparam. Desligado, eles param, e os Key Remaps também.')
           : tt("Off: the macros' hotkeys and hotstrings won't fire, and the Key Remaps are paused.", 'Desligado: os atalhos e hotstrings dos macros não disparam, e os Key Remaps ficam pausados.')}
         onClick={() => settings.change('profileKeyEnabled', !shortcuts)}
       >
         <span className="sb-dot" />
-        Shortcuts {shortcuts ? 'On' : 'Off'}
+        Shortcuts {byClicker ? 'Paused by Clicker' : shortcuts ? 'On' : 'Off'}
       </button>
       <button
         type="button"

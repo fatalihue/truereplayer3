@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  ArrowRightLeft, BookOpen, Chrome, ClipboardCopy, ClipboardPaste, Combine, CornerDownRight, Keyboard, ListChecks, Play, Plus, Redo2, RefreshCw,
+  ArrowRightLeft, BookOpen, Chrome, ClipboardCopy, ClipboardPaste, Combine, CornerDownRight, Keyboard, ListChecks, MousePointerClick, Play, Plus, Redo2, RefreshCw,
   Replace, RotateCcw, ScrollText, Settings, Split, Square, SquareDot, Table2, Undo2, Variable, Zap,
 } from 'lucide-react';
 import { useAutomations } from '../../logic/useAutomations';
@@ -292,6 +292,7 @@ function useItems(): PaletteItem[] {
     cmd('shortcuts', shortcuts ? 'Turn Shortcuts off' : 'Turn Shortcuts on', () => settings.change('profileKeyEnabled', !shortcuts), { icon: Keyboard, words: 'profile keys hotkeys hotstrings pause' }),
     cmd('automations', automationsOn ? 'Turn Automations off' : 'Turn Automations on', () => automations.setEnabled(!automationsOn), { icon: Zap, words: 'triggers armed' }),
     cmd('remaps', remapsOn ? 'Turn Key Remaps off' : 'Turn Key Remaps on', () => remaps.setEnabled(!remapsOn), { icon: CornerDownRight, words: 'remap keys' }),
+    cmd('clicker-page', 'Clicker', () => { if (!clicker) settings.change('useCursorClick', true); openPage('clicker'); }, { icon: MousePointerClick, words: 'autoclicker auto clicker click mode presets cps rate' }),
     cmd('remaps-page', 'Key Remaps', () => openPage('remaps'), { icon: ArrowRightLeft, words: 'remap remaps keys rebind swap caps disable mouse button' }),
     cmd('remap-new', 'New remap', () => useUi.setState({ page: 'remaps', remapNew: true, libraryPeek: false }), { icon: Plus, detail: 'Key Remaps', words: 'add remap rebind key swap disable', disabled: remapsFull, hint: tt(`${MAX_REMAPS} is the limit`, `${MAX_REMAPS} é o limite`) }),
     cmd('settings', 'Settings', () => openSettings(), { icon: Settings, words: 'preferences options configuration' }),
