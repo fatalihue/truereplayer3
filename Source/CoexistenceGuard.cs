@@ -94,6 +94,9 @@ namespace TrueReplayer.Services
         /// <summary>Whether TrueReplayer 2 holds its mutex now, without taking it.</summary>
         public static bool Tr2Running()
         {
+            // This process holds the name (Acquire): TrueReplayer 2 cannot be running. Opening the
+            // mutex would find this app's own hold and call it TrueReplayer 2.
+            if (_tr2Name != null) return false;
             try
             {
                 if (!Mutex.TryOpenExisting(AppIdentity.Tr2.InstanceMutexName, out var m)) return false;
