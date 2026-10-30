@@ -23,7 +23,7 @@ const isShown = (row: Row, s: SettingsState) => !row.shown || row.shown(s);
  * search over every setting and, at their foot, the version and the update; the category's settings
  * on the right. Each applies at once, as in today's panel: Settings has no undo, and Reset asks first.
  */
-export function SettingsPage() {
+export default function SettingsPage() {
   const category = useUi(s => s.settingsCategory);
   const resetAsked = useUi(s => s.settingsReset);
   const [query, setQuery] = useState('');

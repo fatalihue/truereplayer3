@@ -1,21 +1,21 @@
-import { Keyboard, ListChecks, MousePointerClick, Settings, Zap } from 'lucide-react';
+import { ArrowRightLeft, ListChecks, MousePointerClick, Settings, Zap } from 'lucide-react';
 import { useBridge } from '../bridge/BridgeContext';
 import { useTt } from '../state/LanguageContext';
 import { preload } from './lazyModule';
 import { useApp } from './store';
-import { loadSettingsPage, openPage, openSettings, setLibraryPeek, useUi, type Page } from './ui';
+import { openPage, PAGE_CHUNKS, setLibraryPeek, useUi, type Page } from './ui';
 import { useShellBand } from './useShellBand';
 
-// ② The rail: the five destinations. Macros and Settings exist; the Clicker, Automations and Key
-// Remaps come later in phase 3, and until then they show (disabled) only in the development build.
+// ② The rail: the five destinations. Macros, Key Remaps and Settings exist; the Clicker and
+// Automations come later in phase 3, and until then they show (disabled) only in the development build.
 const DESTINATIONS = [
   { id: 'macros', label: 'Macros', Icon: ListChecks },
   { id: 'clicker', label: 'Clicker', Icon: MousePointerClick },
   { id: 'automations', label: 'Automations', Icon: Zap },
-  { id: 'remaps', label: 'Key Remaps', Icon: Keyboard },
+  { id: 'remaps', label: 'Key Remaps', Icon: ArrowRightLeft },
   { id: 'settings', label: 'Settings', Icon: Settings },
 ] as const;
-const BUILT = new Set<string>(['macros', 'settings'] satisfies Page[]);
+const BUILT = new Set<string>(['macros', 'remaps', 'settings'] satisfies Page[]);
 
 /**
  * Where the window folds or hides the library, Macros lays it over the steps and takes it away again
@@ -39,7 +39,10 @@ export function Rail() {
     if (page !== 'macros') openPage('macros');
     else if (!clicker && peeks) setLibraryPeek(!peek);
   };
-  const warm = (id: string) => { if (id === 'settings') void preload(loadSettingsPage); };
+  const warm = (id: string) => {
+    const load = PAGE_CHUNKS[id as keyof typeof PAGE_CHUNKS];
+    if (load) void preload(load);
+  };
   return (
     <nav className="shell-rail" aria-label="Destinations">
       {DESTINATIONS.filter(d => BUILT.has(d.id) || import.meta.env.DEV).map(({ id, label, Icon }) => {
@@ -60,7 +63,7 @@ export function Rail() {
             data-tip-pos="right"
             onPointerEnter={() => warm(id)}
             onFocus={() => warm(id)}
-            onClick={!built ? undefined : id === 'macros' ? openMacros : () => openSettings()}
+            onClick={!built ? undefined : id === 'macros' ? openMacros : () => openPage(id as Page)}
           >
             <Icon aria-hidden="true" />
             <span className="shell-rail-label">{label}</span>

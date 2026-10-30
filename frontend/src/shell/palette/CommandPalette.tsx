@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  BookOpen, Chrome, ClipboardCopy, ClipboardPaste, Combine, CornerDownRight, Keyboard, ListChecks, Play, Redo2, RefreshCw,
+  ArrowRightLeft, BookOpen, Chrome, ClipboardCopy, ClipboardPaste, Combine, CornerDownRight, Keyboard, ListChecks, Play, Plus, Redo2, RefreshCw,
   Replace, RotateCcw, ScrollText, Settings, Split, Square, SquareDot, Table2, Undo2, Variable, Zap,
 } from 'lucide-react';
 import { useAutomations } from '../../logic/useAutomations';
@@ -24,8 +24,9 @@ import { insertPoint, selectedIndices, selection, useSelection } from '../list/s
 import { stepMenuEntries } from '../list/stepMenu';
 import { stepIcon } from '../list/stepTypes';
 import { macroMenuEntries } from '../macroMenu';
+import { MAX_REMAPS } from '../pages/remaps/remapModel';
 import { useApp } from '../store';
-import { openSettings, useUi } from '../ui';
+import { openPage, openSettings, useUi } from '../ui';
 import { fromMenu, macroItems, macroPhrase, scoreOf, shortcut, stepItems, tokensOf, type PaletteItem } from './commands';
 import { palette } from './paletteState';
 import './palette.css';
@@ -173,6 +174,7 @@ function useItems(): PaletteItem[] {
   const shortcuts = useApp(a => a.settings.profileKeyEnabled);
   const automationsOn = useApp(a => a.automation.enabled);
   const remapsOn = useApp(a => a.settings.remaps.enabled);
+  const remapsFull = useApp(a => a.settings.remaps.entries.length >= MAX_REMAPS);
   const recordKey = useApp(a => a.settings.recordingHotkey);
   const replayKey = useApp(a => a.settings.replayHotkey);
   const keys = useSelection(s => s.keys);
@@ -290,6 +292,8 @@ function useItems(): PaletteItem[] {
     cmd('shortcuts', shortcuts ? 'Turn Shortcuts off' : 'Turn Shortcuts on', () => settings.change('profileKeyEnabled', !shortcuts), { icon: Keyboard, words: 'profile keys hotkeys hotstrings pause' }),
     cmd('automations', automationsOn ? 'Turn Automations off' : 'Turn Automations on', () => automations.setEnabled(!automationsOn), { icon: Zap, words: 'triggers armed' }),
     cmd('remaps', remapsOn ? 'Turn Key Remaps off' : 'Turn Key Remaps on', () => remaps.setEnabled(!remapsOn), { icon: CornerDownRight, words: 'remap keys' }),
+    cmd('remaps-page', 'Key Remaps', () => openPage('remaps'), { icon: ArrowRightLeft, words: 'remap remaps keys rebind swap caps disable mouse button' }),
+    cmd('remap-new', 'New remap', () => useUi.setState({ page: 'remaps', remapNew: true, libraryPeek: false }), { icon: Plus, detail: 'Key Remaps', words: 'add remap rebind key swap disable', disabled: remapsFull, hint: tt(`${MAX_REMAPS} is the limit`, `${MAX_REMAPS} é o limite`) }),
     cmd('settings', 'Settings', () => openSettings(), { icon: Settings, words: 'preferences options configuration' }),
     cmd('settings-hotkeys', 'Hotkeys', () => openSettings('hotkeys'), { icon: Settings, detail: 'Settings', words: 'shortcut keys global record replay foreground clicker conflict suggested' }),
     cmd('settings-appearance', 'Appearance', () => openSettings('appearance'), { icon: Settings, detail: 'Settings', words: 'theme themes dark light accent color colour density text size font zoom motion animations corner' }),

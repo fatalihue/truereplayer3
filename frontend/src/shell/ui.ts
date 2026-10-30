@@ -1,3 +1,4 @@
+import type { ComponentType } from 'react';
 import { create } from 'zustand';
 import type { LibraryDialogState } from './library/LibraryDialogs';
 
@@ -17,6 +18,8 @@ interface ShellUi {
   settingsCategory: SettingsCategory;
   /** "Reset all settings…" asked from outside Settings (Ctrl+K): the page opens its confirmation. */
   settingsReset: boolean;
+  /** "New remap" asked from outside Key Remaps (Ctrl+K): the page opens a new rule in its panel. */
+  remapNew: boolean;
   /** The dialog open over the shell. The library renders it, whichever zone opened it. */
   dialog: LibraryDialogState | null;
   /** The macro whose name the header takes the focus for once it is the open one. */
@@ -50,12 +53,12 @@ interface ShellUi {
 
 export type SettingsSection = 'hotkey' | 'hotstring' | 'target' | 'info';
 export type MacroTab = 'steps' | 'data';
-/** The rail's destinations built so far (the Clicker, Automations and Key Remaps come later in phase 3). */
-export type Page = 'macros' | 'settings';
+/** The rail's destinations built so far (the Clicker and Automations come later in phase 3). */
+export type Page = 'macros' | 'settings' | 'remaps';
 export type SettingsCategory = 'general' | 'hotkeys' | 'appearance' | 'recording' | 'screen' | 'browser' | 'diagnostics';
 
 export const useUi = create<ShellUi>(() => ({
-  page: 'macros', settingsCategory: 'general', settingsReset: false,
+  page: 'macros', settingsCategory: 'general', settingsReset: false, remapNew: false,
   dialog: null, nameFocus: null, libraryPeek: false, startImport: null, settingsOpen: false, settingsFocus: null,
   expanded: false, crop: null, macroTab: 'steps', dataSettings: false, dataHint: null,
 }));
@@ -67,8 +70,16 @@ export const openPage = (page: Page) => {
 /** Settings, at a category: the rail, Ctrl+K, the status bar's extension, the tray's Browser extension…. */
 export const openSettings = (category?: SettingsCategory) =>
   useUi.setState(category ? { page: 'settings', settingsCategory: category, libraryPeek: false } : { page: 'settings', libraryPeek: false });
-// The Settings page: its categories and its controls, in a chunk the rail's pointer or focus brings (rule 6).
-export const loadSettingsPage = () => import('./pages/settings/SettingsPage');
+/**
+ * The pages besides the macros', each in a chunk of its own that the rail's pointer or focus brings
+ * (rule 6): Settings with its categories, Key Remaps with its list and "Remap settings". A page's
+ * module has the page as its default export.
+ */
+export const PAGE_CHUNKS: Record<Exclude<Page, 'macros'>, () => Promise<{ default: ComponentType }>> = {
+  settings: () => import('./pages/settings/SettingsPage'),
+  remaps: () => import('./pages/remaps/RemapsPage'),
+};
+export const loadSettingsPage = PAGE_CHUNKS.settings;
 
 export const openDialog = (dialog: LibraryDialogState) => useUi.setState({ dialog });
 export const closeDialog = () => useUi.setState({ dialog: null });

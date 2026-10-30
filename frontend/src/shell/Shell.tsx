@@ -14,7 +14,7 @@ import { StatusBar } from './StatusBar';
 import { StepList } from './list/StepList';
 import { useApp } from './store';
 import { TitleBar } from './TitleBar';
-import { inspectorWide, loadDataLoop, loadSettingsPage, useUi } from './ui';
+import { inspectorWide, loadDataLoop, PAGE_CHUNKS, useUi, type Page } from './ui';
 import './shell.css';
 
 /**
@@ -48,7 +48,7 @@ export function Shell() {
           </main>
           <Inspector />
         </div>
-        {away && <Pages />}
+        {page !== 'macros' && <Pages page={page} />}
       </div>
       <StatusBar />
       <ShellKeys />
@@ -60,13 +60,14 @@ export function Shell() {
 }
 
 /** ② The page of the destination on screen, in its own chunk (rule 6); a frame holds its place until it comes. */
-function Pages() {
-  const settings = useLoaded(loadSettingsPage);
+function Pages({ page }: { page: Exclude<Page, 'macros'> }) {
+  const load = PAGE_CHUNKS[page];
+  const chunk = useLoaded(load);
   useEffect(() => {
-    if (!settings) void preload(loadSettingsPage);
-  }, [settings]);
-  const SettingsPage = settings?.SettingsPage;
-  return SettingsPage ? <SettingsPage /> : <section className="shell-page" aria-label="Settings" />;
+    if (!chunk) void preload(load);
+  }, [chunk, load]);
+  const PageView = chunk?.default;
+  return PageView ? <PageView /> : <section className="shell-page" />;
 }
 
 /**
