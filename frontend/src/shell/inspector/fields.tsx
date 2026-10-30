@@ -136,9 +136,15 @@ export interface DraftFieldProps {
   field: string;
   /** The accessible name. */
   label: string;
-  kind: 'int' | 'text' | 'mono';
+  /**
+   * 'int' and 'dec' are numbers ('dec' with decimals, written by `format`); 'mono' is text in the
+   * monospaced face; 'text' is text.
+   */
+  kind: 'int' | 'dec' | 'text' | 'mono';
   min?: number;
   max?: number;
+  /** How a 'dec' writes a value it stepped to (seconds as "0.25"). */
+  format?: (value: number) => string;
   /** A minus sign is allowed (coordinates). */
   signed?: boolean;
   /**
@@ -242,15 +248,20 @@ export function DraftField(props: DraftFieldProps) {
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => commitRef.current(false), IDLE_MS);
   };
-  // A step up or down from what shows (the lower bound when it is empty), inside the bounds.
+  // A step up or down from what shows (the lower bound when it is empty; a 'dec' starts from the
+  // value its placeholder says is in effect), inside the bounds.
+  const numeric = kind === 'int' || kind === 'dec';
   const shownText = typing ? typing.text : base;
-  const now = Number.parseInt(shownText, 10);
+  const now = kind === 'dec' ? Number.parseFloat(shownText.replace(',', '.')) : Number.parseInt(shownText, 10);
+  const usual = kind === 'dec' ? Number.parseFloat((props.placeholder ?? '').replace(',', '.')) : Number.NaN;
+  const at = Number.isFinite(now) ? now : usual;
   const stepBy = (dir: 1 | -1) => {
-    if (kind !== 'int' || disabled) return;
-    const from = Number.isFinite(now) ? now : (props.min ?? 0);
+    if (!numeric || disabled) return;
+    const from = Number.isFinite(now) ? now : Number.isFinite(usual) ? usual : (props.min ?? 0);
     const size = typeof props.step === 'function' ? props.step(from, dir) : (props.step ?? 1);
-    const next = Number.isFinite(now) ? from + dir * size : from;
-    type(String(Math.min(props.max ?? Number.MAX_SAFE_INTEGER, Math.max(props.min ?? Number.MIN_SAFE_INTEGER, next))));
+    const next = Number.isFinite(now) || Number.isFinite(usual) ? from + dir * size : from;
+    const bounded = Math.min(props.max ?? Number.MAX_SAFE_INTEGER, Math.max(props.min ?? Number.MIN_SAFE_INTEGER, next));
+    type(kind === 'dec' ? (props.format ?? String)(Math.round(bounded * 1000) / 1000) : String(bounded));
   };
   const stepRef = useRef(stepBy);
   useEffect(() => { stepRef.current = stepBy; });
@@ -264,7 +275,7 @@ export function DraftField(props: DraftFieldProps) {
   const inputRef = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
   useEffect(() => {
     const el = inputRef.current;
-    if (!el || kind !== 'int') return;
+    if (!el || (kind !== 'int' && kind !== 'dec')) return;
     const onWheel = (e: WheelEvent) => {
       if (document.activeElement !== el || e.deltaY === 0) return;
       e.preventDefault();
@@ -300,7 +311,7 @@ export function DraftField(props: DraftFieldProps) {
       } else if (e.key === 'Escape') {
         // Sent as it stands; the Inspector then gives the focus back to the list (D12).
         commit();
-      } else if (kind === 'int' && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.altKey && !e.ctrlKey && !e.shiftKey) {
+      } else if (numeric && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.altKey && !e.ctrlKey && !e.shiftKey) {
         e.preventDefault();
         stepBy(e.key === 'ArrowUp' ? 1 : -1);
       }
@@ -321,12 +332,12 @@ export function DraftField(props: DraftFieldProps) {
       {props.prefix && <span className="insp-box-prefix">{props.prefix}</span>}
       {props.multiline
         ? <textarea {...box} rows={2} />
-        : <input {...box} type="text" inputMode={kind === 'int' ? 'numeric' : undefined} />}
+        : <input {...box} type="text" inputMode={kind === 'int' ? 'numeric' : kind === 'dec' ? 'decimal' : undefined} />}
       {props.unit && <span className="insp-box-unit">{props.unit}</span>}
-      {kind === 'int' && !disabled && (
+      {numeric && !disabled && (
         <span className="insp-steppers">
-          <button type="button" tabIndex={-1} aria-label="Increase" disabled={props.max !== undefined && now >= props.max} onMouseDown={(e) => e.preventDefault()} onClick={() => stepBy(1)} />
-          <button type="button" tabIndex={-1} aria-label="Decrease" disabled={!Number.isFinite(now) || (props.min !== undefined && now <= props.min)} onMouseDown={(e) => e.preventDefault()} onClick={() => stepBy(-1)} />
+          <button type="button" tabIndex={-1} aria-label="Increase" disabled={props.max !== undefined && at >= props.max} onMouseDown={(e) => e.preventDefault()} onClick={() => stepBy(1)} />
+          <button type="button" tabIndex={-1} aria-label="Decrease" disabled={!Number.isFinite(at) || (props.min !== undefined && at <= props.min)} onMouseDown={(e) => e.preventDefault()} onClick={() => stepBy(-1)} />
         </span>
       )}
     </label>
@@ -336,6 +347,7 @@ export function DraftField(props: DraftFieldProps) {
 /** What a typed key does to the text: digits only in a number (and one leading minus where allowed). */
 function clean(text: string, p: DraftFieldProps): string {
   if (p.filter) return p.filter(text);
+  if (p.kind === 'dec') return text.replace(/[^\d.,]/g, '');
   if (p.kind !== 'int') return text;
   const minus = p.signed && text.trim().startsWith('-') ? '-' : '';
   return minus + text.replace(/\D/g, '').slice(0, 9);
@@ -351,7 +363,7 @@ function parseValue(text: string, p: DraftFieldProps): string | null {
   }
   if (text === '') return p.empty === 'clear' ? '' : null;
   if (text === '-') return null;
-  const n = Number.parseInt(text, 10);
+  const n = p.kind === 'dec' ? Number.parseFloat(text.replace(',', '.')) : Number.parseInt(text, 10);
   if (!Number.isFinite(n)) return null;
   return String(Math.min(p.max ?? Number.MAX_SAFE_INTEGER, Math.max(p.min ?? Number.MIN_SAFE_INTEGER, n)));
 }

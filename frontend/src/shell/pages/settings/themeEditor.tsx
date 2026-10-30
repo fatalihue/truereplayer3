@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from 'react';
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Clipboard, ClipboardPaste, Download, Pipette, RotateCcw, SlidersHorizontal, TriangleAlert, Upload, Wand2 } from 'lucide-react';
+import { useEditorTools } from '../../../logic/useEditorTools';
 import { useTt } from '../../../state/LanguageContext';
 import { useTheme } from '../../../state/ThemeContext';
 import { useToast } from '../../../state/ToastContext';
@@ -9,6 +10,7 @@ import {
   DEFAULT_UI_SETTINGS, hexToHSL, hslToHex, pickInk, toHex, validateExportedTheme,
   type ExportedTheme, type ThemeColors, type ThemeUISettings,
 } from '../../../themes';
+import { useAsk } from '../../inspector/probes';
 import { baseOf, showView, useAp } from './appearanceStore';
 import './themeEditor.css';
 
@@ -73,17 +75,8 @@ const SECTIONS: Section[] = [
 ];
 const FIELDS = SECTIONS.flatMap(s => s.fields);
 
-const HAS_EYEDROPPER = typeof (window as unknown as { EyeDropper?: unknown }).EyeDropper !== 'undefined';
-/** A colour anywhere on the screen, by the browser's eyedropper (Chromium 95+); null when cancelled. */
-async function pickFromScreen(): Promise<string | null> {
-  const Ctor = (window as unknown as { EyeDropper?: new () => { open: () => Promise<{ sRGBHex: string }> } }).EyeDropper;
-  if (!Ctor) return null;
-  try {
-    return (await new Ctor().open()).sRGBHex;
-  } catch {
-    return null;
-  }
-}
+/** The file's name in a path the Save dialog chose. */
+const fileOf = (path: string) => path.split(/[\\/]/).pop() || path;
 
 /** The way back to the page, and what the view is. */
 function Head({ title, detail }: { title: string; detail?: string }) {
@@ -166,6 +159,20 @@ export function ColorsView() {
     if (f.kind === 'theme') clearColorOverride(f.key as keyof ThemeColors);
     else setUISetting(f.key as keyof ThemeUISettings, DEFAULT_UI_SETTINGS[f.key as keyof ThemeUISettings]);
   };
+  // The eyedropper is the app's own pick on the screen, the Pixel color check's: the window steps
+  // aside, and the colour clicked comes back. The browser's EyeDropper exists in WebView2, but its
+  // picker never came up (phase 3's live test).
+  const tools = useEditorTools();
+  const picking = useRef<Field | null>(null);
+  const pick = useAsk('pixel:colorPicked', (p) => {
+    const f = picking.current;
+    picking.current = null;
+    if (f && !p.cancelled && !p.refused && p.hex) apply(f, p.hex.toLowerCase());
+  });
+  const pickFor = (f: Field) => {
+    picking.current = f;
+    pick.ask(requestId => tools.pickColor({ requestId, absolute: true, colorOnly: true }));
+  };
   const open = hsl ? FIELDS.find(f => f.key === hsl) : undefined;
   // A recent colour goes to the field whose HSL is open; with none open, it is copied.
   const pickRecent = async (c: string) => {
@@ -212,7 +219,9 @@ export function ColorsView() {
                     changed={changed(f)}
                     check={measurePaintedContrast(f.kind, f.key, resolvedColors, config.uiSettings)}
                     hslOpen={hsl === f.key}
+                    picking={pick.waiting}
                     onChange={(hex) => apply(f, hex)}
+                    onPick={() => pickFor(f)}
                     onReset={() => reset(f)}
                     onToggleHsl={() => setHsl(hsl === f.key ? null : f.key)}
                   />
@@ -261,14 +270,17 @@ const WHAT_PT: Record<string, string> = {
   'derived ink on its own wash': 'tinta derivada sobre o próprio fundo',
 };
 
-function ColorRow({ field, value, changed, check, hslOpen, onChange, onReset, onToggleHsl }: {
+function ColorRow({ field, value, changed, check, hslOpen, picking, onChange, onPick, onReset, onToggleHsl }: {
   field: Field;
   value: string;
   changed: boolean;
   /** The ratio the colour reaches once painted (measurePaintedContrast), against its own floor. */
   check: { ratio: number; target: number; what: string } | null;
   hslOpen: boolean;
+  /** An eyedropper pick is out, for this row or another. */
+  picking: boolean;
   onChange: (hex: string) => void;
+  onPick: () => void;
   onReset: () => void;
   onToggleHsl: () => void;
 }) {
@@ -316,13 +328,9 @@ function ColorRow({ field, value, changed, check, hslOpen, onChange, onReset, on
           }}
         />
         <span className="te-tools">
-          {HAS_EYEDROPPER && (
-            <button type="button" className="te-tool" aria-label={`Pick ${label} color from screen`} data-tip={tt('Pick a color from the screen', 'Pegar uma cor da tela')}
-              onClick={async () => { const c = await pickFromScreen(); if (c) onChange(c); }}
-            >
-              <Pipette aria-hidden="true" />
-            </button>
-          )}
+          <button type="button" className="te-tool" aria-label={`Pick ${label} color from screen`} data-tip={tt('Pick a color from the screen', 'Pegar uma cor da tela')} disabled={picking} onClick={onPick}>
+            <Pipette aria-hidden="true" />
+          </button>
           <button type="button" className="te-tool" data-on={hslOpen || undefined} aria-label={`${label} HSL sliders`} aria-expanded={hslOpen} data-tip={tt('HSL sliders', 'Controles HSL')} onClick={onToggleHsl}>
             <SlidersHorizontal aria-hidden="true" />
           </button>
@@ -390,14 +398,17 @@ export function ShareView() {
   }, [copy]);
 
   const theName = () => name.trim() || 'My theme';
+  // Export to file goes through the system's Save dialog: a download from the page went to
+  // Downloads without asking where. Said once written; a cancel says nothing.
+  const tools = useEditorTools();
+  const saving = useAsk('dialog:saveFileResult', (r) => {
+    if (r.error) showToast(tt(`Could not save the theme: ${r.error}`, `Não foi possível salvar o tema: ${r.error}`), 'error');
+    else if (r.path) showToast(tt(`Saved ${fileOf(r.path)}`, `${fileOf(r.path)} salvo`), 'success');
+  });
   const exportFile = () => {
-    const blob = new Blob([JSON.stringify(exportTheme(theName()), null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${theName().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'theme'}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const file = `${theName().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'theme'}.json`;
+    const text = JSON.stringify(exportTheme(theName()), null, 2);
+    saving.ask(requestId => tools.saveFile({ requestId, name: file, text, title: 'Export theme' }));
   };
   const copyJson = async () => {
     try {
@@ -458,7 +469,7 @@ export function ShareView() {
         <h4 id="te-export" className="te-share-title">Export this theme</h4>
         <div className="te-share-row">
           <input className="te-name" type="text" aria-label="Theme name" placeholder="My theme" spellCheck={false} maxLength={60} value={name} onChange={(e) => setName(e.target.value)} />
-          <button type="button" className="insp-button" onClick={exportFile}><Download aria-hidden="true" />Export to file</button>
+          <button type="button" className="insp-button" disabled={saving.waiting} onClick={exportFile}><Download aria-hidden="true" />Export to file</button>
           <button type="button" className="insp-button" onClick={() => { void copyJson(); }}>
             <Clipboard aria-hidden="true" />
             {copy === 'ok' ? 'Copied' : copy === 'failed' ? 'Copy failed' : 'Copy to clipboard'}

@@ -10,6 +10,7 @@ import { useToast } from '../../../state/ToastContext';
 import { isModalDialogOpen } from '../../../utils/modalDialog';
 import { DraftField, Keys, Segmented, Switch } from '../../inspector/fields';
 import { ProcessPicker } from '../../inspector/probeKit';
+import { useAsk } from '../../inspector/probes';
 import { keycaps } from '../../library/model';
 import { Menu } from '../../Menu';
 import { anchorBelow, type MenuAnchor } from '../../menuAnchor';
@@ -281,17 +282,20 @@ function Transfer({ chips }: { chips?: boolean }) {
   ];
   const filters = every.filter(c => c.f.kind === 'all' || c.n > 0);
 
+  // Export goes through the system's Save dialog: a download from the page went to Downloads
+  // without asking where. The count is said once the file is written; a cancel says nothing.
+  const tools = useEditorTools();
+  const exported = useRef(0);
+  const saving = useAsk('dialog:saveFileResult', (r) => {
+    if (r.error) setNote('Could not save the file');
+    else if (r.path) setNote(`Saved ${exported.current} remap${exported.current === 1 ? '' : 's'}`);
+  });
   const exportFile = () => {
     const now = listNow();
     if (now.entries.length === 0) return;
-    const blob = new Blob([JSON.stringify({ kind: EXPORT_KIND, version: 1, enabled: now.enabled, remaps: now.entries }, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `truereplayer-remaps-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    setNote(`Saved ${now.entries.length} remap${now.entries.length === 1 ? '' : 's'}`);
+    exported.current = now.entries.length;
+    const text = JSON.stringify({ kind: EXPORT_KIND, version: 1, enabled: now.enabled, remaps: now.entries }, null, 2);
+    saving.ask(requestId => tools.saveFile({ requestId, name: `truereplayer-remaps-${new Date().toISOString().slice(0, 10)}.json`, text, title: 'Export remaps' }));
   };
   const importFile = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -329,7 +333,7 @@ function Transfer({ chips }: { chips?: boolean }) {
         Import
       </button>
       <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={importFile} />
-      <button type="button" className="insp-button rm-file" disabled={entries.length === 0} onClick={exportFile}>
+      <button type="button" className="insp-button rm-file" disabled={entries.length === 0 || saving.waiting} onClick={exportFile}>
         <Download aria-hidden="true" />
         Export
       </button>

@@ -471,7 +471,14 @@ namespace TrueReplayer
             {
                 try
                 {
-                    var envOptions = new Microsoft.Web.WebView2.Core.CoreWebView2EnvironmentOptions();
+                    var envOptions = new Microsoft.Web.WebView2.Core.CoreWebView2EnvironmentOptions
+                    {
+                        // The eyedropper inside Chromium's colour popup (an <input type="color">'s) needs a
+                        // picker the browser shell draws, and WebView2 has none: the button did nothing.
+                        // Off, the popup shows no eyedropper; the theme editor's rows carry the app's own
+                        // pick (pixel:pickColor) beside their swatch.
+                        AdditionalBrowserArguments = "--disable-features=EyeDropper",
+                    };
                     var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateWithOptionsAsync(
                         null, userDataFolder, envOptions);
                     await WebView.EnsureCoreWebView2Async(env);
@@ -1134,8 +1141,8 @@ namespace TrueReplayer
                 {
                     bridge?.SendMessage("alert:show", new
                     {
-                        message = $"Profile Keys are off — {combo} went to the app in front. "
-                                + $"Press {UserProfile.Current.ProfileKeyToggleHotkey} to switch them back on."
+                        message = $"Shortcuts are off — {combo} went to the app in front. "
+                                + $"Press {UserProfile.Current.ProfileKeyToggleHotkey} to turn them back on."
                     });
                 });
             };

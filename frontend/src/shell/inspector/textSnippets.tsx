@@ -4,7 +4,9 @@ import {
   buildSnippetExport, mergeSnippets, newSnippetId, parseSnippetImport, snippetExportFilename, type Snippet,
 } from '../../components/lexical/snippetTransfer';
 import { normalizeToken, splitTokenSegments } from '../../components/lexical/tokenNormalize';
+import { useEditorTools } from '../../logic/useEditorTools';
 import { useTt } from '../../state/LanguageContext';
+import { useAsk } from './probes';
 
 // The library of today, in the same place (send-text-106): the snippets survive the swap. A
 // snippet's `html` is its rich flavour, when the text had formatting: it goes back in formatted.
@@ -88,16 +90,19 @@ export function SnippetsTab({ api, hasText, locked }: {
     if (s.html) api.current?.insertHtml(s.html);
     else api.current?.insertText(s.text);
   };
+  // Export goes through the system's Save dialog: a download from the page went to Downloads
+  // without asking where. The count is said once the file is written; a cancel says nothing.
+  const tools = useEditorTools();
+  const exported = useRef(0);
+  const exporting = useAsk('dialog:saveFileResult', (r) => {
+    if (r.error) setNote('Could not save the file');
+    else if (r.path) setNote(`Saved ${exported.current} snippet${exported.current === 1 ? '' : 's'}`);
+  });
   const exportAll = () => {
     if (snippets.length === 0) return;
-    const blob = new Blob([JSON.stringify(buildSnippetExport(snippets), null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = snippetExportFilename(new Date());
-    a.click();
-    URL.revokeObjectURL(url);
-    setNote(`Saved ${snippets.length} snippet${snippets.length === 1 ? '' : 's'}`);
+    exported.current = snippets.length;
+    const text = JSON.stringify(buildSnippetExport(snippets), null, 2);
+    exporting.ask(requestId => tools.saveFile({ requestId, name: snippetExportFilename(new Date()), text, title: 'Export snippets' }));
   };
   const importFile = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -152,7 +157,7 @@ export function SnippetsTab({ api, hasText, locked }: {
             onChange={(e) => onFilter(e.target.value)}
           />
         ) : <span className="stx-snippets-title">Snippets</span>}
-        <button type="button" className="insp-icon-button" aria-label="Export snippets" data-tip={tt('Export snippets', 'Exportar snippets')} disabled={snippets.length === 0} onClick={exportAll}>
+        <button type="button" className="insp-icon-button" aria-label="Export snippets" data-tip={tt('Export snippets', 'Exportar snippets')} disabled={snippets.length === 0 || exporting.waiting} onClick={exportAll}>
           <span className="step-icon" data-icon="download" />
         </button>
         <button type="button" className="insp-icon-button" aria-label="Import snippets" data-tip={tt('Import snippets (added to yours)', 'Importar snippets (somados aos seus)')} onClick={() => fileRef.current?.click()}>

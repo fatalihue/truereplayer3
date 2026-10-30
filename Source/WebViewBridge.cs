@@ -1227,6 +1227,7 @@ namespace TrueReplayer
                     case "window:testProbe": HandleWindowTestProbe(payload); break;
                     case "window:captureGeometry": HandleWindowCaptureGeometry(payload); break;
                     case "dialog:pickFile": HandleDialogPickFile(payload); break;
+                    case "dialog:saveFile": HandleDialogSaveFile(payload); break;
                     case "process:list": HandleProcessList(); break;
                     case "profile:openFolder": HandleProfileOpenFolder(payload); break;
                     case "profile:pin": HandleProfilePin(payload); break;
@@ -4513,7 +4514,7 @@ namespace TrueReplayer
             SendMessage("update:error", new { message = $"Update postponed: {reason}", version });
             SendMessage("alert:show", new
             {
-                message = $"An update is ready but was not installed because {reason}. It will be offered again once the app is idle — or apply it any time from Settings → Check for updates.",
+                message = $"An update is ready but was not installed because {reason}. It will be offered again once the app is idle — or install it any time with Restart and update, at the foot of Settings.",
                 type = "info"
             });
         }
@@ -9004,6 +9005,8 @@ namespace TrueReplayer
             // samples them with no window context) — they must opt out of the profile-relative
             // translation the If/WaitPixelColor editors want.
             bool absolute = payload.TryGetProperty("absolute", out var absEl) && absEl.ValueKind == JsonValueKind.True;
+            // The theme editor's eyedropper wants the colour alone; the overlay's hint says so.
+            bool colorOnly = payload.TryGetProperty("colorOnly", out var colorEl) && colorEl.ValueKind == JsonValueKind.True;
             // Before the scope and before the window dance — see RefuseCaptureDuringRun. This is
             // one of the two doors that door-count missed: the Automation panel reads no run state
             // at all, so its eyedropper stayed live for the whole of a macro.
@@ -9056,7 +9059,9 @@ namespace TrueReplayer
                     screenshot,
                     regionOnly: false,
                     pointPick: true,
-                    hintText: "Click the pixel to watch — colour + coords captured  •  Scroll to zoom  •  ESC to cancel"));
+                    hintText: colorOnly
+                        ? "Click the colour to use  •  Scroll to zoom  •  ESC to cancel"
+                        : "Click the pixel to watch — colour + coords captured  •  Scroll to zoom  •  ESC to cancel"));
 
                 dispatcherQueue.TryEnqueue(() => NativeMethods.ShowWindow(mainHwnd, NativeMethods.SW_RESTORE));
 
@@ -11061,7 +11066,7 @@ namespace TrueReplayer
 
                 var otherTarget = profileController.GetEffectiveWindowTarget(entry.Name);
                 if (EffectiveTargetsOverlap(effectiveTarget, otherTarget))
-                    return $"Profile \"{entry.Name}\"";
+                    return $"the macro \"{entry.Name}\"";
             }
 
             return null;
@@ -12316,6 +12321,30 @@ namespace TrueReplayer
             try { path = await profileController.PickExecutableFileAsync(); }
             catch (Exception ex) { DiagnosticLog.Info($"[dialog:pickFile] {ex.Message}"); path = null; }
             SendMessage("dialog:pickFileResult", new { requestId, path });
+        }
+
+        // Export of a theme, the remaps or the snippets in the new interface: the system's Save
+        // dialog, then the file written where the user chose (null path = cancelled). A download
+        // from the page went straight to Downloads, with no say in the folder or the name.
+        private async void HandleDialogSaveFile(JsonElement payload)
+        {
+            string requestId = "";
+            try
+            {
+                // All read before the await: the document behind the payload is disposed once this yields.
+                requestId = payload.TryGetProperty("requestId", out var rp) ? rp.GetString() ?? "" : "";
+                string name = payload.TryGetProperty("name", out var np) ? np.GetString() ?? "" : "";
+                string text = payload.TryGetProperty("text", out var tp) ? tp.GetString() ?? "" : "";
+                string title = payload.TryGetProperty("title", out var tip) ? tip.GetString() ?? "" : "";
+                foreach (var c in Path.GetInvalidFileNameChars()) name = name.Replace(c, '-');
+                var path = await profileController.SaveTextFileAsync(name, text, title);
+                SendMessage("dialog:saveFileResult", new { requestId, path });
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Error("Save file (dialog:saveFile) failed", ex);
+                SendMessage("dialog:saveFileResult", new { requestId, path = (string?)null, error = ex.Message });
+            }
         }
 
         // Reads the CURRENT on-screen rect of the window matching the action's matcher, so the
@@ -14311,7 +14340,7 @@ namespace TrueReplayer
                     .FirstOrDefault(e => string.Equals(e.Hotkey, value, StringComparison.OrdinalIgnoreCase));
                 if (owner == null) continue;
                 DiagnosticLog.Info($"Hotkey conflict: \"{value}\" is {HotkeyDisplayNames[key]} and the hotkey of profile \"{owner.Name}\".");
-                return $"\"{value}\" is used by {HotkeyDisplayNames[key]}, so the profile \"{owner.Name}\" on the same keys won't fire. Change one of them (Settings → Keys, or the profile's hotkey).";
+                return $"\"{value}\" is used by {HotkeyDisplayNames[key]}, so the macro \"{owner.Name}\" on the same keys won't fire. Change one of them (Settings › Hotkeys, or the macro's hotkey).";
             }
             return null;
         }
@@ -14357,17 +14386,18 @@ namespace TrueReplayer
             return null;
         }
 
+        // The hotkeys as Settings › Hotkeys and the Clicker page name them, for "… is already used by …".
         private static readonly Dictionary<string, string> HotkeyDisplayNames = new()
         {
-            ["recordingHotkey"] = "Recording",
-            ["replayHotkey"] = "Replay",
-            ["profileKeyToggleHotkey"] = "Profile Key Toggle",
-            ["foregroundHotkey"] = "Foreground",
-            ["modeToggleHotkey"] = "Mode Toggle",
-            ["captureSlotHotkey"] = "Capture to Slot",
-            ["copyScreenTextHotkey"] = "Copy Screen Text",
-            ["cursorClickStartHotkey"] = "Clicker Start",
-            ["cursorClickPauseHotkey"] = "Clicker Pause",
+            ["recordingHotkey"] = "“Record”",
+            ["replayHotkey"] = "“Replay or stop”",
+            ["profileKeyToggleHotkey"] = "“Shortcuts on or off”",
+            ["foregroundHotkey"] = "“Bring TrueReplayer to the front”",
+            ["modeToggleHotkey"] = "“Open the Clicker”",
+            ["captureSlotHotkey"] = "“Copy the selection to a clip slot”",
+            ["copyScreenTextHotkey"] = "“Copy text from the screen”",
+            ["cursorClickStartHotkey"] = "the Clicker’s “Start and stop”",
+            ["cursorClickPauseHotkey"] = "the Clicker’s “Pause”",
         };
 
         // The global hotkeys that stay live in BOTH modes. The Clicker pair may collide with
@@ -14524,7 +14554,7 @@ namespace TrueReplayer
 
                 var otherTarget = profileController.GetEffectiveWindowTarget(entry.Name);
                 if (EffectiveTargetsOverlap(effectiveTarget, otherTarget))
-                    return $"Profile \"{entry.Name}\"";
+                    return $"the macro \"{entry.Name}\"";
             }
 
             return null;

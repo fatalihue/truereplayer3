@@ -46,19 +46,21 @@ export function TitleBar() {
 
 /**
  * The state of the engine, read-only (casca-019): "Ready", "Recording · Untitled macro",
- * "Replaying · Trade Roblox", "Waiting · Trade Roblox" while a Pause step holds the run, and
- * "Clicking · 412" for the Clicker. A ring goes out from it while something runs, and once, green,
- * when a run ends — drawn by CSS, in transform and opacity (rule 8).
+ * "Replaying · Trade Roblox", "Waiting · Trade Roblox" while a Pause step holds the run, and for
+ * the Clicker "Starting in 3 s" before the first click (casca-110), "Clicking · 412", and
+ * "Paused · 412". A ring goes out from it while something runs, and once, green, when a run ends —
+ * drawn by CSS, in transform and opacity (rule 8).
  */
 function StateBadge({ status, clicker }: { status: 'ready' | 'recording' | 'replaying'; clicker: boolean }) {
   const open = useApp(a => a.activeProfile);
   const paused = useApp(a => a.pauseState.isPaused);
   const clicks = useShell(s => (status === 'replaying' && clicker ? s.live.clickerStats.count : 0));
+  const countdown = useShell(s => (status === 'replaying' && clicker ? Math.ceil(s.live.clickerStats.countdownMs / 1000) : 0));
   const ended = useShell(s => s.runClock.replayEnded);
   let text: string;
   if (status === 'recording') text = open ? `Recording · ${open}` : 'Recording';
   else if (status === 'replaying') {
-    if (clicker) text = `Clicking · ${clicks.toLocaleString('en-US')}`;
+    if (clicker) text = paused ? `Paused · ${clicks.toLocaleString('en-US')}` : countdown > 0 ? `Starting in ${countdown} s` : `Clicking · ${clicks.toLocaleString('en-US')}`;
     else text = `${paused ? 'Waiting' : 'Replaying'}${open ? ` · ${open}` : ''}`;
   } else text = clicker ? 'Clicker' : 'Ready';
   const live = status !== 'ready' || undefined;

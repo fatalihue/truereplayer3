@@ -304,8 +304,9 @@ function useItems(): PaletteItem[] {
     cmd('settings-appearance', 'Appearance', () => openSettings('appearance'), { icon: Settings, detail: 'Settings', words: 'theme themes dark light accent color colour density text size font zoom motion animations corner' }),
     cmd('settings-recording', 'Recording and playback', () => openSettings('recording'), { icon: Settings, detail: 'Settings', words: 'delay timing jitter game mode return cursor fast approach' }),
     cmd('settings-screen', 'Screen Text', () => openSettings('screen'), { icon: Settings, detail: 'Settings', words: 'ocr language install read text' }),
-    // casca-139: the reset of today, from the palette too; Settings asks before it resets.
-    cmd('resetall', 'Reset all settings…', () => useUi.setState({ page: 'settings', settingsCategory: 'general', settingsReset: true, libraryPeek: false }), { icon: RotateCcw, detail: 'Settings', words: 'defaults restore factory' }),
+    // casca-139: the reset of today, from the palette too; Settings asks before it resets. Off during
+    // a run or a recording, as the row's Reset… is (the engine refuses it then).
+    cmd('resetall', 'Reset all settings…', () => useUi.setState({ page: 'settings', settingsCategory: 'general', settingsQuery: '', settingsReset: true, libraryPeek: false }), { icon: RotateCcw, detail: 'Settings', words: 'defaults restore factory', disabled: status !== 'ready', hint: tt('Stop the run or the recording first', 'Pare a execução ou a gravação antes') }),
     cmd('extension', 'Connect browser extension', () => openSettings('browser'), { icon: Chrome, detail: 'Settings', words: 'chrome edge brave extension unpacked install disconnected' }),
     cmd('reload', 'Reload UI', app.reloadUI, { icon: RefreshCw, words: 'refresh stuck frozen' }),
     cmd('logs', 'Open logs folder', app.openLogsFolder, { icon: ScrollText, words: 'diagnostics session log support' }),

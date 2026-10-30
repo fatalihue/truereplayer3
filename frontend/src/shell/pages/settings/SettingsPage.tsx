@@ -26,7 +26,8 @@ const isShown = (row: Row, s: SettingsState) => !row.shown || row.shown(s);
 export default function SettingsPage() {
   const category = useUi(s => s.settingsCategory);
   const resetAsked = useUi(s => s.settingsReset);
-  const [query, setQuery] = useState('');
+  const query = useUi(s => s.settingsQuery);
+  const setQuery = (q: string) => useUi.setState({ settingsQuery: q });
   const [confirm, setConfirm] = useState(false);
   useEffect(() => {
     onResetAsked(() => setConfirm(true));

@@ -5,6 +5,7 @@ import { BridgeProvider } from './bridge/BridgeContext'
 import { ErrorBoundary } from './components/common/ErrorBoundary'
 import { Shell } from './shell/Shell'
 import { ShellBridge } from './shell/ShellBridge'
+import { useShell } from './shell/store'
 import { LanguageProvider } from './state/LanguageContext'
 import { ThemeProvider } from './state/ThemeContext'
 import { ToastProvider } from './state/ToastContext'
@@ -36,7 +37,7 @@ applyThemeConfig(resolveThemeColors(bootTheme, loadCustomPresets()), bootTheme.u
 // asks the engine to save as you go and to undo the macro's settings too (ui:capabilities).
 const CAPABILITIES = { autoSave: true, extendedUndo: true }
 
-createRoot(document.getElementById('root')!).render(
+const render = () => createRoot(document.getElementById('root')!).render(
   <StrictMode>
     {/* Two boundaries, as in the shell of today: the outer one catches a provider crash, the inner
         one a shell crash with the theme still applied. */}
@@ -58,3 +59,29 @@ createRoot(document.getElementById('root')!).render(
     </ErrorBoundary>
   </StrictMode>,
 )
+
+// The first render waits for document.fonts.ready. Blink settles it in a task posted by the layout
+// that follows the load event, and that task runs a whole style and layout pass first
+// (FontFaceSetDocument::FireDoneEventIfPossible). Rendered before it, the shell paid that pass —
+// the first text layout, 20 to 30 ms in WebView2 — between its first commit and the effects that
+// send ui:ready, so the library waited for it. After it, the pass runs on an empty page, and the
+// layout comes later. The wait is a task or two; the timer covers a promise that does not settle
+// soon.
+let started = false
+function start() {
+  if (started) return
+  started = true
+  render()
+}
+void document.fonts.ready.then(start, start)
+setTimeout(start, 50)
+
+// That first layout runs in a task of its own once the launch's state is on the page. The window
+// waits for the GPU channel before its first frame (~45 ms in WebView2, phase 4) with the page idle,
+// and a frame that had to lay the page out first would show it that much later. An idle callback
+// would come only after that frame (measured). Already laid out, it costs nothing.
+const stopWatching = useShell.subscribe((s) => {
+  if (!s.booted) return
+  stopWatching()
+  setTimeout(() => { void document.documentElement.getBoundingClientRect() }, 0)
+})

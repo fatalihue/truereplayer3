@@ -959,6 +959,8 @@ export type IncomingMessage =
   // windowTarget:testResult pair, which relies on the Target dialog being sole consumer).
   | { type: 'window:testProbeResult'; payload: { requestId: string; found: boolean; matchProcess: string; matchTitle: string; error?: string } }
   | { type: 'dialog:pickFileResult'; payload: { requestId: string; path?: string | null } }
+  // dialog:saveFile's answer: where the file was written; no path = cancelled, error = not written.
+  | { type: 'dialog:saveFileResult'; payload: { requestId: string; path?: string | null; error?: string } }
   | { type: 'window:captureGeometryResult'; payload: { requestId: string; found: boolean; x: number; y: number; width: number; height: number; error?: string } }
   // The Target dialog's answer for both of its convert buttons: the combined "Apply target &
   // convert" on profile:setWindowTarget and the named profile:convertCoordinates. ok:true = the
@@ -1210,6 +1212,9 @@ export type OutgoingMessage =
   // verdict is the one the run will reach.
   | { type: 'window:testProbe'; payload: { requestId: string; processName: string; windowTitle: string; titleMatchMode: string; foregroundOnly?: boolean; matchIndex?: number } }
   | { type: 'dialog:pickFile'; payload: { requestId: string; kind: string } }
+  // A file the interface built (a theme, the remaps, the snippets), saved through the system's Save
+  // dialog with `name` suggested: a download from the page went to Downloads without asking.
+  | { type: 'dialog:saveFile'; payload: { requestId: string; name: string; text: string; title: string } }
   | { type: 'window:captureGeometry'; payload: { requestId: string; processName: string; windowTitle: string; titleMatchMode: string } }
   | { type: 'process:list'; payload: Record<string, never> }
   | { type: 'profile:openFolder'; payload: { name?: string } }
@@ -1395,8 +1400,9 @@ export type OutgoingMessage =
   | { type: 'image:testMatch'; payload: { requestId: string; imagePath: string; confidence: number; searchRegion?: { x: number; y: number; w: number; h: number }; absolute?: boolean; anchor?: { processName: string; windowTitle: string; titleMatchMode: string }; profile?: string } }
   | { type: 'mouse:pickPosition'; payload: { requestId: string } }
   // absolute: skip the profile-relative translation (automation watchers sample
-  // virtual-screen coords with no window context).
-  | { type: 'pixel:pickColor'; payload: { requestId: string; absolute?: boolean; anchor?: { processName: string; windowTitle: string; titleMatchMode: string } } }
+  // virtual-screen coords with no window context). colorOnly: only the colour is wanted (the
+  // theme editor's eyedropper), and the overlay's hint says so.
+  | { type: 'pixel:pickColor'; payload: { requestId: string; absolute?: boolean; colorOnly?: boolean; anchor?: { processName: string; windowTitle: string; titleMatchMode: string } } }
   | { type: 'pixel:testMatch'; payload: { requestId: string; x: number; y: number; hex: string; tolerance: number; absolute?: boolean; anchor?: { processName: string; windowTitle: string; titleMatchMode: string } } }
   | { type: 'selection:changed'; payload: { indices: number[] } }
   | { type: 'window:alwaysOnTop'; payload: { enabled: boolean } }

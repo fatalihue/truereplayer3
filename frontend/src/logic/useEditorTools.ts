@@ -6,7 +6,7 @@ type ToolType = Extract<OutgoingMessage['type'],
   | 'mouse:pickPosition' | 'pixel:pickColor' | 'waitimage:configureSearchRegion' | 'waitimage:recapture'
   | 'waitimage:cropReference' | 'pixel:testMatch' | 'image:testMatch' | 'ocr:testRead'
   | 'profile:detectWindow' | 'window:testProbe' | 'window:captureGeometry' | 'process:list' | 'dialog:pickFile'
-  | 'browser:pickElement' | 'browser:cancelPick' | 'browser:testAction' | 'browser:testCondition'>;
+  | 'dialog:saveFile' | 'browser:pickElement' | 'browser:cancelPick' | 'browser:testAction' | 'browser:testCondition'>;
 type MessageOf<T extends ToolType> = Extract<OutgoingMessage, { type: T }>;
 
 /** The id a tool's reply carries back: eight base-36 characters, enough for the replies one editor waits on. */
@@ -15,7 +15,7 @@ export const newRequestId = () => Math.random().toString(36).slice(2, 10);
 /**
  * The editors' tools that reach outside the app, as commands: picking on the screen, testing a
  * reference image, a pixel or a screen read against the live screen, finding a window or a process,
- * a file dialog, and the browser extension's element pick and tests. Each takes its message's own
+ * the file dialogs, and the browser extension's element pick and tests. Each takes its message's own
  * payload. Most carry a requestId and get it back on the reply; the editor that asked keeps the id
  * and drops a reply that carries any other.
  */
@@ -41,6 +41,8 @@ export function useEditorTools() {
       captureWindowGeometry: cmd('window:captureGeometry'),
       listProcesses: cmd('process:list'),
       pickFile: cmd('dialog:pickFile'),
+      /** The system's Save dialog for a file built here; dialog:saveFileResult says where it went. */
+      saveFile: cmd('dialog:saveFile'),
       // ── the browser extension ──
       pickElement: cmd('browser:pickElement'),
       cancelPick: cmd('browser:cancelPick'),

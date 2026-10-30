@@ -750,7 +750,7 @@ function Rhythm({ name, t, change }: { name: string; t: TriggerConfig; change: C
       <div className="insp-row">
         <span className="insp-row-label">Check every</span>
         <span className="insp-row-end">
-          <DraftField stepId={`automation:${name}`} field="pollIntervalMs" label="Check every" kind="mono" unit="s" placeholder={secondsText(poll)}
+          <DraftField stepId={`automation:${name}`} field="pollIntervalMs" label="Check every" kind="dec" min={0.1} max={600} step={0.25} format={(s) => secondsText(s * 1000)} unit="s" placeholder={secondsText(poll)}
             stored={t.pollIntervalMs > 0 ? secondsText(t.pollIntervalMs) : ''} filter={(v) => v.replace(/[^\d.,]/g, '')} parse={parseSeconds}
             onApply={(v) => change({ pollIntervalMs: v === '' ? 0 : Math.round(Number(v) * 1000) }, 'poll')} />
         </span>

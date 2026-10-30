@@ -9,7 +9,14 @@ import { diffFields, fieldsOf, orderPatch, type Display, type FieldKey, type Fie
  * which preset is "selected", since the concept saves every edit into it ("Edits save into the one
  * that is selected").
  */
-interface Snap { fields: Fields; selected: string | null }
+interface Snap {
+  fields: Fields;
+  selected: string | null;
+  /** A Delete, which Ctrl+Z undoes as the toast's Undo does. The engine keeps the last one only. */
+  deleted?: string;
+}
+/** What the history does to the presets: the engine's restore of the last Delete, and the Delete again. */
+export interface PresetSteps { restore: (name: string) => void; remove: (name: string) => void }
 interface ClickerUi {
   /** The preset the edits save into, or null (no preset: New keeps the settings under a name). */
   selected: string | null;
@@ -22,6 +29,8 @@ interface ClickerUi {
   /** New's name field, and the header's Rename… field. */
   naming: boolean;
   renaming: boolean;
+  /** What New's name field holds, kept while the page is away (paineis-158); Esc and Enter let it go. */
+  draftName: string;
   /** The presets laid over the page where the window has no room for them beside it. */
   peek: boolean;
   /** What a switch's seed value replaced (Clicks 100, Jitter and Spread 10), to put back when it goes off untouched. */
@@ -36,7 +45,7 @@ interface ClickerUi {
   future: Snap[];
 }
 export const useClickerUi = create<ClickerUi>(() => ({
-  selected: null, pending: {}, expect: null, unit: 'cps', naming: false, renaming: false, peek: false,
+  selected: null, pending: {}, expect: null, unit: 'cps', naming: false, renaming: false, draftName: '', peek: false,
   seeds: {}, clampedAt: null, displays: null, endedAt: null, past: [], future: [],
 }));
 
@@ -117,18 +126,53 @@ export function choosePreset(name: string, fields: Fields, apply: (name: string)
   apply(name);
 }
 
-/** Ctrl+Z (or Ctrl+Y): the settings and the selected preset one step back (or forward). */
-export function stepFields(back: boolean, send: Send): boolean {
+const presetExists = (name: string | null) => !!name
+  && (useShell.getState().app.settings.cursorClickPresets ?? []).some(p => p.name.toLowerCase() === name.toLowerCase());
+
+/** A preset deleted: a step of its own. The engine keeps only the last Delete, so an older one leaves the history. */
+export function recordDelete(name: string) {
+  const s = useClickerUi.getState();
+  const step: Snap = { fields: fieldsNow(), selected: s.selected, deleted: name };
+  useClickerUi.setState({ past: [...s.past.filter(p => !p.deleted).slice(1 - MAX_STEPS), step], future: [], selected: null });
+  lastAt = -Infinity;
+  lastControl = null;
+}
+
+/**
+ * Ctrl+Z (or Ctrl+Y): the settings and the selected preset one step back (or forward). A Delete
+ * brings its preset back (selected again once it is, by the page) or deletes it again; a preset gone
+ * since a step is not selected again.
+ */
+export function stepFields(back: boolean, send: Send, presets: PresetSteps): boolean {
   const { past, future, selected } = useClickerUi.getState();
   const to = (back ? past : future).at(-1);
   if (!to) return false;
-  const now: Snap = { fields: fieldsNow(), selected };
-  useClickerUi.setState(back
-    ? { past: past.slice(0, -1), future: [...future, now], selected: to.selected }
-    : { future: future.slice(0, -1), past: [...past, now], selected: to.selected });
   lastAt = -Infinity;
   lastControl = null;
+  if (to.deleted) {
+    useClickerUi.setState(back
+      ? { past: past.slice(0, -1), future: [...future, to], selected: null }
+      : { future: future.slice(0, -1), past: [...past, to], selected: null });
+    if (back) presets.restore(to.deleted);
+    else presets.remove(to.deleted);
+    return true;
+  }
+  const now: Snap = { fields: fieldsNow(), selected };
+  const next = presetExists(to.selected) ? to.selected : null;
+  useClickerUi.setState(back
+    ? { past: past.slice(0, -1), future: [...future, now], selected: next }
+    : { future: future.slice(0, -1), past: [...past, now], selected: next });
   expectFields(to.fields);
   sendFields(diffFields(now.fields, to.fields), send);
   return true;
+}
+
+/** The toast's Undo: Ctrl+Z when the Delete is the last step; otherwise the preset comes back and its step goes. */
+export function undoDelete(name: string, send: Send, presets: PresetSteps) {
+  if (useClickerUi.getState().past.at(-1)?.deleted === name) {
+    stepFields(true, send, presets);
+    return;
+  }
+  useClickerUi.setState(s => ({ past: s.past.filter(p => p.deleted !== name), future: s.future.filter(p => p.deleted !== name) }));
+  presets.restore(name);
 }

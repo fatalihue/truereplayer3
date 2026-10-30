@@ -270,6 +270,25 @@ namespace TrueReplayer.Controllers
                 CheckFileExists = true,
             }, "launch target");
 
+        /// <summary>
+        /// The system's Save dialog for a file the interface built (a theme, the remaps, the
+        /// snippets), then the text written where the user chose. Returns the path, or null on
+        /// Cancel; a write that fails throws to the caller, which says so.
+        /// </summary>
+        public async Task<string?> SaveTextFileAsync(string suggestedName, string text, string title)
+        {
+            var path = await ShowFileDialogAsync(new WinForms.SaveFileDialog
+            {
+                Title = title,
+                Filter = "JSON file (*.json)|*.json",
+                FileName = suggestedName,
+                DefaultExt = "json"
+            }, "save file");
+            if (path == null) return null;
+            await File.WriteAllTextAsync(path, text, new System.Text.UTF8Encoding(false));
+            return path;
+        }
+
         #region Profile CRUD Operations
 
         public async Task<bool> SaveProfileAsync()

@@ -4,12 +4,10 @@
 // not — so a reinstall, a new machine or cleared site data lost the library with no warning and
 // no way back.
 //
-// MECHANISM: the browser path (Blob + a.download to save, <input type="file"> + FileReader to
-// load), which is exactly what ThemeEditor already does. The bridge is NOT reusable here:
-// `dialog:pickFile` hardcodes an executable picker and returns a PATH with no read handler
-// behind it, and `profile:export` exists because the BACKEND owns profile data — it has to read
-// reference PNGs and recompute the compatibility floor. Snippets are frontend-only data, so
-// round-tripping them through the host would buy nothing and add two message types.
+// MECHANISM: today's dialog saves by the browser path (Blob + a.download), as ThemeEditor does;
+// the new interface saves through the host's Save dialog (`dialog:saveFile`), since in WebView2 a
+// download went to Downloads without asking where. Both load with <input type="file"> +
+// FileReader, whose picker is already the system's.
 //
 // The pure functions live here, free of React and of the DOM, so the envelope rules are testable
 // without a browser.

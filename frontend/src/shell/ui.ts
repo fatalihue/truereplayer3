@@ -16,6 +16,8 @@ interface ShellUi {
   page: Page;
   /** The Settings category shown, kept while the page is away. */
   settingsCategory: SettingsCategory;
+  /** The Settings search. A door to a category (Ctrl+K, the status bar, the tray) clears it, so the category shows. */
+  settingsQuery: string;
   /** "Reset all settings…" asked from outside Settings (Ctrl+K): the page opens its confirmation. */
   settingsReset: boolean;
   /** "New remap" asked from outside Key Remaps (Ctrl+K): the page opens a new rule in its panel. */
@@ -63,7 +65,7 @@ export type Page = 'macros' | 'clicker' | 'automations' | 'remaps' | 'settings';
 export type SettingsCategory = 'general' | 'hotkeys' | 'appearance' | 'recording' | 'screen' | 'browser' | 'diagnostics';
 
 export const useUi = create<ShellUi>(() => ({
-  page: 'macros', settingsCategory: 'general', settingsReset: false, remapNew: false, automationAsk: null,
+  page: 'macros', settingsCategory: 'general', settingsQuery: '', settingsReset: false, remapNew: false, automationAsk: null,
   dialog: null, nameFocus: null, libraryPeek: false, startImport: null, settingsOpen: false, settingsFocus: null,
   expanded: false, crop: null, macroTab: 'steps', dataSettings: false, dataHint: null,
 }));
@@ -74,7 +76,7 @@ export const openPage = (page: Page) => {
 };
 /** Settings, at a category: the rail, Ctrl+K, the status bar's extension, the tray's Browser extension…. */
 export const openSettings = (category?: SettingsCategory) =>
-  useUi.setState(category ? { page: 'settings', settingsCategory: category, libraryPeek: false } : { page: 'settings', libraryPeek: false });
+  useUi.setState(category ? { page: 'settings', settingsCategory: category, settingsQuery: '', libraryPeek: false } : { page: 'settings', libraryPeek: false });
 /**
  * The pages besides the macros', each in a chunk of its own that the rail's pointer or focus brings
  * (rule 6): the Clicker with its presets and settings, Automations with its table and "Automation

@@ -282,7 +282,10 @@ function BrowserPanel() {
   const outdated = useExtension(s => s.outdated);
   const appActions = useAppActions();
   const { send } = useBridge();
-  const [asked, setAsked] = useState(false);
+  // Copy path's answer is the reply that comes after the click: the one on screen then (the
+  // opening's, asked without the copy) says nothing about it (dialogos-098).
+  const [askedOver, setAskedOver] = useState<ReturnType<typeof useExtensionHelp> | undefined>(undefined);
+  const answered = askedOver !== undefined && reply !== askedOver;
   const connected = connection !== 'unknown' ? connection === 'connected' : reply ? reply.connected : null;
   const steps = [
     tt('Open chrome://extensions (Edge: edge://extensions, Brave: brave://extensions).', 'Abra chrome://extensions (Edge: edge://extensions, Brave: brave://extensions).'),
@@ -311,7 +314,7 @@ function BrowserPanel() {
           type="button"
           className="insp-button"
           disabled={!reply?.exists}
-          onClick={() => { setAsked(true); send({ type: 'extension:help', payload: {} }); }}
+          onClick={() => { setAskedOver(reply); send({ type: 'extension:help', payload: {} }); }}
         >
           <ClipboardCopy aria-hidden="true" />
           Copy path
@@ -324,8 +327,8 @@ function BrowserPanel() {
       <p className="insp-hint" role="status">
         {!reply ? null
           : !reply.exists ? <span data-error="">{tt('This folder is missing. Reinstall TrueReplayer to restore it.', 'Esta pasta não existe. Reinstale o TrueReplayer para restaurá-la.')}</span>
-          : asked && reply.copied ? tt('The path is copied. The extension updates itself along with TrueReplayer.', 'O caminho foi copiado. A extensão se atualiza sozinha junto com o TrueReplayer.')
-          : asked ? tt('Could not copy the path — select it above. The extension updates itself along with TrueReplayer.', 'Não deu para copiar o caminho — selecione-o acima. A extensão se atualiza sozinha junto com o TrueReplayer.')
+          : answered && reply.copied ? tt('The path is copied. The extension updates itself along with TrueReplayer.', 'O caminho foi copiado. A extensão se atualiza sozinha junto com o TrueReplayer.')
+          : answered ? tt('Could not copy the path — select it above. The extension updates itself along with TrueReplayer.', 'Não deu para copiar o caminho — selecione-o acima. A extensão se atualiza sozinha junto com o TrueReplayer.')
           : tt('The extension updates itself along with TrueReplayer.', 'A extensão se atualiza sozinha junto com o TrueReplayer.')}
       </p>
     </div>

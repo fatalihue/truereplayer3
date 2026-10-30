@@ -21,7 +21,7 @@ import {
   sentence, spreadPx, takesSec, takesWords, timeLimitS, whereOf, type FieldKey, type Fields, type Where,
 } from './clickerModel';
 import {
-  choosePreset, commitFields, engineFields, fieldsNow, sendFields, settle, stepFields, useClickerUi, useFields,
+  choosePreset, commitFields, engineFields, fieldsNow, recordDelete, sendFields, settle, stepFields, undoDelete, useClickerUi, useFields,
 } from './clickerStore';
 import '../../inspector/editors.css';
 import './clicker.css';
@@ -97,7 +97,7 @@ export default function ClickerPage() {
       if (typing || isModalDialogOpen()) return;
       e.preventDefault();
       if (latest.current.running) return;
-      stepFields(key === 'z' && !e.shiftKey, sendOf(latest.current.clicker));
+      stepFields(key === 'z' && !e.shiftKey, sendOf(latest.current.clicker), presetStepsOf(latest.current.clicker));
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -118,6 +118,11 @@ export default function ClickerPage() {
 
 type Clicker = ReturnType<typeof useClicker>;
 const sendOf = (clicker: Clicker) => (key: FieldKey, value: unknown) => clicker.set(key, value as string | boolean | number | object | null);
+// The history's Delete (paineis-156): the engine's restore, which the page selects once it is back, and the Delete again.
+const presetStepsOf = (clicker: Clicker) => ({
+  restore: (name: string) => { back = name; clicker.undoDeletePreset(name); },
+  remove: (name: string) => clicker.deletePreset(name),
+});
 const sameName = (a: string | null | undefined, b: string | null | undefined) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 // The preset the toast's Undo is bringing back, until it is in the list.
 let back: string | null = null;
@@ -223,7 +228,7 @@ function Presets({ running }: { running: boolean }) {
           aria-expanded={naming}
           disabled={full || running}
           data-tip={full ? tt(`${MAX_PRESETS} is the limit`, `${MAX_PRESETS} é o limite`) : tt('Keeps the settings on this page under a name', 'Guarda os ajustes desta página com um nome')}
-          onClick={() => useClickerUi.setState({ naming: !naming })}
+          onClick={() => useClickerUi.setState(naming ? { naming: false, draftName: '' } : { naming: true })}
         >
           <Plus aria-hidden="true" />
           New
@@ -252,16 +257,17 @@ function Presets({ running }: { running: boolean }) {
 /** New: a name, then Enter. The preset takes the settings on the page and becomes the selected one. */
 function NewPreset({ presets }: { presets: ClickerPreset[] }) {
   const clicker = useClicker();
-  const [name, setName] = useState('');
+  const name = useClickerUi(s => s.draftName);
+  const setName = (text: string) => useClickerUi.setState({ draftName: text });
   const [error, setError] = useState('');
-  const close = () => useClickerUi.setState({ naming: false });
+  const close = () => useClickerUi.setState({ naming: false, draftName: '' });
   const save = () => {
     const n = name.trim().slice(0, MAX_NAME);
     if (!n) { close(); return; }
     if (presets.some(p => sameName(p.name, n))) { setError('A preset has that name already.'); return; }
     flushSave(clicker);
     clicker.savePreset(n);
-    useClickerUi.setState({ selected: n, naming: false });
+    useClickerUi.setState({ selected: n, naming: false, draftName: '' });
   };
   return (
     <div className="ck-name-wrap">
@@ -313,12 +319,13 @@ function Head({ running }: { running: boolean }) {
   const remove = () => {
     if (!selected) return;
     const name = selected;
+    // A step of the page's history too: Ctrl+Z brings it back, as the toast's Undo does.
+    recordDelete(name);
     clicker.deletePreset(name);
-    useClickerUi.setState({ selected: null });
     showToast(tt(`Deleted preset "${name}"`, `Preset "${name}" excluído`), {
       type: 'success',
       duration: 10000,
-      action: { label: 'Undo', onClick: () => { back = name; clicker.undoDeletePreset(name); } },
+      action: { label: 'Undo', onClick: () => undoDelete(name, sendOf(clicker), presetStepsOf(clicker)) },
     });
   };
   return (
@@ -337,7 +344,8 @@ function Head({ running }: { running: boolean }) {
           {running ? 'Stop' : 'Start'}
           {startKey && <kbd className="ck-key">{keycaps(startKey)}</kbd>}
         </button>
-        <button type="button" className="insp-button ck-pause" disabled={!running || counting} onClick={paused ? replay.resume : clicker.pause}>
+        {/* The countdown pauses by the key only; paused, Resume takes it on (casca-111). */}
+        <button type="button" className="insp-button ck-pause" disabled={!running || (counting && !paused)} onClick={paused ? replay.resume : clicker.pause}>
           {paused ? <Play aria-hidden="true" /> : <Pause aria-hidden="true" />}
           {paused ? 'Resume' : 'Pause'}
           {pauseKey && <kbd className="ck-key">{keycaps(pauseKey)}</kbd>}
@@ -516,16 +524,19 @@ function Cell({ value, label, off }: { value: string; label: string; off?: boole
   );
 }
 
-/** "PgDn starts and stops · PgUp pauses · both only while this page is open" (paineis-149, nativo-110 and 111). */
+/**
+ * "PgDn starts and stops · PgUp pauses · both only while this page is open" (paineis-149, nativo-110
+ * and 111). With one key only, the button above stands in for the other.
+ */
 function HotkeyLine({ running, paused }: { running: boolean; paused: boolean }) {
   const startKey = useApp(a => a.settings.cursorClickStartHotkey);
   const pauseKey = useApp(a => a.settings.cursorClickPauseHotkey);
   if (!startKey && !pauseKey) return <p className="ck-keys">No Clicker hotkeys: Start and Pause above do it.</p>;
   return (
     <p className="ck-keys">
-      {startKey && <><kbd className="ck-key">{keycaps(startKey)}</kbd>{running ? 'stops' : 'starts and stops'}</>}
-      {startKey && pauseKey && <span className="ck-dot" aria-hidden="true">·</span>}
-      {pauseKey && <><kbd className="ck-key">{keycaps(pauseKey)}</kbd>{paused ? 'resumes' : 'pauses'}</>}
+      {startKey ? <><kbd className="ck-key">{keycaps(startKey)}</kbd>{running ? 'stops' : 'starts and stops'}</> : running ? 'Stop above stops' : 'Start above starts'}
+      <span className="ck-dot" aria-hidden="true">·</span>
+      {pauseKey ? <><kbd className="ck-key">{keycaps(pauseKey)}</kbd>{paused ? 'resumes' : 'pauses'}</> : paused ? 'Resume above resumes' : 'Pause above pauses'}
       {!running && <><span className="ck-dot" aria-hidden="true">·</span>{startKey && pauseKey ? 'both only while this page is open' : 'only while this page is open'}</>}
     </p>
   );
