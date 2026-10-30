@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useShell } from '../../store';
 import { useUi } from '../../ui';
+import { AutomationSection } from './AutomationSection';
 import { macroFacts } from './facts';
 import { InfoSection } from './InfoSection';
 import { TriggerSection } from './TriggerSection';
@@ -11,10 +12,10 @@ import './macro.css';
 
 /**
  * ⑧ The Inspector with no step chosen: the open macro's own settings (Macro settings board) —
- * Trigger, Window target and Info. Each applies as it changes, and Ctrl+Z undoes it: the engine
- * keeps the open macro's hotkey, hotstring, target and info in its history. Hotkey…, Hotstring…,
- * Window target… and Edit info… (the macro's menu, Ctrl+K) bring the focus to their part. A chunk
- * of its own, loaded once the app's state is drawn; Automations comes with its page (phase 3).
+ * Trigger, Window target, Automation and Info. Each applies as it changes, and Ctrl+Z undoes it: the
+ * engine keeps the open macro's hotkey, hotstring, target, automation and info in its history.
+ * Hotkey…, Hotstring…, Window target… and Edit info… (the macro's menu, Ctrl+K) bring the focus to
+ * their part. A chunk of its own, loaded once the app's state is drawn.
  */
 export default function MacroSettings({ name: opened, locked }: { name: string; locked: boolean }) {
   // Another macro's settings come at the first idle moment after the switch: the switch draws the
@@ -38,6 +39,8 @@ export default function MacroSettings({ name: opened, locked }: { name: string; 
       <TriggerSection facts={facts} locked={locked} focus={trigger ? want : null} />
       <div className="insp-rule" />
       <WindowTargetSection facts={facts} locked={locked} focus={want?.section === 'target' ? want : null} />
+      <div className="insp-rule" />
+      <AutomationSection name={name} />
       <div className="insp-rule" />
       <InfoSection facts={facts} locked={locked} focus={want?.section === 'info' ? want : null} />
     </div>

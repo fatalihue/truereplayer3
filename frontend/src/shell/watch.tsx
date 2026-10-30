@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 import { useBridge } from '../bridge/BridgeContext';
 import type { IncomingMessage } from '../bridge/messageTypes';
 import { UpdateOverlay } from '../components/UpdateOverlay';
-import { openSettings } from './ui';
+import { openPage, openSettings } from './ui';
 import { hearUpdate } from './updates';
 
-/** What the engine asks from outside the page: the tray's Browser extension… (D25). */
+/** What the engine asks from outside the page: the tray's Browser extension… (D25) and Automations… (casca-011). */
 function hear(message: IncomingMessage) {
   hearUpdate(message);
   if (message.type === 'extension:openHelp') openSettings('browser');
+  else if (message.type === 'automation:open') openPage('automations');
 }
 
 /**

@@ -144,6 +144,7 @@ html[data-animations='true'] .shell-state[data-done]::after { border-color: var(
   border-right: 1px solid var(--color-border-subtle);
 }
 .shell-rail-item {
+  position: relative;
   display: grid;
   place-items: center;
   width: 2.5rem;
@@ -158,8 +159,26 @@ html[data-animations='true'] .shell-state[data-done]::after { border-color: var(
   color: var(--color-accent);
   background: color-mix(in srgb, var(--color-accent) 12%, transparent);
 }
-.shell-rail-item:disabled { color: var(--color-text-disabled); }
-.shell-rail-item:not(:disabled):hover { background: var(--color-bg-elevated); }
+.shell-rail-item:hover { background: var(--color-bg-elevated); }
+/* How many automations are armed while they run (settings-019): green, as the running dot. */
+.shell-rail-badge {
+  position: absolute;
+  top: 0.125rem;
+  right: 0.0625rem;
+  min-width: 1rem;
+  height: 1rem;
+  padding: 0 0.25rem;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--color-replay) 50%, transparent);
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--color-replay) 16%, var(--color-bg-surface));
+  color: var(--color-replay-fg);
+  font-size: 0.6875rem;
+  line-height: 0.875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
 .shell-rail-label {
   position: absolute;
   width: 1px;

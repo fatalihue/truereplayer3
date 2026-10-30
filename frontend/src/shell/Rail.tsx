@@ -4,11 +4,10 @@ import { useBridge } from '../bridge/BridgeContext';
 import { useTt } from '../state/LanguageContext';
 import { preload } from './lazyModule';
 import { useApp } from './store';
-import { openPage, PAGE_CHUNKS, setLibraryPeek, useUi, type Page } from './ui';
+import { openPage, PAGE_CHUNKS, setLibraryPeek, useUi } from './ui';
 import { useShellBand } from './useShellBand';
 
-// ② The rail: the five destinations. Macros, the Clicker, Key Remaps and Settings exist; Automations
-// comes later in phase 3, and until then it shows (disabled) only in the development build.
+// ② The rail: the five destinations.
 const DESTINATIONS = [
   { id: 'macros', label: 'Macros', Icon: ListChecks },
   { id: 'clicker', label: 'Clicker', Icon: MousePointerClick },
@@ -16,7 +15,6 @@ const DESTINATIONS = [
   { id: 'remaps', label: 'Key Remaps', Icon: ArrowRightLeft },
   { id: 'settings', label: 'Settings', Icon: Settings },
 ] as const;
-const BUILT = new Set<string>(['macros', 'clicker', 'remaps', 'settings'] satisfies Page[]);
 
 /**
  * Where the window folds or hides the library, Macros lays it over the steps and takes it away again
@@ -25,6 +23,7 @@ const BUILT = new Set<string>(['macros', 'clicker', 'remaps', 'settings'] satisf
  * (casca-101), as "Macro" in today's mode switch: the Clicker stops. The Clicker page is the engine's
  * Clicker mode on screen: the mode on (this rail, its hotkey, the tray) brings it, and the mode off
  * takes it away. A page's chunk comes when the pointer or the focus reaches its button (rule 6).
+ * Automations carries how many are armed while they run (settings-019), as the status bar says it.
  */
 export function Rail() {
   const tt = useTt();
@@ -32,6 +31,7 @@ export function Rail() {
   const peek = useUi(s => s.libraryPeek);
   const page = useUi(s => s.page);
   const clicker = useApp(a => a.settings.useCursorClick);
+  const armed = useApp(a => (a.automation.enabled ? a.automation.entries.filter(e => e.trigger.armed && !e.isDisabled).length : 0));
   const { send } = useBridge();
   const peeks = band !== 'wide' && page === 'macros';
   const openMacros = () => {
@@ -55,28 +55,27 @@ export function Rail() {
   };
   return (
     <nav className="shell-rail" aria-label="Destinations">
-      {DESTINATIONS.filter(d => BUILT.has(d.id) || import.meta.env.DEV).map(({ id, label, Icon }) => {
-        const built = BUILT.has(id);
-        const here = page === id;
+      {DESTINATIONS.map(({ id, label, Icon }) => {
+        const badge = id === 'automations' && armed > 0;
         return (
           <button
             key={id}
             type="button"
             className="shell-rail-item"
-            aria-current={here ? 'page' : undefined}
+            aria-current={page === id ? 'page' : undefined}
             aria-expanded={id === 'macros' && peeks && !clicker ? peek : undefined}
-            disabled={!built}
             data-library-toggle={id === 'macros' && peeks ? '' : undefined}
-            data-tip={!built ? tt(`${label} — not built yet`, `${label} — ainda não feito`)
-              : id === 'macros' && clicker ? tt('Back to the macros — the Clicker stops', 'Volta aos macros — o Clicker para')
+            data-tip={id === 'macros' && clicker ? tt('Back to the macros — the Clicker stops', 'Volta aos macros — o Clicker para')
+              : badge ? tt(`${label} · ${armed} armed`, `${label} · ${armed} armadas`)
               : label}
             data-tip-pos="right"
             onPointerEnter={() => warm(id)}
             onFocus={() => warm(id)}
-            onClick={!built ? undefined : id === 'macros' ? openMacros : id === 'clicker' ? openClicker : () => openPage(id as Page)}
+            onClick={id === 'macros' ? openMacros : id === 'clicker' ? openClicker : () => openPage(id)}
           >
             <Icon aria-hidden="true" />
             <span className="shell-rail-label">{label}</span>
+            {badge && <span className="shell-rail-badge" aria-hidden="true">{armed}</span>}
           </button>
         );
       })}

@@ -173,6 +173,8 @@ function useItems(): PaletteItem[] {
   const buttons = useApp(a => a.buttonStates);
   const shortcuts = useApp(a => a.settings.profileKeyEnabled);
   const automationsOn = useApp(a => a.automation.enabled);
+  // One automation per macro: New automation has a macro to give one to.
+  const automationLeft = useApp(a => a.profiles.some(p => !a.automation.entries.some(e => e.profile === p.name)));
   const remapsOn = useApp(a => a.settings.remaps.enabled);
   const remapsFull = useApp(a => a.settings.remaps.entries.length >= MAX_REMAPS);
   const recordKey = useApp(a => a.settings.recordingHotkey);
@@ -293,6 +295,8 @@ function useItems(): PaletteItem[] {
     cmd('automations', automationsOn ? 'Turn Automations off' : 'Turn Automations on', () => automations.setEnabled(!automationsOn), { icon: Zap, words: 'triggers armed' }),
     cmd('remaps', remapsOn ? 'Turn Key Remaps off' : 'Turn Key Remaps on', () => remaps.setEnabled(!remapsOn), { icon: CornerDownRight, words: 'remap keys' }),
     cmd('clicker-page', 'Clicker', () => { if (!clicker) settings.change('useCursorClick', true); openPage('clicker'); }, { icon: MousePointerClick, words: 'autoclicker auto clicker click mode presets cps rate' }),
+    cmd('automations-page', 'Automations', () => openPage('automations'), { icon: Zap, words: 'automation triggers trigger schedule timer interval every condition watch armed run by itself' }),
+    cmd('automation-new', 'New automation', () => useUi.setState({ page: 'automations', automationAsk: { kind: 'new' }, libraryPeek: false }), { icon: Plus, detail: 'Automations', words: 'add automation trigger schedule timer interval condition', disabled: !automationLeft, hint: tt('Every macro has its automation: one per macro', 'Todo macro já tem a sua automação: uma por macro') }),
     cmd('remaps-page', 'Key Remaps', () => openPage('remaps'), { icon: ArrowRightLeft, words: 'remap remaps keys rebind swap caps disable mouse button' }),
     cmd('remap-new', 'New remap', () => useUi.setState({ page: 'remaps', remapNew: true, libraryPeek: false }), { icon: Plus, detail: 'Key Remaps', words: 'add remap rebind key swap disable', disabled: remapsFull, hint: tt(`${MAX_REMAPS} is the limit`, `${MAX_REMAPS} é o limite`) }),
     cmd('settings', 'Settings', () => openSettings(), { icon: Settings, words: 'preferences options configuration' }),

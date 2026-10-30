@@ -20,6 +20,11 @@ interface ShellUi {
   settingsReset: boolean;
   /** "New remap" asked from outside Key Remaps (Ctrl+K): the page opens a new rule in its panel. */
   remapNew: boolean;
+  /**
+   * Automations asked from outside its page: New automation (Ctrl+K) asks for the macro; one macro's
+   * (the Inspector) opens in the panel, made first by Add.
+   */
+  automationAsk: { kind: 'new' } | { kind: 'open' | 'create'; name: string } | null;
   /** The dialog open over the shell. The library renders it, whichever zone opened it. */
   dialog: LibraryDialogState | null;
   /** The macro whose name the header takes the focus for once it is the open one. */
@@ -53,12 +58,12 @@ interface ShellUi {
 
 export type SettingsSection = 'hotkey' | 'hotstring' | 'target' | 'info';
 export type MacroTab = 'steps' | 'data';
-/** The rail's destinations built so far (Automations comes later in phase 3). */
-export type Page = 'macros' | 'clicker' | 'settings' | 'remaps';
+/** The rail's destinations. */
+export type Page = 'macros' | 'clicker' | 'automations' | 'remaps' | 'settings';
 export type SettingsCategory = 'general' | 'hotkeys' | 'appearance' | 'recording' | 'screen' | 'browser' | 'diagnostics';
 
 export const useUi = create<ShellUi>(() => ({
-  page: 'macros', settingsCategory: 'general', settingsReset: false, remapNew: false,
+  page: 'macros', settingsCategory: 'general', settingsReset: false, remapNew: false, automationAsk: null,
   dialog: null, nameFocus: null, libraryPeek: false, startImport: null, settingsOpen: false, settingsFocus: null,
   expanded: false, crop: null, macroTab: 'steps', dataSettings: false, dataHint: null,
 }));
@@ -72,11 +77,13 @@ export const openSettings = (category?: SettingsCategory) =>
   useUi.setState(category ? { page: 'settings', settingsCategory: category, libraryPeek: false } : { page: 'settings', libraryPeek: false });
 /**
  * The pages besides the macros', each in a chunk of its own that the rail's pointer or focus brings
- * (rule 6): the Clicker with its presets and settings, Settings with its categories, Key Remaps with
- * its list and "Remap settings". A page's module has the page as its default export.
+ * (rule 6): the Clicker with its presets and settings, Automations with its table and "Automation
+ * settings", Settings with its categories, Key Remaps with its list and "Remap settings". A page's
+ * module has the page as its default export.
  */
 export const PAGE_CHUNKS: Record<Exclude<Page, 'macros'>, () => Promise<{ default: ComponentType }>> = {
   clicker: () => import('./pages/clicker/ClickerPage'),
+  automations: () => import('./pages/automations/AutomationsPage'),
   settings: () => import('./pages/settings/SettingsPage'),
   remaps: () => import('./pages/remaps/RemapsPage'),
 };

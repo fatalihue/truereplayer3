@@ -2132,8 +2132,15 @@ namespace TrueReplayer
             });
         }
 
+        // The automation writes, one at a time and in the order they came. The page applies as you
+        // type, so a save, an arm and an undo can follow each other faster than a profile's read and
+        // write: two in flight at once could land in the other order, and the older one would win
+        // on disk. A SemaphoreSlim's waiters go through in the order they asked.
+        private readonly SemaphoreSlim _automationWrites = new(1, 1);
+
         private async void HandleAutomationSave(JsonElement payload)
         {
+            await _automationWrites.WaitAsync();
             try
             {
                 var name = payload.TryGetProperty("profile", out var pEl) ? pEl.GetString() : null;
@@ -2151,10 +2158,15 @@ namespace TrueReplayer
                 DiagnosticLog.Error("automation:save failed", ex);
                 SendMessage("alert:show", new { message = $"Could not save automation: {ex.Message}" });
             }
+            finally
+            {
+                _automationWrites.Release();
+            }
         }
 
         private async void HandleAutomationSetArmed(JsonElement payload)
         {
+            await _automationWrites.WaitAsync();
             try
             {
                 var name = payload.TryGetProperty("profile", out var pEl) ? pEl.GetString() : null;
@@ -2176,6 +2188,10 @@ namespace TrueReplayer
                 // it. Say so, and put the list back in step with what is actually on disk.
                 SendMessage("alert:show", new { message = $"Could not arm automation: {ex.Message}" });
                 PushAutomationState();
+            }
+            finally
+            {
+                _automationWrites.Release();
             }
         }
 
@@ -2207,17 +2223,18 @@ namespace TrueReplayer
                 if (entry?.IsDisabled == true)
                 {
                     SendMessage("automation:testFireResult", new { requestId, fired = false,
-                        detail = "Skipped: this profile is disabled, so its automation never runs. Enable it in the sidebar first." });
+                        detail = "Skipped: this macro is disabled, so its automation never runs. Enable it in the library first." });
                     return;
                 }
                 var result = await fire(name);
                 // The SKIPS are the interesting answers, so each gets its own sentence naming the
-                // blocker and what to do about it — "skipped" alone sends the user hunting.
+                // blocker and what to do about it — "skipped" alone sends the user hunting. Said in
+                // the interface's words: a profile is a macro there, its actions are steps.
                 string detail = result switch
                 {
-                    TriggerFireResult.Fired => "Fired — the profile is running now.",
+                    TriggerFireResult.Fired => "Fired — the macro is running now.",
                     TriggerFireResult.SkippedBusy => "Skipped: a replay, recording or clicker run is already going. Automations wait for the engine to be free.",
-                    TriggerFireResult.SkippedDirty => "Skipped: the action grid has unsaved changes. Automations never fire over unsaved edits — save the profile first.",
+                    TriggerFireResult.SkippedDirty => "Skipped: the open macro has unsaved changes. Automations never fire over unsaved edits — save it first.",
                     TriggerFireResult.SkippedModal => "Skipped: a dialog or key capture is open. Close it and try again.",
                     TriggerFireResult.NotReady => "Not ready: the app is still starting up.",
                     // Failed has four sources, and "could not be loaded" was the one that is almost
@@ -2226,7 +2243,7 @@ namespace TrueReplayer
                     // data-table case additionally shows the real cause in its own toast, leaving
                     // two contradictory messages on screen. The advice about being disabled was
                     // dead outright: a disabled profile is refused higher up, above.
-                    _ => "Nothing ran. The profile may have no actions, or its data table may be empty while loop-over-data is on.",
+                    _ => "Nothing ran. The macro may have no steps, or its Data Loop table may be empty while it loops over the data.",
                 };
                 SendMessage("automation:testFireResult", new { requestId, fired = result == TriggerFireResult.Fired, detail });
             }

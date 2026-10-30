@@ -175,3 +175,20 @@
 .mset-convert-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
 .mset-convert .insp-button[data-primary] { border-color: var(--color-accent-solid); background: var(--color-accent-solid); color: var(--color-accent-ink); }
 .mset-convert .insp-button[data-primary]:disabled { opacity: 0.5; }
+
+/* Automation: the macro's automation, its On, and Edit in the Automations page. */
+.mset-auto-icon {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex: none;
+  border-radius: 0.375rem;
+  background: var(--color-bg-elevated);
+  color: var(--color-text-tertiary);
+}
+.mset-auto-icon[data-tone='ok'] { background: color-mix(in srgb, var(--color-replay) 12%, transparent); color: var(--color-replay-fg); }
+.mset-auto-icon[data-tone='warn'] { background: color-mix(in srgb, var(--color-warning) 12%, transparent); color: var(--color-warning-ink); }
+.mset-auto-icon svg { width: 0.9375rem; height: 0.9375rem; }
+.mset-auto-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.25rem; color: var(--color-text-primary); }
+.mset-target-sub[data-tone='warn'] { color: var(--color-warning-ink); }
