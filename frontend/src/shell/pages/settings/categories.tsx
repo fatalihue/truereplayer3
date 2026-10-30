@@ -357,7 +357,7 @@ function AppearanceLoader() {
   return mod ? <mod.AppearancePanel /> : null;
 }
 function AppearanceIntro() {
-  return <p className="set-intro">Themes, density and motion. Every change shows at once, in the whole app.</p>;
+  return <p className="set-intro">Themes, density and motion. Every change shows at once, in the whole app, and Ctrl+Z undoes it.</p>;
 }
 
 /** A hotkey's row (hotkeys.tsx): its key with Change and ✕, and under the description its conflict. */

@@ -43,6 +43,10 @@ interface ThemeContextValue {
    *  is a LIVE preview (every change is applied to the document and persisted within 200 ms), so
    *  there is no draft to throw away — undoing means restoring a snapshot taken on open. */
   replaceConfig: (config: ThemeConfig) => void;
+  /** Put back a config exactly as it was, the Windows follower included: the undo of Settings ›
+   *  Appearance. A snapshot taken while following matches the theme the follower picked, so the
+   *  follower's sync finds nothing to change; a base that no longer exists keeps the current one. */
+  restoreConfig: (config: ThemeConfig) => void;
 
   /** Override a single color key */
   setColorOverride: (key: keyof ThemeColors, value: string) => void;
@@ -325,6 +329,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }));
   }, [customPresets]);
 
+  const restoreConfig = useCallback((next: ThemeConfig) => {
+    const idLives = isBuiltinTheme(next.baseThemeId) || customPresets.some(p => p.id === next.baseThemeId);
+    setConfig(prev => ({
+      ...next,
+      version: CURRENT_THEME_CONFIG_VERSION,
+      baseThemeId: idLives ? next.baseThemeId : prev.baseThemeId,
+      colorOverrides: { ...next.colorOverrides },
+      uiSettings: { ...next.uiSettings },
+    }));
+  }, [customPresets]);
+
   const importTheme = useCallback((theme: ExportedTheme): boolean => {
     if (!validateExportedTheme(theme)) return false;
 
@@ -370,6 +385,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     customPresets,
     selectPreset,
     replaceConfig,
+    restoreConfig,
     setColorOverride,
     clearColorOverride,
     clearAllOverrides,
@@ -382,7 +398,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     deleteCustomPreset,
     restoreCustomPreset,
   }), [
-    config, osReducedMotion, resolvedColors, customPresets, selectPreset, replaceConfig, setColorOverride,
+    config, osReducedMotion, resolvedColors, customPresets, selectPreset, replaceConfig, restoreConfig, setColorOverride,
     clearColorOverride, clearAllOverrides, setAccentColor,
     setUISetting, resetUISettings, exportTheme, importTheme,
     saveAsPreset, deleteCustomPreset, restoreCustomPreset,

@@ -11,14 +11,13 @@ import { Button } from './common/Button';
 import { SegmentedControl } from './common/SegmentedControl';
 import { FieldError } from './common/FieldError';
 import { themes, getThemeTags, type ThemeTag } from '../themePresets';
+import { measurePaintedContrast, withOriginalAlpha } from '../themeChecks';
 import {
   DEFAULT_UI_SETTINGS,
   toHex,
-  withOriginalAlpha,
   validateExportedTheme,
   hexToHSL,
   hslToHex,
-  measurePaintedContrast,
   pickInk,
   isLightColor,
   DEFAULT_THEME_ID,

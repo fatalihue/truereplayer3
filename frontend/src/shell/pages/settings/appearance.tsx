@@ -1,38 +1,96 @@
 import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { Check, ChevronDown, Dices, X } from 'lucide-react';
-import { useTt } from '../../../state/LanguageContext';
+import { DEFAULT_LANGUAGE, useLanguage, useTt } from '../../../state/LanguageContext';
 import { useTheme } from '../../../state/ThemeContext';
 import { useToast } from '../../../state/ToastContext';
 import { ACCENT_SWATCHES, FEATURED_THEMES, getThemeTags, themes, type ThemeTag } from '../../../themePresets';
 import {
-  contrastRatio, DEFAULT_THEME_ID, DEFAULT_UI_SETTINGS, hexToHSL, hslToHex, isLightColor, makeCustomPresetId, toHex,
-  type CustomThemePreset, type ThemeColors, type ThemePreset,
+  contrastRatio, DEFAULT_UI_SETTINGS, hexToHSL, hslToHex, isLightColor, makeCustomPresetId, toHex, UI_COLOR_FIELDS,
+  type CustomThemePreset, type ThemeColors, type ThemePreset, type ThemeUISettings,
 } from '../../../themes';
+import { isModalDialogOpen } from '../../../utils/modalDialog';
 import { Segmented, Switch } from '../../inspector/fields';
+import { preload, useLoaded } from '../../lazyModule';
 import { Menu } from '../../Menu';
 import { anchorBelow } from '../../menuAnchor';
+import { Preview } from './appearancePreview';
+import { baseOf, forgetLast, quietNextChange, record, resetView, showView, step, useAp } from './appearanceStore';
 import './appearance.css';
 
 /**
- * Settings › Appearance, part 1 (phase 3, slice 3; the concept's SettingsAppearance board): the
- * themes, the accent and the interface, each applied at once and kept by the theme of today
- * (ThemeContext, themes.ts). It comes in its own chunk, with the 37 presets. The color editor, Share
- * or import, the live preview and Reset come in slice 4.
+ * Settings › Appearance (phase 3, slices 3 and 4; the concept's SettingsAppearance board): the themes,
+ * the accent and the interface, each applied at once and kept by the theme of today (ThemeContext,
+ * themes.ts), with the live preview beside them. Edit colors… and Share or import… are views of the
+ * page, in the theme editor's chunk. Ctrl+Z and Ctrl+Y undo and redo here (D22). It comes in its
+ * own chunk, with the 37 presets.
  */
+const loadThemeEditor = () => import('./themeEditor');
+const warmEditor = () => { void preload(loadThemeEditor); };
+
 export function AppearancePanel() {
+  const view = useAp(s => s.view);
+  const editor = useLoaded(loadThemeEditor);
+  useUndo();
+  // The editor's chunk comes once the page has nothing to do; a view asked for before it is in waits
+  // for it. The page left, the view and what the pointer was on go with it.
+  useEffect(() => {
+    const id = requestIdleCallback(warmEditor, { timeout: 2000 });
+    return () => {
+      cancelIdleCallback(id);
+      resetView();
+    };
+  }, []);
+  useEffect(() => { if (view !== 'main' && !editor) warmEditor(); }, [view, editor]);
   return (
-    <div className="ap">
-      <ThemeSection />
-      <AccentSection />
-      <InterfaceSection />
-      <Actions />
+    <div className="ap-wrap">
+      <div className="ap">
+        {view === 'main' && (
+          <>
+            <ThemeSection />
+            <AccentSection />
+            <InterfaceSection />
+            <Actions />
+          </>
+        )}
+        {view === 'colors' && editor && <editor.ColorsView />}
+        {view === 'share' && editor && <editor.ShareView />}
+      </div>
+      <Preview />
     </div>
   );
 }
 
-/** The base theme: an own one, a built-in one, or the default when the id resolves to neither. */
-function baseOf(id: string, own: CustomThemePreset[]): ThemePreset {
-  return own.find(p => p.id === id) ?? themes.find(t => t.id === id) ?? themes.find(t => t.id === DEFAULT_THEME_ID) ?? themes[0];
+/**
+ * The page's history (D22: Appearance applies at once, with Ctrl+Z; the Revert of today's editor
+ * goes): every theme and language the page sees, a change after a pause a step. Ctrl+Z, and Ctrl+Y
+ * or Ctrl+Shift+Z, while the page is on screen; a text field keeps its own.
+ */
+function useUndo() {
+  const { config, restoreConfig } = useTheme();
+  const { language, setLanguage } = useLanguage();
+  useEffect(() => { record({ config, language }); }, [config, language]);
+  useEffect(() => forgetLast, []);
+  const latest = useRef({ config, language, restoreConfig, setLanguage });
+  useEffect(() => { latest.current = { config, language, restoreConfig, setLanguage }; });
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (!e.ctrlKey || e.altKey || e.metaKey) return;
+      const key = e.key.toLowerCase();
+      if (key !== 'z' && key !== 'y') return;
+      const t = e.target as HTMLElement | null;
+      const typing = !!t && (t.isContentEditable || t.tagName === 'TEXTAREA'
+        || (t.tagName === 'INPUT' && !['range', 'color', 'checkbox', 'radio', 'button'].includes((t as HTMLInputElement).type)));
+      if (typing || isModalDialogOpen()) return;
+      e.preventDefault();
+      const now = latest.current;
+      const to = step(key === 'z' && !e.shiftKey, { config: now.config, language: now.language });
+      if (!to) return;
+      now.restoreConfig(to.config);
+      if (to.language !== now.language) now.setLanguage(to.language);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 }
 
 // ── Theme ──
@@ -98,11 +156,13 @@ function ThemeSection() {
     const index = customPresets.findIndex(p => p.id === preset.id);
     if (index < 0) return;
     const before = config;
+    // Not a step of the page's history: the toast's Undo is this one's.
+    quietNextChange();
     deleteCustomPreset(preset.id);
     showToast(tt(`Deleted the theme "${preset.name}"`, `Tema "${preset.name}" excluído`), {
       type: 'success',
       duration: 10000,
-      action: { label: 'Undo', onClick: () => restoreCustomPreset(preset, index, before) },
+      action: { label: 'Undo', onClick: () => { quietNextChange(); restoreCustomPreset(preset, index, before); } },
     });
     // Its ✕ went with it: the focus goes to the open theme, or to the search.
     requestAnimationFrame(() => {
@@ -185,13 +245,18 @@ function ThemeSection() {
   );
 }
 
-/** A theme: its colours in a small window, and its name; the open one is marked. Your own have a ✕. */
+/**
+ * A theme: its colours in a small window, and its name; the open one is marked. Your own have a ✕.
+ * Under the pointer or the focus, the live preview paints it.
+ */
 function ThemeCard({ theme, active, onPick, onDelete }: { theme: ThemePreset; active: boolean; onPick: () => void; onDelete?: () => void }) {
   const tt = useTt();
   const [base, surface, card, accent] = theme.preview;
   const colors = { '--p-base': base, '--p-surface': surface, '--p-card': card, '--p-accent': accent } as CSSProperties;
+  const show = () => useAp.setState({ hoverTheme: theme.id });
+  const hide = () => useAp.setState(s => (s.hoverTheme === theme.id ? { hoverTheme: null } : s));
   return (
-    <div className="ap-card-slot">
+    <div className="ap-card-slot" onPointerEnter={show} onPointerLeave={hide} onFocus={show} onBlur={hide}>
       <button type="button" className="ap-card" aria-pressed={active} onClick={onPick}>
         <span className="ap-card-preview" style={colors} aria-hidden="true">
           <span className="ap-p-side" />
@@ -573,30 +638,49 @@ function FontField() {
   );
 }
 
-// ── Save as my theme ──
+// ── The page's actions ──
+
+// The interface colours at their defaults: the step colours and Recording, Replay and Clicker.
+const COLOR_DEFAULTS = Object.fromEntries(UI_COLOR_FIELDS.map(f => [f, DEFAULT_UI_SETTINGS[f]])) as Partial<ThemeUISettings>;
 
 /**
- * The page's actions: Save as my theme… (settings-160 to 162) keeps the colours as they are now as a
- * theme of your own, which opens. The same name updates it; a name that would take another's place
- * is refused. Edit colors…, Share or import… and Reset to the theme are slice 4's.
+ * The page's actions, as in the concept: Edit colors… and Share or import… (views of the page, in the
+ * theme editor's chunk, which the pointer or the focus on them brings sooner), Save as my theme…
+ * (settings-160 to 162: the colours as they are now become a theme of your own, which opens; the
+ * same name updates it, a name that would take another's place is refused) and Reset to the theme
+ * (settings-142 to 144, D22: its colours, or with the interface and the tips' language too).
  */
 function Actions() {
   const tt = useTt();
   const { showToast } = useToast();
-  const { config, customPresets, saveAsPreset } = useTheme();
+  const { config, customPresets, saveAsPreset, restoreConfig } = useTheme();
+  const { language, setLanguage } = useLanguage();
   const base = baseOf(config.baseThemeId, customPresets);
   const changed = Object.keys(config.colorOverrides).length > 0;
+  const colorsChanged = changed || UI_COLOR_FIELDS.some(f => config.uiSettings[f] !== DEFAULT_UI_SETTINGS[f]);
+  const asItComes = !colorsChanged && language === DEFAULT_LANGUAGE
+    && (Object.keys(DEFAULT_UI_SETTINGS) as (keyof ThemeUISettings)[]).every(k => config.uiSettings[k] === DEFAULT_UI_SETTINGS[k]);
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState('');
   const [saved, setSaved] = useState<string | null>(null);
+  const [resetMenu, setResetMenu] = useState<HTMLButtonElement | null>(null);
   const savedRef = useRef<HTMLParagraphElement>(null);
   const openRef = useRef<HTMLButtonElement>(null);
+  const editRef = useRef<HTMLButtonElement>(null);
+  const shareRef = useRef<HTMLButtonElement>(null);
   const wasNaming = useRef(false);
   // Closed without saving, the focus goes back to the button; saved, to what was saved.
   useEffect(() => {
     if (wasNaming.current && !naming) (saved ? savedRef.current : openRef.current)?.focus();
     wasNaming.current = naming;
   }, [naming, saved]);
+  // Back from a view, the focus is on the button that opened it.
+  useEffect(() => {
+    const from = useAp.getState().cameFrom;
+    if (!from) return;
+    useAp.setState({ cameFrom: null });
+    (from === 'colors' ? editRef.current : shareRef.current)?.focus();
+  }, []);
   useEffect(() => {
     if (!saved) return;
     const id = setTimeout(() => setSaved(null), 6000);
@@ -617,10 +701,26 @@ function Actions() {
     setSaved(n);
     close();
   };
+  // Back to the theme as it comes, with the toast's Undo (Ctrl+Z too: it is a step like any other).
+  const reset = (everything: boolean) => {
+    const before = { config, language };
+    restoreConfig(everything
+      ? { ...config, colorOverrides: {}, uiSettings: { ...DEFAULT_UI_SETTINGS } }
+      : { ...config, colorOverrides: {}, uiSettings: { ...config.uiSettings, ...COLOR_DEFAULTS } });
+    if (everything && language !== DEFAULT_LANGUAGE) setLanguage(DEFAULT_LANGUAGE);
+    showToast(tt(`Back to ${base.name} as it comes`, `De volta ao ${base.name} como vem`), {
+      type: 'success',
+      duration: 10000,
+      // The language comes back only with the reset that took it.
+      action: { label: 'Undo', onClick: () => { restoreConfig(before.config); if (everything) setLanguage(before.language); } },
+    });
+  };
 
   return (
     <div className="ap-actions">
-      {import.meta.env.DEV && <button type="button" className="insp-button" disabled>Edit colors… — not built yet</button>}
+      <button ref={editRef} type="button" className="insp-button" onPointerEnter={warmEditor} onFocus={warmEditor} onClick={() => showView('colors')}>
+        Edit colors…
+      </button>
       {naming ? (
         <span className="ap-naming">
           <input
@@ -651,14 +751,40 @@ function Actions() {
           type="button"
           className="insp-button"
           disabled={!changed}
-          data-tip={changed ? undefined : tt(`This is ${base.name} as it comes — change the accent first`, `Este é o ${base.name} como vem — mude o destaque antes`)}
+          data-tip={changed ? undefined : tt(`This is ${base.name} as it comes — change the accent or a color first`, `Este é o ${base.name} como vem — mude o destaque ou uma cor antes`)}
           onClick={() => { setSaved(null); setNaming(true); }}
         >
           Save as my theme…
         </button>
       )}
-      {import.meta.env.DEV && <button type="button" className="insp-button" disabled>Share or import… — not built yet</button>}
-      {import.meta.env.DEV && <button type="button" className="insp-button" disabled>Reset to {base.name} — not built yet</button>}
+      <button ref={shareRef} type="button" className="insp-button" onPointerEnter={warmEditor} onFocus={warmEditor} onClick={() => showView('share')}>
+        Share or import…
+      </button>
+      <button
+        type="button"
+        className="ap-reset"
+        aria-haspopup="menu"
+        aria-expanded={!!resetMenu}
+        disabled={asItComes}
+        data-tip={asItComes ? tt(`This is ${base.name} as it comes`, `Este é o ${base.name} como vem`) : undefined}
+        onClick={(e) => setResetMenu(resetMenu ? null : e.currentTarget)}
+      >
+        Reset to {base.name}
+        <ChevronDown aria-hidden="true" />
+      </button>
+      {resetMenu && (
+        <Menu
+          anchor={anchorBelow(resetMenu, 'start')}
+          label={`Reset to ${base.name}`}
+          toggle={resetMenu}
+          focusFirst
+          entries={[
+            { label: 'Colors', disabled: !colorsChanged, onSelect: () => reset(false) },
+            { label: 'Colors, interface and tooltips language', onSelect: () => reset(true) },
+          ]}
+          onClose={() => setResetMenu(null)}
+        />
+      )}
       {saved && (
         <p ref={savedRef} className="ap-saved" role="status" tabIndex={-1}>
           Saved as “{saved}”, in My themes.

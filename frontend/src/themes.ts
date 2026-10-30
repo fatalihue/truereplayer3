@@ -346,7 +346,7 @@ export const isBuiltinTheme = (id: string): boolean => getPalette(id) !== undefi
 
 // ── Color Math Helpers ──
 
-function hexToRGB(hex: string): { r: number; g: number; b: number } {
+export function hexToRGB(hex: string): { r: number; g: number; b: number } {
   const h = hex.replace('#', '');
   return {
     r: parseInt(h.substring(0, 2), 16),
@@ -355,7 +355,7 @@ function hexToRGB(hex: string): { r: number; g: number; b: number } {
   };
 }
 
-function rgbToHex(r: number, g: number, b: number): string {
+export function rgbToHex(r: number, g: number, b: number): string {
   return '#' + [r, g, b].map(v => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('');
 }
 
@@ -513,20 +513,6 @@ export function toHex(color: string): string {
   return c ? rgbToHex(c.r, c.g, c.b) : '#000000';
 }
 
-/** `newHex` carrying the alpha of `originalColor`, in the original's spelling: #RRGGBBAA for a hex
- *  original, rgba() for any other. An opaque original gives newHex back. It used to know only an
- *  `rgba(` prefix, so the first picker touch on an imported translucent #3c3c3c40 border (or an
- *  hsla()) saved it fully opaque. */
-export function withOriginalAlpha(newHex: string, originalColor: string): string {
-  const a = colorAlpha(originalColor);
-  if (a >= 1) return newHex;
-  const { r, g, b } = hexToRGB(toHex(newHex));
-  if (originalColor.trim().startsWith('#')) {
-    return rgbToHex(r, g, b) + Math.round(a * 255).toString(16).padStart(2, '0');
-  }
-  return `rgba(${r},${g},${b},${+a.toFixed(3)})`;
-}
-
 // ── WCAG contrast ──
 
 // Relative luminance per WCAG 2.1 — gamma-correct then weighted sum.
@@ -565,12 +551,12 @@ export function pickInk(fillHex: string): string {
 
 /** True for the colour strings parseCssColor can read. Anything else toHex maps to #000000, which
  *  would make a contrast derivation solve against black on a white surface. */
-function isParsableColor(c: unknown): c is string {
+export function isParsableColor(c: unknown): c is string {
   return parseCssColor(c) !== null;
 }
 
 /** Alpha of a colour string, 1 when it carries none or cannot be read. */
-function colorAlpha(c: unknown): number {
+export function colorAlpha(c: unknown): number {
   return parseCssColor(c)?.a ?? 1;
 }
 
@@ -638,11 +624,11 @@ export function nativeDialogColors(c: ThemeColors): Record<'bgBase' | 'bgSurface
  *
  * These are two different numbers and conflating them was a real bug: the solve brackets its
  * candidates against the heaviest wash any rule paints (0.12), while recording and replay emit
- * their own wash at 0.10. applyThemeConfig and measurePaintedContrast now read the same two
- * constants, so the renderer and the checker cannot drift the way they just did.
+ * their own wash at 0.10. applyThemeConfig and measurePaintedContrast (themeChecks.ts) read the same
+ * two constants, so the renderer and the checker cannot drift the way they just did.
  */
-const HUE_SOLVE_TINT = 0.12;
-const HUE_WASH_ALPHA: Record<string, number> = {
+export const HUE_SOLVE_TINT = 0.12;
+export const HUE_WASH_ALPHA: Record<string, number> = {
   recordingColor: 0.10, replayColor: 0.10, clickerColor: 0.12,
   actionMouseColor: 0.12, actionKeyColor: 0.12, actionScrollColor: 0.12,
   actionSendTextColor: 0.12, actionSetVariableColor: 0.12, actionWaitImageColor: 0.12,
@@ -980,18 +966,13 @@ export function resolveThemeColors(config: ThemeConfig, customPresets: ThemePres
 /** The declaration the last applyThemeConfig wrote to <html> — see the write guard there. */
 let lastAppliedCss = '';
 
-/** `animations` is the EFFECTIVE flag (effectiveAnimations: the mode plus the OS), not the mode. */
-export function applyThemeConfig(colors: ThemeColors, uiSettings: ThemeUISettings, animations: boolean) {
-  const root = document.documentElement;
-
-  // Build the entire variable set as one cssText string, then assign once.
-  // Each `setProperty` call invalidates the style cache and can schedule a
-  // separate style recalc — with ~40 vars per theme apply, the cumulative
-  // cost is visible on theme-editor sliders (one keystroke = full recompute
-  // through 40 sets). One cssText assign is a single mutation that the
-  // browser batches into a single recalc. Trade-off: we lose the inline-vs-
-  // stylesheet distinction, but every var here was already an inline anyway,
-  // so net behaviour is identical — just faster.
+/**
+ * Every colour declaration of a theme: the palette, the block rails, the semantic hues and their
+ * inks, the step colours, the font for data and the shadows. applyThemeConfig puts them on <html>
+ * with the sizes; Settings › Appearance's live preview puts them on itself alone, to show a theme
+ * before it is chosen. One recipe for both, so the preview paints what the app would.
+ */
+export function colorDeclarations(colors: ThemeColors, uiSettings: ThemeUISettings): string[] {
   const parts: string[] = [];
   for (const [key, value] of Object.entries(colors)) {
     parts.push(`--color-${key}: ${value};`);
@@ -1014,13 +995,6 @@ export function applyThemeConfig(colors: ThemeColors, uiSettings: ThemeUISetting
   if (isParsableColor(surface) && hexToHSL(toHex(surface)).l >= 55) {
     for (let n = 1; n <= 4; n++) parts.push(`--color-block-${n}: var(--color-block-${n}-light);`);
   }
-  // Layout
-  // In rem (the settings are px at 100 %), so they follow the scale like everything else.
-  parts.push(`--ui-font-size: ${uiSettings.fontSize / 16}rem;`);
-  parts.push(`--ui-border-radius: ${uiSettings.borderRadius / 16}rem;`);
-  // The new shell's type ramp and control corners, when Text size or Corner roundness is not the default.
-  parts.push(...rampDeclarations(uiSettings));
-  parts.push(`--ui-row-height: ${uiSettings.rowHeight / 16}rem;`);
   // Semantic colors + auto-derived backgrounds
   parts.push(`--color-recording: ${uiSettings.recordingColor};`);
   parts.push(`--color-recording-bg: color-mix(in srgb, ${uiSettings.recordingColor} 10%, transparent);`);
@@ -1148,6 +1122,29 @@ export function applyThemeConfig(colors: ThemeColors, uiSettings: ThemeUISetting
   parts.push(lightSurface
     ? `--shadow-overlay: 0 6px 20px rgba(20, 30, 50, 0.14); --shadow-dialog: 0 16px 40px rgba(20, 30, 50, 0.2);`
     : `--shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.45); --shadow-dialog: 0 16px 48px rgba(0, 0, 0, 0.55);`);
+  return parts;
+}
+
+/** `animations` is the EFFECTIVE flag (effectiveAnimations: the mode plus the OS), not the mode. */
+export function applyThemeConfig(colors: ThemeColors, uiSettings: ThemeUISettings, animations: boolean) {
+  const root = document.documentElement;
+
+  // Build the entire variable set as one cssText string, then assign once.
+  // Each `setProperty` call invalidates the style cache and can schedule a
+  // separate style recalc — with ~40 vars per theme apply, the cumulative
+  // cost is visible on theme-editor sliders (one keystroke = full recompute
+  // through 40 sets). One cssText assign is a single mutation that the
+  // browser batches into a single recalc. Trade-off: we lose the inline-vs-
+  // stylesheet distinction, but every var here was already an inline anyway,
+  // so net behaviour is identical — just faster.
+  const parts = colorDeclarations(colors, uiSettings);
+  // Layout
+  // In rem (the settings are px at 100 %), so they follow the scale like everything else.
+  parts.push(`--ui-font-size: ${uiSettings.fontSize / 16}rem;`);
+  parts.push(`--ui-border-radius: ${uiSettings.borderRadius / 16}rem;`);
+  // The new shell's type ramp and control corners, when Text size or Corner roundness is not the default.
+  parts.push(...rampDeclarations(uiSettings));
+  parts.push(`--ui-row-height: ${uiSettings.rowHeight / 16}rem;`);
   // The scale. The new shell scales by rem (rule 9 of the interface plan): the zoom setting becomes
   // the root font size, every size in the shell is in rem, and nothing is zoomed — so viewport units
   // mean the real window again, and --ui-zoom, which code written for the zoomed shell divides them
@@ -1185,102 +1182,6 @@ export function applyThemeConfig(colors: ThemeColors, uiSettings: ThemeUISetting
   // whole tree.
   const flag = animations ? 'true' : 'false';
   if (root.getAttribute('data-animations') !== flag) root.setAttribute('data-animations', flag);
-}
-
-/**
- * What a colour field will ACTUALLY measure once painted — the number the Theme Editor shows.
- *
- * It lives here, next to applyThemeConfig, on purpose. The old checker compared four raw text
- * colours against bg-surface and nothing else, which made it wrong in three separate ways: it
- * never looked at accent-solid (whose ink is contrast-PICKED, so the raw accent tells you
- * nothing), it never looked at the fourteen hue fields (whose ink is DERIVED, so the stored value
- * is an identity and not the paint), and it used one surface where the token lands on four. A
- * checker that measures a different thing from what the renderer paints is worse than none: it
- * reports green while the pill is at 1.5:1. Keeping the two recipes in one file is what stops
- * them drifting apart again.
- *
- * Returns null for fields that have no ink of their own (a surface, a disabled text colour that
- * WCAG exempts by design) rather than inventing a number for them.
- */
-export function measurePaintedContrast(
-  kind: 'theme' | 'ui',
-  key: string,
-  colors: ThemeColors,
-  ui: ThemeUISettings,
-): { ratio: number; target: number; what: string } | null {
-  const surfaces = [colors['bg-surface'], colors['bg-card'], colors['bg-elevated'], colors['bg-base']];
-  const text = colors['text-primary'];
-  // Flatten before comparing. A token stored as rgba() is a translucent LAYER, and contrastRatio
-  // goes through toHex, which drops alpha — so measuring one raw reports the contrast of a colour
-  // that is never painted. Every preset ships its three borders as rgba at 6–25 % alpha: measured
-  // raw, gruvbox-dark's border-subtle reads 8.45:1 where the hairline actually paints 1.17:1, and
-  // all 37 presets were wrong the same way, by up to 12.8x. That is the precise failure this
-  // function exists to prevent, so the fix belongs here rather than at the call sites.
-  const worstAgainst = (ink: string, backdrops: string[]) =>
-    backdrops.filter(isParsableColor).reduce((w, b) => Math.min(w, contrastRatio(flattenOver(ink, b), b)), Infinity);
-
-  if (kind === 'theme') {
-    // A background has no ink of its own — the text fields already measure against it.
-    if (key.startsWith('bg-')) return null;
-    // A colour, or all of its backdrops, that cannot be read gets no chip: measured anyway, it
-    // went through toHex as #000000 and the chip reported a colour nothing paints.
-    const own = colors[key as keyof ThemeColors];
-    if (!isParsableColor(own) || !surfaces.some(isParsableColor)) return null;
-    if (key.startsWith('text-')) {
-      // text-disabled is NOT exempt here, and the WCAG exemption was the wrong reading: that
-      // exemption covers controls in the [disabled] state, while this token is the RESTING colour
-      // of ~114 sites, many of them enabled icon buttons (the SendText delete, the extension
-      // banner dismiss, icon buttons across DataPanel and ProfilePanel). Dropping it to 1.5:1 on
-      // a light preset erases live controls. It gets the graphic floor rather than the body-text
-      // one, because it is deliberately the quietest rung and 4.5 would stop it reading as quiet.
-      const target = key === 'text-disabled' ? 3 : 4.5;
-      return { ratio: worstAgainst(colors[key as keyof ThemeColors], [...surfaces, colors['bg-input']]), target, what: 'worst surface' };
-    }
-    if (key.startsWith('border-')) {
-      // WCAG 1.4.11 — a boundary that carries meaning needs 3:1, not 4.5.
-      return { ratio: worstAgainst(colors[key as keyof ThemeColors], [colors['bg-surface'], colors['bg-card'], colors['bg-input']]), target: 3, what: 'UI boundary' };
-    }
-    if (key === 'accent-solid') {
-      // The solid button: the label is pickInk's choice, not white, so measure THAT pairing.
-      return { ratio: contrastRatio(pickInk(colors['accent-solid']), colors['accent-solid']), target: 4.5, what: 'label on solid fill' };
-    }
-    if (key === 'accent' || key === 'accent-hover') {
-      return { ratio: worstAgainst(colors[key as keyof ThemeColors], surfaces), target: 4.5, what: 'accent as text' };
-    }
-    return null;
-  }
-
-  // The seventeen hue fields. Each is painted as DERIVED ink over its own translucent wash, so
-  // both sides of the comparison have to be reconstructed exactly as applyThemeConfig emits them.
-  // Target 3 matches the floor those inks are solved for: they are glyphs and labels beside an
-  // icon, not body text — see the deriveHueInk call sites.
-  const wash = HUE_WASH_ALPHA[key];
-  if (wash === undefined) return null;
-  // Same `??` guard applyThemeConfig carries, and for the same reason: this is also called with a
-  // uiSettings that never went through loadThemeConfig's spread (the live preview, a snapshot
-  // restore). Without it the three fields this feature just added were the only ones with no chip.
-  const hue = (ui as unknown as Record<string, string | undefined>)[key]
-    ?? (DEFAULT_UI_SETTINGS as unknown as Record<string, string>)[key];
-  if (!isParsableColor(hue) || !isParsableColor(text)) return null;
-  // HUE_SOLVE_TINT, not `wash`: these are two different numbers that used to be conflated here.
-  // maxTint is what the SOLVE brackets against (applyThemeConfig passes 0.12 for every hue), while
-  // the wash is the alpha of the -bg actually emitted (10 % for recording/replay, 12 % elsewhere).
-  // Passing the wash as maxTint made the solve land a step early, so the editor showed the ratio
-  // of an ink the app never paints — 4 of 111 semantic cases, off by up to 0.31.
-  const ink = deriveHueInk(hue, text, surfaces, 3, HUE_SOLVE_TINT, 72);
-  // The solve fell back to a color-mix string (unparsable surfaces): nothing numeric to report.
-  if (!ink.startsWith('#')) return null;
-  const h = hexToRGB(toHex(hue));
-  // Both the bare surface AND its washed composite, mirroring the backdrop set deriveHueInk
-  // solves against. Measured no difference on the shipped presets — the composite dominates —
-  // but an authored theme can invert that, and matching the solve costs nothing.
-  const backdrops: string[] = [];
-  for (const s of surfaces.filter(isParsableColor)) {
-    backdrops.push(toHex(s));
-    const b = hexToRGB(toHex(s));
-    backdrops.push(rgbToHex(h.r * wash + b.r * (1 - wash), h.g * wash + b.g * (1 - wash), h.b * wash + b.b * (1 - wash)));
-  }
-  return { ratio: worstAgainst(ink, backdrops), target: 3, what: 'derived ink on its own wash' };
 }
 
 // ── Import/Export ──
@@ -1328,7 +1229,7 @@ function isSafeFontFamily(v: unknown): boolean {
 /** Every uiSettings field that is interpolated into a CSS declaration as a colour. Shared by the
  *  file-import validator and the storage sanitiser so a field added to one is never missed by the
  *  other — the split between them is exactly how the storage path ended up unguarded. */
-const UI_COLOR_FIELDS = [
+export const UI_COLOR_FIELDS = [
   'recordingColor', 'replayColor', 'clickerColor', 'actionMouseColor', 'actionKeyColor',
   'actionScrollColor', 'actionSendTextColor', 'actionWaitImageColor', 'actionPixelColorColor',
   'actionBrowserColor', 'actionRunProfileColor', 'actionPauseColor', 'actionIfColor',

@@ -1000,6 +1000,19 @@ export const FEATURED_THEMES = [
   'lavender-coal', 'one-dark-pro', 'tokyo-night', 'catppuccin-mocha', 'dracula', 'nord', 'gruvbox-dark', 'catppuccin-latte',
 ];
 
+/**
+ * The tracks of the colour editor's H, S and L sliders (Settings › Appearance › Edit colors…): the
+ * hue wheel, and the saturation and lightness of the colour at hand. Here because literal colours
+ * live in the palette files (the lint gate's colour rule).
+ */
+export function hslTracks(h: number, s: number, l: number): { hue: string; saturation: string; lightness: string } {
+  return {
+    hue: 'linear-gradient(to right, hsl(0 80% 50%), hsl(60 80% 50%), hsl(120 80% 50%), hsl(180 80% 50%), hsl(240 80% 50%), hsl(300 80% 50%), hsl(360 80% 50%))',
+    saturation: `linear-gradient(to right, hsl(${h} 0% ${l}%), hsl(${h} 100% ${l}%))`,
+    lightness: `linear-gradient(to right, hsl(${h} ${s}% 0%), hsl(${h} ${s}% 50%), hsl(${h} ${s}% 100%))`,
+  };
+}
+
 // The accent swatches of Settings › Appearance, as their hue on a dark theme. The page shows each as
 // it reads on the open theme: lighter or darker, never another hue (appearance.tsx, adaptAccent).
 export const ACCENT_SWATCHES: { name: string; hex: string }[] = [
