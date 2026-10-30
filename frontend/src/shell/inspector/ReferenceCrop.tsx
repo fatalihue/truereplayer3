@@ -40,15 +40,49 @@ type Drag = { mode: DragMode | 'draw'; startX: number; startY: number; start: Cr
  */
 export default function ReferenceCrop({ step, index, count }: { step: ActionItem; index: number; count: number }) {
   const tools = useEditorTools();
+  return (
+    <CropEditor
+      imagePath={step.imagePath}
+      imageBase64={step.imageBase64}
+      sub={`${stepName(step.actionType)} · step ${index + 1} of ${count} · expanded`}
+      colors={getActionTypeColors(step.actionType)}
+      onDone={(crop) => {
+        const at = useShell.getState().app.actions.findIndex(s => s.id === step.id);
+        if (at >= 0) tools.cropImage({ index: at, ...crop });
+        leave();
+      }}
+      onRecapture={() => {
+        const at = useShell.getState().app.actions.findIndex(s => s.id === step.id);
+        if (at >= 0) tools.recaptureImage({ index: at });
+      }}
+      onLeave={leave}
+    />
+  );
+}
+
+/**
+ * The crop itself, for whoever owns the image: a step (above), or an automation's condition, in its
+ * expanded panel (dialogos-087), whose Done and Recapture go through the automation's messages.
+ */
+export function CropEditor({ imagePath, imageBase64, sub, colors, onDone, onRecapture, onLeave }: {
+  imagePath: string;
+  imageBase64: string | null | undefined;
+  /** What the image is of, under "Reference image". */
+  sub: string;
+  colors: { bg: string; fg: string };
+  /** Keeps the crop (a usable one: the engine refuses under 10 px or the whole image). */
+  onDone: (crop: CropRect) => void;
+  onRecapture: () => void;
+  onLeave: () => void;
+}) {
   const tt = useTt();
   const hintId = useId();
-  const colors = getActionTypeColors(step.actionType);
-  const [image, setImage] = useState(step.imagePath);
+  const [image, setImage] = useState(imagePath);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
   const [crop, setCrop] = useState<CropRect>({ x: 0, y: 0, w: 0, h: 0 });
   // A new image (Recapture) starts the crop over.
-  if (image !== step.imagePath) {
-    setImage(step.imagePath);
+  if (image !== imagePath) {
+    setImage(imagePath);
     setNatural(null);
   }
   const [zoom, setZoom] = useState<Zoom>('fit');
@@ -73,10 +107,7 @@ export default function ReferenceCrop({ step, index, count }: { step: ActionItem
   const usable = natural !== null && cropIsUsable(crop, natural);
 
   const done = () => {
-    if (!usable) return;
-    const at = useShell.getState().app.actions.findIndex(s => s.id === step.id);
-    if (at >= 0) tools.cropImage({ index: at, ...crop });
-    leave();
+    if (usable) onDone(crop);
   };
 
   // ── The mouse: one drag at a time on the image, its moves applied once a frame. ──
@@ -146,7 +177,7 @@ export default function ReferenceCrop({ step, index, count }: { step: ActionItem
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
-      leave();
+      onLeave();
     } else if (e.key === 'Enter' && e.ctrlKey) {
       e.preventDefault();
       e.stopPropagation();
@@ -164,19 +195,16 @@ export default function ReferenceCrop({ step, index, count }: { step: ActionItem
         </span>
         <div className="insp-title">
           <span className="insp-name" data-display="">Reference image</span>
-          <span className="insp-sub">{stepName(step.actionType)} · step {index + 1} of {count} · expanded</span>
+          <span className="insp-sub">{sub}</span>
         </div>
-        <button type="button" className="insp-button" data-tip={tt('Capture the image again on the screen', 'Capturar a imagem de novo na tela')} onClick={() => {
-          const at = useShell.getState().app.actions.findIndex(s => s.id === step.id);
-          if (at >= 0) tools.recaptureImage({ index: at });
-        }}>
+        <button type="button" className="insp-button" data-tip={tt('Capture the image again on the screen', 'Capturar a imagem de novo na tela')} onClick={onRecapture}>
           <span className="step-icon" data-icon="refresh-cw" />
           Recapture
         </button>
         <button type="button" className="insp-primary" disabled={!usable} data-tip={usable ? tt('Keep the crop (Enter)', 'Manter o recorte (Enter)') : tt('Pick a smaller region first', 'Selecione uma região menor primeiro')} onClick={done}>
           Done
         </button>
-        <button type="button" className="insp-close" data-on="" aria-label="Collapse editor" data-tip={tt('Leave without cropping (Esc)', 'Sair sem recortar (Esc)')} onClick={leave}>
+        <button type="button" className="insp-close" data-on="" aria-label="Collapse editor" data-tip={tt('Leave without cropping (Esc)', 'Sair sem recortar (Esc)')} onClick={onLeave}>
           <span className="step-icon" data-icon="minimize-2" />
         </button>
       </div>
@@ -205,9 +233,9 @@ export default function ReferenceCrop({ step, index, count }: { step: ActionItem
           onPointerCancel={onPointerUp}
           onLostPointerCapture={onPointerUp}
         >
-          {step.imageBase64 && (
+          {imageBase64 && (
             <img
-              src={`data:image/png;base64,${step.imageBase64}`}
+              src={`data:image/png;base64,${imageBase64}`}
               alt="The reference image"
               draggable={false}
               onLoad={(e) => {

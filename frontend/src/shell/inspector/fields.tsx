@@ -6,6 +6,7 @@ import { useSteps } from '../../logic/useSteps';
 import { useLanguage, useTt } from '../../state/LanguageContext';
 import { formatMs } from '../../utils/displayUtils';
 import { compactKey } from '../../utils/keyNames';
+import { useCheckTarget, type CheckTarget } from './checkTarget';
 import { applyEdits, pendingEdits } from './inspectorState';
 
 /** A labelled part of an editor: the label over its controls, and a line under them. */
@@ -165,7 +166,7 @@ export interface DraftFieldProps {
   onText?: (text: string | null) => void;
   /** The field's tooltip (bilingual, from tt). */
   tip?: string;
-  /** Sends the value; one edit of `field` when absent. */
+  /** Sends the value; one edit of `field` when absent (of the step, or of what the check edits: checkTarget). */
   onApply?: (value: string) => void;
 }
 
@@ -177,6 +178,7 @@ const GROUPED = {
 interface Latest {
   props: DraftFieldProps;
   cmds: ReturnType<typeof useSteps>;
+  target: CheckTarget | null;
   /** What the field stands on: the stored value, or the one just sent until its echo comes. */
   base: string;
 }
@@ -197,6 +199,7 @@ interface Typed { text: string; base: string }
 export function DraftField(props: DraftFieldProps) {
   const { stored, stepId, field, kind, disabled } = props;
   const cmds = useSteps();
+  const target = useCheckTarget();
   const { language } = useLanguage();
   const [focused, setFocused] = useState(false);
   const [typing, setTyping] = useState<Typed | null>(null);
@@ -208,8 +211,8 @@ export function DraftField(props: DraftFieldProps) {
 
   const edit = useRef<Typed | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const latest = useRef<Latest>({ props, cmds, base });
-  useEffect(() => { latest.current = { props, cmds, base }; });
+  const latest = useRef<Latest>({ props, cmds, target, base });
+  useEffect(() => { latest.current = { props, cmds, target, base }; });
   // No echo within a second (the engine kept the value): the step's value shows again.
   useEffect(() => {
     if (!sent) return;
@@ -361,12 +364,13 @@ function flush(timer: MutableRefObject<ReturnType<typeof setTimeout> | null>, ed
   }
   const typed = edit.current;
   edit.current = null;
-  const { props, cmds, base } = latest.current;
+  const { props, cmds, target, base } = latest.current;
   pendingEdits.remove(`${props.stepId}:${props.field}`);
   if (!typed || typed.base !== base) return null;
   const value = parseValue(typed.text, props);
   if (value === null || value === base) return null;
   if (props.onApply) props.onApply(value);
+  else if (target) target.edit([{ field: props.field, value }]);
   else applyEdits(cmds, props.stepId, [{ field: props.field, value }]);
   return value;
 }

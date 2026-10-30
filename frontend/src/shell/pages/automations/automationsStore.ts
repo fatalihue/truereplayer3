@@ -19,6 +19,8 @@ interface Sent { trigger: TriggerConfig | null; at: number }
 interface AutomationsUi {
   /** The macro whose automation is in the panel, or none (no panel). */
   open: string | null;
+  /** The macro whose reference image is being cropped, in the expanded panel (dialogos-087). */
+  crop: string | null;
   filter: Filter;
   query: string;
   /** Each macro's automation as last sent, on screen until the engine says the same (rule 3). */
@@ -28,10 +30,16 @@ interface AutomationsUi {
   past: Step[];
   future: Step[];
 }
-export const useAutomationsUi = create<AutomationsUi>(() => ({ open: null, filter: 'all', query: '', sent: {}, master: null, past: [], future: [] }));
+export const useAutomationsUi = create<AutomationsUi>(() => ({ open: null, crop: null, filter: 'all', query: '', sent: {}, master: null, past: [], future: [] }));
 
-export const openAutomation = (profile: string) => useAutomationsUi.setState({ open: profile });
-export const closePanel = () => useAutomationsUi.setState({ open: null });
+export const openAutomation = (profile: string) => useAutomationsUi.setState(s => (s.crop && s.crop !== profile ? { open: profile, crop: null } : { open: profile }));
+export const closePanel = () => useAutomationsUi.setState({ open: null, crop: null });
+
+/**
+ * The reference images asked for (a capture, a crop), by the macro whose automation they are for:
+ * the answer lands on that automation, whichever one the panel shows by then.
+ */
+export const imageAsks = new Map<string, string>();
 
 // ── The list (rule 3: the screen changes at once, the engine confirms after) ──
 

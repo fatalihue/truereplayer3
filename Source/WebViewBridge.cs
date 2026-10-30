@@ -9132,10 +9132,36 @@ namespace TrueReplayer
             // window-relative — sampling at them directly would hit the wrong screen pixel.
             // Translate to absolute via the current target-window origin before sampling.
             // Falls back to the raw coords when rel coords is off or no target is running.
-            if (TryGetRelativeCaptureOffset(out var winRect))
+            // An automation's point (absolute) is not the open macro's: it is on the screen, or on
+            // the watcher's own anchor window — the same space the daemon samples it in, resolved
+            // by the same matcher the pick stored it against.
+            bool absolute = payload.TryGetProperty("absolute", out var absEl) && absEl.ValueKind == JsonValueKind.True;
+            TryParseAnchorTarget(payload, out var anchorTarget, out bool anchorRequested);
+            if (!absolute)
             {
-                x += winRect.Left;
-                y += winRect.Top;
+                if (TryGetRelativeCaptureOffset(out var winRect))
+                {
+                    x += winRect.Left;
+                    y += winRect.Top;
+                }
+            }
+            else if (anchorRequested)
+            {
+                if (!TryGetAnchorCaptureOffset(anchorTarget, out var anchorRect))
+                {
+                    SendMessage("pixel:testMatchResult", new
+                    {
+                        requestId,
+                        matches = false,
+                        sampledHex = (string?)null,
+                        error = anchorTarget == null
+                            ? "Name the anchor window first (process name or window title)."
+                            : "The anchor window is not open (or is minimised).",
+                    });
+                    return;
+                }
+                x += anchorRect.Left;
+                y += anchorRect.Top;
             }
 
             var sampled = PixelColorService.GetPixelAt(x, y);

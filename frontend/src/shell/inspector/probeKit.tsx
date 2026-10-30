@@ -4,6 +4,7 @@ import { useEditorTools } from '../../logic/useEditorTools';
 import { useTt } from '../../state/LanguageContext';
 import { anchorBelow, type MenuAnchor } from '../menuAnchor';
 import { Popover } from '../Popover';
+import { useCheckTarget } from './checkTarget';
 import { DraftField, type DraftFieldProps } from './fields';
 import { normalHex, useAsk, type Region } from './probes';
 
@@ -23,9 +24,10 @@ export function ResultCard({ ok, title, children }: { ok: boolean; title: ReactN
 /**
  * Where a probe looks: "320 × 120 at 1100, 790" with Redraw and the × that goes back to the whole
  * screen (D16), or "Whole screen" with Draw. Drawing is the engine's overlay; the region it answers
- * with is applied at once.
+ * with is applied at once. A region that is `required` (an automation's screen read, D16) has no ×,
+ * and is "Not drawn yet" until it is.
  */
-export function RegionField({ label = 'Search region', region, onRegion, locked, wholeHint, drawTip }: {
+export function RegionField({ label = 'Search region', region, onRegion, locked, wholeHint, drawTip, required = false }: {
   /** "Search region" for an image; a screen read says "Region to read". */
   label?: string;
   region: Region | null;
@@ -34,8 +36,10 @@ export function RegionField({ label = 'Search region', region, onRegion, locked,
   /** Why a region is worth drawing, said while there is none. */
   wholeHint: string;
   drawTip: string;
+  required?: boolean;
 }) {
   const tools = useEditorTools();
+  const target = useCheckTarget();
   const tt = useTt();
   const draw = useAsk('waitimage:searchRegionSet', (p) => {
     if (!p.cancelled && p.w && p.h && p.w > 0 && p.h > 0) onRegion({ x: p.x ?? 0, y: p.y ?? 0, w: p.w, h: p.h });
@@ -45,19 +49,19 @@ export function RegionField({ label = 'Search region', region, onRegion, locked,
       <span className="insp-label">{label}</span>
       <div className="insp-region">
         <span className="insp-region-text" data-whole={region ? undefined : ''}>
-          {region ? `${region.w} × ${region.h} at ${region.x}, ${region.y}` : 'Whole screen'}
+          {region ? `${region.w} × ${region.h} at ${region.x}, ${region.y}` : required ? 'Not drawn yet' : 'Whole screen'}
         </span>
         <button
           type="button"
           className="insp-button"
           disabled={locked || draw.waiting}
           data-tip={drawTip}
-          onClick={() => draw.ask(requestId => tools.configureSearchRegion(region ? { requestId, ...region } : { requestId }))}
+          onClick={() => draw.ask(requestId => tools.configureSearchRegion({ requestId, ...target?.tools, ...region }))}
         >
           <span className="step-icon" data-icon="square-dashed" />
           {draw.waiting ? 'Drawing…' : region ? 'Redraw' : 'Draw'}
         </button>
-        {region && (
+        {region && !required && (
           <button type="button" className="insp-icon-button" aria-label="Search the whole screen" data-tip={tt('Search the whole screen', 'Procurar na tela inteira')} disabled={locked} onClick={() => onRegion(null)}>
             <span className="step-icon" data-icon="x" />
           </button>

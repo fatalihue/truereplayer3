@@ -9,6 +9,8 @@
   background: var(--color-bg-base);
 }
 .am[data-panel] { grid-template-columns: minmax(0, 1fr) 22.5rem; }
+/* The reference image being cropped: the panel as wide as the Inspector's expanded editor (dialogos-087). */
+.am[data-panel][data-crop] { grid-template-columns: minmax(0, 1fr) 47.5rem; }
 .am-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .am svg { flex: none; }
 .am .insp-button svg { width: 0.875rem; height: 0.875rem; }
@@ -289,7 +291,6 @@
 .am-panel-body { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 1.125rem; padding: 0.875rem 1rem 1rem; }
 .am-sec { display: flex; flex-direction: column; gap: 0.5rem; }
 .am-sec-title { font-weight: 600; color: var(--color-text-primary); }
-.am-label { margin-top: 0.25rem; font-size: var(--text-minor); font-weight: 600; color: var(--color-text-secondary); }
 .am-ran { display: flex; align-items: flex-start; gap: 0.375rem; margin: 0; font-size: var(--text-minor); line-height: 1rem; color: var(--color-text-secondary); }
 .am-ran svg { width: 0.875rem; height: 0.875rem; margin-top: 0.0625rem; color: var(--color-recording-fg); }
 .am-ran[data-ok] svg { color: var(--color-replay-fg); }
@@ -315,7 +316,6 @@
 .am-msg { margin: 0; font-size: var(--text-minor); line-height: 1rem; color: var(--color-text-secondary); }
 .am-msg[data-tone='warn'] { color: var(--color-warning-ink); }
 .am .insp-hint[data-tone='warn'] { color: var(--color-warning-ink); }
-.am-cond { margin: 0; color: var(--color-text-primary); }
 .am-every .am-every-n { width: 5.5rem; flex: none; }
 .am-every .insp-seg { flex: none; }
 .am-every .insp-seg button { flex: none; padding: 0 0.5rem; }
@@ -345,8 +345,9 @@
 
 /* 760–1023: the panel lies over the list; under 760 it takes the whole page. */
 @container shell (max-width: 63.99rem) {
-  .am[data-panel] { grid-template-columns: minmax(0, 1fr); }
+  .am[data-panel], .am[data-panel][data-crop] { grid-template-columns: minmax(0, 1fr); }
   .am-panel { position: absolute; inset: 0 0 0 auto; width: min(22.5rem, 85%); box-shadow: var(--shadow-overlay); z-index: 4; }
+  .am-panel.am-crop { width: min(47.5rem, 100%); }
 }
 @container shell (max-width: 47.49rem) {
   .am-panel { inset: 0; width: auto; border-left: 0; box-shadow: none; }

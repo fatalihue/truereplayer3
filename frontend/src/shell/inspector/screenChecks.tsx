@@ -4,6 +4,7 @@ import { useEditorTools } from '../../logic/useEditorTools';
 import { useSteps } from '../../logic/useSteps';
 import { useTt } from '../../state/LanguageContext';
 import { effectiveOperator, isNumberMode, parsesAsNumber, regexProblem } from '../../utils/screenText';
+import { useCheckTarget } from './checkTarget';
 import { DraftField, Section, Segmented } from './fields';
 import { applyEdits, type StepEdit } from './inspectorState';
 import { HexField, RailField, RegionField, ResultCard } from './probeKit';
@@ -14,9 +15,11 @@ type Props = { step: ActionItem; locked: boolean };
 /** How a test's verdict turns, as the image probe's: a check that passes when what it looks for is
  *  not found, or a wait for it to go. */
 type Reads = 'found' | 'not found' | 'gone';
+/** The step's edits, or what the check edits instead (an automation's trigger: checkTarget). */
 const useEdit = (step: ActionItem) => {
   const cmds = useSteps();
-  return (edits: StepEdit[]) => applyEdits(cmds, step.id ?? '', edits);
+  const target = useCheckTarget();
+  return (edits: StepEdit[]) => (target ? target.edit(edits) : applyEdits(cmds, step.id ?? '', edits));
 };
 
 /**
@@ -26,6 +29,8 @@ const useEdit = (step: ActionItem) => {
 export function PixelCheck({ step, locked, reads }: Props & { reads: Reads }) {
   const edit = useEdit(step);
   const tools = useEditorTools();
+  // An automation's point is on the screen, or on its own window: the tools say so.
+  const where = useCheckTarget()?.tools;
   const tt = useTt();
   const id = step.id ?? '';
   const tolerance = step.pixelTolerance ?? 0;
@@ -45,7 +50,7 @@ export function PixelCheck({ step, locked, reads }: Props & { reads: Reads }) {
         <div className="insp-line">
           <DraftField stepId={id} field="pixelX" label="Pixel X" kind="int" signed min={-2_000_000} max={2_000_000} empty="clear" prefix="X" placeholder="—" stored={step.pixelX == null ? '' : String(step.pixelX)} disabled={locked} />
           <DraftField stepId={id} field="pixelY" label="Pixel Y" kind="int" signed min={-2_000_000} max={2_000_000} empty="clear" prefix="Y" placeholder="—" stored={step.pixelY == null ? '' : String(step.pixelY)} disabled={locked} />
-          <button type="button" className="insp-button" disabled={locked || pick.waiting} data-tip={tt('Click a point of the screen: its place and its color', 'Clique num ponto da tela: o lugar e a cor dele')} onClick={() => pick.ask(requestId => tools.pickColor({ requestId }))}>
+          <button type="button" className="insp-button" disabled={locked || pick.waiting} data-tip={tt('Click a point of the screen: its place and its color', 'Clique num ponto da tela: o lugar e a cor dele')} onClick={() => pick.ask(requestId => tools.pickColor({ requestId, ...where }))}>
             <span className="step-icon" data-icon="pipette" />
             {pick.waiting ? 'Picking…' : 'Pick'}
           </button>
@@ -64,7 +69,7 @@ export function PixelCheck({ step, locked, reads }: Props & { reads: Reads }) {
         onClick={() => {
           if (step.pixelX == null || step.pixelY == null || !target) { setResult({ matches: false, error: 'Set X, Y and the target color first.' }); return; }
           setResult(null);
-          test.ask(requestId => tools.testPixel({ requestId, x: step.pixelX ?? 0, y: step.pixelY ?? 0, hex: target, tolerance }));
+          test.ask(requestId => tools.testPixel({ requestId, x: step.pixelX ?? 0, y: step.pixelY ?? 0, hex: target, tolerance, ...where }));
         }}
       >
         <span className="step-icon" data-icon="play" />
@@ -99,6 +104,9 @@ export function ScreenTextCheck({ step, locked, variant = 'match', reads = 'foun
   const read = variant !== 'match';
   const edit = useEdit(step);
   const tools = useEditorTools();
+  // An automation's read: its region is on the screen or its window, it is required (D16), and the
+  // watcher resolves no tokens.
+  const auto = useCheckTarget();
   const tt = useTt();
   const id = step.id ?? '';
   const region = regionOf(step);
@@ -146,7 +154,8 @@ export function ScreenTextCheck({ step, locked, variant = 'match', reads = 'foun
         label="Region to read"
         region={region}
         locked={locked}
-        wholeHint="The whole screen takes ~0.5 s per read. Draw a region."
+        required={!!auto}
+        wholeHint={auto ? 'Required — reading the whole screen every check is too slow.' : 'The whole screen takes ~0.5 s per read. Draw a region.'}
         drawTip={tt('Faster, and reads only what you mean', 'Mais rápido, e lê só o que você quer')}
         onRegion={(r) => edit([{ field: 'waitImageSearchRegion', value: regionValue(r) }])}
       />
@@ -204,8 +213,8 @@ export function ScreenTextCheck({ step, locked, variant = 'match', reads = 'foun
         />
         <span className="insp-hint">
           {problem ? <span data-error="">{problem}</span>
-            : number ? 'The first number in the region. Tokens resolve at run time.'
-            : 'Ignores case, spaces and accents. Tokens resolve at run time.'}
+            : number ? (auto ? 'The first number in the region.' : 'The first number in the region. Tokens resolve at run time.')
+            : auto ? 'Ignores case, spaces and accents.' : 'Ignores case, spaces and accents. Tokens resolve at run time.'}
         </span>
       </Section>
       )}
@@ -236,6 +245,7 @@ export function ScreenTextCheck({ step, locked, variant = 'match', reads = 'foun
           setResult(null);
           test.ask(requestId => tools.testScreenText({
             requestId,
+            ...auto?.tools,
             searchRegion: region ?? undefined,
             readAs: number ? 'number' : null,
             operator: op,

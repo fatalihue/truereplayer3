@@ -13,14 +13,15 @@ import { MacroPicker } from '../../inspector/MacroPicker';
 import { selection } from '../../list/selection';
 import { Menu } from '../../Menu';
 import { anchorBelow, type MenuAnchor } from '../../menuAnchor';
-import { NotBuilt } from '../../NotBuilt';
 import { Popover } from '../../Popover';
 import { useApp, useShell } from '../../store';
 import { openMacroSettings, openPage, useUi } from '../../ui';
 import {
-  conditionWords, defaultCooldown, defaultPollMs, defaultTrigger, secondsText, STARTS, statusOf, triggerText, triggerWords,
+  defaultCooldown, defaultPollMs, defaultTrigger, secondsText, STARTS, statusOf, triggerText, triggerWords,
   UNIT_SECONDS, unitOf, WEEK, whenText, whyCannotFire, type Status, type Unit,
 } from './automationModel';
+import { Condition, CropView } from './AutomationCondition';
+import { useAutomationImages } from './automationImages';
 import {
   closePanel, commit, openAutomation, reconcile, setRunAutomations, stepHistory, triggerNow, useAutomationsUi, useEntries,
   useRunAutomations, type Cmds, type Filter,
@@ -46,7 +47,10 @@ export default function AutomationsPage() {
   const entries = useEntries();
   const open = useAutomationsUi(s => s.open);
   const entry = open ? entries.find(e => e.profile === open) ?? null : null;
+  const cropping = useAutomationsUi(s => s.crop !== null && s.crop === s.open);
   const [pick, setPick] = useState<Pick | null>(null);
+  // A captured or cropped reference image lands on the automation it was asked for.
+  useAutomationImages(cmds);
 
   // What the engine says, as it comes: what was sent stops covering it once the engine says the same.
   const engine = useApp(a => a.automation);
@@ -100,7 +104,7 @@ export default function AutomationsPage() {
     setPick(pick?.button === button ? null : { patch, anchor: anchorBelow(button, button.classList.contains('am-new') ? 'end' : 'start'), button });
 
   return (
-    <section className="shell-page am" aria-label="Automations" data-panel={entry ? '' : undefined}>
+    <section className="shell-page am" aria-label="Automations" data-panel={entry ? '' : undefined} data-crop={(entry && cropping) || undefined}>
       <div className="am-main">
         <Head onNew={(button) => startPick({}, button)} />
         {entries.length > 0
@@ -112,7 +116,9 @@ export default function AutomationsPage() {
           )
           : <Empty onStart={startPick} />}
       </div>
-      {entry && <Panel key={entry.profile} entry={entry} />}
+      {entry && (cropping
+        ? <aside className="am-panel am-crop" aria-label="Automation settings"><CropView entry={entry} /></aside>
+        : <Panel key={entry.profile} entry={entry} />)}
       {pick && (
         <PickMacro
           at={pick}
@@ -534,7 +540,7 @@ function Panel({ entry }: { entry: AutomationEntry }) {
           </p>
         )}
         <Notices entry={entry} on={on} toTarget={() => toMacro('target')} />
-        <Runs name={name} t={t} change={change} />
+        <Runs name={name} t={t} change={change} cmds={cmds} />
         {t.kind === 'condition' && <Rhythm name={name} t={t} change={change} />}
         <Activity entry={entry} counted={counted} />
       </div>
@@ -569,8 +575,8 @@ const KINDS: { value: TriggerConfig['kind']; label: string }[] = [
   { value: 'condition', label: 'When…' },
 ];
 
-/** Runs: every so often, at a time on some days, or when a condition shows up (paineis-023 to 031). */
-function Runs({ name, t, change }: { name: string; t: TriggerConfig; change: Change }) {
+/** Runs: every so often, at a time on some days, or when a condition shows up (paineis-023 to 067). */
+function Runs({ name, t, change, cmds }: { name: string; t: TriggerConfig; change: Change; cmds: Cmds }) {
   const never = whyCannotFire(t);
   const at = t.timeOfDay && !rangeParts(t.timeOfDay) ? t.timeOfDay : '';
   const toKind = (kind: TriggerConfig['kind']) => change(now => (kind === 'schedule'
@@ -600,24 +606,8 @@ function Runs({ name, t, change }: { name: string; t: TriggerConfig; change: Cha
           {never && <p className="am-msg" data-tone="warn">Never fires as it is: {never}</p>}
         </>
       )}
-      {t.kind === 'condition' && <Condition t={t} never={never} />}
+      {t.kind === 'condition' && <Condition name={name} t={t} never={never} change={change} cmds={cmds} />}
     </section>
-  );
-}
-
-/** The condition watched, as it stands; its editor (the If's) comes in slice 9. */
-function Condition({ t, never }: { t: TriggerConfig; never: string | null }) {
-  const c = conditionWords(t);
-  return (
-    <>
-      <span className="am-label">Condition</span>
-      <p className="am-cond">
-        {c.what.charAt(0).toUpperCase() + c.what.slice(1)}
-        {c.value && <>{' '}<span className="am-quote">“{c.value}”</span></>}
-      </p>
-      <NotBuilt what="The condition editor (slice 9)" />
-      {never && <p className="am-msg" data-tone="warn">Never fires as it is: {never}</p>}
-    </>
   );
 }
 

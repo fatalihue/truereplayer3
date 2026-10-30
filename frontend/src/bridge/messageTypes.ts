@@ -1397,7 +1397,7 @@ export type OutgoingMessage =
   // absolute: skip the profile-relative translation (automation watchers sample
   // virtual-screen coords with no window context).
   | { type: 'pixel:pickColor'; payload: { requestId: string; absolute?: boolean; anchor?: { processName: string; windowTitle: string; titleMatchMode: string } } }
-  | { type: 'pixel:testMatch'; payload: { requestId: string; x: number; y: number; hex: string; tolerance: number } }
+  | { type: 'pixel:testMatch'; payload: { requestId: string; x: number; y: number; hex: string; tolerance: number; absolute?: boolean; anchor?: { processName: string; windowTitle: string; titleMatchMode: string } } }
   | { type: 'selection:changed'; payload: { indices: number[] } }
   | { type: 'window:alwaysOnTop'; payload: { enabled: boolean } }
   // The new interface's layout band edges, in DIP: a dragged window edge sticks to them (D27).

@@ -4,6 +4,7 @@ import type { ActionItem } from '../../bridge/messageTypes';
 import { newRequestId, useEditorTools } from '../../logic/useEditorTools';
 import { useSteps } from '../../logic/useSteps';
 import { useTt } from '../../state/LanguageContext';
+import { useCheckTarget } from './checkTarget';
 import { Clear, DraftField, Section, Segmented, Switch } from './fields';
 import { applyEdits, pendingEdits, type StepEdit } from './inspectorState';
 import { ProcessPicker, ResultCard } from './probeKit';
@@ -14,9 +15,11 @@ import { useAsk } from './probes';
 // on the press; one message per change, one Ctrl+Z.
 
 type Props = { step: ActionItem; locked: boolean };
+/** The step's edits, or what the check edits instead (an automation's trigger: checkTarget). */
 const useEdit = (step: ActionItem) => {
   const cmds = useSteps();
-  return (edits: StepEdit[]) => applyEdits(cmds, step.id ?? '', edits);
+  const target = useCheckTarget();
+  return (edits: StepEdit[]) => (target ? target.edit(edits) : applyEdits(cmds, step.id ?? '', edits));
 };
 // A text field whose empty is a real value (it clears the field): every typed text goes as it is.
 const asTyped = (text: string) => text.trim();
@@ -29,9 +32,10 @@ const validRegex = (s: string) => {
  * Window open: the window by its process and/or its title (Contains or a .NET regex), in front or
  * just open. Detect window fills both from the next window clicked; Test asks the engine now.
  * Activate Window ('activate') takes the same window by which match it is, front to back, instead
- * of whether it is in front, and Test looks for that match.
+ * of whether it is in front, and Test looks for that match. An automation's anchor ('anchor', D17)
+ * is the window its coordinates follow: the process and the title, and Detect window.
  */
-export function WindowCheck({ step, locked, activate = false }: Props & { activate?: boolean }) {
+export function WindowCheck({ step, locked, activate = false, anchor = false }: Props & { activate?: boolean; anchor?: boolean }) {
   const edit = useEdit(step);
   const tools = useEditorTools();
   const tt = useTt();
@@ -103,7 +107,7 @@ export function WindowCheck({ step, locked, activate = false }: Props & { activa
           {title && <Clear label="Clear the title" labelPt="Limpar o título" disabled={locked} onClear={() => edit([{ field: 'windowTitle', value: '' }])} />}
         </div>
       </Section>
-      {activate ? (
+      {anchor ? null : activate ? (
         // Above 1, "no window" means fewer than this many: the Launch path runs then (editor-passo-174).
         <Section label="Match #" hint={nth > 1 ? 'Counted front→back. Above 1, Launch fires when FEWER than this many match.' : '1 = frontmost.'}>
           <DraftField stepId={id} field="windowMatchIndex" label="Match #" kind="int" min={1} max={99} stored={String(nth)} disabled={locked} />
@@ -137,21 +141,23 @@ export function WindowCheck({ step, locked, activate = false }: Props & { activa
           <span className="step-icon" data-icon="crosshair" />
           {detecting ? 'Click the target window…' : 'Detect window'}
         </button>
-        <button
-          type="button"
-          className="insp-button"
-          disabled={locked || test.waiting || (!process.trim() && !title.trim())}
-          onClick={() => {
-            setResult(null);
-            test.ask(requestId => tools.testWindow({
-              requestId, processName: process, windowTitle: title, titleMatchMode: regex ? 'regex' : 'contains',
-              foregroundOnly: !activate && !!step.windowMatchForegroundOnly, matchIndex: activate ? nth : 1,
-            }));
-          }}
-        >
-          <span className="step-icon" data-icon="play" />
-          {test.waiting ? 'Testing…' : 'Test'}
-        </button>
+        {!anchor && (
+          <button
+            type="button"
+            className="insp-button"
+            disabled={locked || test.waiting || (!process.trim() && !title.trim())}
+            onClick={() => {
+              setResult(null);
+              test.ask(requestId => tools.testWindow({
+                requestId, processName: process, windowTitle: title, titleMatchMode: regex ? 'regex' : 'contains',
+                foregroundOnly: !activate && !!step.windowMatchForegroundOnly, matchIndex: activate ? nth : 1,
+              }));
+            }}
+          >
+            <span className="step-icon" data-icon="play" />
+            {test.waiting ? 'Testing…' : 'Test'}
+          </button>
+        )}
       </div>
       {result && !test.waiting && (
         <ResultCard
@@ -183,19 +189,30 @@ export function ProcessCheck({ step, locked }: Props) {
   );
 }
 
-/** File exists: a path, file or folder; tokens resolve when it runs. */
+/** File exists: a path, file or folder; tokens resolve when it runs (an automation's watcher resolves none). */
 export function FileCheck({ step, locked }: Props) {
+  const auto = useCheckTarget();
   return (
-    <Section label="Path" hint="A file or a folder. Tokens resolve at run time.">
+    <Section label="Path" hint={auto ? 'A file or a folder.' : 'A file or a folder. Tokens resolve at run time.'}>
       <DraftField stepId={step.id ?? ''} field="filePath" label="Path" kind="mono" placeholder="C:\flags\go.txt" stored={step.filePath ?? ''} disabled={locked} parse={asTyped} />
     </Section>
   );
 }
 
-/** Clipboard: the copied text against a pattern. */
-export function ClipboardCheck({ step, locked }: Props) {
+/**
+ * Clipboard: the copied text against a pattern. An automation's ('changes', D17) fires when the
+ * copied text changes, with what it must contain, or on any change.
+ */
+export function ClipboardCheck({ step, locked, changes = false }: Props & { changes?: boolean }) {
   const edit = useEdit(step);
   const type = step.clipboardPatternType === 'equals' || step.clipboardPatternType === 'regex' ? step.clipboardPatternType : 'contains';
+  if (changes) {
+    return (
+      <Section label="Contains" hint="Empty = any change. The app’s own copies never count.">
+        <DraftField stepId={step.id ?? ''} field="clipboardPattern" label="Contains" kind="mono" placeholder="text the clipboard must contain" stored={step.clipboardPattern ?? ''} disabled={locked} parse={(t) => t} />
+      </Section>
+    );
+  }
   return (
     <>
       <Section label="Match type">

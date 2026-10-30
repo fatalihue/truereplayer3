@@ -6,8 +6,9 @@ import { useTt } from '../../state/LanguageContext';
 import { preload } from '../lazyModule';
 import { useShell } from '../store';
 import { openCrop } from '../ui';
+import { useCheckTarget } from './checkTarget';
 import { Section } from './fields';
-import { applyEdits, loadReferenceCrop } from './inspectorState';
+import { applyEdits, loadReferenceCrop, type StepEdit } from './inspectorState';
 import { RailField, RegionField, ResultCard } from './probeKit';
 import { around, regionOf, regionValue, useAsk } from './probes';
 
@@ -18,13 +19,17 @@ interface Match { found: boolean; score: number; x: number; y: number; w: number
  * crops it, in the expanded Inspector —, Recapture (the engine's capture writes it straight into
  * the step), Test match against the screen now — which also sets the search region around what it
  * found — the search region, and the tolerance. `reads` says how the verdict turns: a check that
- * passes when the image is not found, or a wait for the image to go.
+ * passes when the image is not found, or a wait for the image to go. An automation's image
+ * (checkTarget) is captured and cropped through the automation's own messages, and looked for on
+ * the screen or on its window, among its macro's files.
  */
 export function ImageProbe({ step, locked, reads }: { step: ActionItem; locked: boolean; reads: 'found' | 'not found' | 'gone' }) {
   const cmds = useSteps();
   const tools = useEditorTools();
+  const target = useCheckTarget();
   const tt = useTt();
   const id = step.id ?? '';
+  const edit = (edits: StepEdit[]) => (target ? target.edit(edits) : applyEdits(cmds, id, edits));
   const region = regionOf(step);
   const tolerance = Math.round((step.confidence || 0.8) * 100);
   const [result, setResult] = useState<Match | null>(null);
@@ -36,7 +41,7 @@ export function ImageProbe({ step, locked, reads }: { step: ActionItem; locked: 
   const test = useAsk('image:testMatchResult', (r) => {
     setResult(r);
     setSnapped(false);
-    if (r.found && !r.error && applyEdits(cmds, id, [{ field: 'waitImageSearchRegion', value: regionValue(around(r)) }])) setSnapped(true);
+    if (r.found && !r.error && edit([{ field: 'waitImageSearchRegion', value: regionValue(around(r)) }])) setSnapped(true);
   }, 8000, () => setResult({ found: false, score: 0, x: 0, y: 0, w: 0, h: 0, error: 'No answer from the app.' }));
   const indexNow = () => useShell.getState().app.actions.findIndex(s => s.id === id);
   const flipped = reads !== 'found';
@@ -54,7 +59,10 @@ export function ImageProbe({ step, locked, reads }: { step: ActionItem; locked: 
             disabled={locked}
             onPointerEnter={warm}
             onFocus={warm}
-            onClick={() => { if (id) void preload(loadReferenceCrop).then(() => openCrop(id)); }}
+            onClick={() => {
+              if (target) void preload(loadReferenceCrop).then(target.cropImage);
+              else if (id) void preload(loadReferenceCrop).then(() => openCrop(id));
+            }}
           >
             <img
               src={`data:image/png;base64,${step.imageBase64}`}
@@ -73,7 +81,11 @@ export function ImageProbe({ step, locked, reads }: { step: ActionItem; locked: 
             className="insp-button"
             disabled={locked}
             data-tip={tt('Capture the image again on the screen', 'Capturar a imagem de novo na tela')}
-            onClick={() => { const index = indexNow(); if (index >= 0) tools.recaptureImage({ index }); }}
+            onClick={() => {
+              if (target) { target.captureImage(); return; }
+              const index = indexNow();
+              if (index >= 0) tools.recaptureImage({ index });
+            }}
           >
             <span className="step-icon" data-icon="refresh-cw" />
             {step.imagePath ? 'Recapture' : 'Capture'}
@@ -86,6 +98,7 @@ export function ImageProbe({ step, locked, reads }: { step: ActionItem; locked: 
               setResult(null);
               test.ask(requestId => tools.testImage({
                 requestId, imagePath: step.imagePath, confidence: tolerance / 100, searchRegion: region ?? undefined,
+                ...(target ? { ...target.tools, profile: target.profile } : {}),
               }));
             }}
           >
@@ -111,7 +124,7 @@ export function ImageProbe({ step, locked, reads }: { step: ActionItem; locked: 
         locked={locked}
         wholeHint="The whole screen can match the wrong thing, and takes ~440 ms per check instead of ~4 ms."
         drawTip={tt('Faster, and fewer false matches', 'Mais rápido, e com menos acertos falsos')}
-        onRegion={(r) => applyEdits(cmds, id, [{ field: 'waitImageSearchRegion', value: regionValue(r) }])}
+        onRegion={(r) => edit([{ field: 'waitImageSearchRegion', value: regionValue(r) }])}
       />
       <Section label="Tolerance" hint="Higher is stricter.">
         <RailField
@@ -120,12 +133,12 @@ export function ImageProbe({ step, locked, reads }: { step: ActionItem; locked: 
           label="Tolerance"
           value={tolerance}
           min={10}
-          max={100}
+          max={target ? 99 : 100}
           step={5}
           unit="%"
-          toValue={(n) => (Math.min(100, Math.max(10, n)) / 100).toFixed(2)}
+          toValue={(n) => (Math.min(target ? 99 : 100, Math.max(10, n)) / 100).toFixed(2)}
           disabled={locked}
-          onApply={(v) => applyEdits(cmds, id, [{ field: 'confidence', value: v }])}
+          onApply={(v) => edit([{ field: 'confidence', value: v }])}
         />
       </Section>
     </>
