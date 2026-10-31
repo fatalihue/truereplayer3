@@ -163,6 +163,8 @@ export function appStateReducer(state: AppState, message: IncomingMessage): AppS
       return { ...state, dataTable: { ...state.dataTable, cursorRow: message.payload.row } };
     case 'automation:state':
       return { ...state, automation: message.payload ?? state.automation };
+    case 'profile:active':
+      return { ...state, activeProfile: message.payload.activeProfile ?? null };
     case 'profiles:updated':
       // `?? null`: the engine leaves null properties out of its JSON, so with no macro open the
       // payload has no activeProfile at all — undefined, which a `!== null` check reads as open.

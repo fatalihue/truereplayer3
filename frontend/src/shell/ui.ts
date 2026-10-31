@@ -109,6 +109,13 @@ export const loadEmpties = () => import('./empty/Empties');
  * watch brings it at the first idle moment, and a run that starts before that, at once.
  */
 export const loadRunProgress = () => import('./header/RunProgress');
+/**
+ * The cards that follow the pointer in a drag (list/StepGhost.tsx, library/DragGhost.tsx), drawn only
+ * while one is on: the watch brings them at the first idle moment, and a drag that starts before that,
+ * at once.
+ */
+export const loadStepGhost = () => import('./list/StepGhost');
+export const loadDragGhost = () => import('./library/DragGhost');
 
 export const openDialog = (dialog: LibraryDialogState) => useUi.setState({ dialog });
 export const closeDialog = () => useUi.setState({ dialog: null });

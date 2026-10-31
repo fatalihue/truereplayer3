@@ -16,7 +16,7 @@ import { useShell } from './store';
 import { endTip, pendingTips } from './tips/tipsState';
 import CompactButton from './CompactButton';
 import { recordNewMacro } from './recordNew';
-import { loadEmpties, loadRunProgress, openPage, openSettings, useUi } from './ui';
+import { loadDragGhost, loadEmpties, loadRunProgress, loadStepGhost, openPage, openSettings, useUi } from './ui';
 import { hearUpdate } from './updates';
 
 type Door = 'automations' | 'browser';
@@ -170,6 +170,8 @@ export function Watch({ early }: { early: readonly IncomingMessage[] }) {
   useEffect(() => {
     void preload(loadEmpties);
     void preload(loadRunProgress);
+    void preload(loadStepGhost);
+    void preload(loadDragGhost);
     tipsFor(useShell.getState().app.status);
     const stop = useShell.subscribe((s, prev) => { if (s.app.status !== prev.app.status) tipsFor(s.app.status); });
     window.addEventListener('dragover', noFileDrop);

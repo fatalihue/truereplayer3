@@ -4,8 +4,7 @@ import type { ProfileEntry, ProfileFolder, ProfileOrderData } from '../../bridge
 import { useTt } from '../../state/LanguageContext';
 import { preload, useLoaded } from '../lazyModule';
 import { useShell } from '../store';
-import { loadEmpties } from '../ui';
-import { DragGhost } from './DragGhost';
+import { loadDragGhost, loadEmpties } from '../ui';
 import { FolderCard } from './FolderCard';
 import { MacroRow } from './MacroRow';
 import { descriptionTip, displayOrder, isTagSearch, searchOf, type Sections } from './model';
@@ -67,6 +66,12 @@ export function LibraryPanel({ profiles, order, sections, active, locked, peek, 
   useEffect(() => {
     if (empty && !empties) void preload(loadEmpties);
   }, [empty, empties]);
+  // The card that follows a drag, likewise (ui.ts, loadDragGhost).
+  const ghost = useLoaded(loadDragGhost);
+  const dragging = !!drag.dragging;
+  useEffect(() => {
+    if (dragging && !ghost) void preload(loadDragGhost);
+  }, [dragging, ghost]);
   // A folder whose every macro is disabled reads as disabled too.
   const offByFolder = new Map(sections.folders.map(({ folder, macros }) =>
     [folder.name, macros.length > 0 && macros.every(p => p.isDisabled)]));
@@ -332,7 +337,7 @@ export function LibraryPanel({ profiles, order, sections, active, locked, peek, 
         )}
       </div>
 
-      {drag.dragging && <DragGhost {...drag.dragging} />}
+      {drag.dragging && ghost && <ghost.DragGhost {...drag.dragging} />}
     </div>
   );
 }

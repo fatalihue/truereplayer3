@@ -10,7 +10,7 @@ import { skippedRowMask } from '../../utils/conditionalBlocks';
 import { Menu } from '../Menu';
 import { fromKeyboard, type MenuAnchor } from '../menuAnchor';
 import { useApp, useShell } from '../store';
-import { loadEmpties } from '../ui';
+import { loadEmpties, loadStepGhost } from '../ui';
 import { blockColor, blockMap, type BlockMap, type GhostRow } from './blocks';
 import { drafts, focusInspector, loadInspectorBody } from '../inspector/inspectorState';
 import { preload, useLoaded } from '../lazyModule';
@@ -18,7 +18,6 @@ import { useArrival, useInsertFlash, useLitBlocks, useRunFollow, useSetSize } fr
 import { useMacroDrop } from './macroDrop';
 import { deleteSteps } from './moves';
 import { arrival, insertPoint, selectedIndices, selection, useSelection } from './selection';
-import { StepGhost } from './StepGhost';
 import { StepRow } from './StepRow';
 import { stepKey, stepName } from './stepTypes';
 import { topIn, useStepDrag } from './useStepDrag';
@@ -89,6 +88,12 @@ export function StepList() {
   useEffect(() => {
     if (empty && !empties) void preload(loadEmpties);
   }, [empty, empties]);
+  // The card that follows a drag, likewise (ui.ts, loadStepGhost).
+  const ghost = useLoaded(loadStepGhost);
+  const dragging = !!drag.drag;
+  useEffect(() => {
+    if (dragging && !ghost) void preload(loadStepGhost);
+  }, [dragging, ghost]);
 
   // Another macro: nothing selected, and the list from its top (lista-112).
   useLayoutEffect(() => {
@@ -375,8 +380,8 @@ export function StepList() {
           {dropLine && <div className="steps-drop" style={{ top: dropLine.top }} aria-hidden="true" />}
         </div>
       </div>
-      {drag.drag && steps[drag.drag.lead] && (
-        <StepGhost step={steps[drag.drag.lead]} more={drag.drag.indices.length - 1} x={drag.drag.x} y={drag.drag.y} />
+      {drag.drag && steps[drag.drag.lead] && ghost && (
+        <ghost.StepGhost step={steps[drag.drag.lead]} more={drag.drag.indices.length - 1} x={drag.drag.x} y={drag.drag.y} />
       )}
       {menu && menuEntries.length > 0 && (
         <Menu anchor={menu.anchor} entries={menuEntries} label={`Step ${menu.row + 1}`} focusFirst={menu.keyboard} onClose={() => setMenu(null)} />

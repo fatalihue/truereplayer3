@@ -259,7 +259,8 @@ export interface ProfileEntry {
    *  effective target, so only one of them fires. The same combo on DIFFERENT targets is not a
    *  conflict — the foreground gate routes between those on purpose. Derived, never persisted. */
   hotkeyConflict?: boolean;
-  isActive: boolean;
+  /** No longer sent (D6): the open macro is activeProfile. Only the old shell's ProfilePanel reads it. */
+  isActive?: boolean;
   hasWindowTarget: boolean;
   windowTargetProcessName: string | null;
   windowTargetWindowTitle: string | null;
@@ -973,6 +974,8 @@ export type IncomingMessage =
   | { type: 'automation:testFireResult'; payload: { requestId: string; fired: boolean; detail: string } }
   | { type: 'actions:highlight'; payload: { index: number } }
   | { type: 'profiles:updated'; payload: { profiles: ProfileEntry[]; activeProfile: string | null; profileOrder: ProfileOrderData } }
+  // A macro switch that left the library as it was: only which macro is open (D6).
+  | { type: 'profile:active'; payload: { activeProfile: string | null } }
   | { type: 'settings:loaded'; payload: { settings: SettingsState } }
   // Narrow push for the active profile's loop settings. Fired by EVERY profile-activation
   // path (click, create, hotkey/hotstring, automation fire, import-overwrite reload, load,

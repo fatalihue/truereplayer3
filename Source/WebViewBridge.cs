@@ -3207,7 +3207,19 @@ namespace TrueReplayer
             UserProfile.Current.BringToFocus = profileController.GetEffectiveBringToFocus(CurrentProfileName);
         }
 
-        public void PushProfilesUpdate()
+        // The library as the page last received it (profiles:updated), serialized. A macro switch that
+        // leaves it as it was sends only which macro is open (profile:active): every switch used to carry
+        // the whole library along, 113 KB with the synthetic one of the base (D6). The open macro is
+        // activeProfile, not a mark on the entries, so a switch alone does not change it. Cleared by
+        // state:init, which brings a library of its own.
+        private string? _librarySent;
+
+        public void PushProfilesUpdate() => PushLibrary(forSwitch: false);
+
+        /// <summary>A macro switch: the library goes only when something in it changed.</summary>
+        private void PushLibraryForSwitch() => PushLibrary(forSwitch: true);
+
+        private void PushLibrary(bool forSwitch)
         {
             // Refresh derived effective-target fields before serializing — handlers that mutate
             // folder membership or folder targets don't always call RefreshProfileListAsync,
@@ -3228,7 +3240,6 @@ namespace TrueReplayer
                 hotstring = p.Hotstring,
                 hotstringInstant = p.HotstringInstant,
                 hotkeyConflict = p.HotkeyConflict,   // keep in sync with the OTHER projection of ProfileEntry
-                isActive = p.IsActive,
                 hasWindowTarget = p.HasWindowTarget,
                 windowTargetProcessName = p.WindowTargetProcessName,
                 windowTargetWindowTitle = p.WindowTargetWindowTitle,
@@ -3302,7 +3313,15 @@ namespace TrueReplayer
                 ungroupedOrder = order.UngroupedOrder
             };
 
-            SendMessage("profiles:updated", new { profiles, activeProfile = CurrentProfileName == "No Profile" ? (string?)null : CurrentProfileName, profileOrder });
+            string? activeProfile = CurrentProfileName == "No Profile" ? null : CurrentProfileName;
+            string library = JsonSerializer.Serialize(new { profiles, profileOrder }, JsonOptions);
+            if (forSwitch && library == _librarySent)
+            {
+                SendMessage("profile:active", new { activeProfile });
+                return;
+            }
+            _librarySent = library;
+            SendMessage("profiles:updated", new { profiles, activeProfile, profileOrder });
         }
 
         // Flip Macro ↔ Clicker. Cancels any running replay/recording so the active state
@@ -4331,6 +4350,7 @@ namespace TrueReplayer
             string? Icon(string? proc) => string.IsNullOrWhiteSpace(proc) ? null
                 : iconLookup.TryGetValue(proc, out var v) ? v
                 : (iconLookup[proc] = AppIconService.GetIconBase64(proc));
+            _librarySent = null;   // the page's library is the one below from now on
             SendMessage("state:init", new
             {
                 // The REAL run state, as the button slice below already carries. A constant "ready"
@@ -4362,7 +4382,6 @@ namespace TrueReplayer
                     hotstring = p.Hotstring,
                     hotstringInstant = p.HotstringInstant,
                     hotkeyConflict = p.HotkeyConflict,   // keep in sync with the OTHER projection of ProfileEntry
-                    isActive = p.IsActive,
                     hasWindowTarget = p.HasWindowTarget,
                     windowTargetProcessName = p.WindowTargetProcessName,
                     windowTargetWindowTitle = p.WindowTargetWindowTitle,
@@ -10308,7 +10327,7 @@ namespace TrueReplayer
                 // the app-level fallback — the chip and the panel both need to hear about it.
                 ClearLoopEdit();
                 PushProfileLoop();
-                PushProfilesUpdate();
+                PushLibraryForSwitch();
                 PushActionsUpdate();
                 PushButtonStates();
                 PushToolbarUpdate();
@@ -10371,7 +10390,7 @@ namespace TrueReplayer
             // on the React side and would otherwise stay dirty across the swap.
             ClearLoopEdit();
             PushProfileLoop();
-            PushProfilesUpdate();
+            PushLibraryForSwitch();
             TrayIconService.UpdateTrayIcon();
         }
 
