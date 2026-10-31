@@ -269,6 +269,29 @@ namespace TrueReplayer.Controllers
             }, "launch target");
 
         /// <summary>
+        /// Choose file… for a reference image: a picture to look for on the screen. Null on Cancel.
+        /// </summary>
+        public Task<string?> PickImageFileAsync()
+            => ShowFileDialogAsync(new WinForms.OpenFileDialog
+            {
+                Title = "Choose a reference image",
+                Filter = "Pictures (*.png;*.jpg;*.jpeg;*.bmp;*.gif)|*.png;*.jpg;*.jpeg;*.bmp;*.gif|All files (*.*)|*.*",
+                CheckFileExists = true,
+            }, "reference image");
+
+        /// <summary>
+        /// Save image…: where a reference image's PNG goes. Null on Cancel.
+        /// </summary>
+        public Task<string?> PickImageSavePathAsync(string suggestedName)
+            => ShowFileDialogAsync(new WinForms.SaveFileDialog
+            {
+                Title = "Save the reference image",
+                Filter = "PNG image (*.png)|*.png",
+                FileName = suggestedName,
+                DefaultExt = "png",
+            }, "save image");
+
+        /// <summary>
         /// The system's Save dialog for a file the interface built (a theme, the remaps, the
         /// snippets), then the text written where the user chose. Returns the path, or null on
         /// Cancel; a write that fails throws to the caller, which says so.

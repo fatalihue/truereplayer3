@@ -46,6 +46,8 @@ namespace TrueReplayer
         // Navigation target is stored on first init so recovery doesn't depend on
         // CoreWebView2.Source, which can return an empty string after the renderer crashes.
         private string _targetUrl = "";
+        // The interface script's registration, until the first load has checked that the script ran.
+        private Task? _interfaceScript;
         // Tracks how many recovery attempts happened since the last successful ui:ready.
         // If we exhaust levels 1 → 2 repeatedly, level 3 (process restart) is triggered.
         private int _consecutiveRecoveryAttempts = 0;
@@ -430,6 +432,32 @@ namespace TrueReplayer
             InitializeWebView();
         }
 
+        // The interface's own choices (InterfaceStore): filled into localStorage from
+        // Documents\TrueReplayer3\interface.json before the page's first script — the boot mirror in
+        // index.html paints the saved theme from there before React loads — and every later write of
+        // them sent back to the file. An import from TrueReplayer 2 arrives the same way. Never throws.
+        private async Task RegisterInterfaceScriptAsync()
+        {
+            try { await WebView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(Services.InterfaceStore.DocumentScript()); }
+            catch (Exception ex) { Services.DiagnosticLog.Warn($"[Interface] could not hand interface.json to the page: {ex.Message}"); }
+        }
+
+        // The registration is not awaited before the first navigation: at startup it takes ~50 ms,
+        // which sat in front of the page (C2 slice). WebView2 promises the script only to pages that
+        // start after the registration completes, so the first load checks that it ran, and loads the
+        // page once more if it did not.
+        private async Task EnsureInterfaceScriptRanAsync(Task registration)
+        {
+            await registration;
+            try
+            {
+                if (await WebView.CoreWebView2.ExecuteScriptAsync("window.__trInterface === true") == "true") return;
+                Services.DiagnosticLog.Warn("[Interface] the first page loaded before its script was in place — loading it again");
+                WebView.CoreWebView2.Reload();
+            }
+            catch (Exception ex) { Services.DiagnosticLog.Warn($"[Interface] could not check the page's script: {ex.Message}"); }
+        }
+
         private async void InitializeWebView()
         {
             // Pin the WebView2 UserDataFolder to a stable location OUTSIDE Velopack's
@@ -714,6 +742,11 @@ namespace TrueReplayer
                 // fresh budget rather than inheriting this run's spent attempts.
                 _navFailureRecoveries = 0;
                 WebView.Opacity = 1;
+                if (_interfaceScript is { } registration)
+                {
+                    _interfaceScript = null;
+                    _ = EnsureInterfaceScriptRanAsync(registration);
+                }
                 if (bridge != null)
                 {
                     DispatcherQueue.TryEnqueue(() =>
@@ -728,14 +761,8 @@ namespace TrueReplayer
                 }
             };
 
-            // The theme and snippets of an import from TrueReplayer 2 that finished on this start
-            // (Tr2Import), handed to the page before its first script: the boot mirror in index.html
-            // paints the saved theme from localStorage before React loads.
-            if (Tr2Import.WebStorageScript() is { } importScript)
-            {
-                try { await WebView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(importScript); }
-                catch (Exception ex) { Services.DiagnosticLog.Warn($"[Import] could not hand the theme and snippets to the page: {ex.Message}"); }
-            }
+            // Handed over now and checked after the first load (EnsureInterfaceScriptRanAsync).
+            _interfaceScript = RegisterInterfaceScriptAsync();
 
 #if DEBUG
             WebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;

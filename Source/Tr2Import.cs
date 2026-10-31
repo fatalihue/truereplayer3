@@ -37,12 +37,6 @@ namespace TrueReplayer.Services
             bool Tr2Found, int Macros, int Folders, int Images, bool Settings, int Remaps,
             bool Appearance, bool Tr2Running, bool Tr3HasData);
 
-        // The localStorage keys worth carrying: the theme, its custom presets, the Send Text snippets,
-        // the hints' language and two small Send Text / Live Variables preferences. The old shell's
-        // layout keys (ui:*) mean nothing to this one.
-        private static readonly string[] WebStorageKeys =
-            { "truereplay-theme", "truereplay-custom-presets", "trueplayer_snippets", "tr-language", "tr-sendtext-more", "tr-livevars" };
-
         // Files of Documents\TrueReplayer that travel with the macros (the Data Loop's places in each
         // table, the automations' history and cooldowns) or on their own.
         private const string SettingsFile = "appsettings.json";
@@ -58,7 +52,6 @@ namespace TrueReplayer.Services
 
         private static string PendingFile => Path.Combine(AppIdentity.LocalRoot, "import-pending.json");
         private static string StateFile => Path.Combine(AppIdentity.LocalRoot, "import-state.json");
-        private static string WebStorageFile => Path.Combine(AppIdentity.LocalRoot, "import-webstorage.json");
 
         // ── Looking ──────────────────────────────────────────────────────────────────────────────
 
@@ -138,9 +131,11 @@ namespace TrueReplayer.Services
                     CopyIfExists(Path.Combine(AppIdentity.Tr2.DocumentsRoot, RemapsFile), Path.Combine(docsStage, RemapsFile));
                 if (parts.HasFlag(Parts.Appearance))
                 {
+                    // The theme, the presets and the snippets go into interface.json (InterfaceStore),
+                    // beside the macros: the one this app has goes to Backups with the rest.
                     var values = await ReadTr2WebStorageAsync(localStage, parentWindow);
                     if (values != null && values.Count > 0)
-                        File.WriteAllText(Path.Combine(localStage, "webstorage.json"), JsonSerializer.Serialize(values));
+                        File.WriteAllText(Path.Combine(docsStage, Path.GetFileName(InterfaceStore.FilePath)), InterfaceStore.Merged(values));
                 }
 
                 var pending = new JsonObject
@@ -237,7 +232,7 @@ namespace TrueReplayer.Services
                 string raw = await core.ExecuteScriptAsync(
                     "JSON.stringify(Object.fromEntries(Object.keys(localStorage).map(k => [k, localStorage.getItem(k)])))");
                 var all = JsonSerializer.Deserialize<Dictionary<string, string>>(JsonSerializer.Deserialize<string>(raw) ?? "{}") ?? new();
-                return all.Where(kv => WebStorageKeys.Contains(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value);
+                return all.Where(kv => InterfaceStore.Keys.Contains(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value);
             }
             catch (Exception ex)
             {
@@ -275,15 +270,6 @@ namespace TrueReplayer.Services
                     foreach (var file in Directory.GetFiles(docsStage))
                         Swap(file, Path.Combine(AppIdentity.DocumentsRoot, Path.GetFileName(file)), Path.Combine(backup, Path.GetFileName(file)));
                 }
-                if (Directory.Exists(localStage))
-                {
-                    string web = Path.Combine(localStage, "webstorage.json");
-                    if (File.Exists(web))
-                    {
-                        TryDeleteFile(WebStorageFile);
-                        File.Move(web, WebStorageFile);
-                    }
-                }
                 WriteState(s =>
                 {
                     s["lastImport"] = stamp;
@@ -317,33 +303,6 @@ namespace TrueReplayer.Services
             if (isDir) Directory.Move(staged, target); else File.Move(staged, target);
         }
 
-        /// <summary>
-        /// The script that hands the imported theme and snippets to the page before its first line
-        /// runs (the boot mirror in index.html paints the saved theme from localStorage). Applied once
-        /// per import: the stamp it leaves stops a later Reload UI from writing over what changed since.
-        /// Null when there is nothing to hand over.
-        /// </summary>
-        public static string? WebStorageScript()
-        {
-            if (!File.Exists(WebStorageFile)) return null;
-            try
-            {
-                var values = JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(WebStorageFile));
-                string stamp = ReadState()?["lastImport"]?.GetValue<string>() ?? "";
-                if (values == null || values.Count == 0) return null;
-                return "(() => { try { const s = " + JsonSerializer.Serialize(stamp) + "; if (localStorage.getItem('tr3-imported') === s) return; "
-                    + "const v = " + JsonSerializer.Serialize(values) + "; for (const k in v) localStorage.setItem(k, v[k]); "
-                    + "localStorage.setItem('tr3-imported', s); } catch {} })();";
-            }
-            catch (Exception ex)
-            {
-                DiagnosticLog.Warn($"[Import] the imported theme and snippets could not be read: {ex.Message}");
-                return null;
-            }
-        }
-
-        /// <summary>The page has the theme and snippets: the file goes.</summary>
-        public static void WebStorageDelivered() => TryDeleteFile(WebStorageFile);
 
         /// <summary>The summary of an import that finished on this start, once: for the page's notice.</summary>
         public static JsonNode? TakeAnnouncement()

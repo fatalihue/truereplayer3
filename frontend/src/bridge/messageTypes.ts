@@ -1153,6 +1153,9 @@ export type OutgoingMessage =
   | { type: 'automation:setArmed'; payload: { profile: string; armed: boolean } }
   | { type: 'automation:setEnabled'; payload: { enabled: boolean } }
   | { type: 'automation:captureImage'; payload: { requestId: string; profile: string } }
+  // Choose file…: a picture on disk as the automation's image. Answered by automation:imageCaptured,
+  // like a capture.
+  | { type: 'automation:chooseImage'; payload: { requestId: string; profile: string } }
   | { type: 'automation:cropReference'; payload: { requestId: string; profile: string; imagePath: string; x: number; y: number; w: number; h: number } }
   | { type: 'automation:testFire'; payload: { requestId: string; profile: string } }
   // Whole-list save of the key remap layer (capped at 32 entries backend-side).
@@ -1396,6 +1399,8 @@ export type OutgoingMessage =
   // one that changed, so a second change before the echo cannot undo the first).
   | { type: 'actions:editRunProfile'; payload: { index: number; id?: string; profileName?: string; repeatCount?: number; runOverData?: boolean } }
   | { type: 'waitimage:recapture'; payload: { index: number } }
+  // Choose file…: a picture on disk as the row's reference image, written into the row like a recapture.
+  | { type: 'waitimage:chooseFile'; payload: { index: number } }
   // `anchor` (as tres abaixo): a janela a que um vigia de automacao ancora suas coordenadas.
   // Presente => o backend subtrai a origem dela ao GRAVAR e a soma ao exibir/testar, para que o
   // valor em disco viva no mesmo espaco que TriggerService.ProbeCondition le. Ortogonal a
@@ -1423,6 +1428,9 @@ export type OutgoingMessage =
   | { type: 'ocr:installLanguage'; payload: { tag: string } }
   | { type: 'ocr:configureHotkeyRegion'; payload: Record<string, never> }
   | { type: 'image:testMatch'; payload: { requestId: string; imagePath: string; confidence: number; searchRegion?: { x: number; y: number; w: number; h: number }; absolute?: boolean; anchor?: { processName: string; windowTitle: string; titleMatchMode: string }; profile?: string } }
+  // Save image…: the reference PNG copied where the user chooses. profile: an automation's macro
+  // (a step's image is the open macro's). The engine says how it went with alert:show.
+  | { type: 'image:saveAs'; payload: { imagePath: string; profile?: string } }
   | { type: 'mouse:pickPosition'; payload: { requestId: string } }
   // absolute: skip the profile-relative translation (automation watchers sample
   // virtual-screen coords with no window context). colorOnly: only the colour is wanted (the
@@ -1453,6 +1461,11 @@ export type OutgoingMessage =
   | { type: 'update:check'; payload: Record<string, never> }
   | { type: 'update:apply'; payload: Record<string, never> }
   | { type: 'logs:openFolder'; payload: Record<string, never> }
+  // Documents\TrueReplayer3, the folder with everything that is the user's.
+  | { type: 'data:openFolder'; payload: Record<string, never> }
+  // Sent by the engine's own script (InterfaceStore), not by the page's code: a write of one of the
+  // localStorage keys that live in interface.json (null removes it); seed carries all of them once.
+  | { type: 'interface:set'; payload: { values: Record<string, string | null>; seed?: true } }
   // The Browser extension dialog: help copies the extension folder's path to the clipboard and
   // answers with extension:help; openFolder shows that folder in Explorer.
   // copy: false asks for the folder without putting its path on the clipboard (Settings › Browser

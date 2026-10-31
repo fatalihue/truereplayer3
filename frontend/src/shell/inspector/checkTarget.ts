@@ -19,6 +19,8 @@ export interface CheckTarget {
   /** The macro whose files the reference image is among. */
   profile: string;
   captureImage: () => void;
+  /** Choose file…: a picture on disk as the reference image. */
+  chooseImage: () => void;
   cropImage: () => void;
 }
 export const CheckTargetContext = createContext<CheckTarget | null>(null);

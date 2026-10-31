@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  ArrowRightLeft, BookOpen, Chrome, ClipboardCopy, ClipboardPaste, Combine, CornerDownRight, Keyboard, ListChecks, MousePointerClick, Play, Plus, Redo2, RefreshCw,
+  ArrowRightLeft, BookOpen, Chrome, ClipboardCopy, ClipboardPaste, Combine, CornerDownRight, FolderOpen, Keyboard, ListChecks, MousePointerClick, Play, Plus, Redo2, RefreshCw,
   Replace, RotateCcw, ScrollText, Settings, Split, Square, SquareDot, Table2, Undo2, Variable, Zap,
 } from 'lucide-react';
 import { useAutomations } from '../../logic/useAutomations';
@@ -323,6 +323,7 @@ function useItems(): PaletteItem[] {
     cmd('resetall', 'Reset all settings…', () => useUi.setState({ page: 'settings', settingsCategory: 'general', settingsQuery: '', settingsReset: true, libraryPeek: false }), { icon: RotateCcw, detail: 'Settings', words: 'defaults restore factory', disabled: status !== 'ready', hint: tt('Stop the run or the recording first', 'Pare a execução ou a gravação antes') }),
     cmd('extension', 'Connect browser extension', () => openSettings('browser'), { icon: Chrome, detail: 'Settings', words: 'chrome edge brave extension unpacked install disconnected' }),
     cmd('reload', 'Reload UI', app.reloadUI, { icon: RefreshCw, words: 'refresh stuck frozen' }),
+    cmd('data', 'Open data folder', app.openDataFolder, { icon: FolderOpen, words: 'documents files backup copy macros images settings explorer' }),
     cmd('logs', 'Open logs folder', app.openLogsFolder, { icon: ScrollText, words: 'diagnostics session log support' }),
     cmd('diagnostics', 'Copy diagnostics', app.copyDiagnostics, { icon: ClipboardCopy, words: 'support version bug report system info about' }),
     cmd('manual', 'Open manual', () => app.openUrl(MANUAL_URL), { icon: BookOpen, words: 'help docs documentation guide ajuda' }),

@@ -66,7 +66,10 @@ namespace TrueReplayer.Services
         // of cache work on kill — acceptable, next launch re-resolves whatever was missed.
         private const int SaveDebounceMs = 1000;
 
-        private static string CachePath => Path.Combine(AppIdentity.DocumentsRoot, "icon-cache.json");
+        // A cache the app rebuilds by itself, so it lives with the app's own machine-local files, not
+        // among the user's in Documents (where up to preview.7 it sat; EnsureDiskLoaded takes it away).
+        private static string CachePath => Path.Combine(AppIdentity.LocalRoot, "icon-cache.json");
+        private static string OldCachePath => Path.Combine(AppIdentity.DocumentsRoot, "icon-cache.json");
 
         public static string? GetIconBase64(string? processName)
         {
@@ -303,6 +306,9 @@ namespace TrueReplayer.Services
             {
                 if (_diskLoaded) return;
                 _diskLoaded = true;
+
+                try { if (File.Exists(OldCachePath)) File.Delete(OldCachePath); }
+                catch (Exception ex) { Debug.WriteLine($"[AppIconService] Failed to remove the old icon cache {OldCachePath}: {ex.Message}"); }
 
                 try
                 {

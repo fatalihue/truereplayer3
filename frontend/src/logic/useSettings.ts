@@ -59,6 +59,8 @@ export function useAppActions() {
     reloadUI: () => send({ type: 'window:reloadUI', payload: {} }),
     /** Opens %LocalAppData%\TrueReplayer3\Logs in Explorer. */
     openLogsFolder: () => send({ type: 'logs:openFolder', payload: {} }),
+    /** Opens Documents\TrueReplayer3, with everything that is the user's, in Explorer. */
+    openDataFolder: () => send({ type: 'data:openFolder', payload: {} }),
     /** Puts version, OS, WebView2 and state on the clipboard, then confirms with a toast. */
     copyDiagnostics: () => send({ type: 'diagnostics:copy', payload: {} }),
     /** Opens an https URL in the default browser. The backend allow-lists the project's own pages. */

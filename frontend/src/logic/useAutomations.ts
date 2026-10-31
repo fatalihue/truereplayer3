@@ -49,6 +49,12 @@ export function useAutomations() {
       send({ type: 'automation:captureImage', payload: { requestId, profile } });
       return requestId;
     },
+    /** Choose file…: a picture on disk as the reference image. Answer: automation:imageCaptured. */
+    chooseImage: (profile: string) => {
+      const requestId = `autofile-${Date.now()}`;
+      send({ type: 'automation:chooseImage', payload: { requestId, profile } });
+      return requestId;
+    },
     /**
      * Crops the reference tighter (rect in image pixels). Answer: automation:imageCaptured, like a
      * capture — isCropAnswer tells the two apart.

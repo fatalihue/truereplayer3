@@ -433,6 +433,21 @@ export const CATEGORIES: Category[] = [
         ],
       },
       {
+        title: 'Your files',
+        rows: [
+          {
+            id: 'dataFolder',
+            label: 'Open data folder',
+            hint: 'Your macros, their images, the settings, the theme and the snippets, in one folder. Copy it to keep everything.',
+            words: 'documents files backup copy move images explorer',
+            Control: function DataFolder() {
+              const app = useAppActions();
+              return <button type="button" className="insp-button" onClick={app.openDataFolder}><FolderOpen aria-hidden="true" />Open data folder</button>;
+            },
+          },
+        ],
+      },
+      {
         title: TR2_NAME,
         rows: [
           { id: 'importTr2', label: `Import from ${TR2_NAME}`, hint: `A copy of its macros, settings, remaps, theme and snippets. ${TR2_NAME} is not changed.`, words: 'import copy migrate old version previous', Control: ImportTr2Control },

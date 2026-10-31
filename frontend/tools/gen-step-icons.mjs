@@ -27,10 +27,10 @@ const NAMES = [
 
 // The ones only the step editors draw (the checks of an If, the probes' tools, Activate Window's
 // Browse… and Read from window, Run Macro's Open macro, the header's Expand and Collapse editor,
-// the reference image's crop), which load with the editors and not with the app:
-// src/shell/inspector/editorIcons.css.
+// the reference image's crop, Choose file… and Save image…), which load with the editors and not
+// with the app: src/shell/inspector/editorIcons.css.
 const EDITOR_NAMES = [
-  'check', 'chevron-down', 'clipboard', 'cpu', 'crop', 'dices', 'file-check', 'folder-open', 'frame', 'image', 'list',
+  'check', 'chevron-down', 'clipboard', 'cpu', 'crop', 'dices', 'download', 'file-check', 'folder-open', 'frame', 'image', 'list',
   'maximize-2', 'minimize-2', 'refresh-cw', 'square-arrow-out-up-right', 'square-dashed', 'variable',
 ];
 const editorOut = path.join(front, 'src', 'shell', 'inspector', 'editorIcons.css');

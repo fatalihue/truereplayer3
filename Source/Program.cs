@@ -77,6 +77,10 @@ namespace TrueReplayer
             // settings, the remaps or the library are read (Tr2Import).
             Tr2Import.FinishPending();
 
+            // The interface's own choices (InterfaceStore), read now: an import may have just put a new
+            // interface.json in place, and nothing has created the Profiles folder of a new data folder yet.
+            InterfaceStore.Load();
+
             // Check WebView2 Runtime before initializing UI
             if (!IsWebView2Available())
             {

@@ -4,7 +4,7 @@ import type { OutgoingMessage } from '../bridge/messageTypes';
 
 type ToolType = Extract<OutgoingMessage['type'],
   | 'mouse:pickPosition' | 'pixel:pickColor' | 'waitimage:configureSearchRegion' | 'waitimage:recapture'
-  | 'waitimage:cropReference' | 'pixel:testMatch' | 'image:testMatch' | 'ocr:testRead'
+  | 'waitimage:chooseFile' | 'waitimage:cropReference' | 'image:saveAs' | 'pixel:testMatch' | 'image:testMatch' | 'ocr:testRead'
   | 'profile:detectWindow' | 'window:testProbe' | 'window:captureGeometry' | 'process:list' | 'dialog:pickFile'
   | 'dialog:saveFile' | 'browser:pickElement' | 'browser:cancelPick' | 'browser:testAction' | 'browser:testCondition'>;
 type MessageOf<T extends ToolType> = Extract<OutgoingMessage, { type: T }>;
@@ -30,7 +30,11 @@ export function useEditorTools() {
       pickColor: cmd('pixel:pickColor'),
       configureSearchRegion: cmd('waitimage:configureSearchRegion'),
       recaptureImage: cmd('waitimage:recapture'),
+      /** Choose file…: a picture on disk as the row's reference image. */
+      chooseImageFile: cmd('waitimage:chooseFile'),
       cropImage: cmd('waitimage:cropReference'),
+      /** Save image…: the reference PNG, where the user chooses. */
+      saveImage: cmd('image:saveAs'),
       testPixel: cmd('pixel:testMatch'),
       testImage: cmd('image:testMatch'),
       testScreenText: cmd('ocr:testRead'),

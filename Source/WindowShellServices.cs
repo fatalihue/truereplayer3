@@ -36,6 +36,7 @@ namespace TrueReplayer.Services
         public static void FlushState()
         {
             Guard("run-cursor flush", RunCursorService.Flush);
+            Guard("interface flush", InterfaceStore.Flush);
             Guard("automation stats flush", () => TriggerService.Instance?.Flush());
             // A settings write that failed earlier lives only in memory until a later save lands;
             // this is its last chance before the process takes it away.
@@ -998,13 +999,15 @@ namespace TrueReplayer.Services
                 // Only the flushes, and then TRUE. Never an exit from here: the user can still
                 // cancel the shutdown, and a process that tore itself down on the question would
                 // be gone for a shutdown that never happened. The session manager also times
-                // these out, so this stays to two file writes and returns.
+                // these out, so this stays to three small file writes and returns (interface.json
+                // holds half a second of the interface's own changes).
                 //
                 // A fire recorded but interrupted mid-replay is the right thing to keep, not a
                 // duplicate risk: LastFiredAt is stamped when the replay STARTS, so the next boot
                 // reading it is recovering an aborted run, not repeating a finished one.
-                Services.DiagnosticLog.Info("WM_QUERYENDSESSION — flushing automation stats and run cursors before session end");
+                Services.DiagnosticLog.Info("WM_QUERYENDSESSION — flushing automation stats, run cursors and interface.json before session end");
                 try { RunCursorService.Flush(); } catch (Exception ex) { Services.DiagnosticLog.Warn($"Run-cursor flush at session end failed: {ex.Message}"); }
+                try { InterfaceStore.Flush(); } catch (Exception ex) { Services.DiagnosticLog.Warn($"interface.json flush at session end failed: {ex.Message}"); }
                 try { Services.TriggerService.Instance?.Flush(); } catch (Exception ex) { Services.DiagnosticLog.Warn($"Automation stats flush at session end failed: {ex.Message}"); }
                 return (IntPtr)1;
             }

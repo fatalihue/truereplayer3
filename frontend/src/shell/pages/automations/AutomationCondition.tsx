@@ -134,6 +134,7 @@ export function Condition({ name, t, never, change, cmds }: { name: string; t: T
     tools: anchored ? { absolute: true, anchor } : { absolute: true },
     profile: name,
     captureImage: () => imageAsks.set(cmds.captureImage(name), name),
+    chooseImage: () => imageAsks.set(cmds.chooseImage(name), name),
     cropImage: () => useAutomationsUi.setState({ crop: name }),
   };
   const step = stepOf(t, name);

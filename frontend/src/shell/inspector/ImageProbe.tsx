@@ -18,10 +18,11 @@ interface Match { found: boolean; score: number; x: number; y: number; w: number
  * The reference image of a Wait Image or of an If that checks for one: the image — a press on it
  * crops it, in the expanded Inspector —, Recapture (the engine's capture writes it straight into
  * the step), Test match against the screen now — which also sets the search region around what it
- * found — the search region, and the tolerance. `reads` says how the verdict turns: a check that
- * passes when the image is not found, or a wait for the image to go. An automation's image
- * (checkTarget) is captured and cropped through the automation's own messages, and looked for on
- * the screen or on its window, among its macro's files.
+ * found —, Choose file… (a picture on disk instead of a capture, written in the same way) and Save
+ * image… (the PNG, wherever the user wants it), the search region, and the tolerance. `reads` says
+ * how the verdict turns: a check that passes when the image is not found, or a wait for the image to
+ * go. An automation's image (checkTarget) is captured, chosen and cropped through the automation's
+ * own messages, and looked for on the screen or on its window, among its macro's files.
  */
 export function ImageProbe({ step, locked, reads }: { step: ActionItem; locked: boolean; reads: 'found' | 'not found' | 'gone' }) {
   const cmds = useSteps();
@@ -104,6 +105,32 @@ export function ImageProbe({ step, locked, reads }: { step: ActionItem; locked: 
           >
             <span className="step-icon" data-icon="play" />
             {test.waiting ? 'Testing…' : 'Test match'}
+          </button>
+        </div>
+        <div className="insp-pair">
+          <button
+            type="button"
+            className="insp-button"
+            disabled={locked}
+            data-tip={tt('Use a picture from a file', 'Usar uma imagem de um arquivo')}
+            onClick={() => {
+              if (target) { target.chooseImage(); return; }
+              const index = indexNow();
+              if (index >= 0) tools.chooseImageFile({ index });
+            }}
+          >
+            <span className="step-icon" data-icon="folder-open" />
+            Choose file…
+          </button>
+          <button
+            type="button"
+            className="insp-button"
+            disabled={!step.imagePath}
+            data-tip={tt('Save the image as a PNG file', 'Salvar a imagem num arquivo PNG')}
+            onClick={() => tools.saveImage({ imagePath: step.imagePath, ...(target ? { profile: target.profile } : {}) })}
+          >
+            <span className="step-icon" data-icon="download" />
+            Save image…
           </button>
         </div>
         {result && !test.waiting && (

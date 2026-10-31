@@ -1159,6 +1159,7 @@ namespace TrueReplayer
                     case "automation:setEnabled": HandleAutomationSetEnabled(payload); break;
                     case "automation:resetCounters": HandleAutomationResetCounters(payload); break;
                     case "automation:captureImage": HandleAutomationCaptureImage(payload); break;
+                    case "automation:chooseImage": HandleAutomationChooseImage(payload); break;
                     case "automation:cropReference": HandleAutomationCropReference(payload); break;
                     case "automation:testFire": HandleAutomationTestFire(payload); break;
                     case "remap:save": HandleRemapSave(payload); break;
@@ -1183,6 +1184,7 @@ namespace TrueReplayer
                     case "actions:addRunProfile": HandleAddRunProfile(payload); break;
                     case "actions:editRunProfile": HandleEditRunProfile(payload); break;
                     case "waitimage:recapture": HandleWaitImageRecapture(payload); break;
+                    case "waitimage:chooseFile": HandleWaitImageChooseFile(payload); break;
                     case "actions:insertWaitPixelColor": HandleInsertWaitPixelColor(payload); break;
                     case "waitimage:configureSearchRegion": _ = HandleConfigureSearchRegionAsync(payload); break;
                     case "clicker:configureArea": _ = HandleConfigureClickAreaAsync(payload); break;
@@ -1196,6 +1198,7 @@ namespace TrueReplayer
                 case "clicker:undoDeletePreset": HandleUndoDeleteClickerPreset(payload); break;
                     case "waitimage:cropReference": HandleCropReference(payload); break;
                     case "image:testMatch": _ = HandleTestMatchAsync(payload); break;
+                    case "image:saveAs": _ = HandleImageSaveAsAsync(payload); break;
                     case "ocr:testRead": _ = HandleOcrTestReadAsync(payload); break;
                     case "ocr:languages": HandleOcrLanguages(); break;
                     case "ocr:installLanguage": _ = HandleOcrInstallLanguageAsync(payload); break;
@@ -1306,6 +1309,8 @@ namespace TrueReplayer
                         }
                         catch (Exception ex) { DiagnosticLog.Error("logs:openFolder failed", ex); }
                         break;
+                    case "data:openFolder": HandleDataOpenFolder(); break;
+                    case "interface:set": InterfaceStore.Set(payload); break;
                     case "extension:help": HandleExtensionHelp(payload); break;
                     case "extension:openFolder": HandleExtensionOpenFolder(); break;
                     case "clipboard:read": _ = HandleClipboardRead(); break;
@@ -2301,6 +2306,40 @@ namespace TrueReplayer
             string profileName = payload.TryGetProperty("profile", out var pEl) ? (pEl.GetString() ?? "") : "";
             if (string.IsNullOrEmpty(profileName) || profileName == "No Profile") profileName = "default";
             _ = HandleAutomationCaptureImageAsync(requestId, profileName);
+        }
+
+        // Choose file… for an automation's image: a picture on disk, saved as its macro's PNG like a
+        // capture, answered on the capture's own reply so the panel takes it the same way.
+        private void HandleAutomationChooseImage(JsonElement payload)
+        {
+            string requestId = payload.TryGetProperty("requestId", out var ridEl) ? (ridEl.GetString() ?? "") : "";
+            string profileName = payload.TryGetProperty("profile", out var pEl) ? (pEl.GetString() ?? "") : "";
+            if (string.IsNullOrEmpty(profileName) || profileName == "No Profile") profileName = "default";
+            _ = HandleAutomationChooseImageAsync(requestId, profileName);
+        }
+
+        private async Task HandleAutomationChooseImageAsync(string requestId, string profileName)
+        {
+            var file = await profileController.PickImageFileAsync();
+            if (file == null)
+            {
+                SendMessage("automation:imageCaptured", new { requestId, cancelled = true });
+                return;
+            }
+            string newImagePath;
+            try
+            {
+                // Off the UI thread: a large photo takes a while to decode and encode again.
+                newImagePath = await Task.Run(() => ImageStorageService.SaveReferenceImageFromFile(file, profileName));
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Error($"Automation image from a file failed [file='{file}', profile='{profileName}']", ex);
+                SendMessage("alert:show", new { message = PictureFileFailure(ex), type = "error" });
+                SendMessage("automation:imageCaptured", new { requestId, cancelled = true });
+                return;
+            }
+            SendMessage("automation:imageCaptured", new { requestId, cancelled = false, imagePath = newImagePath, imageBase64 = GetImageBase64Cached(profileName, newImagePath) });
         }
 
         private async Task HandleAutomationCaptureImageAsync(string requestId, string profileName)
@@ -3825,9 +3864,8 @@ namespace TrueReplayer
 
             // The import from TrueReplayer 2 (Tr2Import): the notice of one that finished on this
             // start. The new shell asks its capabilities once it is up, so it hears it; the theme and
-            // snippets were already handed to it before its first script. The way in is the page's:
-            // the first-run screen's card (it asks import:scan) and Settings › General.
-            Tr2Import.WebStorageDelivered();
+            // snippets came in interface.json, before its first script (InterfaceStore). The way in is
+            // the page's: the first-run screen's card (it asks import:scan) and Settings › General.
             var imported = Tr2Import.TakeAnnouncement();
             if (imported != null) SendMessage("import:done", new { summary = imported });
         }
@@ -5193,6 +5231,25 @@ namespace TrueReplayer
                 });
             }
             catch (Exception ex) { DiagnosticLog.Error("extension:openFolder failed", ex); }
+        }
+
+        // Open data folder: Documents\TrueReplayer3, where everything that is the user's lives — the
+        // macros, their images, the settings, the remaps, interface.json and the Backups. Copying it
+        // keeps all of it.
+        private void HandleDataOpenFolder()
+        {
+            try
+            {
+                var dir = AppIdentity.DocumentsRoot;
+                System.IO.Directory.CreateDirectory(dir);
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "explorer.exe",
+                    Arguments = $"\"{dir}\"",
+                    UseShellExecute = true,
+                });
+            }
+            catch (Exception ex) { DiagnosticLog.Error("data:openFolder failed", ex); }
         }
 
         private void HandleActionsCopy()
@@ -8361,30 +8418,106 @@ namespace TrueReplayer
                     selection.CroppedImage.Dispose();
                 }
 
-                dispatcherQueue.TryEnqueue(() =>
-                {
-                    if (!scope.TryResolveIndex(actions, CurrentProfileName, out int at, out var why))
-                    {
-                        DiagnosticLog.Warn($"Recaptured image discarded: {why}");
-                        SendMessage("alert:show", new { message = why, type = "error" });
-                        return;
-                    }
-                    // Snapshot here, inside the enqueued callback and right before the write —
-                    // the comment above (on newImagePath) promises "undo can restore the
-                    // previous reference image" but nothing ever pushed the state that promise
-                    // depends on. Pushing at the top of the async method instead would snapshot
-                    // before the user even opened the overlay, and would leave a stray undo
-                    // entry on the cancel/stale-row paths above, both of which return before
-                    // reaching here.
-                    PushUndoState();
-                    actions[at].ImagePath = newImagePath;
-                    HasUnsavedChanges = true;
-                    PushActionsUpdate();
-                });
+                dispatcherQueue.TryEnqueue(() => ApplyNewReferenceImage(scope, newImagePath, "Recaptured image"));
             }
             finally
             {
                 screenshot.Dispose();
+            }
+        }
+
+        // A row's new reference image (a recapture, or a file chosen for it), written into the row it
+        // was asked for, undoable. On the UI thread.
+        private void ApplyNewReferenceImage(Services.EditScope scope, string newImagePath, string what)
+        {
+            if (!scope.TryResolveIndex(actions, CurrentProfileName, out int at, out var why))
+            {
+                DiagnosticLog.Warn($"{what} discarded: {why}");
+                SendMessage("alert:show", new { message = why, type = "error" });
+                return;
+            }
+            // Snapshot here, right before the write — the callers keep the old PNG on disk so
+            // undo can restore the previous reference image, and that promise depends on this
+            // state. Pushing when the request came in would snapshot before the user even opened
+            // the overlay or the picker, and would leave a stray undo entry on the cancel and
+            // stale-row paths, which return before reaching here.
+            PushUndoState();
+            actions[at].ImagePath = newImagePath;
+            HasUnsavedChanges = true;
+            PushActionsUpdate();
+        }
+
+        // Choose file… — a Wait Image's or an If image's reference from a picture on disk instead of
+        // a capture. Saved as the macro's own PNG, like a capture (a JPEG or a BMP comes out PNG), and
+        // written into the row like a recapture. The old PNG stays for undo; the startup sweep reaps it.
+        private void HandleWaitImageChooseFile(JsonElement payload)
+        {
+            int index = payload.GetProperty("index").GetInt32();
+            if (index < 0 || index >= actions.Count) return;
+            var a = actions[index];
+            bool eligible = a.ActionType == "WaitImage"
+                || (CarriesConditionProbeRow(a) && string.Equals(a.ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase));
+            if (!eligible) return;
+            // Anchored on the row object, as the recapture is: the picker can stay open for a while.
+            _ = HandleWaitImageChooseFileAsync(Services.EditScope.Capture(CurrentProfileName, a));
+        }
+
+        private async Task HandleWaitImageChooseFileAsync(Services.EditScope scope)
+        {
+            var file = await profileController.PickImageFileAsync();
+            if (file == null) return; // Cancelled
+            string newImagePath;
+            string storage = StorageProfileName(scope.ProfileName);
+            try
+            {
+                // Off the UI thread: a large photo takes a while to decode and encode again.
+                newImagePath = await Task.Run(() => ImageStorageService.SaveReferenceImageFromFile(file, storage));
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Error($"Reference image from a file failed [file='{file}', profile='{scope.ProfileName}']", ex);
+                SendMessage("alert:show", new { message = PictureFileFailure(ex), type = "error" });
+                return;
+            }
+            dispatcherQueue.TryEnqueue(() => ApplyNewReferenceImage(scope, newImagePath, "Reference image from a file"));
+        }
+
+        // What to tell the user when a chosen picture could not become a reference image.
+        private static string PictureFileFailure(Exception ex) => ex is InvalidDataException
+            ? ex.Message
+            : $"Couldn't use that file as the reference image: {ex.Message}";
+
+        // Save image… — a reference PNG copied where the user chooses, through the system's Save
+        // dialog: to keep it, to send it, or to edit it and choose it back. A step's image is among the
+        // open macro's files; an automation's names its macro (profile).
+        private async Task HandleImageSaveAsAsync(JsonElement payload)
+        {
+            string imagePath = payload.TryGetProperty("imagePath", out var ip) && ip.ValueKind == JsonValueKind.String ? (ip.GetString() ?? "") : "";
+            string profileName = payload.TryGetProperty("profile", out var pEl) && pEl.ValueKind == JsonValueKind.String
+                ? (pEl.GetString() ?? "")
+                : CurrentProfileName;
+            string storage = string.IsNullOrEmpty(profileName) ? "default" : StorageProfileName(profileName);
+            string? source = ImageStorageService.GetReferenceImageFile(storage, imagePath);
+            if (source == null)
+            {
+                SendMessage("alert:show", new { message = "That reference image isn't on disk any more. Capture it again.", type = "error" });
+                return;
+            }
+            // A macro's name is already a safe file name (ProfileNameValidator).
+            string suggested = string.IsNullOrEmpty(profileName) || profileName == "No Profile"
+                ? "Reference image.png"
+                : $"{profileName} - reference image.png";
+            var dest = await profileController.PickImageSavePathAsync(suggested);
+            if (dest == null) return; // Cancelled
+            try
+            {
+                await Task.Run(() => File.Copy(source, dest, overwrite: true));
+                SendMessage("alert:show", new { message = $"Saved {Path.GetFileName(dest)}", type = "success" });
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Error($"Save image failed [dest='{dest}']", ex);
+                SendMessage("alert:show", new { message = $"Couldn't save the image: {ex.Message}", type = "error" });
             }
         }
 

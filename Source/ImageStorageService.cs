@@ -66,6 +66,39 @@ namespace TrueReplayer.Services
         }
 
         /// <summary>
+        /// A picture file the user chose as a reference image (Choose file…), saved as the profile's
+        /// PNG like a capture: a JPEG, a BMP or a GIF comes out PNG, at its own size. Throws
+        /// InvalidDataException, with a reason a person can read, for a file that is too big or is
+        /// not a picture; anything else (an unreadable file, a failed save) throws as it is.
+        /// </summary>
+        public static string SaveReferenceImageFromFile(string path, string profileName)
+        {
+            long length = new FileInfo(path).Length;
+            if (length > MaxReferenceImageBytes)
+                throw new InvalidDataException($"That file is {length / (1024 * 1024)} MB; a reference image can be up to {MaxReferenceImageBytes / (1024 * 1024)} MB.");
+            Bitmap picture;
+            try
+            {
+                // Decoded from a copy in memory into a detached bitmap, as LoadReferenceImage does:
+                // the file is not held open, and the bitmap outlives the stream.
+                using var stream = new MemoryStream(File.ReadAllBytes(path));
+                using var loaded = new Bitmap(stream);
+                picture = new Bitmap(loaded);
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is OutOfMemoryException || ex is ExternalException)
+            {
+                throw new InvalidDataException("That file isn't a picture Windows can read. Choose a PNG, JPEG, BMP or GIF.", ex);
+            }
+            using (picture) return SaveReferenceImage(picture, profileName);
+        }
+
+        /// <summary>
+        /// The full path of a profile's reference image when it is on disk (Save image…), or null.
+        /// </summary>
+        public static string? GetReferenceImageFile(string profileName, string imagePath)
+            => TryResolveImageFile(profileName, imagePath, out string fullPath) && File.Exists(fullPath) ? fullPath : null;
+
+        /// <summary>
         /// Loads a reference image from the profile's image directory.
         /// </summary>
         public static Bitmap? LoadReferenceImage(string profileName, string imagePath)
@@ -122,11 +155,13 @@ namespace TrueReplayer.Services
         // bounds — rejects an empty/oversized blob or a non-image payload smuggled in a hostile
         // .trprofile before it ever lands on disk.
         private static readonly byte[] PngSignature = { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
+        // Covers a full-screen / multi-monitor PNG (the 50 MB base64 envelope cap decodes to ~37 MB);
+        // rejects only genuinely absurd/oversized blobs. The same bound for a picture file chosen as
+        // a reference image.
+        private const long MaxReferenceImageBytes = 40 * 1024 * 1024;
         private static bool IsValidPng(byte[] bytes)
         {
-            // Upper bound covers a full-screen / multi-monitor PNG (the 50 MB base64 envelope cap
-            // decodes to ~37 MB); reject only genuinely absurd/oversized blobs.
-            if (bytes.Length < 8 || bytes.Length > 40 * 1024 * 1024) return false;
+            if (bytes.Length < 8 || bytes.Length > MaxReferenceImageBytes) return false;
             for (int i = 0; i < PngSignature.Length; i++)
                 if (bytes[i] != PngSignature[i]) return false;
             return true;
