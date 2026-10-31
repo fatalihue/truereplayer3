@@ -75,13 +75,16 @@ export const isCropAnswer = (requestId: string) => requestId.startsWith('autocro
 
 /**
  * Keeps automation:state fresh while a view is open: pushes are change-driven, so a quiet watcher's
- * next-fire countdown would go stale without a poll. 2 s is plenty.
+ * next-fire countdown would go stale without a poll. 2 s is plenty. Not while the page is hidden (the
+ * window in the tray, rule 12): it asks again the moment it shows.
  */
 export function useAutomationRefresh() {
   const { send } = useBridge();
   useEffect(() => {
-    send({ type: 'automation:request', payload: {} });
-    const id = window.setInterval(() => send({ type: 'automation:request', payload: {} }), 2000);
-    return () => window.clearInterval(id);
+    const ask = () => { if (!document.hidden) send({ type: 'automation:request', payload: {} }); };
+    ask();
+    const id = window.setInterval(ask, 2000);
+    document.addEventListener('visibilitychange', ask);
+    return () => { window.clearInterval(id); document.removeEventListener('visibilitychange', ask); };
   }, [send]);
 }

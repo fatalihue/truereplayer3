@@ -9,7 +9,7 @@ export function usePauseTick(pauseState: AppState['pauseState']): void {
   const [, setTick] = useState(0);
   useEffect(() => {
     if (!pauseState.isPaused || pauseState.timeoutMs <= 0) return;
-    const id = setInterval(() => setTick((t) => t + 1), 1000);
+    const id = setInterval(() => { if (!document.hidden) setTick((t) => t + 1); }, 1000);
     return () => clearInterval(id);
   }, [pauseState.isPaused, pauseState.timeoutMs]);
 }

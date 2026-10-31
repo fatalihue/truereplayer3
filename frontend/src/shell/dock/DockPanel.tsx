@@ -63,10 +63,11 @@ function RunReportView() {
   const tt = useTt();
   const running = status === 'replaying';
   const listRef = useRef<HTMLDivElement>(null);
-  // While a run is on, the report is asked for again and again; when it ends, the engine pushes it.
+  // While a run is on, the report is asked for again and again — not while the page is hidden (the
+  // window in the tray, rule 12); when it ends, the engine pushes it.
   useEffect(() => {
     if (!running) return;
-    const id = setInterval(refresh, LIVE_MS);
+    const id = setInterval(() => { if (!document.hidden) refresh(); }, LIVE_MS);
     return () => clearInterval(id);
   }, [running, refresh]);
 

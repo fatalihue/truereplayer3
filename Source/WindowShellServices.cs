@@ -852,6 +852,10 @@ namespace TrueReplayer.Services
         /// held while nobody could see them.
         public Action? OnShown { get; set; }
 
+        /// Raised (inside the window procedure) when the window has just been shown (true, before
+        /// OnShown) or hidden (false): the page stops and starts drawing with it (rule 12 of the plan).
+        public Action<bool>? OnVisibilityChanged { get; set; }
+
         private const int WM_USER = 0x0400;
         private const int WM_LBUTTONUP = 0x0202;
         private const int WM_LBUTTONDBLCLK = 0x0203;
@@ -862,6 +866,7 @@ namespace TrueReplayer.Services
         private const int WM_INPUTLANGCHANGE = 0x0051;
         private const int WM_WINDOWPOSCHANGED = 0x0047;
         private const uint SWP_SHOWWINDOW = 0x0040;
+        private const uint SWP_HIDEWINDOW = 0x0080;
         private const int WM_SIZING = 0x0214;
         private const int WM_ENTERSIZEMOVE = 0x0231;
         private const int WM_EXITSIZEMOVE = 0x0232;
@@ -1132,13 +1137,19 @@ namespace TrueReplayer.Services
             {
                 TrayIconService.RecreateAfterShellRestart();
             }
-            else if (msg == WM_WINDOWPOSCHANGED && OnShown != null)
+            else if (msg == WM_WINDOWPOSCHANGED && (OnShown != null || OnVisibilityChanged != null))
             {
                 // Every way of showing the window ends here with SWP_SHOWWINDOW — ShowWindow from the
-                // tray, AppWindow.Show, SetWindowPos. WM_SHOWWINDOW would not do: it is skipped for
-                // SW_SHOWNORMAL. WINDOWPOS.flags sits after two handles and four ints.
+                // tray, AppWindow.Show, SetWindowPos — and every way of hiding it with SWP_HIDEWINDOW.
+                // WM_SHOWWINDOW would not do: it is skipped for SW_SHOWNORMAL. WINDOWPOS.flags sits
+                // after two handles and four ints.
                 uint flags = (uint)Marshal.ReadInt32(lParam, 2 * IntPtr.Size + 16);
-                if ((flags & SWP_SHOWWINDOW) != 0) OnShown();
+                if ((flags & SWP_SHOWWINDOW) != 0)
+                {
+                    OnVisibilityChanged?.Invoke(true);
+                    OnShown?.Invoke();
+                }
+                else if ((flags & SWP_HIDEWINDOW) != 0) OnVisibilityChanged?.Invoke(false);
             }
             return HwndHookManager.CallOriginalWndProc(hwnd, msg, wParam, lParam);
         }

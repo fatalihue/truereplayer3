@@ -611,6 +611,8 @@ namespace TrueReplayer
             // The notices held while the window was hidden go out once it is on screen. Enqueued:
             // this runs inside the window procedure, before the show has finished.
             windowEventManager.OnShown = () => DispatcherQueue.TryEnqueue(() => bridge?.FlushPendingNotices());
+            // Rule 12 of the plan: hidden in the tray, the page stops drawing and the WebView2 aims low.
+            windowEventManager.OnVisibilityChanged = SetPageVisible;
             TrayIconService.OnTrayExitRequested = HandleCloseGuardAsync;
             TrayIconService.OnTraySettingChanged = () =>
             {
@@ -815,6 +817,9 @@ namespace TrueReplayer
                 // fresh budget rather than inheriting this run's spent attempts.
                 _navFailureRecoveries = 0;
                 WebView.Opacity = 1;
+                // Loaded while the window is hidden (an autostart into the tray, a recovery there): the
+                // page starts out not drawing, as a hide would have left it.
+                if (!NativeMethods.IsWindowVisible(hwnd)) SetPageVisible(false);
                 if (_interfaceScript is { } registration)
                 {
                     _interfaceScript = null;
@@ -1906,6 +1911,52 @@ namespace TrueReplayer
         }
 
         public bool IsOnScreen => hwnd != IntPtr.Zero && NativeMethods.IsWindowVisible(hwnd);
+
+        /// <summary>
+        /// Rule 12 of the plan: with the window hidden in the tray, the WebView2 is hidden too and aims at
+        /// low memory, and the page is told: it reads document.hidden, so its timers stand down, and every
+        /// animation on it pauses (shell.css, data-window-hidden). Shown, all of it comes back. The page has
+        /// to be told: under WinAppSDK 2.x an invisible WebView2 (IsVisible false, which collapsing the
+        /// control gives) no longer turns the page hidden — it read "visible" in the tray and its
+        /// animations ran on. Never TrySuspendAsync: the page keeps receiving the engine's messages while
+        /// hidden. Called inside the window procedure (WindowEventManager).
+        /// </summary>
+        private void SetPageVisible(bool visible)
+        {
+            var core = WebView?.CoreWebView2;
+            if (core == null) return;   // not up yet: NavigationCompleted applies the window's state
+            try
+            {
+                WebView!.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+                core.MemoryUsageTargetLevel = visible ? Microsoft.Web.WebView2.Core.CoreWebView2MemoryUsageTargetLevel.Normal : Microsoft.Web.WebView2.Core.CoreWebView2MemoryUsageTargetLevel.Low;
+                _ = core.ExecuteScriptAsync(PageHiddenScript + (visible ? "(false)" : "(true)"));
+                Services.DiagnosticLog.Info(visible ? "[Window] shown: the page draws again, normal memory" : "[Window] hidden: the page stops drawing, low memory");
+            }
+            catch (Exception ex)
+            {
+                Services.DiagnosticLog.Warn($"[Window] page {(visible ? "shown" : "hidden")} with the window failed: {ex.Message}");
+            }
+        }
+
+        // Makes document.hidden and document.visibilityState say whether the window is hidden (on top of
+        // what the browser says), fires visibilitychange when that flips, and marks the root
+        // (data-window-hidden). Installed by its first call, so a page loaded while hidden gets it too.
+        private const string PageHiddenScript = @"((h) => {
+  if (!window.__trWindowHidden) {
+    let hidden = false;
+    const real = (name) => Object.getOwnPropertyDescriptor(Document.prototype, name).get;
+    const realHidden = real('hidden'), realState = real('visibilityState');
+    Object.defineProperty(document, 'hidden', { configurable: true, get() { return hidden || realHidden.call(document); } });
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get() { return hidden ? 'hidden' : realState.call(document); } });
+    window.__trWindowHidden = (next) => {
+      if (next === hidden) return;
+      hidden = next;
+      document.documentElement.toggleAttribute('data-window-hidden', next);
+      document.dispatchEvent(new Event('visibilitychange'));
+    };
+  }
+  window.__trWindowHidden(h);
+})";
 
         /// <summary>The compact view (WindowEventManager.SetCompact): the title bar's button, Ctrl+K, a run.</summary>
         public void SetCompact(bool on) => windowEventManager?.SetCompact(on);

@@ -3,14 +3,17 @@ import type { RunClock } from '../store';
 
 /**
  * Date.now(), once a second while `active` (0 until the first tick). A clock that adds one a second
- * drifts when the page is busy or hidden; one that reads the wall clock does not.
+ * drifts when the page is busy or hidden; one that reads the wall clock does not. It stands down while
+ * the page is hidden (the window in the tray, rule 12) and reads the clock again the moment it shows.
  */
 export function useNow(active: boolean): number {
   const [now, setNow] = useState(0);
   useEffect(() => {
     if (!active) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
+    const tick = () => { if (!document.hidden) setNow(Date.now()); };
+    const id = setInterval(tick, 1000);
+    document.addEventListener('visibilitychange', tick);
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', tick); };
   }, [active]);
   return now;
 }

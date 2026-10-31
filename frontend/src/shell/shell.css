@@ -379,3 +379,9 @@ html[data-animations='true'] .shell-state[data-done]::after { border-color: var(
 :root[data-compact] .shell > .cmp { grid-row: 2; grid-column: 1; }
 :root[data-compact-view] .shell-titlebar { display: none; }
 :root[data-compact-view] .shell > .cmp { grid-row: 1 / -1; }
+
+/* Rule 12 of the plan: with the window hidden in the tray, nothing on the page animates (the engine
+   sets the attribute, MainWindow.SetPageVisible). */
+:root[data-window-hidden] *,
+:root[data-window-hidden] *::before,
+:root[data-window-hidden] *::after { animation-play-state: paused !important; }
