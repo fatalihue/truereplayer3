@@ -76,7 +76,7 @@ function Watch() {
   const mod = useLoaded(loadWatch);
   const { subscribe } = useBridge();
   useEffect(() => (mod ? undefined : subscribe((m) => {
-    if (!m.type.startsWith('update:') && !m.type.startsWith('coexist:') && !m.type.startsWith('import:') && m.type !== 'extension:openHelp' && m.type !== 'automation:open') return;
+    if (!m.type.startsWith('update:') && !m.type.startsWith('coexist:') && !m.type.startsWith('import:') && m.type !== 'extension:openHelp' && m.type !== 'automation:open' && m.type !== 'tray:command') return;
     early.push(m);
     void preload(loadWatch);
   })), [mod, subscribe]);

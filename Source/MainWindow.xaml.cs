@@ -381,6 +381,8 @@ namespace TrueReplayer
             replayService.OnLoopProgress = (current, total) =>
             {
                 bridge?.PushLoopProgress(current, total);
+                // The tray's tooltip says it too: "Replaying Trade Roblox, loop 2 of 3".
+                TrayIconService.SetLoopProgress(current, total);
             };
 
             // Data-list lap notice (cursor mode) — the bridge arms it here and presents it
@@ -594,10 +596,34 @@ namespace TrueReplayer
             {
                 DispatcherQueue.TryEnqueue(() => bridge.PushSettingsLoaded());
             };
-            TrayIconService.OnAlwaysOnTopChanged = (enabled) =>
+            // ── The tray's menu (Tray board, "Clique direito") ──
+            TrayIconService.CurrentMacro = () =>
+                bridge?.CurrentProfileName is { Length: > 0 } open && open != "No Profile" ? open : null;
+            TrayIconService.OnOpenWindow = () => DispatcherQueue.TryEnqueue(() => windowEventManager?.BringToForeground());
+            // Stop does what the hotkey that stops it does: the recording toggles off, a run stops.
+            TrayIconService.OnStopRun = () => DispatcherQueue.TryEnqueue(() =>
             {
-                DispatcherQueue.TryEnqueue(() => windowEventManager.UpdateAlwaysOnTop(enabled));
-            };
+                if (mainController.IsRecording()) mainController.ToggleRecording();
+                else mainController.StopReplayIfRunning();
+            });
+            // The page makes the macro and starts recording once the engine opens it, as the first use's
+            // Record it does; the window stays where it is, since the task is in another app.
+            TrayIconService.OnRecordNew = () => DispatcherQueue.TryEnqueue(() => bridge?.SendMessage("tray:command", new { command = "recordNew" }));
+            TrayIconService.OnToggleShortcuts = () => DispatcherQueue.TryEnqueue(() => SetShortcutsEnabled(!UserProfile.Current.ProfileKeyEnabled, "the tray"));
+            TrayIconService.OnOpenClicker = () => DispatcherQueue.TryEnqueue(() =>
+            {
+                if (bridge?.UseCursorClick == false) TrayIconService.OnSetMode?.Invoke(true);
+                windowEventManager?.BringToForeground();
+            });
+            TrayIconService.OnOpenSettings = () => DispatcherQueue.TryEnqueue(() =>
+            {
+                windowEventManager?.BringToForeground();
+                bridge?.SendMessage("tray:command", new { command = "settings" });
+            });
+            // The close guard asks only about an editor's unapplied work, or about pending changes it
+            // cannot save as you go (no file, or a write that failed): only then does Quit show the window.
+            TrayIconService.QuitNeedsWindow = () => Services.AutomationGuard.HeldEditors().Count > 0
+                || (bridge is { AutoSaveEnabled: false } && (bridge.HasUnsavedLoopChange || bridge.HasUnsavedActionWork));
             // Macro/Clicker switch from the tray — same path as the ScrollLock hotkey
             // and the in-app toggle: flip+cancel via SetCursorClickMode, persist, push
             // to React, refresh the tray icon/tooltip.
@@ -1096,25 +1122,8 @@ namespace TrueReplayer
 
                     if (key == UserProfile.Current.ProfileKeyToggleHotkey)
                     {
-                        bool newValue = !UserProfile.Current.ProfileKeyEnabled;
-                        UserProfile.Current.ProfileKeyEnabled = newValue;
-                        Services.DiagnosticLog.Info($"Profile Keys {(newValue ? "ENABLED" : "DISABLED")} via toggle hotkey");
-
-                        // Persist immediately. Without this, AppSettingsManager.ApplyGlobalSettings
-                        // (called whenever a profile is loaded — including the next profile-hotkey
-                        // press) reads the still-stale disk value and overwrites the in-memory toggle,
-                        // making the hotkey appear to "auto-revert" right after running a profile.
-                        var saved = AppSettingsManager.Load();
-                        saved.ProfileKeyEnabled = newValue;
-                        AppSettingsManager.Save(saved);
-
-                        if (bridge != null)
-                        {
-                            bridge.ProfileKeyEnabled = newValue;
-                            bridge.PushSettingsLoaded();
-                        }
+                        SetShortcutsEnabled(!UserProfile.Current.ProfileKeyEnabled, "toggle hotkey");
                         mainController.SetLastHotkeyPressed(key);
-                        TrayIconService.UpdateTrayIcon();
                         return;
                     }
 
@@ -1759,6 +1768,31 @@ namespace TrueReplayer
         }
 
         /// <summary>True while the window is shown (not hidden to the tray). Minimized still counts.</summary>
+        /// <summary>
+        /// The Shortcuts switch — the macros' hotkeys and hotstrings, and the Key Remaps with them — from
+        /// its hotkey or the tray. The status bar's switch goes through settings:change instead.
+        /// </summary>
+        private void SetShortcutsEnabled(bool newValue, string via)
+        {
+            UserProfile.Current.ProfileKeyEnabled = newValue;
+            Services.DiagnosticLog.Info($"Profile Keys {(newValue ? "ENABLED" : "DISABLED")} via {via}");
+
+            // Persist immediately. Without this, AppSettingsManager.ApplyGlobalSettings
+            // (called whenever a profile is loaded — including the next profile-hotkey
+            // press) reads the still-stale disk value and overwrites the in-memory toggle,
+            // making the hotkey appear to "auto-revert" right after running a profile.
+            var saved = AppSettingsManager.Load();
+            saved.ProfileKeyEnabled = newValue;
+            AppSettingsManager.Save(saved);
+
+            if (bridge != null)
+            {
+                bridge.ProfileKeyEnabled = newValue;
+                bridge.PushSettingsLoaded();
+            }
+            TrayIconService.UpdateTrayIcon();
+        }
+
         public bool IsOnScreen => hwnd != IntPtr.Zero && NativeMethods.IsWindowVisible(hwnd);
 
         public void CancelUIWatchdog()

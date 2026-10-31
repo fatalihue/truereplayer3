@@ -156,6 +156,8 @@ namespace TrueReplayer.Services
 
             if (!Shell_NotifyIcon(NIM_ADD, ref notifyIcon))
                 DiagnosticLog.Error($"Shell_NotifyIcon(NIM_ADD) failed (Win32 error {Marshal.GetLastWin32Error()}) — tray icon was not registered");
+            _loggedState = null;
+            LogStateChange(settings, notifyIcon.szTip);
 
             // Let the tray callback through UIPI.
             //
@@ -204,6 +206,18 @@ namespace TrueReplayer.Services
 
             notifyIcon.szTip = ResolveTooltip(settings);
             Shell_NotifyIcon(NIM_MODIFY, ref notifyIcon);
+            LogStateChange(settings, notifyIcon.szTip);
+        }
+
+        // One line when the icon's state changes (not on every tooltip refresh: a looping run moves
+        // the tooltip once a second) — what the tray said, for support and for the scripts.
+        private static TrayState? _loggedState;
+        private static void LogStateChange(AppSettingsManager.AppSettings settings, string tooltip)
+        {
+            var state = ResolveState(settings);
+            if (state == _loggedState) return;
+            _loggedState = state;
+            DiagnosticLog.Info($"[Tray] {state}: \"{tooltip}\"");
         }
 
         public static void ShowMinimizeBalloon() => ShowBalloon(
@@ -299,63 +313,134 @@ namespace TrueReplayer.Services
             }
         }
 
-        // Tray icon priority: Clicker mode (purple) > profile keys paused (red) > running (green).
-        // Clicker is checked first so it overrides the "paused" state — in Clicker mode profile-key
-        // semantics don't apply at all, so showing red there would be misleading.
+        /// <summary>
+        /// The six states the tray icon says, each with its own shape and colour (Tray board, "O ícone
+        /// muda de forma e de cor"). A run outranks everything; the Clicker is a mode at sight; then
+        /// what the user should look at, then the switch that holds every hotkey.
+        /// </summary>
+        public enum TrayState { Ready, Recording, Replaying, Clicker, ShortcutsOff, NeedsALook }
+
+        public static TrayState ResolveState(AppSettingsManager.AppSettings settings)
+        {
+            // The engine reports a Clicker run as "replaying" too (one status for both loops), so
+            // the mode picks the state: the Clicker's purple, not the macro's play.
+            if (_runState == "recording") return TrayState.Recording;
+            if (_runState == "replaying") return settings.UseCursorClick ? TrayState.Clicker : TrayState.Replaying;
+            if (settings.UseCursorClick) return TrayState.Clicker;
+            if (_pendingNotices > 0) return TrayState.NeedsALook;
+            if (!UserProfile.Current.ProfileKeyEnabled) return TrayState.ShortcutsOff;
+            return TrayState.Ready;
+        }
+
         private static string ResolveTrayIconPath(AppSettingsManager.AppSettings settings)
         {
-            string fileName;
-            if (settings.UseCursorClick)
-                fileName = AppIdentity.IconFilePurple;
-            else if (UserProfile.Current.ProfileKeyEnabled)
-                fileName = AppIdentity.IconFile;
-            else
-                fileName = AppIdentity.IconFileRed;
+            string fileName = ResolveState(settings) switch
+            {
+                TrayState.Recording => AppIdentity.IconFileRecording,
+                TrayState.Replaying => AppIdentity.IconFileReplaying,
+                TrayState.Clicker => AppIdentity.IconFilePurple,
+                TrayState.ShortcutsOff => AppIdentity.IconFileOff,
+                TrayState.NeedsALook => AppIdentity.IconFileAlert,
+                _ => AppIdentity.IconFile,
+            };
             return Path.Combine(AppContext.BaseDirectory, fileName);
         }
 
         // Live run-state ("recording" | "replaying" | anything-else = idle), fed from
-        // WebViewBridge.PushStatusChange. While a run is active it's the tooltip HEADLINE — the icon
-        // colour already conveys the mode (clicker/paused/idle), so the tooltip surfaces what the
-        // icon can't: whether a macro is actually running right now.
+        // WebViewBridge.PushStatusChange.
         private static string _runState = "ready";
 
         public static void SetRunState(string status)
         {
             if (_runState == status) return;
             _runState = status;
+            // A loop count belongs to the run that reported it.
+            _loopCurrent = _loopTotal = 0;
             if (isInitialized) UpdateTrayIcon();
         }
 
-        // Tooltip: run-state takes priority while active, else it mirrors the icon-resolution
-        // priority so the hover label matches the colour. Capped at 127 chars + null terminator
-        // to fit the szTip buffer used by the shell.
+        // The run's loop, for the tooltip ("loop 2 of 3"): fed from ReplayService.OnLoopProgress, which
+        // only reports looping runs. Total 0 is endless. Refreshed at most once a second, and only when
+        // the loop moves: every refresh re-reads the settings file.
+        private static int _loopCurrent, _loopTotal;
+        private static long _loopShownAt;
+
+        public static void SetLoopProgress(int current, int total)
+        {
+            if (current == _loopCurrent && total == _loopTotal) return;
+            bool first = _loopCurrent == 0;
+            _loopCurrent = current;
+            _loopTotal = total;
+            long now = Environment.TickCount64;
+            if (!isInitialized || _runState != "replaying" || (!first && now - _loopShownAt < 1000)) return;
+            _loopShownAt = now;
+            UpdateTrayIcon();
+            // The first loop of a run is logged with its tooltip; the later ones would be a line a second.
+            if (first) DiagnosticLog.Info($"[Tray] loop shown: \"{notifyIcon.szTip}\"");
+        }
+
+        // Notices held while nobody could see the window (WebViewBridge.ShowNoticeWhenSeen): the icon
+        // says "Needs a look" and the tooltip how many, until the window shows them.
+        private static int _pendingNotices;
+
+        public static void SetPendingNotices(int count)
+        {
+            if (count == _pendingNotices) return;
+            _pendingNotices = count;
+            if (isInitialized) UpdateTrayIcon();
+        }
+
+        /// <summary>The open macro's name, or null with none (MainWindow wires it to the bridge).</summary>
+        public static Func<string?>? CurrentMacro { get; set; }
+
+        // A macro's name, cut to leave the rest of a line room: the tooltip has 127 characters and a
+        // menu item reads badly past forty.
+        private static string Short(string text, int max) => text.Length <= max ? text : text[..(max - 1)] + "…";
+
+        // The tooltip of each state (Tray board): "TrueReplayer 3 — Ready · 2 automations armed",
+        // "— Recording Untitled macro", "— Replaying Trade Roblox, loop 2 of 3", "— Clicker open ·
+        // PgDn starts", "— Shortcuts and remaps paused", "— 2 notices while you were away". Capped at
+        // 127 characters + null terminator to fit the shell's szTip buffer.
         private static string ResolveTooltip(AppSettingsManager.AppSettings settings)
         {
-            // The engine reports a Clicker run as "replaying" too (one status for both loops), so
-            // the mode picks the word — the icon is already purple, and "Replaying…" under a
-            // purple icon contradicted it.
             const string name = AppIdentity.DisplayName;
-            if (_runState == "replaying")
-                return settings.UseCursorClick ? $"{name} — Clicking…" : $"{name} — Replaying…";
-            if (_runState == "recording")
-                return $"{name} — Recording…";
+            string? macro = CurrentMacro?.Invoke();
             string line;
-            if (settings.UseCursorClick)
-                line = $"{name} — Clicker mode";
-            else if (!UserProfile.Current.ProfileKeyEnabled)
-                line = $"{name} — Replay mode (profile keys paused)";
-            else
-                line = $"{name} — Replay mode";
-            // Armed-watcher count — the tray is the daemon's only always-visible surface.
-            // Configured count (not live loops) so the "paused" hint still shows when the
-            // master switch is off. szTip caps at 127 chars; base lines are short.
-            int armed = TriggerService.Instance?.ConfiguredArmedCount ?? 0;
-            if (armed > 0)
-                line += settings.AutomationEnabled
-                    ? $" · {armed} automation{(armed == 1 ? "" : "s")} armed"
-                    : " · automations paused";
-            return line;
+            switch (ResolveState(settings))
+            {
+                case TrayState.Recording:
+                    line = macro != null ? $"{name} — Recording {Short(macro, 60)}" : $"{name} — Recording";
+                    break;
+                case TrayState.Replaying:
+                    line = macro != null ? $"{name} — Replaying {Short(macro, 50)}" : $"{name} — Replaying";
+                    if (_loopCurrent > 0) line += $", loop {_loopCurrent} of {(_loopTotal > 0 ? _loopTotal.ToString() : "∞")}";
+                    break;
+                case TrayState.Clicker:
+                    if (_runState == "replaying") line = $"{name} — Clicking";
+                    else line = string.IsNullOrEmpty(settings.CursorClickStartHotkey)
+                        ? $"{name} — Clicker open"
+                        : $"{name} — Clicker open · {settings.CursorClickStartHotkey} starts";
+                    break;
+                case TrayState.ShortcutsOff:
+                    // The Key Remaps pause with the Shortcuts (InputHookManager), when they are on at all.
+                    line = RemapService.Current.Enabled ? $"{name} — Shortcuts and remaps paused" : $"{name} — Shortcuts paused";
+                    break;
+                case TrayState.NeedsALook:
+                    line = $"{name} — {_pendingNotices} notice{(_pendingNotices == 1 ? "" : "s")} while you were away";
+                    break;
+                default:
+                    line = $"{name} — Ready";
+                    // Armed-watcher count — the tray is the daemon's only always-visible surface.
+                    // Configured count (not live loops) so the "paused" hint still shows when the
+                    // master switch is off.
+                    int armed = TriggerService.Instance?.ConfiguredArmedCount ?? 0;
+                    if (armed > 0)
+                        line += settings.AutomationEnabled
+                            ? $" · {armed} automation{(armed == 1 ? "" : "s")} armed"
+                            : " · automations paused";
+                    break;
+            }
+            return Short(line, 127);
         }
 
         private static void ReleaseCurrentIcon()
@@ -443,8 +528,6 @@ namespace TrueReplayer.Services
         /// Callback invoked after tray menu toggles a setting, so bridge can push updated state to UI.
         public static Action? OnTraySettingChanged { get; set; }
 
-        /// Callback to apply Always On Top window state from the tray menu.
-        public static Action<bool>? OnAlwaysOnTopChanged { get; set; }
         /// Callback to switch Macro/Clicker mode from the tray menu (true = Clicker).
         public static Action<bool>? OnSetMode { get; set; }
         public static Action? OnReloadUI { get; set; }
@@ -457,154 +540,123 @@ namespace TrueReplayer.Services
         public static Action? OnOpenExtensionHelp { get; set; }
         /// Flip the global automation master switch (persist-immediately handled by MainWindow).
         public static Action? OnToggleAutomations { get; set; }
+        /// The window, on screen and in front.
+        public static Action? OnOpenWindow { get; set; }
+        /// Stop the recording or the run in progress, like its hotkey.
+        public static Action? OnStopRun { get; set; }
+        /// A new macro, recording from its first step (the page does it, as the first use's Record it).
+        public static Action? OnRecordNew { get; set; }
+        /// Flip the Shortcuts switch (the macros' hotkeys and hotstrings, and the Key Remaps with them).
+        public static Action? OnToggleShortcuts { get; set; }
+        /// The Clicker page: the mode on, and the window in front.
+        public static Action? OnOpenClicker { get; set; }
+        /// Settings, in the window.
+        public static Action? OnOpenSettings { get; set; }
+        /// Whether Quit has something to ask first (an editor's unapplied work, a save that failed): only
+        /// then does the window come up for the question. With nothing to ask, Quit just quits.
+        public static Func<bool>? QuitNeedsWindow { get; set; }
+
+        // The right-click menu's commands (Tray board, "Clique direito"; D26 for Troubleshoot ▸).
+        private const uint CmdOpen = 1, CmdStop = 2, CmdRecordNew = 3, CmdShortcuts = 4, CmdAutomations = 5,
+            CmdRemaps = 6, CmdClicker = 7, CmdSettings = 8, CmdReloadUi = 9, CmdDevTools = 10, CmdLogs = 11, CmdQuit = 12;
+        private const uint MF_GRAYED = 0x0001, MF_POPUP = 0x0010;
+
+        // A menu item with its key on the right ("Stop Trade Roblox    Ctrl+F10"): the tab is how a
+        // Win32 menu lays out the accelerator column.
+        private static string WithKey(string text, string? key) => string.IsNullOrWhiteSpace(key) ? text : $"{text}\t{key}";
 
         public static async void ShowContextMenu()
         {
-            // Current macro/clicker mode drives the checkmarks on the two mode items.
-            bool isClicker = AppSettingsManager.Load().UseCursorClick;
-
-            // ── Window category — temporarily disabled (kept for easy restore).
-            //    To bring it back: uncomment this block, the AppendMenu calls and the
-            //    cmd==5/6/3/4/7 handlers below.
-            // bool isAlwaysOnTop = UserProfile.Current.AlwaysOnTop;
-            // bool isMinimizeToTray = UserProfile.Current.MinimizeToTray;
-            // bool isStartup = IsRunOnStartup();
-            // bool isStartMinimized = UserProfile.Current.StartMinimized;
-            // bool isRunAsAdmin = AppSettingsManager.Load().RunAsAdmin;
+            var settings = AppSettingsManager.Load();
+            bool isClicker = settings.UseCursorClick;
+            bool recording = _runState == "recording";
+            bool replaying = _runState == "replaying";
+            string? macro = CurrentMacro?.Invoke();
 
             IntPtr hMenu = CreatePopupMenu();
-            AppendMenu(hMenu, MF_STRING, 1, "Restore");
+            IntPtr hTroubleshoot = CreatePopupMenu();
+            // Each item has a mnemonic (the underlined letter, shown when the menu is opened from the
+            // keyboard); a macro's own "&" is doubled so it is not read as one.
+            AppendMenu(hMenu, MF_STRING, CmdOpen, $"&Open {AppIdentity.DisplayName}");
+            // Stop is there while something runs, with the key that stops it from anywhere.
+            if (recording) AppendMenu(hMenu, MF_STRING, CmdStop, WithKey("&Stop recording", settings.RecordingHotkey));
+            else if (replaying && isClicker) AppendMenu(hMenu, MF_STRING, CmdStop, WithKey("&Stop the Clicker", settings.CursorClickStartHotkey));
+            else if (replaying) AppendMenu(hMenu, MF_STRING, CmdStop, WithKey(macro != null ? $"&Stop {Short(macro, 40).Replace("&", "&&")}" : "&Stop", settings.ReplayHotkey));
+            // A recording needs the engine idle and in Macro mode, as the first use's Record it does.
+            AppendMenu(hMenu, MF_STRING | (recording || replaying || isClicker ? MF_GRAYED : 0), CmdRecordNew, WithKey("&Record a new macro", settings.RecordingHotkey));
             AppendMenu(hMenu, MF_SEPARATOR, 0, null);
-            // Mode switch — mirrors the in-app Macro/Clicker toggle and the ScrollLock hotkey.
-            AppendMenu(hMenu, MF_STRING | (!isClicker ? MF_CHECKED : 0), 11, "Macro mode");
-            AppendMenu(hMenu, MF_STRING | (isClicker ? MF_CHECKED : 0), 12, "Clicker mode");
-            AppendMenu(hMenu, MF_SEPARATOR, 0, null);
-            // Automation daemon controls — the armed watchers keep running while the app sits
-            // in the tray, so their master switch must be reachable without restoring the UI.
-            bool automationEnabled = AppSettingsManager.Load().AutomationEnabled;
-            AppendMenu(hMenu, MF_STRING, 13, "Automations…");
-            AppendMenu(hMenu, MF_STRING | (automationEnabled ? MF_CHECKED : 0), 14, "Enable automations");
-            // Key-remap kill switch — a bad remap can make typing painful, so the escape
-            // hatch must be reachable by MOUSE alone, without the main window.
+            // Shortcuts and Key Remaps are switches, ticked when on: the Key Remaps one is the way out
+            // by mouse alone when a remap gets in the way of typing. Automations… opens its page; its
+            // master switch is in the tray panel (D26). Clicker opens its page, the mode on.
+            AppendMenu(hMenu, MF_STRING | (UserProfile.Current.ProfileKeyEnabled ? MF_CHECKED : 0), CmdShortcuts, "S&hortcuts");
+            AppendMenu(hMenu, MF_STRING, CmdAutomations, "&Automations…");
             bool remapsEnabled = RemapService.Current.Enabled;
-            AppendMenu(hMenu, MF_STRING | (remapsEnabled ? MF_CHECKED : 0), 15, "Enable Key Remaps");
+            AppendMenu(hMenu, MF_STRING | (remapsEnabled ? MF_CHECKED : 0), CmdRemaps, "&Key Remaps");
+            AppendMenu(hMenu, MF_STRING | (isClicker ? MF_CHECKED : 0), CmdClicker, "&Clicker");
+            AppendMenu(hMenu, MF_STRING, CmdSettings, "Se&ttings");
             AppendMenu(hMenu, MF_SEPARATOR, 0, null);
-            AppendMenu(hMenu, MF_STRING, 16, "Browser extension…");
-            // ── Window category — temporarily disabled (kept for easy restore).
-            // AppendMenu(hMenu, MF_STRING | (isAlwaysOnTop ? MF_CHECKED : 0), 5, "Always On Top");
-            // AppendMenu(hMenu, MF_STRING | (isMinimizeToTray ? MF_CHECKED : 0), 6, "System Tray");
-            // AppendMenu(hMenu, MF_STRING | (isStartup ? MF_CHECKED : 0), 3, "Run on Startup");
-            // AppendMenu(hMenu, MF_STRING | (isStartMinimized ? MF_CHECKED : 0), 4, "Startup Minimized");
-            // AppendMenu(hMenu, MF_STRING | (isRunAsAdmin ? MF_CHECKED : 0), 7, "Run as Administrator");
-            AppendMenu(hMenu, MF_STRING, 8, "Reload UI");
-            AppendMenu(hMenu, MF_STRING, 9, "Open DevTools");
-            AppendMenu(hMenu, MF_STRING, 10, "Open logs folder");
+            // The way back when the page itself is broken, so it cannot live in the page (D26).
+            AppendMenu(hTroubleshoot, MF_STRING, CmdReloadUi, "&Reload UI");
+            AppendMenu(hTroubleshoot, MF_STRING, CmdDevTools, "Open &DevTools");
+            AppendMenu(hTroubleshoot, MF_STRING, CmdLogs, "Open &logs folder");
+            AppendMenu(hMenu, MF_STRING | MF_POPUP, (uint)hTroubleshoot, "Tro&ubleshoot");
             AppendMenu(hMenu, MF_SEPARATOR, 0, null);
-            AppendMenu(hMenu, MF_STRING, 2, "Exit");
+            AppendMenu(hMenu, MF_STRING, CmdQuit, "&Quit");
 
             GetCursorPos(out NativeMethods.POINT pt);
             SetForegroundWindow(hwnd);
-            int cmd;
+            uint cmd;
             try
             {
-                cmd = TrackPopupMenu(hMenu, TPM_RETURNCMD, pt.x, pt.y, 0, hwnd, IntPtr.Zero);
+                cmd = (uint)TrackPopupMenu(hMenu, TPM_RETURNCMD, pt.x, pt.y, 0, hwnd, IntPtr.Zero);
             }
             finally
             {
-                // Always free the popup menu, even if TrackPopupMenu throws — otherwise the HMENU leaks.
+                // Always free the popup menu, even if TrackPopupMenu throws — otherwise the HMENU
+                // leaks. Destroying the menu destroys the submenu attached to it.
                 DestroyMenu(hMenu);
             }
+            DiagnosticLog.Info($"Tray menu: command {cmd}");
 
-            if (cmd == 1) ShowWindow(hwnd, 9);
-            // Mode switch: only fire when it actually changes, so re-picking the
-            // current mode doesn't needlessly cancel a running replay/recording.
-            else if (cmd == 11) { if (isClicker) OnSetMode?.Invoke(false); }
-            else if (cmd == 12) { if (!isClicker) OnSetMode?.Invoke(true); }
-            // ── Window category — temporarily disabled (kept for easy restore).
-            // else if (cmd == 5)
-            // {
-            //     UserProfile.Current.AlwaysOnTop = !isAlwaysOnTop;
-            //     OnAlwaysOnTopChanged?.Invoke(UserProfile.Current.AlwaysOnTop);
-            //     var settings = AppSettingsManager.Load();
-            //     settings.AlwaysOnTop = UserProfile.Current.AlwaysOnTop;
-            //     AppSettingsManager.Save(settings);
-            //     OnTraySettingChanged?.Invoke();
-            // }
-            // else if (cmd == 6)
-            // {
-            //     UserProfile.Current.MinimizeToTray = !isMinimizeToTray;
-            //     var settings = AppSettingsManager.Load();
-            //     settings.MinimizeToTray = UserProfile.Current.MinimizeToTray;
-            //     AppSettingsManager.Save(settings);
-            //     OnTraySettingChanged?.Invoke();
-            // }
-            // else if (cmd == 3)
-            // {
-            //     SetRunOnStartup(!isStartup);
-            //     OnTraySettingChanged?.Invoke();
-            // }
-            // else if (cmd == 4)
-            // {
-            //     UserProfile.Current.StartMinimized = !isStartMinimized;
-            //     var settings = AppSettingsManager.Load();
-            //     settings.StartMinimized = UserProfile.Current.StartMinimized;
-            //     AppSettingsManager.Save(settings);
-            //     OnTraySettingChanged?.Invoke();
-            // }
-            // else if (cmd == 7)
-            // {
-            //     var settings = AppSettingsManager.Load();
-            //     settings.RunAsAdmin = !isRunAsAdmin;
-            //     AppSettingsManager.Save(settings);
-            //     OnTraySettingChanged?.Invoke();
-            // }
-            else if (cmd == 13)
+            switch (cmd)
             {
-                OnOpenAutomations?.Invoke();
+                case CmdOpen: OnOpenWindow?.Invoke(); break;
+                case CmdStop: OnStopRun?.Invoke(); break;
+                case CmdRecordNew: OnRecordNew?.Invoke(); break;
+                case CmdShortcuts: OnToggleShortcuts?.Invoke(); break;
+                case CmdAutomations: OnOpenAutomations?.Invoke(); break;
+                case CmdRemaps:
+                    // Persists + republishes the hook snapshot itself; the bridge push (so the
+                    // Settings toggle mirrors) rides the same callback MainWindow wires.
+                    RemapService.SetEnabled(!remapsEnabled);
+                    OnTraySettingChanged?.Invoke();
+                    UpdateTrayIcon();
+                    break;
+                case CmdClicker: OnOpenClicker?.Invoke(); break;
+                case CmdSettings: OnOpenSettings?.Invoke(); break;
+                case CmdReloadUi: OnReloadUI?.Invoke(); break;
+                case CmdDevTools: OnOpenDevTools?.Invoke(); break;
+                case CmdLogs: OnOpenLogsFolder?.Invoke(); break;
+                case CmdQuit: await QuitAsync(); break;
             }
-            else if (cmd == 14)
-            {
-                OnToggleAutomations?.Invoke();
-            }
-            else if (cmd == 15)
-            {
-                // Persists + republishes the hook snapshot itself; the bridge push (so the
-                // Settings toggle mirrors) rides the same callback MainWindow wires.
-                RemapService.SetEnabled(!remapsEnabled);
-                OnTraySettingChanged?.Invoke();
-            }
-            else if (cmd == 16)
-            {
-                OnOpenExtensionHelp?.Invoke();
-            }
-            else if (cmd == 8)
-            {
-                OnReloadUI?.Invoke();
-            }
-            else if (cmd == 9)
-            {
-                OnOpenDevTools?.Invoke();
-            }
-            else if (cmd == 10)
-            {
-                OnOpenLogsFolder?.Invoke();
-            }
-            else if (cmd == 2)
-            {
-                if (OnTrayExitRequested != null)
-                {
-                    ShowWindow(hwnd, 9); // Restore window so dialog is visible
-                    bool canExit = await OnTrayExitRequested();
-                    if (!canExit) return;
-                }
+        }
 
-                DiagnosticLog.Info("Tray Exit — terminating application");
-                // The same teardown as closing the window: see AppExit for what skipping it cost.
-                AppExit.FlushState();
-                AppExit.ReleaseSystem();
-                Microsoft.UI.Xaml.Application.Current.Exit();
-                Environment.Exit(0);
+        // Quit: the window comes up only when the close guard has a question to ask (nativo-015: with
+        // saving as you go, it seldom has). The teardown is the window's close's (AppExit).
+        private static async Task QuitAsync()
+        {
+            if (OnTrayExitRequested != null)
+            {
+                if (QuitNeedsWindow?.Invoke() == true) ShowWindow(hwnd, 9); // so the question is seen
+                bool canExit = await OnTrayExitRequested();
+                if (!canExit) return;
             }
+
+            DiagnosticLog.Info("Tray Quit — terminating application");
+            AppExit.FlushState();
+            AppExit.ReleaseSystem();
+            Microsoft.UI.Xaml.Application.Current.Exit();
+            Environment.Exit(0);
         }
 
         /// <summary>

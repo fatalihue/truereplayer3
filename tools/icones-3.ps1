@@ -1,7 +1,8 @@
 # Builds TrueReplayer 3's icons from TrueReplayer 2's: the same mark, with a "3" in a dark circle in
 # the bottom-right corner (plan truereplayer3-paralelo-2026-10-30.md, slice A2).
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tools\icones-3.ps1 <preview-folder>
-# Writes TrueReplayer3.ico, TrueReplayer3Red.ico and TrueReplayer3Purple.ico at the repository root
+# Writes TrueReplayer3.ico and TrueReplayer3Purple.ico at the repository root (the tray's other states
+# come from tools/icones-estado.ps1; the red one became TrueReplayer3Recording.ico in slice D2)
 # and frontend\public\app-icon.png, plus a PNG preview of every size in the given folder.
 # app-icon.png is badged in place: run this once, on TrueReplayer 2's original.
 param([string]$Previa = "$env:TEMP\tr3-icones")
@@ -76,7 +77,6 @@ function Write-Ico([string]$src, [string]$dst, [string]$tag) {
 }
 
 Write-Ico (Join-Path $repo 'TrueReplayer.ico') (Join-Path $repo 'TrueReplayer3.ico') 'verde'
-Write-Ico (Join-Path $repo 'TrueReplayerRed.ico') (Join-Path $repo 'TrueReplayer3Red.ico') 'vermelho'
 Write-Ico (Join-Path $repo 'TrueReplayerPurple.ico') (Join-Path $repo 'TrueReplayer3Purple.ico') 'roxo'
 
 $appIcon = Join-Path $repo 'frontend\public\app-icon.png'

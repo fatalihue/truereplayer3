@@ -269,15 +269,25 @@
     <RemoveDir Directories="@(RemoveDirs)" />
   </Target>
   <!-- TrueReplayer 3's icons (AppIdentity.IconFile*), built from TrueReplayer 2's by
-       tools/icones-3.ps1; the TrueReplayer*.ico files without the 3 are only its source. -->
+       tools/icones-3.ps1 and tools/icones-estado.ps1 (the tray's states); the TrueReplayer*.ico
+       files without the 3 are only their source. -->
   <ItemGroup>
     <None Update="TrueReplayer3.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="TrueReplayer3Red.ico">
+    <None Update="TrueReplayer3Purple.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="TrueReplayer3Purple.ico">
+    <None Update="TrueReplayer3Recording.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="TrueReplayer3Replaying.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="TrueReplayer3Off.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="TrueReplayer3Alert.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

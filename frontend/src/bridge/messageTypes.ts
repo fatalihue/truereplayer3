@@ -938,6 +938,9 @@ export type IncomingMessage =
   | { type: 'automation:open'; payload: Record<string, never> }
   // Tray "Browser extension…" clicked — restore + open the Browser extension dialog.
   | { type: 'extension:openHelp'; payload: Record<string, never> }
+  // The tray's right-click menu (Tray board): Record a new macro (the page makes it and records, as
+  // the first use's Record it), and Settings (the engine has already brought the window up).
+  | { type: 'tray:command'; payload: { command: 'recordNew' | 'settings' } }
   // TrueReplayer 2 was launched while this app runs (CoexistenceGuard): it found its mutex name held
   // and exited. The page asks whether to switch; tr2Installed = there is an installed one to open.
   | { type: 'coexist:tr2Knocked'; payload: { tr2Installed: boolean } }

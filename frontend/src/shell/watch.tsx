@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useBridge } from '../bridge/BridgeContext';
+import { useMacro } from '../logic/useMacro';
 import type { IncomingMessage } from '../bridge/messageTypes';
 import { UpdateOverlay } from '../components/UpdateOverlay';
 import { useTt } from '../state/LanguageContext';
@@ -11,6 +12,7 @@ import { preload, useLoaded } from './lazyModule';
 import { palette, usePalette } from './palette/paletteState';
 import { useShell } from './store';
 import { endTip, pendingTips } from './tips/tipsState';
+import { recordNewMacro } from './recordNew';
 import { loadEmpties, loadRunProgress, openPage, openSettings, useUi } from './ui';
 import { hearUpdate } from './updates';
 
@@ -37,6 +39,19 @@ function hear(message: IncomingMessage, refuse: (door: Door) => void) {
   if (usePalette.getState().open) palette.close();
   if (door === 'browser') openSettings('browser');
   else openPage('automations');
+}
+
+/**
+ * The tray's menu (Tray board): Settings opens its page in the window the engine brought up; Record a
+ * new macro makes one and records into it, without the window, the task being in another app.
+ */
+function hearTray(message: IncomingMessage, record: () => boolean) {
+  if (message.type !== 'tray:command') return;
+  if (message.payload.command === 'settings') {
+    if (dialogOpen()) return;
+    if (usePalette.getState().open) palette.close();
+    openSettings();
+  } else if (message.payload.command === 'recordNew') record();
 }
 
 /** TrueReplayer 2's knock (CoexistenceGuard): whether there is an installed one to switch to. */
@@ -91,7 +106,11 @@ const tipsFor = (status: string) => {
  * said before it came (`early`, kept by Overlays) is heard first, in order.
  */
 export function Watch({ early }: { early: readonly IncomingMessage[] }) {
-  const { subscribe } = useBridge();
+  const { send, subscribe } = useBridge();
+  const macro = useMacro();
+  const record = () => recordNewMacro(send, (name) => macro.create(name, null));
+  const recordRef = useRef(record);
+  useEffect(() => { recordRef.current = record; });
   const { showToast } = useToast();
   const tt = useTt();
   const refuse = (door: Door) => showToast(door === 'automations'
@@ -109,10 +128,12 @@ export function Watch({ early }: { early: readonly IncomingMessage[] }) {
   });
   // After the first render, not during it: the notice is a toast, another component's state.
   useEffect(() => { early.forEach(m => hearImport(m, (text) => toastRef.current(text))); }, [early]);
+  useEffect(() => { early.forEach(m => hearTray(m, () => recordRef.current())); }, [early]);
   const [knock, setKnock] = useState(() => early.map(knockOf).filter(k => k !== null).at(-1) ?? null);
   useEffect(() => subscribe((m) => {
     hear(m, (door) => refuseRef.current(door));
     hearImport(m, (text) => toastRef.current(text));
+    hearTray(m, () => recordRef.current());
     const k = knockOf(m);
     if (k) setKnock(k);
   }), [subscribe]);

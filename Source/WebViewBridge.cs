@@ -4504,6 +4504,8 @@ namespace TrueReplayer
         {
             _pendingNotices.Add(message);
             FlushPendingNotices();
+            // What is still held makes the tray icon "Needs a look" (Tray board).
+            TrayIconService.SetPendingNotices(_pendingNotices.Count);
         }
 
         /// <summary>
@@ -4516,6 +4518,7 @@ namespace TrueReplayer
             foreach (var message in _pendingNotices)
                 SendMessage("alert:show", new { message });
             _pendingNotices.Clear();
+            TrayIconService.SetPendingNotices(0);
         }
 
         // Master switch for silent auto-update.

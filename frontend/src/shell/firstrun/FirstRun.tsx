@@ -7,7 +7,8 @@ import { useMacro } from '../../logic/useMacro';
 import { useToast } from '../../state/ToastContext';
 import { openImport } from '../importState';
 import { freeName, keycaps } from '../library/model';
-import { useApp, useShell } from '../store';
+import { whenOpen } from '../recordNew';
+import { useApp } from '../store';
 import { armTips } from '../tips/tipsState';
 import { openExamples, useUi } from '../ui';
 import './firstRun.css';
@@ -23,22 +24,6 @@ function tr2Parts(s: Tr2ImportSummary): string {
     s.appearance ? 'theme' : '',
   ].filter(Boolean);
   return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0] ?? '';
-}
-
-/**
- * Runs `then` once the macro is the open one (and, to record, a recording may start): the engine
- * creates and opens a new macro a moment after it is asked. A create it refused never opens, and
- * nothing waits for it.
- */
-function whenOpen(name: string, record: boolean, then: () => void) {
-  let timer = 0;
-  const stop = useShell.subscribe((s) => {
-    if (s.app.activeProfile !== name || (record && !s.app.buttonStates.recordEnabled)) return;
-    stop();
-    clearTimeout(timer);
-    then();
-  });
-  timer = window.setTimeout(stop, 10000);
 }
 
 /**

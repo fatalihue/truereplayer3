@@ -34,10 +34,17 @@ namespace TrueReplayer
         /// <summary>The AppUserModelID notifications will be registered under (Fase 4).</summary>
         public const string Aumid = "fatalihue." + Id;
 
-        /// <summary>The window's icon, and the tray's icons for its three states, next to the exe.</summary>
+        /// <summary>
+        /// The window's icon — the tray's Ready too — and the tray's icons for its other states
+        /// (TrayIconService.TrayState), next to the exe. tools/icones-3.ps1 and tools/icones-estado.ps1
+        /// make them.
+        /// </summary>
         public const string IconFile = Id + ".ico";
-        public const string IconFileRed = Id + "Red.ico";
         public const string IconFilePurple = Id + "Purple.ico";
+        public const string IconFileRecording = Id + "Recording.ico";
+        public const string IconFileReplaying = Id + "Replaying.ico";
+        public const string IconFileOff = Id + "Off.ico";
+        public const string IconFileAlert = Id + "Alert.ico";
 
         // Environment.GetFolderPath is a shell lookup, and neither folder can move while the
         // process is alive.
