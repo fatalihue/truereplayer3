@@ -118,6 +118,8 @@ namespace TrueReplayer.Services
             public bool RecordCombinedInput { get; set; } = true;
             // The window turns into the compact view when a run starts and the user is in another app.
             public bool CompactWhileRunning { get; set; } = false;
+            // The "still running" notification's Got it was pressed: it does not come again (WindowsNotices).
+            public bool StillRunningNoticeDone { get; set; } = false;
             // Hotkeys
             public string RecordingHotkey { get; set; } = HotkeyDefaults.Recording;
             public string ReplayHotkey { get; set; } = HotkeyDefaults.Replay;

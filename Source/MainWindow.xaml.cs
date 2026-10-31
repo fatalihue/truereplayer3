@@ -191,6 +191,8 @@ namespace TrueReplayer
             // to start — the case where the log is the only diagnosis — the bridge never exists and
             // "Open Logs Folder" was a dead menu item.
             TrayIconService.OnOpenLogsFolder = OpenLogsFolder;
+            // A click on one of the app's Windows notifications (WindowsNotices; D8).
+            WindowsNotices.OnInvoked = OnNoticeClicked;
 
             string iconPath = Path.Combine(AppContext.BaseDirectory, AppIdentity.IconFile);
             // LR_LOADFROMFILE returns an HICON the window holds for its lifetime via WM_SETICON.
@@ -1906,6 +1908,48 @@ namespace TrueReplayer
         /// A macro row of the tray panel: runs it as its hotkey would, without the window. Nothing while
         /// something runs or in Clicker mode. A pending edit is saved first, as before any switch.
         /// </summary>
+        // A notification's click that needs the page, held until the page is ready (a click that started
+        // the app, or one in the moments before the page came up).
+        private (string Action, string Name)? _pendingNotice;
+
+        /// <summary>
+        /// A click on one of the app's Windows notifications (WindowsNotices; the Tray board): Got it of
+        /// "still running" puts that notice away for good, Turn it off disarms the macro's automation, Run
+        /// again runs the macro as its hotkey would; anything else brings the window, at the page the
+        /// button names (tray:command for the page).
+        /// </summary>
+        private void OnNoticeClicked(string action, string name)
+        {
+            switch (action)
+            {
+                case "still-running-done":
+                    var settings = AppSettingsManager.Load();
+                    settings.StillRunningNoticeDone = true;
+                    AppSettingsManager.Save(settings);
+                    return;
+                case "automation-off":
+                    if (bridge != null) bridge.DisarmAutomation(name);
+                    else _pendingNotice = (action, name);
+                    return;
+                case "run-again":
+                    RunMacroFromTray(name);
+                    return;
+            }
+            windowEventManager?.BringToForeground();
+            string? command = action switch
+            {
+                "settings" => "settings",
+                "automation-open" => "automations",
+                "dataloop-open" => "dataLoop",
+                "remaps-open" => "remaps",
+                "report-open" => "report",
+                _ => null,
+            };
+            if (command == null) return;
+            if (bridge == null || !_uiReadyEverReceived) { _pendingNotice = (action, name); return; }
+            bridge.SendMessage("tray:command", new { command, name });
+        }
+
         private void RunMacroFromTray(string name)
         {
             DispatcherQueue.TryEnqueue(async () =>
@@ -2033,6 +2077,12 @@ namespace TrueReplayer
             _starvationCreditUsedMs = 0;
             // Every later load in this process is a warm one — see FirstLoadReadyGraceMs.
             _uiReadyEverReceived = true;
+            // A notification's click that came before the page could take it.
+            if (_pendingNotice is { } notice)
+            {
+                _pendingNotice = null;
+                DispatcherQueue.TryEnqueue(() => OnNoticeClicked(notice.Action, notice.Name));
+            }
             // UI is alive — reset the escalation counter so future crashes start back at level 1
             _consecutiveRecoveryAttempts = 0;
             _uiRecoveryExhausted = false;

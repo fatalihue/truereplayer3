@@ -241,12 +241,21 @@ namespace TrueReplayer.Services
         private struct NotifyIconIdentifier { public uint cbSize; public IntPtr hWnd; public uint uID; public Guid guidItem; }
         [DllImport("shell32.dll")] private static extern int Shell_NotifyIconGetRect(ref NotifyIconIdentifier identifier, out NativeMethods.RECT iconLocation);
 
-        public static void ShowMinimizeBalloon() => ShowBalloon(
-            $"{AppIdentity.DisplayName} is running in the background",
-            // Double-click, because that is what the WndProc actually answers: a single click is
-            // WM_LBUTTONUP and nothing handles it, so the old wording sent people clicking once at
-            // an icon that would not respond.
-            "Double-click the tray icon to restore the window.");
+        // Shown once a session, until its Got it (AppSettings.StillRunningNoticeDone).
+        private static bool _stillRunningShown;
+
+        /// <summary>
+        /// The window went to the tray (its X, or an autostart into the tray): a Windows notification says
+        /// the app goes on, with Got it (never again) and Settings (Tray board; nativo-016).
+        /// </summary>
+        public static void ShowMinimizeBalloon()
+        {
+            if (_stillRunningShown || AppSettingsManager.Load().StillRunningNoticeDone) return;
+            _stillRunningShown = true;
+            WindowsNotices.Show($"{AppIdentity.DisplayName} is still running",
+                "Closing the window keeps shortcuts, automations and remaps working. To quit, use the tray icon.",
+                null, ("Got it", "still-running-done"), ("Settings", "settings"));
+        }
 
         /// <summary>
         /// Pop a tray balloon. The one notification surface that reaches the user while the
@@ -295,7 +304,9 @@ namespace TrueReplayer.Services
                     };
                     NativeMethods.FlashWindowEx(ref fw);
                 }
-                NativeMethods.MessageBeep(NativeMethods.MB_ICONERROR_BEEP);
+                // The notice goes out as a Windows notification too (WindowsNotices): the chime only when
+                // Windows is holding those back (nativo-021).
+                if (WindowsNotices.Silenced) NativeMethods.MessageBeep(NativeMethods.MB_ICONERROR_BEEP);
             }
             catch (Exception ex)
             {

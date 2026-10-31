@@ -74,6 +74,14 @@ namespace TrueReplayer
             // may show comes up once, in the process that stays.
             if (!CoexistenceGuard.Acquire(App.HasStartupFlag())) return;
 
+            // The installed app's identity for the taskbar and its notifications (AppIdentity.Aumid), before
+            // any window. A build run from anywhere else keeps its own.
+            if (TrayIconService.IsInstalledLocation())
+            {
+                try { SetCurrentProcessExplicitAppUserModelID(AppIdentity.Aumid); }
+                catch { /* the default identity still works; only the grouping and the notifications' name differ */ }
+            }
+
             // An import from TrueReplayer 2 staged by the previous run is put in place now, before the
             // settings, the remaps or the library are read (Tr2Import).
             Tr2Import.FinishPending();
@@ -346,8 +354,18 @@ namespace TrueReplayer
         /// removed, TrueReplayer 2 registers its own again the next time it opens. Velopack gives a
         /// fast callback 30 s and then exits the process, so this only deletes keys.
         /// </summary>
+        [System.Runtime.InteropServices.DllImport("shell32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, PreserveSig = false)]
+        private static extern void SetCurrentProcessExplicitAppUserModelID(string appId);
+
         private static void RemoveSystemEntries()
         {
+            // The notifications' registration (WindowsNotices), under the installed app's identity.
+            try
+            {
+                SetCurrentProcessExplicitAppUserModelID(AppIdentity.Aumid);
+                WindowsNotices.UnregisterAll();
+            }
+            catch { /* best effort: an uninstall must not fail on this */ }
             try
             {
                 using var run = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true);

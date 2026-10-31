@@ -31,8 +31,14 @@ namespace TrueReplayer
         /// <summary>The value under HKCU\…\CurrentVersion\Run.</summary>
         public const string RunValueName = Id;
 
-        /// <summary>The AppUserModelID notifications will be registered under (Fase 4).</summary>
-        public const string Aumid = "fatalihue." + Id;
+        /// <summary>
+        /// The AppUserModelID of the installed app: the one Velopack gives the Start-menu and desktop
+        /// shortcuts it makes ("velopack." + the pack id). The installed process claims it (Program), so
+        /// its taskbar button is the pinned shortcut's however it was started, and its Windows
+        /// notifications (WindowsNotices) carry the shortcut's name and icon. The plan's
+        /// "fatalihue.TrueReplayer3" would have split the two.
+        /// </summary>
+        public const string Aumid = "velopack." + Id;
 
         /// <summary>
         /// The window's icon — the tray's Ready too — and the tray's icons for its other states

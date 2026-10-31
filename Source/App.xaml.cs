@@ -67,6 +67,8 @@ namespace TrueReplayer
         protected override async void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
             StartupClock.Mark("launched");
+            // Windows notifications (D8), registered before the window so a click finds its handler.
+            WindowsNotices.Register(Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread());
             var window = new MainWindow();
             m_window = window;
             // The window takes its size, place and title bar — the title bar into the content costs ~120 ms
@@ -76,6 +78,8 @@ namespace TrueReplayer
             WindowAppearanceService.Configure(window);
             window.Activate();
             StartupClock.Mark("shown");
+            // Started by a click on one of the app's notifications while it was closed: do what it says.
+            WindowsNotices.HandleLaunchActivation();
 
             // Only minimize if launched by OS autostart via --startup flag,
             // not when the user opens the app manually.

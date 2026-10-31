@@ -334,12 +334,12 @@ namespace TrueReplayer.Services
         private static string Describe(Exception? ex) =>
             ex == null ? "unknown read failure" : $"{ex.GetType().Name}: {ex.Message}";
 
-        // The tray balloon is the only user-facing surface this service can reach on its own: Load
+        // A Windows notification is the only user-facing surface this service can reach on its own: Load
         // runs in the window ctor, long before WebView2 (and in tray-daemon usage the panel may
         // never open at all). Never let a notification failure break a load or a save.
         private static void Announce(string title, string text)
         {
-            try { TrayIconService.ShowBalloon(title, text); }
+            try { WindowsNotices.Show(title, text, null, ("Open Key Remaps", "remaps-open")); }
             catch (Exception ex) { DiagnosticLog.Warn($"remap notification failed: {ex.GetType().Name}: {ex.Message}"); }
         }
 

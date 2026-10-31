@@ -425,29 +425,23 @@ namespace TrueReplayer.Services
                 if (_announcedStop.TryGetValue(name, out var last) && last == reason) return;
                 _announcedStop[name] = reason;
             }
-            // Marshalled to the UI thread, not called from the watcher's. ShowBalloon mutates the
-            // single static NOTIFYICONDATA the tray also writes from there, and the field it sets
-            // to raise the balloon is cleared again right after the Shell_NotifyIcon call. Two
-            // threads interleaving that can leave the flag standing — and then every unrelated tray
-            // refresh re-pops the same balloon for the rest of the session, which is the one
-            // outcome here that does not heal itself. OnStateChanged already routes this way.
-            //
-            // The balloon is not enough on its own: on Windows 11 it was seen not to render at all
-            // (Shell_NotifyIcon succeeds, but a legacy balloon from an app with no registered AUMID
-            // is dropped — the data-list notice found this), so this "only" signal could be no
-            // signal. A chime (and a taskbar flash when there is a button to
-            // flash) reaches the user in another app; the notice puts the same words in the window,
-            // held until it is on screen. Each step is best-effort on its own.
+            // Marshalled to the UI thread, not called from the watcher's: the notification, the cue and
+            // the notice all belong there (OnStateChanged routes the same way). The Windows notification
+            // carries Open automation and Turn it off (WindowsNotices; the legacy tray balloon did not
+            // render on Windows 11); the cue flashes the taskbar button, and chimes when Windows is holding
+            // notifications back; the notice puts the same words in the window, held until it is on
+            // screen. Each step is best-effort on its own.
             dispatcherQueue?.TryEnqueue(() =>
             {
                 string detail = $"{reason} The automation is still armed, but it is not watching for anything.";
                 try
                 {
-                    TrayIconService.ShowBalloon($"Automation stopped: {name}", detail);
+                    WindowsNotices.Show($"{name} stopped watching", $"{reason} It's still turned on.", name,
+                        ("Open automation", "automation-open"), ("Turn it off", "automation-off"));
                 }
                 catch (Exception ex)
                 {
-                    DiagnosticLog.Warn($"Tray balloon for stopped watcher '{name}' failed: {ex.Message}");
+                    DiagnosticLog.Warn($"Notification for stopped watcher '{name}' failed: {ex.Message}");
                 }
                 TrayIconService.CueOutOfView();
                 try { OnNotice?.Invoke($"Automation stopped: {name}. {detail}"); }

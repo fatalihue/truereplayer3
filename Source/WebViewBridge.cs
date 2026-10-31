@@ -1285,6 +1285,11 @@ namespace TrueReplayer
                     // in, the compact layout's "Back to the full window" comes out; its × hides to the tray.
                     case "window:compact": window.SetCompact(payload.TryGetProperty("on", out var compactOn) && compactOn.ValueKind == JsonValueKind.True); break;
                     case "window:hideToTray": window.HideToTray(); break;
+                    // A notification's button, pressed by a test run's script (WindowsNotices; test runs only).
+                    case "notice:invoke":
+                        WindowsNotices.InvokeForTest(payload.TryGetProperty("action", out var noticeAction) ? noticeAction.GetString() ?? "open" : "open",
+                            payload.TryGetProperty("name", out var noticeName) ? noticeName.GetString() : null);
+                        break;
                     // "Switch to TrueReplayer 2" after it knocked (CoexistenceGuard): this app exits, and
                     // opens TrueReplayer 2 when it is installed.
                     case "coexist:switch":
@@ -1415,9 +1420,10 @@ namespace TrueReplayer
         public void PushStatusChange(string status)
         {
             bool wasError = status.StartsWith("error:");
+            string errorText = wasError ? status[6..] : "";
             if (wasError)
             {
-                SendMessage("alert:show", new { message = status[6..] });
+                SendMessage("alert:show", new { message = errorText });
                 status = "ready";
             }
             // "ready:stopped" = the run ended because the USER stopped it (Stop
@@ -1436,7 +1442,7 @@ namespace TrueReplayer
             // see. Pulse the taskbar button (and optionally chime) when we're not
             // foreground.
             if (status == "ready" && (wasError || (_lastRunStatus == "replaying" && !userStopped)))
-                NotifyRunEnded(wasError);
+                NotifyRunEnded(wasError, errorText);
             else if (status == "ready")
                 // Run ended down a path that raises no end-of-run cue (notably a user Stop, or
                 // a profile so short the status never registered "replaying"). The lap notice
@@ -15258,24 +15264,22 @@ namespace TrueReplayer
             _lapNoticeJustFired = true;
             try
             {
-                // The tray balloon is the only surface that reaches the user over a
-                // full-screen game, and unlike the chime it carries the actual numbers.
-                // Deliberately not gated on RunEndFlash/RunEndSound: those govern the
-                // per-run cue, whereas finishing the list is a rare, explicitly opted-in
-                // event (the Data panel toggle already decided it should be announced).
-                Services.TrayIconService.ShowBalloon(
-                    "Data list complete",
-                    $"All {rows} rows used — the next run starts over at row 1.");
+                // A Windows notification (the Tray board's), with a way to the table: it reaches the
+                // user over a full-screen game once Windows lets it through, and unlike the chime it
+                // carries the numbers. Deliberately not gated on RunEndFlash/RunEndSound: those govern
+                // the per-run cue, whereas finishing the list is a rare, explicitly opted-in event (the
+                // Data panel toggle already decided it should be announced).
+                string? macro = CurrentProfileName == "No Profile" ? null : CurrentProfileName;
+                WindowsNotices.Show(macro != null ? $"{macro} used the whole list" : "The data list is done",
+                    $"All {rows} rows are done. The next run starts over at row 1.", macro, ("Open Data Loop", "dataloop-open"));
 
-                // NOT gated on RunEndSound either, for the same reason as the balloon and it
-                // matters more here: RunEndSound governs the cue that fires after EVERY run,
-                // which is exactly why people switch it off — while finishing the list is a
-                // rare event the user opted into per-table. Riding that setting would leave
-                // the feature silent for the very users who asked for it. MessageBeep still
-                // honours the Windows sound scheme, so "No Sounds" is respected.
-                NativeMethods.MessageBeep(NativeMethods.MB_ICONASTERISK_BEEP);
+                // The chime only when Windows is holding the notification back (nativo-021). NOT gated
+                // on RunEndSound: that governs the cue after EVERY run, which is why people switch it
+                // off, while this is a rare event the user opted into per table. MessageBeep honours the
+                // Windows sound scheme, so "No Sounds" is respected.
+                if (WindowsNotices.Silenced) NativeMethods.MessageBeep(NativeMethods.MB_ICONASTERISK_BEEP);
 
-                DiagnosticLog.Info($"Data list complete — all {rows} row(s) used; cursor wraps to row 1 (chime + tray balloon)");
+                DiagnosticLog.Info($"Data list complete — all {rows} row(s) used; cursor wraps to row 1");
             }
             catch (Exception ex)
             {
@@ -15284,7 +15288,7 @@ namespace TrueReplayer
             }
         }
 
-        private void NotifyRunEnded(bool error)
+        private void NotifyRunEnded(bool error, string errorText)
         {
             // A lap notice for THIS run already chimed; don't chime again on top of it.
             bool lapJustFired = _lapNoticeJustFired;
@@ -15292,12 +15296,16 @@ namespace TrueReplayer
 
             try
             {
-                if (!UserProfile.Current.RunEndFlash && !UserProfile.Current.RunEndSound)
-                    return;
                 var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
                 // Foreground = the user is already looking at us; the in-window
                 // status change is enough.
                 if (NativeMethods.GetForegroundWindow() == hwnd)
+                    return;
+                // A run that stopped with an error, behind another app: a Windows notification (the Tray
+                // board's "stopped at step N") with the run report and Run again, whatever the run-end
+                // cue settings say — as the error's toast in the window is shown whatever they say.
+                bool told = error && ShowRunStoppedNotice(errorText);
+                if (!UserProfile.Current.RunEndFlash && !UserProfile.Current.RunEndSound)
                     return;
                 if (UserProfile.Current.RunEndFlash)
                 {
@@ -15316,7 +15324,8 @@ namespace TrueReplayer
                 // Skipped when a lap notice just played its own Asterisk chime for this same
                 // run — two chimes back to back read as a glitch, not as two facts. An error
                 // still wins: a failure must be heard even if the list also finished.
-                if (UserProfile.Current.RunEndSound && (error || !lapJustFired))
+                // The error's chime only when its notification could not go out or Windows holds it back.
+                if (UserProfile.Current.RunEndSound && (error || !lapJustFired) && !(told && !WindowsNotices.Silenced))
                 {
                     // System sound scheme's chime — respects the user's scheme
                     // (including "No Sounds") and needs no bundled asset.
@@ -15327,6 +15336,25 @@ namespace TrueReplayer
             {
                 TrueReplayer.Services.DiagnosticLog.Error("Run-end notification failed", ex);
             }
+        }
+
+        // "Trade Roblox stopped at step 5" and what went wrong: the last failed step of the run report.
+        private bool ShowRunStoppedNotice(string errorText)
+        {
+            string? macro = CurrentProfileName == "No Profile" ? null : CurrentProfileName;
+            var failed = replayService.GetRunReport().Steps.LastOrDefault(st => st.Status == "failed");
+            string title = (macro ?? "The macro") + (failed != null ? $" stopped at step {failed.Row}" : " stopped");
+            string text = !string.IsNullOrWhiteSpace(errorText) ? errorText : failed?.ErrorMessage ?? "The run stopped with an error.";
+            return macro != null
+                ? WindowsNotices.Show(title, text, macro, ("Open run report", "report-open"), ("Run again", "run-again"))
+                : WindowsNotices.Show(title, text, null, ("Open run report", "report-open"));
+        }
+
+        /// <summary>A notification's Turn it off (WindowsNotices): the macro's automation, disarmed.</summary>
+        public void DisarmAutomation(string name)
+        {
+            using var doc = JsonDocument.Parse(JsonSerializer.Serialize(new { profile = name, armed = false }));
+            HandleAutomationSetArmed(doc.RootElement.Clone());
         }
 
         // ── Collection change handler ──

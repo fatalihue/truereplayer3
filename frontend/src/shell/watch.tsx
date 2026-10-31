@@ -16,7 +16,8 @@ import { useShell } from './store';
 import { endTip, pendingTips } from './tips/tipsState';
 import CompactButton from './CompactButton';
 import { recordNewMacro } from './recordNew';
-import { loadDragGhost, loadEmpties, loadRunProgress, loadStepGhost, openPage, openSettings, useUi } from './ui';
+import { loadDragGhost, loadEmpties, loadRunProgress, loadStepGhost, openPage, openSettings, showMacroTab, useUi } from './ui';
+import { dock } from './dock/dockState';
 import { hearUpdate } from './updates';
 
 type Door = 'automations' | 'browser';
@@ -47,17 +48,23 @@ function hear(message: IncomingMessage, refuse: (door: Door) => void) {
 /**
  * The tray's menu and panel (Tray board): Settings and All macros… open their page in the window the
  * engine brought up; Record a new macro makes one and records into it, without the window, the task
- * being in another app.
+ * being in another app. A Windows notification's buttons (D8) come the same way: the macro's
+ * automation, its Data Loop (the macro opened first), Key Remaps, the run report.
  */
-function hearTray(message: IncomingMessage, record: () => boolean) {
+function hearTray(message: IncomingMessage, record: () => boolean, openMacro: (name: string) => void) {
   if (message.type !== 'tray:command') return;
-  const command = message.payload.command;
-  if (command === 'settings' || command === 'macros') {
-    if (dialogOpen()) return;
-    if (usePalette.getState().open) palette.close();
-    if (command === 'settings') openSettings();
-    else openPage('macros');
-  } else if (command === 'recordNew') record();
+  const { command, name } = message.payload;
+  if (command === 'recordNew') { record(); return; }
+  if (dialogOpen()) return;
+  if (usePalette.getState().open) palette.close();
+  if (command === 'settings') openSettings();
+  else if (command === 'automations') useUi.setState(name ? { page: 'automations', automationAsk: { kind: 'open', name }, libraryPeek: false } : { page: 'automations', libraryPeek: false });
+  else if (command === 'remaps') openPage('remaps');
+  else {
+    openPage('macros');
+    if (command === 'dataLoop' && name) { openMacro(name); showMacroTab('data'); }
+    else if (command === 'report') dock.show('report');
+  }
 }
 
 /** TrueReplayer 2's knock (CoexistenceGuard): whether there is an installed one to switch to. */
@@ -156,14 +163,16 @@ export function Watch({ early }: { early: readonly IncomingMessage[] }) {
   });
   // After the first render, not during it: the notice is a toast, another component's state.
   useEffect(() => { early.forEach(m => hearImport(m, (text) => toastRef.current(text))); }, [early]);
-  useEffect(() => { early.forEach(m => hearTray(m, () => recordRef.current())); }, [early]);
+  const openRef = useRef((name: string) => macro.open(name));
+  useEffect(() => { openRef.current = (name: string) => macro.open(name); });
+  useEffect(() => { early.forEach(m => hearTray(m, () => recordRef.current(), (name) => openRef.current(name))); }, [early]);
   const [knock, setKnock] = useState(() => early.map(knockOf).filter(k => k !== null).at(-1) ?? null);
   // The title bar's Compact view, in the slot it keeps for it (TitleBar).
   const [compactSlot] = useState(() => document.getElementById('tr-compact-slot'));
   useEffect(() => subscribe((m) => {
     hear(m, (door) => refuseRef.current(door));
     hearImport(m, (text) => toastRef.current(text));
-    hearTray(m, () => recordRef.current());
+    hearTray(m, () => recordRef.current(), (name) => openRef.current(name));
     const k = knockOf(m);
     if (k) setKnock(k);
   }), [subscribe]);

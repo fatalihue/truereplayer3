@@ -944,7 +944,8 @@ export type IncomingMessage =
   // The tray's right-click menu (Tray board): Record a new macro (the page makes it and records, as
   // the first use's Record it), Settings and the tray panel's All macros… (the engine has already
   // brought the window up).
-  | { type: 'tray:command'; payload: { command: 'recordNew' | 'settings' | 'macros' } }
+  // The tray's doors, and a Windows notification's buttons (D8): the page they name, about a macro (name).
+  | { type: 'tray:command'; payload: { command: 'recordNew' | 'settings' | 'macros' | 'automations' | 'dataLoop' | 'remaps' | 'report'; name?: string } }
   // The window entered or left the compact view (also sent to a page that loads in it).
   // captionInset: the width (DIP) the system's own × takes at the top right of the compact view.
   | { type: 'window:compactChanged'; payload: { compact: boolean; captionInset?: number } }
