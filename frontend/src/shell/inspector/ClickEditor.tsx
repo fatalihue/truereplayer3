@@ -10,6 +10,7 @@ import { clickFormOf, formatMs, isClickHold, isCombinedClick, isFocusClickEligib
 import { useApp } from '../store';
 import { Chips, DraftField, Section, Segmented, Switch, Vary } from './fields';
 import { applyEdits, durationStep, type StepEdit } from './inspectorState';
+import { useCaptureFor } from './captureFor';
 
 type Button = 'Left' | 'Right' | 'Middle';
 type Kind = 'single' | 'double' | 'triple' | 'hold';
@@ -40,6 +41,7 @@ const POINT = /^\s*\(?\s*(-?\d{1,7})\s*[,; ]\s*(-?\d{1,7})\s*\)?\s*$/;
 export function ClickEditor({ step, index, steps, locked }: { step: ActionItem; index: number; steps: ActionItem[]; locked: boolean }) {
   const cmds = useSteps();
   const tools = useEditorTools();
+  const captureFor = useCaptureFor();
   const { send, subscribe } = useBridge();
   const { showToast } = useToast();
   const { language } = useLanguage();
@@ -99,7 +101,7 @@ export function ClickEditor({ step, index, steps, locked }: { step: ActionItem; 
     const requestId = newRequestId();
     pickRef.current = { requestId, what };
     setPicking(what);
-    tools.pickPosition({ requestId });
+    tools.pickPosition({ requestId, captureFor });
   };
   useEffect(() => {
     if (!pasteFailed) return;

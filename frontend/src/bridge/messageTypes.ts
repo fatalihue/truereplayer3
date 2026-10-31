@@ -1405,10 +1405,12 @@ export type OutgoingMessage =
   // Presente => o backend subtrai a origem dela ao GRAVAR e a soma ao exibir/testar, para que o
   // valor em disco viva no mesmo espaco que TriggerService.ProbeCondition le. Ortogonal a
   // `absolute`, que continua significando 'nao use o alvo do perfil ATIVO'.
-  | { type: 'waitimage:configureSearchRegion'; payload: { requestId: string; absolute?: boolean; anchor?: { processName: string; windowTitle: string; titleMatchMode: string }; x?: number; y?: number; w?: number; h?: number } }
+  // captureFor: what the capture bar says the region is for ("for step 5, Wait Text"); reads: a
+  // screen read's region to read rather than an image's search area, which the bar names.
+  | { type: 'waitimage:configureSearchRegion'; payload: { requestId: string; absolute?: boolean; anchor?: { processName: string; windowTitle: string; titleMatchMode: string }; x?: number; y?: number; w?: number; h?: number; captureFor?: string; reads?: boolean } }
   // No requestId: there is no reply to correlate it with (see the note above).
-  | { type: 'clicker:configureArea'; payload: Record<string, never> }
-  | { type: 'clicker:configurePoint'; payload: Record<string, never> }
+  | { type: 'clicker:configureArea'; payload: { captureFor?: string } }
+  | { type: 'clicker:configurePoint'; payload: { captureFor?: string } }
   // Clicker presets — named snapshots of the cursorClick* settings, global like the rest. The
   // bridge answers all three with settings:loaded (the list rides in cursorClickPresets).
   | { type: 'clicker:savePreset'; payload: { name: string } }
@@ -1431,11 +1433,13 @@ export type OutgoingMessage =
   // Save image…: the reference PNG copied where the user chooses. profile: an automation's macro
   // (a step's image is the open macro's). The engine says how it went with alert:show.
   | { type: 'image:saveAs'; payload: { imagePath: string; profile?: string } }
-  | { type: 'mouse:pickPosition'; payload: { requestId: string } }
+  // captureFor, here and in the other screen captures: the capture bar's "for …" line ("for step 7,
+  // Left Click"), which only the page can name.
+  | { type: 'mouse:pickPosition'; payload: { requestId: string; captureFor?: string } }
   // absolute: skip the profile-relative translation (automation watchers sample
   // virtual-screen coords with no window context). colorOnly: only the colour is wanted (the
-  // theme editor's eyedropper), and the overlay's hint says so.
-  | { type: 'pixel:pickColor'; payload: { requestId: string; absolute?: boolean; colorOnly?: boolean; anchor?: { processName: string; windowTitle: string; titleMatchMode: string } } }
+  // theme editor's eyedropper), and the overlay's bar says so.
+  | { type: 'pixel:pickColor'; payload: { requestId: string; absolute?: boolean; colorOnly?: boolean; anchor?: { processName: string; windowTitle: string; titleMatchMode: string }; captureFor?: string } }
   | { type: 'pixel:testMatch'; payload: { requestId: string; x: number; y: number; hex: string; tolerance: number; absolute?: boolean; anchor?: { processName: string; windowTitle: string; titleMatchMode: string } } }
   | { type: 'selection:changed'; payload: { indices: number[] } }
   | { type: 'window:alwaysOnTop'; payload: { enabled: boolean } }

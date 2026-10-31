@@ -2407,7 +2407,8 @@ namespace TrueReplayer
                 // background flag that lets a tray Exit through, the ThreadException handler and
                 // the lifecycle log all live in CaptureOverlayHost now — the eight siblings that
                 // used to point at the copy here point at that one instead.
-                var selection = await overlayHost.RunAsync(() => new ScreenOverlayForm(screenshot));
+                var selection = await overlayHost.RunAsync(() => new ScreenOverlayForm(screenshot,
+                    bar: new CaptureBar("Capture the reference image", $"for the {profileName} automation", "Drag around what the automation waits for")));
 
                 dispatcherQueue.TryEnqueue(() =>
                 {
@@ -7399,7 +7400,8 @@ namespace TrueReplayer
 
             try
             {
-                var selection = await overlayHost.RunAsync(() => new ScreenOverlayForm(screenshot));
+                var selection = await overlayHost.RunAsync(() => new ScreenOverlayForm(screenshot,
+                    bar: new CaptureBar("Capture the reference image", ForStep(insertIndex, openerType, "Image found"), "Drag around what the step waits for")));
 
                 dispatcherQueue.TryEnqueue(() => NativeMethods.ShowWindow(mainHwnd, NativeMethods.SW_RESTORE));
 
@@ -7526,7 +7528,8 @@ namespace TrueReplayer
                     screenshot,
                     regionOnly: false,
                     pointPick: true,
-                    hintText: "Click on the pixel to check — colour and coords are captured  •  ESC to cancel"));
+                    bar: new CaptureBar("Pick the color", ForStep(insertIndex, openerType, "Pixel color")),
+                    showColor: true));
 
                 dispatcherQueue.TryEnqueue(() => NativeMethods.ShowWindow(mainHwnd, NativeMethods.SW_RESTORE));
 
@@ -8046,7 +8049,9 @@ namespace TrueReplayer
             try
             {
                 var selection = await overlayHost.RunAsync(() => new ScreenOverlayForm(screenshot,
-                    hintText: "Drag around the text to read  •  Esc cancels"));
+                    bar: new CaptureBar("Draw the region to read",
+                        rowType == "WaitText" ? ForStep(insertIndex, rowType) : ForStep(insertIndex, rowType, "Text on screen"),
+                        "Smaller regions read faster")));
                 dispatcherQueue.TryEnqueue(() => NativeMethods.ShowWindow(mainHwnd, NativeMethods.SW_RESTORE));
                 if (selection?.CroppedImage == null) return;
 
@@ -8159,7 +8164,8 @@ namespace TrueReplayer
 
             try
             {
-                var selection = await overlayHost.RunAsync(() => new ScreenOverlayForm(screenshot));
+                var selection = await overlayHost.RunAsync(() => new ScreenOverlayForm(screenshot,
+                    bar: new CaptureBar("Capture the reference image", ForStep(insertIndex, "WaitImage"), "Drag around what the step waits for")));
 
                 // Restore main window
                 dispatcherQueue.TryEnqueue(() =>
@@ -8281,7 +8287,8 @@ namespace TrueReplayer
                     screenshot,
                     regionOnly: false,
                     pointPick: true,
-                    hintText: "Click the pixel to watch — colour + coords captured  •  Scroll to zoom  •  ESC to cancel"));
+                    bar: new CaptureBar("Pick the color", ForStep(insertIndex, "WaitPixelColor")),
+                    showColor: true));
 
                 dispatcherQueue.TryEnqueue(() => NativeMethods.ShowWindow(mainHwnd, NativeMethods.SW_RESTORE));
 
@@ -8351,10 +8358,11 @@ namespace TrueReplayer
             // Anchor on the ROW OBJECT, not on its index. The write-back lands after an overlay
             // the user can sit in for a minute, and `index < actions.Count` is a bounds check,
             // not an identity check — it passes happily while pointing at a different row.
-            _ = HandleWaitImageRecaptureAsync(Services.EditScope.Capture(CurrentProfileName, a));
+            string captureFor = a.ActionType == "WaitImage" ? ForStep(index, "WaitImage") : ForStep(index, a.ActionType, "Image found");
+            _ = HandleWaitImageRecaptureAsync(Services.EditScope.Capture(CurrentProfileName, a), captureFor);
         }
 
-        private async Task HandleWaitImageRecaptureAsync(Services.EditScope scope)
+        private async Task HandleWaitImageRecaptureAsync(Services.EditScope scope, string captureFor)
         {
             // Before the EditScope and before the window dance — see RefuseCaptureDuringRun.
             if (RefuseCaptureDuringRun("WaitImage recapture")) return;
@@ -8384,7 +8392,8 @@ namespace TrueReplayer
 
             try
             {
-                var selection = await overlayHost.RunAsync(() => new ScreenOverlayForm(screenshot));
+                var selection = await overlayHost.RunAsync(() => new ScreenOverlayForm(screenshot,
+                    bar: new CaptureBar("Capture the reference image", captureFor, "Drag around what the step waits for")));
 
                 dispatcherQueue.TryEnqueue(() =>
                 {
@@ -8649,8 +8658,7 @@ namespace TrueReplayer
             System.Drawing.Rectangle? initial = TryParseRegion(UserProfile.Current.CopyScreenTextRegion, out var cur) ? cur : null;
             var selection = await RunRegionPickerAsync(
                 initial,
-                hintWhenSet: "Drag to redraw the text region  •  ESC to keep current",
-                hintWhenEmpty: "Drag around the text the hotkey should read  •  ESC to cancel",
+                new CaptureBar("Draw the region to read", "for the Copy text from the screen hotkey", "Smaller regions read faster"),
                 logPrefix: "Copy screen text");
             if (selection == null) return;
             UserProfile.Current.CopyScreenTextRegion = $"{selection.ScreenX},{selection.ScreenY},{selection.Width},{selection.Height}";
@@ -8711,7 +8719,7 @@ namespace TrueReplayer
                     if (interaction == null) { ReportOverlayRefused("the screen text capture"); return; }
                     using var screenshot = await Task.Run(ScreenCaptureService.CaptureVirtualScreen);
                     var selection = await overlayHost.RunAsync(() => new ScreenOverlayForm(screenshot,
-                        hintText: "Drag around the text to copy  •  Esc cancels"));
+                        bar: new CaptureBar("Draw the region to copy", "for Copy text from the screen", "The text it reads goes to the clipboard")));
                     if (previousForeground != IntPtr.Zero) NativeMethods.SetForegroundWindow(previousForeground);
                     if (selection?.CroppedImage == null) return;
                     crop = selection.CroppedImage;
@@ -9034,6 +9042,7 @@ namespace TrueReplayer
         private async Task HandleMousePickPositionAsync(JsonElement payload)
         {
             string requestId = payload.TryGetProperty("requestId", out var ridEl) ? (ridEl.GetString() ?? "") : "";
+            string? captureFor = CaptureFor(payload);
 
             // Before the window dance and before the scope: a refusal must cost nothing. The reply
             // still goes out, or the caller's Pick button stays disabled forever.
@@ -9126,7 +9135,7 @@ namespace TrueReplayer
                     screenshot,
                     regionOnly: false,
                     pointPick: true,
-                    hintText: "Click anywhere on screen to set X/Y  •  ESC to cancel"));
+                    bar: new CaptureBar("Pick the point", captureFor)));
 
                 dispatcherQueue.TryEnqueue(() => NativeMethods.ShowWindow(mainHwnd, NativeMethods.SW_RESTORE));
 
@@ -9180,8 +9189,9 @@ namespace TrueReplayer
             // samples them with no window context) — they must opt out of the profile-relative
             // translation the If/WaitPixelColor editors want.
             bool absolute = payload.TryGetProperty("absolute", out var absEl) && absEl.ValueKind == JsonValueKind.True;
-            // The theme editor's eyedropper wants the colour alone; the overlay's hint says so.
+            // The theme editor's eyedropper wants the colour alone; the overlay's bar says so.
             bool colorOnly = payload.TryGetProperty("colorOnly", out var colorEl) && colorEl.ValueKind == JsonValueKind.True;
+            string? captureFor = CaptureFor(payload);
             // Before the scope and before the window dance — see RefuseCaptureDuringRun. This is
             // one of the two doors that door-count missed: the Automation panel reads no run state
             // at all, so its eyedropper stayed live for the whole of a macro.
@@ -9234,9 +9244,8 @@ namespace TrueReplayer
                     screenshot,
                     regionOnly: false,
                     pointPick: true,
-                    hintText: colorOnly
-                        ? "Click the colour to use  •  Scroll to zoom  •  ESC to cancel"
-                        : "Click the pixel to watch — colour + coords captured  •  Scroll to zoom  •  ESC to cancel"));
+                    bar: new CaptureBar(colorOnly ? "Pick a color" : "Pick the color", captureFor),
+                    showColor: true));
 
                 dispatcherQueue.TryEnqueue(() => NativeMethods.ShowWindow(mainHwnd, NativeMethods.SW_RESTORE));
 
@@ -9370,13 +9379,40 @@ namespace TrueReplayer
             });
         }
 
-        // Shared infrastructure for the two "draw a rectangle on screen" flows (WaitImage
-        // search region + Clicker click area). Minimises the main window, takes a virtual-
-        // desktop screenshot, runs ScreenOverlayForm on an STA thread, and returns the
+        // The capture bar's "for …" line, from the page: it knows the step's number and the name the
+        // interface gives it ("for step 7, Left Click"), the automation's macro or the Clicker preset.
+        // Read before the handler's first await — the JsonDocument behind `payload` is disposed then.
+        private static string? CaptureFor(JsonElement payload)
+        {
+            if (payload.ValueKind != JsonValueKind.Object
+                || !payload.TryGetProperty("captureFor", out var el) || el.ValueKind != JsonValueKind.String) return null;
+            var text = el.GetString()?.Trim();
+            if (string.IsNullOrEmpty(text)) return null;
+            return text.Length > 80 ? text[..80] : text;
+        }
+
+        // The same line for the captures the engine starts itself, which know where the step goes:
+        // "for step 5, Wait Image", "for step 11, While · Pixel color". The names are the interface's.
+        private static string ForStep(int index, string actionType, string? condition = null)
+        {
+            string name = actionType switch
+            {
+                "WaitImage" => "Wait Image",
+                "WaitPixelColor" => "Wait Pixel Color",
+                "WaitText" => "Wait Text",
+                "ElseIf" => "Else If",
+                _ => actionType,
+            };
+            return $"for step {index + 1}, {name}{(condition != null ? " · " + condition : "")}";
+        }
+
+        // Shared infrastructure for the "draw a rectangle on screen" flows (search region, read
+        // region, Clicker click area and point, the Copy-text region). Minimises the main window,
+        // takes a virtual-desktop screenshot, runs ScreenOverlayForm on an STA thread, and returns the
         // selection (or null if cancelled / screenshot failed). The bitmap is disposed
         // here so neither caller leaks a multi-MB GDI handle.
         private async Task<RegionSelectionResult?> RunRegionPickerAsync(
-            System.Drawing.Rectangle? initialRect, string hintWhenSet, string hintWhenEmpty, string logPrefix,
+            System.Drawing.Rectangle? initialRect, CaptureBar bar, string logPrefix,
             bool pointPick = false)
         {
             // The run gate lives HERE, in the helper, not only in the callers — two of the three
@@ -9416,11 +9452,11 @@ namespace TrueReplayer
 
             try
             {
-                var hint = initialRect.HasValue ? hintWhenSet : hintWhenEmpty;
                 // pointPick: a single click returns a zero-size region at the click point
                 // (ScreenX/ScreenY) — no rect drag. regionOnly stays true (no cropped image).
+                // A saved region opens drawn, and the bar's Esc then says "Keep current".
                 var selection = await overlayHost.RunAsync(() => new ScreenOverlayForm(
-                    screenshot, regionOnly: true, pointPick: pointPick, hintText: hint, initialRect: initialRect));
+                    screenshot, regionOnly: true, pointPick: pointPick, bar: bar, initialRect: initialRect));
 
                 dispatcherQueue.TryEnqueue(() => NativeMethods.ShowWindow(mainHwnd, NativeMethods.SW_RESTORE));
                 return selection;
@@ -9446,6 +9482,10 @@ namespace TrueReplayer
         private async Task HandleConfigureSearchRegionAsync(JsonElement payload)
         {
             string requestId = payload.TryGetProperty("requestId", out var ridEl) ? (ridEl.GetString() ?? "") : "";
+            string? captureFor = CaptureFor(payload);
+            // One message draws both an image's search area and a screen read's region to read;
+            // the page says which, and the bar names it.
+            bool reads = payload.TryGetProperty("reads", out var readsEl) && readsEl.ValueKind == JsonValueKind.True;
 
             // Automation watchers ask for ABSOLUTE coords (no target-window origin) — skip the
             // profile-relative round-trip entirely, same flag the pixel picker uses. WaitImage / If
@@ -9489,8 +9529,9 @@ namespace TrueReplayer
 
             var selection = await RunRegionPickerAsync(
                 initialRect,
-                hintWhenSet: "Drag to redraw the search area  •  ESC to keep current",
-                hintWhenEmpty: "Drag to set the image search area  •  ESC to cancel",
+                reads
+                    ? new CaptureBar("Draw the region to read", captureFor, "Smaller regions read faster")
+                    : new CaptureBar("Draw the search area", captureFor, "The image is looked for only inside it"),
                 logPrefix: absolute ? "Automation ImageFound" : "WaitImage");
 
             if (selection == null)
@@ -9549,6 +9590,7 @@ namespace TrueReplayer
         private async Task HandleConfigureClickAreaAsync(JsonElement payload)
         {
             if (RefuseCaptureDuringRun("Clicker area pick")) return;
+            string? captureFor = CaptureFor(payload);
 
             // Pre-draw the saved rect (when there is one + the toggle is on, signalling intent).
             System.Drawing.Rectangle? initialRect = (CursorClickUseArea && CursorClickArea is { } cur)
@@ -9557,8 +9599,7 @@ namespace TrueReplayer
 
             var selection = await RunRegionPickerAsync(
                 initialRect,
-                hintWhenSet: "Drag to redraw the click area  •  ESC to keep current",
-                hintWhenEmpty: "Drag to set the click area  •  ESC to cancel",
+                new CaptureBar("Draw the click area", captureFor ?? "for Clicker"),
                 logPrefix: "Clicker");
 
             if (selection == null) return;
@@ -9582,8 +9623,7 @@ namespace TrueReplayer
             if (RefuseCaptureDuringRun("Clicker point pick")) return;
             var selection = await RunRegionPickerAsync(
                 null,
-                hintWhenSet: "Click to set the fixed click point  •  ESC to cancel",
-                hintWhenEmpty: "Click to set the fixed click point  •  ESC to cancel",
+                new CaptureBar("Pick the click point", CaptureFor(payload) ?? "for Clicker"),
                 logPrefix: "Clicker",
                 pointPick: true);
 

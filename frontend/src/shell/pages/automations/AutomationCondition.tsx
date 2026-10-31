@@ -133,6 +133,7 @@ export function Condition({ name, t, never, change, cmds }: { name: string; t: T
     },
     tools: anchored ? { absolute: true, anchor } : { absolute: true },
     profile: name,
+    captureFor: `for the ${name} automation`,
     captureImage: () => imageAsks.set(cmds.captureImage(name), name),
     chooseImage: () => imageAsks.set(cmds.chooseImage(name), name),
     cropImage: () => useAutomationsUi.setState({ crop: name }),

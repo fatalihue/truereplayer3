@@ -171,7 +171,7 @@ export function ColorsView() {
   });
   const pickFor = (f: Field) => {
     picking.current = f;
-    pick.ask(requestId => tools.pickColor({ requestId, absolute: true, colorOnly: true }));
+    pick.ask(requestId => tools.pickColor({ requestId, absolute: true, colorOnly: true, captureFor: 'for the theme' }));
   };
   const open = hsl ? FIELDS.find(f => f.key === hsl) : undefined;
   // A recent colour goes to the field whose HSL is open; with none open, it is copied.

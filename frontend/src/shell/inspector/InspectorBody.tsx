@@ -9,6 +9,7 @@ import { NotBuilt } from '../NotBuilt';
 import { useApp } from '../store';
 import { collapseInspector, expandInspector, useUi } from '../ui';
 import { BatchEditor } from './BatchEditor';
+import { CaptureForContext, captureForStep } from './captureFor';
 import { CheckDraft } from './CheckDraft';
 import { openerType } from './checks';
 import { ClickEditor } from './ClickEditor';
@@ -298,10 +299,10 @@ function StepEditor({ step, index, steps, locked }: { step: ActionItem; index: n
     // The other types' editors come with phase 2.
     : <NotBuilt what={`${stepName(t)} editor`} />;
   return (
-    <>
+    <CaptureForContext.Provider value={captureForStep(index, step)}>
       {editor}
       <CommonFields step={step} locked={locked} />
-    </>
+    </CaptureForContext.Provider>
   );
 }
 

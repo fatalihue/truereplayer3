@@ -5,6 +5,7 @@ import { useTt } from '../../state/LanguageContext';
 import { anchorBelow, type MenuAnchor } from '../menuAnchor';
 import { Popover } from '../Popover';
 import { useCheckTarget } from './checkTarget';
+import { useCaptureFor } from './captureFor';
 import { DraftField, type DraftFieldProps } from './fields';
 import { normalHex, useAsk, type Region } from './probes';
 
@@ -40,6 +41,7 @@ export function RegionField({ label = 'Search region', region, onRegion, locked,
 }) {
   const tools = useEditorTools();
   const target = useCheckTarget();
+  const captureFor = useCaptureFor();
   const tt = useTt();
   const draw = useAsk('waitimage:searchRegionSet', (p) => {
     if (!p.cancelled && p.w && p.h && p.w > 0 && p.h > 0) onRegion({ x: p.x ?? 0, y: p.y ?? 0, w: p.w, h: p.h });
@@ -56,7 +58,7 @@ export function RegionField({ label = 'Search region', region, onRegion, locked,
           className="insp-button"
           disabled={locked || draw.waiting}
           data-tip={drawTip}
-          onClick={() => draw.ask(requestId => tools.configureSearchRegion({ requestId, ...target?.tools, ...region }))}
+          onClick={() => draw.ask(requestId => tools.configureSearchRegion({ requestId, ...target?.tools, ...region, captureFor, reads: label === 'Region to read' }))}
         >
           <span className="step-icon" data-icon="square-dashed" />
           {draw.waiting ? 'Drawing…' : region ? 'Redraw' : 'Draw'}

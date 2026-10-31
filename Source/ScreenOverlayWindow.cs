@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using TrueReplayer.Interop;
@@ -23,6 +25,14 @@ namespace TrueReplayer.Services
         public Color? PickedColor { get; set; }
     }
 
+    /// <summary>
+    /// What a capture's bar says (ScreenCapture board, "A mesma barra em toda captura"): what this
+    /// capture is ("Pick the point"), what it is for ("for step 7, Left Click") and, for an area, the
+    /// one hint it needs ("Drag around what the step waits for"). The keys come from the mode: a
+    /// point names Scroll, Shift, the arrows and Enter; an area has Done Enter.
+    /// </summary>
+    public sealed record CaptureBar(string Title, string? For = null, string? Hint = null);
+
     public class ScreenOverlayForm : Form
     {
         private readonly Bitmap _screenshot;
@@ -32,16 +42,34 @@ namespace TrueReplayer.Services
         private Size? _previousMaximumBuffer;
         private readonly bool _regionOnly;
         private readonly bool _pointPick;
-        private readonly string _hintText;
+        // A point pick that is after the colour (the eyedroppers) shows it in the magnifier's chip;
+        // "Pick the point" shows the coordinates alone, as the board draws it.
+        private readonly bool _showColor;
+        private readonly CaptureBar _bar;
         private readonly TaskCompletionSource<RegionSelectionResult?> _tcs = new();
 
         // GetSystemMetrics indices for the virtual desktop (all monitors) — Win32 SM_* constants.
         private const int SM_XVIRTUALSCREEN = 76, SM_YVIRTUALSCREEN = 77, SM_CXVIRTUALSCREEN = 78, SM_CYVIRTUALSCREEN = 79;
 
-        private Point _startPoint;
-        private Point _currentPoint;
-        private bool _isDragging;
+        // ── The area ─────────────────────────────────────────────────────────────
+        // An area is drawn, then adjusted, then confirmed: releasing the button no longer ends the
+        // capture (the board: "Drag to draw · drag the edges to adjust", "Done Enter"). _sel is the
+        // area in form-local pixels; a drag either draws a new one, moves it, or pulls its edges.
+        private enum DragKind { None, Draw, Move, Resize }
+        [Flags] private enum Edge { None = 0, Left = 1, Top = 2, Right = 4, Bottom = 8 }
+        private DragKind _drag;
+        private Edge _resizeEdges;
+        private Point _dragAnchor;        // where the drag started (Draw: the first corner)
+        private Rectangle _selAtDown;     // the area as it was when a Move/Resize started
+        private Rectangle _sel;
         private bool _hasSelection;
+        // Smaller than this is not an area: a click that barely moved, which a new draw discards and
+        // a resize never goes under. The old overlay used the same 10 × 10 floor on release.
+        private const int MinSide = 10;
+        // The area the capture opened with (a saved region being redrawn). Esc keeps it: the bar
+        // says "Keep current Esc" instead of "Cancel Esc".
+        private readonly bool _seeded;
+
         // Live cursor position used to render an "(x, y)" label next to the mouse — like
         // ShareX / Greenshot. Lets the user see the exact coords they'll capture before
         // committing. Updated on every MouseMove regardless of drag state.
@@ -73,29 +101,38 @@ namespace TrueReplayer.Services
         // to compute its size; reading them once in the ctor avoids re-querying on every paint.
         private readonly int _virtualOriginX;
         private readonly int _virtualOriginY;
-        // Monitor the instruction banner is centred on, in form-local coords. The form spans
-        // the whole virtual desktop, so centring the banner in ClientRectangle puts it on the
-        // SEAM between monitors on a multi-screen setup — the text is split down the middle
-        // across two panels and can't be read. Confining it to one screen fixes that.
-        private readonly Rectangle _hintBounds;
+
+        // ── The bar ──────────────────────────────────────────────────────────────
+        // It lives on the monitor the cursor is on ("No monitor do cursor") and goes to the bottom
+        // edge when the cursor comes near it ("Desce se o cursor chega perto"), so it never covers
+        // what is being picked. The form spans the whole virtual desktop, and centring anything in
+        // ClientRectangle would put it on the seam between two monitors.
+        private readonly List<(Rectangle Bounds, float Scale)> _monitors = new();
+        private int _barMonitor;
+        private bool _barAtBottom;
+        private BarLayout? _barLayout;
+        private BarHit _barHover;
+        private enum BarHit { None, Bar, Cancel, Done }
 
         // <paramref name="regionOnly"/>: when true, the overlay returns just the rect coords
         // without producing a cropped Bitmap. Used to configure the search ROI of an existing
         // WaitImage action — no new reference image is being captured.
         //
-        // <paramref name="pointPick"/>: when true, a single mouse click returns immediately as
-        // a zero-size "region" — used by Pick Position on click actions to set X/Y from a
-        // direct screen click without dragging a rect.
+        // <paramref name="pointPick"/>: when true, a click (or Enter) returns at once as a zero-size
+        // "region" — used by Pick Position on click actions to set X/Y from a direct screen click
+        // without dragging a rect. The screen is not darkened in this mode (the board).
         //
         // <paramref name="initialRect"/>: when non-null and the rect is large enough, the overlay
         // opens with that region already drawn (in screen-absolute coords). Lets the user see
         // what's currently saved instead of starting blank — they can hit ESC to keep it as-is,
-        // or drag a new selection to overwrite. Ignored in pointPick mode.
-        public ScreenOverlayForm(Bitmap screenshot, bool regionOnly = false, bool pointPick = false, string? hintText = null, Rectangle? initialRect = null)
+        // adjust its edges, or drag a new selection to overwrite. Ignored in pointPick mode.
+        public ScreenOverlayForm(Bitmap screenshot, bool regionOnly = false, bool pointPick = false,
+            CaptureBar? bar = null, Rectangle? initialRect = null, bool showColor = false)
         {
             _screenshot = screenshot;
             _regionOnly = regionOnly;
             _pointPick = pointPick;
+            _showColor = pointPick && showColor;
 
             // Virtual screen bounds (all monitors)
             int vx = NativeMethods.GetSystemMetrics(SM_XVIRTUALSCREEN);
@@ -105,37 +142,32 @@ namespace TrueReplayer.Services
             _virtualOriginX = vx;
             _virtualOriginY = vy;
 
-            // Resolved BEFORE any Form property is touched, so the handle can't have been
-            // created yet and MainWindowHandle can only resolve to the app's own window.
-            _hintBounds = ResolveHintMonitor(vx, vy, vw, vh);
+            ReadMonitors(vx, vy, vw, vh);
+            var cursorAtOpen = new Point(Cursor.Position.X - vx, Cursor.Position.Y - vy);
+            _barMonitor = MonitorIndexAt(cursorAtOpen);
+            // The pointer may already be where the bar would go (a pick button near the top of the
+            // screen): the bar starts at the bottom then, as if it had moved away already.
+            var (barMon, barScale) = _monitors[_barMonitor];
+            _barAtBottom = cursorAtOpen.Y < barMon.Top + (BarMargin + BarHeight + 32) * barScale;
 
             // Seed the selection from a previously-saved rect so the user sees what's already
-            // there. Same minimum size as OnMouseUp (10x10) — anything smaller is treated as
-            // "no usable seed" and the overlay opens blank. Converts screen-absolute to
-            // form-local by subtracting the virtual origin.
-            bool seeded = false;
+            // there. Same minimum size as a drawn area — anything smaller is treated as "no usable
+            // seed" and the overlay opens blank. Converts screen-absolute to form-local by
+            // subtracting the virtual origin.
             if (initialRect.HasValue && !pointPick)
             {
                 var r = initialRect.Value;
-                if (r.Width >= 10 && r.Height >= 10)
+                if (r.Width >= MinSide && r.Height >= MinSide)
                 {
-                    _startPoint = new Point(r.X - vx, r.Y - vy);
-                    _currentPoint = new Point(r.X - vx + r.Width, r.Y - vy + r.Height);
+                    _sel = new Rectangle(r.X - vx, r.Y - vy, r.Width, r.Height);
                     _hasSelection = true;
-                    seeded = true;
+                    _seeded = true;
                 }
             }
 
-            // Appended to EVERY variant, including the caller-supplied hints in WebViewBridge
-            // (each flow writes its own wording, so baking it into the defaults alone would
-            // hide the modifier from most pickers). Kept to three words — the magnifier itself
-            // shows the live "SLOW" state once Shift is actually held.
-            _hintText = (hintText ?? (pointPick
-                ? "Click to pick  •  Scroll to zoom  •  ESC to cancel"
-                : seeded
-                    ? "Drag to redraw the region  •  ESC to keep current"
-                    : "Click and drag to select a region  •  ESC to cancel"))
-                + "  •  Shift = slow";
+            _bar = bar ?? new CaptureBar(pointPick
+                ? (_showColor ? "Pick the color" : "Pick the point")
+                : regionOnly ? "Draw the area" : "Capture the image");
 
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.Manual;
@@ -166,48 +198,50 @@ namespace TrueReplayer.Services
             MouseDown += OnMouseDown;
             MouseMove += OnMouseMove;
             MouseUp += OnMouseUp;
+            MouseDoubleClick += OnMouseDoubleClick;
             MouseWheel += OnMouseWheel;
         }
 
-        // Which screen the instruction banner belongs to, in form-local coords.
-        //
-        // Reads the app window's RESTORED placement rather than its current rect: every picker
-        // minimises the main window before opening this overlay, and a minimised window parks
-        // at (-32000,-32000), so MonitorFromWindow/GetWindowRect would answer with whichever
-        // screen happens to be nearest that off-screen point. rcNormalPosition survives the
-        // minimise and still names the monitor the user is actually working on.
-        //
-        // Falls back to the monitor under the cursor — where the user just clicked to open the
-        // picker — so the banner is always confined to a real screen, never straddling two.
-        private static Rectangle ResolveHintMonitor(int vx, int vy, int vw, int vh)
+        // The monitors in form-local coords, each with its own scale: the bar is drawn at the DPI of
+        // the monitor it sits on, so it reads the same on a 100 % and a 150 % screen. Clipped to the
+        // form, as a monitor only partly covered by the captured virtual screen must not push the bar
+        // off-canvas.
+        private void ReadMonitors(int vx, int vy, int vw, int vh)
         {
-            Rectangle? bounds = null;
+            var canvas = new Rectangle(0, 0, vw, vh);
             try
             {
-                var hwnd = System.Diagnostics.Process.GetCurrentProcess().MainWindowHandle;
-                if (hwnd != IntPtr.Zero)
+                foreach (var screen in Screen.AllScreens)
                 {
-                    var wp = new NativeMethods.WINDOWPLACEMENT();
-                    wp.length = System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.WINDOWPLACEMENT>();
-                    if (NativeMethods.GetWindowPlacement(hwnd, ref wp))
-                    {
-                        var r = wp.rcNormalPosition;
-                        var restored = Rectangle.FromLTRB(r.Left, r.Top, r.Right, r.Bottom);
-                        if (restored.Width > 0 && restored.Height > 0)
-                            bounds = Screen.FromRectangle(restored).Bounds;
-                    }
+                    var b = screen.Bounds;
+                    var local = new Rectangle(b.X - vx, b.Y - vy, b.Width, b.Height);
+                    local.Intersect(canvas);
+                    if (local.IsEmpty) continue;
+                    _monitors.Add((local, ScaleAt(new Point(b.X + b.Width / 2, b.Y + b.Height / 2))));
                 }
             }
-            catch { /* any interop hiccup just falls through to the cursor's screen */ }
+            catch { /* any interop hiccup falls through to the whole canvas below */ }
+            if (_monitors.Count == 0) _monitors.Add((canvas, 1f));
+        }
 
-            bounds ??= Screen.FromPoint(Cursor.Position).Bounds;
+        private static float ScaleAt(Point screenPoint)
+        {
+            try
+            {
+                IntPtr monitor = MonitorFromPoint(new NativeMethods.POINT { x = screenPoint.X, y = screenPoint.Y }, MONITOR_DEFAULTTONEAREST);
+                if (monitor != IntPtr.Zero && GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, out uint dpiX, out _) == 0 && dpiX > 0)
+                    return dpiX / 96f;
+            }
+            catch { /* shcore missing or refused: 100 % */ }
+            return 1f;
+        }
 
-            // Screen coords -> form-local, then clipped to the form: a monitor only partly
-            // covered by the captured virtual screen must not push the banner off-canvas.
-            var local = new Rectangle(bounds.Value.X - vx, bounds.Value.Y - vy,
-                                      bounds.Value.Width, bounds.Value.Height);
-            local.Intersect(new Rectangle(0, 0, vw, vh));
-            return local.IsEmpty ? new Rectangle(0, 0, vw, vh) : local;
+        private int MonitorIndexAt(Point local)
+        {
+            for (int i = 0; i < _monitors.Count; i++)
+                if (_monitors[i].Bounds.Contains(local)) return i;
+            // The dead zones of a staggered layout belong to no monitor: keep the bar where it is.
+            return Math.Clamp(_barMonitor, 0, _monitors.Count - 1);
         }
 
         public Task<RegionSelectionResult?> GetSelectionAsync() => _tcs.Task;
@@ -306,7 +340,8 @@ namespace TrueReplayer.Services
             // nothing in the log could confirm or deny.
             DiagnosticLog.Info(
                 $"Capture overlay shown — bounds {Bounds.X},{Bounds.Y} {Bounds.Width}x{Bounds.Height}, " +
-                $"visible={Visible}, foreground={IsForegroundWindow()}, pointPick={_pointPick}, regionOnly={_regionOnly}.");
+                $"visible={Visible}, foreground={IsForegroundWindow()}, pointPick={_pointPick}, regionOnly={_regionOnly}, " +
+                $"bar=\"{_bar.Title}{(_bar.For is { Length: > 0 } f ? " · " + f : "")}\".");
 
             _reachTimer = new System.Windows.Forms.Timer { Interval = ReachTickMs };
             _reachTimer.Tick += OnReachTick;
@@ -419,12 +454,13 @@ namespace TrueReplayer.Services
         // ever paints on its own UI thread — GDI+ objects are only unsafe under CONCURRENT use.
         // Per-frame geometry (GraphicsPath, Region) and the sampled-pixel swatch (colour changes
         // per state) stay local with their own using.
+        private static readonly Color Accent = Color.FromArgb(255, 96, 205, 255); // #60CDFF
         private static readonly SolidBrush OverlayTintBrush = new(Color.FromArgb(100, 0, 0, 0));
-        private static readonly Pen SelectionPen = new(Color.FromArgb(255, 96, 205, 255), 2f); // #60CDFF accent
+        private static readonly Pen SelectionPen = new(Accent, 2f);
+        private static readonly SolidBrush HandleFillBrush = new(Color.White);
+        private static readonly Pen HandleBorderPen = new(Accent, 1.5f);
         private static readonly Font DimLabelFont = new("Segoe UI", 11f, FontStyle.Regular);
         private static readonly SolidBrush DimLabelBgBrush = new(Color.FromArgb(200, 0, 0, 0));
-        private static readonly Font HintFont = new("Segoe UI", 13f, FontStyle.Regular);
-        private static readonly SolidBrush HintBgBrush = new(Color.FromArgb(180, 0, 0, 0));
         // One brush for BOTH drop shadows — disc and chip rings use the same colour.
         private static readonly SolidBrush MagShadowBrush = new(Color.FromArgb(MagShadowAlpha, 0, 0, 0));
         private static readonly SolidBrush MagBackdropBrush = new(Color.FromArgb(235, 18, 18, 18));
@@ -437,7 +473,7 @@ namespace TrueReplayer.Services
         private static readonly Font SlowBadgeFont = new("Consolas", 8f, FontStyle.Bold);
         private static readonly SolidBrush SlowBadgeBgBrush = new(Color.FromArgb(220, 0, 0, 0));
         // Badge foreground AND the chip's coord/HEX text — same accent colour, one brush.
-        private static readonly SolidBrush AccentTextBrush = new(Color.FromArgb(255, 96, 205, 255));
+        private static readonly SolidBrush AccentTextBrush = new(Accent);
         // Monospace coords so the chip width stops jumping per-digit as the cursor moves.
         private static readonly Font CoordFont = new("Consolas", 10f, FontStyle.Regular);
         private static readonly Font HexFont = new("Consolas", 10.5f, FontStyle.Bold);
@@ -445,6 +481,22 @@ namespace TrueReplayer.Services
         private static readonly SolidBrush ChipBgBrush = new(Color.FromArgb(225, 0, 0, 0));
         private static readonly SolidBrush RgbTextBrush = new(Color.FromArgb(210, 197, 197, 197));
         private static readonly Pen SwatchBorderPen = new(Color.FromArgb(170, 255, 255, 255), 1f);
+        // The bar's colours: a near-black surface that reads on any screen, muted secondary text,
+        // key caps drawn like the app's <kbd>, and the accent for the one primary button.
+        private static readonly SolidBrush BarBgBrush = new(Color.FromArgb(242, 24, 24, 27));
+        private static readonly Pen BarBorderPen = new(Color.FromArgb(56, 255, 255, 255), 1f);
+        private static readonly SolidBrush BarMutedBrush = new(Color.FromArgb(255, 161, 161, 170));
+        private static readonly SolidBrush BarHintBrush = new(Color.FromArgb(255, 212, 212, 216));
+        private static readonly SolidBrush KeyCapBgBrush = new(Color.FromArgb(255, 39, 39, 42));
+        private static readonly Pen KeyCapBorderPen = new(Color.FromArgb(255, 82, 82, 91), 1f);
+        private static readonly SolidBrush KeyCapTextBrush = new(Color.FromArgb(255, 228, 228, 231));
+        private static readonly Pen BarSeparatorPen = new(Color.FromArgb(255, 63, 63, 70), 1f);
+        private static readonly SolidBrush GhostButtonBrush = new(Color.FromArgb(255, 52, 52, 58));
+        private static readonly SolidBrush GhostButtonHoverBrush = new(Color.FromArgb(255, 72, 72, 80));
+        private static readonly SolidBrush AccentButtonBrush = new(Accent);
+        private static readonly SolidBrush AccentButtonHoverBrush = new(Color.FromArgb(255, 140, 220, 255));
+        private static readonly SolidBrush AccentButtonTextBrush = new(Color.FromArgb(255, 11, 11, 15));
+        private static readonly Pen AccentKeyCapPen = new(Color.FromArgb(150, 11, 11, 15), 1f);
 
         protected override void OnPaint(PaintEventArgs e)
         {
@@ -457,7 +509,7 @@ namespace TrueReplayer.Services
             // overload in GDI+: it draws at the image's "physical size", i.e. scaled by
             // g.DpiX / _screenshot.HorizontalResolution. Every other draw of this same bitmap
             // in this file passes GraphicsUnit.Pixel and is therefore unscaled, and so is
-            // everything that READS it — GetPixel in OnMouseDown/DrawMagnifier, the magnifier's
+            // everything that READS it — GetPixel in the pick and DrawMagnifier, the magnifier's
             // srcRect, and the ScreenX/ScreenY the form finally reports (cursor point + virtual
             // origin). If the two resolutions ever disagree the user would aim at a stretched
             // background while the coordinate comes out of the unstretched bitmap, so the pick
@@ -466,88 +518,147 @@ namespace TrueReplayer.Services
             g.DrawImage(_screenshot, new Rectangle(0, 0, _screenshot.Width, _screenshot.Height),
                         new Rectangle(0, 0, _screenshot.Width, _screenshot.Height), GraphicsUnit.Pixel);
 
-            // Dark overlay on entire screen
-            g.FillRectangle(OverlayTintBrush, ClientRectangle);
-
-            if (_isDragging || _hasSelection)
+            // A point is picked off the screen as it is — no tint (the board: "sem escurecer a
+            // tela"), so the colour under the cursor is the colour the step will look for. An area
+            // darkens everything but itself, which is what shows its edges against the screen.
+            if (!_pointPick)
             {
-                var rect = GetSelectionRect();
-                if (rect.Width > 0 && rect.Height > 0)
-                {
-                    // Draw the clear (un-tinted) region
-                    g.DrawImage(_screenshot, rect, rect, GraphicsUnit.Pixel);
-
-                    // Selection border
-                    g.DrawRectangle(SelectionPen, rect);
-
-                    // Dimension label
-                    string label = $"{rect.Width} × {rect.Height}";
-                    var labelSize = g.MeasureString(label, DimLabelFont);
-                    float labelX = rect.X + (rect.Width - labelSize.Width) / 2;
-                    float labelY = rect.Bottom + 6;
-
-                    // Ensure label stays on screen
-                    if (labelY + labelSize.Height > ClientRectangle.Height)
-                        labelY = rect.Top - labelSize.Height - 6;
-
-                    g.FillRectangle(DimLabelBgBrush, labelX - 4, labelY - 2, labelSize.Width + 8, labelSize.Height + 4);
-                    g.DrawString(label, DimLabelFont, Brushes.White, labelX, labelY);
-                }
+                g.FillRectangle(OverlayTintBrush, ClientRectangle);
+                if (_hasSelection || _drag == DragKind.Draw)
+                    DrawSelection(g);
             }
 
-            // Instruction text at top center. Visible whenever the user isn't actively dragging
-            // — including the seeded-rect case where _hasSelection is true at startup, so the
-            // "ESC to keep current" hint reaches the user before they touch the mouse.
-            if (!_isDragging)
-            {
-                string hint = _hintText;
-                var size = g.MeasureString(hint, HintFont);
-                // Centred on ONE monitor (see _hintBounds), not the virtual desktop. The
-                // vertical offset is measured from that monitor's top too, so a screen sitting
-                // lower or taller than its neighbour still gets the banner near ITS top edge.
-                float hx = _hintBounds.X + (_hintBounds.Width - size.Width) / 2;
-                float hy = _hintBounds.Y + 40;
+            DrawBar(g);
 
-                g.FillRoundedRectangle(HintBgBrush, hx - 12, hy - 6, size.Width + 24, size.Height + 12, 8);
-                g.DrawString(hint, HintFont, Brushes.White, hx, hy);
-            }
-
-            // Cursor callout — drawn last so it sits above the overlay tint and any
-            // selection rect. Skipped once a selection is committed (hasSelection && !drag)
-            // because the click already landed and the value is captured.
+            // Cursor callout — drawn last so it sits above the overlay tint, the selection and the
+            // bar. In an area it shows while there is none yet and while an edge or the area is
+            // being dragged: that is when the pixel under the pointer is the one that matters.
             //
             // ShareX-style zoom magnifier for every selection mode — pointPick (Wait Pixel),
             // regionOnly (Click Area / Wait Image search region) and image crop (Wait Image
             // initial capture / recapture). All benefit from pixel-level precision either
-            // at the click point or at the rect corner being dragged. The HEX line in the
-            // chip is gated to pointPick inside DrawMagnifier (other modes don't need colour).
-            if (!_hasSelection || _isDragging)
+            // at the click point or at the rect corner being dragged. The colour lines in the
+            // chip are gated to the colour picks inside DrawMagnifier.
+            if (_pointPick || !_hasSelection || _drag != DragKind.None)
             {
                 DrawMagnifier(g);
             }
         }
 
-        private Rectangle GetSelectionRect()
+        private void DrawSelection(Graphics g)
         {
-            int x = Math.Min(_startPoint.X, _currentPoint.X);
-            int y = Math.Min(_startPoint.Y, _currentPoint.Y);
-            int w = Math.Abs(_currentPoint.X - _startPoint.X);
-            int h = Math.Abs(_currentPoint.Y - _startPoint.Y);
-            return new Rectangle(x, y, w, h);
+            var rect = _sel;
+            if (rect.Width <= 0 || rect.Height <= 0) return;
+
+            // The clear (un-tinted) area, its border and — once drawn — the handles that adjust it.
+            g.DrawImage(_screenshot, rect, rect, GraphicsUnit.Pixel);
+            g.DrawRectangle(SelectionPen, rect);
+            if (_hasSelection && _drag != DragKind.Draw)
+            {
+                float side = HandleSide;
+                var oldSmoothing = g.SmoothingMode;
+                g.SmoothingMode = SmoothingMode.None;
+                foreach (var c in HandleCenters(rect))
+                {
+                    var h = new RectangleF(c.X - side / 2, c.Y - side / 2, side, side);
+                    g.FillRectangle(HandleFillBrush, h);
+                    g.DrawRectangle(HandleBorderPen, h.X, h.Y, h.Width, h.Height);
+                }
+                g.SmoothingMode = oldSmoothing;
+            }
+
+            // The size, always in view (the board: "400 × 300").
+            string label = $"{rect.Width} × {rect.Height}";
+            var labelSize = g.MeasureString(label, DimLabelFont);
+            float labelX = rect.X + (rect.Width - labelSize.Width) / 2;
+            float labelY = rect.Bottom + 6 + HandleSide / 2;
+            // Ensure label stays on screen
+            if (labelY + labelSize.Height > ClientRectangle.Height)
+                labelY = rect.Top - labelSize.Height - 6 - HandleSide / 2;
+            g.FillRectangle(DimLabelBgBrush, labelX - 4, labelY - 2, labelSize.Width + 8, labelSize.Height + 4);
+            g.DrawString(label, DimLabelFont, Brushes.White, labelX, labelY);
+        }
+
+        // The handles sit on the corners and on the middle of each edge, at the scale of the monitor
+        // the bar is on (one scale for the whole canvas is enough for an 8-px square).
+        private float HandleSide => 8f * _monitors[_barMonitor].Scale;
+        private int EdgeGrab => (int)Math.Ceiling(6f * _monitors[_barMonitor].Scale);
+
+        private static IEnumerable<PointF> HandleCenters(Rectangle r)
+        {
+            float cx = r.X + r.Width / 2f, cy = r.Y + r.Height / 2f;
+            yield return new PointF(r.Left, r.Top);
+            yield return new PointF(cx, r.Top);
+            yield return new PointF(r.Right, r.Top);
+            yield return new PointF(r.Right, cy);
+            yield return new PointF(r.Right, r.Bottom);
+            yield return new PointF(cx, r.Bottom);
+            yield return new PointF(r.Left, r.Bottom);
+            yield return new PointF(r.Left, cy);
+        }
+
+        // Which edges of the area a point grabs: a corner grabs two, an edge one, inside none (the
+        // caller moves the area then), outside none. The corners win over the edges they join.
+        private Edge EdgesAt(Point p)
+        {
+            if (!_hasSelection) return Edge.None;
+            int t = EdgeGrab;
+            var r = _sel;
+            if (p.X < r.Left - t || p.X > r.Right + t || p.Y < r.Top - t || p.Y > r.Bottom + t) return Edge.None;
+            Edge e = Edge.None;
+            if (Math.Abs(p.X - r.Left) <= t) e |= Edge.Left;
+            else if (Math.Abs(p.X - r.Right) <= t) e |= Edge.Right;
+            if (Math.Abs(p.Y - r.Top) <= t) e |= Edge.Top;
+            else if (Math.Abs(p.Y - r.Bottom) <= t) e |= Edge.Bottom;
+            return e;
+        }
+
+        private static Cursor CursorFor(Edge e) => e switch
+        {
+            Edge.Left | Edge.Top or Edge.Right | Edge.Bottom => Cursors.SizeNWSE,
+            Edge.Right | Edge.Top or Edge.Left | Edge.Bottom => Cursors.SizeNESW,
+            Edge.Left or Edge.Right => Cursors.SizeWE,
+            Edge.Top or Edge.Bottom => Cursors.SizeNS,
+            _ => Cursors.Cross,
+        };
+
+        // ── Keys ─────────────────────────────────────────────────────────────────
+        // Esc, Enter and the arrows are taken here, before the form's dialog-key handling would
+        // read the arrows as focus moves and Enter as an AcceptButton press. Shift stays with
+        // KeyDown/KeyUp: it is a modifier the move handler also re-reads live.
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            Keys key = keyData & Keys.KeyCode;
+            if (key is Keys.Escape or Keys.Enter or Keys.Left or Keys.Right or Keys.Up or Keys.Down)
+            {
+                // A keystroke reached the form, so it holds focus — the watchdog has nothing to guard.
+                MarkReachable("key input");
+                switch (key)
+                {
+                    // An area that was there when the capture opened stays as it was: the caller
+                    // reads a null as "keep current", the same answer as a cancel.
+                    case Keys.Escape: CancelAndClose(_seeded ? "esc (kept current)" : "esc"); break;
+                    case Keys.Enter:
+                        if (_pointPick) PickPoint(_hasCursor ? _cursorPoint : CurrentClientCursor(), "enter");
+                        else Commit("enter");
+                        break;
+                    case Keys.Left: Nudge(-1, 0); break;
+                    case Keys.Right: Nudge(1, 0); break;
+                    case Keys.Up: Nudge(0, -1); break;
+                    case Keys.Down: Nudge(0, 1); break;
+                }
+                return true;
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
         }
 
         private void OnKeyDown(object? sender, KeyEventArgs e)
         {
-            // A keystroke reached the form, so it holds focus — the watchdog has nothing to guard.
             MarkReachable("key input");
-            if (e.KeyCode == Keys.Escape)
-            {
-                CancelAndClose("esc");
-            }
             // Shift press/release only drives the badge repaint promptly — OnMouseMove reads
             // the live modifier state itself, so a missed key event can't strand the mode.
             // KeyDown auto-repeats while held; SetPrecision no-ops when already active.
-            else if (e.KeyCode == Keys.ShiftKey)
+            if (e.KeyCode == Keys.ShiftKey)
             {
                 SetPrecision(true, PrecisionAnchor());
             }
@@ -559,6 +670,24 @@ namespace TrueReplayer.Services
             {
                 SetPrecision(false, PrecisionAnchor());
             }
+        }
+
+        // One pixel per press (the board: "Arrows 1 px"). The pointer itself moves, so the cross,
+        // the magnifier and a drag in progress all follow, and the pixel Enter picks is the one the
+        // magnifier shows. The position is read back for the same reason as the precision warp: the
+        // OS keeps the cursor inside the monitors, and the canvas's bounding box has dead zones.
+        private void Nudge(int dx, int dy)
+        {
+            var from = _hasCursor ? _cursorPoint : CurrentClientCursor();
+            var to = new Point(Math.Clamp(from.X + dx, 0, ClientSize.Width - 1), Math.Clamp(from.Y + dy, 0, ClientSize.Height - 1));
+            Cursor.Position = PointToScreen(to);
+            var actual = PointToClient(Cursor.Position);
+            if (_precisionActive)
+            {
+                _precisionPos = actual;
+                _precisionWarp = actual;
+            }
+            TrackPointer(actual);
         }
 
         // Anchor for a keyboard-initiated mode change. Prefers the last point OnMouseMove
@@ -591,6 +720,70 @@ namespace TrueReplayer.Services
             InvalidateMagnifier();
         }
 
+        // ── The two ways out with an answer ──────────────────────────────────────
+
+        // A point: Width/Height stay 0 to mark the result as a point rather than a region; callers
+        // index off ScreenX/ScreenY. The colour at the point comes straight from the in-memory
+        // screenshot — the WaitPixelColor eyedropper consumes it, and even callers that ignore it
+        // (Pick Position) pay only one GetPixel call. Guarded against out-of-form coordinates so a
+        // fast click on the edge can't throw.
+        private void PickPoint(Point loc, string how)
+        {
+            if (_closing) return;
+            Color? pickedColor = null;
+            if (loc.X >= 0 && loc.Y >= 0
+                && loc.X < _screenshot.Width && loc.Y < _screenshot.Height)
+            {
+                try { pickedColor = _screenshot.GetPixel(loc.X, loc.Y); }
+                catch { /* defensive — bitmap access can race with Dispose on cancel */ }
+            }
+
+            _tcs.TrySetResult(new RegionSelectionResult
+            {
+                CroppedImage = null,
+                ScreenX = loc.X + _virtualOriginX,
+                ScreenY = loc.Y + _virtualOriginY,
+                Width = 0,
+                Height = 0,
+                PickedColor = pickedColor,
+            });
+            _closeReason = $"point picked ({how})";
+            _closing = true;
+            Close();
+        }
+
+        // An area: Enter, Done, or a double-click inside it. Nothing to confirm yet is a no-op, so
+        // an early Enter does not throw the capture away.
+        private void Commit(string how)
+        {
+            if (_closing || !_hasSelection || _drag != DragKind.None) return;
+            var rect = _sel;
+            if (rect.Width < MinSide || rect.Height < MinSide) return;
+
+            Bitmap? cropped = null;
+            if (!_regionOnly)
+            {
+                cropped = new Bitmap(rect.Width, rect.Height);
+                using var g = Graphics.FromImage(cropped);
+                g.DrawImage(_screenshot, 0, 0, rect, GraphicsUnit.Pixel);
+            }
+
+            _tcs.TrySetResult(new RegionSelectionResult
+            {
+                CroppedImage = cropped,
+                // Account for virtual screen offset — reuse the origin cached in the ctor.
+                ScreenX = rect.X + _virtualOriginX,
+                ScreenY = rect.Y + _virtualOriginY,
+                Width = rect.Width,
+                Height = rect.Height
+            });
+            _closeReason = $"region selected ({how})";
+            _closing = true;
+            Close();
+        }
+
+        // ── The mouse ────────────────────────────────────────────────────────────
+
         private void OnMouseDown(object? sender, MouseEventArgs e)
         {
             // In precision mode the pointer is pinned to the damped point, so commit THAT
@@ -612,45 +805,47 @@ namespace TrueReplayer.Services
                 CancelAndClose("right-click");
                 return;
             }
+            if (e.Button != MouseButtons.Left) return;
 
-            if (e.Button == MouseButtons.Left)
+            // The bar's buttons, where the bar can be reached (it moves away from the pointer while
+            // there is something to pick under it; see UpdateBarPlacement). A press elsewhere on
+            // the bar does nothing, rather than picking the pixel the bar covers.
+            switch (HitBar(e.Location))
             {
-                if (_pointPick)
-                {
-                    // Single-click capture — no drag needed. Width/Height stay 0 to mark this
-                    // result as a point rather than a region; callers index off ScreenX/ScreenY.
-                    // Also sample the colour at the click directly from the in-memory
-                    // screenshot — the WaitPixelColor eyedropper consumes this, and even
-                    // callers that ignore it (Pick Position) pay only one GetPixel call.
-                    // Guarded against out-of-form coordinates so a fast click on the edge
-                    // can't throw.
-                    Color? pickedColor = null;
-                    if (loc.X >= 0 && loc.Y >= 0
-                        && loc.X < _screenshot.Width && loc.Y < _screenshot.Height)
-                    {
-                        try { pickedColor = _screenshot.GetPixel(loc.X, loc.Y); }
-                        catch { /* defensive — bitmap access can race with Dispose on cancel */ }
-                    }
+                case BarHit.Cancel: CancelAndClose(_seeded ? "cancel button (kept current)" : "cancel button"); return;
+                case BarHit.Done: Commit("done button"); return;
+                case BarHit.Bar: return;
+            }
 
-                    _tcs.TrySetResult(new RegionSelectionResult
-                    {
-                        CroppedImage = null,
-                        ScreenX = loc.X + _virtualOriginX,
-                        ScreenY = loc.Y + _virtualOriginY,
-                        Width = 0,
-                        Height = 0,
-                        PickedColor = pickedColor,
-                    });
-                    _closeReason = "point picked";
-                    _closing = true;
-                    Close();
-                    return;
-                }
-                _startPoint = loc;
-                _currentPoint = loc;
-                _isDragging = true;
+            if (_pointPick)
+            {
+                PickPoint(loc, "click");
+                return;
+            }
+
+            var edges = EdgesAt(loc);
+            if (edges != Edge.None)
+            {
+                _drag = DragKind.Resize;
+                _resizeEdges = edges;
+                _selAtDown = _sel;
+                _dragAnchor = loc;
+            }
+            else if (_hasSelection && _sel.Contains(loc))
+            {
+                _drag = DragKind.Move;
+                _selAtDown = _sel;
+                _dragAnchor = loc;
+            }
+            else
+            {
+                // A press outside the area starts a new one; the old one is gone.
+                _drag = DragKind.Draw;
+                _dragAnchor = loc;
+                _sel = new Rectangle(loc, Size.Empty);
                 _hasSelection = false;
             }
+            Invalidate();
         }
 
         private void OnMouseMove(object? sender, MouseEventArgs e)
@@ -716,24 +911,121 @@ namespace TrueReplayer.Services
                 _precisionWarp = actual;
             }
 
+            TrackPointer(loc);
+        }
+
+        // The pointer is at `loc` now — from a move, a damped move or an arrow key. Follows it with
+        // the drag in progress, the hover cursor, the bar and the magnifier.
+        private void TrackPointer(Point loc)
+        {
             // Track cursor for the live "(x, y)" label even when not dragging. Without this
             // the user has no idea where on screen they're about to click in pointPick mode,
             // and in rect mode they can't preview the start point before pressing.
-            if (loc == _cursorPoint && _hasCursor && !_isDragging) return;  // no-op move
+            if (loc == _cursorPoint && _hasCursor && _drag == DragKind.None) return;  // no-op move
             _cursorPoint = loc;
             _hasCursor = true;
 
-            if (_isDragging)
+            UpdateBarPlacement(loc);
+
+            if (_drag != DragKind.None)
             {
-                _currentPoint = loc;
-                // Drag is already a full-form gesture (rect + dim label changes); a full
+                ApplyDrag(loc);
+                // A drag is already a full-form gesture (rect, handles and size label move); a full
                 // invalidate is the simplest correct option here.
                 Invalidate();
                 return;
             }
 
+            UpdateHover(loc);
             // Not dragging — only the cursor coord HUD changed.
             InvalidateMagnifier();
+        }
+
+        private void ApplyDrag(Point p)
+        {
+            var bounds = ClientRectangle;
+            switch (_drag)
+            {
+                case DragKind.Draw:
+                    _sel = Rectangle.FromLTRB(
+                        Math.Min(_dragAnchor.X, p.X), Math.Min(_dragAnchor.Y, p.Y),
+                        Math.Max(_dragAnchor.X, p.X), Math.Max(_dragAnchor.Y, p.Y));
+                    break;
+                case DragKind.Move:
+                {
+                    int x = Math.Clamp(_selAtDown.X + p.X - _dragAnchor.X, 0, Math.Max(0, bounds.Width - _selAtDown.Width));
+                    int y = Math.Clamp(_selAtDown.Y + p.Y - _dragAnchor.Y, 0, Math.Max(0, bounds.Height - _selAtDown.Height));
+                    _sel = new Rectangle(x, y, _selAtDown.Width, _selAtDown.Height);
+                    break;
+                }
+                case DragKind.Resize:
+                {
+                    // The edges not grabbed stay where they were, and none crosses the opposite one:
+                    // an area never turns inside out or gets smaller than the floor.
+                    int dx = p.X - _dragAnchor.X, dy = p.Y - _dragAnchor.Y;
+                    int l = _selAtDown.Left, t = _selAtDown.Top, r = _selAtDown.Right, b = _selAtDown.Bottom;
+                    if ((_resizeEdges & Edge.Left) != 0) l = Math.Clamp(l + dx, 0, r - MinSide);
+                    if ((_resizeEdges & Edge.Right) != 0) r = Math.Clamp(r + dx, l + MinSide, bounds.Width);
+                    if ((_resizeEdges & Edge.Top) != 0) t = Math.Clamp(t + dy, 0, b - MinSide);
+                    if ((_resizeEdges & Edge.Bottom) != 0) b = Math.Clamp(b + dy, t + MinSide, bounds.Height);
+                    _sel = Rectangle.FromLTRB(l, t, r, b);
+                    break;
+                }
+            }
+        }
+
+        private void UpdateHover(Point loc)
+        {
+            var hit = HitBar(loc);
+            if (hit != _barHover)
+            {
+                _barHover = hit;
+                if (_barLayout != null) Invalidate(Rectangle.Inflate(Rectangle.Ceiling(_barLayout.Bar), 2, 2));
+            }
+            Cursor wanted;
+            if (hit is BarHit.Cancel or BarHit.Done) wanted = Cursors.Hand;
+            else if (hit == BarHit.Bar) wanted = Cursors.Default;
+            else if (_pointPick) wanted = Cursors.Cross;
+            else
+            {
+                var edges = EdgesAt(loc);
+                wanted = edges != Edge.None ? CursorFor(edges)
+                    : _hasSelection && _sel.Contains(loc) ? Cursors.SizeAll
+                    : Cursors.Cross;
+            }
+            if (Cursor != wanted) Cursor = wanted;
+        }
+
+        private void OnMouseUp(object? sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left || _drag == DragKind.None) return;
+
+            // Same pinning rationale as OnMouseDown — releasing the button must not shift the edge
+            // away from the pixel the magnifier was showing.
+            var loc = _precisionActive && _hasCursor ? _cursorPoint : e.Location;
+            ApplyDrag(loc);
+            var kind = _drag;
+            _drag = DragKind.None;
+
+            if (kind == DragKind.Draw)
+            {
+                // A new area waits for Enter or Done; a click that barely moved is not one, and the
+                // capture simply carries on.
+                _hasSelection = _sel.Width >= MinSide && _sel.Height >= MinSide;
+            }
+            UpdateHover(loc);
+            Invalidate();
+        }
+
+        // A double-click inside the area confirms it, the way most capture tools do. Its first
+        // press started a Move that went nowhere.
+        private void OnMouseDoubleClick(object? sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left && !_pointPick && _hasSelection && _sel.Contains(e.Location))
+            {
+                _drag = DragKind.None;
+                Commit("double-click");
+            }
         }
 
         // Invalidate the union of the PREVIOUSLY-PAINTED label rect (captured at the end of
@@ -768,6 +1060,260 @@ namespace TrueReplayer.Services
             if (_zoomIndex != prev) Invalidate();
         }
 
+        // ── The bar ──────────────────────────────────────────────────────────────
+
+        // Where the bar sits for the pointer at `loc`: on the pointer's monitor, at the top unless
+        // the pointer came near it, then at the bottom — and back up when it comes near there. Once
+        // an area is drawn and nothing is being dragged, the bar holds still: its Done and Cancel
+        // have to be reachable, and nothing under it is being picked.
+        private void UpdateBarPlacement(Point loc)
+        {
+            int monitor = MonitorIndexAt(loc);
+            bool bottom = _barAtBottom;
+            bool holdStill = !_pointPick && _hasSelection && _drag == DragKind.None;
+            if (!holdStill && _barLayout != null && monitor == _barMonitor)
+            {
+                float s = _monitors[monitor].Scale;
+                var near = RectangleF.Inflate(_barLayout.Bar, 24 * s, 32 * s);
+                if (near.Contains(loc)) bottom = !_barAtBottom;
+            }
+            if (monitor == _barMonitor && bottom == _barAtBottom) return;
+            var old = _barLayout?.Bar ?? RectangleF.Empty;
+            _barMonitor = monitor;
+            _barAtBottom = bottom;
+            _barLayout = null;   // laid out again on the next paint, where it is drawn
+            if (!old.IsEmpty) Invalidate(Rectangle.Inflate(Rectangle.Ceiling(old), 2, 2));
+            Invalidate(Rectangle.Inflate(Rectangle.Ceiling(PredictBarRect()), 2, 2));
+        }
+
+        private BarHit HitBar(Point p)
+        {
+            var l = _barLayout;
+            if (l == null || !l.Bar.Contains(p)) return BarHit.None;
+            if (l.Cancel.Contains(p)) return BarHit.Cancel;
+            if (!l.Done.IsEmpty && l.Done.Contains(p)) return BarHit.Done;
+            return BarHit.Bar;
+        }
+
+        // The bar's rect before the next paint lays it out, for the invalidate when it moves: the
+        // last width is a good guess, and the monitor's full width is a safe one.
+        private RectangleF PredictBarRect()
+        {
+            var (mon, s) = _monitors[_barMonitor];
+            float h = BarHeight * s;
+            float y = _barAtBottom ? mon.Bottom - BarMargin * s - h : mon.Top + BarMargin * s;
+            return new RectangleF(mon.X, y, mon.Width, h);
+        }
+
+        private const float BarHeight = 44f;
+        private const float BarMargin = 20f;
+
+        private sealed class BarLayout
+        {
+            public RectangleF Bar;
+            public RectangleF Cancel;
+            public RectangleF Done = RectangleF.Empty;
+            public float Scale;
+            public readonly List<(string Text, Font Font, Brush Brush, PointF At)> Texts = new();
+            public readonly List<(RectangleF Rect, string Text, bool OnAccent)> Caps = new();
+            public readonly List<float> Separators = new();
+        }
+
+        // Fonts per scale, made once: the bar is laid out on each paint that touches it.
+        private readonly Dictionary<float, BarFonts> _barFonts = new();
+        private sealed record BarFonts(Font Title, Font Body, Font Cap, Font Button);
+        private BarFonts FontsFor(float s)
+        {
+            if (!_barFonts.TryGetValue(s, out var f))
+            {
+                f = new BarFonts(
+                    new Font("Segoe UI Semibold", 14f * s, FontStyle.Regular, GraphicsUnit.Pixel),
+                    new Font("Segoe UI", 13f * s, FontStyle.Regular, GraphicsUnit.Pixel),
+                    new Font("Segoe UI Semibold", 11f * s, FontStyle.Regular, GraphicsUnit.Pixel),
+                    new Font("Segoe UI Semibold", 13f * s, FontStyle.Regular, GraphicsUnit.Pixel));
+                _barFonts[s] = f;
+            }
+            return f;
+        }
+
+        // The bar, left to right: the title and what it is for; then the keys of a point ("Scroll
+        // zoom · Shift slow · Arrows 1 px · Enter pick") or the hint of an area; then Cancel (or Keep
+        // current) with Esc, and for an area Done with Enter. Too wide for its monitor, it drops the
+        // "for" line first, then the keys or hint — the title and the buttons always stay.
+        private BarLayout LayoutBar(Graphics g)
+        {
+            var (mon, s) = _monitors[_barMonitor];
+            var fonts = FontsFor(s);
+            float h = BarHeight * s, pad = 14 * s, gap = 8 * s, groupGap = 12 * s;
+
+            float Measure(string text, Font font) => g.MeasureString(text, font, PointF.Empty, StringFormat.GenericTypographic).Width;
+            float CapWidth(string text) => Measure(text, fonts.Cap) + 10 * s;
+
+            var keys = new List<(string Cap, string Label)>();
+            if (_pointPick)
+            {
+                keys.Add(("Scroll", "zoom"));
+                keys.Add(("Shift", "slow"));
+                keys.Add(("Arrows", "1 px"));
+                keys.Add(("Enter", "pick"));
+            }
+            string? hint = _pointPick ? null : (_bar.Hint ?? "Drag to draw · drag the edges to adjust");
+            string cancelText = _seeded ? "Keep current" : "Cancel";
+            bool hasDone = !_pointPick;
+
+            float titleW = Measure(_bar.Title, fonts.Title);
+            float forW = _bar.For is { Length: > 0 } ? Measure(_bar.For, fonts.Body) : 0;
+            float keysW = 0;
+            foreach (var (cap, label) in keys) keysW += CapWidth(cap) + 5 * s + Measure(label, fonts.Body) + groupGap;
+            if (keys.Count > 0) keysW -= groupGap;
+            float hintW = hint != null ? Measure(hint, fonts.Body) : 0;
+            float middleW = keys.Count > 0 ? keysW : hintW;
+            float ButtonW(string text, string cap) => 12 * s + Measure(text, fonts.Button) + 6 * s + CapWidth(cap) + 8 * s;
+            float buttonsW = ButtonW(cancelText, "Esc") + (hasDone ? gap + ButtonW("Done", "Enter") : 0);
+
+            float sep = 1 + 2 * groupGap;
+            float Total(bool withFor, bool withMiddle) =>
+                pad + titleW + (withFor && forW > 0 ? gap + forW : 0)
+                + (withMiddle && middleW > 0 ? sep + middleW : 0)
+                + sep + buttonsW + pad;
+            float maxW = mon.Width - 32 * s;
+            bool showFor = true, showMiddle = true;
+            if (Total(showFor, showMiddle) > maxW) showFor = false;
+            if (Total(showFor, showMiddle) > maxW) showMiddle = false;
+            float w = Math.Min(Total(showFor, showMiddle), maxW);
+
+            float x0 = mon.X + (mon.Width - w) / 2f;
+            float y0 = _barAtBottom ? mon.Bottom - BarMargin * s - h : mon.Top + BarMargin * s;
+            var layout = new BarLayout { Bar = new RectangleF(x0, y0, w, h), Scale = s };
+            float cy = y0 + h / 2f;
+            float x = x0 + pad;
+
+            float TextY(Font font) => cy - font.GetHeight(g) / 2f;
+            layout.Texts.Add((_bar.Title, fonts.Title, Brushes.White, new PointF(x, TextY(fonts.Title))));
+            x += titleW;
+            if (showFor && forW > 0)
+            {
+                x += gap;
+                layout.Texts.Add((_bar.For!, fonts.Body, BarMutedBrush, new PointF(x, TextY(fonts.Body))));
+                x += forW;
+            }
+            if (showMiddle && middleW > 0)
+            {
+                x += groupGap;
+                layout.Separators.Add(x);
+                x += 1 + groupGap;
+                if (keys.Count > 0)
+                {
+                    foreach (var (cap, label) in keys)
+                    {
+                        float cw = CapWidth(cap);
+                        layout.Caps.Add((new RectangleF(x, cy - 10 * s, cw, 20 * s), cap, false));
+                        x += cw + 5 * s;
+                        layout.Texts.Add((label, fonts.Body, BarMutedBrush, new PointF(x, TextY(fonts.Body))));
+                        x += Measure(label, fonts.Body) + groupGap;
+                    }
+                    x -= groupGap;
+                }
+                else
+                {
+                    layout.Texts.Add((hint!, fonts.Body, BarHintBrush, new PointF(x, TextY(fonts.Body))));
+                    x += hintW;
+                }
+            }
+            x += groupGap;
+            layout.Separators.Add(x);
+            x += 1 + groupGap;
+
+            // The buttons sit at the right edge, whatever was dropped before them.
+            float bx = x0 + w - pad - buttonsW;
+            float bh = 28 * s;
+            float cancelW = ButtonW(cancelText, "Esc");
+            layout.Cancel = new RectangleF(bx, cy - bh / 2f, cancelW, bh);
+            if (hasDone)
+                layout.Done = new RectangleF(bx + cancelW + gap, cy - bh / 2f, ButtonW("Done", "Enter"), bh);
+            return layout;
+        }
+
+        private void DrawBar(Graphics g)
+        {
+            var oldSmoothing = g.SmoothingMode;
+            var oldText = g.TextRenderingHint;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+
+            var l = _barLayout = LayoutBar(g);
+            float s = l.Scale;
+            var fonts = FontsFor(s);
+            var bar = l.Bar;
+
+            using (var path = RoundedRect(bar, 10 * s))
+            {
+                g.FillPath(BarBgBrush, path);
+                g.DrawPath(BarBorderPen, path);
+            }
+            foreach (var (text, font, brush, at) in l.Texts)
+                g.DrawString(text, font, brush, at, StringFormat.GenericTypographic);
+            foreach (var (rect, text, onAccent) in l.Caps)
+                DrawKeyCap(g, rect, text, fonts.Cap, onAccent, s);
+            foreach (float sx in l.Separators)
+                g.DrawLine(BarSeparatorPen, sx, bar.Y + bar.Height / 2f - 10 * s, sx, bar.Y + bar.Height / 2f + 10 * s);
+
+            DrawButton(g, l.Cancel, _seeded ? "Keep current" : "Cancel", "Esc", accent: false, hover: _barHover == BarHit.Cancel, fonts, s);
+            if (!l.Done.IsEmpty)
+                DrawButton(g, l.Done, "Done", "Enter", accent: true, hover: _barHover == BarHit.Done, fonts, s);
+
+            g.SmoothingMode = oldSmoothing;
+            g.TextRenderingHint = oldText;
+        }
+
+        private void DrawButton(Graphics g, RectangleF r, string text, string cap, bool accent, bool hover, BarFonts fonts, float s)
+        {
+            // An area's Done is dimmed until there is an area to confirm.
+            bool enabled = !accent || (_hasSelection && _sel.Width >= MinSide && _sel.Height >= MinSide);
+            Brush fill = accent
+                ? (hover && enabled ? AccentButtonHoverBrush : AccentButtonBrush)
+                : (hover ? GhostButtonHoverBrush : GhostButtonBrush);
+            using (var path = RoundedRect(r, 7 * s))
+                g.FillPath(fill, path);
+            Brush textBrush = accent ? AccentButtonTextBrush : Brushes.White;
+            float tx = r.X + 12 * s;
+            float ty = r.Y + r.Height / 2f - fonts.Button.GetHeight(g) / 2f;
+            g.DrawString(text, fonts.Button, textBrush, tx, ty, StringFormat.GenericTypographic);
+            float tw = g.MeasureString(text, fonts.Button, PointF.Empty, StringFormat.GenericTypographic).Width;
+            float cw = g.MeasureString(cap, fonts.Cap, PointF.Empty, StringFormat.GenericTypographic).Width + 10 * s;
+            DrawKeyCap(g, new RectangleF(tx + tw + 6 * s, r.Y + r.Height / 2f - 9 * s, cw, 18 * s), cap, fonts.Cap, accent, s);
+            if (!enabled)
+            {
+                using var veil = new SolidBrush(Color.FromArgb(140, 24, 24, 27));
+                using var path = RoundedRect(r, 7 * s);
+                g.FillPath(veil, path);
+            }
+        }
+
+        private static void DrawKeyCap(Graphics g, RectangleF r, string text, Font font, bool onAccent, float s)
+        {
+            using var path = RoundedRect(r, 4 * s);
+            if (!onAccent) g.FillPath(KeyCapBgBrush, path);
+            g.DrawPath(onAccent ? AccentKeyCapPen : KeyCapBorderPen, path);
+            float tw = g.MeasureString(text, font, PointF.Empty, StringFormat.GenericTypographic).Width;
+            g.DrawString(text, font, onAccent ? AccentButtonTextBrush : KeyCapTextBrush,
+                r.X + (r.Width - tw) / 2f, r.Y + r.Height / 2f - font.GetHeight(g) / 2f, StringFormat.GenericTypographic);
+        }
+
+        private static GraphicsPath RoundedRect(RectangleF r, float radius)
+        {
+            var path = new GraphicsPath();
+            float d = Math.Min(radius * 2, Math.Min(r.Width, r.Height));
+            path.AddArc(r.X, r.Y, d, d, 180, 90);
+            path.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+            path.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+            path.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+            path.CloseFigure();
+            return path;
+        }
+
+        // ── The magnifier ────────────────────────────────────────────────────────
+
         // Magnifier zoom — PowerToys-style mouse-wheel zoom. Each level is (source-pixel count
         // across the disc, on-screen px per pixel); counts are ODD so the centre pixel sits exactly
         // under the cursor. Scrolling up steps toward fewer/larger pixels (more magnification).
@@ -789,7 +1335,7 @@ namespace TrueReplayer.Services
         private int MagPixelSize => ZoomLevels[_zoomIndex].size;
         private int MagDiameter => MagPixelCount * MagPixelSize;
         private const int MagLabelGap = 8;
-        // Three-line chip: X/Y coords + HEX + RGB. Must match the rendered height so the
+        // Three-line chip: coords + HEX + RGB. Must match the rendered height so the
         // flip-on-edge logic in DrawMagnifier + ComputeCursorLabelRect lands cleanly.
         private const int MagLabelHeight = 56;
         private const int MagOffset = 20;
@@ -821,15 +1367,14 @@ namespace TrueReplayer.Services
                                      MagShadowMargin, MagShadowMargin);
         }
 
-        // ShareX-style zoom magnifier. Renders an 11×11 patch of the in-memory
-        // screenshot centred on the cursor, amplified ~13× with nearest-neighbour
-        // so individual pixels are crisp squares. A crosshair points at the centre
-        // pixel — the one the click will actually capture — and the absolute coords
-        // sit in a chip below the disc.
+        // ShareX-style zoom magnifier. Renders a patch of the in-memory screenshot centred on the
+        // cursor, amplified with nearest-neighbour so individual pixels are crisp squares. A
+        // crosshair points at the centre pixel — the one the click will actually capture — and the
+        // chip below the disc says where it is ("824, 492") and, in a colour pick, its colour
+        // ("#2ECC71", "46 204 113"), as the board draws it.
         //
-        // Used only in pointPick mode. The system cursor alone makes 1-pixel
-        // colour-picking essentially a guessing game; this disc removes the
-        // ambiguity (the user sees exactly which pixel will be sampled).
+        // The system cursor alone makes 1-pixel colour-picking essentially a guessing game; this
+        // disc removes the ambiguity (the user sees exactly which pixel will be sampled).
         private void DrawMagnifier(Graphics g)
         {
             if (!_hasCursor) return;
@@ -956,7 +1501,7 @@ namespace TrueReplayer.Services
             g.DrawEllipse(_precisionActive ? MagBorderPrecisionPen : MagBorderPen, circleRect);
 
             // Live "SLOW" badge — state, not instruction: the discoverable hint lives in the
-            // top bar, this only confirms the mode is engaged. Sits inside the lower edge of
+            // bar, this only confirms the mode is engaged. Sits inside the lower edge of
             // the disc (well within the tracked invalidate rect, so it can't smear) and is
             // narrow enough to fit the chord at that height even on the smallest zoom level.
             if (_precisionActive)
@@ -971,12 +1516,12 @@ namespace TrueReplayer.Services
                 g.DrawString(slowText, SlowBadgeFont, AccentTextBrush, badgeX + 5, badgeY + 1);
             }
 
-            // Coord chip below the disc — TWO lines:
-            //   1. "X: {absX}  Y: {absY}"  — always shown
-            //   2. "#RRGGBB"               — pointPick (Wait Pixel) only. Region picks don't
-            //      need the colour; suppress the line to keep the chip compact.
-            string coordText = $"X: {absX}  Y: {absY}";
-            bool showHex = _pointPick;
+            // Coord chip below the disc:
+            //   1. "{x}, {y}"      — always shown
+            //   2. "#RRGGBB"      — colour picks only, with the swatch
+            //   3. "{r} {g} {b}"  — colour picks only
+            string coordText = $"{absX}, {absY}";
+            bool showHex = _showColor;
             Color? sampled = null;
             if (showHex
                 && _cursorPoint.X >= 0 && _cursorPoint.X < _screenshot.Width
@@ -989,7 +1534,7 @@ namespace TrueReplayer.Services
                 : "—";
             // RGB readout alongside HEX — PowerToys shows multiple formats; this is the second one.
             string rgbText = sampled.HasValue
-                ? $"RGB  {sampled.Value.R}, {sampled.Value.G}, {sampled.Value.B}"
+                ? $"{sampled.Value.R} {sampled.Value.G} {sampled.Value.B}"
                 : "";
 
             var coordSize = g.MeasureString(coordText, CoordFont);
@@ -997,7 +1542,7 @@ namespace TrueReplayer.Services
             var rgbSize = (showHex && rgbText.Length > 0) ? g.MeasureString(rgbText, RgbFont) : SizeF.Empty;
 
             // Colour swatch to the left of the HEX line — the signature "real eyedropper"
-            // element (ShareX/PowerToys both show it). pointPick only, so gated on showHex.
+            // element (ShareX/PowerToys both show it). Colour picks only, so gated on showHex.
             const float swatch = 12f, swGap = 6f;
             bool showSwatch = showHex && sampled.HasValue;
             float hexGroupW = showSwatch ? swatch + swGap + hexSize.Width : hexSize.Width;
@@ -1045,59 +1590,16 @@ namespace TrueReplayer.Services
                 new Rectangle(magX, magY, MagDiameter, MagTotalHeight), MagShadowMargin, MagShadowMargin);
         }
 
-        private void OnMouseUp(object? sender, MouseEventArgs e)
-        {
-            if (e.Button == MouseButtons.Left && _isDragging)
-            {
-                // Same pinning rationale as OnMouseDown — releasing the button must not shift
-                // the committed edge away from the pixel the magnifier was showing.
-                _isDragging = false;
-                _currentPoint = _precisionActive && _hasCursor ? _cursorPoint : e.Location;
-                _hasSelection = true;
-
-                var rect = GetSelectionRect();
-                if (rect.Width < 10 || rect.Height < 10)
-                {
-                    // Too small, reset
-                    _hasSelection = false;
-                    Invalidate();
-                    return;
-                }
-
-                // Account for virtual screen offset — reuse the origin cached in the ctor instead
-                // of re-querying GetSystemMetrics.
-                int vx = _virtualOriginX;
-                int vy = _virtualOriginY;
-
-                Bitmap? cropped = null;
-                if (!_regionOnly)
-                {
-                    cropped = new Bitmap(rect.Width, rect.Height);
-                    using var g = Graphics.FromImage(cropped);
-                    g.DrawImage(_screenshot, 0, 0, rect, GraphicsUnit.Pixel);
-                }
-
-                var result = new RegionSelectionResult
-                {
-                    CroppedImage = cropped,
-                    ScreenX = rect.X + vx,
-                    ScreenY = rect.Y + vy,
-                    Width = rect.Width,
-                    Height = rect.Height
-                };
-
-                _tcs.TrySetResult(result);
-                _closeReason = "region selected";
-                _closing = true;
-                Close();
-            }
-        }
-
         protected override void Dispose(bool disposing)
         {
             if (disposing)
             {
                 _screenshot?.Dispose();
+                foreach (var f in _barFonts.Values)
+                {
+                    f.Title.Dispose(); f.Body.Dispose(); f.Cap.Dispose(); f.Button.Dispose();
+                }
+                _barFonts.Clear();
                 // Put the process-wide ceiling back. MaximumBuffer is global state, and lowering it
                 // releases the cached surface rather than merely capping future ones — measured at
                 // 28.3 MB returned on a 5120x1440 desktop — so the overlay pays for its buffer only
@@ -1111,6 +1613,11 @@ namespace TrueReplayer.Services
             }
             base.Dispose(disposing);
         }
+
+        private const uint MONITOR_DEFAULTTONEAREST = 2;
+        private const int MDT_EFFECTIVE_DPI = 0;
+        [DllImport("user32.dll")] private static extern IntPtr MonitorFromPoint(NativeMethods.POINT pt, uint dwFlags);
+        [DllImport("shcore.dll")] private static extern int GetDpiForMonitor(IntPtr hmonitor, int dpiType, out uint dpiX, out uint dpiY);
     }
 
     // Extension method for rounded rectangles

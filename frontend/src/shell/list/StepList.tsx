@@ -292,7 +292,7 @@ export function StepList() {
         if (!id) return;
         const requestId = newRequestId();
         pickRef.current = { requestId, id };
-        tools.pickPosition({ requestId });
+        tools.pickPosition({ requestId, captureFor: `for step ${row + 1}, ${stepName(steps[row].actionType)}` });
       },
       edit: (row) => {
         // The step menu's Edit: the step is the selection, and the Inspector takes the focus.

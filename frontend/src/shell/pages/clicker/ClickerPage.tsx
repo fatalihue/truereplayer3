@@ -706,6 +706,12 @@ function ClickSection() {
   );
 }
 
+// What the capture bar says the Clicker's pickers are for: the selected preset, when there is one.
+const captureFor = () => {
+  const preset = useClickerUi.getState().selected;
+  return preset ? `for Clicker, ${preset}` : 'for Clicker';
+};
+
 function WhereSection() {
   const fields = useFields();
   const clicker = useClicker();
@@ -717,7 +723,7 @@ function WhereSection() {
   const choose = (w: Where) => {
     if (w === 'cursor') commit({ cursorClickUseArea: false, cursorClickUseFixed: false });
     // No box yet: the box is drawn first, and the engine arms Area when it lands (Esc leaves all as it was).
-    else if (w === 'area' && !area) clicker.pickArea();
+    else if (w === 'area' && !area) clicker.pickAreaFor(captureFor());
     else {
       // The spread goes off with it, and a value it seeded goes back.
       const back = spreadOn ? seedOff('cursorClickPositionJitter', fields.cursorClickPositionJitter) : {};
@@ -751,7 +757,7 @@ function WhereSection() {
               <span className="ck-card-value">{area.w} × {area.h}</span>
               <span className="ck-card-sub">at {area.x}, {area.y}</span>
             </span>
-            <button type="button" className="insp-button ck-small" onClick={clicker.pickArea}><Crop aria-hidden="true" />Redraw</button>
+            <button type="button" className="insp-button ck-small" onClick={() => clicker.pickAreaFor(captureFor())}><Crop aria-hidden="true" />Redraw</button>
             <button type="button" className="insp-icon-button ck-clear" aria-label="Clear area" onClick={() => commit({ cursorClickUseArea: false, cursorClickArea: null })}><X aria-hidden="true" /></button>
           </div>
           <p className="ck-hint">A new random point inside the box on every click.</p>
@@ -764,7 +770,7 @@ function WhereSection() {
               <span className="ck-card-value">{point ? `${point.x}, ${point.y}` : 'At start'}</span>
               <span className="ck-card-sub">{point ? 'Every click on this point' : 'Where the cursor is when it starts'}</span>
             </span>
-            <button type="button" className="insp-button ck-small" onClick={clicker.pickPoint}><Crosshair aria-hidden="true" />{point ? 'Pick again' : 'Pick a point'}</button>
+            <button type="button" className="insp-button ck-small" onClick={() => clicker.pickPointFor(captureFor())}><Crosshair aria-hidden="true" />{point ? 'Pick again' : 'Pick a point'}</button>
             {point && <button type="button" className="insp-icon-button ck-clear" aria-label="Clear fixed point" onClick={() => commit({ cursorClickFixedPoint: null })}><X aria-hidden="true" /></button>}
           </div>
           <p className="ck-hint">One point every click. Without one, it locks where the cursor is at start.</p>

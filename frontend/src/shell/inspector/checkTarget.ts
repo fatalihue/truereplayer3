@@ -18,6 +18,8 @@ export interface CheckTarget {
   tools: { absolute: true; anchor?: AnchorWindow };
   /** The macro whose files the reference image is among. */
   profile: string;
+  /** What the capture bar says its captures are for: "for the Trade Roblox automation". */
+  captureFor: string;
   captureImage: () => void;
   /** Choose file…: a picture on disk as the reference image. */
   chooseImage: () => void;

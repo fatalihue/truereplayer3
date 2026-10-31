@@ -64,6 +64,9 @@ export function useClicker() {
       pickArea,
       /** Opens the single-click point picker. A successful pick arms Fixed and disarms the other two. */
       pickPoint: () => send({ type: 'clicker:configurePoint', payload: {} }),
+      /** The same two pickers, with what the capture bar says they are for ("for Clicker, Farm Sailor"). */
+      pickAreaFor: (captureFor: string) => send({ type: 'clicker:configureArea', payload: { captureFor } }),
+      pickPointFor: (captureFor: string) => send({ type: 'clicker:configurePoint', payload: { captureFor } }),
       /**
        * Arms or disarms Area. Arming it with no box drawn is a state the engine ignores and the
        * backend normalises away the moment a preset is applied — so a preset saved from it came

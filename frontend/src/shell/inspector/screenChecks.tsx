@@ -5,6 +5,7 @@ import { useSteps } from '../../logic/useSteps';
 import { useTt } from '../../state/LanguageContext';
 import { effectiveOperator, isNumberMode, parsesAsNumber, regexProblem } from '../../utils/screenText';
 import { useCheckTarget } from './checkTarget';
+import { useCaptureFor } from './captureFor';
 import { DraftField, Section, Segmented } from './fields';
 import { applyEdits, type StepEdit } from './inspectorState';
 import { ExtensionMissing, OcrMissing } from './missing';
@@ -32,6 +33,7 @@ export function PixelCheck({ step, locked, reads }: Props & { reads: Reads }) {
   const tools = useEditorTools();
   // An automation's point is on the screen, or on its own window: the tools say so.
   const where = useCheckTarget()?.tools;
+  const captureFor = useCaptureFor();
   const tt = useTt();
   const id = step.id ?? '';
   const tolerance = step.pixelTolerance ?? 0;
@@ -51,7 +53,7 @@ export function PixelCheck({ step, locked, reads }: Props & { reads: Reads }) {
         <div className="insp-line">
           <DraftField stepId={id} field="pixelX" label="Pixel X" kind="int" signed min={-2_000_000} max={2_000_000} empty="clear" prefix="X" placeholder="—" stored={step.pixelX == null ? '' : String(step.pixelX)} disabled={locked} />
           <DraftField stepId={id} field="pixelY" label="Pixel Y" kind="int" signed min={-2_000_000} max={2_000_000} empty="clear" prefix="Y" placeholder="—" stored={step.pixelY == null ? '' : String(step.pixelY)} disabled={locked} />
-          <button type="button" className="insp-button" disabled={locked || pick.waiting} data-tip={tt('Click a point of the screen: its place and its color', 'Clique num ponto da tela: o lugar e a cor dele')} onClick={() => pick.ask(requestId => tools.pickColor({ requestId, ...where }))}>
+          <button type="button" className="insp-button" disabled={locked || pick.waiting} data-tip={tt('Click a point of the screen: its place and its color', 'Clique num ponto da tela: o lugar e a cor dele')} onClick={() => pick.ask(requestId => tools.pickColor({ requestId, ...where, captureFor }))}>
             <span className="step-icon" data-icon="pipette" />
             {pick.waiting ? 'Picking…' : 'Pick'}
           </button>
@@ -108,6 +110,7 @@ export function ScreenTextCheck({ step, locked, variant = 'match', reads = 'foun
   // An automation's read: its region is on the screen or its window, it is required (D16), and the
   // watcher resolves no tokens.
   const auto = useCheckTarget();
+  const captureFor = useCaptureFor();
   const tt = useTt();
   const id = step.id ?? '';
   const region = regionOf(step);
@@ -223,7 +226,7 @@ export function ScreenTextCheck({ step, locked, variant = 'match', reads = 'foun
       <Section label="Text color" hint={color ? undefined : 'Any. Pick the text color to read game HUDs over a busy scene.'}>
         <div className="insp-line">
           <HexField stepId={id} field="ocrTextColor" label="Text color" placeholder="Any" stored={step.ocrTextColor ?? ''} disabled={locked} clearable />
-          <button type="button" className="insp-button" disabled={locked || pick.waiting} data-tip={tt('Pick the color of the text on the screen', 'Escolher a cor do texto na tela')} onClick={() => pick.ask(requestId => tools.pickColor({ requestId }))}>
+          <button type="button" className="insp-button" disabled={locked || pick.waiting} data-tip={tt('Pick the color of the text on the screen', 'Escolher a cor do texto na tela')} onClick={() => pick.ask(requestId => tools.pickColor({ requestId, captureFor }))}>
             <span className="step-icon" data-icon="pipette" />
             {pick.waiting ? 'Picking…' : 'Pick'}
           </button>
