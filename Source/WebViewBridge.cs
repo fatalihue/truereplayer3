@@ -284,6 +284,8 @@ namespace TrueReplayer
         public bool RecordKeyboard { get; set; } = true;
         // Combined recording toggle (single Keystroke / *Click vs paired Down+Up). Default ON.
         public bool RecordCombinedInput { get; set; } = true;
+        /// <summary>Settings › General › Compact view while a macro runs (CompactWindow board): off by default.</summary>
+        public bool CompactWhileRunning { get; set; }
         public bool ProfileKeyEnabled { get; set; } = true;
         public bool BrowserSelectorEnabled { get; set; } = false;
 
@@ -1065,6 +1067,7 @@ namespace TrueReplayer
             RecordScroll = saved.RecordScroll;
             RecordKeyboard = saved.RecordKeyboard;
             RecordCombinedInput = saved.RecordCombinedInput;
+            CompactWhileRunning = saved.CompactWhileRunning;
             // Profile Keys always start ON (never restore a paused state across launches) — the
             // persisted flag is already normalized to true in Program.Main before the tray icon
             // reads it; force the runtime value here too, defensively. See also UseCursorClick above.
@@ -1278,6 +1281,10 @@ namespace TrueReplayer
                     case "window:alwaysOnTop": HandleAlwaysOnTop(payload); break;
                     case "window:snapWidths": HandleSnapWidths(payload); break;
                     case "window:minimizeToTray": HandleMinimizeToTray(payload); break;
+                    // The compact view (rule 10 of the plan): the title bar's Compact view and Ctrl+K go
+                    // in, the compact layout's "Back to the full window" comes out; its × hides to the tray.
+                    case "window:compact": window.SetCompact(payload.TryGetProperty("on", out var compactOn) && compactOn.ValueKind == JsonValueKind.True); break;
+                    case "window:hideToTray": window.HideToTray(); break;
                     // "Switch to TrueReplayer 2" after it knocked (CoexistenceGuard): this app exits, and
                     // opens TrueReplayer 2 when it is installed.
                     case "coexist:switch":
@@ -1470,6 +1477,8 @@ namespace TrueReplayer
             // Reflect the live run-state in the tray hover tooltip (Replaying…/Recording…/idle).
             // Cheap: SetRunState no-ops when the state is unchanged.
             TrayIconService.SetRunState(status);
+            // Compact view while a macro runs (Settings › General).
+            window.OnRunStatus(status);
 
             SendMessage("status:changed", new { status });
             PushButtonStates();
@@ -3641,6 +3650,7 @@ namespace TrueReplayer
                 recordScroll = RecordScroll,
                 recordKeyboard = RecordKeyboard,
                 recordCombinedInput = RecordCombinedInput,
+                compactWhileRunning = CompactWhileRunning,
                 profileKeyEnabled = ProfileKeyEnabled,
                 browserSelectorEnabled = BrowserSelectorEnabled,
                 recordingHotkey = profile.RecordingHotkey,
@@ -4250,6 +4260,8 @@ namespace TrueReplayer
             // UI loaded successfully — cancel the watchdog timer. Stays FIRST and unconditional:
             // the deferral below must never be mistaken for an unresponsive UI.
             window.CancelUIWatchdog();
+            // A page loaded (or reloaded) in the compact view lays itself out for it.
+            if (window.IsCompact) SendMessage("window:compactChanged", new { compact = true, captionInset = window.CompactCaptionInset });
 
             // The React tree that could have claimed this is gone — a reload, a crash recovery, a
             // DevTools refresh — so its release will never arrive. Unconditional on purpose: a
@@ -4443,10 +4455,9 @@ namespace TrueReplayer
                 buttonStates = ProjectButtonStates()
             });
 
-            // Apply saved window settings that require the window handle. Current is nullable
-            // (CS8602): no profile loaded yet means nothing to apply, not a crash at boot.
-            if (UserProfile.Current?.AlwaysOnTop == true)
-                window.UpdateAlwaysOnTop(true);
+            // "Always on top" is not applied: the new interface has no switch for it (Compact view takes
+            // its place, nativo-029 and settings-120), and a value carried over from TrueReplayer 2 would
+            // pin the window with no way to unpin it.
 
             // Seed the extension's connection state. browser:status is otherwise pushed only on
             // CHANGE (BrowserBridgeService raises ConnectionChanged when the pipe opens or ends),
@@ -14275,6 +14286,7 @@ namespace TrueReplayer
             RecordScroll = defaults.RecordScroll;
             RecordKeyboard = defaults.RecordKeyboard;
             RecordCombinedInput = defaults.RecordCombinedInput;
+            CompactWhileRunning = defaults.CompactWhileRunning;
             ProfileKeyEnabled = defaults.ProfileKeyEnabled;
             BrowserSelectorEnabled = defaults.BrowserSelectorEnabled;
 
@@ -14361,6 +14373,7 @@ namespace TrueReplayer
             s.RecordScroll = RecordScroll;
             s.RecordKeyboard = RecordKeyboard;
             s.RecordCombinedInput = RecordCombinedInput;
+            s.CompactWhileRunning = CompactWhileRunning;
             s.RecordingHotkey = UserProfile.Current.RecordingHotkey;
             s.ReplayHotkey = UserProfile.Current.ReplayHotkey;
             s.ProfileKeyToggleHotkey = UserProfile.Current.ProfileKeyToggleHotkey;
@@ -15064,6 +15077,9 @@ namespace TrueReplayer
                 case "recordCombinedInput":
                     RecordCombinedInput = valueElement.GetBoolean();
                     break;
+                case "compactWhileRunning":
+                    CompactWhileRunning = valueElement.GetBoolean();
+                    break;
                 case "profileKeyEnabled":
                     ProfileKeyEnabled = valueElement.GetBoolean();
                     UserProfile.Current.ProfileKeyEnabled = ProfileKeyEnabled;
@@ -15151,6 +15167,8 @@ namespace TrueReplayer
                 .Select(e => e.GetInt32())
                 .ToList();
             window.SetResizeSnapWidths(widths);
+            // The first width is the page's 80 rem band edge (useBandEdges): its rem sizes the compact view.
+            if (widths.Count > 0) window.SetCompactRem(widths[0] / 80.0);
         }
 
         private void HandleMinimizeToTray(JsonElement payload)

@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
-import {
+import { PictureInPicture2,
   ArrowRightLeft, BookOpen, Chrome, ClipboardCopy, ClipboardPaste, Combine, CornerDownRight, FolderOpen, Keyboard, ListChecks, MousePointerClick, Play, Plus, Redo2, RefreshCw,
   Replace, RotateCcw, ScrollText, Settings, Split, Square, SquareDot, Table2, Undo2, Variable, Zap,
 } from 'lucide-react';
@@ -10,6 +10,7 @@ import { useRecording } from '../../logic/useRecording';
 import { useRemaps } from '../../logic/useRemaps';
 import { useReplay } from '../../logic/useReplay';
 import { useAppActions, useSettings } from '../../logic/useSettings';
+import { useWindow } from '../../logic/useWindow';
 import { useSteps } from '../../logic/useSteps';
 import { useTt } from '../../state/LanguageContext';
 import { useToast } from '../../state/ToastContext';
@@ -201,6 +202,7 @@ function useItems(): PaletteItem[] {
   const recording = useRecording();
   const settings = useSettings();
   const app = useAppActions();
+  const win = useWindow();
   const automations = useAutomations();
   const remaps = useRemaps();
   const { showToast } = useToast();
@@ -322,6 +324,7 @@ function useItems(): PaletteItem[] {
     // a run or a recording, as the row's Reset… is (the engine refuses it then).
     cmd('resetall', 'Reset all settings…', () => useUi.setState({ page: 'settings', settingsCategory: 'general', settingsQuery: '', settingsReset: true, libraryPeek: false }), { icon: RotateCcw, detail: 'Settings', words: 'defaults restore factory', disabled: status !== 'ready', hint: tt('Stop the run or the recording first', 'Pare a execução ou a gravação antes') }),
     cmd('extension', 'Connect browser extension', () => openSettings('browser'), { icon: Chrome, detail: 'Settings', words: 'chrome edge brave extension unpacked install disconnected' }),
+    cmd('compact', 'Compact view', () => win.setCompact(true), { icon: PictureInPicture2, words: 'small mini picture in picture always on top overlay corner float' }),
     cmd('reload', 'Reload UI', app.reloadUI, { icon: RefreshCw, words: 'refresh stuck frozen' }),
     cmd('data', 'Open data folder', app.openDataFolder, { icon: FolderOpen, words: 'documents files backup copy macros images settings explorer' }),
     cmd('logs', 'Open logs folder', app.openLogsFolder, { icon: ScrollText, words: 'diagnostics session log support' }),

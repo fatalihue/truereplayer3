@@ -12,6 +12,7 @@ using Microsoft.Win32;
 using TrueReplayer;
 using TrueReplayer.Interop;
 using TrueReplayer.Models;
+using Windows.Graphics;
 
 namespace TrueReplayer.Services
 {
@@ -870,16 +871,12 @@ namespace TrueReplayer.Services
         private const int SW_RESTORE = 9;
         // Layout minimum in DIPs. WM_GETMINMAXINFO works in physical pixels, so this
         // is scaled by the window's DPI before being written to ptMinTrackSize.
-        // 960 (not the 1180 the window still OPENS at — see WindowAppearanceService.
-        // Configure) so the app can be snapped to HALF of a 1920×1080 display next to
-        // the game being macroed — the single most common arrangement for the target
-        // workflow, at 100% display scaling. (At 125%+ the DPI-scaled floor exceeds
-        // the 960-physical-px half-screen slot; going lower would break the React
-        // layout, so scaled displays keep a slightly-over-half minimum.) Below
-        // ~1020px the React shell auto-collapses the side panels to their icon
-        // rails (App.tsx), so the center grid keeps a usable width.
-        private const int BaseMinWidthDip = 960;
-        private const int BaseMinHeightDip = 780;
+        // The new interface lays itself out in five bands down to a compact layout under 520 px (rule 9
+        // of the plan), so the window can shrink to that: a strip beside the game at any display scale,
+        // not only half of a 1920 × 1080 screen at 100 % as the 960 of before allowed. 360 × 400 keeps
+        // the compact layout and the title bar whole.
+        private const int BaseMinWidthDip = 360;
+        private const int BaseMinHeightDip = 400;
         // The size the window OPENS at (WindowAppearanceService.Configure). Used as a magnetic
         // "snap-to-original" target while a resize edge is dragged: as the proposed size nears this,
         // the edge sticks here (see the enter/exit zones below) — a soft preset that lets the user
@@ -919,6 +916,15 @@ namespace TrueReplayer.Services
         {
             if (closingConfirmed)
                 return;
+
+            // In the compact view the system's own × (Windows draws it at the top right) is the board's
+            // "× hides it to the tray", whatever the Close-keeps-in-the-tray setting says.
+            if (_compact && !Services.ModalGate.IsOpen)
+            {
+                args.Cancel = true;
+                HideToTray();
+                return;
+            }
 
             // When System Tray is enabled, close (X) minimizes to tray instead of exiting
             if (((MainWindow)window).IsMinimizeToTrayEnabled())
@@ -1001,6 +1007,10 @@ namespace TrueReplayer.Services
 
         public IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam)
         {
+            // The compact view is smaller than the full window's floor: Windows' own limits apply there.
+            if (msg == WM_GETMINMAXINFO && _compact)
+                return HwndHookManager.CallOriginalWndProc(hwnd, msg, wParam, lParam);
+
             if (msg == WM_GETMINMAXINFO)
             {
                 MINMAXINFO mmi = Marshal.PtrToStructure<MINMAXINFO>(lParam)!;
@@ -1022,7 +1032,10 @@ namespace TrueReplayer.Services
                 _snapWTarget = -1;
                 _snapH = false;
                 _lastSizeW = _lastSizeH = -1;
-                return HwndHookManager.CallOriginalWndProc(hwnd, msg, wParam, lParam);
+                var handled = HwndHookManager.CallOriginalWndProc(hwnd, msg, wParam, lParam);
+                // A compact window dragged somewhere goes to the nearest corner when let go.
+                if (msg == WM_EXITSIZEMOVE && _compact) SnapCompactToCorner();
+                return handled;
             }
 
             if (msg == WM_SIZING)
@@ -1134,9 +1147,8 @@ namespace TrueReplayer.Services
         // page's band edges, else the open width) and to the default height, moving ONLY the dragged
         // edge so the opposite one stays put. Width and height snap independently (a corner drag can
         // grab one axis without forcing the other) with per-axis hysteresis (UpdateSnapAny,
-        // UpdateSnap). Returns true when it rewrote the rect. A width under the min (960) is never
-        // reached, so it just never grabs; the default height equals the min, so a height snap just
-        // makes the floor magnetic.
+        // UpdateSnap). Returns true when it rewrote the rect. The open height (780) sits above the floor
+        // now, so a height drag sticks there on its way down, as the band edges do across.
         private bool TrySnapToDefaultSize(IntPtr hwnd, int edge, IntPtr lParam)
         {
             uint dpi = GetDpiForWindow(hwnd);
@@ -1278,6 +1290,147 @@ namespace TrueReplayer.Services
                 if (attached)
                     AttachThreadInput(foregroundThread, currentThread, false);
             }
+        }
+
+        // ── The compact view (rule 10 of the plan; CompactWindow board) ──────────
+        // The same window, in Windows' picture-in-picture mode (CompactOverlay: always on top, small),
+        // showing the page's compact layout. No second window and no second WebView2. The full window's
+        // place and size come back when it leaves. It sits in a corner of its monitor, snaps to the
+        // nearest corner when dragged, and jumps to the other side before a replayed click lands on it.
+        // Its size follows the page's zoom: 300 × 140 at the default zoom (90 %, a 14.4 px rem), and that
+        // until the page says its rem.
+        private const int CompactMarginDip = 12;
+        private int _compactWidthDip = 300;
+        private int _compactHeightDip = 140;
+        private bool _compact;
+        private RectInt32 _fullBounds;
+        private bool _fullWasMaximized;
+        // Which corner the compact window is in: (right, bottom) — the bottom-right by default.
+        private (bool Right, bool Bottom) _compactCorner = (true, true);
+
+        public bool IsCompact => _compact;
+
+        /// Raised after the window entered or left the compact view (the page switches its layout), with
+        /// the width (DIP) the system's own caption button takes at the top right in the compact view.
+        public Action<bool, int>? OnCompactChanged { get; set; }
+
+        /// <summary>The width (DIP) the system's caption buttons take at the top right of the compact view.</summary>
+        public int CompactCaptionInset
+        {
+            get
+            {
+                uint dpi = GetDpiForWindow(hwnd);
+                return _compact ? (int)Math.Ceiling(appWindow.TitleBar.RightInset * 96.0 / (dpi == 0 ? 96 : dpi)) : 0;
+            }
+        }
+
+        public void SetCompact(bool on)
+        {
+            if (on == _compact) return;
+            try
+            {
+                if (on)
+                {
+                    if (appWindow.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Maximized } maximized)
+                    {
+                        _fullWasMaximized = true;
+                        maximized.Restore();
+                    }
+                    else _fullWasMaximized = false;
+                    _fullBounds = new RectInt32(appWindow.Position.X, appWindow.Position.Y, appWindow.Size.Width, appWindow.Size.Height);
+                    _compact = true;   // before the resize, so WM_GETMINMAXINFO lets the small size through
+                    appWindow.SetPresenter(AppWindowPresenterKind.CompactOverlay);
+                    uint dpi = GetDpiForWindow(hwnd);
+                    if (dpi == 0) dpi = 96;
+                    appWindow.Resize(new SizeInt32((int)(_compactWidthDip * dpi / 96.0), (int)(_compactHeightDip * dpi / 96.0)));
+                    MoveCompactTo(_compactCorner);
+                    if (!IsWindowVisible(hwnd)) appWindow.Show();
+                }
+                else
+                {
+                    _compact = false;
+                    appWindow.SetPresenter(AppWindowPresenterKind.Overlapped);
+                    appWindow.MoveAndResize(_fullBounds);
+                    if (_fullWasMaximized && appWindow.Presenter is OverlappedPresenter overlapped) overlapped.Maximize();
+                }
+                Services.DiagnosticLog.Info($"[Window] compact view {(on ? "on" : "off")}: {appWindow.Size.Width}x{appWindow.Size.Height} at {appWindow.Position.X},{appWindow.Position.Y} ({appWindow.Presenter.Kind}, caption inset {CompactCaptionInset} dip)");
+                OnCompactChanged?.Invoke(on, CompactCaptionInset);
+            }
+            catch (Exception ex)
+            {
+                Services.DiagnosticLog.Error($"Compact view {(on ? "on" : "off")} failed", ex);
+            }
+        }
+
+        /// <summary>
+        /// The page's rem in DIP (its zoom setting): the compact view grows and shrinks with it from 300 × 140
+        /// at the default 14.4 px, so its layout fits at any zoom. Applied at once when the compact view is on.
+        /// </summary>
+        public void SetCompactRem(double remDip)
+        {
+            if (!(remDip > 0)) return;
+            int widthDip = Math.Clamp((int)Math.Round(300 * remDip / 14.4), 200, 640);
+            int heightDip = Math.Clamp((int)Math.Round(140 * remDip / 14.4), 96, 320);
+            if (widthDip == _compactWidthDip && heightDip == _compactHeightDip) return;
+            _compactWidthDip = widthDip;
+            _compactHeightDip = heightDip;
+            if (!_compact) return;
+            uint dpi = GetDpiForWindow(hwnd);
+            if (dpi == 0) dpi = 96;
+            appWindow.Resize(new SizeInt32((int)(widthDip * dpi / 96.0), (int)(heightDip * dpi / 96.0)));
+            MoveCompactTo(_compactCorner);
+            Services.DiagnosticLog.Info($"[Window] compact view resized to the zoom: {appWindow.Size.Width}x{appWindow.Size.Height}");
+        }
+
+        // The compact window in a corner of the monitor it is on (its work area, so never under the taskbar).
+        private void MoveCompactTo((bool Right, bool Bottom) corner)
+        {
+            var area = DisplayArea.GetFromWindowId(appWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
+            uint dpi = GetDpiForWindow(hwnd);
+            if (dpi == 0) dpi = 96;
+            int m = (int)(CompactMarginDip * dpi / 96.0);
+            int w = appWindow.Size.Width, h = appWindow.Size.Height;
+            int x = corner.Right ? area.X + area.Width - w - m : area.X + m;
+            int y = corner.Bottom ? area.Y + area.Height - h - m : area.Y + m;
+            appWindow.Move(new PointInt32(x, y));
+            _compactCorner = corner;
+        }
+
+        // After a drag of the compact window: to the nearest corner of its monitor.
+        private void SnapCompactToCorner()
+        {
+            var area = DisplayArea.GetFromWindowId(appWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
+            int cx = appWindow.Position.X + appWindow.Size.Width / 2;
+            int cy = appWindow.Position.Y + appWindow.Size.Height / 2;
+            MoveCompactTo((cx > area.X + area.Width / 2, cy > area.Y + area.Height / 2));
+        }
+
+        /// <summary>
+        /// A replayed click is about to land at (x, y), physical screen pixels: if the compact window is
+        /// there, it goes to the corner farthest from the point first (CompactWindow board, "Sai da frente
+        /// antes de um clique cair nela"). True when it moved. UI thread.
+        /// </summary>
+        public bool MoveCompactAwayFrom(int x, int y)
+        {
+            if (!_compact || !IsWindowVisible(hwnd)) return false;
+            uint dpi = GetDpiForWindow(hwnd);
+            if (dpi == 0) dpi = 96;
+            int pad = (int)(8 * dpi / 96.0);
+            var p = appWindow.Position; var s = appWindow.Size;
+            if (x < p.X - pad || x > p.X + s.Width + pad || y < p.Y - pad || y > p.Y + s.Height + pad) return false;
+            var area = DisplayArea.GetFromWindowId(appWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
+            // The corner farthest from the click: the other side, left or right, and the other half.
+            var corner = (Right: x < area.X + area.Width / 2, Bottom: y < area.Y + area.Height / 2);
+            MoveCompactTo(corner);
+            Services.DiagnosticLog.Info($"[Window] compact view moved out of the way of a click at {x},{y}");
+            return true;
+        }
+
+        /// <summary>To the tray, as the close button does with "Close keeps … in the tray" on.</summary>
+        public void HideToTray()
+        {
+            TrayIconService.Initialize((MainWindow)window, hwnd);
+            appWindow.Hide();
         }
 
         public void UpdateAlwaysOnTop(bool isAlwaysOnTop)

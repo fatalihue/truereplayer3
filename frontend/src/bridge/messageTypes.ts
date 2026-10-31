@@ -526,6 +526,8 @@ export interface SettingsState {
   recordScroll: boolean;
   recordKeyboard: boolean;
   recordCombinedInput: boolean;
+  /** Settings › General › Compact view while a macro runs (CompactWindow board). */
+  compactWhileRunning?: boolean;
   profileKeyEnabled: boolean;
   browserSelectorEnabled: boolean;
   recordingHotkey: string;
@@ -942,6 +944,9 @@ export type IncomingMessage =
   // the first use's Record it), Settings and the tray panel's All macros… (the engine has already
   // brought the window up).
   | { type: 'tray:command'; payload: { command: 'recordNew' | 'settings' | 'macros' } }
+  // The window entered or left the compact view (also sent to a page that loads in it).
+  // captionInset: the width (DIP) the system's own × takes at the top right of the compact view.
+  | { type: 'window:compactChanged'; payload: { compact: boolean; captionInset?: number } }
   // TrueReplayer 2 was launched while this app runs (CoexistenceGuard): it found its mutex name held
   // and exited. The page asks whether to switch; tr2Installed = there is an installed one to open.
   | { type: 'coexist:tr2Knocked'; payload: { tr2Installed: boolean } }
@@ -1448,6 +1453,7 @@ export type OutgoingMessage =
   | { type: 'selection:changed'; payload: { indices: number[] } }
   | { type: 'window:alwaysOnTop'; payload: { enabled: boolean } }
   // The new interface's layout band edges, in DIP: a dragged window edge sticks to them (D27).
+  // The engine also reads the page's rem off the first (80 rem) to size the compact view.
   | { type: 'window:snapWidths'; payload: { widths: number[] } }
   | { type: 'window:minimizeToTray'; payload: { enabled: boolean } }
   // After coexist:tr2Knocked: this app exits (saving as the tray Exit does), opening TrueReplayer 2
@@ -1460,6 +1466,10 @@ export type OutgoingMessage =
   | { type: 'window:runEndFlash'; payload: { enabled: boolean } }
   | { type: 'window:runEndSound'; payload: { enabled: boolean } }
   | { type: 'window:reloadUI'; payload: Record<string, never> }
+  // The compact view (rule 10 of the plan): in from the title bar's Compact view and Ctrl+K, out from
+  // the compact layout's "Back to the full window"; its × hides the window to the tray.
+  | { type: 'window:compact'; payload: { on: boolean } }
+  | { type: 'window:hideToTray'; payload: Record<string, never> }
   | { type: 'profile:export'; payload: { names: string[]; includeOrganization?: boolean; includeDependencies?: boolean } }
   | { type: 'profile:import'; payload: Record<string, never> }
   // A .trprofile dropped on the first-run screen: the file rides along as an additional object

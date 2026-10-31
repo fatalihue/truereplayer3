@@ -41,6 +41,9 @@ export function TitleBar() {
         </button>
       </div>
       <StateBadge status={status} clicker={clicker} />
+      {/* Compact view (rule 10): the watch draws the button here at the first idle moment (watch.tsx),
+          so the opening does not carry it; the slot keeps the bar from moving when it comes. */}
+      <span id="tr-compact-slot" className="shell-compact-slot" style={{ marginRight: CAPTION_BUTTONS_PX }} />
     </header>
   );
 }
@@ -72,7 +75,6 @@ function StateBadge({ status, clicker }: { status: 'ready' | 'recording' | 'repl
       data-state={clicker && status === 'replaying' ? 'clicking' : status}
       data-live={live}
       data-done={(status === 'ready' && ended) || undefined}
-      style={{ marginRight: CAPTION_BUTTONS_PX }}
     >
       <span className="shell-state-dot" />
       <span className="shell-state-text">{text}</span>

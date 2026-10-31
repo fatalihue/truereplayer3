@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useBridge } from '../bridge/BridgeContext';
 import { useMacro } from '../logic/useMacro';
 import type { IncomingMessage } from '../bridge/messageTypes';
@@ -9,9 +10,11 @@ import { APP_NAME, TR2_NAME } from '../appIdentity';
 import { Tr2Knocked } from './coexist';
 import { useImport } from './importState';
 import { preload, useLoaded } from './lazyModule';
+import { useShellBand } from './useShellBand';
 import { palette, usePalette } from './palette/paletteState';
 import { useShell } from './store';
 import { endTip, pendingTips } from './tips/tipsState';
+import CompactButton from './CompactButton';
 import { recordNewMacro } from './recordNew';
 import { loadEmpties, loadRunProgress, openPage, openSettings, useUi } from './ui';
 import { hearUpdate } from './updates';
@@ -62,6 +65,28 @@ const knockOf = (m: IncomingMessage) => (m.type === 'coexist:tr2Knocked' ? m.pay
 
 // The import dialog comes when it opens: the first-run card, or Settings › General.
 const loadImport = () => import('./importTr2');
+
+// Under 520 px — the compact view's window (rule 10) or a full window that narrow (the Responsive board)
+// — the compact layout: the macro, its state and its buttons, from a chunk of its own.
+const loadCompact = () => import('./compact/CompactView');
+
+/**
+ * The compact layout, over the shell, in the place of its body and status bar (shell.css): those stay
+ * mounted under it, so leaving the compact view finds the macros' screen as it was. From the watch and
+ * not from the shell, which then carries none of it at the opening: the window opens 1180 px wide and
+ * the compact view comes from a button, by which time the watch is in.
+ */
+function CompactLayout() {
+  const compact = useShellBand() === 'compact';
+  const mod = useLoaded(loadCompact);
+  useEffect(() => { if (compact && !mod) void preload(loadCompact); }, [compact, mod]);
+  useEffect(() => {
+    document.documentElement.toggleAttribute('data-compact', compact);
+  }, [compact]);
+  const shell = document.querySelector('.shell');
+  const Compact = mod?.default;
+  return compact && Compact && shell ? createPortal(<Compact />, shell) : null;
+}
 
 function ImportDialog() {
   const open = useImport(s => s.open);
@@ -133,6 +158,8 @@ export function Watch({ early }: { early: readonly IncomingMessage[] }) {
   useEffect(() => { early.forEach(m => hearImport(m, (text) => toastRef.current(text))); }, [early]);
   useEffect(() => { early.forEach(m => hearTray(m, () => recordRef.current())); }, [early]);
   const [knock, setKnock] = useState(() => early.map(knockOf).filter(k => k !== null).at(-1) ?? null);
+  // The title bar's Compact view, in the slot it keeps for it (TitleBar).
+  const [compactSlot] = useState(() => document.getElementById('tr-compact-slot'));
   useEffect(() => subscribe((m) => {
     hear(m, (door) => refuseRef.current(door));
     hearImport(m, (text) => toastRef.current(text));
@@ -158,6 +185,8 @@ export function Watch({ early }: { early: readonly IncomingMessage[] }) {
       <UpdateOverlay pending={pending} />
       {knock && <Tr2Knocked tr2Installed={knock.tr2Installed} onClose={() => setKnock(null)} />}
       <ImportDialog />
+      {compactSlot && createPortal(<CompactButton />, compactSlot)}
+      <CompactLayout />
     </>
   );
 }

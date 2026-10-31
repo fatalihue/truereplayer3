@@ -95,6 +95,22 @@
 .shell-state[data-state='recording'] { --state-color: var(--color-recording); }
 .shell-state[data-state='replaying'] { --state-color: var(--color-accent); }
 .shell-state[data-state='clicking'] { --state-color: var(--color-clicker); }
+/* Compact view, beside the caption buttons (rule 10): an icon button the size of a caption glyph. */
+.shell-compact-slot { display: flex; flex: none; width: 2rem; height: 1.75rem; margin-left: 0.25rem; }
+.shell-compact {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+.shell-compact:hover { background: var(--color-bg-elevated); color: var(--color-text-primary); }
+.shell-compact:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 1px; }
+.shell-compact svg { width: 1rem; height: 1rem; }
 .shell-state-dot { width: 0.375rem; height: 0.375rem; flex: none; border-radius: 50%; background: var(--state-color); }
 .shell-state-text { max-width: 18rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The ring that goes out while something runs, and once, green, when a run ends. A pseudo-element
@@ -355,3 +371,11 @@ html[data-animations='true'] .shell-state[data-done]::after { border-color: var(
   .shell-body[data-page] { grid-template-columns: minmax(0, 1fr); }
   .shell-rail { display: none; }
 }
+
+/* Under 520 px the compact layout (watch.tsx) takes the place of the body and the status bar, which stay
+   mounted under it; in the compact view (rule 10) the title bar goes too: the layout's top drags the window. */
+:root[data-compact] .shell > .shell-body,
+:root[data-compact] .shell > .shell-statusbar { display: none; }
+:root[data-compact] .shell > .cmp { grid-row: 2; grid-column: 1; }
+:root[data-compact-view] .shell-titlebar { display: none; }
+:root[data-compact-view] .shell > .cmp { grid-row: 1 / -1; }

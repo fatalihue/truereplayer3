@@ -1577,6 +1577,12 @@ namespace TrueReplayer.Services
 
     public class ActionReplayer
     {
+        /// <summary>
+        /// Called with the physical screen point a replayed mouse action is about to move to, before it
+        /// moves: the compact view steps out of the way there (MainWindow). Off the UI thread.
+        /// </summary>
+        public static Action<int, int>? BeforePointer { get; set; }
+
         // ── Smooth mouse movement ─────────────────────────────────────────────────────
         // Some apps/games (notably Roblox) reject a single large "teleport" of the cursor —
         // they only follow movement that progresses through intermediate positions, like a
@@ -5898,6 +5904,9 @@ namespace TrueReplayer.Services
                 | NativeMethods.MOUSEEVENTF_VIRTUALDESK;
 
             int inputSize = NativeMethods.InputSize;
+
+            // The compact window steps out of the way of a click about to land on it (MainWindow).
+            BeforePointer?.Invoke(x, y);
 
             MoveCursorTo(x, y, allowFastApproach, token: token);
 

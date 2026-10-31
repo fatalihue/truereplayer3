@@ -31,6 +31,8 @@ export interface LastRunSummary {
   failedRow: number | null;
   /** Profile the halting step belongs to — rows restart at 1 inside every RunProfile sub-call. */
   failedProfile: string | null;
+  /** What the halting step said, when it said something (the compact view's "stopped" line). */
+  failedMessage: string | null;
   /** Steps that failed, however the run ended. Non-zero with a null failedRow means "finished,
    *  but some rows did not". */
   failedCount: number;
@@ -66,6 +68,7 @@ export function summarizeRun(r: RunReport): LastRunSummary | null {
     // sub-profile — a number that often does not exist in the grid on screen. Carry the profile
     // so the label can say which one it means.
     failedProfile: halted ? (failures[failures.length - 1].profile ?? null) : null,
+    failedMessage: halted ? failures[failures.length - 1].errorMessage : null,
     failedCount: failures.length,
     // The engine's own clock when the build provides it; the step sum is the legacy fallback.
     // One reader, shared with the Run report — the two used to print different numbers for the

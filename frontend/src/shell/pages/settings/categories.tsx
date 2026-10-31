@@ -83,6 +83,11 @@ function TrayControl() {
   const settings = useSettings();
   return <Switch label={`Close keeps ${APP_NAME} in the tray`} checked={on} onChange={settings.setMinimizeToTray} />;
 }
+function CompactWhileRunningControl() {
+  const on = useSetting('compactWhileRunning') ?? false;
+  const settings = useSettings();
+  return <Switch label="Compact view while a macro runs" checked={on} onChange={(v) => settings.change('compactWhileRunning', v)} />;
+}
 function RunOnStartupControl() {
   const on = useSetting('runOnStartup');
   const settings = useSettings();
@@ -408,6 +413,7 @@ export const CATEGORIES: Category[] = [
         title: 'Window',
         rows: [
           { id: 'tray', label: `Close keeps ${APP_NAME} in the tray`, hint: 'The X hides the window in the tray instead of closing the app.', words: 'system tray minimize close', Control: TrayControl },
+          { id: 'compact-run', label: 'Compact view while a macro runs', hint: 'When a run starts and you switch to another app, the window turns into the compact view.', words: 'compact small picture in picture always on top overlay run', Control: CompactWhileRunningControl },
         ],
       },
       {

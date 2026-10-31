@@ -35,6 +35,9 @@ export interface ShellState {
   runClock: RunClock;
   /** The first state:init is on screen: what waits for the launch to end (idle preloads) may start. */
   booted: boolean;
+  /** The window is in the compact view (window:compactChanged): 0 when not, else the width (DIP) +1 the
+   *  system's own × takes at the top right of it. */
+  compact: number;
 }
 
 /**
@@ -60,6 +63,7 @@ export const useShell = create<ShellState>(() => ({
   lastRun: null,
   runClock: { startedAt: 0, pausedMs: 0, pausedSince: 0, replayEnded: false },
   booted: false,
+  compact: 0,
 }));
 
 /** One slice of the app state, re-rendering only when that slice changes. */
@@ -101,7 +105,7 @@ function flush() {
   if (queue.length === 0) return;
   const batch = queue.splice(0);
   const before = useShell.getState();
-  let { app, live, highlight, saved, lastRun } = before;
+  let { app, live, highlight, saved, lastRun, compact } = before;
   for (const message of batch) {
     app = appStateReducer(app, message);
     live = clickerLiveReducer(live, message);
@@ -109,6 +113,7 @@ function flush() {
     if (message.type === 'profile:saved') saved = message.payload;
     // A report asked for mid-run describes no finished run (summarizeRun says null): keep the last.
     else if (message.type === 'replay:report') lastRun = summarizeRun(message.payload) ?? lastRun;
+    else if (message.type === 'window:compactChanged') compact = message.payload.compact ? (message.payload.captionInset ?? 0) + 1 : 0;
   }
   if (app.actions !== before.app.actions) {
     const actions = reconcile(before.app.actions, app.actions, stepId);
@@ -132,8 +137,8 @@ function flush() {
   const runClock = clockOf(before.runClock, before.app, app);
   const booted = before.booted || batch.some(m => m.type === 'state:init');
   if (app !== before.app || live !== before.live || highlight !== before.highlight || saved !== before.saved
-    || lastRun !== before.lastRun || runClock !== before.runClock || booted !== before.booted) {
-    useShell.setState({ app, live, highlight, saved, lastRun, runClock, booted });
+    || lastRun !== before.lastRun || runClock !== before.runClock || booted !== before.booted || compact !== before.compact) {
+    useShell.setState({ app, live, highlight, saved, lastRun, runClock, booted, compact });
   }
 }
 

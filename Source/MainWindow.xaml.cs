@@ -165,6 +165,25 @@ namespace TrueReplayer
             windowEventManager = new WindowEventManager(this);
             HwndHookManager.SetupHook(hwnd, windowEventManager.WndProc);
             windowEventManager.RegisterShellNotifications();
+            // The compact view (rule 10 of the plan): the page switches its layout when the window does.
+            windowEventManager.OnCompactChanged = (on, inset) => bridge?.SendMessage("window:compactChanged", new { compact = on, captionInset = inset });
+            // A replayed click about to land on the compact window moves it to another corner first.
+            // The replay runs off this thread: it waits (briefly) for the move before it clicks.
+            ActionReplayer.BeforePointer = (x, y) =>
+            {
+                var manager = windowEventManager;
+                if (manager == null || !manager.IsCompact) return;
+                if (DispatcherQueue.HasThreadAccess) { manager.MoveCompactAwayFrom(x, y); return; }
+                using var moved = new System.Threading.ManualResetEventSlim();
+                if (DispatcherQueue.TryEnqueue(() => { try { manager.MoveCompactAwayFrom(x, y); } finally { moved.Set(); } }))
+                    moved.Wait(300);
+            };
+            // Compact view while a macro runs: switching to another app during a run turns the window compact.
+            this.Activated += (_, e) =>
+            {
+                if (e.WindowActivationState == WindowActivationState.Deactivated && mainController?.IsReplayInProgress() == true)
+                    OnRunStatus("replaying");
+            };
 
             TrayIconService.Initialize(this, hwnd);
             // Wired with the icon, not with the bridge: it needs neither, and when WebView2 fails
@@ -1887,6 +1906,29 @@ namespace TrueReplayer
         }
 
         public bool IsOnScreen => hwnd != IntPtr.Zero && NativeMethods.IsWindowVisible(hwnd);
+
+        /// <summary>The compact view (WindowEventManager.SetCompact): the title bar's button, Ctrl+K, a run.</summary>
+        public void SetCompact(bool on) => windowEventManager?.SetCompact(on);
+        public void SetCompactRem(double remDip) => windowEventManager?.SetCompactRem(remDip);
+        public bool IsCompact => windowEventManager?.IsCompact == true;
+        public int CompactCaptionInset => windowEventManager?.CompactCaptionInset ?? 0;
+
+        /// <summary>The compact layout's ×: the window to the tray, everything else still running.</summary>
+        public void HideToTray() => windowEventManager?.HideToTray();
+
+        /// <summary>
+        /// Settings › General › Compact view while a macro runs (CompactWindow board): a macro run that
+        /// starts while the user is in another app — or a switch to another app during one — turns the
+        /// window compact. Not the Clicker's run (its page is the way to watch it), not a hidden or
+        /// minimised window.
+        /// </summary>
+        public void OnRunStatus(string status)
+        {
+            if (status != "replaying" || bridge?.CompactWhileRunning != true || bridge.UseCursorClick) return;
+            if (!IsOnScreen || IsCompact || NativeMethods.IsIconic(hwnd) || NativeMethods.GetForegroundWindow() == hwnd) return;
+            Services.DiagnosticLog.Info("[Window] a macro runs with the window behind another app: compact view");
+            SetCompact(true);
+        }
 
         public void CancelUIWatchdog()
         {

@@ -116,6 +116,8 @@ namespace TrueReplayer.Services
             // combined branch. Also the value the Reset-settings flow restores (it reads this
             // class default), so resetting returns to combined recording.
             public bool RecordCombinedInput { get; set; } = true;
+            // The window turns into the compact view when a run starts and the user is in another app.
+            public bool CompactWhileRunning { get; set; } = false;
             // Hotkeys
             public string RecordingHotkey { get; set; } = HotkeyDefaults.Recording;
             public string ReplayHotkey { get; set; } = HotkeyDefaults.Replay;
