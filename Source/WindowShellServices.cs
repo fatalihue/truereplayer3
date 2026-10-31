@@ -115,6 +115,9 @@ namespace TrueReplayer.Services
 
         private static IntPtr hwnd;
         private static NotifyIconData notifyIcon;
+
+        /// <summary>The main window the tray icon belongs to (the tray panel is owned by it).</summary>
+        internal static IntPtr MainWindow => hwnd;
         private static bool isInitialized = false;
         private static IntPtr currentIconHandle;
 
@@ -219,6 +222,23 @@ namespace TrueReplayer.Services
             _loggedState = state;
             DiagnosticLog.Info($"[Tray] {state}: \"{tooltip}\"");
         }
+
+        /// <summary>
+        /// Where the tray icon is on the screen (physical pixels), for the tray panel to open by it.
+        /// Null when the shell cannot say (no icon yet, or Explorer restarting); the panel then opens by
+        /// the cursor, which has just clicked the icon.
+        /// </summary>
+        internal static NativeMethods.RECT? IconRect()
+        {
+            if (!isInitialized) return null;
+            var id = new NotifyIconIdentifier { cbSize = (uint)Marshal.SizeOf<NotifyIconIdentifier>(), hWnd = hwnd, uID = 1 };
+            try { return Shell_NotifyIconGetRect(ref id, out var r) == 0 ? r : null; }
+            catch { return null; }
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct NotifyIconIdentifier { public uint cbSize; public IntPtr hWnd; public uint uID; public Guid guidItem; }
+        [DllImport("shell32.dll")] private static extern int Shell_NotifyIconGetRect(ref NotifyIconIdentifier identifier, out NativeMethods.RECT iconLocation);
 
         public static void ShowMinimizeBalloon() => ShowBalloon(
             $"{AppIdentity.DisplayName} is running in the background",
@@ -354,10 +374,23 @@ namespace TrueReplayer.Services
         {
             if (_runState == status) return;
             _runState = status;
-            // A loop count belongs to the run that reported it.
+            // A loop count and a click count belong to the run that reported them.
             _loopCurrent = _loopTotal = 0;
+            _clicks = 0;
+            _runStartedAt = Environment.TickCount64;
             if (isInitialized) UpdateTrayIcon();
         }
+
+        // What the tray panel's card says about the run: its state, its loop, its clock and, for the
+        // Clicker, its clicks (MainWindow feeds them from OnClickerStats).
+        private static long _runStartedAt;
+        private static long _clicks;
+        public static string RunState => _runState;
+        public static (int Current, int Total) Loop => (_loopCurrent, _loopTotal);
+        public static TimeSpan RunElapsed => _runState is "replaying" or "recording"
+            ? TimeSpan.FromMilliseconds(Environment.TickCount64 - _runStartedAt) : TimeSpan.Zero;
+        public static long Clicks => _clicks;
+        public static void SetClickerCount(long count) => _clicks = count;
 
         // The run's loop, for the tooltip ("loop 2 of 3"): fed from ReplayService.OnLoopProgress, which
         // only reports looping runs. Total 0 is endless. Refreshed at most once a second, and only when
@@ -643,7 +676,7 @@ namespace TrueReplayer.Services
 
         // Quit: the window comes up only when the close guard has a question to ask (nativo-015: with
         // saving as you go, it seldom has). The teardown is the window's close's (AppExit).
-        private static async Task QuitAsync()
+        public static async Task QuitAsync()
         {
             if (OnTrayExitRequested != null)
             {
@@ -819,6 +852,7 @@ namespace TrueReplayer.Services
         public Action? OnShown { get; set; }
 
         private const int WM_USER = 0x0400;
+        private const int WM_LBUTTONUP = 0x0202;
         private const int WM_LBUTTONDBLCLK = 0x0203;
         private const int WM_RBUTTONUP = 0x0205;
         private const int WM_GETMINMAXINFO = 0x0024;
@@ -1003,13 +1037,22 @@ namespace TrueReplayer.Services
 
             if (msg == CoexistenceGuard.TrayMessage)
             {
-                if ((int)lParam == WM_LBUTTONDBLCLK)
+                // One click opens the tray panel (Tray board); a double-click still opens the window
+                // straight away — its first click has opened the panel by then, which it closes. That
+                // is also the message a second launch of the exe sends (Program.SignalRunningInstance).
+                if ((int)lParam == WM_LBUTTONUP)
                 {
+                    TrayPanel.Toggle();
+                }
+                else if ((int)lParam == WM_LBUTTONDBLCLK)
+                {
+                    TrayPanel.Hide();
                     ShowWindow(hwnd, SW_RESTORE);
                     SetForegroundWindow(hwnd);
                 }
                 else if ((int)lParam == WM_RBUTTONUP)
                 {
+                    TrayPanel.Hide();
                     TrayIconService.ShowContextMenu();
                 }
             }

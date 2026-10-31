@@ -4497,14 +4497,15 @@ namespace TrueReplayer
         // before any of them is raised, and each one rendered in a WebView nobody could see and
         // expired in seconds, with no history to find it in. Held here, they appear when the
         // window is shown. Dispatcher thread only.
-        private readonly List<string> _pendingNotices = new();
+        private readonly List<(string Message, DateTime At)> _pendingNotices = new();
         private bool _uiInitialized;
 
         public void ShowNoticeWhenSeen(string message)
         {
-            _pendingNotices.Add(message);
+            _pendingNotices.Add((message, DateTime.Now));
             FlushPendingNotices();
-            // What is still held makes the tray icon "Needs a look" (Tray board).
+            // What is still held makes the tray icon "Needs a look" and is listed in the tray panel
+            // (Tray board, "No painel, o que o Windows silenciou").
             TrayIconService.SetPendingNotices(_pendingNotices.Count);
         }
 
@@ -4515,8 +4516,18 @@ namespace TrueReplayer
         public void FlushPendingNotices()
         {
             if (_pendingNotices.Count == 0 || !_uiInitialized || !window.IsOnScreen) return;
-            foreach (var message in _pendingNotices)
+            foreach (var (message, _) in _pendingNotices)
                 SendMessage("alert:show", new { message });
+            _pendingNotices.Clear();
+            TrayIconService.SetPendingNotices(0);
+        }
+
+        /// <summary>The held notices with when they came, for the tray panel. Dispatcher thread.</summary>
+        public IReadOnlyList<(string Message, DateTime At)> PendingNotices => _pendingNotices.ToList();
+
+        /// <summary>The tray panel's Clear: the held notices are dropped, read there.</summary>
+        public void ClearPendingNotices()
+        {
             _pendingNotices.Clear();
             TrayIconService.SetPendingNotices(0);
         }
@@ -4886,6 +4897,8 @@ namespace TrueReplayer
             if (bgSurface != null && textPrimary != null)
             {
                 profileController.SetDialogThemeColors(bgSurface, bgCard ?? bgSurface, textPrimary, textSecondary ?? textPrimary, accentSolid, borderSubtle);
+                // The tray panel is a native piece too: it wears the same theme.
+                TrayPanel.SetTheme(bgSurface, bgCard ?? bgSurface, textPrimary, textSecondary ?? textPrimary, accentSolid, borderSubtle);
             }
 
             // The native canvas under the WebView2: painted now (a recovery hides the WebView and
@@ -5007,6 +5020,9 @@ namespace TrueReplayer
 
         // No payload: the loop settings that used to ride in it are now resolved backend-side
         // (see BuildLoopConfig below), and nothing else in the message was ever read.
+        /// <summary>The tray panel's Replay: the same toggle as the page's Replay button.</summary>
+        public void ToggleReplayFromTray() => HandleReplayToggle();
+
         private void HandleReplayToggle()
         {
             if (UseCursorClick)

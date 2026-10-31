@@ -110,6 +110,9 @@ namespace TrueReplayer.Controllers
         // spellings of "default" must stay in step.
         private const string NoProfileImageFolder = "default";
         private ProfileOrderData _profileOrder = new();
+
+        /// <summary>The pinned macros, in their order: the tray panel lists them first.</summary>
+        public IReadOnlyList<string> PinnedNames => _profileOrder.Pinned;
         private readonly SemaphoreSlim _profileOrderLock = new(1, 1);
 
         private static readonly JsonSerializerOptions OrderJsonOptions = new()

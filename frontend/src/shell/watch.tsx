@@ -42,16 +42,19 @@ function hear(message: IncomingMessage, refuse: (door: Door) => void) {
 }
 
 /**
- * The tray's menu (Tray board): Settings opens its page in the window the engine brought up; Record a
- * new macro makes one and records into it, without the window, the task being in another app.
+ * The tray's menu and panel (Tray board): Settings and All macros… open their page in the window the
+ * engine brought up; Record a new macro makes one and records into it, without the window, the task
+ * being in another app.
  */
 function hearTray(message: IncomingMessage, record: () => boolean) {
   if (message.type !== 'tray:command') return;
-  if (message.payload.command === 'settings') {
+  const command = message.payload.command;
+  if (command === 'settings' || command === 'macros') {
     if (dialogOpen()) return;
     if (usePalette.getState().open) palette.close();
-    openSettings();
-  } else if (message.payload.command === 'recordNew') record();
+    if (command === 'settings') openSettings();
+    else openPage('macros');
+  } else if (command === 'recordNew') record();
 }
 
 /** TrueReplayer 2's knock (CoexistenceGuard): whether there is an installed one to switch to. */

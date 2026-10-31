@@ -359,6 +359,7 @@ namespace TrueReplayer
             replayService.OnClickerStats = (count, elapsedMs, capMs) =>
             {
                 bridge?.PushClickerStats(count, elapsedMs, capMs);
+                TrayIconService.SetClickerCount(count);
             };
             // Button-start countdown ticks and the end-of-run reason — both dashboard-only
             // signals, same channel discipline as the stats (a handful of messages per run).
@@ -624,6 +625,33 @@ namespace TrueReplayer
             // cannot save as you go (no file, or a write that failed): only then does Quit show the window.
             TrayIconService.QuitNeedsWindow = () => Services.AutomationGuard.HeldEditors().Count > 0
                 || (bridge is { AutoSaveEnabled: false } && (bridge.HasUnsavedLoopChange || bridge.HasUnsavedActionWork));
+            // ── The tray panel (Tray board, "A bandeja — um clique abre o painel") ──
+            TrayPanel.Read = BuildTrayPanelSnapshot;
+            TrayPanel.OnOpenWindow = () => windowEventManager?.BringToForeground();
+            // The card's button: Stop while something runs, else Replay of the open macro (as its key).
+            TrayPanel.OnMacroAction = () =>
+            {
+                if (mainController.IsRecording() || mainController.IsReplayInProgress()) TrayIconService.OnStopRun?.Invoke();
+                else bridge?.ToggleReplayFromTray();
+            };
+            TrayPanel.OnRunMacro = RunMacroFromTray;
+            TrayPanel.OnAllMacros = () =>
+            {
+                windowEventManager?.BringToForeground();
+                bridge?.SendMessage("tray:command", new { command = "macros" });
+            };
+            TrayPanel.OnSetShortcuts = on => SetShortcutsEnabled(on, "the tray panel");
+            TrayPanel.OnSetAutomations = on => { if (on != AppSettingsManager.Load().AutomationEnabled) TrayIconService.OnToggleAutomations?.Invoke(); };
+            TrayPanel.OnSetRemaps = on =>
+            {
+                RemapService.SetEnabled(on);
+                bridge?.PushSettingsLoaded();
+                TrayIconService.UpdateTrayIcon();
+            };
+            TrayPanel.OnOpenClicker = () => TrayIconService.OnOpenClicker?.Invoke();
+            TrayPanel.OnOpenSettings = () => TrayIconService.OnOpenSettings?.Invoke();
+            TrayPanel.OnQuit = () => _ = TrayIconService.QuitAsync();
+            TrayPanel.OnClearNotices = () => bridge?.ClearPendingNotices();
             // Macro/Clicker switch from the tray — same path as the ScrollLock hotkey
             // and the in-app toggle: flip+cancel via SetCursorClickMode, persist, push
             // to React, refresh the tray icon/tooltip.
@@ -1768,6 +1796,71 @@ namespace TrueReplayer
         }
 
         /// <summary>True while the window is shown (not hidden to the tray). Minimized still counts.</summary>
+        /// <summary>
+        /// What the tray panel shows (TrayPanel.Snapshot): the open macro with its state and button, the
+        /// pinned macros and those with a hotkey (five at most), the three switches and the held notices.
+        /// </summary>
+        private TrayPanel.Snapshot BuildTrayPanelSnapshot()
+        {
+            var settings = AppSettingsManager.Load();
+            string? macro = bridge?.CurrentProfileName is { Length: > 0 } open && open != "No Profile" ? open : null;
+            bool recording = mainController.IsRecording();
+            bool replaying = mainController.IsReplayInProgress();
+            bool clicker = settings.UseCursorClick;
+            static string StepsOf(int n) => $"{n} step{(n == 1 ? "" : "s")}";
+            var elapsed = TrayIconService.RunElapsed;
+            string clock = $"{(int)elapsed.TotalMinutes}:{elapsed.Seconds:00}";
+            string line;
+            string? action = null, key = null;
+            bool stops = false;
+            if (recording) { line = $"Recording · {StepsOf(Actions.Count)} · {clock}"; action = "Stop"; key = settings.RecordingHotkey; stops = true; }
+            else if (replaying && clicker) { line = $"Clicking · {TrayIconService.Clicks:N0} · {clock}"; action = "Stop"; key = settings.CursorClickStartHotkey; stops = true; }
+            else if (replaying)
+            {
+                var (cur, tot) = TrayIconService.Loop;
+                line = "Replaying" + (cur > 0 ? $" · loop {cur} of {(tot > 0 ? tot.ToString() : "∞")}" : "") + $" · {clock}";
+                action = "Stop"; key = settings.ReplayHotkey; stops = true;
+            }
+            else if (clicker) line = string.IsNullOrEmpty(settings.CursorClickStartHotkey) ? "Clicker open" : $"Clicker open · {settings.CursorClickStartHotkey} starts";
+            else if (macro != null) { line = $"Ready · {StepsOf(Actions.Count)}"; action = "Replay"; key = settings.ReplayHotkey; }
+            else line = "Open a macro in the window to run it from here.";
+
+            var entries = profileController.ProfileEntries.Where(e => !e.IsDisabled).ToList();
+            var pinned = profileController.PinnedNames;
+            var rows = entries.Where(e => pinned.Contains(e.Name)).OrderBy(e => pinned.ToList().IndexOf(e.Name))
+                .Concat(entries.Where(e => !pinned.Contains(e.Name) && !string.IsNullOrEmpty(e.Hotkey)).OrderBy(e => e.Name, StringComparer.CurrentCultureIgnoreCase))
+                .Take(5)
+                .Select(e => new TrayPanel.MacroRow(e.Name, string.IsNullOrEmpty(e.Hotkey) ? null : e.Hotkey, replaying && !clicker && e.Name == macro))
+                .ToList();
+            return new TrayPanel.Snapshot(macro, line, action, key, stops, rows,
+                UserProfile.Current.ProfileKeyEnabled, settings.AutomationEnabled, triggerService?.ConfiguredArmedCount ?? 0,
+                RemapService.Current.Enabled, RemapService.Current.Remaps.Count(r => r.Enabled), clicker,
+                bridge?.PendingNotices ?? Array.Empty<(string, DateTime)>());
+        }
+
+        /// <summary>
+        /// A macro row of the tray panel: runs it as its hotkey would, without the window. Nothing while
+        /// something runs or in Clicker mode. A pending edit is saved first, as before any switch.
+        /// </summary>
+        private void RunMacroFromTray(string name)
+        {
+            DispatcherQueue.TryEnqueue(async () =>
+            {
+                try
+                {
+                    if (bridge == null || mainController.IsReplayInProgress() || mainController.IsRecording() || bridge.UseCursorClick) return;
+                    if (bridge.HasUnsavedActionWork && bridge.AutoSaveEnabled) await bridge.FlushAutoSaveAsync();
+                    Services.DiagnosticLog.Info($"Tray panel: run '{name}'");
+                    await RunProfileTriggerAsync(name, forceInfiniteLoop: false, isWhilePressedHold: false, hotkeyKey: null, startOnly: true);
+                }
+                catch (Exception ex)
+                {
+                    // async-void dispatcher lambda — an escaped exception would crash the app.
+                    Services.DiagnosticLog.Error($"Tray panel run '{name}' failed", ex);
+                }
+            });
+        }
+
         /// <summary>
         /// The Shortcuts switch — the macros' hotkeys and hotstrings, and the Key Remaps with them — from
         /// its hotkey or the tray. The status bar's switch goes through settings:change instead.
