@@ -4,6 +4,8 @@ import type { OutgoingMessage, IncomingMessage, EngineCapabilities } from './mes
 
 interface WebView2API {
   postMessage: (message: unknown) => void;
+  /** The message with DOM objects the host receives too: a dropped File reaches it with its path. */
+  postMessageWithAdditionalObjects?: (message: unknown, objects: ArrayLike<unknown>) => void;
   addEventListener: (type: string, handler: (event: { data: unknown }) => void) => void;
   removeEventListener: (type: string, handler: (event: { data: unknown }) => void) => void;
 }

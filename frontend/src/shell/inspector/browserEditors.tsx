@@ -8,6 +8,7 @@ import { typeBudgetMs } from '../../utils/typeBudget';
 import { useShell } from '../store';
 import { DraftField, Section, Segmented, Switch } from './fields';
 import { applyEdits, lastEdit, takeFieldAsk, type StepEdit } from './inspectorState';
+import { ExtensionMissing } from './missing';
 import { ResultCard } from './probeKit';
 import { SelectorField, Tier } from './selectorField';
 import './browserEditors.css';
@@ -69,6 +70,7 @@ export function BrowserEditor({ step, locked }: { step: ActionItem; locked: bool
   const t = step.actionType;
   return (
     <>
+      <ExtensionMissing />
       {t === 'BrowserNavigate' ? <OpenUrlFields step={step} locked={locked} /> : <ElementFields step={step} locked={locked} withText={WITH_TEXT.has(t)} />}
       {t === 'BrowserType' && <TypeFields step={step} locked={locked} />}
       {t === 'BrowserSelectOption' && <SelectFields step={step} locked={locked} />}

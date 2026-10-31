@@ -226,8 +226,39 @@ html[data-animations='true'] .shell-state[data-done]::after { border-color: var(
 .shell-view-wait { flex: 1; min-height: 0; }
 
 .shell-steps-empty { margin: 2rem 1rem; color: var(--color-text-tertiary); }
+
+/* A macro with no steps (lista-104): centred in the list's place, with Record. While recording, only
+   the line that waits for the first step. */
+.steps-empty {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 1rem 2rem;
+  text-align: center;
+  font-size: var(--text-minor);
+  line-height: var(--text-minor--line-height);
+  color: var(--color-text-secondary);
+}
+.steps-empty p { margin: 0; max-width: 21rem; }
+.steps-empty-icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--color-border-default);
+  border-radius: 0.625rem;
+  background: var(--color-bg-card);
+  color: var(--color-text-tertiary);
+}
+.steps-empty-icon svg { width: 1.25rem; height: 1.25rem; }
+.steps-empty .steps-empty-title { margin-top: 0.25rem; font-size: var(--text-body); font-weight: 600; color: var(--color-text-primary); }
+.steps-empty .hdr-split { margin-top: 0.5rem; }
 /* A macro from the library about to be dropped on an empty macro: it becomes the first step. */
-.shell-steps-empty[data-drop] { outline: 2px dashed var(--color-accent-solid); outline-offset: 0.75rem; border-radius: var(--radius-control); }
+.steps-empty[data-drop] { outline: 2px dashed var(--color-accent-solid); outline-offset: -0.75rem; border-radius: var(--radius-shell); }
 
 /* ⑧ The Inspector's own rules are in inspector/inspector.css. */
 

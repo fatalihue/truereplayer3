@@ -110,6 +110,10 @@
 }
 [data-tone='record'] { --hue: var(--color-recording); --ink: var(--color-recording-fg); }
 [data-tone='clicker'] { --hue: var(--color-clicker); --ink: var(--color-clicker-fg); }
+/* The Stop of a recording, or of the Clicker, keeps its tone: the busy look above is more specific
+   than the tone and painted both green, as a replay's. */
+.hdr-run[data-busy][data-tone='record'] { --hue: var(--color-recording); --ink: var(--color-recording-fg); }
+.hdr-run[data-busy][data-tone='clicker'] { --hue: var(--color-clicker); --ink: var(--color-clicker-fg); }
 .hdr-split[data-disabled] { opacity: 0.5; }
 .hdr-run {
   display: inline-flex;

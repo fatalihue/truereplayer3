@@ -2241,9 +2241,10 @@ namespace TrueReplayer.Controllers
         /// Returns a discriminated <see cref="ImportPrepareResult"/>: Cancelled is the ONE
         /// legitimate silent case (user closed the picker); TooLarge / ReadError / ParseError /
         /// NoProfiles are real failures the bridge surfaces as an error toast so a corrupt import
-        /// is never indistinguishable from a cancel.
+        /// is never indistinguishable from a cancel. With <paramref name="droppedFile"/> (a file
+        /// dropped on the first-run screen) there is no picker: that file is read.
         /// </summary>
-        public async Task<ImportPrepareResult> PrepareImportPreviewAsync()
+        public async Task<ImportPrepareResult> PrepareImportPreviewAsync(string? droppedFile = null)
         {
             // Title + InitialDirectory: the .trprofile the user just received almost always
             // sits in Downloads, and the untitled picker opened wherever Windows last was.
@@ -2251,7 +2252,7 @@ namespace TrueReplayer.Controllers
             // last-visited MRU folder for the dialog — after the first pick, the MRU wins.
             // Still worth it: it fixes exactly the first-run case where the user is most
             // lost. A null Downloads (shell refusal) leaves the default behavior.
-            var fileName = await ShowFileDialogAsync(new WinForms.OpenFileDialog
+            var fileName = droppedFile ?? await ShowFileDialogAsync(new WinForms.OpenFileDialog
             {
                 Title = "Import macros",
                 Filter = "TrueReplayer macros (*.trprofile)|*.trprofile",

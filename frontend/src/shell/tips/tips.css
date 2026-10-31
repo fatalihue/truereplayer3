@@ -1,0 +1,71 @@
+/* The tips shown once, over the steps (Tips.tsx). In the column between the insert row and the list. */
+.tip {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  margin: 0.75rem 0.75rem 0.375rem;
+  padding: 0.625rem 0.375rem 0.625rem 0.75rem;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-overlay);
+  background: var(--color-bg-card);
+  font-size: var(--text-body);
+  line-height: var(--text-body--line-height);
+  color: var(--color-text-primary);
+}
+.tip[data-tone='record'] {
+  border-color: color-mix(in srgb, var(--color-recording) 25%, transparent);
+  background: color-mix(in srgb, var(--color-recording) 6%, transparent);
+}
+.tip-dot { flex: none; width: 0.5rem; height: 0.5rem; margin-top: 0.3125rem; border-radius: 50%; background: var(--color-recording); }
+.tip-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.125rem; }
+.tip-title { font-weight: 600; }
+.tip-body { font-size: var(--text-minor); line-height: var(--text-minor--line-height); color: var(--color-text-secondary); }
+.tip-body .kbd { margin: 0 0.125rem; }
+.tip-hide {
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-icon);
+  cursor: pointer;
+}
+.tip-hide svg { width: 0.875rem; height: 0.875rem; }
+.tip-hide:hover { color: var(--color-text-primary); background: var(--color-bg-elevated); }
+.tip-hide:focus-visible,
+.tip-action:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 1px; }
+
+/* "Your first macro is saved": the head, then what to do next, each checked off once done. */
+.tip-card { flex-direction: column; gap: 0.625rem; padding: 0.75rem 0.5rem 0.75rem 0.875rem; }
+.tip-card-head { display: flex; align-items: center; gap: 0.5rem; width: 100%; }
+.tip-card-head .tip-title { flex: 1; }
+.tip-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.375rem; width: 100%; font-size: var(--text-minor); line-height: var(--text-minor--line-height); }
+.tip-list li { min-height: 1.75rem; display: flex; align-items: center; gap: 0.5rem; }
+.tip-list li > svg { flex: none; width: 0.875rem; height: 0.875rem; color: var(--color-text-tertiary); }
+.tip-list li[data-done] { color: var(--color-text-secondary); }
+.tip-list li[data-done] > svg { color: var(--color-replay); }
+.tip-item { flex: 1; min-width: 0; }
+.tip-action {
+  flex: none;
+  height: 1.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0 0.625rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+.tip-action:disabled { opacity: 0.5; cursor: default; }
+.tip-action:not(:disabled):hover { border-color: var(--color-accent-solid); }
+.tip-action svg { width: 0.75rem; height: 0.75rem; fill: var(--color-replay); stroke: none; }
+
+html[data-animations='true'] .tip { animation: tip-in var(--motion-base) var(--ease-enter); }
+@keyframes tip-in { from { opacity: 0; transform: translateY(-0.25rem); } }

@@ -1,7 +1,10 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
-import { ChevronDown, ChevronsLeft, FolderOpen, Hash, MoreHorizontal, Pin, Plus, Search, SearchX, X } from 'lucide-react';
+import { ChevronDown, ChevronsLeft, Hash, MoreHorizontal, Pin, Plus, Search, X } from 'lucide-react';
 import type { ProfileEntry, ProfileFolder, ProfileOrderData } from '../../bridge/messageTypes';
 import { useTt } from '../../state/LanguageContext';
+import { preload, useLoaded } from '../lazyModule';
+import { useShell } from '../store';
+import { loadEmpties } from '../ui';
 import { DragGhost } from './DragGhost';
 import { FolderCard } from './FolderCard';
 import { MacroRow } from './MacroRow';
@@ -19,7 +22,7 @@ const ITEM = '.lib-macro, .lib-folder-header, .lib-new-in-folder';
  * folder (← on a macro goes to its folder), Enter and Space open a macro or a folder, and Shift+F10
  * (or the Menu key) is the menu of whatever has the focus.
  */
-export function LibraryPanel({ profiles, order, sections, active, locked, peek, menuFor, onFold, onOpen, onToggleFolder, onMacroMenu, onFolderMenu, onNewMenu, onMoreMenu, onNewMacro, onMove, onReorder, onRun }: {
+export function LibraryPanel({ profiles, order, sections, active, locked, peek, menuFor, onFold, onOpen, onToggleFolder, onMacroMenu, onFolderMenu, onNewMenu, onMoreMenu, onNewMacro, onCreate, onMove, onReorder, onRun }: {
   profiles: ProfileEntry[];
   order: ProfileOrderData;
   /** The library's sections, worked out once by the container for both of its forms. */
@@ -39,12 +42,15 @@ export function LibraryPanel({ profiles, order, sections, active, locked, peek, 
   onNewMenu: (button: HTMLElement, keyboard: boolean) => void;
   onMoreMenu: (button: HTMLElement, keyboard: boolean) => void;
   onNewMacro: (folder: string | null) => void;
+  /** A search that found nothing: a macro by the name searched. */
+  onCreate: (name: string) => void;
   onMove: (macro: string, folder: string | null) => void;
   onReorder: (folders: ProfileFolder[]) => void;
   /** A macro dropped on the steps: a Run Macro step there. */
   onRun: (macro: string, index: number) => void;
 }) {
   const tt = useTt();
+  const booted = useShell(s => s.booted);
   const [query, setQuery] = useState('');
   const panelRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -54,6 +60,13 @@ export function LibraryPanel({ profiles, order, sections, active, locked, peek, 
 
   const match = searchOf(query);
   const found = match ? displayOrder(sections).filter(match) : null;
+  // Its empty states are in a chunk of their own (phase 5; ui.ts, loadEmpties). Only once the engine
+  // has said there is no macro: the list is empty for a moment at launch.
+  const empties = useLoaded(loadEmpties);
+  const empty = found ? found.length === 0 : booted && profiles.length === 0;
+  useEffect(() => {
+    if (empty && !empties) void preload(loadEmpties);
+  }, [empty, empties]);
   // A folder whose every macro is disabled reads as disabled too.
   const offByFolder = new Map(sections.folders.map(({ folder, macros }) =>
     [folder.name, macros.length > 0 && macros.every(p => p.isDisabled)]));
@@ -275,19 +288,11 @@ export function LibraryPanel({ profiles, order, sections, active, locked, peek, 
         }}
       >
         {found ? (
-          found.length > 0 ? found.map(row) : (
-            <div className="lib-empty">
-              <SearchX aria-hidden="true" />
-              <span>No results for "{query.trim()}"</span>
-              <button type="button" className="lib-link" onClick={() => setQuery('')}>Clear search</button>
-            </div>
+          found.length > 0 ? found.map(row) : empties && (
+            <empties.LibraryNoMatch query={query} tags={tags} onCreate={onCreate} onClear={() => setQuery('')} />
           )
         ) : profiles.length === 0 ? (
-          <div className="lib-empty">
-            <FolderOpen aria-hidden="true" />
-            <span>No macros yet</span>
-            <button type="button" className="lib-link" onClick={() => onNewMacro(null)}>New macro</button>
-          </div>
+          empty && empties && <empties.LibraryNone />
         ) : (
           <>
             {sections.pinned.length > 0 && (

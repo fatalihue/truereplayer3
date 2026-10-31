@@ -1,4 +1,4 @@
-import { useState, type MouseEvent } from 'react';
+import { useEffect, useState, type MouseEvent } from 'react';
 import { preload, useLoaded } from '../lazyModule';
 import { ChevronDown, MoreHorizontal, Play, Square } from 'lucide-react';
 import { useMacro } from '../../logic/useMacro';
@@ -11,11 +11,12 @@ import { macroMenuEntries } from '../macroMenu';
 import { Menu } from '../Menu';
 import { anchorBelow, type MenuAnchor } from '../menuAnchor';
 import { useApp, useShell } from '../store';
+import { loadRunProgress } from '../ui';
 import { passesOf, runsPerRow } from './model';
-import { RunProgress } from './RunProgress';
 
 // Record ▾ and Replay ▾ are not part of opening the app (rule 6). The chunk starts loading when the
 // pointer or the focus reaches either ▾, so it is there by the press, and drawn on it (lazyModule).
+// Nor is the progress, which shows only while a run is on (ui.ts, loadRunProgress).
 const loadRunOptions = () => import('./RunOptions');
 const loadNow = () => { void preload(loadRunOptions); };
 
@@ -44,6 +45,11 @@ export function Transport({ name }: { name: string }) {
   const [panel, setPanel] = useState<(Opened & { kind: 'record' | 'replay' }) | null>(null);
   const [menu, setMenu] = useState<Opened | null>(null);
   const RunOptions = useLoaded(loadRunOptions)?.default;
+  const RunProgress = useLoaded(loadRunProgress)?.RunProgress;
+  const replaying = status === 'replaying';
+  useEffect(() => {
+    if (replaying && !RunProgress) void preload(loadRunProgress);
+  }, [replaying, RunProgress]);
 
   const openPanel = (kind: 'record' | 'replay') => (e: MouseEvent<HTMLButtonElement>) => {
     if (panel?.kind === kind) { setPanel(null); return; }
@@ -110,7 +116,7 @@ export function Transport({ name }: { name: string }) {
             Stop
             {settings.replayHotkey && <kbd className="kbd">{keycaps(settings.replayHotkey)}</kbd>}
           </button>
-          <RunProgress />
+          {RunProgress && <RunProgress />}
         </>
       ) : (
         <div className="hdr-split" data-tone="replay" data-disabled={!buttons.replayEnabled || clicker || isRecording || undefined}>

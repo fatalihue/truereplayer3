@@ -10,9 +10,10 @@ import { skippedRowMask } from '../../utils/conditionalBlocks';
 import { Menu } from '../Menu';
 import { fromKeyboard, type MenuAnchor } from '../menuAnchor';
 import { useApp, useShell } from '../store';
+import { loadEmpties } from '../ui';
 import { blockColor, blockMap, type BlockMap, type GhostRow } from './blocks';
 import { drafts, focusInspector, loadInspectorBody } from '../inspector/inspectorState';
-import { preload } from '../lazyModule';
+import { preload, useLoaded } from '../lazyModule';
 import { useArrival, useInsertFlash, useLitBlocks, useRunFollow, useSetSize } from './listEffects';
 import { useMacroDrop } from './macroDrop';
 import { deleteSteps } from './moves';
@@ -81,6 +82,13 @@ export function StepList() {
   useArrival(bodyRef, steps, open);
   useSetSize(bodyRef, steps, open);
   useRunFollow(scrollRef, bodyRef);
+  // The empty list's Record is in a chunk of its own (phase 5): the first idle moment brings it, and
+  // an empty macro before that, at once.
+  const empties = useLoaded(loadEmpties);
+  const empty = !!open && steps.length === 0;
+  useEffect(() => {
+    if (empty && !empties) void preload(loadEmpties);
+  }, [empty, empties]);
 
   // Another macro: nothing selected, and the list from its top (lista-112).
   useLayoutEffect(() => {
@@ -144,7 +152,14 @@ export function StepList() {
   if (!open) return <p className="shell-steps-empty">Open a macro from the library.</p>;
   // The Steps tab's panel (InsertRow has the tab).
   const panel = { id: 'macro-panel-steps', role: 'tabpanel', 'aria-labelledby': 'macro-tab-steps' } as const;
-  if (steps.length === 0) return <p className="shell-steps-empty" data-drop={macroSlot ? '' : undefined} {...panel}>No steps yet.</p>;
+  if (steps.length === 0) {
+    const EmptySteps = empties?.EmptySteps;
+    return (
+      <div className="steps-empty" data-drop={macroSlot ? '' : undefined} {...panel}>
+        {status === 'recording' ? <p>Waiting for the first click or key…</p> : EmptySteps && <EmptySteps />}
+      </div>
+    );
+  }
 
   const rowOf = (target: EventTarget) => (target as Element).closest<HTMLElement>('.step');
 

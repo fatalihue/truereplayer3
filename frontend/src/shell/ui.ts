@@ -56,6 +56,10 @@ interface ShellUi {
   dataSettings: boolean;
   /** What the dock says on the Data Loop tab (the cell editor's keys), or null for its usual line. */
   dataHint: string | null;
+  /** The examples' browser (decision 4), with the search it opens with; null while it is closed. */
+  examples: string | null;
+  /** The tips of a first recording are on (tips/): a recording started while they waited. */
+  tips: boolean;
 }
 
 export type SettingsSection = 'hotkey' | 'hotstring' | 'target' | 'info';
@@ -67,7 +71,7 @@ export type SettingsCategory = 'general' | 'hotkeys' | 'appearance' | 'recording
 export const useUi = create<ShellUi>(() => ({
   page: 'macros', settingsCategory: 'general', settingsQuery: '', settingsReset: false, remapNew: false, automationAsk: null,
   dialog: null, nameFocus: null, libraryPeek: false, startImport: null, settingsOpen: false, settingsFocus: null,
-  expanded: false, crop: null, macroTab: 'steps', dataSettings: false, dataHint: null,
+  expanded: false, crop: null, macroTab: 'steps', dataSettings: false, dataHint: null, examples: null, tips: false,
 }));
 
 /** Another destination on screen. The macros' library peek goes with them. */
@@ -90,6 +94,21 @@ export const PAGE_CHUNKS: Record<Exclude<Page, 'macros'>, () => Promise<{ defaul
   remaps: () => import('./pages/remaps/RemapsPage'),
 };
 export const loadSettingsPage = PAGE_CHUNKS.settings;
+
+/** The examples' browser, from the first use, New ▾, Ctrl+K or a search that found nothing. */
+export const openExamples = (query = '') => useUi.setState({ examples: query, libraryPeek: false });
+export const loadExamples = () => import('./examples/Examples');
+/**
+ * The empty states of the list and the library (phase 5): a macro with no steps, no macro at all, a
+ * search that found nothing. Not part of opening (rule 6): the watch brings them at the first idle
+ * moment, and an empty list or search before that, at once.
+ */
+export const loadEmpties = () => import('./empty/Empties');
+/**
+ * The run's progress beside its Stop (header/RunProgress.tsx), shown only while a run is on: the
+ * watch brings it at the first idle moment, and a run that starts before that, at once.
+ */
+export const loadRunProgress = () => import('./header/RunProgress');
 
 export const openDialog = (dialog: LibraryDialogState) => useUi.setState({ dialog });
 export const closeDialog = () => useUi.setState({ dialog: null });

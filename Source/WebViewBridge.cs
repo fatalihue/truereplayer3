@@ -1107,7 +1107,9 @@ namespace TrueReplayer
 
         // ── Handle message from React ──
 
-        public void HandleMessage(string jsonMessage)
+        /// <param name="droppedFile">The path of a file that came with the message (a macro file
+        /// dropped on the first-run screen), or null.</param>
+        public void HandleMessage(string jsonMessage, string? droppedFile = null)
         {
             try
             {
@@ -1120,10 +1122,9 @@ namespace TrueReplayer
                 {
                     case "ui:ready": HandleUIReady(); break;
                     case "ui:capabilities": HandleUICapabilities(payload); break;
-                    // "Import from TrueReplayer 2" (Tr2Import): what there is, the copy, and "Start fresh".
+                    // "Import from TrueReplayer 2" (Tr2Import): what there is, and the copy.
                     case "import:scan": SendMessage("import:summary", Tr2Import.Scan()); break;
                     case "import:run": HandleImportRun(payload); break;
-                    case "import:dismiss": Tr2Import.DismissOffer(); break;
                     case "recording:toggle": HandleRecordingToggle(payload); break;
                     case "replay:toggle": HandleReplayToggle(); break;
                     case "replay:resume": HandleReplayResume(payload); break;
@@ -1247,6 +1248,11 @@ namespace TrueReplayer
                     case "profile:reorder": HandleProfileReorder(payload); break;
                     case "profile:export": HandleProfileExport(payload); break;
                     case "profile:import": HandleProfileImport(); break;
+                    // A .trprofile dropped on the first-run screen: the same import, from its path.
+                    case "profile:importDropped":
+                        if (droppedFile != null) HandleProfileImport(droppedFile);
+                        else SendMessage("alert:show", new { message = "Couldn't read the dropped file. Use Import… instead.", type = "error" });
+                        break;
                     // ── Sharing metadata (Info tab + Import Preview) ──
                     case "profile:getMetadata": HandleProfileGetMetadata(payload); break;
                     case "profile:setMetadata": HandleProfileSetMetadata(payload); break;
@@ -3818,12 +3824,12 @@ namespace TrueReplayer
             ExtendedUndoEnabled = extendedUndo;
 
             // The import from TrueReplayer 2 (Tr2Import): the notice of one that finished on this
-            // start, or the first-run offer. The new shell asks its capabilities once it is up, so it
-            // hears either; the theme and snippets were already handed to it before its first script.
+            // start. The new shell asks its capabilities once it is up, so it hears it; the theme and
+            // snippets were already handed to it before its first script. The way in is the page's:
+            // the first-run screen's card (it asks import:scan) and Settings › General.
             Tr2Import.WebStorageDelivered();
             var imported = Tr2Import.TakeAnnouncement();
             if (imported != null) SendMessage("import:done", new { summary = imported });
-            else if (Tr2Import.FirstRunOffer() is { } offer) SendMessage("import:offer", offer);
         }
 
         private async void HandleImportRun(JsonElement payload)
@@ -13145,16 +13151,16 @@ namespace TrueReplayer
         /// `profile:importPreview` message back to the frontend. The frontend renders
         /// the security warning (first time only) + Import Preview dialog, then sends
         /// `profile:confirmImport` with the selected profile names to actually write
-        /// them to disk.
+        /// them to disk. A file dropped on the first-run screen (`droppedFile`) skips the picker.
         /// </summary>
-        private async void HandleProfileImport()
+        private async void HandleProfileImport(string? droppedFile = null)
         {
             if (_importPickerOpen) return;   // a second click while the picker is open is a no-op
             if (replayService.IsReplaying || recordingService.IsRecording) { SendMessage("alert:show", new { message = "Finish the current recording/replay before importing." }); return; }
             _importPickerOpen = true;
             try
             {
-                var prep = await profileController.PrepareImportPreviewAsync();
+                var prep = await profileController.PrepareImportPreviewAsync(droppedFile);
                 if (prep.Status == ImportPrepareStatus.Ok)
                 {
                     SendImportPreview(prep.Envelope!, Path.GetFileName(prep.FilePath!));
@@ -13197,8 +13203,8 @@ namespace TrueReplayer
 
         /// <summary>
         /// Stores the parsed envelope as the pending import and pushes the preview payload the
-        /// React Import Preview dialog renders. Sole caller: HandleProfileImport (there is no
-        /// drag-and-drop import path — the WebView drop handler was never wired). Compatibility
+        /// React Import Preview dialog renders. Sole caller: HandleProfileImport (the picker, or a
+        /// file dropped on the first-run screen, which comes the same way). Compatibility
         /// is computed server-side so the frontend doesn't need the version table.
         /// </summary>
         private void SendImportPreview(ProfileExportEnvelope envelope, string fileName)

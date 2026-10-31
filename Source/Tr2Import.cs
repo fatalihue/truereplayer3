@@ -96,22 +96,6 @@ namespace TrueReplayer.Services
             && Directory.Exists(AppIdentity.ProfilesDir)
             && Directory.EnumerateFiles(AppIdentity.ProfilesDir, "*.json").Any(IsMacroFile);
 
-        /// <summary>
-        /// Whether to offer the import on this start: TrueReplayer 2 has data, this app has no macro
-        /// yet, and the offer was not answered before.
-        /// </summary>
-        public static Summary? FirstRunOffer()
-        {
-            if (ReadState()?["offered"]?.GetValue<bool>() == true) return null;
-            if (Directory.Exists(AppIdentity.ProfilesDir) && Directory.EnumerateFiles(AppIdentity.ProfilesDir, "*.json").Any(IsMacroFile))
-                return null;
-            var s = Scan();
-            return s.Tr2Found ? s : null;
-        }
-
-        /// <summary>"Start fresh" on the first-run offer: never offered again on its own.</summary>
-        public static void DismissOffer() => WriteState(s => s["offered"] = true);
-
         // ── Step 1: staging, in the running app ──────────────────────────────────────────────────
 
         /// <summary>
@@ -302,7 +286,6 @@ namespace TrueReplayer.Services
                 }
                 WriteState(s =>
                 {
-                    s["offered"] = true;
                     s["lastImport"] = stamp;
                     s["backup"] = Directory.Exists(backup) ? backup : null;
                     s["summary"] = pending?["summary"]?.DeepClone();

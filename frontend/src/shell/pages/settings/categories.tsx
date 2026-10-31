@@ -154,7 +154,7 @@ function ImportTr2Control() {
       className="insp-button"
       disabled={busy}
       data-tip={busy ? tt('Stop the run or the recording first', 'Pare a execução ou a gravação antes') : undefined}
-      onClick={() => openImport('settings')}
+      onClick={() => openImport()}
     >
       Import…
     </button>

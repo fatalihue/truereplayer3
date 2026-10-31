@@ -1,0 +1,132 @@
+/* The first-run screen (FirstRun.tsx, the FirstRun board): in the macro's place, its column centred
+   at the concept's 880 px. Sizes in rem, theme tokens only. */
+.fr { min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; container: firstrun / inline-size; }
+.fr-body {
+  max-width: 55rem;
+  margin: 0 auto;
+  padding: 4.5rem 2rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+.fr-head { display: flex; flex-direction: column; gap: 0.5rem; }
+.fr-title { margin: 0; font-family: var(--font-display, inherit); font-size: 1.5rem; line-height: 2rem; font-weight: 600; color: var(--color-text-primary); }
+.fr-lead { margin: 0; max-width: 62ch; font-size: 0.875rem; line-height: 1.25rem; color: var(--color-text-secondary); }
+
+/* The three ways, side by side; one under the other where three do not fit (never two and one). */
+.fr-ways { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.fr-way {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  padding: 1.25rem;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-overlay);
+  background: var(--color-bg-card);
+}
+.fr-tile {
+  width: 2.5rem;
+  height: 2.5rem;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-overlay);
+  background: color-mix(in srgb, var(--color-text-secondary) 6%, transparent);
+  color: var(--color-text-secondary);
+}
+.fr-tile svg { width: 1.25rem; height: 1.25rem; }
+.fr-tile[data-tone='accent'] {
+  border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  color: var(--color-accent);
+}
+.fr-tile[data-tone='record'] {
+  border-color: color-mix(in srgb, var(--color-recording) 40%, transparent);
+  background: color-mix(in srgb, var(--color-recording) 10%, transparent);
+}
+.fr-tile .hdr-rec-dot { width: 0.875rem; height: 0.875rem; background: var(--color-recording); }
+.fr-way-title { margin: 0.25rem 0 0; font-size: var(--text-subtitle); line-height: var(--text-subtitle--line-height); font-weight: 600; color: var(--color-text-primary); }
+.fr-way-text { margin: 0; flex: 1; font-size: var(--text-body); line-height: var(--text-body--line-height); color: var(--color-text-secondary); }
+.fr-way-note { margin: 0; font-size: var(--text-minor); line-height: var(--text-minor--line-height); color: var(--color-warning-ink); }
+.fr-way-action { display: flex; }
+
+.fr-button {
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0 0.75rem 0 0.625rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: var(--text-body);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.fr-button .step-icon { width: 1rem; height: 1rem; }
+.fr-button[data-primary] { border-color: transparent; background: var(--color-accent-solid); color: var(--color-accent-ink); font-weight: 600; }
+.fr-button:disabled { opacity: 0.5; cursor: default; }
+.fr-button:not(:disabled):hover { border-color: var(--color-accent-solid); }
+.fr-button[data-primary]:not(:disabled):hover { background: var(--color-accent-solid-hover); }
+.fr-button:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 1px; }
+
+/* A macro file dropped anywhere on the screen comes in; the dashed row says so, and lights while a
+   file is over the screen. */
+.fr-drop {
+  min-height: 3.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding: 0.75rem 1rem;
+  box-sizing: border-box;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-overlay);
+  font-size: var(--text-body);
+  color: var(--color-text-secondary);
+}
+.fr-drop > svg { width: 1rem; height: 1rem; flex: none; }
+.fr-drop .fr-button { height: 1.75rem; font-size: var(--text-minor); }
+.fr-drop[data-over] {
+  border-color: var(--color-accent-solid);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  color: var(--color-text-primary);
+}
+
+/* How a macro runs: the two global keys and the macro's own. */
+.fr-how {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-border-subtle);
+}
+.fr-how-item { display: flex; align-items: flex-start; gap: 0.625rem; }
+.fr-how-n {
+  flex: none;
+  width: 1.375rem;
+  height: 1.375rem;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--color-border-default);
+  border-radius: 50%;
+  background: var(--color-bg-elevated);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+.fr-how-text { display: flex; flex-direction: column; gap: 0.25rem; font-size: var(--text-minor); line-height: var(--text-minor--line-height); color: var(--color-text-tertiary); }
+.fr-how-label { display: flex; align-items: center; gap: 0.5rem; font-size: var(--text-body); font-weight: 600; color: var(--color-text-primary); }
+.fr-how-label .kbd { font-weight: 400; }
+
+/* Narrower: the ways and the keys one under the other, and less air around the column. */
+@container firstrun (max-width: 44rem) {
+  .fr-ways,
+  .fr-how { grid-template-columns: minmax(0, 1fr); }
+}
+@container firstrun (max-width: 36rem) {
+  .fr-body { padding: 2rem 1rem 2rem; gap: 1.25rem; }
+}

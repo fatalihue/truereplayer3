@@ -941,11 +941,9 @@ export type IncomingMessage =
   // TrueReplayer 2 was launched while this app runs (CoexistenceGuard): it found its mutex name held
   // and exited. The page asks whether to switch; tr2Installed = there is an installed one to open.
   | { type: 'coexist:tr2Knocked'; payload: { tr2Installed: boolean } }
-  // "Import from TrueReplayer 2" (Tr2Import). offer: on a first start with TrueReplayer 2's data on
-  // the computer and no macro here yet. summary: the answer to import:scan. staged: the copy is
-  // ready and the app restarts to put it in place. error: nothing was changed. done: on the start
-  // that finished one, once.
-  | { type: 'import:offer'; payload: Tr2ImportSummary }
+  // "Import from TrueReplayer 2" (Tr2Import). summary: the answer to import:scan (the first-run
+  // screen's card asks for it, and the dialog). staged: the copy is ready and the app restarts to put
+  // it in place. error: nothing was changed. done: on the start that finished one, once.
   | { type: 'import:summary'; payload: Tr2ImportSummary }
   | { type: 'import:staged'; payload: Record<string, never> }
   | { type: 'import:error'; payload: { message: string } }
@@ -1441,8 +1439,6 @@ export type OutgoingMessage =
   | { type: 'coexist:switch'; payload: { openTr2: boolean } }
   | { type: 'import:scan'; payload: Record<string, never> }
   | { type: 'import:run'; payload: { macros: boolean; settings: boolean; remaps: boolean; appearance: boolean } }
-  // "Start fresh" on the first-run offer: not offered again on its own.
-  | { type: 'import:dismiss'; payload: Record<string, never> }
   | { type: 'window:runOnStartup'; payload: { enabled: boolean } }
   | { type: 'window:startMinimized'; payload: { enabled: boolean } }
   | { type: 'window:runEndFlash'; payload: { enabled: boolean } }
@@ -1450,6 +1446,9 @@ export type OutgoingMessage =
   | { type: 'window:reloadUI'; payload: Record<string, never> }
   | { type: 'profile:export'; payload: { names: string[]; includeOrganization?: boolean; includeDependencies?: boolean } }
   | { type: 'profile:import'; payload: Record<string, never> }
+  // A .trprofile dropped on the first-run screen: the file rides along as an additional object
+  // (postMessageWithAdditionalObjects), and the engine reads it from its path as Import… does.
+  | { type: 'profile:importDropped'; payload: Record<string, never> }
   | { type: 'clipboard:read'; payload: Record<string, never> }
   | { type: 'update:check'; payload: Record<string, never> }
   | { type: 'update:apply'; payload: Record<string, never> }

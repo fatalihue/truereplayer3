@@ -6,10 +6,12 @@ import { useTt } from '../state/LanguageContext';
 import { useToast } from '../state/ToastContext';
 import { APP_NAME, TR2_NAME } from '../appIdentity';
 import { Tr2Knocked } from './coexist';
-import { openImport, useImport } from './importState';
+import { useImport } from './importState';
 import { preload, useLoaded } from './lazyModule';
 import { palette, usePalette } from './palette/paletteState';
-import { openPage, openSettings, useUi } from './ui';
+import { useShell } from './store';
+import { endTip, pendingTips } from './tips/tipsState';
+import { loadEmpties, loadRunProgress, openPage, openSettings, useUi } from './ui';
 import { hearUpdate } from './updates';
 
 type Door = 'automations' | 'browser';
@@ -40,22 +42,24 @@ function hear(message: IncomingMessage, refuse: (door: Door) => void) {
 /** TrueReplayer 2's knock (CoexistenceGuard): whether there is an installed one to switch to. */
 const knockOf = (m: IncomingMessage) => (m.type === 'coexist:tr2Knocked' ? m.payload : null);
 
-// The import dialog comes when it opens: the first-run offer, or Settings › General.
+// The import dialog comes when it opens: the first-run card, or Settings › General.
 const loadImport = () => import('./importTr2');
 
 function ImportDialog() {
-  const mode = useImport(s => s.mode);
-  const offer = useImport(s => s.offer);
+  const open = useImport(s => s.open);
   const mod = useLoaded(loadImport);
-  useEffect(() => { if (mode && !mod) void preload(loadImport); }, [mode, mod]);
+  useEffect(() => { if (open && !mod) void preload(loadImport); }, [open, mod]);
   const Dialog = mod?.ImportTr2;
-  return mode && Dialog ? <Dialog mode={mode} offer={offer} /> : null;
+  return open && Dialog ? <Dialog /> : null;
 }
 
-/** The offer on a first start, and the notice on the start that finished an import. */
+/**
+ * The notice on the start that finished an import. Who imports knows the app: the tips of a first
+ * recording, armed by the first-run screen, end here.
+ */
 function hearImport(message: IncomingMessage, toast: (text: string) => void) {
-  if (message.type === 'import:offer') openImport('offer', message.payload);
-  else if (message.type === 'import:done') {
+  if (message.type === 'import:done') {
+    endTip('all');
     const s = message.payload.summary;
     toast(s
       ? `Imported ${s.macros} macro${s.macros === 1 ? '' : 's'} from ${TR2_NAME}. Automations are off in ${APP_NAME} — turn them on in Automations.`
@@ -64,10 +68,27 @@ function hearImport(message: IncomingMessage, toast: (text: string) => void) {
 }
 
 /**
+ * A file dropped where nothing takes one would open in the app's place: WebView2 navigates to it.
+ * Here it is refused (the cursor says so). Only files: text dropped into a field still lands there,
+ * and the first-run screen, which takes macro files, has handled its own by now.
+ */
+function noFileDrop(e: DragEvent) {
+  if (e.defaultPrevented || !e.dataTransfer?.types.includes('Files')) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'none';
+}
+
+/** A recording that starts while the tips of a first one wait puts them on screen (Shell's Tips). */
+const tipsFor = (status: string) => {
+  if (status === 'recording' && !useUi.getState().tips && pendingTips().length > 0) useUi.setState({ tips: true });
+};
+
+/**
  * What listens out of sight, in a chunk of its own that comes at the first idle moment (rule 6): the
- * update's splash of today (D24: it stays), the update's state for Settings, the tray's doors and
- * TrueReplayer 2's knock. What the engine said before it came (`early`, kept by Overlays) is heard
- * first, in order.
+ * update's splash of today (D24: it stays), the update's state for Settings, the tray's doors,
+ * TrueReplayer 2's knock, the start of a first recording's tips and the guard on dropped files. It
+ * also brings the empty states, which the list or the library may need any moment. What the engine
+ * said before it came (`early`, kept by Overlays) is heard first, in order.
  */
 export function Watch({ early }: { early: readonly IncomingMessage[] }) {
   const { subscribe } = useBridge();
@@ -95,6 +116,19 @@ export function Watch({ early }: { early: readonly IncomingMessage[] }) {
     const k = knockOf(m);
     if (k) setKnock(k);
   }), [subscribe]);
+  useEffect(() => {
+    void preload(loadEmpties);
+    void preload(loadRunProgress);
+    tipsFor(useShell.getState().app.status);
+    const stop = useShell.subscribe((s, prev) => { if (s.app.status !== prev.app.status) tipsFor(s.app.status); });
+    window.addEventListener('dragover', noFileDrop);
+    window.addEventListener('drop', noFileDrop);
+    return () => {
+      stop();
+      window.removeEventListener('dragover', noFileDrop);
+      window.removeEventListener('drop', noFileDrop);
+    };
+  }, []);
   return (
     <>
       <UpdateOverlay pending={pending} />

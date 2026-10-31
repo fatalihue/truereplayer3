@@ -368,6 +368,7 @@
   font-size: var(--text-minor);
 }
 .lib-empty svg { width: 1.375rem; height: 1.375rem; color: var(--color-text-disabled); }
+.lib-empty-title { margin-top: 0.25rem; font-weight: 600; color: var(--color-text-secondary); }
 .lib-link {
   border: 0;
   background: transparent;

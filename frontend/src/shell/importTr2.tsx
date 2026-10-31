@@ -5,7 +5,7 @@ import { useBridge } from '../bridge/BridgeContext';
 import type { Tr2ImportSummary } from '../bridge/messageTypes';
 import { DialogFooter, DialogShell } from '../components/common/DialogShell';
 import { useTt } from '../state/LanguageContext';
-import { closeImport, type ImportMode } from './importState';
+import { closeImport } from './importState';
 import { Switch } from './inspector/fields';
 
 type Part = 'macros' | 'settings' | 'remaps' | 'appearance';
@@ -32,12 +32,13 @@ const available = (part: Part, s: Tr2ImportSummary | null) =>
  * "Import from TrueReplayer 2" (plan truereplayer3-paralelo-2026-10-30.md, decision 4): a copy of
  * TrueReplayer 2's macros, settings, remaps, theme and snippets, which TrueReplayer 2 keeps as they
  * are. The engine stages the copy, restarts, and puts it in place before anything loads; what this
- * app had goes to Backups first. On the first-run offer the other way out is "Start fresh".
+ * app had goes to Backups first. It opens from the first-run screen, where it is one of the ways to
+ * start, and from Settings › General.
  */
-export function ImportTr2({ mode, offer }: { mode: ImportMode; offer: Tr2ImportSummary | null }) {
+export function ImportTr2() {
   const { send, subscribe } = useBridge();
   const tt = useTt();
-  const [summary, setSummary] = useState<Tr2ImportSummary | null>(offer);
+  const [summary, setSummary] = useState<Tr2ImportSummary | null>(null);
   const [chosen, setChosen] = useState<Record<Part, boolean>>({ macros: true, settings: true, remaps: true, appearance: true });
   const [phase, setPhase] = useState<'idle' | 'working' | 'restarting'>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +48,7 @@ export function ImportTr2({ mode, offer }: { mode: ImportMode; offer: Tr2ImportS
     else if (m.type === 'import:error') { setPhase('idle'); setError(m.payload.message); }
     else if (m.type === 'import:staged') setPhase('restarting');
   }), [subscribe]);
-  // Fresh numbers: TrueReplayer 2 may have closed, or changed, since the offer was made.
+  // Fresh numbers: TrueReplayer 2 may have closed, or changed, since the first-run card counted.
   useEffect(() => { send({ type: 'import:scan', payload: {} }); }, [send]);
 
   const s = summary;
@@ -59,9 +60,7 @@ export function ImportTr2({ mode, offer }: { mode: ImportMode; offer: Tr2ImportS
     send({ type: 'import:run', payload: { macros: picked.includes('macros'), settings: picked.includes('settings'), remaps: picked.includes('remaps'), appearance: picked.includes('appearance') } });
   };
   const leave = () => {
-    if (phase !== 'idle') return;
-    if (mode === 'offer') send({ type: 'import:dismiss', payload: {} });
-    closeImport();
+    if (phase === 'idle') closeImport();
   };
 
   return (
@@ -74,14 +73,12 @@ export function ImportTr2({ mode, offer }: { mode: ImportMode; offer: Tr2ImportS
       canClose={() => phase === 'idle'}
       closeOnBackdrop={false}
       footer={<DialogFooter
-        secondary={{ label: mode === 'offer' ? 'Start fresh' : 'Cancel', onClick: leave, disabled: phase !== 'idle' }}
+        secondary={{ label: 'Cancel', onClick: leave, disabled: phase !== 'idle' }}
         primary={{ label: phase === 'working' ? 'Importing…' : phase === 'restarting' ? 'Restarting…' : 'Import', onClick: run, disabled: blocked, autoFocus: true }} />}
     >
       <div className="p-4 flex flex-col gap-3">
         <p className="text-body text-text-secondary">
-          {mode === 'offer'
-            ? tt(`Bring your macros and settings from ${TR2_NAME}?`, `Trazer seus macros e ajustes do ${TR2_NAME}?`)
-            : tt(`A copy of what ${TR2_NAME} has. ${TR2_NAME} itself is not changed.`, `Uma cópia do que o ${TR2_NAME} tem. O ${TR2_NAME} não muda.`)}
+          {tt(`A copy of what ${TR2_NAME} has. ${TR2_NAME} itself is not changed.`, `Uma cópia do que o ${TR2_NAME} tem. O ${TR2_NAME} não muda.`)}
         </p>
         {s && !s.tr2Found
           ? <p className="text-body text-text-tertiary">{tt(`${TR2_NAME}'s data isn't on this computer.`, `Os dados do ${TR2_NAME} não estão neste computador.`)}</p>

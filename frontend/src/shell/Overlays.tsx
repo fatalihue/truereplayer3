@@ -7,6 +7,7 @@ import { useImport } from './importState';
 import { preload, useLoaded } from './lazyModule';
 import { loadPalette, usePalette } from './palette/paletteState';
 import { useShell } from './store';
+import { loadExamples, useUi } from './ui';
 
 // The Input needed dialog of today (common/DialogShell): its code comes with the first question.
 const loadAskInput = () => import('../components/AskInputDialog');
@@ -16,17 +17,28 @@ const loadWatch = () => import('./watch');
 /**
  * What opens over the whole shell: Ctrl+K, "Input needed" — the {input:Label} token asking for a
  * value in the middle of a run (dialogos-080): over everything, not closed by a press outside, Esc
- * or Cancel stopping the run — and the update's splash. All listen from the start; their code loads
- * when first needed.
+ * or Cancel stopping the run — the examples' browser and the update's splash. All listen from the
+ * start; their code loads when first needed.
  */
 export function Overlays() {
   return (
     <>
       <Palette />
       <InputNeeded />
+      <Examples />
       <Watch />
     </>
   );
+}
+
+function Examples() {
+  const open = useUi(s => s.examples !== null);
+  const mod = useLoaded(loadExamples);
+  useEffect(() => {
+    if (open && !mod) void preload(loadExamples);
+  }, [open, mod]);
+  const Dialog = mod?.default;
+  return open && Dialog ? <Dialog /> : null;
 }
 
 function Palette() {
@@ -74,7 +86,7 @@ function Watch() {
     return () => cancelIdleCallback(id);
   }, [mod, booted]);
   // Settings › General opens the import dialog, which lives in the watch's chunk.
-  const importing = useImport(s => s.mode !== null);
+  const importing = useImport(s => s.open);
   useEffect(() => { if (importing && !mod) void preload(loadWatch); }, [importing, mod]);
   const Loaded = mod?.Watch;
   return Loaded ? <Loaded early={early} /> : null;

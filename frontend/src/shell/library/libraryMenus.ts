@@ -1,8 +1,8 @@
-import { ChevronsDownUp, ChevronsUpDown, Download, FilePlus, FolderOpen, FolderPlus, Upload } from 'lucide-react';
+import { BookOpen, ChevronsDownUp, ChevronsUpDown, Download, FilePlus, FolderOpen, FolderPlus, Upload } from 'lucide-react';
 import type { ProfileEntry, ProfileOrderData } from '../../bridge/messageTypes';
 import type { useMacro } from '../../logic/useMacro';
 import type { MenuEntry } from '../Menu';
-import { focusName, openDialog, setLibraryPeek } from '../ui';
+import { focusName, openDialog, openExamples, setLibraryPeek } from '../ui';
 import { freeName } from './model';
 
 /**
@@ -30,6 +30,8 @@ export function libraryMenus({ profiles, order, macro, startImport }: {
   return {
     newEntries: [
       { label: 'New macro', icon: FilePlus, onSelect: () => newMacro(macro, profiles, null) },
+      // The 19 examples inside the app (decision 4), copied into the Examples folder when used.
+      { label: 'From an example…', icon: BookOpen, onSelect: () => openExamples() },
       { label: 'New folder', icon: FolderPlus, onSelect: () => openDialog({ kind: 'newFolder' }) },
     ],
     moreEntries: [

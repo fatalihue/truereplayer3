@@ -7,6 +7,7 @@ import { effectiveOperator, isNumberMode, parsesAsNumber, regexProblem } from '.
 import { useCheckTarget } from './checkTarget';
 import { DraftField, Section, Segmented } from './fields';
 import { applyEdits, type StepEdit } from './inspectorState';
+import { ExtensionMissing, OcrMissing } from './missing';
 import { HexField, RailField, RegionField, ResultCard } from './probeKit';
 import { around, normalHex, regionOf, regionValue, useAsk } from './probes';
 import { SelectorField } from './selectorField';
@@ -150,6 +151,7 @@ export function ScreenTextCheck({ step, locked, variant = 'match', reads = 'foun
 
   return (
     <>
+      <OcrMissing />
       <RegionField
         label="Region to read"
         region={region}
@@ -314,6 +316,7 @@ export function BrowserCheck({ step, locked }: Props) {
 
   return (
     <div className="insp-group">
+      <ExtensionMissing />
       <SelectorField step={step} locked={locked} hint="With the extension offline, it reads as not found." />
       <Section label="State">
         <Segmented<BrowserState>

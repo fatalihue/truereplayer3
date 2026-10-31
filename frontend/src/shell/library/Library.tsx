@@ -213,6 +213,7 @@ export function Library() {
           onNewMenu={headerMenu('new')}
           onMoreMenu={headerMenu('more')}
           onNewMacro={newMacroIn}
+          onCreate={(name) => { macro.create(name, null); setLibraryPeek(false); }}
           onMove={macro.moveToFolder}
           onReorder={macro.reorder}
           onRun={runMacroAt}

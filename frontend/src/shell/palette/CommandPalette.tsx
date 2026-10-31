@@ -26,7 +26,7 @@ import { stepIcon } from '../list/stepTypes';
 import { macroMenuEntries } from '../macroMenu';
 import { MAX_REMAPS } from '../pages/remaps/remapModel';
 import { useApp } from '../store';
-import { openPage, openSettings, useUi } from '../ui';
+import { openExamples, openPage, openSettings, setLibraryPeek, useUi } from '../ui';
 import { fromMenu, macroItems, macroPhrase, scoreOf, shortcut, stepItems, tokensOf, type PaletteItem } from './commands';
 import { palette } from './paletteState';
 import './palette.css';
@@ -48,6 +48,7 @@ export default function CommandPalette() {
   const [opener] = useState(() => (document.activeElement instanceof HTMLElement ? document.activeElement : null));
   const listRef = useRef<HTMLDivElement>(null);
   const items = useItems();
+  const macro = useMacro();
 
   const commandsOnly = query.trimStart().startsWith('>');
   const tokens = tokensOf(commandsOnly ? query.trimStart().slice(1) : query);
@@ -61,7 +62,14 @@ export default function CommandPalette() {
     const limit = group === 'Macros' && tokens.length === 0 ? 5 : LIMIT[group];
     if (scored.length > 0) shown.push({ group, items: scored.slice(0, limit).map(x => x.item) });
   }
-  const flat = shown.flatMap(g => g.items);
+  // Nothing matches (EmptyStates board): a macro by the name typed, or the same words in the
+  // examples. Enter makes the macro. "> " asked for commands only, so it gets neither.
+  const typed = query.trim();
+  const none = shown.length === 0 && !commandsOnly && typed !== '';
+  const flat = none ? [
+    { id: 'none:create', group: 'Commands', label: `Create macro “${typed}”`, icon: Plus, keys: 'Enter', run: () => { macro.create(typed, null); setLibraryPeek(false); } },
+    { id: 'none:examples', group: 'Commands', label: `Look for “${typed}” in the examples`, icon: BookOpen, run: () => openExamples(typed) },
+  ] satisfies PaletteItem[] : shown.flatMap(g => g.items);
   const at = flat.length === 0 ? -1 : Math.min(hi, flat.length - 1);
 
   useLayoutEffect(() => {
@@ -97,6 +105,35 @@ export default function CommandPalette() {
   };
 
   let index = -1;
+  const option = (item: PaletteItem) => {
+    index += 1;
+    const i = index;
+    const Icon = item.icon;
+    return (
+      <div
+        key={item.id}
+        id={`pal-option-${i}`}
+        role="option"
+        aria-selected={i === at}
+        aria-disabled={item.disabled || undefined}
+        className="pal-option"
+        data-index={i}
+        data-tip={item.disabled ? item.hint : undefined}
+        onMouseMove={() => { if (i !== at) setHi(i); }}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => run(item)}
+      >
+        <span className="pal-icon">
+          {item.stepIcon !== undefined
+            ? (item.stepIcon && <span className="step-icon" data-icon={item.stepIcon} />)
+            : Icon ? <Icon aria-hidden="true" /> : null}
+        </span>
+        <span className="pal-label">{item.label}</span>
+        {item.detail && <span className="pal-detail">{item.detail}</span>}
+        {item.keys && <span className="pal-keys">{item.keys.split('+').map((k, n) => <kbd key={n} className="pal-kbd">{k}</kbd>)}</span>}
+      </div>
+    );
+  };
   return createPortal(
     <div className="pal-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) palette.close(); }}>
       <div className="pal" role="dialog" aria-modal="true" aria-label="Search macros, steps and commands">
@@ -119,43 +156,20 @@ export default function CommandPalette() {
           <kbd className="pal-kbd">Esc</kbd>
         </div>
         <div ref={listRef} id="pal-list" className="pal-list" role="listbox" aria-label="Results">
-          {shown.map(({ group, items: rows }) => (
+          {none ? (
+            <>
+              <p className="pal-none">No macros, steps or commands match “{typed}”.</p>
+              {flat.map(option)}
+            </>
+          ) : shown.map(({ group, items: rows }) => (
             <div key={group} role="group" aria-label={group}>
               <div className="pal-group" aria-hidden="true">{group}</div>
-              {rows.map(item => {
-                index += 1;
-                const i = index;
-                const Icon = item.icon;
-                return (
-                  <div
-                    key={item.id}
-                    id={`pal-option-${i}`}
-                    role="option"
-                    aria-selected={i === at}
-                    aria-disabled={item.disabled || undefined}
-                    className="pal-option"
-                    data-index={i}
-                    data-tip={item.disabled ? item.hint : undefined}
-                    onMouseMove={() => { if (i !== at) setHi(i); }}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => run(item)}
-                  >
-                    <span className="pal-icon">
-                      {item.stepIcon !== undefined
-                        ? (item.stepIcon && <span className="step-icon" data-icon={item.stepIcon} />)
-                        : Icon ? <Icon aria-hidden="true" /> : null}
-                    </span>
-                    <span className="pal-label">{item.label}</span>
-                    {item.detail && <span className="pal-detail">{item.detail}</span>}
-                    {item.keys && <span className="pal-keys">{item.keys.split('+').map((k, n) => <kbd key={n} className="pal-kbd">{k}</kbd>)}</span>}
-                  </div>
-                );
-              })}
+              {rows.map(option)}
             </div>
           ))}
-          {flat.length === 0 && <p className="pal-none">Nothing matches “{query.trim()}”.</p>}
+          {flat.length === 0 && <p className="pal-none">{commandsOnly ? 'No commands match' : 'Nothing matches'} “{commandsOnly ? typed.slice(1).trim() : typed}”.</p>}
         </div>
-        <div className="pal-foot">↑↓ move · Enter opens · type &gt; for commands only</div>
+        <div className="pal-foot">{none ? 'Search looks in macro names, step notes and every command.' : <>↑↓ move · Enter opens · type &gt; for commands only</>}</div>
       </div>
     </div>,
     document.body,
@@ -283,9 +297,9 @@ function useItems(): PaletteItem[] {
     out.push(...fromMenu('macro', macroMenuEntries({ name: active, profiles, order, active, locked: status !== 'ready', clicker, hasSteps: steps.length > 0, macro, tt }), (item, path) => ({ label: macroPhrase(item.label, path, active), detail: 'Macro' })));
   }
 
-  // The library's New ▾ and ⋯.
+  // The library's New ▾ and ⋯. "From an example…" is found by "examples" too.
   const { newEntries, moreEntries } = libraryMenus({ profiles, order, macro, startImport });
-  out.push(...fromMenu('library', [...newEntries, ...moreEntries], () => ({ detail: 'Library' })));
+  out.push(...fromMenu('library', [...newEntries, ...moreEntries], (item) => ({ detail: 'Library', words: item.icon === BookOpen ? 'browse examples sample starter' : undefined })));
 
   // The dock, the master switches, and the app's own doors.
   out.push(

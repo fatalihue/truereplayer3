@@ -547,7 +547,13 @@ namespace TrueReplayer
 
             WebView.CoreWebView2.WebMessageReceived += (s, e) =>
             {
-                bridge.HandleMessage(e.WebMessageAsJson);
+                // A file dropped on the first-run screen rides along with its message as a
+                // CoreWebView2File (postMessageWithAdditionalObjects): its path is what the import reads.
+                string? droppedFile = null;
+                if (e.AdditionalObjects is { Count: > 0 } extra)
+                    foreach (var item in extra)
+                        if (item is Microsoft.Web.WebView2.Core.CoreWebView2File file) { droppedFile = file.Path; break; }
+                bridge.HandleMessage(e.WebMessageAsJson, droppedFile);
             };
 
             // Wire up unsaved changes guard for window close and tray exit
