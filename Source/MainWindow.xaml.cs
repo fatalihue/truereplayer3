@@ -831,7 +831,8 @@ namespace TrueReplayer
 
                 // Sweep WaitImage PNGs that aren't referenced by any action across all profiles.
                 // Runs once at startup (before user can trigger any undo) so we never delete a
-                // file the in-memory undo stack would still need.
+                // file the in-memory undo stack would still need. No-ops when no profile loaded,
+                // like the cursor prune below: a missing Profiles folder is not a deleted library.
                 ImageStorageService.CleanupOrphanImages(profileController.ReferencedImagesByProfile, profileController.FailedLoadFolders);
 
                 // Same one-shot startup sweep for run cursors: drop positions belonging to

@@ -345,12 +345,22 @@ namespace TrueReplayer.Services
         /// referencedByProfile maps profileName → set of ImagePath filenames that should be kept.
         /// Profiles without an entry have all their PNGs deleted (and the dir if it ends up empty),
         /// except a PNG another profile references and lacks, which is moved to that profile.
+        ///
+        /// No-ops when no profile loaded: an empty map means the Profiles folder is missing (moved
+        /// or renamed — the load just recreated it empty), empty, or every file in it failed to
+        /// read, and sweeping against that erases every reference PNG the user has. Same posture
+        /// as RunCursorService.PruneMissingProfiles. Orphans wait for a start with a profile in it.
         /// </summary>
         public static int CleanupOrphanImages(IReadOnlyDictionary<string, HashSet<string>> referencedByProfile, IReadOnlySet<string>? keepEntirelyFolders = null)
         {
             int deleted = 0;
             string baseDir = GetBaseDirectory();
             if (!Directory.Exists(baseDir)) return 0;
+            if (referencedByProfile == null || referencedByProfile.Count == 0)
+            {
+                try { DiagnosticLog.Info("[Images] Orphan sweep skipped: no profile loaded, so every image stays."); } catch { }
+                return 0;
+            }
 
             // Re-keyed case-INSENSITIVELY whatever comparer the caller built with, because the
             // folder names below come from the disk and NTFS ignores case. An ordinal map missed
@@ -422,6 +432,9 @@ namespace TrueReplayer.Services
             }
             if (rehomed > 0)
                 try { DiagnosticLog.Info($"[Images] Re-homed {rehomed} reference image(s) left under an old profile folder name."); } catch { }
+            // The sweep deletes for good, and a startup that ate the user's images left no trace.
+            if (deleted > 0)
+                try { DiagnosticLog.Info($"[Images] Orphan sweep deleted {deleted} unreferenced image(s)."); } catch { }
             return deleted;
         }
 
