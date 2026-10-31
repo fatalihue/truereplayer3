@@ -17,6 +17,7 @@ namespace TrueReplayer
         [STAThread]
         static void Main(string[] args)
         {
+            StartupClock.Mark("main");
             // Velopack must run before any WinUI/XAML initialization.
             // It handles install/uninstall/update hooks and exits early when
             // invoked by the updater (e.g. --velopack-install).
@@ -117,11 +118,15 @@ namespace TrueReplayer
             }
 
             global::WinRT.ComWrappersSupport.InitializeComWrappers();
+            StartupClock.Mark("ui");
             Application.Start(p =>
             {
                 var context = new DispatcherQueueSynchronizationContext(
                     DispatcherQueue.GetForCurrentThread());
                 SynchronizationContext.SetSynchronizationContext(context);
+                // The WebView2's browser process starts now, alongside the app's XAML and the window,
+                // instead of after them (D7). On this thread: the environment belongs to it.
+                MainWindow.StartWebViewEnvironment();
                 new App();
             });
         }

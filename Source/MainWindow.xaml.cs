@@ -147,6 +147,7 @@ namespace TrueReplayer
 
         public MainWindow()
         {
+            StartupClock.Mark("window");
             this.InitializeComponent();
             // The theme's canvas, not a fixed black, from the first frame: the window is shown by
             // Activate() long before the WebView2 has painted anything (it stays at Opacity 0 until
@@ -297,7 +298,9 @@ namespace TrueReplayer
             // first profile-list load can arm anything.
             triggerService.SetGlobalEnabled(AppSettingsManager.Load().AutomationEnabled);
 
-            WindowAppearanceService.Configure(this);
+            // The window's size, place and title bar (WindowAppearanceService.Configure) come from App, just
+            // before it is shown: the title bar alone costs ~120 ms on this thread, and App lets the WebView2's
+            // controller be asked for first, so the two overlap (D7).
 
             // Key remap layer — loaded BEFORE the hooks start so remaps are live from the
             // first keystroke, independent of WebView2 (which may never come up in
@@ -451,7 +454,55 @@ namespace TrueReplayer
                 profileController.Dispose();
             };
 
+            StartupClock.Mark("window built");
             InitializeWebView();
+        }
+
+        // Done once InitializeWebView has asked for the WebView2's controller, or given up: App shows the
+        // window after it, so the title bar's ~120 ms run while the controller is made (D7).
+        private readonly TaskCompletionSource _webViewStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task WebViewStarted => _webViewStarted.Task;
+
+        // The WebView2 environment asked for at the start of the UI thread (Program), before the app's
+        // XAML and this window exist, so its browser process starts in parallel with them (D7). The
+        // first InitializeWebView takes it; a retry asks again.
+        private static Task<Microsoft.Web.WebView2.Core.CoreWebView2Environment>? _earlyEnvironment;
+
+        /// <summary>Starts creating the WebView2 environment; never throws (InitializeWebView retries).</summary>
+        public static void StartWebViewEnvironment()
+        {
+            try
+            {
+                _earlyEnvironment = CreateWebViewEnvironmentAsync();
+                StartupClock.Mark("env asked");
+            }
+            catch { _earlyEnvironment = null; }
+        }
+
+        private static Task<Microsoft.Web.WebView2.Core.CoreWebView2Environment> CreateWebViewEnvironmentAsync()
+        {
+            // Pin the WebView2 UserDataFolder to a stable location OUTSIDE Velopack's
+            // versioned app directory. The default location is adjacent to the executable,
+            // which the Velopack updater discards when it swaps in a new version directory —
+            // taking the theme, SendText snippets, and any other localStorage with it. Pinning
+            // to LocalAppData means the data survives every update. (TrueReplayer 2 still
+            // migrates a folder left there by versions before 2.2.1; this app has none.)
+            var userDataFolder = Path.Combine(AppIdentity.LocalRoot, "WebView2");
+            // WebView2 makes a missing folder itself; one it cannot use fails the creation below, which
+            // InitializeWebView retries and reports (this may run before the log exists).
+            try { Directory.CreateDirectory(userDataFolder); } catch { }
+            var envOptions = new Microsoft.Web.WebView2.Core.CoreWebView2EnvironmentOptions
+            {
+                // The eyedropper inside Chromium's colour popup (an <input type="color">'s) needs a
+                // picker the browser shell draws, and WebView2 has none: the button did nothing.
+                // Off, the popup shows no eyedropper; the theme editor's rows carry the app's own
+                // pick (pixel:pickColor) beside their swatch.
+                AdditionalBrowserArguments = "--disable-features=EyeDropper",
+            };
+            // CreateWithOptionsAsync is the WinRT projection's name for the 3-arg factory
+            // (the net462 dll exposes plain CreateAsync, but the .NET 8 WinMD-backed
+            // projection renamed it with the "WithOptions" suffix per WinRT convention).
+            return Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateWithOptionsAsync(null, userDataFolder, envOptions).AsTask();
         }
 
         // The interface's own choices (InterfaceStore): filled into localStorage from
@@ -482,20 +533,6 @@ namespace TrueReplayer
 
         private async void InitializeWebView()
         {
-            // Pin the WebView2 UserDataFolder to a stable location OUTSIDE Velopack's
-            // versioned app directory. The default location is adjacent to the executable,
-            // which the Velopack updater discards when it swaps in a new version directory —
-            // taking the theme, SendText snippets, and any other localStorage with it. Pinning
-            // to LocalAppData means the data survives every update. (TrueReplayer 2 still
-            // migrates a folder left there by versions before 2.2.1; this app has none.)
-            var userDataFolder = Path.Combine(AppIdentity.LocalRoot, "WebView2");
-
-            try { Directory.CreateDirectory(userDataFolder); }
-            catch (Exception ex) { Services.DiagnosticLog.Warn($"WebView2 UserDataFolder create failed: {ex.Message}"); }
-
-            // CreateWithOptionsAsync is the WinRT projection's name for the 3-arg factory
-            // (the net462 dll exposes plain CreateAsync, but the .NET 8 WinMD-backed
-            // projection renamed it with the "WithOptions" suffix per WinRT convention).
             // Creating the WebView2 environment can fail hard (Edge WebView2 Runtime missing or
             // corrupt, user-data folder locked). The global UnhandledException handler keeps the
             // process alive, but every recovery affordance below (tray Reload UI, ProcessFailed,
@@ -512,27 +549,27 @@ namespace TrueReplayer
             {
                 try
                 {
-                    var envOptions = new Microsoft.Web.WebView2.Core.CoreWebView2EnvironmentOptions
-                    {
-                        // The eyedropper inside Chromium's colour popup (an <input type="color">'s) needs a
-                        // picker the browser shell draws, and WebView2 has none: the button did nothing.
-                        // Off, the popup shows no eyedropper; the theme editor's rows carry the app's own
-                        // pick (pixel:pickColor) beside their swatch.
-                        AdditionalBrowserArguments = "--disable-features=EyeDropper",
-                    };
-                    var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateWithOptionsAsync(
-                        null, userDataFolder, envOptions);
-                    await WebView.EnsureCoreWebView2Async(env);
+                    // The first attempt takes the environment started with the UI thread, when there is one.
+                    var early = attempt == 1 ? _earlyEnvironment : null;
+                    _earlyEnvironment = null;
+                    var env = await (early ?? CreateWebViewEnvironmentAsync());
+                    StartupClock.Mark("env");
+                    var controller = WebView.EnsureCoreWebView2Async(env);
+                    _webViewStarted.TrySetResult();
+                    await controller;
+                    StartupClock.Mark("controller");
                     break;
                 }
                 catch (Exception ex) when (attempt < envAttempts)
                 {
                     Services.DiagnosticLog.Warn($"InitializeWebView: WebView2 environment creation failed (attempt {attempt}/{envAttempts}), retrying: {ex.GetType().Name}: {ex.Message}");
+                    _webViewStarted.TrySetResult();   // the window shows while this retries
                     await Task.Delay(1500);
                 }
                 catch (Exception ex)
                 {
                     Services.DiagnosticLog.Error("InitializeWebView: WebView2 environment creation failed", ex);
+                    _webViewStarted.TrySetResult();
                     NativeMethods.MessageBoxW(hwnd,
                         $"{AppIdentity.DisplayName} couldn't start its UI because the Microsoft Edge WebView2 Runtime " +
                         $"failed to initialize.\n\nInstall or repair the WebView2 Runtime, then restart {AppIdentity.DisplayName}.",
@@ -817,6 +854,7 @@ namespace TrueReplayer
                 // fresh budget rather than inheriting this run's spent attempts.
                 _navFailureRecoveries = 0;
                 WebView.Opacity = 1;
+                StartupClock.Write("loaded");
                 // Loaded while the window is hidden (an autostart into the tray, a recovery there): the
                 // page starts out not drawing, as a hide would have left it.
                 if (!NativeMethods.IsWindowVisible(hwnd)) SetPageVisible(false);
@@ -845,6 +883,7 @@ namespace TrueReplayer
 #if DEBUG
             WebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
             _targetUrl = "http://localhost:5173";
+            StartupClock.Mark("navigate");
             WebView.CoreWebView2.Navigate(_targetUrl);
 #else
             // DevTools enabled so the "Open DevTools" tray item works in Release too.
@@ -859,6 +898,7 @@ namespace TrueReplayer
                 "app.local", wwwrootPath,
                 Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow);
             _targetUrl = "https://app.local/index.html";
+            StartupClock.Mark("navigate");
             WebView.CoreWebView2.Navigate(_targetUrl);
 #endif
 

@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using TrueReplayer.Models;
 using TrueReplayer.Services;
@@ -18,6 +19,7 @@ namespace TrueReplayer
             DiagnosticLog.Initialize(appVersion);
 
             this.InitializeComponent();
+            StartupClock.Mark("app");
             DiagnosticLog.Info("App constructor: UnhandledException handler attached");
 
             // Record this session's elevation up-front. The 'admin target while TrueReplayer
@@ -62,10 +64,18 @@ namespace TrueReplayer
             };
         }
 
-        protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
+        protected override async void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
-            m_window = new MainWindow();
-            m_window.Activate();
+            StartupClock.Mark("launched");
+            var window = new MainWindow();
+            m_window = window;
+            // The window takes its size, place and title bar — the title bar into the content costs ~120 ms
+            // on this thread — once the WebView2's controller has been asked for, so the controller is made
+            // meanwhile instead of after (D7); at most 150 ms after the window exists.
+            await Task.WhenAny(window.WebViewStarted, Task.Delay(150));
+            WindowAppearanceService.Configure(window);
+            window.Activate();
+            StartupClock.Mark("shown");
 
             // Only minimize if launched by OS autostart via --startup flag,
             // not when the user opens the app manually.
