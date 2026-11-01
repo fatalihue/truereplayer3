@@ -75,6 +75,12 @@ export const useUi = create<ShellUi>(() => ({
 }));
 
 /** Another destination on screen. The macros' library peek goes with them. */
+/**
+ * The window event the editors in other chunks hear when the engine asks for what they hold before
+ * the app closes (editor:commit, heard in watch.tsx): the Data Loop's paste box closes on it.
+ */
+export const COMMIT_EDITORS = 'tr:commit-editors';
+
 export const openPage = (page: Page) => {
   if (useUi.getState().page !== page) useUi.setState({ page, libraryPeek: false });
 };

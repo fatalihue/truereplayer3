@@ -682,9 +682,10 @@ namespace TrueReplayer
                 bridge?.SendMessage("tray:command", new { command = "settings" });
             });
             // The close guard asks only about an editor's unapplied work, or about pending changes it
-            // cannot save as you go (no file, or a write that failed): only then does Quit show the window.
-            TrayIconService.QuitNeedsWindow = () => Services.AutomationGuard.HeldEditors().Count > 0
-                || (bridge is { AutoSaveEnabled: false } && (bridge.HasUnsavedLoopChange || bridge.HasUnsavedActionWork));
+            // cannot save as you go: only then does Quit show the window. Saving as you go, it asks the
+            // page for the editors' work first and shows the window itself if a question is left.
+            TrayIconService.QuitNeedsWindow = () => bridge is not { AutoSaveEnabled: true }
+                && (Services.AutomationGuard.HeldEditors().Count > 0 || (bridge != null && (bridge.HasUnsavedLoopChange || bridge.HasUnsavedActionWork)));
             // ── The tray panel (Tray board, "A bandeja — um clique abre o painel") ──
             TrayPanel.Read = BuildTrayPanelSnapshot;
             TrayPanel.OnOpenWindow = () => windowEventManager?.BringToForeground();
@@ -1064,11 +1065,19 @@ namespace TrueReplayer
             // Sheet's fields — "saved" over work that was not in the file. Declining keeps the
             // window; accepting moves on to the profile's own prompt, which still guards the rest.
             var editors = Services.AutomationGuard.HeldEditors();
-            if (editors.Count > 0
-                && !await profileController.ShowUnappliedEditsDialogAsync(Services.AutomationGuard.DescribeUnappliedEdits(editors)))
+            // Save as you go: what is typed goes in with the rest, and nothing is asked. The page puts
+            // in what its editors hold and lets go of their claims (editor:commit); the question is
+            // left for a page that does not answer in time (gone, or stuck).
+            if (editors.Count > 0 && bridge is { AutoSaveEnabled: true }) editors = await CommitEditorsAsync();
+            if (editors.Count > 0)
             {
-                Services.DiagnosticLog.Info($"Close guard resolved: canClose=False (unapplied edits in {string.Join(", ", editors)})");
-                return false;
+                // A Quit from the tray comes with the window hidden, and the question must be seen.
+                if (bridge is { AutoSaveEnabled: true }) await SurfaceAppForInputAsync();
+                if (!await profileController.ShowUnappliedEditsDialogAsync(Services.AutomationGuard.DescribeUnappliedEdits(editors)))
+                {
+                    Services.DiagnosticLog.Info($"Close guard resolved: canClose=False (unapplied edits in {string.Join(", ", editors)})");
+                    return false;
+                }
             }
 
             // Save as you go writes what is still pending, and the prompt below has nothing to ask.
@@ -1085,6 +1094,9 @@ namespace TrueReplayer
             else
             {
                 bool loopOnly = bridge.HasUnsavedLoopChange && !bridge.HasUnsavedActionWork;
+                // Saving as you go, this question comes only when the write failed (or, with no
+                // macro open, there is no file): a Quit from the tray may have the window hidden.
+                if (bridge.AutoSaveEnabled) await SurfaceAppForInputAsync();
                 var result = await profileController.ShowUnsavedChangesDialogAsync(loopOnly);
 
                 if (result == ContentDialogResult.Primary) // Save
@@ -1138,6 +1150,27 @@ namespace TrueReplayer
 
             Services.DiagnosticLog.Info($"Close guard resolved: canClose={canClose}");
             return canClose;
+        }
+
+        /// <summary>
+        /// Asks the page to put in what its editors hold (editor:commit: a field applies on leaving it,
+        /// an open Data Loop cell too, and a paste box not applied closes) and waits up to 1.5 s for
+        /// their editor:pendingEdits claims to go. The edits arrive before the claims are let go, so
+        /// the auto-save flush that follows writes them. Returns the claims still held.
+        /// </summary>
+        private async Task<System.Collections.Generic.IReadOnlyList<string>> CommitEditorsAsync()
+        {
+            bridge?.SendMessage("editor:commit", new { });
+            var held = Services.AutomationGuard.HeldEditors();
+            for (int i = 0; i < 30 && held.Count > 0; i++)
+            {
+                await Task.Delay(50);
+                held = Services.AutomationGuard.HeldEditors();
+            }
+            Services.DiagnosticLog.Info(held.Count == 0
+                ? "Close guard: the page put in what its editors held"
+                : $"Close guard: still held after asking the page ({string.Join(", ", held)})");
+            return held;
         }
 
         // Brings TrueReplayer forward so an {input:} Ask-Input modal is visible. Handles all three
@@ -1372,6 +1405,9 @@ namespace TrueReplayer
                     {
                         if (mainController.ShouldSuppressDuplicateRecordingHotkey())
                             return;
+
+                        // With no macro open, a new one records it (WebViewBridge.RecordIntoNewMacro).
+                        if (bridge?.RecordIntoNewMacro() == true) return;
 
                         foreach (var action in Actions)
                         {

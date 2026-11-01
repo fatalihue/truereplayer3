@@ -5046,12 +5046,29 @@ namespace TrueReplayer
             // forwarded through this handler shouldn't bypass that.
             if (UseCursorClick) return;
 
+            if (RecordIntoNewMacro()) return;
+
             int? insertIndex = null;
             if (payload.TryGetProperty("insertIndex", out var idxEl) && idxEl.ValueKind == JsonValueKind.Number)
                 insertIndex = idxEl.GetInt32();
 
             mainController.EnableInsertMode(insertIndex);
             mainController.ToggleRecording();
+        }
+
+        /// <summary>
+        /// Saving as you go needs a file: with no macro open, a recording starts in a new macro, as
+        /// the tray's Record a new macro does (the page makes "Untitled macro" and records into it).
+        /// Recorded into "No Profile", the steps had no file, and every switch or close asked the old
+        /// questions (Unsaved Changes, then Save as). The record hotkey and recording:toggle come
+        /// here. True when the recording went to the page that way.
+        /// </summary>
+        public bool RecordIntoNewMacro()
+        {
+            if (!AutoSaveEnabled || SavesAsYouGo || mainController.IsRecording()) return false;
+            DiagnosticLog.Info("Recording with no macro open: a new macro records it");
+            SendMessage("tray:command", new { command = "recordNew" });
+            return true;
         }
 
         // No payload: the loop settings that used to ride in it are now resolved backend-side

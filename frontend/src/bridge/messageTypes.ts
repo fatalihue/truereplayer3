@@ -944,6 +944,9 @@ export type IncomingMessage =
   // brought the window up).
   // The tray's doors, and a Windows notification's buttons (D8): the page they name, about a macro (name).
   | { type: 'tray:command'; payload: { command: 'recordNew' | 'settings' | 'macros' | 'automations' | 'dataLoop' | 'remaps' | 'report'; name?: string } }
+  // The app is closing and saves as you go: the editors put in what they hold and let go of their
+  // editor:pendingEdits claims, so the close has nothing to ask (MainWindow.HandleCloseGuardAsync).
+  | { type: 'editor:commit'; payload: Record<string, never> }
   // The window entered or left the compact view (also sent to a page that loads in it).
   // captionInset: the width (DIP) the system's own × takes at the top right of the compact view.
   | { type: 'window:compactChanged'; payload: { compact: boolean; captionInset?: number } }

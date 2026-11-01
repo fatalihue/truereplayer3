@@ -477,7 +477,7 @@ export const CATEGORIES: Category[] = [
       {
         title: 'Recording and replay',
         rows: [
-          hotkeyRow('record', 'recordingHotkey', 'Record', { hint: 'Starts and stops recording into the open macro', words: 'recording' }),
+          hotkeyRow('record', 'recordingHotkey', 'Record', { hint: 'Starts and stops recording into the open macro, or into a new one when none is open', words: 'recording' }),
           hotkeyRow('replay', 'replayHotkey', 'Replay or stop', { hint: 'Runs the open macro, or stops whatever is running', words: 'run play' }),
           hotkeyRow('shortcuts', 'profileKeyToggleHotkey', 'Shortcuts on or off', { hint: 'Silences macro hotkeys, hotstrings and Key Remaps at once', words: 'profile keys toggle silence pause' }),
         ],

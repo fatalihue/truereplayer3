@@ -7,7 +7,7 @@ import type { useMacro } from '../logic/useMacro';
 import { folderOf } from './library/model';
 import { selection } from './list/selection';
 import type { MenuEntry } from './Menu';
-import { focusName, openDialog, openMacroSettings, type SettingsSection } from './ui';
+import { focusName, openDialog, openMacroSettings, openPage, type SettingsSection } from './ui';
 
 type Tt = (en: string, pt: string) => string;
 
@@ -40,7 +40,10 @@ export function macroMenuEntries({ name, profiles, order, active, locked, clicke
   const inFolder = folderOf(name, order);
   const isOpen = name === active;
   // The macro's own settings are in the Inspector with no step chosen: another macro opens first.
+  // Ctrl+K runs this menu from any page, so the macros' page comes first, as Macros in the rail
+  // brings it: on a hidden page the Trigger's key capture listened unseen, and could set a hotkey.
   const openSettings = (section: SettingsSection) => {
+    openPage('macros');
     if (!isOpen) macro.open(name);
     selection.clear();
     openMacroSettings(name, section);
@@ -49,7 +52,7 @@ export function macroMenuEntries({ name, profiles, order, active, locked, clicke
   const stepsLocked = locked || clicker;
   const lockTip = locked ? tt('Stop the run first', 'Pare a execução antes') : tt('The Clicker is on', 'O Clicker está ligado');
   return [
-    { label: 'Rename…', icon: Pencil, onSelect: () => (isOpen ? focusName(name) : openDialog({ kind: 'renameMacro', name })) },
+    { label: 'Rename…', icon: Pencil, onSelect: () => { if (isOpen) { openPage('macros'); focusName(name); } else openDialog({ kind: 'renameMacro', name }); } },
     { label: 'Duplicate', icon: Copy, onSelect: () => macro.duplicate(name) },
     {
       label: 'Move to folder',

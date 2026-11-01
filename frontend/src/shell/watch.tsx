@@ -16,7 +16,7 @@ import { useShell } from './store';
 import { endTip, pendingTips } from './tips/tipsState';
 import CompactButton from './CompactButton';
 import { recordNewMacro } from './recordNew';
-import { loadDragGhost, loadEmpties, loadRunProgress, loadStepGhost, openPage, openSettings, showMacroTab, useUi } from './ui';
+import { COMMIT_EDITORS, loadDragGhost, loadEmpties, loadRunProgress, loadStepGhost, openPage, openSettings, showMacroTab, useUi } from './ui';
 import { dock } from './dock/dockState';
 import { hearUpdate } from './updates';
 
@@ -65,6 +65,18 @@ function hearTray(message: IncomingMessage, record: () => boolean, openMacro: (n
     if (command === 'dataLoop' && name) { openMacro(name); showMacroTab('data'); }
     else if (command === 'report') dock.show('report');
   }
+}
+
+/**
+ * The app is closing, and it saves as you go (MainWindow.HandleCloseGuardAsync): what the editors hold
+ * goes in first, and then there is nothing to ask. A field applies on leaving it, the Inspector's and
+ * an open Data Loop cell alike; a paste box not applied closes, as Esc would (COMMIT_EDITORS).
+ */
+function hearCommit(message: IncomingMessage) {
+  if (message.type !== 'editor:commit') return;
+  const focused = document.activeElement;
+  if (focused instanceof HTMLElement && focused !== document.body) focused.blur();
+  window.dispatchEvent(new Event(COMMIT_EDITORS));
 }
 
 /** TrueReplayer 2's knock (CoexistenceGuard): whether there is an installed one to switch to. */
@@ -173,6 +185,7 @@ export function Watch({ early }: { early: readonly IncomingMessage[] }) {
     hear(m, (door) => refuseRef.current(door));
     hearImport(m, (text) => toastRef.current(text));
     hearTray(m, () => recordRef.current(), (name) => openRef.current(name));
+    hearCommit(m);
     const k = knockOf(m);
     if (k) setKnock(k);
   }), [subscribe]);

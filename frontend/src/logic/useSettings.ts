@@ -25,7 +25,6 @@ export function useSettings() {
      * settings) and the Automations master switch (D23). The page asks first: no native dialog.
      */
     resetAll: () => send({ type: 'settings:resetAll', payload: {} }),
-    setAlwaysOnTop: (enabled: boolean) => send({ type: 'window:alwaysOnTop', payload: { enabled } }),
     setMinimizeToTray: (enabled: boolean) => send({ type: 'window:minimizeToTray', payload: { enabled } }),
     /** Run on startup. Turning it off also turns off "start minimized", which means nothing without it. */
     setRunOnStartup: (enabled: boolean) => {

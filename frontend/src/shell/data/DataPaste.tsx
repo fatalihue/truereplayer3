@@ -1,6 +1,7 @@
-import { useDeferredValue, useLayoutEffect, useRef } from 'react';
+import { useDeferredValue, useEffect, useLayoutEffect, useRef } from 'react';
 import { parseTsv } from '../../lib/tsv';
 import { useTt } from '../../state/LanguageContext';
+import { COMMIT_EDITORS } from '../ui';
 import { refocusTable, useDataOps, useDataTab, useShown, validName, type PasteDraft } from './model';
 
 /**
@@ -27,6 +28,13 @@ export function DataPaste({ draft, locked }: { draft: PasteDraft; locked: boolea
     if (ops.applyPaste(useDataTab.getState().paste ?? draft)) close();
   };
   useLayoutEffect(() => { boxRef.current?.focus({ preventScroll: true }); }, []);
+  // The app closing (editor:commit): a paste not applied goes away, as Esc would put it, and the
+  // claim it held on the automations and on the close goes with it.
+  useEffect(() => {
+    const drop = () => useDataTab.setState({ paste: null });
+    window.addEventListener(COMMIT_EDITORS, drop);
+    return () => window.removeEventListener(COMMIT_EDITORS, drop);
+  }, []);
 
   // The preview follows the typing a moment behind it; Apply reads the box as it is.
   const text = useDeferredValue(draft.text);
