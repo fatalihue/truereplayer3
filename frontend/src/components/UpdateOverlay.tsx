@@ -118,6 +118,12 @@ export function UpdateOverlay({ pending }: { pending?: readonly IncomingMessage[
       // When disabled, swallow every update event so the overlay never appears.
       // The backend will trigger download + apply automatically.
       if (!UPDATE_OVERLAY_ENABLED) return;
+      // Only the update:* messages. A setState whose result is the state it already has is still
+      // kept in the hook's queue until the component renders again, and in the new shell this one
+      // seldom does: every other message the engine sent (each automation run sends ~25) piled up
+      // there with its payload, and the page grew without end in the tray (the long tray test of
+      // TrueReplayer 3's phase E found it).
+      if (!msg.type.startsWith('update:')) return;
       setPhase((prev) => nextPhase(prev, msg));
     });
   }, [subscribe]);
