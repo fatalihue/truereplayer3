@@ -1,8 +1,8 @@
 import type { AppState, ClickerLiveState, IncomingMessage } from '../bridge/messageTypes';
 
-// The app state and the three reducers that keep it, as plain functions. The shell of today runs them
-// in AppStateContext; the new shell runs the same ones in its store (shell/store.ts), so both read
-// the engine's messages the same way.
+// The app state and the three reducers that keep it, as plain functions. The shell runs them in its
+// store (shell/store.ts), the same ones TrueReplayer 2's shell runs, so both read the engine's
+// messages the same way.
 
 const defaultSettings = {
   customDelay: '100',

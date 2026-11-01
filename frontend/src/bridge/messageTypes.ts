@@ -259,8 +259,6 @@ export interface ProfileEntry {
    *  effective target, so only one of them fires. The same combo on DIFFERENT targets is not a
    *  conflict — the foreground gate routes between those on purpose. Derived, never persisted. */
   hotkeyConflict?: boolean;
-  /** No longer sent (D6): the open macro is activeProfile. Only the old shell's ProfilePanel reads it. */
-  isActive?: boolean;
   hasWindowTarget: boolean;
   windowTargetProcessName: string | null;
   windowTargetWindowTitle: string | null;

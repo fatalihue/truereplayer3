@@ -5,8 +5,8 @@ import { effectiveOperator, isNumberMode, parsesAsNumber, regexProblem } from '.
 /**
  * What the Automations page (phase 3, slices 8 and 9) and the Inspector's Automation section know
  * about a trigger: how a new one starts, how two are compared, why one can never fire, and how a
- * row reads (its trigger, its status, when it ran). Today's components/AutomationPanel is the
- * reference; it leaves in phase 6. The protocol says "profile"; the interface says "macro".
+ * row reads (its trigger, its status, when it ran). TrueReplayer 2's AutomationPanel was the
+ * reference. The protocol says "profile"; the interface says "macro".
  */
 
 /**

@@ -32,14 +32,14 @@ import { applyThemeConfig, loadCustomPresets, loadThemeConfig, resolveThemeColor
 const bootTheme = loadThemeConfig()
 applyThemeConfig(resolveThemeColors(bootTheme, loadCustomPresets()), bootTheme.uiSettings, false)
 
-// In this branch the app opens the new shell only (phase 1 of the interface plan); the shell of
-// today stays in components/ as a reference until phase 6 and is not part of the bundle. The shell
-// asks the engine to save as you go and to undo the macro's settings too (ui:capabilities).
+// The app is the new shell (TrueReplayer 3). The shell TrueReplayer 2 had left the code in phase E;
+// components/ keeps only the parts the new one reuses. The shell asks the engine to save as you go and
+// to undo the macro's settings too (ui:capabilities).
 const CAPABILITIES = { autoSave: true, extendedUndo: true }
 
 const render = () => createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    {/* Two boundaries, as in the shell of today: the outer one catches a provider crash, the inner
+    {/* Two boundaries, as in TrueReplayer 2's shell: the outer one catches a provider crash, the inner
         one a shell crash with the theme still applied. */}
     <ErrorBoundary>
       <ThemeProvider>

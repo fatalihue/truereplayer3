@@ -1,5 +1,3 @@
-import type { ActionItem } from '../bridge/messageTypes';
-import { carriesConditionProbe } from './conditionalBlocks';
 import { compactKey } from './keyNames';
 
 // Raw key names as older profiles and the hook report them (numeric VK codes, WinForms enum
@@ -78,15 +76,6 @@ export function formatMs(ms: number, language: 'en' | 'pt-BR'): string {
   const n = Number.isFinite(ms) ? Math.trunc(ms) || 0 : 0;
   return MS_FORMAT[language === 'pt-BR' ? 'pt-BR' : 'en'].format(n);
 }
-
-// Pixel-coordinate display applies to the standalone WaitPixelColor action AND
-// to IF rows whose condition is PixelColorMatch — both store the watched point
-// in pixelX/pixelY and show it in the Details column.
-function showsPixelCoords(item: ActionItem): boolean {
-  return item.actionType === 'WaitPixelColor'
-    || (carriesConditionProbe(item.actionType) && item.conditionType === 'PixelColorMatch');
-}
-
 // The combined click types — mirrors ActionItem.IsCombinedClickType on the C# side.
 // Only these read the at-cursor flag, so only these may blank their coordinates because of it.
 // The *ClickHold family is here for the same reason it is there: the row owns a whole
@@ -169,33 +158,6 @@ export const clickFormOf = (actionType: string): '' | 'Down' | 'Up' =>
   actionType.endsWith('ClickDown') ? 'Down'
   : actionType.endsWith('ClickUp') ? 'Up'
   : '';
-
-// An at-cursor click HAS an x/y on disk, but the replay resolves its point from the live mouse
-// and never reads them — showing the stored numbers would be a phantom coordinate, the exact
-// thing NO_COORD_TYPES exists to prevent. This half is per-ROW, which is why it can't live in
-// that set. Mirrors the `AtCursor && IsCombinedClickType` half of C# ActionItem.HideCoordinates.
-const hidesCoordsForCursor = (item: ActionItem): boolean =>
-  !!item.atCursor && COMBINED_CLICK_TYPES.has(item.actionType);
-
-export function getDisplayX(item: ActionItem): string {
-  // Pixel probes (WaitPixelColor / IF PixelColorMatch) borrow the pixel coords
-  // for display — mirrors the C# ActionItem.DisplayX override. Image conditions
-  // stay blank (the matched-rect is dynamic per probe, no single XY).
-  if (showsPixelCoords(item)) {
-    return item.pixelX != null ? String(item.pixelX) : '';
-  }
-  if (hidesCoordsForCursor(item)) return '';
-  return NO_COORD_TYPES.has(item.actionType) ? '' : String(item.x);
-}
-
-export function getDisplayY(item: ActionItem): string {
-  if (showsPixelCoords(item)) {
-    return item.pixelY != null ? String(item.pixelY) : '';
-  }
-  if (hidesCoordsForCursor(item)) return '';
-  return NO_COORD_TYPES.has(item.actionType) ? '' : String(item.y);
-}
-
 // Resolved-color tuple cached per action type. The values themselves are CSS
 // var() references — they're token strings, not actual colors — so caching is
 // safe across theme changes (the variable resolves at paint time, not at

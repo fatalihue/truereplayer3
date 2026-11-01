@@ -65,11 +65,6 @@ export function rectToLayout(r: DOMRect | Box, zoom: number): Box {
   };
 }
 
-/** A measured scalar — a clientX, an innerWidth, a rect edge — in layout space. */
-export function toLayout(value: number, zoom: number): number {
-  return value / zoom;
-}
-
 /** The viewport in layout space, for placement that has to stay on screen. */
 export function viewportInLayout(zoom: number): { width: number; height: number } {
   return { width: window.innerWidth / zoom, height: window.innerHeight / zoom };

@@ -9,6 +9,7 @@ import { dock } from '../dock/dockState';
 import { formatClock } from '../header/model';
 import { runSeconds, useNow } from '../header/useNow';
 import { keycaps } from '../library/model';
+import { insertPoint } from '../list/selection';
 import { Menu, type MenuEntry } from '../Menu';
 import { anchorBelow, type MenuAnchor } from '../menuAnchor';
 import { useApp, useShell } from '../store';
@@ -42,6 +43,8 @@ export default function CompactView() {
   const now = useNow(running);
   const replay = useReplay();
   const recording = useRecording();
+  // Where the header's Record puts the new steps: after the selection the list keeps, or at the end.
+  const record = () => recording.toggleAt(insertPoint(useShell.getState().app.actions));
   const clickerCmds = useClicker();
   const macro = useMacro();
   const app = useWindow();
@@ -63,7 +66,7 @@ export default function CompactView() {
   if (status === 'recording') {
     state = 'Recording';
     detail = ` · ${elapsed} · ${stepsText}`;
-    actions = [{ label: 'Stop', keys: settings.recordingHotkey, run: recording.toggle, tone: 'stop' }];
+    actions = [{ label: 'Stop', keys: settings.recordingHotkey, run: record, tone: 'stop' }];
   } else if (status === 'replaying' && clicker) {
     const seconds = Math.max(1, clicks.elapsedMs / 1000);
     const of = settings.cursorClickUseLoops && Number(settings.cursorClickLoops) > 0 ? ` of ${Number(settings.cursorClickLoops).toLocaleString('en-US')}` : '';
@@ -108,7 +111,7 @@ export default function CompactView() {
     detail = ` · ${stepsText}${at && !Number.isNaN(at.getTime()) ? ` · last run ${at.toTimeString().slice(0, 5)}` : ''}`;
     actions = [
       { label: 'Replay', keys: settings.replayHotkey, run: replay.toggle, tone: 'accent' },
-      { label: 'Record', run: recording.toggle, tone: 'record' },
+      { label: 'Record', run: record, tone: 'record' },
     ];
   }
 

@@ -24,11 +24,6 @@ export function formatClock(ms: number): string {
   return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
 }
 
-export function formatClickerStats(count: number, elapsedMs: number): ClickerStatsView {
-  const rate = elapsedMs > 0 ? (count * 1000) / elapsedMs : 0;
-  return { elapsed: formatClock(elapsedMs), rate, rateLabel: formatRate(rate) };
-}
-
 // ── Engine truth ────────────────────────────────────────────────────────────────────
 //
 // These mirror ReplayService.ToggleCursorClickReplay (Source/ActionExecution.cs). The UI
@@ -102,33 +97,6 @@ export function delayForCps(
   return { ms, clamped };
 }
 
-// Estimated time-to-finish, in "~Ns" or "~M:SS" form, from whichever armed limit lands first:
-// the click limit (remaining clicks at the measured rate) or the time limit (remaining ms —
-// exact, no projection needed). Returns "—" when the run is over, no limit is armed, or the
-// click projection has no sample yet. A time-only run used to read "—" here although its
-// remainder was known to the millisecond.
-export function formatEta(
-  running: boolean,
-  clickTotal: number,
-  clickCurrent: number,
-  rate: number,
-  capMs: number,
-  elapsedMs: number,
-): string {
-  if (!running) return '—';
-  const candidates: number[] = [];
-  if (clickTotal > 0 && clickCurrent > 0 && rate > 0) candidates.push(Math.max(0, clickTotal - clickCurrent) / rate);
-  if (capMs > 0) candidates.push(Math.max(0, capMs - elapsedMs) / 1000);
-  if (candidates.length === 0) return '—';
-  const etaSec = Math.ceil(Math.min(...candidates));
-  if (etaSec >= 60) {
-    const em = Math.floor(etaSec / 60);
-    const es = String(etaSec % 60).padStart(2, '0');
-    return `~${em}:${es}`;
-  }
-  return `~${etaSec}s`;
-}
-
 // ── Hold-aware rate ─────────────────────────────────────────────────────────────────
 //
 // 1000 / clickPeriodMs is the rate the delay and gap ASK for. The hold is spent inside the
@@ -191,60 +159,4 @@ export interface ClickerConfigSummary {
   stop: string;
   /** No limit armed — the run only ends by hand. */
   unbounded: boolean;
-}
-
-export function describeClickerConfig(s: ClickerConfigInput): ClickerConfigSummary {
-  const delayMs = parseInt(s.cursorClickDelay, 10) || 0;
-  const gapMs = s.cursorClickUseInterval ? (parseInt(s.cursorClickInterval, 10) || 0) : 0;
-  const holdMs = parseInt(s.cursorClickHold, 10) || 0;
-  const loops = s.cursorClickUseLoops ? (parseInt(s.cursorClickLoops, 10) || 0) : 0;
-  const capSec = s.cursorClickUseMaxDuration ? Math.round((parseInt(s.cursorClickMaxDuration, 10) || 0) / 1000) : 0;
-  const positionPx = s.cursorClickUsePositionJitter ? (parseInt(s.cursorClickPositionJitter, 10) || 0) : 0;
-  const ratePct = s.cursorClickUseJitter ? (parseInt(s.cursorClickDelayJitter, 10) || 0) : 0;
-
-  // Where — in the engine's precedence order, so the summary can never name a mode the run ignores.
-  let where: string;
-  let whereBit: string | null;
-  if (s.cursorClickUseArea && s.cursorClickArea) {
-    where = `inside the ${s.cursorClickArea.w}×${s.cursorClickArea.h} area`;
-    whereBit = `Area ${s.cursorClickArea.w}×${s.cursorClickArea.h}`;
-  } else if (s.cursorClickUseFixed) {
-    if (s.cursorClickFixedPoint) {
-      where = `at ${s.cursorClickFixedPoint.x}, ${s.cursorClickFixedPoint.y}`;
-      whereBit = `Fixed ${s.cursorClickFixedPoint.x},${s.cursorClickFixedPoint.y}`;
-    } else {
-      where = 'where the cursor is when it starts';
-      whereBit = 'Fixed at start';
-    }
-  } else if (positionPx > 0) {
-    where = `around the cursor (±${positionPx} px)`;
-    whereBit = `±${positionPx} px`;
-  } else {
-    where = 'at the cursor';
-    whereBit = null;
-  }
-
-  // Stop — both limits optional and independent; whichever is reached first ends the run.
-  const limitBits: string[] = [];
-  if (loops > 0) limitBits.push(`${loops} clicks`);
-  if (capSec > 0) limitBits.push(`${capSec} s`);
-  const unbounded = limitBits.length === 0;
-  const stop = unbounded
-    ? 'it runs until you press it again'
-    : limitBits.length === 2
-      ? `it stops after ${limitBits[0]} or ${limitBits[1]}, whichever comes first`
-      : `it stops after ${limitBits[0]}`;
-
-  // The RATE leads: it is the single most important setting. Hold-aware — see effectiveCps.
-  const rateCps = delayMs > 0 ? effectiveCps(delayMs, gapMs, holdMs) : 0;
-  const bits: string[] = [s.cursorClickButton];
-  if (rateCps > 0) bits.push(`${formatRate(rateCps)}/s`);
-  bits.push(unbounded ? 'no limit' : limitBits.join(' or '));
-  if (whereBit) bits.push(whereBit);
-  if (ratePct > 0) bits.push(`±${ratePct}% rate`);
-  // "+N ms gap", not "every N ms": one iteration is one click, so the gap is ADDED to the
-  // cadence and the rate above already includes it.
-  if (gapMs > 0) bits.push(`+${gapMs} ms gap`);
-
-  return { bits, rateCps, where, stop, unbounded };
 }

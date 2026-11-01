@@ -40,6 +40,8 @@ export function Transport({ name }: { name: string }) {
   const loop = useShell(s => s.live.loopProgress);
   const perRow = useApp(a => runsPerRow(a.dataTable));
   const recording = useRecording();
+  // The new steps go after the selection, or at the end (the list's insertion point).
+  const record = () => recording.toggleAt(insertPoint(useShell.getState().app.actions));
   const replay = useReplay();
   const tt = useTt();
   const [panel, setPanel] = useState<(Opened & { kind: 'record' | 'replay' }) | null>(null);
@@ -76,7 +78,7 @@ export function Transport({ name }: { name: string }) {
   return (
     <div className="hdr-transport">
       {isRecording ? (
-        <button type="button" className="hdr-run" data-tone="record" data-busy="" onClick={recording.toggle}>
+        <button type="button" className="hdr-run" data-tone="record" data-busy="" onClick={record}>
           <Square aria-hidden="true" />
           Stop
           {settings.recordingHotkey && <kbd className="kbd">{keycaps(settings.recordingHotkey)}</kbd>}
@@ -87,7 +89,7 @@ export function Transport({ name }: { name: string }) {
             type="button"
             className="hdr-run"
             disabled={!buttons.recordEnabled}
-            onClick={() => recording.toggleAt(insertPoint(useShell.getState().app.actions))}
+            onClick={record}
           >
             <span className="hdr-rec-dot" aria-hidden="true" />
             Record

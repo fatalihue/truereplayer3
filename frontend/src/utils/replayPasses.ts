@@ -41,15 +41,3 @@ export function replayPasses(f: PassFacts): number | null {
   if (n === null || n < 0) return 1;
   return n === 0 ? null : n;
 }
-
-/**
- * The estimate for a whole Replay: one pass, repeated, with the configured gap in between.
- * The gap falls BETWEEN passes, so N passes carry N-1 gaps — charging N of them added an
- * interval the run never waits, which is exactly the kind of small lie that makes a user stop
- * trusting the number.
- */
-export function estimateAllPassesMs(onePassMs: number, passes: number | null, intervalMs: number): number | null {
-  if (passes == null) return null;
-  const gaps = Math.max(0, passes - 1) * Math.max(0, intervalMs);
-  return onePassMs * passes + gaps;
-}

@@ -30,7 +30,7 @@ const BridgeContext = createContext<BridgeContextValue | null>(null);
 /**
  * capabilities: what this shell asks of the engine beyond today's behaviour, sent right after
  * ui:ready — the order matters, since ui:ready resets them. Read once, at mount, like ui:ready
- * itself. The shell of today passes none, so the engine keeps every prompt it has.
+ * itself. TrueReplayer 2's shell passes none, so the engine keeps every prompt it has there.
  */
 export function BridgeProvider({ children, capabilities }: { children: ReactNode; capabilities?: EngineCapabilities }) {
   const handlersRef = useRef<Set<MessageHandler>>(new Set());

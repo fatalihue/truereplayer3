@@ -80,18 +80,6 @@ export function summarizeRun(r: RunReport): LastRunSummary | null {
   };
 }
 
-/** The last finished run (summarizeRun), kept until the next one finishes. */
-export function useLastRun(): LastRunSummary | null {
-  const { subscribe } = useBridge();
-  const [lastRun, setLastRun] = useState<LastRunSummary | null>(null);
-  useEffect(() => subscribe((msg) => {
-    if (msg.type !== 'replay:report') return;
-    const summary = summarizeRun(msg.payload);
-    if (summary) setLastRun(summary);
-  }), [subscribe]);
-  return lastRun;
-}
-
 type AskInputRequest = Extract<IncomingMessage, { type: 'replay:inputRequest' }>['payload'];
 
 /**

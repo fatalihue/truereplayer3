@@ -90,16 +90,3 @@ export function encodeTsv(headers: string[], rows: string[][]): string {
   const enc = (c: string) => (/[\t\n\r"]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c);
   return [headers, ...rows].map((r) => r.map(enc).join('\t')).join('\n');
 }
-
-// Structural equality for the dirty flag — array identity is the contract
-// (byte-identical TSV is not; quoting is presentation).
-export function deepEqualGrid(a: Grid, b: Grid): boolean {
-  if (a.headers.length !== b.headers.length || a.rows.length !== b.rows.length) return false;
-  for (let i = 0; i < a.headers.length; i++) if (a.headers[i] !== b.headers[i]) return false;
-  for (let r = 0; r < a.rows.length; r++) {
-    const ra = a.rows[r], rb = b.rows[r];
-    if (ra.length !== rb.length) return false;
-    for (let c = 0; c < ra.length; c++) if (ra[c] !== rb[c]) return false;
-  }
-  return true;
-}

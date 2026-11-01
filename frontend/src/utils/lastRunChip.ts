@@ -42,21 +42,3 @@ export function lastRunKind(r: LastRunFacts): LastRunKind {
   if (r.failedCount > 0) return 'partial';
   return 'ok';
 }
-
-export function lastRunLabel(r: LastRunFacts): string {
-  switch (lastRunKind(r)) {
-    case 'halted': {
-      // Rows restart at 1 inside every RunProfile sub-call, so "stopped at step 7" pointed at
-      // line 7 of a grid that was never running — often a line that does not even exist there.
-      // Naming the profile is what makes the number mean something.
-      const foreign = r.failedProfile && r.loadedProfile && r.failedProfile !== r.loadedProfile;
-      return foreign
-        ? `stopped at step ${r.failedRow} in ${r.failedProfile}`
-        : `stopped at step ${r.failedRow}`;
-    }
-    case 'failed': return 'run failed';
-    case 'stopped': return 'stopped by you';
-    case 'partial': return `${r.failedCount} step${r.failedCount === 1 ? '' : 's'} failed`;
-    default: return 'last run';
-  }
-}

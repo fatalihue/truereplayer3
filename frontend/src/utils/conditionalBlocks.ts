@@ -148,21 +148,6 @@ export function snapIndicesToBlocks(indices: number[], actions: ActionItem[]): n
   return Array.from(set).sort((a, b) => a - b);
 }
 
-// Loop nesting depth at an INSERT position (the row would land before actions[insertIndex]).
-// While/ForEachRow push, EndLoop pops, floor 0 (orphan closers in a hand-edited list must
-// not drive the count negative). The Toolbar's Break/Next items gate on this — grey with a
-// tooltip when 0, never hidden.
-export function loopDepthAt(actions: ActionItem[], insertIndex: number): number {
-  let depth = 0;
-  const upTo = Math.min(Math.max(0, insertIndex), actions.length);
-  for (let i = 0; i < upTo; i++) {
-    const t = actions[i]?.actionType;
-    if (t === 'While' || t === 'ForEachRow') depth++;
-    else if (t === 'EndLoop') depth = Math.max(0, depth - 1);
-  }
-  return depth;
-}
-
 // ── Condition-bearing rows ───────────────────────────────────────────────────
 // TS twin of ActionItem.CarriesConditionProbe (Source/ActionItem.cs). A row whose
 // CONDITION owns probe data — image/pixel/window/clipboard/variable/… — as opposed to a

@@ -228,14 +228,15 @@ function useItems(): PaletteItem[] {
     }).map((item, i) => ({ ...item, stepIcon: stepIcon(steps[i].actionType) })));
   }
 
-  // Run and record.
+  // Run and record. A recording starts where the header's Record starts it: after the selection.
   if (active && !clicker) {
+    const record = () => recording.toggleAt(insertPoint(steps, keys));
     out.push(status === 'replaying'
       ? cmd('stop', 'Stop the run', replay.toggle, { icon: Square, keys: shortcut(replayKey) })
       : cmd('replay', `Replay ${active}`, replay.toggle, { icon: Play, keys: shortcut(replayKey), disabled: status === 'recording', hint: tt('Stop the recording first', 'Pare a gravação antes') }));
     out.push(status === 'recording'
-      ? cmd('record', 'Stop recording', recording.toggle, { icon: Square, keys: shortcut(recordKey) })
-      : cmd('record', `Record into ${active}`, recording.toggle, { icon: SquareDot, keys: shortcut(recordKey), disabled: status === 'replaying', hint: tt('Stop the run first', 'Pare a execução antes') }));
+      ? cmd('record', 'Stop recording', record, { icon: Square, keys: shortcut(recordKey) })
+      : cmd('record', `Record into ${active}`, record, { icon: SquareDot, keys: shortcut(recordKey), disabled: status === 'replaying', hint: tt('Stop the run first', 'Pare a execução antes') }));
   }
 
   // The steps the insert row and Add step make, at the insertion point. Break loop and Next

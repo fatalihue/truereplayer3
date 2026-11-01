@@ -20,8 +20,8 @@ export interface SaveStatus {
 
 /**
  * The new shell's state (rule 1 of the plan): one store, read through selectors, so each part of
- * the screen re-renders only for the slice it reads. The slices and their rules are the ones the
- * shell of today keeps in AppStateContext — the same three reducers fill them.
+ * the screen re-renders only for the slice it reads. The slices and their rules are the ones
+ * TrueReplayer 2's shell keeps in its AppStateContext — the same three reducers fill them.
  */
 export interface ShellState {
   app: AppState;
