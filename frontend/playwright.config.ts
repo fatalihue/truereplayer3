@@ -1,13 +1,15 @@
 import { defineConfig } from '@playwright/test';
 
 // The app only ever ships inside WebView2 (evergreen Chromium), so Chromium is the one
-// project that matters here — see vite.config.ts's `target: 'chrome114'` comment.
+// project that matters here — see vite.config.ts's `target: 'chrome114'` comment. The machine's
+// Edge runs it: the same engine as WebView2, and nothing to download.
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
   reporter: 'list',
   use: {
     baseURL: 'http://127.0.0.1:5173',
+    channel: 'msedge',
     trace: 'on-first-retry',
   },
   // Reuses a `vite-dev` server already started via .claude/launch.json instead of
