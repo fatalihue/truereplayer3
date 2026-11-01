@@ -381,7 +381,10 @@ html[data-animations='true'] .shell-state[data-done]::after { border-color: var(
 :root[data-compact-view] .shell > .cmp { grid-row: 1 / -1; }
 
 /* Rule 12 of the plan: with the window hidden in the tray, nothing on the page animates (the engine
-   sets the attribute, MainWindow.SetPageVisible). */
+   sets the attribute, MainWindow.SetPageVisible). No animation at all, not a paused one: a hidden
+   page never draws, and Chromium lets go of an animation a style pass made only when it draws, so
+   the state ring of every run (and its ::after) stayed in the document's timeline — the page grew
+   in the tray (the long tray test of TrueReplayer 3's phase E). Shown, each starts again. */
 :root[data-window-hidden] *,
 :root[data-window-hidden] *::before,
-:root[data-window-hidden] *::after { animation-play-state: paused !important; }
+:root[data-window-hidden] *::after { animation-name: none !important; }

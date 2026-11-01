@@ -127,16 +127,23 @@ export function useSetSize(bodyRef: RefObject<HTMLElement | null>, steps: Action
 
 /**
  * Follows the run: the list goes to the top when a run starts, and keeps the step the engine is on
- * in view (an instant jump: smooth scrolls queue up faster than they finish at replay speed).
+ * in view (an instant jump: smooth scrolls queue up faster than they finish at replay speed). Not
+ * while the window is hidden in the tray (rule 12): each jump forces a style pass and a layout, at
+ * every step of the run, for a list nobody sees. It catches up the moment the page shows.
  */
 export function useRunFollow(scrollRef: RefObject<HTMLElement | null>, bodyRef: RefObject<HTMLElement | null>) {
   const highlight = useShell(s => s.highlight);
   const replaying = useShell(s => s.app.status === 'replaying');
   useEffect(() => {
-    if (replaying && scrollRef.current) scrollRef.current.scrollTop = 0;
+    if (replaying && scrollRef.current && !document.hidden) scrollRef.current.scrollTop = 0;
   }, [replaying, scrollRef]);
   useLayoutEffect(() => {
     if (highlight === null) return;
-    bodyRef.current?.querySelector(`.step[data-index="${highlight}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+    const follow = () => {
+      if (!document.hidden) bodyRef.current?.querySelector(`.step[data-index="${highlight}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+    };
+    follow();
+    document.addEventListener('visibilitychange', follow);
+    return () => document.removeEventListener('visibilitychange', follow);
   }, [highlight, bodyRef]);
 }
