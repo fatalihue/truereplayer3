@@ -15,7 +15,9 @@ namespace TrueReplayer.Services
 {
     public class BrowserBridgeService : IDisposable
     {
-        private const string PipeName = "TrueReplayerBridge";
+        // The extension's native host connects to the plain name. A test run's pipe carries its house
+        // (CoexistenceGuard.ForThisRun): the owner's extension never reaches a test build.
+        private static readonly string PipeName = CoexistenceGuard.ForThisRun("TrueReplayerBridge");
         // Must move in lockstep with ChromeExtension/manifest.json's "version". Bumping one without
         // the other either fires the outdated banner against a current extension or hides a real
         // mismatch. 1.4.10 = G1, recording ships the ranked selector alternatives (previously only

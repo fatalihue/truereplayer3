@@ -142,7 +142,9 @@ namespace TrueReplayer
         /// <summary>Handed to a recovery relaunch by MainWindow.TryRestartProcess: "--wait-pid=&lt;pid&gt;".</summary>
         internal const string WaitForPidArg = "--wait-pid=";
 
-        private const string InstanceMutexName = AppIdentity.InstanceMutexName;
+        // A test run's carries its house (CoexistenceGuard.ForThisRun), so a test build never stands
+        // in the way of the owner's TrueReplayer 3.
+        private static readonly string InstanceMutexName = CoexistenceGuard.ForThisRun(AppIdentity.InstanceMutexName);
 
         /// <summary>
         /// Blocks (bounded) until the process named by <see cref="WaitForPidArg"/> has exited. The
@@ -229,8 +231,9 @@ namespace TrueReplayer
             {
                 using (proc) // Process objects from GetProcessesByName own a native handle — dispose them
                 {
-                    // TrueReplayer 2's exe has the same name: its window is not ours to restore.
-                    if (proc.Id == Environment.ProcessId || !CoexistenceGuard.IsThisApp(proc.Id)) continue;
+                    // TrueReplayer 2's exe has the same name, and a TrueReplayer 3 from a test house or
+                    // another build is not this install: neither window is ours to restore.
+                    if (proc.Id == Environment.ProcessId || !CoexistenceGuard.IsThisExe(proc.Id)) continue;
                     IntPtr hwnd = proc.MainWindowHandle;
                     if (hwnd == IntPtr.Zero) hwnd = CoexistenceGuard.FindMainWindow(proc.Id);
                     if (hwnd == IntPtr.Zero) continue;
@@ -253,7 +256,7 @@ namespace TrueReplayer
         {
             bool alive = false;
             foreach (var proc in Process.GetProcessesByName(AppIdentity.ProcessName))
-                using (proc) alive |= proc.Id != Environment.ProcessId && CoexistenceGuard.IsThisApp(proc.Id);
+                using (proc) alive |= proc.Id != Environment.ProcessId && CoexistenceGuard.IsThisExe(proc.Id);
             return alive;
         }
 

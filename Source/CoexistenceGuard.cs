@@ -68,7 +68,7 @@ namespace TrueReplayer.Services
         {
             if (Bypassed)
             {
-                DiagnosticLog.Info("[Coexist] guard skipped for a test run");
+                DiagnosticLog.Info($"[Coexist] guard skipped for a test run; mutex and pipe of house {HouseKey.Value}");
                 return true;
             }
             if (TryTakeTr2Name()) return true;
@@ -205,6 +205,37 @@ namespace TrueReplayer.Services
             try { return FileVersionInfo.GetVersionInfo(path).ProductName == AppIdentity.DisplayName; }
             catch { return false; }
         }
+
+        /// <summary>
+        /// Whether the process runs this very exe: another launch of the same install, the window a
+        /// second launch brings back (Program.SignalRunningInstance). A copy in a test house or a
+        /// build elsewhere is TrueReplayer 3 too (<see cref="IsThisApp"/>), but not the window the
+        /// shortcut that was clicked belongs to.
+        /// </summary>
+        public static bool IsThisExe(int pid)
+        {
+            if (pid == Environment.ProcessId) return true;
+            string? path = ImagePath(pid), self = Environment.ProcessPath;
+            if (path == null || self == null) return false;
+            try { return string.Equals(Path.GetFullPath(path), Path.GetFullPath(self), StringComparison.OrdinalIgnoreCase); }
+            catch { return false; }
+        }
+
+        /// <summary>
+        /// A system-wide name of this app (the single-instance mutex, the extension's pipe) as this
+        /// run uses it: a test run adds its house. The sessions that run the test builds share their
+        /// named objects with the owner's desktop (the Claude app's container does not separate them),
+        /// so with one name the owner's TrueReplayer 3, opened while a test house ran, found the
+        /// house's mutex and brought the house's window up instead of opening, and his browser
+        /// extension talked to the house's pipe. Each house redirects the data folder, so the folder
+        /// names the house. Two houses that run the same build both answer a second launch in
+        /// either (<see cref="IsThisExe"/>): the test scripts run one house at a time.
+        /// </summary>
+        public static string ForThisRun(string name) => Bypassed ? name + "_Test_" + HouseKey.Value : name;
+
+        // Normalized: a house given as C:/tmp/… and as C:\tmp\… is the same house.
+        private static readonly Lazy<string> HouseKey = new(() => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            Encoding.UTF8.GetBytes(Path.GetFullPath(AppIdentity.DocumentsRoot).TrimEnd('\\').ToUpperInvariant())))[..8]);
 
         private static string? ImagePath(int pid)
         {
