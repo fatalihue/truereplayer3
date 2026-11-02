@@ -4648,7 +4648,7 @@ namespace TrueReplayer.Services
             if (string.IsNullOrEmpty(targetName))
             {
                 DiagnosticLog.Info("[Chain] RunProfile with empty profile name — skipped.");
-                return "no profile selected";
+                return "no macro selected";
             }
 
             // Cycle detection: refuse if the target is already on the active call stack.
@@ -4670,7 +4670,7 @@ namespace TrueReplayer.Services
             if (_profileLookup == null)
             {
                 DiagnosticLog.Info("[Chain] Profile lookup not configured — RunProfile is a no-op.");
-                return "profile lookup unavailable";
+                return "macro lookup unavailable";
             }
 
             Models.UserProfile? subProfile;
@@ -4681,13 +4681,13 @@ namespace TrueReplayer.Services
             catch (Exception ex)
             {
                 DiagnosticLog.Info($"[Chain] Profile lookup threw for '{targetName}': {ex.Message}");
-                return $"could not load profile ({ex.Message})";
+                return $"could not load macro ({ex.Message})";
             }
 
             if (subProfile == null)
             {
                 DiagnosticLog.Info($"[Chain] Profile '{targetName}' not found, skipping.");
-                return "profile not found";
+                return "macro not found";
             }
 
             // Disabled sub-profiles are skipped at replay time — same rule as direct hotkey
@@ -4696,7 +4696,7 @@ namespace TrueReplayer.Services
             if (subProfile.IsDisabled)
             {
                 DiagnosticLog.Info($"[Chain] Profile '{targetName}' is disabled, skipping.");
-                return "profile is disabled";
+                return "macro is disabled";
             }
 
             // The folder half of the sub's context, read here — before anything is pushed — and
@@ -4987,7 +4987,7 @@ namespace TrueReplayer.Services
                 // are still reported under the success cue.
                 if (skipped > 0 && (!token.IsCancellationRequested || _authoredStop))
                 {
-                    string msg = $"Sub-profile '{subName}': {skipped} of {rowCount} row(s) skipped" +
+                    string msg = $"Called macro '{subName}': {skipped} of {rowCount} row(s) skipped" +
                         (firstReason != null ? $" — first: {firstReason}" : "");
                     OnRunSummary?.Invoke(msg);
                 }

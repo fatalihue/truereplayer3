@@ -126,8 +126,8 @@ export const PREVIEW_NOTE_TIP: Record<string, [string, string]> = {
     'Hora da prévia. Nomes de mês e dia seguem o idioma da máquina no replay.',
   ],
   'first-data-row': [
-    'The FIRST data row. A run uses the row it is on; ForEach and Run Profile can use another table.',
-    'A PRIMEIRA linha de dados. A execução usa a linha em que está; ForEach e Run Profile podem usar outra tabela.',
+    'The FIRST data row. A run uses the row it is on; ForEach and Run Macro can use another table.',
+    'A PRIMEIRA linha de dados. A execução usa a linha em que está; ForEach e Run Macro podem usar outra tabela.',
   ],
   'last-run': [
     'From the LAST run — variables reset at every start.',

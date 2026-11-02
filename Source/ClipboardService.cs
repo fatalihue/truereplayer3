@@ -120,7 +120,7 @@ namespace TrueReplayer.Services
                 "BrowserWaitElement" => "Wait Element",
                 "BrowserNavigate" => "Open URL",
                 "SendText" => "Send Text",
-                "RunProfile" => "Run Profile",
+                "RunProfile" => "Run Macro",
                 "Pause" => "Pause",
                 "HoldKey" => "Hold Key",
                 "SetVariable" => "Set Variable",

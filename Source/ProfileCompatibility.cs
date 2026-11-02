@@ -387,7 +387,7 @@ namespace TrueReplayer.Services
             // has no "RunProfile" switch case (no default) → silently skips the sub-profile
             // call. Pinned to 2.0.0 for consistency.
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "RunProfile", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 0, 0), "RunProfile (profile chaining)"),
+                new Version(2, 0, 0), "Run Macro (macro chaining)"),
 
             // RunProfile-over-data (data-loop Phase C) — an older build drops the unknown
             // RunOverData property and runs the sub-profile ONCE instead of once per data row
@@ -395,7 +395,7 @@ namespace TrueReplayer.Services
             // plain RunProfile rows keep the 2.0.0 floor. Introduced after 2.8.1 — bump at release.
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "RunProfile", StringComparison.OrdinalIgnoreCase)
                 && a.RunOverData == true),
-                new Version(2, 9, 0), "RunProfile over data"),
+                new Version(2, 9, 0), "Run Macro over data"),
 
             // Combined-mode single clicks (LeftClick/RightClick/MiddleClick — press+release in one
             // row) shipped in 2.4.0. Builds without the replay switch cases silently skip the click,
@@ -723,7 +723,7 @@ namespace TrueReplayer.Services
             // build. Property-level precedents: the ROI and poll-interval pins above.
             // Introduced after 2.10.0 — bump at release if the release number differs.
             (p => p.EnableLoop && p.LoopCount > 1,
-                new Version(2, 11, 0), "Per-profile loop count"),
+                new Version(2, 11, 0), "Per-macro loop count"),
 
             // Per-profile Game Mode. Same destroy-on-round-trip mechanism as the loop count just
             // above: an older build has no GameMode on UserProfile and no [JsonExtensionData], so
@@ -734,14 +734,14 @@ namespace TrueReplayer.Services
             // Accepted by the owner on 2026-10-10 — see intencionais/parte-4.md.
             // Released in 2.46.0.
             (p => p.GameMode.HasValue,
-                new Version(2, 46, 0), "Per-profile Game Mode"),
+                new Version(2, 46, 0), "Per-macro Game Mode"),
 
             // Per-profile cursor return. Same destroy-on-round-trip mechanism as Game Mode: an
             // older build drops the key, and the macro set to put the cursor back stops doing it
             // with nothing on screen saying why. Gated on USE the same way (written only when set).
             // Released in 2.47.0.
             (p => p.RestoreCursor.HasValue,
-                new Version(2, 47, 0), "Per-profile cursor return"),
+                new Version(2, 47, 0), "Per-macro cursor return"),
 
             // Per-profile jitter and fast approach. Same destroy-on-round-trip mechanism as Game
             // Mode: an older build drops the keys and runs the macro on the app's values, with
@@ -749,9 +749,9 @@ namespace TrueReplayer.Services
             // TrueReplayer 3 only (plan truereplayer3-paralelo-2026-10-30.md, decision 7): pinned at
             // 3.0.0, so TrueReplayer 2 refuses such a macro with a notice instead of misreading it.
             (p => p.DelayVariation.HasValue,
-                new Version(3, 0, 0), "Per-profile jitter"),
+                new Version(3, 0, 0), "Per-macro jitter"),
             (p => p.FastApproach.HasValue,
-                new Version(3, 0, 0), "Per-profile fast approach"),
+                new Version(3, 0, 0), "Per-macro fast approach"),
 
             // Screen text (OCR). Each family fails SILENTLY on an older build, which is the whole
             // reason for one row apiece: Wait for Text has no case in the action switch (no default),
@@ -783,7 +783,7 @@ namespace TrueReplayer.Services
             // came from a 2.2+ build. Older builds will ignore the metadata but load the actions fine,
             // so this is the floor for "no compatibility issues" rather than a hard requirement.
             (p => (p.Tags != null && p.Tags.Count > 0) || !string.IsNullOrEmpty(p.Description) || !string.IsNullOrEmpty(p.IconEmoji),
-                new Version(2, 2, 0), "Profile sharing metadata"),
+                new Version(2, 2, 0), "Macro sharing metadata"),
         };
 
         // {row:column:mods} — a row token carrying at least one modifier segment after the

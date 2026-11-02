@@ -89,7 +89,7 @@ namespace TrueReplayer.Services
         {
             if (!string.Equals(currentProfileName, ProfileName, System.StringComparison.Ordinal))
             {
-                reason = $"The active profile changed from \"{ProfileName}\" to \"{currentProfileName}\" — this was not applied.";
+                reason = $"The active macro changed from \"{ProfileName}\" to \"{currentProfileName}\" — this was not applied.";
                 return false;
             }
             if (ProfileEpoch.Current != Epoch)

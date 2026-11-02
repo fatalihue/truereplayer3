@@ -4610,7 +4610,7 @@ namespace TrueReplayer
             // SuppressAllHotkeys is NOT read: the update overlay is itself a React modal.
             if (Services.InteractionScope.CurrentOwner is { } open) { reason = $"{open} is open"; return UpdateGate.Busy; }
             if (Services.AutomationGuard.EditorHoldsUnsavedWork()) { reason = "an open editor has changes that haven't been applied"; return UpdateGate.Busy; }
-            if (HasUnsavedLoopChange || HasUnsavedActionWork) { reason = "the profile has unsaved changes"; return UpdateGate.Unsaved; }
+            if (HasUnsavedLoopChange || HasUnsavedActionWork) { reason = "the macro has unsaved changes"; return UpdateGate.Unsaved; }
             reason = string.Empty;
             return UpdateGate.Clear;
         }
@@ -5230,10 +5230,10 @@ namespace TrueReplayer
                 $"WebView2: {Safe(CoreWebView2Environment.GetAvailableBrowserVersionString)}",
                 $"DPI: {Safe(() => NativeMethods.GetDpiForWindowSafe(WinRT.Interop.WindowNative.GetWindowHandle(window)).ToString())}",
                 $"Mode: {(UseCursorClick ? "Clicker" : "Macro")}",
-                $"Profile Keys: {(ProfileKeyEnabled && !InputHookManager.IgnoreProfileHotkeys ? "on" : "off")}",
+                $"Shortcuts: {(ProfileKeyEnabled && !InputHookManager.IgnoreProfileHotkeys ? "on" : "off")}",
                 $"Key Remaps: {(RemapService.Current.Enabled ? "on" : "off")} · {RemapService.Current.Remaps.Count} entries{(RemapService.LoadFailed ? " · remaps.json unreadable (backup shown)" : "")}",
                 $"Automations: {Safe(() => UserProfile.Current.AutomationEnabled ? "on" : "off")}",
-                $"Profiles: {Safe(() => profileController.AllKnownProfileNames.Count.ToString())}",
+                $"Macros: {Safe(() => profileController.AllKnownProfileNames.Count.ToString())}",
                 $"Elevated: {Safe(() => new System.Security.Principal.WindowsPrincipal(System.Security.Principal.WindowsIdentity.GetCurrent()).IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator) ? "yes" : "no")}",
                 $"Logs: {DiagnosticLog.LogDirectory}",
                 $"Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss zzz}",
@@ -5460,7 +5460,7 @@ namespace TrueReplayer
             var id = idEl.GetString();
             if (string.IsNullOrEmpty(id) || string.Equals(actions[index].Id, id, StringComparison.Ordinal)) return true;
             DiagnosticLog.Warn($"{door} refused: row {index} is no longer the row the editor opened (the list changed under it).");
-            SendMessage("alert:show", new { message = "Not saved: that row changed while it was being edited (the list or the profile changed underneath).", type = "error" });
+            SendMessage("alert:show", new { message = "Not saved: that row changed while it was being edited (the list or the macro changed underneath).", type = "error" });
             return false;
         }
 
@@ -10330,12 +10330,12 @@ namespace TrueReplayer
             // live run, so the backend refuses it as well.
             if (recordingService.IsRecording || replayService.IsReplaying)
             {
-                SendMessage("alert:show", new { message = "Stop the recording or replay before switching profiles." });
+                SendMessage("alert:show", new { message = "Stop the recording or replay before switching macros." });
                 return;
             }
 
             // Guard: check for unsaved changes before switching
-            if (!await CheckUnsavedChangesAsync("switching profiles")) return;
+            if (!await CheckUnsavedChangesAsync("switching macros")) return;
 
             // Deselect if clicking the already-active profile
             if (toggleIfOpen && CurrentProfileName == name)
@@ -10486,7 +10486,7 @@ namespace TrueReplayer
             if (string.IsNullOrEmpty(name)) return;
             if (!IsSafeProfileName(name))
             {
-                SendMessage("alert:show", new { message = "Invalid profile name." });
+                SendMessage("alert:show", new { message = "Invalid macro name." });
                 return;
             }
 
@@ -10509,7 +10509,7 @@ namespace TrueReplayer
                 // exists: Cancel then creates nothing, and a Save-As picked in this prompt under the
                 // same name finds its file in place instead of being overwritten by the empty
                 // default below. Inside the try because its Save writes to disk too.
-                if (!await CheckUnsavedChangesAsync("creating a new profile")) return;
+                if (!await CheckUnsavedChangesAsync("creating a new macro")) return;
 
                 Directory.CreateDirectory(profileDir);
 
@@ -10518,7 +10518,7 @@ namespace TrueReplayer
                     // Silent no-op before — now surfaces a toast so the user knows why nothing
                     // happened. The frontend dialog also blocks this inline, but a hotkey / race
                     // could still reach here, so it stays defended on the backend too.
-                    SendMessage("alert:show", new { message = $"A profile named \"{Path.GetFileNameWithoutExtension(name)}\" already exists" });
+                    SendMessage("alert:show", new { message = $"A macro named \"{Path.GetFileNameWithoutExtension(name)}\" already exists" });
                     return;
                 }
 
@@ -10574,7 +10574,7 @@ namespace TrueReplayer
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[Bridge] Create error: {ex.Message}");
-                SendMessage("alert:show", new { message = $"Could not create profile: {ex.Message}" });
+                SendMessage("alert:show", new { message = $"Could not create macro: {ex.Message}" });
             }
         }
 
@@ -10736,7 +10736,7 @@ namespace TrueReplayer
             if (string.IsNullOrEmpty(oldName) || string.IsNullOrEmpty(newName)) return;
             if (!IsSafeProfileName(newName))
             {
-                SendMessage("alert:show", new { message = "Invalid profile name." });
+                SendMessage("alert:show", new { message = "Invalid macro name." });
                 return;
             }
             // Save as you go: the open macro's pending edit goes to its file before the file moves —
@@ -10756,7 +10756,7 @@ namespace TrueReplayer
             // Allow case-only rename (e.g. "teste" → "TESTE") on case-insensitive file systems
             if (File.Exists(newFilePath) && !string.Equals(entry.FilePath, newFilePath, StringComparison.OrdinalIgnoreCase))
             {
-                SendMessage("alert:show", new { message = $"A profile named \"{Path.GetFileNameWithoutExtension(newFileName)}\" already exists" });
+                SendMessage("alert:show", new { message = $"A macro named \"{Path.GetFileNameWithoutExtension(newFileName)}\" already exists" });
                 return;
             }
 
@@ -10824,7 +10824,7 @@ namespace TrueReplayer
                     // the active profile's own in-memory rows, so a rename that only touched the
                     // profile in front of the user still claimed to have edited someone else.
                     string plural = refsUpdated == 1 ? "reference" : "references";
-                    SendMessage("alert:show", new { message = $"Renamed to '{actualNewName}' and updated {refsUpdated} RunProfile {plural}." });
+                    SendMessage("alert:show", new { message = $"Renamed to '{actualNewName}' and updated {refsUpdated} Run Macro {plural}." });
                 }
                 if (!imagesCarried)
                     SendMessage("alert:show", new { message = ImagesLeftBehindMessage(actualNewName) });
@@ -11145,7 +11145,7 @@ namespace TrueReplayer
                 if (danglingRefs > 0)
                 {
                     string plural = danglingRefs == 1 ? "reference" : "references";
-                    SendMessage("alert:show", new { message = $"Deleted '{name}'. {danglingRefs} dangling {plural} in other profiles will silently no-op at replay." });
+                    SendMessage("alert:show", new { message = $"Deleted '{name}'. {danglingRefs} dangling {plural} in other macros will silently no-op at replay." });
                 }
             }
             catch (Exception ex)
@@ -11483,7 +11483,7 @@ namespace TrueReplayer
             // A plain Set Target (no convertDirection) is untouched and still works on any profile.
             if (convertDirection != null && CurrentProfileName != name)
             {
-                SendMessage("alert:show", new { message = $"Open \"{name}\" first — converting coordinates rewrites the actions of the profile that is currently loaded." });
+                SendMessage("alert:show", new { message = $"Open \"{name}\" first — converting coordinates rewrites the actions of the macro that is currently loaded." });
                 SendMessage("windowTarget:applyConvertCompleted", new { ok = false });
                 return;
             }
@@ -11775,7 +11775,7 @@ namespace TrueReplayer
                 : null;
             bool ok = false;
             if (name != null && name != CurrentProfileName)
-                SendMessage("alert:show", new { message = $"Open \"{name}\" first — converting coordinates rewrites the actions of the profile that is currently loaded." });
+                SendMessage("alert:show", new { message = $"Open \"{name}\" first — converting coordinates rewrites the actions of the macro that is currently loaded." });
             else if (!RefuseConvertDuringRun())
                 ok = ExecuteConvertCoordinates(direction);
             // The dialog used to dismiss its hint the moment it SENT, so a refusal (window not
@@ -11801,7 +11801,7 @@ namespace TrueReplayer
             {
                 message = replaying
                     ? "A replay is running — stop it first. Converting rewrites the coordinates of actions the run is still going to play."
-                    : "A recording is running — stop it first. Converting now would leave this profile's actions in two coordinate spaces.",
+                    : "A recording is running — stop it first. Converting now would leave this macro's actions in two coordinate spaces.",
                 type = "error",
             });
             return true;
@@ -11824,7 +11824,7 @@ namespace TrueReplayer
                 : UserProfile.Current.TargetWindow;
             if (target == null || (string.IsNullOrEmpty(target.ProcessName) && string.IsNullOrEmpty(target.WindowTitle)))
             {
-                SendMessage("alert:show", new { message = "Set a Window Target first (profile or folder)." });
+                SendMessage("alert:show", new { message = "Set a Window Target first (macro or folder)." });
                 return false;
             }
 
@@ -11905,7 +11905,7 @@ namespace TrueReplayer
             if (inheritedFolder is string ownerFolder
                 && profileController.GetEffectiveRelativeCoordinates(CurrentProfileName) != (direction == "toRelative"))
             {
-                SendMessage("alert:show", new { message = $"\"{CurrentProfileName}\" inherits its window target from the folder \"{ownerFolder}\", so it inherits the coordinate space too — this conversion would be discarded at the next replay and leave the coordinates in the wrong space. Give this profile its own target first: edit the process name or window title in its Window Target dialog, then use \"Apply target & convert\"." });
+                SendMessage("alert:show", new { message = $"\"{CurrentProfileName}\" inherits its window target from the folder \"{ownerFolder}\", so it inherits the coordinate space too — this conversion would be discarded at the next replay and leave the coordinates in the wrong space. Give this macro its own target first: edit the process name or window title in its Window Target dialog, then use \"Apply target & convert\"." });
                 return false;
             }
 
@@ -12069,7 +12069,7 @@ namespace TrueReplayer
                         && string.Equals(string.IsNullOrWhiteSpace(dialogMatchMode) ? "contains" : dialogMatchMode, inherited.TitleMatchMode, StringComparison.OrdinalIgnoreCase));
                     if (!definesOwnTarget)
                     {
-                        SendMessage("alert:show", new { message = $"\"{scopeName}\" inherits its window target from the folder \"{ownerFolder}\", so it inherits the geometry too. Capture it on the folder, or give this profile its own target first." });
+                        SendMessage("alert:show", new { message = $"\"{scopeName}\" inherits its window target from the folder \"{ownerFolder}\", so it inherits the geometry too. Capture it on the folder, or give this macro its own target first." });
                         return;
                     }
                 }
@@ -12852,7 +12852,7 @@ namespace TrueReplayer
             {
                 var entry = profileController.ProfileEntries.FirstOrDefault(p => p.Name == name);
                 if (entry != null)
-                    RevealInExplorer(entry.FilePath, "Could not open the profile folder");
+                    RevealInExplorer(entry.FilePath, "Could not open the macro's folder");
                 return;
             }
 
@@ -14142,7 +14142,7 @@ namespace TrueReplayer
         private async void HandleProfileLoad()
         {
             // Guard: check for unsaved changes before loading
-            if (!await CheckUnsavedChangesAsync("loading another profile")) return;
+            if (!await CheckUnsavedChangesAsync("loading another macro")) return;
 
             string? loadedPath = await profileController.LoadProfileAsync();
             if (loadedPath == null) return;

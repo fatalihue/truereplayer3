@@ -388,9 +388,9 @@ namespace TrueReplayer.Controllers
             var fileName = await ShowFileDialogAsync(new WinForms.SaveFileDialog
             {
                 Filter = "JSON file (*.json)|*.json",
-                FileName = "profile",
+                FileName = "macro",
                 InitialDirectory = profileDir
-            }, "save profile");
+            }, "save macro");
 
             if (fileName != null)
             {
@@ -411,7 +411,7 @@ namespace TrueReplayer.Controllers
                     // keeps HasUnsavedChanges set at every call site, so the close guard will ask
                     // again instead of letting the work go.
                     WinForms.MessageBox.Show(
-                        $"Could not copy this profile's reference image \"{failedImage}\" into \"{newProfileName}\".\n\n" +
+                        $"Could not copy this macro's reference image \"{failedImage}\" into \"{newProfileName}\".\n\n" +
                         "Nothing was saved, so the images you have are untouched. Free up some disk space (or close whatever has the file open) and save again.",
                         "Error", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
                     return false;
@@ -426,12 +426,12 @@ namespace TrueReplayer.Controllers
                     // the user is the only one who can recapture them. Say so instead of letting
                     // them find out at the next replay.
                     if (droppedImages > 0)
-                        OnAlert?.Invoke($"Saved \"{newProfileName}\", but {droppedImages} reference image(s) were missing on disk and could not be carried over — recapture them in the new profile.");
+                        OnAlert?.Invoke($"Saved \"{newProfileName}\", but {droppedImages} reference image(s) were missing on disk and could not be carried over — recapture them in the new macro.");
                     return true;
                 }
                 catch (Exception ex)
                 {
-                    WinForms.MessageBox.Show($"Error saving profile:\n{ex.Message}", "Error", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
+                    WinForms.MessageBox.Show($"Error saving macro:\n{ex.Message}", "Error", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
                 }
             }
             return false;
@@ -602,7 +602,7 @@ namespace TrueReplayer.Controllers
             {
                 Filter = "JSON file (*.json)|*.json",
                 InitialDirectory = profileDir
-            }, "load profile");
+            }, "load macro");
 
             if (path != null)
             {
@@ -728,7 +728,7 @@ namespace TrueReplayer.Controllers
             if (entry == null)
             {
                 DiagnosticLog.Warn($"[Profiles] Save of '{profileName}' skipped: it is no longer in the profile list.");
-                OnAlert?.Invoke($"Couldn't save \"{profileName}\": it's no longer in the profile list (renamed or deleted outside the app?).");
+                OnAlert?.Invoke($"Couldn't save \"{profileName}\": it's no longer in the macro list (renamed or deleted outside the app?).");
                 return false;
             }
 
@@ -1426,13 +1426,13 @@ namespace TrueReplayer.Controllers
         {
             var messageBlock = new TextBlock
             {
-                Text = $"Profile \"{profileName}\" is already loaded.",
+                Text = $"Macro \"{profileName}\" is already loaded.",
                 TextWrapping = TextWrapping.Wrap
             };
 
             var dialog = new ContentDialog
             {
-                Title = "Save Profile",
+                Title = "Save Macro",
                 XamlRoot = window.Content.XamlRoot,
                 RequestedTheme = ElementTheme.Dark,
                 PrimaryButtonText = "Overwrite",
@@ -1449,7 +1449,7 @@ namespace TrueReplayer.Controllers
             // an already-open prompt should do anyway.
             // The gate now carries the hotkey suppression (it opens an InteractionScope), so the
             // manual true/finally-false pair that used to wrap this is gone from all four dialogs.
-            using var gate = Services.ModalGate.TryEnter("save profile");
+            using var gate = Services.ModalGate.TryEnter("save macro");
             if (gate == null) return SaveDialogResult.Cancel;
 
             var result = await dialog.ShowAsync();
@@ -1478,7 +1478,7 @@ namespace TrueReplayer.Controllers
             var messageBlock = new TextBlock
             {
                 Text = loopOnly
-                    ? $"You changed this profile's run settings. Save before {beforeWhat}?"
+                    ? $"You changed this macro's run settings. Save before {beforeWhat}?"
                     : $"You have unsaved actions. Save before {beforeWhat}?",
                 TextWrapping = TextWrapping.Wrap
             };
@@ -2090,7 +2090,7 @@ namespace TrueReplayer.Controllers
                 Filter = "TrueReplayer macros (*.trprofile)|*.trprofile",
                 FileName = defaultName,
                 DefaultExt = "trprofile"
-            }, "export profiles");
+            }, "export macros");
             if (fileName == null) return (-1, 0, new List<string>(), null);   // user cancelled the Save dialog — nothing built yet
 
             // Optionally pull in the sub-profiles this selection RunProfile-calls (transitive closure),
@@ -2284,7 +2284,7 @@ namespace TrueReplayer.Controllers
                 Filter = "TrueReplayer macros (*.trprofile)|*.trprofile",
                 DefaultExt = "trprofile",
                 InitialDirectory = Interop.NativeMethods.TryGetDownloadsFolder() ?? string.Empty
-            }, "import profiles");
+            }, "import macros");
 
             if (fileName == null) return new ImportPrepareResult(ImportPrepareStatus.Cancelled, null, null, null);
 
@@ -2999,7 +2999,7 @@ namespace TrueReplayer.Controllers
                     if (!_profileOrderKnown)
                     {
                         if (!_profileOrderUnreadable)
-                            OnAlert?.Invoke("Couldn't read your profile organisation (folders/pins) — another program is holding the file. Profiles are shown ungrouped until it can be read; the file was not changed.");
+                            OnAlert?.Invoke("Couldn't read your macro organisation (folders/pins) — another program is holding the file. Macros are shown ungrouped until it can be read; the file was not changed.");
                         _profileOrderUnreadable = true;
                     }
                 }
@@ -3024,12 +3024,12 @@ namespace TrueReplayer.Controllers
                         {
                             string backupPath = ProfileOrderPath + ".bak";
                             File.Copy(ProfileOrderPath, backupPath, overwrite: true);
-                            OnAlert?.Invoke($"Couldn't read your profile organisation (folders/pins). The unreadable file was backed up to {Path.GetFileName(backupPath)}; your layout was reset.");
+                            OnAlert?.Invoke($"Couldn't read your macro organisation (folders/pins). The unreadable file was backed up to {Path.GetFileName(backupPath)}; your layout was reset.");
                         }
                         catch (Exception backupEx)
                         {
                             DiagnosticLog.Error("LoadProfileOrder backup failed", backupEx);
-                            OnAlert?.Invoke("Couldn't read your profile organisation (folders/pins); your layout was reset.");
+                            OnAlert?.Invoke("Couldn't read your macro organisation (folders/pins); your layout was reset.");
                         }
                         order = new ProfileOrderData();
                     }
@@ -3147,7 +3147,7 @@ namespace TrueReplayer.Controllers
                 // — said so; if not, the change stays unsaved, and so does the file.
                 await LoadProfileOrderAsync();
                 OnAlert?.Invoke(_profileOrderUnreadable
-                    ? "Your profile organisation (folders/pins) still can't be read, so that change wasn't saved. The file was not changed."
+                    ? "Your macro organisation (folders/pins) still can't be read, so that change wasn't saved. The file was not changed."
                     : "Your folders and pins hadn't loaded yet — they're back now, but that change wasn't applied. Please repeat it.");
                 return;
             }
@@ -3166,7 +3166,7 @@ namespace TrueReplayer.Controllers
                 // failure streak, not per retry.
                 DiagnosticLog.Error("SaveProfileOrder write failed", ex);
                 if (!_profileOrderUnwritten)
-                    OnAlert?.Invoke($"Couldn't save your profile organisation (folders/pins): {ex.Message}. The change is kept for this session and will be retried.");
+                    OnAlert?.Invoke($"Couldn't save your macro organisation (folders/pins): {ex.Message}. The change is kept for this session and will be retried.");
                 _profileOrderUnwritten = true;
             }
             finally

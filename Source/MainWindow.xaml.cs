@@ -985,8 +985,8 @@ namespace TrueReplayer
                 {
                     var names = string.Join(", ", failures.Take(5));
                     var msg = failures.Count <= 5
-                        ? $"{failures.Count} profile(s) couldn't load: {names}"
-                        : $"{failures.Count} profiles couldn't load (first 5: {names}, …)";
+                        ? $"{failures.Count} macro(s) couldn't load: {names}"
+                        : $"{failures.Count} macros couldn't load (first 5: {names}, …)";
                     // Held until the window is on screen — an autostart boot hides it first
                     // (see WebViewBridge.ShowNoticeWhenSeen). Same for every notice below.
                     bridge.ShowNoticeWhenSeen(msg);
@@ -1019,7 +1019,7 @@ namespace TrueReplayer
                 catch (Exception ex)
                 {
                     Services.DiagnosticLog.Error("Initial-data load failed", ex);
-                    try { bridge.ShowNoticeWhenSeen("Startup data couldn't load fully. Some profiles or hotkeys may be unavailable."); }
+                    try { bridge.ShowNoticeWhenSeen("Startup data couldn't load fully. Some macros or hotkeys may be unavailable."); }
                     catch { /* toast is best-effort — never let the failure handler throw */ }
                 }
                 finally
@@ -1127,7 +1127,7 @@ namespace TrueReplayer
                         {
                             Services.DiagnosticLog.Error($"Close-guard save to '{bridge.CurrentProfilePath}' failed", ex);
                             NativeMethods.MessageBoxW(hwnd,
-                                $"Error saving profile:\n{ex.Message}\n\n{AppIdentity.DisplayName} stayed open so your changes aren't lost.",
+                                $"Error saving macro:\n{ex.Message}\n\n{AppIdentity.DisplayName} stayed open so your changes aren't lost.",
                                 AppIdentity.DisplayName, NativeMethods.MB_ICONERROR);
                             canClose = false;
                         }
