@@ -2,3 +2,4 @@
 # <hash> <reason>
 # (tools/pendentes-do-2.ps1 reads this file; lines starting with # are ignored.)
 6ccbb10 already in 3: the orphan-image sweep guard was born here (a67d410, slice D0) and went to 2 as a copy of it (owner, 31-10)
+7286c9f version bump of TrueReplayer 2 to 2.50.1 (the release of 6ccbb10, 02-11): 3 keeps its own preview versions
