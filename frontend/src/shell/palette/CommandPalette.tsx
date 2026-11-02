@@ -4,6 +4,7 @@ import { PictureInPicture2,
   ArrowRightLeft, BookOpen, Chrome, ClipboardCopy, ClipboardPaste, Combine, CornerDownRight, FolderOpen, Keyboard, ListChecks, MousePointerClick, Play, Plus, Redo2, RefreshCw,
   Replace, RotateCcw, ScrollText, Settings, Split, Square, SquareDot, Table2, Undo2, Variable, Zap,
 } from 'lucide-react';
+import { useBridge } from '../../bridge/BridgeContext';
 import { useAutomations } from '../../logic/useAutomations';
 import { useMacro } from '../../logic/useMacro';
 import { useRecording } from '../../logic/useRecording';
@@ -206,6 +207,7 @@ function useItems(): PaletteItem[] {
   const automations = useAutomations();
   const remaps = useRemaps();
   const { showToast } = useToast();
+  const { subscribe } = useBridge();
   const tt = useTt();
 
   const locked = status !== 'ready' || clicker;
@@ -263,6 +265,7 @@ function useItems(): PaletteItem[] {
       openMacro: (name) => macro.open(name),
       select: (indices) => selection.set(steps, indices),
       toast: showToast,
+      subscribe,
       tt,
     });
     const which = sel.length === 1 ? `Step ${sel[0] + 1}` : `${sel.length} steps`;

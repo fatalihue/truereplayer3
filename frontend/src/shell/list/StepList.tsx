@@ -307,6 +307,7 @@ export function StepList() {
       openMacro: (name) => macro.open(name),
       select: (indices) => selection.set(steps, indices),
       toast: (text, kind) => showToast(text, kind ?? 'info'),
+      subscribe,
       tt,
     });
   })();

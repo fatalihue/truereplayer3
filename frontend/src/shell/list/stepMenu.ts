@@ -3,7 +3,7 @@ import {
   Eye, EyeOff, Files, Focus, Link, MoreHorizontal, MousePointerClick, Pencil, Repeat, RotateCcw, Split, SquareArrowOutUpRight,
   Table2, Trash2,
 } from 'lucide-react';
-import type { ActionItem } from '../../bridge/messageTypes';
+import type { ActionItem, IncomingMessage } from '../../bridge/messageTypes';
 import { deleteIntent, type useSteps } from '../../logic/useSteps';
 import { hasConditionFields, isStructuralRow, snapIndicesToBlocks } from '../../utils/conditionalBlocks';
 import { CLICK_FAMILY_TYPES, clickFormOf, isCoordinateClick, isFocusClickEligible } from '../../utils/displayUtils';
@@ -33,6 +33,8 @@ export interface StepMenuContext {
   openMacro: (name: string) => void;
   select: (indices: number[]) => void;
   toast: (message: string, kind?: 'success' | 'error' | 'info') => void;
+  /** The bridge's subscribe: what One row says about the notes waits for the engine's answer. */
+  subscribe: (handler: (message: IncomingMessage) => void) => () => void;
   tt: Tt;
 }
 
@@ -163,7 +165,7 @@ function clickTypeEntry({ steps, row, targets, cmds }: StepMenuContext): MenuEnt
  * Convert ▸: a click's shape (D14: One row and Two rows, for the selected clicks) and the whole
  * macro's coordinates and shapes. The engine refuses what it cannot convert, and says why.
  */
-function convertEntries({ steps, row, targets, cmds, convertCoordinates, tt, toast }: StepMenuContext): MenuEntry[] {
+function convertEntries({ steps, row, targets, cmds, convertCoordinates, tt, toast, subscribe }: StepMenuContext): MenuEntry[] {
   const t = steps[row].actionType;
   const form = isCoordinateClick(t) ? clickFormOf(t) : null;
   const clicks = targets.filter(i => isCoordinateClick(steps[i]?.actionType ?? '') && clickFormOf(steps[i].actionType) === form);
@@ -182,16 +184,25 @@ function convertEntries({ steps, row, targets, cmds, convertCoordinates, tt, toa
       .filter(i => i >= 0 && i < steps.length)
       .sort((a, b) => a - b);
     // D14: the merge keeps the Down half. A button or a point that differs, the engine refuses and
-    // says why; the notes of an Up half go in silence, so they are said at once.
-    const upNotes = pair.some(i => clickFormOf(steps[i].actionType) === 'Up' && (steps[i].comment ?? '') !== ''
-      && steps[i].comment !== (steps[i - 1]?.comment ?? ''));
+    // says why; the notes of an Up half go in silence, so they are said once the engine has merged
+    // it: the Up row is then gone from the list it sends back. A refused pair keeps its notes.
+    const upNotes = pair.flatMap((i) => {
+      const s = steps[i];
+      return clickFormOf(s.actionType) === 'Up' && (s.comment ?? '') !== '' && s.comment !== (steps[i - 1]?.comment ?? '') && s.id ? [s.id] : [];
+    });
     out.push({
       label: 'One row',
       icon: Combine,
       tip: tt('Press and release together', 'Aperta e solta juntos'),
       onSelect: () => {
+        if (upNotes.length > 0) {
+          afterConvert(subscribe, (after) => {
+            if (after && upNotes.some(id => !after.some(s => s.id === id))) {
+              toast(tt('One row keeps the Down half: the notes of the Up half are gone. Ctrl+Z brings them back.', 'Uma linha fica com a metade Down: as notas da metade Up saíram. Ctrl+Z as traz de volta.'), 'info');
+            }
+          });
+        }
         cmds.convertMode({ direction: 'toCombined', indices: pair });
-        if (upNotes) toast(tt('One row keeps the Down half: the notes of the Up half are gone. Ctrl+Z brings them back.', 'Uma linha fica com a metade Down: as notas da metade Up saíram. Ctrl+Z as traz de volta.'), 'info');
       },
     });
   }
@@ -204,6 +215,25 @@ function convertEntries({ steps, row, targets, cmds, convertCoordinates, tt, toa
     { label: 'All clicks and keys to two rows', tip: tt('Splits every click and key of the macro into Down + Up', 'Separa todos os cliques e teclas do macro em Down + Up'), onSelect: () => cmds.convertMode({ direction: 'toPaired' }) },
   );
   return out;
+}
+
+/**
+ * The engine's answer to a convert: the new list (actions:updated) when it changed the steps, then
+ * the alert:show that says what it did; only that alert:show, saying why, when it refused. `then`
+ * gets the new steps, or null for a refusal. An answer that never comes is let go after 5 s.
+ */
+function afterConvert(subscribe: StepMenuContext['subscribe'], then: (steps: ActionItem[] | null) => void) {
+  let steps: ActionItem[] | null = null;
+  let timer = 0;
+  const off = subscribe((message) => {
+    if (message.type === 'actions:updated') steps = message.payload.actions;
+    else if (message.type === 'alert:show') {
+      off();
+      window.clearTimeout(timer);
+      then(steps);
+    }
+  });
+  timer = window.setTimeout(off, 5000);
 }
 
 /** More ▸: the rarer tools. */
