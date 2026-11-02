@@ -26,9 +26,10 @@ interface Opened {
 
 /**
  * ⑥ The row over the steps: the tabs — Steps, and the Data Loop table with its row count — and the
- * tools of the one shown. On Steps: Add step, which opens the catalog, then Click, Key, Text and
- * Pause at one click, then Undo and Redo; a new step goes to the insertion point and the list
- * selects it when it lands. On Data Loop: Find in table, Paste or import and the table's ⋯.
+ * tools of the one shown. On Steps: Add step, which opens the catalog, then Click, Key and Text at
+ * one click (the Pause lives in Add step, D29), then Undo and Redo; a new step goes to the
+ * insertion point and the list selects it when it lands. On Data Loop: Find in table, Paste or
+ * import and the table's ⋯.
  *
  * The tabs are one Tab stop, and so are the tools, with ← → Home End inside (casca-100, D2); a
  * click on a tool leaves the focus where it was. While a recording or a run is on, or the Clicker,
@@ -174,16 +175,6 @@ export function InsertRow() {
           >
             <span className="step-icon" data-icon="type" />
             Text
-          </button>
-          <button
-            type="button"
-            className="ins-quick"
-            tabIndex={-1}
-            data-tip={tt('Waits 1 s', 'Espera 1 s')}
-            onClick={() => insertHere(inserts.pause, cmds)}
-          >
-            <span className="step-icon" data-icon="hourglass" />
-            Pause
           </button>
           <span className="ins-sep" />
           <button

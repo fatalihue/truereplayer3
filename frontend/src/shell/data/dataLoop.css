@@ -350,16 +350,27 @@
 .dl-tool { border: 1px solid var(--color-border-default); background: var(--color-bg-elevated); color: var(--color-text-primary); }
 .dl-tool .dl-caret { width: 0.75rem; height: 0.75rem; color: var(--color-text-tertiary); }
 .dl-tools .ins-icon[aria-pressed='true'] { background: color-mix(in srgb, var(--color-accent) 12%, transparent); color: var(--color-accent); }
+/* While it searches, the box keeps a width the row can hold and its count takes the room of the
+   paste tool's words: with both, the tools did not fit beside the tabs below ~52 rem of row and
+   went to a line of their own (D29). */
+@container insrow (max-width: 56rem) {
+  .dl-find:has(.dl-find-count) { width: 18rem; }
+  .dl-tools:has(.dl-find-count) .dl-tool { width: auto; padding: 0 0.375rem; font-size: 0; gap: 0.125rem; }
+}
 /* A narrow row (the library and the Inspector both open, or a narrow window): the search box
-   narrows and the paste tool keeps its icon and its caret, so the tools stay beside the tabs. */
+   narrows, so the tools stay beside the tabs. */
 @container insrow (max-width: 44rem) {
-  .dl-tool { width: auto; padding: 0 0.375rem; font-size: 0; gap: 0.125rem; }
   /* Room for the count while searching; the previous and next buttons give way to Enter and
      Shift+Enter. */
   .dl-find { width: 8rem; min-width: 0; }
   .dl-find:has(.dl-find-count) { width: 11.25rem; min-width: 0; }
   .dl-find input { width: 0; min-width: 0; }
   .dl-find-step[data-nav] { display: none; }
+}
+/* Narrower still, the paste tool keeps only its icon and its caret. Its words fit down to here
+   (D29): with them the tools need ~31 rem of the row, ~35 with a row count on the tab. */
+@container insrow (max-width: 35.5rem) {
+  .dl-tool { width: auto; padding: 0 0.375rem; font-size: 0; gap: 0.125rem; }
 }
 
 /* ── Paste or import ── */

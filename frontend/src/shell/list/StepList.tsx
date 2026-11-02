@@ -20,7 +20,7 @@ import { deleteSteps } from './moves';
 import { arrival, insertPoint, selectedIndices, selection, useSelection } from './selection';
 import { StepRow } from './StepRow';
 import { stepKey, stepName } from './stepTypes';
-import { topIn, useStepDrag } from './useStepDrag';
+import { useStepDrag } from './useStepDrag';
 import './stepIcons.css';
 import './list.css';
 
@@ -34,7 +34,8 @@ type StepMenuKit = Awaited<ReturnType<typeof loadStepMenu>>;
  * ⑦ The steps of the open macro. Clicking selects (Ctrl adds, Shift extends), the number turns
  * into a checkbox, the arrows move, and the insertion point sits after the last selected step:
  * new steps — a recording, a paste, Add step — go there, and a step Add step asked for is selected
- * when it lands. Right-click opens the step's menu, a press that
+ * when it lands. The list draws no mark for that point (D29): Add step, Record ▾ and a new step's
+ * header say it in words. Right-click opens the step's menu, a press that
  * moves drags, and blocks are drawn as rails. During a recording or a run the list is read-only.
  *
  * The rows only draw (StepRow): the pointer and the keys are handled here, once for the list, and
@@ -377,7 +378,6 @@ export function StepList() {
               </Fragment>
             );
           })}
-          <InsertLine steps={steps} bodyRef={bodyRef} />
           {dropLine && <div className="steps-drop" style={{ top: dropLine.top }} aria-hidden="true" />}
         </div>
       </div>
@@ -434,30 +434,6 @@ function SelectAll({ steps }: { steps: ActionItem[] }) {
         onClick={() => (all ? selection.clear() : selection.all(steps))}
       />
     </span>
-  );
-}
-
-/**
- * The insertion point: a line after the last selected step, where new steps go (lista-032). It
- * finds that step's row and is placed on the DOM after each render, so moving it redraws nothing else.
- */
-function InsertLine({ steps, bodyRef }: { steps: ActionItem[]; bodyRef: React.RefObject<HTMLDivElement | null> }) {
-  const last = useSelection(s => {
-    const sel = selectedIndices(steps, s.keys);
-    return sel.length > 0 ? sel[sel.length - 1] : -1;
-  });
-  const ref = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const line = ref.current;
-    const row = last < 0 ? null : bodyRef.current?.querySelector<HTMLElement>(`.step[data-index="${last}"]`);
-    if (!line) return;
-    line.style.display = row ? '' : 'none';
-    if (row && bodyRef.current) line.style.top = `${topIn(bodyRef.current, row) + row.offsetHeight - 1}px`;
-  });
-  return (
-    <div ref={ref} className="steps-insert" style={{ display: 'none' }} aria-hidden="true">
-      <span className="steps-insert-dot"><span className="step-icon" data-icon="plus" /></span>
-    </div>
   );
 }
 

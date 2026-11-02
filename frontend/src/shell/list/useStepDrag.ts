@@ -202,10 +202,10 @@ export function slotAt(body: HTMLElement, x: number, y: number, count: number): 
 }
 
 /**
- * A row's top in the list's body, where the insertion point and the drop line are drawn. Not its
- * offsetTop alone: the block of rows it sits in (StepList's chunked) can be its offset parent.
+ * A row's top in the list's body, where the drop line is drawn. Not its offsetTop alone: the block
+ * of rows it sits in (StepList's chunked) can be its offset parent.
  */
-export function topIn(body: HTMLElement, row: HTMLElement): number {
+function topIn(body: HTMLElement, row: HTMLElement): number {
   let top = 0;
   for (let el: HTMLElement | null = row; el && el !== body; el = el.offsetParent as HTMLElement | null) top += el.offsetTop;
   return top;
