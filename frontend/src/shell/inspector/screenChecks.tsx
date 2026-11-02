@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ActionItem } from '../../bridge/messageTypes';
 import { useEditorTools } from '../../logic/useEditorTools';
 import { useSteps } from '../../logic/useSteps';
@@ -114,10 +114,36 @@ export function ScreenTextCheck({ step, locked, variant = 'match', reads = 'foun
   const tt = useTt();
   const id = step.id ?? '';
   const region = regionOf(step);
-  const number = isNumberMode(step.ocrReadAs);
-  const op = effectiveOperator(step.conditionOperator, number);
-  const mode: ReadMode = number ? 'number' : (op as ReadMode);
+  const storedNumber = isNumberMode(step.ocrReadAs);
+  const op = effectiveOperator(step.conditionOperator, storedNumber);
+  const storedMode: ReadMode = storedNumber ? 'number' : (op as ReadMode);
   const operand = step.conditionOperand ?? '';
+  // The text the field holds: what is being typed, else what it just sent until the step has it
+  // (a click on a mode right after typing judges the text just typed), else the step's.
+  const [typed, setTyped] = useState<string | null>(null);
+  const [sent, setSent] = useState<{ value: string; over: string } | null>(null);
+  // A switch to Regex over a text that does not compile is not sent: the check would fail on every
+  // run. Regex shows here, the field says why, and the mode goes with the first pattern that
+  // compiles, in one edit (as Text Match keeps a regex in the browser steps). Leaving the step keeps
+  // the mode the step has.
+  const [pendingRegex, setPendingRegex] = useState(false);
+  const [seen, setSeen] = useState({ mode: storedMode, operand });
+  if (seen.mode !== storedMode || seen.operand !== operand) {
+    // The step's mode or text moved some other way (Ctrl+Z, Use this text): the switch held here
+    // gives way. The echo of the text this field sent keeps it.
+    const echo = seen.mode === storedMode && sent !== null && operand === sent.value;
+    setSeen({ mode: storedMode, operand });
+    if (pendingRegex && !echo) setPendingRegex(false);
+  }
+  if (sent && sent.over !== operand) setSent(null);
+  // No echo within a second (the engine kept the value): the step's text counts again.
+  useEffect(() => {
+    if (!sent) return;
+    const timer = setTimeout(() => setSent(null), 1000);
+    return () => clearTimeout(timer);
+  }, [sent]);
+  const mode: ReadMode = pendingRegex ? 'regex' : storedMode;
+  const number = mode === 'number';
   const color = normalHex(step.ocrTextColor ?? '');
   const colorTolerance = step.ocrColorTolerance ?? 70;
   const [result, setResult] = useState<Read | null>(null);
@@ -134,21 +160,27 @@ export function ScreenTextCheck({ step, locked, variant = 'match', reads = 'foun
     if (!p.cancelled && !p.refused && p.hex) edit([{ field: 'ocrTextColor', value: p.hex }]);
   });
 
-  // What is judged is what shows: the text being typed, else the step's. A pattern that does not
-  // compile, or a value that is not a number, is never sent — the check would fail on every run
-  // (today Save refused it); leaving the field brings the last good one back.
-  const [typed, setTyped] = useState<string | null>(null);
-  const text = typed ?? operand;
+  // What is judged is what shows. A pattern that does not compile, or a value that is not a number,
+  // is never sent — the check would fail on every run (today Save refused it); leaving the field
+  // brings the last good one back.
+  const text = typed ?? sent?.value ?? operand;
   const wrong = (t: string) => number ? (t.trim() !== '' && !t.includes('{') && !parsesAsNumber(t)) : mode === 'regex' && t !== '' && !!regexProblem(t);
   const problem = number
     ? (text.trim() === '' ? 'Enter a number to compare with' : wrong(text) ? 'Not a number' : null)
     : mode === 'regex'
-      ? (text === '' ? 'Enter the pattern to look for' : regexProblem(text))
+      ? (text === '' ? 'Enter the pattern to look for'
+        : pendingRegex && regexProblem(text) ? 'This pattern does not compile. Regex is saved once it does.'
+        : regexProblem(text))
       : (text.trim() === '' ? 'Enter the text to look for' : null);
 
+  const modeEdits = (v: ReadMode): StepEdit[] => (v === 'number'
+    ? [{ field: 'ocrReadAs', value: 'number' }, { field: 'conditionOperator', value: 'eq' }]
+    : [{ field: 'ocrReadAs', value: '' }, { field: 'conditionOperator', value: v }]);
   const setMode = (v: ReadMode) => {
-    if (v === 'number') edit([{ field: 'ocrReadAs', value: 'number' }, { field: 'conditionOperator', value: 'eq' }]);
-    else edit([{ field: 'ocrReadAs', value: '' }, { field: 'conditionOperator', value: v }]);
+    if (v === storedMode) { setPendingRegex(false); return; }
+    if (v === 'regex' && text !== '' && regexProblem(text)) { setPendingRegex(true); return; }
+    setPendingRegex(false);
+    edit(modeEdits(v));
   };
   const firstLine = (result?.text ?? '').split('\n').map(l => l.trim()).find(Boolean) ?? '';
 
@@ -215,6 +247,10 @@ export function ScreenTextCheck({ step, locked, variant = 'match', reads = 'foun
           disabled={locked}
           parse={(t) => (wrong(t) ? null : t)}
           onText={setTyped}
+          onApply={(v) => {
+            setSent({ value: v, over: operand });
+            edit([...(pendingRegex ? modeEdits('regex') : []), { field: 'conditionOperand', value: v }]);
+          }}
         />
         <span className="insp-hint">
           {problem ? <span data-error="">{problem}</span>
@@ -252,7 +288,8 @@ export function ScreenTextCheck({ step, locked, variant = 'match', reads = 'foun
             requestId,
             ...auto?.tools,
             searchRegion: region ?? undefined,
-            readAs: number ? 'number' : null,
+            // The step as it stands: a mode held back above is not the step's yet.
+            readAs: storedNumber ? 'number' : null,
             operator: op,
             operand: read ? '' : operand,
             match: !read && operand !== '',
