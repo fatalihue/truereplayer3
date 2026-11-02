@@ -13003,7 +13003,7 @@ namespace TrueReplayer
                         {
                             message = failed.Count == 1
                                 ? $"Could not delete \"{failed[0]}\" — its file is read-only or in use. It stays in your list."
-                                : $"Could not delete {failed.Count} profiles — their files are read-only or in use: {string.Join(", ", failed)}. They stay in your list."
+                                : $"Could not delete {failed.Count} macros — their files are read-only or in use: {string.Join(", ", failed)}. They stay in your list."
                         });
                     }
                     if (hadActive)
@@ -13023,7 +13023,7 @@ namespace TrueReplayer
                     if (dangling > 0)
                     {
                         string plural = dangling == 1 ? "reference" : "references";
-                        SendMessage("alert:show", new { message = $"Deleted \"{name}\" and its profiles. {dangling} RunProfile {plural} in other profiles still point at them and will silently no-op at replay." });
+                        SendMessage("alert:show", new { message = $"Deleted \"{name}\" and its macros. {dangling} Run Macro {plural} in other macros still point at them and will silently no-op at replay." });
                     }
                 }
                 else
@@ -13332,7 +13332,7 @@ namespace TrueReplayer
                     });
                 }
                 else if (exported == 0)
-                    SendMessage("alert:show", new { message = "Export failed: none of the selected profiles could be loaded." });
+                    SendMessage("alert:show", new { message = "Export failed: none of the selected macros could be loaded." });
                 // exported < 0 => user cancelled the Save dialog: stay silent.
             }
             catch (Exception ex)
@@ -13425,8 +13425,8 @@ namespace TrueReplayer
                         string m = prep.Status switch
                         {
                             ImportPrepareStatus.TooLarge => "That file is too large to import (over 50 MB).",
-                            ImportPrepareStatus.ParseError => "That file isn't a valid TrueReplayer profile export.",
-                            ImportPrepareStatus.NoProfiles => "That export file contains no profiles to import.",
+                            ImportPrepareStatus.ParseError => "That file isn't a valid TrueReplayer macro export.",
+                            ImportPrepareStatus.NoProfiles => "That export file contains no macros to import.",
                             ImportPrepareStatus.ReadError => $"Couldn't read that file: {prep.Detail}",
                             _ => "Import failed.",
                         };
@@ -13548,7 +13548,7 @@ namespace TrueReplayer
             {
                 SendMessage("alert:show", new
                 {
-                    message = $"This file lists {renamedDuplicates} profile(s) under a name another profile in it already uses. The copies are shown with a number, e.g. \"Farm (2)\".",
+                    message = $"This file lists {renamedDuplicates} macro(s) under a name another macro in it already uses. The copies are shown with a number, e.g. \"Farm (2)\".",
                     type = "info",
                 });
             }
@@ -13657,7 +13657,7 @@ namespace TrueReplayer
                 // All selected names were dropped as unsafe (or none were sent). Don't fail silently —
                 // the picker-cancel path is the only legitimate silence.
                 if (unsafeDropped > 0)
-                    SendMessage("alert:show", new { message = $"Import skipped {unsafeDropped} profile(s) with invalid names.", type = "error" });
+                    SendMessage("alert:show", new { message = $"Import skipped {unsafeDropped} macro(s) with invalid names.", type = "error" });
                 return;
             }
 
@@ -13751,7 +13751,7 @@ namespace TrueReplayer
 
                     if (!hasWarnings)
                     {
-                        string msg = $"Imported {imported} profile(s).";
+                        string msg = $"Imported {imported} macro(s).";
                         if (hasOrganization) msg += " Folder organization imported.";
                         SendMessage("alert:show", new { message = msg, type = "success" });
                     }
@@ -13784,14 +13784,14 @@ namespace TrueReplayer
                 }
                 else if (totalSkipped > 0)
                 {
-                    SendMessage("alert:show", new { message = $"All {totalSkipped} profile(s) were skipped.", type = "info" });
+                    SendMessage("alert:show", new { message = $"All {totalSkipped} macro(s) were skipped.", type = "info" });
                 }
                 else
                 {
                     // imported == 0 && nothing skipped: the selected names matched no envelope entry
                     // (a stale or hand-crafted confirm payload). Previously fell through both branches
                     // and showed NOTHING — the user clicked Import and got silence.
-                    SendMessage("alert:show", new { message = "No profiles were imported.", type = "info" });
+                    SendMessage("alert:show", new { message = "No macros were imported.", type = "info" });
                 }
             }
             catch (Exception ex)

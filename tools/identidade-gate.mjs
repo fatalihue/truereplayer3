@@ -23,7 +23,7 @@ const ALLOWED_CS = [
   /^TrueReplayerBridge\b/,                   // the extension's pipe (decision 6)
   /^TrueReplayer extension\b/,               // the browser extension, the same for both apps
   /^TrueReplayer macros \(\*\.trprofile\)/,  // the file type, the same for both apps
-  /^TrueReplayer profile export\b/,
+  /^TrueReplayer macro export\b/,            // "isn't a valid TrueReplayer macro export": the file format too
 ];
 const ALLOWED_DIST = [
   /^TrueReplayer [23]\b/,                    // APP_NAME and TR2_NAME (frontend/src/appIdentity.ts)

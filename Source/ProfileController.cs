@@ -1624,7 +1624,7 @@ namespace TrueReplayer.Controllers
                         ? "no target window"
                         : $"target '{collidingGroup.Key}'";
                     _hotkeyCollisions.Add(
-                        $"Hotkey '{hotkey}' is bound to {names.Count} profiles with the same {targetDesc}: " +
+                        $"Hotkey '{hotkey}' is bound to {names.Count} macros with the same {targetDesc}: " +
                         $"{string.Join(", ", names)} — only one will fire");
                 }
             }
@@ -1722,7 +1722,7 @@ namespace TrueReplayer.Controllers
                 var names = group.Select(e => e.Name).ToList();
                 var targetDesc = string.IsNullOrEmpty(group.Key.Target) ? "no target window" : $"target '{group.Key.Target}'";
                 _hotstringCollisions.Add(
-                    $"Hotstring '{group.Key.Seq}' is bound to {names.Count} profiles with the same {targetDesc}: " +
+                    $"Hotstring '{group.Key.Seq}' is bound to {names.Count} macros with the same {targetDesc}: " +
                     $"{string.Join(", ", names)} — only one will fire");
             }
 
