@@ -6,16 +6,19 @@ import { glyphCount, railInitials } from '../../utils/profileInitials';
 import { descriptionTip, folderOf, keycaps, targetLabel } from './model';
 
 /**
- * ③ folded: the library as a column of avatars (below 1280 px, or folded by hand). The macros keep
- * the library's order — pinned, folders, the rest — and as many as the column holds show; the last
- * place becomes "+N" when they do not all fit, and the open macro is never the one left out. Each
- * avatar says in its tooltip everything the row would.
+ * ③ folded: the library as a column of avatars (below 80 rem of window, or beside the expanded
+ * Inspector). The macros keep the library's order — pinned, folders, the rest — and as many as the
+ * column holds show; the last place becomes "+N" when they do not all fit, and the open macro is
+ * never the one left out. Each avatar says in its tooltip everything the row would. The button on
+ * top lays the panel over the steps, and takes it away again.
  */
-export function LibraryFolded({ macros, order, active, locked, onExpand, onOpen, onMenu }: {
+export function LibraryFolded({ macros, order, active, locked, peek, onExpand, onOpen, onMenu }: {
   macros: ProfileEntry[];
   order: ProfileOrderData;
   active: string | null;
   locked: boolean;
+  /** The panel is laid over the steps. */
+  peek: boolean;
   onExpand: () => void;
   onOpen: (name: string) => void;
   onMenu: (e: MouseEvent<HTMLElement>, name: string) => void;
@@ -52,7 +55,18 @@ export function LibraryFolded({ macros, order, active, locked, onExpand, onOpen,
 
   return (
     <nav className="lib-folded" aria-label="Macros, collapsed">
-      <button type="button" className="lib-icon-button" aria-label="Expand macro list" data-tip={tt('Expand macro list', 'Abrir a lista de macros')} data-tip-pos="right" onClick={onExpand}>
+      {/* A toggle (data-library-toggle): the press is not the "elsewhere" that takes the panel away
+          before its own click would lay it again. */}
+      <button
+        type="button"
+        className="lib-icon-button"
+        aria-label={peek ? 'Close macro list' : 'Expand macro list'}
+        aria-expanded={peek}
+        data-library-toggle=""
+        data-tip={peek ? tt('Close macro list', 'Fechar a lista de macros') : tt('Expand macro list', 'Abrir a lista de macros')}
+        data-tip-pos="right"
+        onClick={onExpand}
+      >
         <ChevronsRight aria-hidden="true" />
       </button>
       <span className="lib-folded-divider" />

@@ -1,6 +1,6 @@
 /* ③ The macro library. Sizes from the concept's Main and SendText boards, in rem (rule 9); colours
    are theme tokens only. The library has two forms: the panel, and folded into a column of avatars
-   (below 1280 px, or folded by hand). Library.tsx renders one or the other. */
+   (below 80 rem of window, beside the expanded Inspector). Library.tsx renders one or the other. */
 
 .shell-library {
   position: relative;
@@ -67,7 +67,8 @@
 }
 .lib-icon-button svg { width: 1rem; height: 1rem; }
 .lib-new:hover,
-.lib-icon-button:hover { background: var(--color-bg-card); color: var(--color-text-primary); }
+.lib-icon-button:not(:disabled):hover { background: var(--color-bg-card); color: var(--color-text-primary); }
+.lib-icon-button:disabled { color: var(--color-text-disabled); }
 .lib-icon-button[aria-expanded='true'],
 .lib-new[aria-expanded='true'] { background: var(--color-bg-card); color: var(--color-text-primary); }
 

@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
-import { ChevronDown, ChevronsLeft, Hash, MoreHorizontal, Pin, Plus, Search, X } from 'lucide-react';
+import { ChevronDown, ChevronsDownUp, ChevronsUpDown, Hash, MoreHorizontal, Pin, Plus, Search, X } from 'lucide-react';
 import type { ProfileEntry, ProfileFolder, ProfileOrderData } from '../../bridge/messageTypes';
 import { useTt } from '../../state/LanguageContext';
 import { preload, useLoaded } from '../lazyModule';
@@ -14,14 +14,14 @@ import { useLibraryDrag } from './useLibraryDrag';
 const ITEM = '.lib-macro, .lib-folder-header, .lib-new-in-folder';
 
 /**
- * ③ The library as a panel: the header (Macros, New ▾, ⋯ and the button that folds it), the search,
- * and the list — pinned, the folders, Ungrouped; a flat list of what matches while searching.
+ * ③ The library as a panel: the header (Macros, New ▾, ⋯ and Collapse/Expand all folders), the
+ * search, and the list — pinned, the folders, Ungrouped; a flat list of what matches while searching.
  *
  * One stop on Tab. Inside it the arrows walk the macros and folders, → and ← open and close a
  * folder (← on a macro goes to its folder), Enter and Space open a macro or a folder, and Shift+F10
  * (or the Menu key) is the menu of whatever has the focus.
  */
-export function LibraryPanel({ profiles, order, sections, active, locked, peek, menuFor, onFold, onOpen, onToggleFolder, onMacroMenu, onFolderMenu, onNewMenu, onMoreMenu, onNewMacro, onCreate, onMove, onReorder, onRun }: {
+export function LibraryPanel({ profiles, order, sections, active, locked, peek, menuFor, onFold, onOpen, onToggleFolder, onAllFolders, onMacroMenu, onFolderMenu, onNewMenu, onMoreMenu, onNewMacro, onCreate, onMove, onReorder, onRun }: {
   profiles: ProfileEntry[];
   order: ProfileOrderData;
   /** The library's sections, worked out once by the container for both of its forms. */
@@ -32,9 +32,12 @@ export function LibraryPanel({ profiles, order, sections, active, locked, peek, 
   peek: boolean;
   /** Which header menu is open, for its button's pressed look. */
   menuFor: 'new' | 'more' | null;
+  /** Takes the panel laid over the steps away (Esc, a press elsewhere). */
   onFold: () => void;
   onOpen: (name: string) => void;
   onToggleFolder: (name: string) => void;
+  /** Every folder closed (true) or open (false), in one write. */
+  onAllFolders: (collapse: boolean) => void;
   onMacroMenu: (e: MouseEvent<HTMLElement>, name: string) => void;
   onFolderMenu: (e: MouseEvent<HTMLElement>, name: string) => void;
   /** `keyboard`: opened with Enter or Space, so the first item takes the focus. */
@@ -75,6 +78,9 @@ export function LibraryPanel({ profiles, order, sections, active, locked, peek, 
   // A folder whose every macro is disabled reads as disabled too.
   const offByFolder = new Map(sections.folders.map(({ folder, macros }) =>
     [folder.name, macros.length > 0 && macros.every(p => p.isDisabled)]));
+  // The folders button (D29, TrueReplayer 2's rule): while any folder is open it closes them all;
+  // with every one closed it opens them all. Each folder keeps its own state otherwise.
+  const anyFolderOpen = order.folders.some(f => !f.collapsed);
 
   const open = (name: string) => {
     if (!drag.justDragged()) onOpen(name);
@@ -242,11 +248,12 @@ export function LibraryPanel({ profiles, order, sections, active, locked, peek, 
         <button
           type="button"
           className="lib-icon-button"
-          aria-label={peek ? 'Close macro list' : 'Collapse macro list'}
-          data-tip={peek ? tt('Close macro list', 'Fechar a lista de macros') : tt('Collapse macro list', 'Recolher a lista de macros')}
-          onClick={onFold}
+          aria-label={anyFolderOpen ? 'Collapse all folders' : 'Expand all folders'}
+          data-tip={anyFolderOpen ? tt('Collapse all folders', 'Recolher todas as pastas') : tt('Expand all folders', 'Expandir todas as pastas')}
+          disabled={order.folders.length === 0}
+          onClick={() => onAllFolders(anyFolderOpen)}
         >
-          <ChevronsLeft aria-hidden="true" />
+          {anyFolderOpen ? <ChevronsDownUp aria-hidden="true" /> : <ChevronsUpDown aria-hidden="true" />}
         </button>
       </div>
 

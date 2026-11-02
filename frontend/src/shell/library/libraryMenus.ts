@@ -1,5 +1,5 @@
-import { BookOpen, ChevronsDownUp, ChevronsUpDown, Download, FilePlus, FolderOpen, FolderPlus, Upload } from 'lucide-react';
-import type { ProfileEntry, ProfileOrderData } from '../../bridge/messageTypes';
+import { BookOpen, Download, FilePlus, FolderOpen, FolderPlus, Upload } from 'lucide-react';
+import type { ProfileEntry } from '../../bridge/messageTypes';
 import type { useMacro } from '../../logic/useMacro';
 import type { MenuEntry } from '../Menu';
 import { focusName, openDialog, openExamples, setLibraryPeek } from '../ui';
@@ -18,11 +18,11 @@ export function newMacro(macro: ReturnType<typeof useMacro>, profiles: ProfileEn
 
 /**
  * The library's two menus: New ▾ and ⋯ (Menus board, "Biblioteca: New ▾ e ⋯"). One source, for the
- * library's buttons and for Ctrl+K (D5: New macro and New folder there too).
+ * library's buttons and for Ctrl+K (D5: New macro and New folder there too). Collapse and Expand all
+ * folders left the ⋯ for the header's own button (D29); Ctrl+K has them as one command.
  */
-export function libraryMenus({ profiles, order, macro, startImport }: {
+export function libraryMenus({ profiles, macro, startImport }: {
   profiles: ProfileEntry[];
-  order: ProfileOrderData;
   macro: ReturnType<typeof useMacro>;
   /** The import, which the library runs (its dialogs live there). */
   startImport: (() => void) | null;
@@ -39,9 +39,6 @@ export function libraryMenus({ profiles, order, macro, startImport }: {
       { label: 'Export macros…', icon: Upload, disabled: profiles.length === 0, onSelect: () => openDialog({ kind: 'export', names: [] }) },
       'separator',
       { label: 'Open macros folder', icon: FolderOpen, onSelect: () => macro.openFolder() },
-      'separator',
-      { label: 'Collapse all folders', icon: ChevronsDownUp, disabled: !order.folders.some(f => !f.collapsed), onSelect: () => macro.setAllFoldersCollapsed(true) },
-      { label: 'Expand all folders', icon: ChevronsUpDown, disabled: !order.folders.some(f => f.collapsed), onSelect: () => macro.setAllFoldersCollapsed(false) },
     ],
   };
 }

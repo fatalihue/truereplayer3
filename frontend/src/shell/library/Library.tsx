@@ -29,25 +29,17 @@ import './library.css';
 const LibraryDialog = lazy(() => import('./LibraryDialogs'));
 const ImportFlow = lazy(() => import('./ImportFlow'));
 
-// The same key the shell of today keeps its folded library under, so the choice carries over.
-const FOLDED_KEY = 'ui:sidebarCollapsed';
-function readFolded(): boolean {
-  try { return localStorage.getItem(FOLDED_KEY) === '1'; } catch { return false; }
-}
-function writeFolded(folded: boolean) {
-  try { localStorage.setItem(FOLDED_KEY, folded ? '1' : '0'); } catch { /* storage off: the choice lasts the session */ }
-}
-
 type MenuState =
   | { kind: 'macro' | 'folder'; name: string; anchor: MenuAnchor; keyboard: boolean; seq: number }
   | { kind: 'new' | 'more'; anchor: MenuAnchor; keyboard: boolean; seq: number; button: HTMLElement };
 
 /**
- * ③ The macro library: the panel, or folded into avatars — by the window below 1280 px, or by hand
- * (D28). Folded by the window, "Expand macro list" lays the panel over the steps until a macro is
- * opened, Esc, or a press elsewhere; folded by hand, it unfolds. The menus and dialogs of both
- * forms live here, and so does the rule that there is always a macro open while any exists (D1):
- * when the open one goes, the one next to it opens.
+ * ③ The macro library: the panel, or folded into avatars — only by the window, below 80 rem, and
+ * beside the expanded Inspector; there is no folding by hand any more (D29: its button became
+ * Collapse/Expand all folders). Folded, "Expand macro list" lays the panel over the steps until a
+ * macro is opened, Esc, a press elsewhere or the same button. The menus and dialogs of both forms
+ * live here, and so does the rule that there is always a macro open while any exists (D1): when
+ * the open one goes, the one next to it opens.
  */
 export function Library() {
   const profiles = useApp(a => a.profiles);
@@ -62,7 +54,6 @@ export function Library() {
   const tt = useTt();
   const imports = useImport();
   const band = useShellBand();
-  const [folded, setFolded] = useState(readFolded);
   // Laid over the steps for a moment: from the folded library's Expand, or from the rail where the
   // window hides the library (520–759 px, one pane at a time).
   const peek = useUi(s => s.libraryPeek);
@@ -72,7 +63,7 @@ export function Library() {
 
   const hidden = band === 'single' || band === 'compact';
   // The expanded Inspector takes the room of the open library, as the narrower windows do: folded,
-  // with Expand laying it over the steps. The fold chosen by hand is kept for after.
+  // with Expand laying it over the steps.
   const wide = useUi(inspectorWide);
   const bandFolds = band !== 'wide' || wide;
   // A peek only lives while the window keeps the library folded.
@@ -84,7 +75,7 @@ export function Library() {
     useUi.setState({ startImport: imports.start });
     return () => useUi.setState({ startImport: null });
   }, [imports.start]);
-  const showFolded = bandFolds || folded;
+  const showFolded = bandFolds;
   const peeking = bandFolds && peek;
   const sections = sectionsOf(profiles, order);
   const ordered = displayOrder(sections);
@@ -112,20 +103,9 @@ export function Library() {
     macro.open(name);
     setLibraryPeek(false);
   };
-  const expand = () => {
-    if (bandFolds) setLibraryPeek(true);
-    else {
-      setFolded(false);
-      writeFolded(false);
-    }
-  };
-  const fold = () => {
-    if (peeking) setLibraryPeek(false);
-    else {
-      setFolded(true);
-      writeFolded(true);
-    }
-  };
+  // The folded column's Expand lays the panel over the steps, and takes it away again.
+  const togglePeek = () => setLibraryPeek(!peeking);
+  const fold = () => setLibraryPeek(false);
   const newMacroIn = (folder: string | null) => newMacro(macro, profiles, folder);
   // A macro dropped on the steps runs there: a Run Macro step where it fell, opened in the
   // Inspector (lista-049). The open macro cannot call itself.
@@ -175,7 +155,7 @@ export function Library() {
     ];
   };
 
-  const { newEntries, moreEntries } = libraryMenus({ profiles, order, macro, startImport: imports.start });
+  const { newEntries, moreEntries } = libraryMenus({ profiles, macro, startImport: imports.start });
 
   const menuEntries = !menu ? [] : menu.kind === 'macro' ? macroEntries(menu.name)
     : menu.kind === 'folder' ? folderEntries(menu.name)
@@ -191,7 +171,8 @@ export function Library() {
           order={order}
           active={active}
           locked={locked}
-          onExpand={expand}
+          peek={peeking}
+          onExpand={togglePeek}
           onOpen={openMacro}
           onMenu={contextMenu('macro')}
         />
@@ -208,6 +189,7 @@ export function Library() {
           onFold={fold}
           onOpen={openMacro}
           onToggleFolder={macro.toggleFolderCollapsed}
+          onAllFolders={macro.setAllFoldersCollapsed}
           onMacroMenu={contextMenu('macro')}
           onFolderMenu={contextMenu('folder')}
           onNewMenu={headerMenu('new')}

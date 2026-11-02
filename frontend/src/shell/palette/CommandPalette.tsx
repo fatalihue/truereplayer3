@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { PictureInPicture2,
-  ArrowRightLeft, BookOpen, Chrome, ClipboardCopy, ClipboardPaste, Combine, CornerDownRight, FolderOpen, Keyboard, ListChecks, MousePointerClick, Play, Plus, Redo2, RefreshCw,
+  ArrowRightLeft, BookOpen, ChevronsDownUp, ChevronsUpDown, Chrome, ClipboardCopy, ClipboardPaste, Combine, CornerDownRight, FolderOpen, Keyboard, ListChecks, MousePointerClick, Play, Plus, Redo2, RefreshCw,
   Replace, RotateCcw, ScrollText, Settings, Split, Square, SquareDot, Table2, Undo2, Variable, Zap,
 } from 'lucide-react';
 import { useBridge } from '../../bridge/BridgeContext';
@@ -304,8 +304,18 @@ function useItems(): PaletteItem[] {
   }
 
   // The library's New ▾ and ⋯. "From an example…" is found by "examples" too.
-  const { newEntries, moreEntries } = libraryMenus({ profiles, order, macro, startImport });
+  const { newEntries, moreEntries } = libraryMenus({ profiles, macro, startImport });
   out.push(...fromMenu('library', [...newEntries, ...moreEntries], (item) => ({ detail: 'Library', words: item.icon === BookOpen ? 'browse examples sample starter' : undefined })));
+  // The library header's folders button (D29), with its rule: while any folder is open it closes
+  // them all, and with every one closed it opens them all.
+  const anyFolderOpen = order.folders.some(f => !f.collapsed);
+  out.push(cmd('folders', anyFolderOpen ? 'Collapse all folders' : 'Expand all folders', () => macro.setAllFoldersCollapsed(anyFolderOpen), {
+    icon: anyFolderOpen ? ChevronsDownUp : ChevronsUpDown,
+    detail: 'Library',
+    words: 'folders fold unfold open close all collapse expand',
+    disabled: order.folders.length === 0,
+    hint: tt('There are no folders', 'Não há pastas'),
+  }));
 
   // The dock, the master switches, and the app's own doors.
   out.push(
