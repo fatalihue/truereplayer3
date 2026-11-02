@@ -94,7 +94,6 @@
   font: inherit;
 }
 .insp-box textarea::placeholder { color: var(--color-text-tertiary); }
-.insp-common { align-items: start; }
 .insp-box-prefix,
 .insp-box-unit { flex: none; font-size: var(--text-minor); color: var(--color-text-tertiary); }
 /* A number's ▲ ▼: at the edge, seen on hover and with the focus; their place is kept, so nothing moves. */
@@ -108,10 +107,19 @@
 .insp-steppers button:disabled { color: var(--color-text-disabled); cursor: default; }
 
 .insp-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
-/* Delay narrow, Notes taking the rest (or the whole line on a step with no delay). */
-.insp-common { display: flex; gap: 0.5rem; }
-.insp-common > :first-child:not(:last-child) { flex: 0 0 8rem; }
-.insp-common > :last-child { flex: 1; }
+
+/* The step's Delay, in a strip under the header that does not scroll (D29): the same place for
+   every step that has one. The editor scrolls under it. */
+.insp-delay {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.insp-delay .insp-label { flex: 1; min-width: 0; }
+.insp-delay .insp-box { flex: none; width: 8.5rem; }
 
 .insp-button {
   display: inline-flex;

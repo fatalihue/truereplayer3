@@ -21,7 +21,6 @@ const TypeTextField = lazy(() => import('./browserText'));
 const DEFAULT_TIMEOUT_MS = 5000;
 const MIN_TIMEOUT_MS = 1000;
 const MAX_TIMEOUT_MS = 86_400_000;
-const MAX_DELAY_MS = 999_999_999;
 
 // The steps that find their element by its text as well (Text Match): not Type Text nor Select Option.
 const WITH_TEXT = new Set(['BrowserClick', 'BrowserRightClick', 'BrowserWaitElement', 'BrowserAssert']);
@@ -64,7 +63,8 @@ const regexError = (pattern: string): string | null => {
  * wait for after it; or the element — its CSS selector, with the shield, Pick element and the
  * alternatives, or its text (Text Match) — and what each step does with it: the text to type, the
  * option to choose, or the condition to wait for or to require, with what a failed requirement
- * does. Then Test action, which does the step for real on the tab, and the Timeout with the Delay.
+ * does. Then Test action, which does the step for real on the tab, and the Timeout. The Delay is
+ * in the strip under the header, as every step's (D29).
  */
 export function BrowserEditor({ step, locked }: { step: ActionItem; locked: boolean }) {
   const t = step.actionType;
@@ -441,18 +441,12 @@ function dropNet(net: { current: ReturnType<typeof setTimeout> | null }) {
   if (net.current) clearTimeout(net.current);
 }
 
-/** The Timeout of the browser steps, with their Delay beside it (editor-passo-158 and 159). */
+/** The Timeout of the browser steps (editor-passo-158). Their Delay (159) is in the strip under the header (D29). */
 function Timing({ step, locked }: { step: ActionItem; locked: boolean }) {
-  const id = step.id ?? '';
   const timeout = step.timeout > 0 ? step.timeout : DEFAULT_TIMEOUT_MS;
   return (
-    <div className="insp-pair">
-      <Section label="Timeout">
-        <DraftField stepId={id} field="timeout" label="Timeout in milliseconds" kind="int" step={1000} min={MIN_TIMEOUT_MS} max={MAX_TIMEOUT_MS} unit="ms" stored={String(timeout)} disabled={locked} />
-      </Section>
-      <Section label="Delay">
-        <DraftField stepId={id} field="delay" label="Delay in milliseconds" kind="int" min={0} max={MAX_DELAY_MS} unit="ms" stored={String(step.delay)} disabled={locked} />
-      </Section>
-    </div>
+    <Section label="Timeout">
+      <DraftField stepId={step.id ?? ''} field="timeout" label="Timeout in milliseconds" kind="int" step={1000} min={MIN_TIMEOUT_MS} max={MAX_TIMEOUT_MS} unit="ms" stored={String(timeout)} disabled={locked} />
+    </Section>
   );
 }

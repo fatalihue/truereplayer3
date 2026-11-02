@@ -24,8 +24,8 @@ import { PauseEditor } from './PauseEditor';
 import './editors.css';
 import './editorIcons.css';
 
-// Where a step has no delay of its own to edit here: the If family and the jump markers (the While
-// keeps its settle), and the browser steps, whose delay is part of their own editor, by the Timeout.
+// Where a step has no delay of its own to edit: the If family and the jump markers (the While keeps
+// its settle).
 const NO_DELAY_FIELD = new Set(['If', 'ElseIf', 'Else', 'EndIf', 'EndLoop', 'BreakLoop', 'ContinueLoop', 'ForEachRow']);
 const MAX_DELAY_MS = 999_999_999;
 const CONDITION_STEPS = new Set(['If', 'ElseIf', 'While', 'Assert']);
@@ -46,8 +46,8 @@ const MARKER_NOTES: Record<string, string> = {
 };
 
 /**
- * The Inspector with a selection, loaded with the first step (rule 6): the header, one step's
- * editor or the batch editor for several, and the footer — or, while a run, a recording or the
+ * The Inspector with a selection, loaded with the first step (rule 6): the header, the step's Delay
+ * under it, one step's editor or the batch editor for several, and the footer — or, while a run, a recording or the
  * Clicker is on, the note that it is read-only. Each step's editor is keyed by the step, so its
  * fields start from that step and send what was typed when another one is selected. A step being
  * made (a draft) has its own view, with what it needs before it can exist.
@@ -88,6 +88,7 @@ export default function InspectorBody({ indices, locked, note, draft }: { indice
   return (
     <>
       {one ? <StepHeader step={one} index={indices[0]} count={steps.length} expandable={text} expanded={expanded} /> : <BatchHeader sel={indices} />}
+      {one && <DelayStrip key={stepKey(one, indices[0])} step={one} locked={locked} />}
       <Split expanded={expanded}>
         {one
           ? <StepEditor key={stepKey(one, indices[0])} step={one} index={indices[0]} steps={steps} locked={locked} />
@@ -178,10 +179,11 @@ function DraftView({ draft, steps, locked, note, expanded }: { draft: Draft; ste
     <>
       {born ? <StepHeader step={born} index={index} count={steps.length} expandable expanded={expanded} />
         : <DraftHeader type={type} where={whereOf(draft.at, steps.length)} name={waitUntil ? 'Wait until…' : undefined} icon={waitUntil ? 'clock' : undefined} expandable={draft.kind === 'text'} expanded={expanded} />}
+      {born && <DelayStrip key={stepKey(born, index)} step={born} locked={locked} />}
       <Split expanded={expanded}>
         {draft.kind === 'key' && <DraftKeyEditor draft={draft} locked={locked} />}
         {draft.kind === 'text' && <TextEditorSlot key={draft.serial} step={born} draft={draft} locked={locked} />}
-        {draft.kind === 'text' && born && <CommonFields step={born} locked={locked} />}
+        {draft.kind === 'text' && born && <NotesField step={born} locked={locked} />}
         {draft.kind === 'check' && <CheckDraft draft={draft} locked={locked} />}
         {draft.kind === 'macro' && <MacroDraftSlot key={draft.serial} draft={draft} locked={locked} />}
       </Split>
@@ -283,7 +285,7 @@ function BatchHeader({ sel }: { sel: number[] }) {
   );
 }
 
-/** One step: its type's editor, then the Delay and the Notes every step has (editor-passo-190 and 191). */
+/** One step: its type's editor, then the Notes every step has (editor-passo-191). Its Delay is in the strip over it (DelayStrip). */
 function StepEditor({ step, index, steps, locked }: { step: ActionItem; index: number; steps: ActionItem[]; locked: boolean }) {
   const t = step.actionType;
   const editor = isCoordinateClick(t) ? <ClickEditor step={step} index={index} steps={steps} locked={locked} />
@@ -301,26 +303,32 @@ function StepEditor({ step, index, steps, locked }: { step: ActionItem; index: n
   return (
     <CaptureForContext.Provider value={captureForStep(index, step)}>
       {editor}
-      <CommonFields step={step} locked={locked} />
+      <NotesField step={step} locked={locked} />
     </CaptureForContext.Provider>
   );
 }
 
-function CommonFields({ step, locked }: { step: ActionItem; locked: boolean }) {
-  const t = step.actionType;
-  const id = step.id ?? '';
-  const delay = !NO_DELAY_FIELD.has(t) && !t.startsWith('Browser');
+/**
+ * The step's Delay (editor-passo-190, the wait after the step), in a strip under its header that
+ * does not scroll (D29): the same place for every step that has one, whatever the length of its
+ * editor and the height of the window. Keyed by the step, like the editor: what was typed goes to
+ * the engine when another step is selected.
+ */
+function DelayStrip({ step, locked }: { step: ActionItem; locked: boolean }) {
+  if (NO_DELAY_FIELD.has(step.actionType)) return null;
   return (
-    <div className="insp-pair insp-common">
-      {delay && (
-        <Section label="Delay">
-          <DraftField stepId={id} field="delay" label="Delay in milliseconds" kind="int" min={0} max={MAX_DELAY_MS} unit="ms" stored={String(step.delay)} disabled={locked} />
-        </Section>
-      )}
-      <Section label="Notes">
-        <DraftField stepId={id} field="comment" label="Notes" kind="text" multiline placeholder="Add a note…" stored={step.comment ?? ''} disabled={locked} />
-      </Section>
+    <div className="insp-delay">
+      <span className="insp-label">Delay</span>
+      <DraftField stepId={step.id ?? ''} field="delay" label="Delay in milliseconds" kind="int" min={0} max={MAX_DELAY_MS} unit="ms" stored={String(step.delay)} disabled={locked} />
     </div>
+  );
+}
+
+function NotesField({ step, locked }: { step: ActionItem; locked: boolean }) {
+  return (
+    <Section label="Notes">
+      <DraftField stepId={step.id ?? ''} field="comment" label="Notes" kind="text" multiline placeholder="Add a note…" stored={step.comment ?? ''} disabled={locked} />
+    </Section>
   );
 }
 
