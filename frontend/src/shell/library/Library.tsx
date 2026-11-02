@@ -11,7 +11,7 @@ import { useToast } from '../../state/ToastContext';
 import { loadInspectorBody, loadWindowEditors } from '../inspector/inspectorState';
 import { preload } from '../lazyModule';
 import { arrival } from '../list/selection';
-import { macroMenuEntries } from '../macroMenu';
+import { closedMacro, macroMenuEntries } from '../macroMenu';
 import { Menu, type MenuEntry } from '../Menu';
 import { anchorBelow, anchorFromEvent, fromKeyboard, type MenuAnchor } from '../menuAnchor';
 import { useApp } from '../store';
@@ -38,8 +38,9 @@ type MenuState =
  * beside the expanded Inspector; there is no folding by hand any more (D29: its button became
  * Collapse/Expand all folders). Folded, "Expand macro list" lays the panel over the steps until a
  * macro is opened, Esc, a press elsewhere or the same button. The menus and dialogs of both forms
- * live here, and so does the rule that there is always a macro open while any exists (D1): when
- * the open one goes, the one next to it opens.
+ * live here. Clicking a macro opens it, and clicking the open one closes it, as in TrueReplayer 2
+ * (D29, which revises D1). When the open macro goes, the one next to it opens — unless it was
+ * closed by hand first.
  */
 export function Library() {
   const profiles = useApp(a => a.profiles);
@@ -88,10 +89,16 @@ export function Library() {
     const now = displayOrder(sectionsOf(profiles, order)).map(e => e.name);
     if (active != null) {
       lastOpen.current = { name: active, order: now };
+      closedMacro.clear();
       return;
     }
     const last = lastOpen.current;
     if (!last) return;
+    // Closed by hand (D29): no macro open is what was asked, now and if it goes later.
+    if (closedMacro.was(last.name)) {
+      lastOpen.current = null;
+      return;
+    }
     const present = new Set(now);
     if (present.has(last.name)) return;
     lastOpen.current = null;
@@ -99,8 +106,10 @@ export function Library() {
     if (next) macro.open(next);
   }, [active, profiles, order, macro]);
 
+  // The open one closes (D29), but not while a run or a recording is on, nor with the Clicker on.
   const openMacro = (name: string) => {
-    macro.open(name);
+    if (name !== active) macro.open(name);
+    else if (!locked && !clicker) closedMacro.close(macro, name);
     setLibraryPeek(false);
   };
   // The folded column's Expand lays the panel over the steps, and takes it away again.

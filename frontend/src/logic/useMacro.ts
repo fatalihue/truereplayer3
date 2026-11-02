@@ -15,8 +15,9 @@ export function useMacro() {
   return useMemo(() => ({
     // ── opening and saving ──
     /**
-     * Opens a macro — or CLOSES it when it is the one already open: profile:click toggles. That is
-     * the "no macro open" state decision D1 retires; the new shell opens through `open`.
+     * Opens a macro — or CLOSES it when it is the one already open: profile:click toggles. The new
+     * shell opens through `open`, and closes the open macro through this (D29, which revises D1:
+     * shell/macroMenu.ts, closedMacro).
      */
     click: (name: string) => send({ type: 'profile:click', payload: { name } }),
     /** Opens a macro and never closes the open one (D1). Opening the macro already open does nothing. */

@@ -185,9 +185,10 @@ export function Inspector() {
       ) : !showing ? (
         <>
           <div className="insp-head">
+            {/* With no macro open (every launch, and a macro closed by hand, D29), it says so. */}
             <div className="insp-title">
-              <span className="insp-name">Macro settings</span>
-              <span className="insp-sub">No step selected</span>
+              <span className="insp-name">{open ? 'Macro settings' : 'No macro open'}</span>
+              {open && <span className="insp-sub">No step selected</span>}
             </div>
             {/* 760–1023 px: asked for, the settings lie over the list until closed. */}
             {settingsOpen && band === 'over' && (

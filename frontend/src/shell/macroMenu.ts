@@ -1,6 +1,6 @@
 import {
   AppWindow, Ban, Copy, Eraser, ExternalLink, Folder, FolderInput, FolderMinus, Info, Keyboard, Pencil, Pin,
-  PinOff, Power, RotateCcw, Trash2, Type, Upload,
+  PinOff, Power, RotateCcw, Trash2, Type, Upload, X,
 } from 'lucide-react';
 import type { ProfileEntry, ProfileOrderData } from '../bridge/messageTypes';
 import type { useMacro } from '../logic/useMacro';
@@ -10,6 +10,26 @@ import type { MenuEntry } from './Menu';
 import { focusName, openDialog, openMacroSettings, openPage, type SettingsSection } from './ui';
 
 type Tt = (en: string, pt: string) => string;
+
+// The macro closed by hand, until another one opens.
+let closedByHand: string | null = null;
+
+/**
+ * Closing the open macro, as TrueReplayer 2 deselects (D29, which revises D1): profile:click on the
+ * open one takes the screen back to "no macro open", where every launch starts. Clicking it in the
+ * library, and Close macro in its menu and in Ctrl+K. The library then opens no neighbour for it,
+ * now or if it goes later.
+ */
+export const closedMacro = {
+  close: (macro: ReturnType<typeof useMacro>, name: string) => {
+    closedByHand = name;
+    macro.click(name);
+  },
+  /** The macro that was the last one open was closed by hand. */
+  was: (name: string) => closedByHand === name,
+  /** A macro is open again. */
+  clear: () => { closedByHand = null; },
+};
 
 /**
  * The macro's menu: a right-click on it in the library, and ⋯ in its header when it is the open
@@ -82,8 +102,16 @@ export function macroMenuEntries({ name, profiles, order, active, locked, clicke
     { label: 'Export…', icon: Upload, onSelect: () => macro.exportMacros([name], true) },
     { label: 'Open in Explorer', icon: ExternalLink, onSelect: () => macro.openFolder(name) },
     'separator',
-    // Only the open macro has a copy from when it was opened, and its steps on screen.
+    // Only the open macro has a copy from when it was opened, and its steps on screen; and only it
+    // closes (D29).
     ...(isOpen ? [
+      {
+        label: 'Close macro',
+        icon: X,
+        disabled: stepsLocked,
+        tip: stepsLocked ? lockTip : undefined,
+        onSelect: () => closedMacro.close(macro, name),
+      },
       {
         label: 'Revert to when I opened it',
         icon: RotateCcw,

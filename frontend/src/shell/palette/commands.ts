@@ -133,6 +133,7 @@ export function macroPhrase(label: string, path: string[], name: string): string
     case 'Export…': return `Export ${name}…`;
     case 'Open in Explorer': return `Open ${name} in Explorer`;
     case 'Revert to when I opened it': return `Revert ${name} to when you opened it`;
+    case 'Close macro': return `Close ${name}`;
     case 'Disable': return `Disable ${name}`;
     case 'Enable': return `Enable ${name}`;
     case 'Delete macro…': return `Delete ${name}…`;

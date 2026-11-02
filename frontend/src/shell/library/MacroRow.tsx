@@ -16,7 +16,8 @@ type Tt = (en: string, pt: string) => string;
 /**
  * One macro in the library: what it looks like, what fires it, and that it is the open one. The
  * chips only show (D4): the hotkey, hotstring and window target are changed in the Inspector.
- * Clicking opens it (never closes it, D1); the menu, the drag and the keys belong to the library.
+ * Clicking opens it, and closes it when it is the open one (D29); the menu, the drag and the keys
+ * belong to the library.
  *
  * One component per row, with the icon and the name drawn by plain functions: a library of a
  * hundred macros renders a hundred of these at launch, and each extra component per row was a
