@@ -10308,10 +10308,11 @@ namespace TrueReplayer
             await OpenProfileAsync(name, toggleIfOpen: true);
         }
 
-        // profile:open — opens a macro and never closes the open one (D1 of the parity inventory:
-        // the new shell has no "no macro open" state, and a Run Macro's Open macro that points at
-        // its own macro must not close it). Opening the macro that is already open does nothing,
-        // so it neither asks about unsaved changes nor trips the run guard.
+        // profile:open — opens a macro and never closes the open one (a Run Macro's Open macro that
+        // points at its own macro must not close it). Opening the macro that is already open does
+        // nothing, so it neither asks about unsaved changes nor trips the run guard. The new shell
+        // closes the open macro by hand through profile:click (D29 of the parity inventory; D1 had
+        // taken that gesture away).
         private async void HandleProfileOpen(JsonElement payload)
         {
             string name = payload.GetProperty("name").GetString() ?? "";
@@ -15198,9 +15199,11 @@ namespace TrueReplayer
             PushSettingsLoaded();
         }
 
-        // The new interface's layout band edges, in DIP (D27): a dragged window edge sticks to them.
-        // Said by the page because they follow its zoom; nothing is saved — the page says them again
-        // whenever it loads or the zoom changes.
+        // The new interface's layout band edges, in DIP, said by the page because they follow its
+        // zoom; nothing is saved — the page says them again whenever it loads or the zoom changes.
+        // The first one, the 80 rem edge (useBandEdges), gives the rem the compact view is sized in.
+        // A dragged window edge no longer sticks to them (D27 had it so): it sticks only to the size
+        // the window opens at, as in TrueReplayer 2 (D29, WindowEventManager.TrySnapToDefaultSize).
         private void HandleSnapWidths(JsonElement payload)
         {
             if (!payload.TryGetProperty("widths", out var widthsEl) || widthsEl.ValueKind != JsonValueKind.Array) return;
@@ -15208,8 +15211,6 @@ namespace TrueReplayer
                 .Where(e => e.ValueKind == JsonValueKind.Number && e.TryGetInt32(out _))
                 .Select(e => e.GetInt32())
                 .ToList();
-            window.SetResizeSnapWidths(widths);
-            // The first width is the page's 80 rem band edge (useBandEdges): its rem sizes the compact view.
             if (widths.Count > 0) window.SetCompactRem(widths[0] / 80.0);
         }
 

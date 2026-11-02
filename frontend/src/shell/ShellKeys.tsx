@@ -52,7 +52,7 @@ export function ShellKeys() {
   const tt = useTt();
   // The macro Ctrl+S asked to save, until its profile:saved arrives.
   const asked = useRef<{ name: string; at: number } | null>(null);
-  // The window's edge sticks to where the layout changes (D27).
+  // The layout's band edges, for the compact view's size (the engine reads the rem off them).
   useWindowSnap(useBandEdges());
 
   useEffect(() => {

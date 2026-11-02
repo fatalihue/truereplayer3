@@ -82,8 +82,9 @@ const edgesSnapshot = () => {
 
 /**
  * Where the two wide bands begin, in px (DIP): the three columns from 80 rem, the folded library
- * from 64 rem. The window's edge sticks there when it is dragged (D27). The engine reads the rem off
- * the first one to size the compact view at the same zoom (WindowEventManager.SetCompactRem).
+ * from 64 rem. The engine reads the rem off the first one to size the compact view at the same zoom
+ * (WindowEventManager.SetCompactRem). The window's edge no longer sticks there (D27, revised by
+ * D29): it sticks only to the size the window opens at, as in TrueReplayer 2.
  */
 export function useBandEdges(): number[] {
   const rem = useSyncExternalStore(subscribe, edgesSnapshot);

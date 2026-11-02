@@ -2465,12 +2465,6 @@ namespace TrueReplayer
             windowEventManager?.UpdateAlwaysOnTop(isAlwaysOnTop);
         }
 
-        /// <summary>The widths (DIP) a dragged edge sticks to: the page's layout band edges (window:snapWidths).</summary>
-        public void SetResizeSnapWidths(System.Collections.Generic.IEnumerable<int> widthsDip)
-        {
-            windowEventManager?.SetResizeSnapWidths(widthsDip);
-        }
-
         public bool IsMinimizeToTrayEnabled()
         {
             return UserProfile.Current.MinimizeToTray;

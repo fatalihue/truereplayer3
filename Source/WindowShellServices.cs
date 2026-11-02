@@ -832,27 +832,15 @@ namespace TrueReplayer.Services
         private readonly AppWindow appWindow;
         private bool closingConfirmed;
 
-        // Resize-snap hysteresis state, live only during a drag. _snapWTarget: the width (physical
-        // px) the drag is stuck to, or -1; _snapH: stuck to the default height. _lastSizeW/H: the
-        // previous frame's raw proposed dimension, used to detect a fast drag CROSSING a target
-        // between frames. Reset on WM_ENTERSIZEMOVE / WM_EXITSIZEMOVE so no state leaks between
-        // drags. UI-thread only (window message loop).
-        private int _snapWTarget = -1;
-        private bool _snapH;
+        // Resize-snap hysteresis state, live only during a drag. _snapW/_snapH: whether each axis is
+        // currently stuck to the default size. _lastSizeW/H: the previous frame's raw proposed
+        // dimension, used to detect a fast drag CROSSING the target between frames. Reset on
+        // WM_ENTERSIZEMOVE / WM_EXITSIZEMOVE so no state leaks between drags. UI-thread only (window
+        // message loop). The edge sticks only to the size the window opens at, as in TrueReplayer 2
+        // (D29 of the parity inventory, which revises D27's "o ímã da borda passa para as faixas de
+        // 1280 e 1024": the owner wanted the points it grabs to be 2's).
+        private bool _snapW, _snapH;
         private int _lastSizeW = -1, _lastSizeH = -1;
-
-        // The widths (DIP) a dragged edge sticks to. The new interface says its layout's band edges
-        // (window:snapWidths, D27: "o ímã da borda passa para as faixas de 1280 e 1024"): they are in
-        // rem, so they move with the interface's zoom, which only the page knows. Until it says them —
-        // and always for the interface of today — the width the window opens at.
-        private int[] _snapWidthsDip = { BaseDefaultWidthDip };
-
-        /// <summary>The page's layout band edges, in DIP. Anything not a sane width is dropped; none left keeps the open width.</summary>
-        public void SetResizeSnapWidths(IEnumerable<int> widthsDip)
-        {
-            var sane = widthsDip.Where(w => w >= 320 && w <= 16384).Distinct().ToArray();
-            _snapWidthsDip = sane.Length > 0 ? sane : new[] { BaseDefaultWidthDip };
-        }
 
         /// Callback that returns true if close should proceed (no unsaved changes or user confirmed).
         /// Set from MainWindow after bridge is initialized.
@@ -1045,7 +1033,7 @@ namespace TrueReplayer.Services
             {
                 // Clear the snap hysteresis at the boundaries of a drag so a fresh resize always
                 // starts unstuck (and stale state never survives to the next one).
-                _snapWTarget = -1;
+                _snapW = false;
                 _snapH = false;
                 _lastSizeW = _lastSizeH = -1;
                 var handled = HwndHookManager.CallOriginalWndProc(hwnd, msg, wParam, lParam);
@@ -1165,17 +1153,17 @@ namespace TrueReplayer.Services
             return HwndHookManager.CallOriginalWndProc(hwnd, msg, wParam, lParam);
         }
 
-        // Snaps the in-progress WM_SIZING rect (screen coords, physical px) to the snap widths (the
-        // page's band edges, else the open width) and to the default height, moving ONLY the dragged
-        // edge so the opposite one stays put. Width and height snap independently (a corner drag can
-        // grab one axis without forcing the other) with per-axis hysteresis (UpdateSnapAny,
-        // UpdateSnap). Returns true when it rewrote the rect. The open height (780) sits above the floor
-        // now, so a height drag sticks there on its way down, as the band edges do across.
+        // Snaps the in-progress WM_SIZING rect (screen coords, physical px) to the default open size,
+        // moving ONLY the dragged edge so the opposite one stays put. Width and height snap
+        // independently (a corner drag can grab one axis without forcing the other) with per-axis
+        // hysteresis via UpdateSnap. Returns true when it rewrote the rect. The default width (1180)
+        // and height (780) both sit above the floor (360 × 400), so each is a real interior snap
+        // point: a drag sticks there on its way across, either way.
         private bool TrySnapToDefaultSize(IntPtr hwnd, int edge, IntPtr lParam)
         {
             uint dpi = GetDpiForWindow(hwnd);
             if (dpi == 0) dpi = 96;
-            var targetsW = _snapWidthsDip.Select(w => (int)(w * dpi / 96.0)).ToArray();
+            int targetW = (int)(BaseDefaultWidthDip * dpi / 96.0);
             int targetH = (int)(BaseDefaultHeightDip * dpi / 96.0);
             int enter = (int)(SnapEnterDip * dpi / 96.0);
             int exit = (int)(SnapExitDip * dpi / 96.0);
@@ -1188,8 +1176,7 @@ namespace TrueReplayer.Services
             if (left || right)
             {
                 int w = rect.Right - rect.Left;
-                int targetW = UpdateSnapAny(ref _snapWTarget, ref _lastSizeW, w, targetsW, enter, exit);
-                if (targetW > 0)
+                if (UpdateSnap(ref _snapW, ref _lastSizeW, w, targetW, enter, exit))
                 {
                     if (left) rect.Left = rect.Right - targetW;
                     else rect.Right = rect.Left + targetW;
@@ -1212,29 +1199,6 @@ namespace TrueReplayer.Services
 
             if (changed) Marshal.StructureToPtr(rect, lParam, false);
             return changed;
-        }
-
-        // UpdateSnap for an axis with several targets (the widths): stuck to one until the drag pulls
-        // more than `exit` past it — and, as in UpdateSnap, the frame that frees it grabs nothing;
-        // free, it grabs the target it nears or crosses, the closest one when a fast drag crossed
-        // two. Returns the target it is stuck to, or -1.
-        private static int UpdateSnapAny(ref int snapped, ref int lastSize, int size, int[] targets, int enter, int exit)
-        {
-            if (snapped >= 0)
-            {
-                if (Math.Abs(size - snapped) > exit) snapped = -1;
-            }
-            else
-            {
-                foreach (int target in targets)
-                {
-                    bool near = Math.Abs(size - target) <= enter;
-                    bool crossed = lastSize >= 0 && (long)(lastSize - target) * (size - target) < 0;
-                    if ((near || crossed) && (snapped < 0 || Math.Abs(size - target) < Math.Abs(size - snapped))) snapped = target;
-                }
-            }
-            lastSize = size;
-            return snapped;
         }
 
         // Advances one axis's snap state for a single resize frame and returns whether it is snapped

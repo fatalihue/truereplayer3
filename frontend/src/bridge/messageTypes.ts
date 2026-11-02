@@ -1457,8 +1457,9 @@ export type OutgoingMessage =
   | { type: 'pixel:testMatch'; payload: { requestId: string; x: number; y: number; hex: string; tolerance: number; absolute?: boolean; anchor?: { processName: string; windowTitle: string; titleMatchMode: string } } }
   | { type: 'selection:changed'; payload: { indices: number[] } }
   | { type: 'window:alwaysOnTop'; payload: { enabled: boolean } }
-  // The new interface's layout band edges, in DIP: a dragged window edge sticks to them (D27).
-  // The engine also reads the page's rem off the first (80 rem) to size the compact view.
+  // The new interface's layout band edges, in DIP: the engine reads the page's rem off the first
+  // (80 rem) to size the compact view. A dragged window edge stuck to them too (D27); since D29 it
+  // sticks only to the size the window opens at, as in TrueReplayer 2.
   | { type: 'window:snapWidths'; payload: { widths: number[] } }
   | { type: 'window:minimizeToTray'; payload: { enabled: boolean } }
   // After coexist:tr2Knocked: this app exits (saving as the tray Exit does), opening TrueReplayer 2
