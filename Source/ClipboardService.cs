@@ -98,50 +98,33 @@ namespace TrueReplayer.Services
             return $"{minutes}m {remainingSeconds:F1}s";
         }
 
-        // Every explicit case is the grid's own pill label (ActionTable.tsx actionPillLabel),
-        // copied VERBATIM — a hand-kept list that covered ten of them had already drifted
-        // ("Wait Pixel Color" pasted for the grid's "Pixel Color", "If" for its "if"). Keep the two
-        // in step. Types the grid shows raw (KeyDown, LeftClickDown, ScrollUp, etc.) get their
-        // CamelCase split into words instead, for readability in spreadsheets/emails.
+        // Every explicit case is the step list's own name (frontend/src/shell/list/stepTypes.ts,
+        // NAMES), copied VERBATIM and in the same order; every other type has its CamelCase split
+        // into words, as the list's stepName does ("Wait Pixel Color", "If", "Left Click Down"). A
+        // pasted row then reads as the list does, in a spreadsheet or an email. Keep the two in step.
         private static string FriendlyActionType(string? type)
         {
             if (string.IsNullOrEmpty(type)) return "";
             return type switch
             {
-                "WaitImage" => "Wait Image",
-                "WaitPixelColor" => "Pixel Color",
-                "WaitText" => "Wait Text",
+                "RunProfile" => "Run Macro",
+                "ForEachRow" => "For Each Row",
+                "ElseIf" => "Else If",
+                "EndIf" => "End If",
+                "EndLoop" => "End Loop",
+                "BreakLoop" => "Break",
+                "ContinueLoop" => "Next",
+                "CopyToSlot" => "Copy to Slot",
+                "LeftClickHold" => "Hold Left Click",
+                "RightClickHold" => "Hold Right Click",
+                "MiddleClickHold" => "Hold Middle Click",
                 "BrowserClick" => "Click Element",
                 "BrowserRightClick" => "Right Click Element",
                 "BrowserType" => "Type Text",
                 "BrowserSelectOption" => "Select Option",
                 "BrowserAssert" => "Assert Element",
-                "Assert" => "Assert",
                 "BrowserWaitElement" => "Wait Element",
                 "BrowserNavigate" => "Open URL",
-                "SendText" => "Send Text",
-                "RunProfile" => "Run Macro",
-                "Pause" => "Pause",
-                "HoldKey" => "Hold Key",
-                "SetVariable" => "Set Variable",
-                "CopyToSlot" => "Copy to Slot",
-                "ActivateWindow" => "Activate Window",
-                "DoubleClick" => "Double Click",
-                "TripleClick" => "Triple Click",
-                "LeftClickHold" => "Hold Left Click",
-                "RightClickHold" => "Hold Right Click",
-                "MiddleClickHold" => "Hold Middle Click",
-                "If" => "if",
-                "ElseIf" => "else if",
-                "Else" => "else",
-                "EndIf" => "endif",
-                "Stop" => "stop",
-                "Return" => "return",
-                "While" => "while",
-                "EndLoop" => "end loop",
-                "BreakLoop" => "break",
-                "ContinueLoop" => "next",
-                "ForEachRow" => "each row",
                 _ => SplitCamelCase(type)
             };
         }
