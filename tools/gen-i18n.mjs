@@ -105,7 +105,8 @@ for (const [chave, e] of enR) {
   const nomes = lacunasDe(e);
   if (e.tipo === 'plural' && !nomes.includes('count')) nomes.push('count');
   const params = nomes.map((n) => `${n === 'count' ? 'int' : 'string'} ${n}`).join(', ');
-  const doc = formasDe(e)[0].replace(/[<>&]/g, ' ');
+  // One line of XML doc: a text with a line break would end the comment and turn the rest into code.
+  const doc = formasDe(e)[0].replace(/[<>&]/g, ' ').replace(/\r?\n/g, ' ');
   const corpo = `IsPt ? ${csForma('pt-BR', ptR.get(chave))} : ${csForma('en-US', e)}`;
   membros.push(`        /// <summary>${chave} · ${doc}</summary>`);
   membros.push(nomes.length ? `        public static string ${nome}(${params}) => ${corpo};` : `        public static string ${nome} => ${corpo};`);

@@ -142,8 +142,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         // fall back to inference. Duration must be a POSITIVE finite number — 0/negative
         // would flash-dismiss the toast on the next tick, a silent information drop.
         const d = msg.payload.duration;
+        // The engine names the type of every notice (plan of languages, I5), so the colour does not
+        // hang on English words; a type the page does not draw (a "warning") shows as info.
+        const sent = msg.payload.type as string | undefined;
         showToast(msg.payload.message, {
-          type: msg.payload.type,
+          type: sent === 'success' || sent === 'error' || sent === 'info' ? sent : sent ? 'info' : undefined,
           duration: typeof d === 'number' && isFinite(d) && d > 0 ? d : undefined,
         });
       } else if (msg.type === 'profile:exportResult') {

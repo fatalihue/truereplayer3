@@ -71,6 +71,8 @@ namespace TrueReplayer.Services
         // case it exists for, and composing a label beside a whole window only adds noise.
         private const int BoosterMaxHeight = 80;
 
+        // Drawn into the image for the engine to read beside the token, never shown: it is not text of
+        // the interface and does not follow its language (the booster was measured with this label).
         private const string BoosterLabel = "Value:";
 
         /// <summary>The language a new install (and Reset) reads with — AppSettings.OcrLanguage's default.</summary>
@@ -104,8 +106,11 @@ namespace TrueReplayer.Services
         private static readonly object _resolveLock = new();
         private static readonly ConcurrentDictionary<string, ConcurrentBag<OcrEngine>> _pools = new(StringComparer.OrdinalIgnoreCase);
 
-        public const string NoLanguageMessage =
-            "No OCR language installed. Settings → App → Screen Text → Install, or Windows Settings → Time & language → Language & region → add a language with \"Optical character recognition\".";
+        /// <summary>
+        /// The error of every read with no OCR language, in the interface's language: where to install
+        /// one, in this app's Settings and in Windows' (i18n/*/engine-ocr.ts).
+        /// </summary>
+        public static string NoLanguageMessage => S.OcrNoLanguage;
 
         /// <summary>
         /// Drops the resolved tag so the next read asks Windows again. The resolution is cached for the
@@ -200,7 +205,9 @@ namespace TrueReplayer.Services
         public static Task<InstallResult> InstallLanguageAsync(string tag) => Task.Run(async () =>
         {
             var offered = OfferedLanguages.FirstOrDefault(l => string.Equals(l.Tag, tag, StringComparison.OrdinalIgnoreCase));
-            if (offered.Tag == null) return new InstallResult(false, Error: $"'{tag}' is not a language {AppIdentity.DisplayName} installs.");
+            // The errors below follow a colon on the page ("Couldn't install …: {error}"), in the
+            // interface's language (i18n/*/engine-ocr.ts, install).
+            if (offered.Tag == null) return new InstallResult(false, Error: S.OcrInstallNotOffered(tag: tag, app: AppIdentity.DisplayName));
             string capability = $"Language.OCR~~~{offered.Tag}~0.0.1.0";
             var psi = new ProcessStartInfo
             {
@@ -217,7 +224,7 @@ namespace TrueReplayer.Services
             try
             {
                 using var p = Process.Start(psi);
-                if (p == null) return new InstallResult(false, Error: "DISM did not start.");
+                if (p == null) return new InstallResult(false, Error: S.OcrInstallDismNotStarted);
                 // An elevated DISM cannot be killed from here; on a timeout it is only no longer waited on.
                 using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(20));
                 await p.WaitForExitAsync(cts.Token);
@@ -231,19 +238,19 @@ namespace TrueReplayer.Services
             catch (OperationCanceledException)
             {
                 DiagnosticLog.Warn($"[OCR] {capability}: DISM still running after 20 minutes — no longer waiting");
-                return new InstallResult(false, Error: "Windows is still installing after 20 minutes. Check again later in Settings.");
+                return new InstallResult(false, Error: S.OcrInstallStillInstalling);
             }
             catch (Exception ex)
             {
                 DiagnosticLog.Error($"[OCR] {capability}: DISM could not start", ex);
-                return new InstallResult(false, Error: ex.Message);
+                return new InstallResult(false, Error: S.Reason(ex));
             }
 
             const int RebootRequired = 3010; // ERROR_SUCCESS_REBOOT_REQUIRED
             if (code != 0 && code != RebootRequired)
             {
                 DiagnosticLog.Warn($"[OCR] {capability}: DISM exit 0x{(uint)code:X8}");
-                return new InstallResult(false, Error: $"Windows could not add the pack (DISM 0x{(uint)code:X8}).");
+                return new InstallResult(false, Error: S.OcrInstallFailed(code: ((uint)code).ToString("X8", System.Globalization.CultureInfo.InvariantCulture)));
             }
             InvalidateLanguage();
             bool listed = false;
@@ -280,7 +287,7 @@ namespace TrueReplayer.Services
                 var (vx, vy, vw, vh) = NativeMethods.VirtualScreen.Bounds;
                 r = Rectangle.Intersect(given, new Rectangle(vx, vy, vw, vh));
                 if (r.Width <= 0 || r.Height <= 0)
-                    return OcrRead.Empty("off-screen", "", 0);
+                    return OcrRead.Empty(S.OcrVariantOffScreen, "", 0);
             }
             else
             {
@@ -301,16 +308,21 @@ namespace TrueReplayer.Services
             var engine = Rent(out var tag);
             try
             {
+                // The names are what the Test read card shows beside the time, in the interface's
+                // language (i18n/*/engine-ocr.ts, variant); the booster's is a whole name of its own.
                 var variants = new List<(string name, int scale, bool stretch, bool key)>();
+                string boosterName;
                 if (options.TextColor is Color)
                 {
-                    variants.Add(("3× colour key", 3, false, true));
-                    variants.Add(("2× colour key", 2, false, true));
+                    variants.Add((S.OcrVariantTripleKey, 3, false, true));
+                    variants.Add((S.OcrVariantDoubleKey, 2, false, true));
+                    boosterName = S.OcrVariantTripleKeyLabel;
                 }
                 else
                 {
-                    variants.Add(("2×", 2, false, false));
-                    variants.Add(("2× stretch", 2, true, false));
+                    variants.Add((S.OcrVariantDouble, 2, false, false));
+                    variants.Add((S.OcrVariantDoubleStretch, 2, true, false));
+                    boosterName = S.OcrVariantDoubleLabel;
                 }
 
                 // With no caller predicate, a read is good when it read something — and in Number mode
@@ -369,7 +381,7 @@ namespace TrueReplayer.Services
                             bool good;
                             try
                             {
-                                read = await RecognizeAsync(engine, scaled, scale, labelWidth, originAbs, v.name + " + label", tag);
+                                read = await RecognizeAsync(engine, scaled, scale, labelWidth, originAbs, boosterName, tag);
                                 good = isGood(read);
                             }
                             catch { scaled.Dispose(); throw; }

@@ -372,7 +372,7 @@ namespace TrueReplayer.Services
                 // Null-safe: a hand-edited/corrupt profile can carry {"rows":null}, and this guard
                 // runs BEFORE SetDataTable normalizes Rows — treat null as empty, not a crash.
                 DiagnosticLog.Warn("Replay refused: 'loop over data' is on but the data table has no rows.");
-                onStatusChanged?.Invoke("error:The data table has no rows — add data or turn off \"loop over data\".");
+                onStatusChanged?.Invoke("error:" + S.RunErrorsNoRows);
                 return;
             }
 
@@ -430,13 +430,16 @@ namespace TrueReplayer.Services
                     // (reset first) made a faulted run fire the SUCCESS cue off the
                     // replaying→ready edge and then the error cue right behind it.
                     // Error-first notifies exactly once, with the error sound.
+                    // The message in the interface's language: S.Reason has the engine's own sentence
+                    // for the exceptions a person meets (a file in use…), and the text keeps it after
+                    // the app's own words in Portuguese (English shows the message as it always did).
                     if (t.Exception?.InnerException is TimeoutException tex)
-                        onStatusChanged?.Invoke($"error:{tex.Message}");
+                        onStatusChanged?.Invoke("error:" + S.RunErrorsRun(reason: S.Reason(tex)));
                     else if (t.Exception?.InnerException != null)
                     {
                         // Capture the type + stack — the user only sees the message in the status bar.
                         DiagnosticLog.Error("Replay run faulted", t.Exception.InnerException);
-                        onStatusChanged?.Invoke($"error:{t.Exception.InnerException.Message}");
+                        onStatusChanged?.Invoke("error:" + S.RunErrorsRun(reason: S.Reason(t.Exception.InnerException)));
                     }
                     else
                     {
@@ -1750,7 +1753,10 @@ namespace TrueReplayer.Services
         // last cycle wins, which reads correctly as "where the last click landed".
         private void StampCursorPoint(RunStepRecord rec, ActionItem a, int cx, int cy)
         {
-            if (a.AtCursor && !_runStepsFull) rec.Detail = $"at cursor → {cx}, {cy}";
+            if (a.AtCursor && !_runStepsFull)
+                rec.Detail = S.RunReportAtCursorPoint(
+                    x: cx.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    y: cy.ToString(System.Globalization.CultureInfo.InvariantCulture));
         }
 
         private readonly ObservableCollection<ActionItem> _actions;
@@ -2093,10 +2099,13 @@ namespace TrueReplayer.Services
         /// </summary>
         private static string? DescribeIfDetail(ActionItem a, bool? branchTrue, string? screenRead = null)
         {
-            string probe = string.IsNullOrWhiteSpace(a.ConditionType) ? "condition" : a.ConditionType!;
+            // The condition by the name the Inspector and the list give it (Image found, not the
+            // ImageFound the file stores).
+            string probe = string.IsNullOrWhiteSpace(a.ConditionType) ? S.RunConditionNone : ConditionName(a.ConditionType!);
             // IFNOT inverts the branch the user reads, so showing the raw probe result would
-            // contradict the row they are looking at. Name the negation instead.
-            if (a.ConditionNegate) probe = "NOT " + probe;
+            // contradict the row they are looking at. Name the negation instead, the way the list's
+            // badge does.
+            if (a.ConditionNegate) probe = S.RunConditionNot(name: probe);
             string? label = a.Comment;
             if (!string.IsNullOrWhiteSpace(label))
             {
@@ -2104,16 +2113,42 @@ namespace TrueReplayer.Services
                 if (label.Length > 40) label = label.Substring(0, 40) + "…";
                 probe = $"{probe} · {label}";
             }
-            if (branchTrue is null) return probe;
-            var outcome = $"{probe} → {(branchTrue.Value ? "true" : "false")}";
+            if (branchTrue is not bool outcome) return probe;
             // Screen Text: what the engine read, so a branch that went the "wrong" way explains itself.
-            if (screenRead != null)
-            {
-                var r = Clip40(screenRead);
-                outcome += r.Length == 0 ? " · read nothing" : $" · read \"{r}\"";
-            }
-            return outcome;
+            // One whole text per answer and per reading, so each language says it its own way.
+            if (screenRead == null)
+                return outcome ? S.RunConditionIsTrue(condition: probe) : S.RunConditionIsFalse(condition: probe);
+            var r = Clip40(screenRead);
+            if (r.Length == 0)
+                return outcome ? S.RunConditionTrueReadNothing(condition: probe) : S.RunConditionFalseReadNothing(condition: probe);
+            return outcome ? S.RunConditionTrueRead(condition: probe, text: r) : S.RunConditionFalseRead(condition: probe, text: r);
         }
+
+        // The conditions' names, as the Inspector and the list write them: glossary, the same in both
+        // languages (i18n/glossario.ts, CONDICOES; frontend shell/list/details.tsx keeps the same
+        // table). An unknown family — a hand-edited file — shows as it is stored.
+        private static readonly Dictionary<string, string> ConditionNames = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ImageFound"] = "Image found",
+            ["PixelColorMatch"] = "Pixel color",
+            ["ScreenText"] = "Text on screen",
+            ["WindowOpen"] = "Window open",
+            ["ProcessRunning"] = "Process running",
+            ["FileExists"] = "File exists",
+            ["ClipboardMatch"] = "Clipboard",
+            ["Variable"] = "Variable",
+            ["BrowserElementState"] = "Browser element",
+            ["Random"] = "Random",
+            ["TimeWindow"] = "Time",
+        };
+
+        private static string ConditionName(string conditionType) =>
+            ConditionNames.TryGetValue(conditionType, out var name) ? name : conditionType;
+
+        // An Assert (or Assert Element) whose "Stop quietly" ended the run: the step's own detail, if
+        // it has one, then what happened — one whole text for each case.
+        private static string QuietStopDetail(string? detail) =>
+            detail is { Length: > 0 } d ? S.RunReportQuietStopAfter(detail: d) : S.RunReportQuietStop;
 
         private string? ScreenReadFor(ActionItem a) =>
             string.Equals(a.ConditionType, "ScreenText", StringComparison.OrdinalIgnoreCase) ? _lastScreenRead : null;
@@ -2149,7 +2184,7 @@ namespace TrueReplayer.Services
                     // report a coordinate the run never used. The replay body overwrites this
                     // with the point it actually resolved, so a completed step reads
                     // "at cursor → 812, 344"; this string is what an in-flight row shows.
-                    return a.AtCursor ? "at cursor" : $"{a.X}, {a.Y}";
+                    return a.AtCursor ? S.RunReportAtCursor : $"{a.X}, {a.Y}";
                 case "Keystroke":
                 case "KeyDown":
                 case "KeyUp":
@@ -2159,7 +2194,8 @@ namespace TrueReplayer.Services
                 case "CopyToSlot":
                     return Clip(a.Key, 30);
                 case "WaitText":
-                    return Clip(a.Comment) ?? Clip(string.Equals(a.WaitMode, "changes", StringComparison.OrdinalIgnoreCase) ? "changes" : ScreenTextMatcher.Summary(a));
+                    // The same words as the list's Details column and the Copy as table's Key column.
+                    return Clip(a.Comment) ?? Clip(string.Equals(a.WaitMode, "changes", StringComparison.OrdinalIgnoreCase) ? S.CopyKeyChanges : ScreenTextMatcher.Summary(a));
                 case "RunProfile":
                 case "ActivateWindow":
                 case "WaitImage":
@@ -2594,7 +2630,9 @@ namespace TrueReplayer.Services
                 // loop, so every continuation ran on the pool anyway — the thread was created
                 // and thrown away. Same anti-pattern the clicker loop documents.
                 int skippedRows = 0;
-                string? firstSkipNote = null;
+                // The first skipped row and why: the summary names it, as one whole text.
+                int firstSkipRow = 0;
+                string? firstSkipReason = null;
                 await Task.Run(async () =>
                 {
                     while (!token.IsCancellationRequested && (isInfinite || iteration < _loopCount))
@@ -2641,7 +2679,7 @@ namespace TrueReplayer.Services
                         catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
                         catch (Exception ex) when (SkipRowOnErrorActive)
                         {
-                            FaultRow(ex.Message);
+                            FaultRow(S.Reason(ex));
                         }
 
                         // Return (D6): consumed AFTER the await, never in the while condition —
@@ -2659,8 +2697,12 @@ namespace TrueReplayer.Services
                             ResetMouseState();
                             ResetKeyState();
                             skippedRows++;
-                            var reason = _rowFaultReason ?? "error";
-                            firstSkipNote ??= $"row {iteration}: {reason}";
+                            var reason = _rowFaultReason ?? S.RunSummaryError;
+                            if (firstSkipReason == null)
+                            {
+                                firstSkipRow = iteration;
+                                firstSkipReason = reason;
+                            }
                             Services.DiagnosticLog.Warn($"Data loop: row {iteration} skipped — {reason}");
                             _rowFaulted = false;
                             _rowFaultReason = null;
@@ -2676,7 +2718,10 @@ namespace TrueReplayer.Services
                 // _authoredStop re-opens the gate: a Stop/quiet-stop finish reads as a normal
                 // success, and a success cue that hides "2 rows failed" would be a lie.
                 if (skippedRows > 0 && (!token.IsCancellationRequested || _authoredStop))
-                    OnRunSummary?.Invoke($"Data loop finished — {skippedRows} of {_loopCount} row(s) skipped after errors (first: {firstSkipNote})");
+                    OnRunSummary?.Invoke(S.RunSummaryDataLoop(
+                        n: S.Num(skippedRows), total: S.Num(_loopCount),
+                        row: firstSkipRow.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                        reason: firstSkipReason ?? S.RunSummaryError, count: skippedRows));
 
                 // Cursor-mode lap notice. Armed at the top of the run (the cursor advances
                 // there, so it is already known), announced here so it lands with the run's
@@ -2809,10 +2854,11 @@ namespace TrueReplayer.Services
             public readonly Dictionary<int, (BlockKind Kind, int OpenIdx)> EnclosingLoopOf = new();
         }
 
-        // Human-readable loop kind for the Break/Continue run-report detail. The grid labels are
-        // "While" and "For Each Data Row", so the report names the row the user is looking at.
+        // Human-readable loop kind for the Break/Continue run-report detail. The list labels are
+        // "While" and "For Each Row" (shell/list/stepTypes.ts), so the report names the row the user
+        // is looking at. Step names are glossary: the same in both languages.
         private static string DescribeLoopKind(BlockKind kind) =>
-            kind == BlockKind.ForEachRow ? "For Each Data Row" : "While";
+            kind == BlockKind.ForEachRow ? "For Each Row" : "While";
 
         private static BlockMap BuildBlockMap(List<ActionItem> actions)
         {
@@ -3203,6 +3249,13 @@ namespace TrueReplayer.Services
             PushVariablesSnapshot();   // live pane: back on the caller's row
         }
 
+        // The skip tally of a For Each Data Row block, as the end-of-run notice says it: one whole text
+        // with the first reason and one without, each with its plural.
+        private static string ForEachSummary(int skipped, string? firstReason) =>
+            firstReason != null
+                ? S.RunSummaryForEachFirst(n: S.Num(skipped), reason: firstReason, count: skipped)
+                : S.RunSummaryForEach(n: S.Num(skipped), count: skipped);
+
         // Layer-2 safety net for ForEachRow: restores the OUTERMOST live frame's snapshot on
         // EVERY exit of ExecuteActionsAsync (token cancel, Stop, Return, soft unwind, rethrown
         // exceptions). `using`-based so the 300-line action loop needs no re-indent. Without
@@ -3237,8 +3290,7 @@ namespace TrueReplayer.Services
                 _active.Clear();
                 _state.Clear();
                 if (skipped > 0 && (!_token.IsCancellationRequested || _owner._authoredStop))
-                    _owner.OnRunSummary?.Invoke($"For Each Data Row: {skipped} row(s) skipped after errors"
-                        + (firstReason != null ? $" — first: {firstReason}" : ""));
+                    _owner.OnRunSummary?.Invoke(ForEachSummary(skipped, firstReason));
             }
         }
 
@@ -3269,8 +3321,7 @@ namespace TrueReplayer.Services
                 feState.Remove(openerIdx);
                 feActive.Remove(openerIdx);
                 if (fe.Skipped > 0 && (!token.IsCancellationRequested || _authoredStop))
-                    OnRunSummary?.Invoke($"For Each Data Row: {fe.Skipped} row(s) skipped after errors"
-                        + (fe.FirstReason != null ? $" — first: {fe.FirstReason}" : ""));
+                    OnRunSummary?.Invoke(ForEachSummary(fe.Skipped, fe.FirstReason));
             }
 
             // {loop}: the iteration of the innermost While / ForEachRow block enclosing row idx —
@@ -3497,13 +3548,13 @@ namespace TrueReplayer.Services
                                 // ROW error (the sub-over-data catch treats it the same), softened to a
                                 // fault so the loop-top absorb reenters on the next data row.
                                 ifRec.Status = "failed";
-                                ifRec.ErrorMessage = ex.Message;
+                                ifRec.ErrorMessage = S.RunConditionProbeFailed(reason: S.Reason(ex));
                                 ifWatch.Stop();
                                 ifRec.DurationMs = ifWatch.ElapsedMilliseconds;
                                 if (feActive.Count > 0
                                     && string.Equals(_dataTable?.OnRowError, "skip", StringComparison.OrdinalIgnoreCase))
                                 {
-                                    FaultRow(ex.Message);
+                                    FaultRow(S.Reason(ex));
                                     branchAbsorb = true;
                                     break;
                                 }
@@ -3705,7 +3756,7 @@ namespace TrueReplayer.Services
                         // mirroring the If's IFNOT-on-probe-error semantics, but not "safe
                         // by construction". The ceiling is the actual net.
                         whileRec.Status = "failed";
-                        whileRec.ErrorMessage = ex.Message;
+                        whileRec.ErrorMessage = S.RunConditionProbeFailed(reason: S.Reason(ex));
                         whileWatch.Stop();
                         whileRec.DurationMs = whileWatch.ElapsedMilliseconds;
                         // Inline ForEachRow + skip policy: a thrown probe error is a ROW error
@@ -3716,7 +3767,7 @@ namespace TrueReplayer.Services
                         if (feActive.Count > 0
                             && string.Equals(_dataTable?.OnRowError, "skip", StringComparison.OrdinalIgnoreCase))
                         {
-                            FaultRow(ex.Message);
+                            FaultRow(S.Reason(ex));
                             continue;
                         }
                         throw;
@@ -3786,7 +3837,8 @@ namespace TrueReplayer.Services
                                 Profile = CurrentExecutingProfileName,
                                 ActionType = "BreakLoop",
                                 Detail = _runStepsFull ? null
-                                    : $"exited the {DescribeLoopKind(encB.Kind)} opened at row {encB.OpenIdx + 1}",
+                                    : S.RunReportExited(loop: DescribeLoopKind(encB.Kind),
+                                        row: (encB.OpenIdx + 1).ToString(System.Globalization.CultureInfo.InvariantCulture)),
                                 Status = "ok",
                             });
                         }
@@ -3813,7 +3865,8 @@ namespace TrueReplayer.Services
                                 Profile = CurrentExecutingProfileName,
                                 ActionType = "ContinueLoop",
                                 Detail = _runStepsFull ? null
-                                    : $"jumped to the {DescribeLoopKind(encC.Kind)} opened at row {encC.OpenIdx + 1}",
+                                    : S.RunReportJumped(loop: DescribeLoopKind(encC.Kind),
+                                        row: (encC.OpenIdx + 1).ToString(System.Globalization.CultureInfo.InvariantCulture)),
                                 Status = "ok",
                             });
                         }
@@ -3837,7 +3890,7 @@ namespace TrueReplayer.Services
                             Row = i + 1,
                             Profile = CurrentExecutingProfileName,
                             ActionType = "ForEachRow",
-                            Detail = _runStepsFull ? null : "skipped block",
+                            Detail = _runStepsFull ? null : S.RunReportSkippedBlock,
                             Status = "skipped",
                         });
                         if (map.EndLoopOf.TryGetValue(i, out int feSkipEnd))
@@ -3862,7 +3915,7 @@ namespace TrueReplayer.Services
                                 Row = i + 1,
                                 Profile = CurrentExecutingProfileName,
                                 ActionType = "ForEachRow",
-                                Detail = _runStepsFull ? null : "no data rows",
+                                Detail = _runStepsFull ? null : S.RunReportNoDataRows,
                                 Status = "skipped",
                             });
                             if (map.EndLoopOf.TryGetValue(i, out int feEmptyEnd))
@@ -3884,7 +3937,7 @@ namespace TrueReplayer.Services
                             Row = i + 1,
                             Profile = CurrentExecutingProfileName,
                             ActionType = "ForEachRow",
-                            Detail = _runStepsFull ? null : $"over {rowsNow} data row(s)",
+                            Detail = _runStepsFull ? null : S.RunReportOverRows(n: S.Num(rowsNow), count: rowsNow),
                             Status = "ok",
                         });
                     }
@@ -4195,8 +4248,7 @@ namespace TrueReplayer.Services
                             // could not be CHECKED, and the report must not claim a judgment
                             // that never happened.
                             if (quietStopped && !_runStepsFull)
-                                stepRec.Detail = (stepRec.Detail is { Length: > 0 } d ? d + " " : "")
-                                    + "— assert failed · stopped run (quiet)";
+                                stepRec.Detail = QuietStopDetail(stepRec.Detail);
                             break;
                         }
                         case "ActivateWindow": await ExecuteActivateWindow(action, token); break;
@@ -4224,8 +4276,7 @@ namespace TrueReplayer.Services
                             bool quietStopped = await ExecuteBrowserAssert(action, token);
                             // "failed", not "not met" — see the desktop Assert case above.
                             if (quietStopped && !_runStepsFull)
-                                stepRec.Detail = (stepRec.Detail is { Length: > 0 } d ? d + " " : "")
-                                    + "— assert failed · stopped run (quiet)";
+                                stepRec.Detail = QuietStopDetail(stepRec.Detail);
                             break;
                         }
                         case "Stop": {
@@ -4239,7 +4290,7 @@ namespace TrueReplayer.Services
                             // for THIS row and the finally's running→ok promotion runs; parent
                             // frames return normally ("ok" as well). A future await inserted
                             // after the Cancel would break that proof — don't.
-                            if (!_runStepsFull) stepRec.Detail = "run ended by Stop";
+                            if (!_runStepsFull) stepRec.Detail = S.RunReportEndedByStop;
                             _authoredStop = true;   // notices gate: authored finish ≠ user abort
                             try { _cts?.Cancel(); } catch (ObjectDisposedException) { }
                             break;
@@ -4250,7 +4301,7 @@ namespace TrueReplayer.Services
                             // await, so repeat passes / data rows / loop iterations continue.
                             // Held keys are NOT released here on purpose: Return is authored
                             // flow, exactly like reaching the end of the list.
-                            if (!_runStepsFull) stepRec.Detail = "ended this pass";
+                            if (!_runStepsFull) stepRec.Detail = S.RunReportEndedPass;
                             _returnRequested = true;
                             break;
                         }
@@ -4333,11 +4384,11 @@ namespace TrueReplayer.Services
                 catch (Exception ex)
                 {
                     stepRec.Status = "failed";
-                    stepRec.ErrorMessage = ex.Message;
+                    stepRec.ErrorMessage = S.RunReportStepFailed(reason: S.Reason(ex));
                     // Same inline-ForEachRow softening as the BrowserActionException arm above.
                     if (feActive.Count > 0
                         && string.Equals(_dataTable?.OnRowError, "skip", StringComparison.OrdinalIgnoreCase))
-                        FaultRow(ex.Message);
+                        FaultRow(S.Reason(ex));
                     else
                         throw;
                 }
@@ -4648,7 +4699,7 @@ namespace TrueReplayer.Services
             if (string.IsNullOrEmpty(targetName))
             {
                 DiagnosticLog.Info("[Chain] RunProfile with empty profile name — skipped.");
-                return "no macro selected";
+                return S.RunChainNoMacro;
             }
 
             // Cycle detection: refuse if the target is already on the active call stack.
@@ -4657,20 +4708,20 @@ namespace TrueReplayer.Services
                 var path = string.Join(" → ", _callStack) + " → " + targetName;
                 DiagnosticLog.Info($"[Chain] Cycle detected, aborting sub-call: {path}");
                 // The PATH, not just "cycle": which loop it is, is the whole diagnosis.
-                return $"cycle blocked ({path})";
+                return S.RunChainCycle(path: path);
             }
 
             // Hard depth cap as a defensive belt-and-suspenders even when cycle detection passes.
             if (_callStack.Count >= MaxCallDepth)
             {
                 DiagnosticLog.Info($"[Chain] Max depth {MaxCallDepth} exceeded at '{targetName}', aborting.");
-                return $"chain deeper than {MaxCallDepth} levels";
+                return S.RunChainTooDeep(n: S.Num(MaxCallDepth));
             }
 
             if (_profileLookup == null)
             {
                 DiagnosticLog.Info("[Chain] Profile lookup not configured — RunProfile is a no-op.");
-                return "macro lookup unavailable";
+                return S.RunChainNoLookup;
             }
 
             Models.UserProfile? subProfile;
@@ -4681,13 +4732,13 @@ namespace TrueReplayer.Services
             catch (Exception ex)
             {
                 DiagnosticLog.Info($"[Chain] Profile lookup threw for '{targetName}': {ex.Message}");
-                return $"could not load macro ({ex.Message})";
+                return S.RunChainLoadFailed(reason: S.Reason(ex));
             }
 
             if (subProfile == null)
             {
                 DiagnosticLog.Info($"[Chain] Profile '{targetName}' not found, skipping.");
-                return "macro not found";
+                return S.RunChainNotFound;
             }
 
             // Disabled sub-profiles are skipped at replay time — same rule as direct hotkey
@@ -4696,7 +4747,7 @@ namespace TrueReplayer.Services
             if (subProfile.IsDisabled)
             {
                 DiagnosticLog.Info($"[Chain] Profile '{targetName}' is disabled, skipping.");
-                return "macro is disabled";
+                return S.RunChainDisabled;
             }
 
             // The folder half of the sub's context, read here — before anything is pushed — and
@@ -4714,7 +4765,7 @@ namespace TrueReplayer.Services
                 catch (Exception ex)
                 {
                     DiagnosticLog.Info($"[Chain] Folder context lookup threw for '{targetName}': {ex.Message}");
-                    return $"could not read its folder's window target ({ex.Message})";
+                    return S.RunChainFolderFailed(reason: S.Reason(ex));
                 }
             }
 
@@ -4952,7 +5003,7 @@ namespace TrueReplayer.Services
                     catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
                     catch (Exception ex) when (SkipRowOnErrorActive)
                     {
-                        FaultRow(ex.Message);
+                        FaultRow(S.Reason(ex));
                     }
 
                     // Return (D6): ended THIS row's pass — the next data row still runs.
@@ -4987,8 +5038,9 @@ namespace TrueReplayer.Services
                 // are still reported under the success cue.
                 if (skipped > 0 && (!token.IsCancellationRequested || _authoredStop))
                 {
-                    string msg = $"Called macro '{subName}': {skipped} of {rowCount} row(s) skipped" +
-                        (firstReason != null ? $" — first: {firstReason}" : "");
+                    string msg = firstReason != null
+                        ? S.RunSummaryCalledMacroFirst(name: subName, n: S.Num(skipped), total: S.Num(rowCount), reason: firstReason, count: skipped)
+                        : S.RunSummaryCalledMacro(name: subName, n: S.Num(skipped), total: S.Num(rowCount), count: skipped);
                     OnRunSummary?.Invoke(msg);
                 }
             }
@@ -5395,23 +5447,26 @@ namespace TrueReplayer.Services
         private void ReportMissingTargetWindow()
         {
             var name = _windowTarget?.ProcessName ?? "target";
+            // What the person reads names the window by its process, or by its title when the target
+            // has only a title (the log line keeps its own wording, below).
+            string shown = !string.IsNullOrWhiteSpace(_windowTarget?.ProcessName) ? _windowTarget!.ProcessName!
+                : !string.IsNullOrWhiteSpace(_windowTarget?.WindowTitle) ? _windowTarget!.WindowTitle!
+                : "?";
             // A minimised target and an absent one both stop the run, but they are not the same
             // problem and must not carry the same sentence. "Open it and retry" sends the user to
             // open a window that is already open, and the diagnostic that would have named the
             // minimised window was the very thing the old warning-only path suppressed.
             bool minimised = _lastRelativeFailureWasMinimised;
             _lastRelativeFailureWasMinimised = false;
-            string why = minimised ? $"target window '{name}' is minimised" : $"target window '{name}' not found";
+            string why = minimised ? S.RunTargetMinimised(name: shown) : S.RunTargetNotFound(name: shown);
             if (SkipRowOnErrorActive)
             {
                 FailCurrentStep(why);
                 FaultRow(why);
                 return;
             }
-            DiagnosticLog.Warn($"Replay aborted: relative-coords {why} [{name} {_windowTarget?.WindowTitle}]".TrimEnd());
-            OnReplayError?.Invoke(minimised
-                ? $"Target window '{name}' is minimised — restore it and retry. A minimised window has no on-screen position to place relative coordinates against."
-                : $"Target window '{name}' not found — open it and retry");
+            DiagnosticLog.Warn($"Replay aborted: relative-coords target window '{name}' {(minimised ? "is minimised" : "not found")} [{name} {_windowTarget?.WindowTitle}]".TrimEnd());
+            OnReplayError?.Invoke(minimised ? S.RunTargetMinimisedAlert(name: shown) : S.RunTargetNotFoundAlert(name: shown));
             FailCurrentStep(why);
             try { _cts?.Cancel(); } catch (ObjectDisposedException) { }
         }
@@ -5457,7 +5512,7 @@ namespace TrueReplayer.Services
                 // A row with neither matcher nor launch no-ops (SetVariable-without-a-name forgiveness).
                 if (path == null || verb == "minimize" || verb == "close") return;
                 if (!TryLaunch(path, args, out var runError))
-                    HandleActivateWindowFailure(action, $"launch failed: {runError}");
+                    HandleActivateWindowFailure(action, S.RunActivateLaunchFailed(reason: runError));
                 return;
             }
 
@@ -5496,7 +5551,7 @@ namespace TrueReplayer.Services
                     DiagnosticLog.Info($"Activate Window: fewer than {matchN} matching windows — launching '{path}'");
                 if (!TryLaunch(path, args, out var launchError))
                 {
-                    HandleActivateWindowFailure(action, $"launch failed: {launchError}");
+                    HandleActivateWindowFailure(action, S.RunActivateLaunchFailed(reason: launchError));
                     return;
                 }
             }
@@ -5507,7 +5562,7 @@ namespace TrueReplayer.Services
             {
                 if (sw.ElapsedMilliseconds >= timeoutMs)
                 {
-                    HandleActivateWindowFailure(action, "window not found");
+                    HandleActivateWindowFailure(action, S.RunActivateNotFound);
                     return;
                 }
                 await Task.Delay(200, token); // token-aware — the Stop hotkey aborts instantly
@@ -5516,7 +5571,7 @@ namespace TrueReplayer.Services
 
             if (!await TrueReplayer.Helpers.WindowActivation.ActivateAsync(hwnd, target, regex, token))
             {
-                HandleActivateWindowFailure(action, "could not bring window to foreground");
+                HandleActivateWindowFailure(action, S.RunActivateNoForeground);
                 return;
             }
 
@@ -5531,7 +5586,7 @@ namespace TrueReplayer.Services
             {
                 if (sw.ElapsedMilliseconds >= timeoutMs)
                 {
-                    HandleActivateWindowFailure(action, "target window not responding");
+                    HandleActivateWindowFailure(action, S.RunActivateNotResponding);
                     return;
                 }
                 await Task.Delay(150, token); // token-aware — the Stop hotkey aborts instantly
@@ -5573,7 +5628,7 @@ namespace TrueReplayer.Services
         {
             if (_browserBridge == null || !_browserBridge.IsConnected)
             {
-                return HandleAssertFailure(action, "browser bridge not connected");
+                return HandleAssertFailure(action, S.RunAssertBridgeOff);
             }
             int timeout = action.Timeout > 0 ? action.Timeout : 5000;
             try
@@ -5596,11 +5651,12 @@ namespace TrueReplayer.Services
                 // and lands in the catch below instead, so this arm should no longer be reachable —
                 // it stays because the rule it encodes is the one that matters: we could not verify,
                 // therefore the assertion FAILED and goes through the policy. Never a silent stop.
-                return HandleAssertFailure(action, "browser bridge disconnected");
+                return HandleAssertFailure(action, S.RunAssertBridgeLost);
             }
             catch (BrowserActionException ex)
             {
-                return HandleAssertFailure(action, ex.Message);
+                // The bridge's own sentence (BrowserBridgeService), already in the interface's language.
+                return HandleAssertFailure(action, S.Reason(ex));
             }
             return false;
         }
@@ -5641,7 +5697,7 @@ namespace TrueReplayer.Services
             }
             catch (Exception ex)
             {
-                return HandleAssertFailure(action, $"could not check the condition ({ex.Message})");
+                return HandleAssertFailure(action, S.RunAssertCheckFailed(reason: S.Reason(ex)));
             }
             // The probe can return FALSE because the run was stopped mid-check, not because the
             // precondition failed: a blocking probe (File.Exists on a dead UNC share, a clipboard
@@ -5666,6 +5722,8 @@ namespace TrueReplayer.Services
         /// is prepended by HandleAssertFailure, so this is only the expectation clause. Phrased
         /// from the USER's side ("window … was not open") rather than the engine's ("probe
         /// returned false") — the whole point of an assert is that the message names the thing.
+        /// One whole clause per condition and per answer, in the interface's language: each one has
+        /// its own subject, so every language can make it agree.
         private static string DescribeAssertExpectation(ActionItem action)
         {
             bool neg = action.ConditionNegate;
@@ -5673,26 +5731,37 @@ namespace TrueReplayer.Services
                 !string.IsNullOrWhiteSpace(a) && !string.IsNullOrWhiteSpace(b) ? $"{a} · {b}"
                 : !string.IsNullOrWhiteSpace(a) ? a!
                 : !string.IsNullOrWhiteSpace(b) ? b!
-                : "(unspecified)";
+                : S.RunAssertUnspecified;
 
             switch (action.ConditionType)
             {
                 case "WindowOpen":
                     var target = who(action.WindowProcessName, action.WindowTitle);
-                    var scope = action.WindowMatchForegroundOnly ? "in the foreground" : "open";
-                    return neg ? $"window {target} was {scope}" : $"window {target} was not {scope}";
+                    if (action.WindowMatchForegroundOnly)
+                        return neg ? S.RunAssertWindowFront(window: target) : S.RunAssertWindowNotFront(window: target);
+                    return neg ? S.RunAssertWindowOpen(window: target) : S.RunAssertWindowNotOpen(window: target);
                 case "ProcessRunning":
                     return neg
-                        ? $"process '{action.WindowProcessName}' was running"
-                        : $"process '{action.WindowProcessName}' was not running";
+                        ? S.RunAssertProcessRunning(name: action.WindowProcessName ?? "")
+                        : S.RunAssertProcessNotRunning(name: action.WindowProcessName ?? "");
                 case "FileExists":
-                    return neg ? $"file exists: {action.FilePath}" : $"file not found: {action.FilePath}";
+                    return neg ? S.RunAssertFileExists(path: action.FilePath ?? "") : S.RunAssertFileNotFound(path: action.FilePath ?? "");
                 case "Variable":
+                {
+                    // The comparison as the list writes it (shell/list/details.tsx): a symbol, or the
+                    // word for Contains — never the stored operator ("eq", "contains").
+                    var name = action.Key ?? "";
+                    var value = action.ConditionOperand ?? "";
+                    var op = action.ConditionOperator?.ToLowerInvariant() ?? "eq";
+                    if (op == "contains")
+                        return neg ? S.RunAssertVariableContained(name: name, value: value) : S.RunAssertVariableNotContained(name: name, value: value);
+                    var symbol = op switch { "neq" => "≠", "gt" => ">", "lt" => "<", _ => "=" };
                     return neg
-                        ? $"variable '{action.Key}' matched {action.ConditionOperator} {action.ConditionOperand}"
-                        : $"variable '{action.Key}' did not match {action.ConditionOperator} {action.ConditionOperand}";
+                        ? S.RunAssertVariableMatched(name: name, op: symbol, value: value)
+                        : S.RunAssertVariableNotMatched(name: name, op: symbol, value: value);
+                }
                 case "ClipboardMatch":
-                    return neg ? "clipboard matched the pattern" : "clipboard did not match the pattern";
+                    return neg ? S.RunAssertClipboardMatched : S.RunAssertClipboardNotMatched;
                 case "TimeWindow":
                 {
                     // ProbeTimeWindow fails on TWO independent criteria and SHORT-CIRCUITS on the
@@ -5703,28 +5772,30 @@ namespace TrueReplayer.Services
                     bool hasWindow = !string.IsNullOrWhiteSpace(action.TimeStart)
                                   && !string.IsNullOrWhiteSpace(action.TimeEnd);
                     var window = hasWindow ? $"{action.TimeStart}–{action.TimeEnd}" : "";
-                    string need =
+                    // The days and the hours, as the list's Details column writes them; null when
+                    // neither is set, which has a clause of its own.
+                    string? need =
                         days.Length > 0 && hasWindow ? $"{days} {window}" :
                         days.Length > 0 ? days :
                         hasWindow ? window :
-                        "(no day or time window set)";
+                        null;
                     // A negated assert fails only when the probe returned TRUE — i.e. day AND
                     // time both matched — so the combined clause is exactly right there.
-                    if (neg) return $"the current time was inside {need}";
+                    if (neg) return need != null ? S.RunAssertTimeInside(when: need) : S.RunAssertTimeInsideUnset;
                     var today = DateTime.Now.DayOfWeek;
                     bool dayOk = action.DaysOfWeek == 0
                               || (action.DaysOfWeek & (1 << (int)today)) != 0;
-                    if (!dayOk) return $"today ({today}) is not one of {days}";
-                    return hasWindow
-                        ? $"the current time was outside {window}"
-                        : $"the required window was not met ({need})";
+                    // Today's name in the interface's language ("Monday", "segunda-feira").
+                    if (!dayOk) return S.RunAssertTimeWrongDay(today: S.Culture.DateTimeFormat.GetDayName(today), days: days);
+                    if (hasWindow) return S.RunAssertTimeOutside(window: window);
+                    return need != null ? S.RunAssertTimeNotMet(when: need) : S.RunAssertTimeNotMetUnset;
                 }
                 case "ImageFound":
-                    return neg ? "the image was on screen" : "the image was not on screen";
+                    return neg ? S.RunAssertImageFound : S.RunAssertImageNotFound;
                 case "PixelColorMatch":
-                    return neg ? "the pixel matched the colour" : "the pixel did not match the colour";
+                    return neg ? S.RunAssertPixelMatched : S.RunAssertPixelNotMatched;
                 default:
-                    return neg ? "the condition was met" : "the condition was not met";
+                    return neg ? S.RunAssertMet : S.RunAssertNotMet;
             }
         }
 
@@ -5734,7 +5805,7 @@ namespace TrueReplayer.Services
         {
             string label = !string.IsNullOrWhiteSpace(action.Comment) ? action.Comment
                 : !string.IsNullOrWhiteSpace(action.Key) ? action.Key
-                : "element";
+                : S.RunAssertElement;
 
             if (string.Equals(action.AssertOnFail, "Continue", StringComparison.OrdinalIgnoreCase))
             {
@@ -5754,15 +5825,16 @@ namespace TrueReplayer.Services
                 try { _cts?.Cancel(); } catch (ObjectDisposedException) { }
                 return true;
             }
+            string message = S.RunAssertFailed(label: label, reason: reason);
             if (SkipRowOnErrorActive)
             {
-                FailCurrentStep($"Assert failed: '{label}' — {reason}");
-                FaultRow($"Assert failed: '{label}' — {reason}");
+                FailCurrentStep(message);
+                FaultRow(message);
                 return false;
             }
             DiagnosticLog.Warn($"Replay aborted: Assert '{label}' — {reason}");
-            OnReplayError?.Invoke($"Assert failed: '{label}' — {reason}");
-            FailCurrentStep($"Assert failed: '{label}' — {reason}");
+            OnReplayError?.Invoke(message);
+            FailCurrentStep(message);
             try { _cts?.Cancel(); } catch (ObjectDisposedException) { }
             return false;
         }
@@ -5785,15 +5857,16 @@ namespace TrueReplayer.Services
                 DiagnosticLog.Warn($"Activate Window '{label}': {reason} — Continue policy, moving on");
                 return;
             }
+            string message = S.RunActivateFailed(label: label, reason: reason);
             if (SkipRowOnErrorActive)
             {
-                FailCurrentStep($"Activate Window: '{label}' — {reason}");
-                FaultRow($"Activate Window: '{label}' — {reason}");
+                FailCurrentStep(message);
+                FaultRow(message);
                 return;
             }
             DiagnosticLog.Warn($"Replay aborted: Activate Window '{label}' — {reason}");
-            OnReplayError?.Invoke($"Activate Window: '{label}' — {reason}");
-            FailCurrentStep($"Activate Window: '{label}' — {reason}");
+            OnReplayError?.Invoke(message);
+            FailCurrentStep(message);
             try { _cts?.Cancel(); } catch (ObjectDisposedException) { }
         }
 
@@ -5817,7 +5890,7 @@ namespace TrueReplayer.Services
             }
             catch (Exception ex)
             {
-                error = ex.Message;
+                error = S.Reason(ex);
                 return false;
             }
         }
@@ -8951,7 +9024,7 @@ namespace TrueReplayer.Services
                 catch (Exception ex) when (ex is FormatException or ArgumentException
                                            or System.Text.RegularExpressions.RegexMatchTimeoutException or OcrUnavailableException)
                 {
-                    HandleWaitTextTimeout(action, lastRead, $"Wait Text: {ex.Message}");
+                    HandleWaitTextTimeout(action, lastRead, S.RunWaitTextSetup(reason: S.Reason(ex)));
                     return;
                 }
                 lastRead = read.Text;
@@ -8976,7 +9049,9 @@ namespace TrueReplayer.Services
                     if (_currentStepRec is { } rec && !_runStepsFull)
                     {
                         var shown = Clip40(read.Text);
-                        rec.Detail = changes ? $"changed → \"{shown}\"" : disappear ? "gone" : $"found \"{shown}\"";
+                        rec.Detail = changes ? S.RunReportTextChanged(text: shown)
+                            : disappear ? S.RunReportTextGone
+                            : S.RunReportTextFound(text: shown);
                     }
                     if (!changes && !disappear && action.WaitImageClickOnMatch && last?.Rect is System.Drawing.Rectangle hit)
                     {
@@ -9016,7 +9091,7 @@ namespace TrueReplayer.Services
                 if (setupError != null) DiagnosticLog.Warn(setupError);
                 return;
             }
-            string reason = setupError ?? $"Wait Text timed out — last read: \"{Clip40(lastRead)}\"";
+            string reason = setupError ?? S.RunWaitTextTimedOut(text: Clip40(lastRead));
             if (setupError == null) SaveTimeoutScreenshot(action);
             FailCurrentStep(reason);
             if (SkipRowOnErrorActive)
@@ -9062,7 +9137,7 @@ namespace TrueReplayer.Services
                 lock (_runStateLock) _runtimeVariables[key] = value;
             }
             if (_currentStepRec is { } rec && !_runStepsFull)
-                rec.Detail = value.Length == 0 ? $"{name} ← nothing read" : $"{name} ← \"{Clip40(value)}\"";
+                rec.Detail = value.Length == 0 ? S.RunReportReadNothing(name: name) : $"{name} ← \"{Clip40(value)}\"";
             PushVariablesSnapshot(force: true);
         }
 
@@ -9121,18 +9196,18 @@ namespace TrueReplayer.Services
             // FailCurrentStep puts this text in the run report where the user reads it. The row
             // already carries its own number and comment, so nothing is lost by dropping the empty
             // pair rather than inventing a GUID filename to fill it.
-            string label = string.IsNullOrWhiteSpace(action.DisplayKey) || action.DisplayKey == "—"
-                ? "" : $" ({action.DisplayKey})";
+            string reason = string.IsNullOrWhiteSpace(action.DisplayKey) || action.DisplayKey == "—"
+                ? S.RunWaitImageTimedOut : S.RunWaitImageTimedOutNamed(name: action.DisplayKey);
 
             SaveTimeoutScreenshot(action);
 
             if (SkipRowOnErrorActive)
             {
-                FailCurrentStep($"Wait Image timed out{label}");
-                FaultRow($"Wait Image timed out{label}");
+                FailCurrentStep(reason);
+                FaultRow(reason);
                 return;
             }
-            FailCurrentStep($"Wait Image timed out{label}");
+            FailCurrentStep(reason);
             // ObjectDisposedException possible if a new StartAsync swapped _cts out
             // from under us; swallow because this run was already over anyway.
             try { _cts?.Cancel(); } catch (ObjectDisposedException) { }
@@ -9264,13 +9339,15 @@ namespace TrueReplayer.Services
         private void HandleWaitPixelColorTimeout(ActionItem action)
         {
             if (action.PixelOnTimeout == "Continue") return;
+            // The step by the name the list gives it, Wait Pixel Color.
+            string reason = S.RunWaitPixelTimedOut(color: action.PixelColor ?? "?");
             if (SkipRowOnErrorActive)
             {
-                FailCurrentStep($"Wait Pixel timed out ({action.PixelColor ?? "?"})");
-                FaultRow($"Wait Pixel timed out ({action.PixelColor ?? "?"})");
+                FailCurrentStep(reason);
+                FaultRow(reason);
                 return;
             }
-            FailCurrentStep($"Wait Pixel timed out ({action.PixelColor ?? "?"})");
+            FailCurrentStep(reason);
             // Same swallow as HandleWaitImageTimeout — race with a fresh StartAsync.
             try { _cts?.Cancel(); } catch (ObjectDisposedException) { }
         }

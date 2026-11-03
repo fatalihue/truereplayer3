@@ -126,21 +126,25 @@ namespace TrueReplayer.Services
             DiagnosticLog.Info($"[Coexist] {AppIdentity.Tr2.DisplayName} is open; waiting for it to close");
             WinForms.Application.EnableVisualStyles(); // TaskDialog is comctl32 v6
             bool gone = false;
-            var closeTr2 = new WinForms.TaskDialogButton($"Close {AppIdentity.Tr2.DisplayName}…") { AllowCloseDialog = false };
-            var showTr2 = new WinForms.TaskDialogButton($"Show {AppIdentity.Tr2.DisplayName}") { AllowCloseDialog = false };
+            // In the interface's language, already resolved from interface.json (Program, before this).
+            const string tr2 = AppIdentity.Tr2.DisplayName;
+            var closeTr2 = new WinForms.TaskDialogButton(S.WindowCoexistClose(tr2: tr2)) { AllowCloseDialog = false };
+            var showTr2 = new WinForms.TaskDialogButton(S.WindowCoexistShow(tr2: tr2)) { AllowCloseDialog = false };
+            // Its own Cancel, not the system's: that one speaks the language of Windows, and the row
+            // would mix two languages when the interface's is another. Esc and the X still cancel
+            // (AllowCancel), and any way out but TrueReplayer 2 closing leaves gone false.
+            var cancel = new WinForms.TaskDialogButton(S.WindowCoexistCancel);
             var page = new WinForms.TaskDialogPage
             {
                 Caption = AppIdentity.DisplayName,
-                Heading = $"{AppIdentity.Tr2.DisplayName} is open",
-                Text = "Only one can run at a time: shortcuts, remapped keys, automations and the browser extension would clash.\n\n"
-                     + $"Close {AppIdentity.Tr2.DisplayName} from its tray menu (Exit asks about anything unsaved), "
-                     + $"and {AppIdentity.DisplayName} opens by itself.",
+                Heading = S.WindowCoexistHeading(tr2: tr2),
+                Text = S.WindowCoexistText(app: AppIdentity.DisplayName, tr2: tr2),
                 Icon = WinForms.TaskDialogIcon.Information,
                 AllowCancel = true,
             };
             page.Buttons.Add(closeTr2);
             page.Buttons.Add(showTr2);
-            page.Buttons.Add(WinForms.TaskDialogButton.Cancel);
+            page.Buttons.Add(cancel);
             // Its own menu, under the cursor, which is on this button: the user picks Exit there.
             closeTr2.Click += (_, _) => PostToTr2(WM_RBUTTONUP);
             showTr2.Click += (_, _) => PostToTr2(WM_LBUTTONDBLCLK);

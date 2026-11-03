@@ -154,15 +154,17 @@ namespace TrueReplayer.Services
                         Delay = 0,
                         // Mark synthetic origin so the user can spot auto-repaired rows in
                         // the Notes column. Cheap and human-readable; no extra schema needed.
-                        Comment = "auto-repaired: unmatched IF",
+                        // Written into the macro, so it is born in the interface's language
+                        // (engine-compat, repair) and is the user's from then on.
+                        Comment = S.CompatRepairNoteIf,
                     }
                     : new ActionItem
                     {
                         ActionType = "EndLoop",
                         Delay = 0,
                         Comment = kind == Kind.While
-                            ? "auto-repaired: unmatched WHILE"
-                            : "auto-repaired: unmatched FOR EACH ROW",
+                            ? S.CompatRepairNoteWhile
+                            : S.CompatRepairNoteForEachRow,
                     });
                 appended++;
             }

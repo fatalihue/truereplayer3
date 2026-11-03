@@ -115,7 +115,7 @@ namespace TrueReplayer.Services
             // these were never fire ATTEMPTS, so folding them in would corrupt the number that
             // means "the engine was busy".
             public int SkippedSuppressed;
-            public string? LastResult;                    // short human-readable outcome line
+            public Outcome? Last;                         // the last outcome; Outcome.Text is the panel's line
             public long LastScheduleOccurrenceTicks;      // double-fire guard across loop restarts
             // Cooldown survives loop restarts (config edits) — a loop-local copy would let an
             // edit right after a fire re-fire immediately, voiding the cooldown the user set.
@@ -353,7 +353,7 @@ namespace TrueReplayer.Services
                     SkippedDirty = s.SkippedDirty,
                     SkippedModal = s.SkippedModal,
                     SkippedSuppressed = s.SkippedSuppressed,
-                    LastResult = s.LastResult,
+                    LastResult = s.Last?.Text,
                 };
             }
         }
@@ -385,7 +385,7 @@ namespace TrueReplayer.Services
                 s.SkippedDirty = 0;
                 s.SkippedModal = 0;
                 s.SkippedSuppressed = 0;
-                s.LastResult = null;
+                s.Last = null;
                 // Also the log-dedupe key: it only exists to stop a blocked watcher writing the
                 // same line every few seconds, and after a reset the next outcome is worth a line
                 // again whatever it is.
@@ -395,10 +395,11 @@ namespace TrueReplayer.Services
             NotifyStateChanged();
         }
 
-        /// Last "watcher stopped itself" reason announced per profile, so a Reload that restarts a
+        /// Last "watcher stopped itself" reason announced per profile (its code and detail, not its
+        /// words, so a language change does not make it news), so a Reload that restarts a
         /// still-broken watcher does not balloon again. Cleared once a watcher reaches its poll
         /// loop, so a problem that is fixed and then returns is announced afresh.
-        private readonly Dictionary<string, string> _announcedStop = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, WatcherStop> _announcedStop = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// Tell the user, on the tray, that a watcher took itself out of service.
@@ -418,33 +419,36 @@ namespace TrueReplayer.Services
         /// public static and this service, like that one, is alive long before the bridge exists.
         /// Never fatal — a notification that throws must not take the daemon with it.
         /// </summary>
-        private void AnnounceWatcherStopped(string name, string reason)
+        private void AnnounceWatcherStopped(string name, WatcherStop stop)
         {
             lock (_lock)
             {
-                if (_announcedStop.TryGetValue(name, out var last) && last == reason) return;
-                _announcedStop[name] = reason;
+                if (_announcedStop.TryGetValue(name, out var last) && last == stop) return;
+                _announcedStop[name] = stop;
             }
             // Marshalled to the UI thread, not called from the watcher's: the notification, the cue and
             // the notice all belong there (OnStateChanged routes the same way). The Windows notification
             // carries Open automation and Turn it off (WindowsNotices; the legacy tray balloon did not
             // render on Windows 11); the cue flashes the taskbar button, and chimes when Windows is holding
             // notifications back; the notice puts the same words in the window, held until it is on
-            // screen. Each step is best-effort on its own.
+            // screen. Each step is best-effort on its own. The words are said here, in the interface's
+            // language of the moment they are shown.
             dispatcherQueue?.TryEnqueue(() =>
             {
-                string detail = $"{reason} The automation is still armed, but it is not watching for anything.";
+                string reason = stop.Sentence;
                 try
                 {
-                    WindowsNotices.Show($"{name} stopped watching", $"{reason} It's still turned on.", name,
-                        ("Open automation", "automation-open"), ("Turn it off", "automation-off"));
+                    WindowsNotices.Show(S.AutomationsStoppedTitle(name), S.AutomationsStoppedBody(reason), name,
+                        (S.AutomationsStoppedOpen, "automation-open"), (S.AutomationsStoppedTurnOff, "automation-off"));
                 }
                 catch (Exception ex)
                 {
                     DiagnosticLog.Warn($"Notification for stopped watcher '{name}' failed: {ex.Message}");
                 }
                 TrayIconService.CueOutOfView();
-                try { OnNotice?.Invoke($"Automation stopped: {name}. {detail}"); }
+                // OnNotice carries only the words, so its receiver is the one that gives the notice
+                // its type: "info", what the page made of the English words until now.
+                try { OnNotice?.Invoke(S.AutomationsStoppedNotice(name: name, reason: reason)); }
                 catch (Exception ex) { DiagnosticLog.Warn($"In-app notice for stopped watcher '{name}' failed: {ex.Message}"); }
             });
         }
@@ -484,7 +488,7 @@ namespace TrueReplayer.Services
                         SkippedDirty = st?.SkippedDirty ?? 0,
                         SkippedModal = st?.SkippedModal ?? 0,
                         SkippedSuppressed = st?.SkippedSuppressed ?? 0,
-                        LastResult = st?.LastResult,
+                        LastResult = st?.Last?.Text,
                     });
                 }
                 return result;
@@ -508,12 +512,15 @@ namespace TrueReplayer.Services
                             await RunConditionLoopAsync(name, rt, stats, ct);
                         break;
                     default:
-                        SetLastResult(stats, $"unknown trigger kind '{rt.Config.Kind}'");
+                    {
+                        var stop = new WatcherStop(WatcherStop.UnknownKind, rt.Config.Kind ?? "");
+                        SetLastResult(stats, Outcome.OfStop(stop));
                         // A self-stop like the three in the loops below, and announced like them:
                         // a profile saved by a newer build (a Kind this one does not know) stays
                         // armed on every surface while watching nothing.
-                        AnnounceWatcherStopped(name, $"Its trigger kind '{rt.Config.Kind}' is not known to this version of {AppIdentity.DisplayName}.");
+                        AnnounceWatcherStopped(name, stop);
                         break;
+                    }
                 }
             }
             catch (OperationCanceledException) { /* disarm */ }
@@ -521,7 +528,7 @@ namespace TrueReplayer.Services
             {
                 // A watcher loop dying must never take the app down — log + surface in status.
                 DiagnosticLog.Error($"Automation watcher '{name}' crashed", ex);
-                SetLastResult(stats, $"watcher crashed: {ex.Message}");
+                SetLastResult(stats, Outcome.Of(Outcome.Crashed, S.Reason(ex)));
             }
             finally
             {
@@ -614,7 +621,7 @@ namespace TrueReplayer.Services
                 var lateness = DateTime.Now - next;
                 if (lateness > ScheduleStaleAfter)
                 {
-                    SetLastResult(stats, $"skipped — {(int)lateness.TotalMinutes} min late (machine asleep or clock changed)");
+                    SetLastResult(stats, Outcome.LateBy(lateness));
                     DiagnosticLog.Warn($"Automation '{name}': interval tick due {next:t} skipped, {(int)lateness.TotalMinutes} min stale");
                     NotifyStateChanged();
                     next = DateTime.Now + period;
@@ -659,13 +666,7 @@ namespace TrueReplayer.Services
                     // Name the blocker instead of asserting contention. The condition loop
                     // got this in 55e1d20; these two loops kept saying "busy" for a modal or a
                     // still-booting app, both of which are not the engine being busy.
-                    SetLastResult(stats, result switch
-                    {
-                        TriggerFireResult.SkippedModal =>
-                            $"missed ({AutomationGuard.LastReason ?? "a dialog was open"} past the grace window)",
-                        TriggerFireResult.NotReady => "missed (app was still starting past the grace window)",
-                        _ => "missed (busy past the grace window)",
-                    });
+                    SetLastResult(stats, Outcome.Missed(result));
                     NotifyStateChanged();
                 }
 
@@ -688,9 +689,10 @@ namespace TrueReplayer.Services
             {
                 // The third way a watcher takes itself out of service, and the only one that used to
                 // do it without even a log line.
-                SetLastResult(stats, $"invalid schedule time '{rt.Config.TimeOfDay}'");
+                var stop = new WatcherStop(WatcherStop.BadTime, rt.Config.TimeOfDay ?? "");
+                SetLastResult(stats, Outcome.OfStop(stop));
                 DiagnosticLog.Warn($"Automation watcher '{name}': schedule time '{rt.Config.TimeOfDay}' is not a valid HH:mm");
-                AnnounceWatcherStopped(name, $"Its schedule time '{rt.Config.TimeOfDay}' is not a valid time.");
+                AnnounceWatcherStopped(name, stop);
                 NotifyStateChanged();
                 return;
             }
@@ -733,7 +735,7 @@ namespace TrueReplayer.Services
                 var lateness = DateTime.Now - next;
                 if (lateness > ScheduleStaleAfter)
                 {
-                    SetLastResult(stats, $"skipped — {(int)lateness.TotalMinutes} min late (machine asleep or clock changed)");
+                    SetLastResult(stats, Outcome.LateBy(lateness));
                     DiagnosticLog.Warn($"Automation '{name}': schedule occurrence {next:t} skipped, {(int)lateness.TotalMinutes} min stale");
                     NotifyStateChanged();
                     continue;
@@ -766,13 +768,7 @@ namespace TrueReplayer.Services
                     // Name the blocker instead of asserting contention. The condition loop
                     // got this in 55e1d20; these two loops kept saying "busy" for a modal or a
                     // still-booting app, both of which are not the engine being busy.
-                    SetLastResult(stats, result switch
-                    {
-                        TriggerFireResult.SkippedModal =>
-                            $"missed ({AutomationGuard.LastReason ?? "a dialog was open"} past the grace window)",
-                        TriggerFireResult.NotReady => "missed (app was still starting past the grace window)",
-                        _ => "missed (busy past the grace window)",
-                    });
+                    SetLastResult(stats, Outcome.Missed(result));
                     NotifyStateChanged();
                 }
             }
@@ -806,12 +802,11 @@ namespace TrueReplayer.Services
             // Stop BEFORE spending a poll loop on something that provably cannot fire, and say so
             // in the same place a missing reference image is reported. Returning (rather than
             // spinning) also drops the runtime in the finally, so the panel stops claiming Running.
-            var unfireable = DescribeUnfireable(cfg);
-            if (unfireable != null)
+            if (DescribeUnfireable(cfg) is { } unfireable)
             {
-                SetLastResult(stats, $"{unfireable} — watcher stopped");
-                DiagnosticLog.Warn($"Automation watcher '{name}': {unfireable}");
-                AnnounceWatcherStopped(name, char.ToUpperInvariant(unfireable[0]) + unfireable.Substring(1) + ".");
+                SetLastResult(stats, Outcome.OfStop(unfireable));
+                DiagnosticLog.Warn($"Automation watcher '{name}': can never fire as configured ({unfireable.LogText}) — stopped");
+                AnnounceWatcherStopped(name, unfireable);
                 NotifyStateChanged();
                 return;
             }
@@ -859,9 +854,10 @@ namespace TrueReplayer.Services
                         : ImageStorageService.LoadReferenceImage(name, cfg.ImagePath);
                     if (refImage == null)
                     {
-                        SetLastResult(stats, "reference image missing — watcher stopped");
+                        var stop = new WatcherStop(WatcherStop.NoImage);
+                        SetLastResult(stats, Outcome.OfStop(stop));
                         DiagnosticLog.Warn($"Automation watcher '{name}': reference image '{cfg.ImagePath}' missing");
-                        AnnounceWatcherStopped(name, "Its reference image is missing.");
+                        AnnounceWatcherStopped(name, stop);
                         NotifyStateChanged();
                         return;
                     }
@@ -1020,19 +1016,18 @@ namespace TrueReplayer.Services
                         // erasing the reason AutomationGuard went to the trouble of composing. This
                         // line is the durable record of why last night's fire did not happen.
                         SetLastResult(stats, heldByHours
-                            ? $"fire skipped (outside active hours {cfg.TimeOfDay} — edge expired)"
+                            ? Outcome.Of(Outcome.EdgeHours, cfg.TimeOfDay ?? "")
                             : heldByCooldown
-                            ? "fire skipped (cooldown from the previous fire still running — edge expired)"
+                            ? Outcome.Of(Outcome.EdgeCooldown)
                             : lastRefusal switch
                         {
-                            // LastReason ALREADY reads "skipped (a dialog is open)" — it is composed
-                            // for this exact use — so wrapping it produced "fire skipped (skipped
-                            // (a dialog is open) — edge expired)". Only the fallback needs the word.
-                            TriggerFireResult.SkippedModal =>
-                                $"fire {AutomationGuard.LastReason ?? "skipped (a dialog was open)"} — edge expired",
-                            TriggerFireResult.NotReady => "fire skipped (app was still starting — edge expired)",
-                            TriggerFireResult.SkippedDirty => "fire skipped (unsaved changes — edge expired)",
-                            _ => "fire skipped (busy too long — edge expired)",
+                            // What held it, one whole line per blocker (AutomationGuard.EdgeExpiredLine).
+                            // It used to wrap the guard's own "skipped (…)" phrase, and the wrapping is
+                            // how "fire skipped (skipped (a dialog is open) — edge expired)" happened.
+                            TriggerFireResult.SkippedModal => Outcome.Blocked(Outcome.EdgeModal, AutomationGuard.LastBlock),
+                            TriggerFireResult.NotReady => Outcome.Of(Outcome.EdgeStarting),
+                            TriggerFireResult.SkippedDirty => Outcome.Of(Outcome.EdgeUnsaved),
+                            _ => Outcome.Of(Outcome.EdgeBusy),
                         });
                         NotifyStateChanged();
                         continue;
@@ -1160,7 +1155,7 @@ namespace TrueReplayer.Services
             if (outside != wasOutside)
             {
                 wasOutside = outside;
-                if (outside) SetLastResult(stats, $"outside active hours ({label})");
+                if (outside) SetLastResult(stats, Outcome.Of(Outcome.OutsideHours, label));
                 NotifyStateChanged();
             }
             return outside;
@@ -1263,7 +1258,7 @@ namespace TrueReplayer.Services
                         lock (_lock)
                         {
                             stats.SkippedSuppressed++;
-                            stats.LastResult = "clipboard change ignored (just after a replay)";
+                            stats.Last = Outcome.Of(Outcome.ClipboardIgnored);
                         }
                         MarkStatsDirty();
                         NotifyStateChanged();
@@ -1458,7 +1453,7 @@ namespace TrueReplayer.Services
         /// saving these, but configs written before that still exist on disk — this is what
         /// surfaces THOSE, and it is the backend's own answer rather than a mirror of the UI's.
         /// </summary>
-        internal static string? DescribeUnfireable(ProfileTriggerConfig cfg)
+        internal static WatcherStop? DescribeUnfireable(ProfileTriggerConfig cfg)
         {
             var kind = cfg.ConditionType?.ToLowerInvariant();
 
@@ -1471,7 +1466,7 @@ namespace TrueReplayer.Services
             if (cfg.UseRelativeCoordinates && (kind == "pixelcolormatch" || kind == "imagefound" || kind == "screentext"))
             {
                 if (string.IsNullOrWhiteSpace(cfg.WindowProcessName) && string.IsNullOrWhiteSpace(cfg.WindowTitle))
-                    return "coordinates are anchored to a window, but no process name or window title is set — this can never match";
+                    return new WatcherStop(WatcherStop.AnchorEmpty);
                 // Mesma morte silenciosa do windowopen abaixo, pelo mesmo motivo: em modo regex um
                 // padrão que não compila vira um Regex nulo, e um Regex nulo rejeita TODA janela.
                 if (string.Equals(cfg.WindowTitleMatchMode, "regex", StringComparison.OrdinalIgnoreCase)
@@ -1480,7 +1475,7 @@ namespace TrueReplayer.Services
                     var (_, anchorCompiled) = ActionReplayer.BuildWindowTarget(
                         cfg.WindowProcessName, cfg.WindowTitle, cfg.WindowTitleMatchMode);
                     if (anchorCompiled == null)
-                        return "the anchor window-title regex does not compile — this can never match";
+                        return new WatcherStop(WatcherStop.AnchorRegex);
                 }
             }
 
@@ -1488,7 +1483,7 @@ namespace TrueReplayer.Services
             {
                 case "windowopen":
                     if (string.IsNullOrWhiteSpace(cfg.WindowProcessName) && string.IsNullOrWhiteSpace(cfg.WindowTitle))
-                        return "no process name or window title set — this can never match";
+                        return new WatcherStop(WatcherStop.NoWindow);
                     // A title regex that does not compile is swallowed into a null Regex, and a null
                     // regex in regex mode rejects EVERY window — so a process name does not rescue
                     // it. The editor never validated this field, and its own placeholder teaches a
@@ -1503,16 +1498,16 @@ namespace TrueReplayer.Services
                         var (_, compiled) = ActionReplayer.BuildWindowTarget(
                             cfg.WindowProcessName, cfg.WindowTitle, cfg.WindowTitleMatchMode);
                         if (compiled == null)
-                            return "the window-title regex does not compile — this can never match";
+                            return new WatcherStop(WatcherStop.TitleRegex);
                     }
                     return null;
                 case "processrunning":
                     return string.IsNullOrWhiteSpace(cfg.WindowProcessName)
-                        ? "no process name set — this can never match"
+                        ? new WatcherStop(WatcherStop.NoProcess)
                         : null;
                 case "fileexists":
                     return string.IsNullOrWhiteSpace(cfg.FilePath)
-                        ? "no file path set — this can never match"
+                        ? new WatcherStop(WatcherStop.NoFile)
                         : null;
                 case "pixelcolormatch":
                     // The editor's colour swatch accepts three-digit shorthand and renders #F00 as
@@ -1522,29 +1517,29 @@ namespace TrueReplayer.Services
                     // honest for configs that never went through the editor at all: written by
                     // hand, imported, or armed straight from the profile list.
                     return PixelColorService.ParseHex(cfg.PixelColor) == null
-                        ? $"the pixel colour '{cfg.PixelColor}' is not a 6-digit hex value — this can never match"
+                        ? new WatcherStop(WatcherStop.BadColor, cfg.PixelColor ?? "")
                         : null;
                 case "screentext":
                 {
                     // A whole-screen read every tick is ~0.45 s of CPU per poll — the editor requires a
                     // region, and so does the daemon, for configs that never went through the editor.
                     if (!(cfg.SearchRegionW is int rw && rw > 0 && cfg.SearchRegionH is int rh && rh > 0))
-                        return "no search region set — reading the whole screen every check is too slow";
+                        return new WatcherStop(WatcherStop.NoRegion);
                     if (OcrService.AutoLanguageTag() == null)
-                        return "no OCR language is installed on this PC";
+                        return new WatcherStop(WatcherStop.NoOcr);
                     bool number = ScreenTextMatcher.IsNumberMode(cfg.OcrReadAs);
                     var op = ScreenTextMatcher.EffectiveOperator(cfg.ConditionOperator, number);
                     var operand = cfg.ConditionOperand ?? "";
                     if (number && !ScreenTextMatcher.TryParseNumber(operand, out _))
-                        return "the value to compare with is not a number — this can never match";
+                        return new WatcherStop(WatcherStop.NotNumber);
                     // Contains/Equals compare the NORMALISED text, where a lone space is nothing at all;
                     // a regex is used raw, so only an empty one is empty.
                     if (!number && (op == "regex" ? operand.Length == 0 : ScreenTextMatcher.Normalize(operand).Length == 0))
-                        return "no text to watch for — this can never match";
+                        return new WatcherStop(WatcherStop.NoText);
                     if (!number && op == "regex")
                     {
                         try { _ = new System.Text.RegularExpressions.Regex(operand); }
-                        catch (ArgumentException) { return "the text pattern (regex) does not compile — this can never match"; }
+                        catch (ArgumentException) { return new WatcherStop(WatcherStop.TextRegex); }
                     }
                     return null;
                 }
@@ -1553,14 +1548,14 @@ namespace TrueReplayer.Services
                     return null;   // ImageFound reports its own missing reference below
                 case null:
                 case "":
-                    return "no condition type set — this can never match";
+                    return new WatcherStop(WatcherStop.NoType);
                 default:
                     // Unknown type: ProbeCondition's own switch falls through to false, so this
                     // watcher provably cannot fire — it armed, reported Running, polled at 1 Hz and
                     // said nothing. The same asymmetry existed one level up, where an unknown Kind
                     // IS reported (RunLoopSafeAsync). The case that will actually reach this is a
                     // downgrade: a profile carrying a condition family a newer build introduced.
-                    return $"unknown condition type '{cfg.ConditionType}' — this version cannot watch for it";
+                    return new WatcherStop(WatcherStop.UnknownType, cfg.ConditionType ?? "");
             }
         }
 
@@ -1887,30 +1882,30 @@ namespace TrueReplayer.Services
                     case TriggerFireResult.Fired:
                         stats.LastFiredAt = DateTime.Now;
                         stats.FireCount++;
-                        stats.LastResult = "fired";
+                        stats.Last = Outcome.FiredOutcome;
                         break;
                     case TriggerFireResult.SkippedBusy:
                         if (countRefusal) stats.SkippedBusy++;
-                        stats.LastResult = "skipped (busy)";
+                        stats.Last = Outcome.Of(Outcome.SkippedBusy);
                         break;
                     case TriggerFireResult.SkippedDirty:
                         if (countRefusal) stats.SkippedDirty++;
-                        stats.LastResult = "skipped (unsaved changes)";
+                        stats.Last = Outcome.Of(Outcome.SkippedUnsaved);
                         break;
                     case TriggerFireResult.SkippedModal:
                         if (countRefusal) stats.SkippedModal++;
                         // Name WHAT blocked it. "skipped (dialog open)" on a screen that looks
                         // idle — because the blocker was a full-screen overlay or a picker behind
                         // the main window — reads as a bug in the automation engine, and steps 4-5
-                        // deliberately made this case more common. Falls back to the old literal
-                        // if the guard has no reason on record.
-                        stats.LastResult = AutomationGuard.LastReason ?? "skipped (dialog open)";
+                        // deliberately made this case more common. Falls back to the old line if
+                        // the guard has nothing on record.
+                        stats.Last = Outcome.Blocked(Outcome.SkippedModal, AutomationGuard.LastBlock);
                         break;
                     case TriggerFireResult.NotReady:
-                        stats.LastResult = "waiting (app starting)";
+                        stats.Last = Outcome.Of(Outcome.Waiting);
                         break;
                     default:
-                        stats.LastResult = "failed to start";
+                        stats.Last = Outcome.Of(Outcome.Failed);
                         break;
                 }
             }
@@ -1931,10 +1926,13 @@ namespace TrueReplayer.Services
             // lock" when it became lock-free — but its queue is bounded and shared with the hooks
             // and WebView2, so flooding it still costs other subsystems their lines. Do not read
             // the second correction as "logging per tick is free now".
+            //
+            // The line is the outcome's code, not the panel's words: the log stays in English whatever
+            // the interface's language ("Automation: 'X' skippedModal (Scope, dialog: save macro)").
             string? logLine = null;
             lock (_lock)
             {
-                var current = result == TriggerFireResult.Fired ? "fired" : stats.LastResult;
+                var current = result == TriggerFireResult.Fired ? Outcome.Fired : stats.Last?.LogText;
                 if (!string.Equals(_lastLoggedOutcome.GetValueOrDefault(name), current, StringComparison.Ordinal))
                 {
                     _lastLoggedOutcome[name] = current;
@@ -1985,7 +1983,12 @@ namespace TrueReplayer.Services
             public int SkippedDirty { get; set; }
             public int SkippedModal { get; set; }
             public int SkippedSuppressed { get; set; }
+            /// The line as it was said when written. Read back only when there is no code: a file
+            /// written by TrueReplayer 2 (the import copies it) or by a build before the codes.
             public string? LastResult { get; set; }
+            /// What happened (Outcome): said again, in the interface's language, on every read.
+            public string? LastResultCode { get; set; }
+            public string[]? LastResultArgs { get; set; }
             public long LastScheduleOccurrenceTicks { get; set; }
         }
 
@@ -2036,7 +2039,7 @@ namespace TrueReplayer.Services
                             SkippedDirty = p.SkippedDirty,
                             SkippedModal = p.SkippedModal,
                             SkippedSuppressed = p.SkippedSuppressed,
-                            LastResult = p.LastResult,
+                            Last = Outcome.Restore(p.LastResultCode, p.LastResultArgs, p.LastResult),
                             LastScheduleOccurrenceTicks = p.LastScheduleOccurrenceTicks,
                             // CooldownUntilTicks is deliberately NOT restored: a cooldown is a
                             // rate limit on a running watcher, not history. Restoring one would
@@ -2124,7 +2127,9 @@ namespace TrueReplayer.Services
                                 SkippedDirty = kv.Value.SkippedDirty,
                                 SkippedModal = kv.Value.SkippedModal,
                                 SkippedSuppressed = kv.Value.SkippedSuppressed,
-                                LastResult = kv.Value.LastResult,
+                                LastResult = kv.Value.Last?.Text,
+                                LastResultCode = kv.Value.Last?.Code,
+                                LastResultArgs = kv.Value.Last is { Args.Length: > 0 } last ? last.Args : null,
                                 LastScheduleOccurrenceTicks = kv.Value.LastScheduleOccurrenceTicks,
                             },
                             StringComparer.OrdinalIgnoreCase);
@@ -2145,13 +2150,191 @@ namespace TrueReplayer.Services
             }
         }
 
-        private void SetLastResult(TriggerStats stats, string message)
+        private void SetLastResult(TriggerStats stats, Outcome outcome)
         {
-            lock (_lock) stats.LastResult = message;
+            lock (_lock) stats.Last = outcome;
             // Persist these too, not just fire outcomes. The reasons that arrive through here are
             // the STOP reasons ("reference image missing", "can never match", "missed") — exactly
             // what a user needs to still be on screen after the restart that used to erase it.
             MarkStatsDirty();
+        }
+
+        // ── What the result line says ────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// A watcher's last outcome, kept as what happened — a code and its details — rather than as
+        /// words. The words are said when the status is read (<see cref="Text"/>), in the interface's
+        /// language (catalog area engine-automations), so a language change re-says the line, the
+        /// sidecar keeps the code, and the log keeps it in English (<see cref="LogText"/>).
+        ///
+        /// "fired" is the one line the page reads as is: it compares it (automationModel.ts,
+        /// AutomationsPage.tsx), so its Text is the code itself, in every language.
+        /// </summary>
+        private sealed class Outcome
+        {
+            public const string Fired = "fired";
+            public const string SkippedBusy = "skippedBusy", SkippedUnsaved = "skippedUnsaved", SkippedModal = "skippedModal";
+            public const string Waiting = "waiting", Failed = "failed";
+            public const string MissedBusy = "missedBusy", MissedStarting = "missedStarting", MissedModal = "missedModal";
+            public const string Late = "late", OutsideHours = "outsideHours", ClipboardIgnored = "clipboardIgnored";
+            public const string EdgeHours = "edgeHours", EdgeCooldown = "edgeCooldown", EdgeStarting = "edgeStarting";
+            public const string EdgeUnsaved = "edgeUnsaved", EdgeBusy = "edgeBusy", EdgeModal = "edgeModal";
+            public const string Crashed = "crashed", Stopped = "stopped";
+            /// A line written before the codes (TrueReplayer 2's sidecar, an earlier build): said as it was.
+            private const string Legacy = "legacy";
+
+            private static readonly HashSet<string> Known = new(StringComparer.Ordinal)
+            {
+                Fired, SkippedBusy, SkippedUnsaved, SkippedModal, Waiting, Failed, MissedBusy, MissedStarting, MissedModal,
+                Late, OutsideHours, ClipboardIgnored, EdgeHours, EdgeCooldown, EdgeStarting, EdgeUnsaved, EdgeBusy, EdgeModal,
+                Crashed, Stopped,
+            };
+
+            public static readonly Outcome FiredOutcome = new(Fired, Array.Empty<string>());
+
+            public string Code { get; }
+            /// The details, as written to the sidecar: a stop's code and value, a block's kind and owner,
+            /// the minutes, the hours as typed, an error's words.
+            public string[] Args { get; }
+
+            private Outcome(string code, string[] args) { Code = code; Args = args; }
+
+            public static Outcome Of(string code, params string[] args) => new(code, args);
+
+            /// A line that names what held the fire (AutomationGuard.Block); none on record is the
+            /// plain "a dialog" line.
+            public static Outcome Blocked(string code, AutomationGuard.Block? block) =>
+                block == null ? new(code, Array.Empty<string>())
+                : block.Owner.Length == 0 ? new(code, new[] { block.Kind.ToString() })
+                : new(code, new[] { block.Kind.ToString(), block.Owner });
+
+            public static Outcome OfStop(WatcherStop stop) => new(Stopped, new[] { stop.Code, stop.Arg });
+
+            /// The minutes are written invariant and grouped only when said ("1,440" / "1.440").
+            public static Outcome LateBy(TimeSpan lateness) =>
+                new(Late, new[] { ((long)lateness.TotalMinutes).ToString(System.Globalization.CultureInfo.InvariantCulture) });
+
+            /// An interval or schedule tick that waited its grace window out.
+            public static Outcome Missed(TriggerFireResult result) => result switch
+            {
+                TriggerFireResult.SkippedModal => Blocked(MissedModal, AutomationGuard.LastBlock),
+                TriggerFireResult.NotReady => Of(MissedStarting),
+                _ => Of(MissedBusy),
+            };
+
+            /// From the sidecar: the code when there is one this build knows, else the line as it was
+            /// written ("fired" is the code either way).
+            public static Outcome? Restore(string? code, string[]? args, string? text)
+            {
+                if (code != null && Known.Contains(code)) return new(code, args ?? Array.Empty<string>());
+                if (text == Fired) return FiredOutcome;
+                return string.IsNullOrEmpty(text) ? null : new(Legacy, new[] { text });
+            }
+
+            /// The line, said now.
+            public string Text
+            {
+                get
+                {
+                    string A(int i) => i < Args.Length ? Args[i] : "";
+                    return Code switch
+                    {
+                        Fired => Fired,
+                        SkippedBusy => S.AutomationsResultSkippedBusy,
+                        SkippedUnsaved => S.AutomationsResultSkippedUnsaved,
+                        SkippedModal => AutomationGuard.SkippedLine(BlockOf(Args)),
+                        Waiting => S.AutomationsResultWaiting,
+                        Failed => S.AutomationsResultFailed,
+                        MissedBusy => S.AutomationsResultMissedBusy,
+                        MissedStarting => S.AutomationsResultMissedStarting,
+                        MissedModal => AutomationGuard.MissedLine(BlockOf(Args)),
+                        Late => S.AutomationsResultLate(S.Num(long.TryParse(A(0), System.Globalization.NumberStyles.Integer,
+                            System.Globalization.CultureInfo.InvariantCulture, out var minutes) ? minutes : 0)),
+                        OutsideHours => S.AutomationsResultOutsideHours(A(0)),
+                        ClipboardIgnored => S.AutomationsResultClipboardIgnored,
+                        EdgeHours => S.AutomationsResultEdgeHours(A(0)),
+                        EdgeCooldown => S.AutomationsResultEdgeCooldown,
+                        EdgeStarting => S.AutomationsResultEdgeStarting,
+                        EdgeUnsaved => S.AutomationsResultEdgeUnsaved,
+                        EdgeBusy => S.AutomationsResultEdgeBusy,
+                        EdgeModal => AutomationGuard.EdgeExpiredLine(BlockOf(Args)),
+                        Crashed => S.AutomationsResultCrashed(A(0)),
+                        Stopped => new WatcherStop(A(0), A(1)).Line,
+                        _ => A(0),   // Legacy
+                    };
+                }
+            }
+
+            /// The code and its details, for the log and its dedupe: English whatever the interface's language.
+            public string LogText => Args.Length == 0 ? Code : $"{Code} ({string.Join(", ", Args)})";
+
+            private static AutomationGuard.Block? BlockOf(string[] args) =>
+                args.Length >= 1 && Enum.TryParse<AutomationGuard.BlockKind>(args[0], out var kind)
+                    ? new AutomationGuard.Block(kind, args.Length >= 2 ? args[1] : "")
+                    : null;
+        }
+
+        /// <summary>
+        /// Why a watcher took itself out of service: a code and its one value (the kind, the time, the
+        /// colour, the condition type as written). <see cref="Line"/> is the result line;
+        /// <see cref="Sentence"/> is what the Windows notification and the in-app notice say. Both are
+        /// said when shown, in the interface's language (engine-automations, stop).
+        /// </summary>
+        internal readonly record struct WatcherStop(string Code, string Arg = "")
+        {
+            public const string UnknownKind = "unknownKind", BadTime = "badTime", NoImage = "noImage";
+            // DescribeUnfireable's: a condition that, as configured, can never match.
+            public const string AnchorEmpty = "anchorEmpty", AnchorRegex = "anchorRegex", NoWindow = "noWindow";
+            public const string TitleRegex = "titleRegex", NoProcess = "noProcess", NoFile = "noFile", BadColor = "badColor";
+            public const string NoRegion = "noRegion", NoOcr = "noOcr", NotNumber = "notNumber", NoText = "noText";
+            public const string TextRegex = "textRegex", NoType = "noType", UnknownType = "unknownType";
+
+            public string Line => Code switch
+            {
+                UnknownKind => S.AutomationsStopUnknownKindLine(Arg),
+                BadTime => S.AutomationsStopBadTimeLine(Arg),
+                NoImage => S.AutomationsStopNoImageLine,
+                AnchorEmpty => S.AutomationsStopAnchorEmptyLine,
+                AnchorRegex => S.AutomationsStopAnchorRegexLine,
+                NoWindow => S.AutomationsStopNoWindowLine,
+                TitleRegex => S.AutomationsStopTitleRegexLine,
+                NoProcess => S.AutomationsStopNoProcessLine,
+                NoFile => S.AutomationsStopNoFileLine,
+                BadColor => S.AutomationsStopBadColorLine(Arg),
+                NoRegion => S.AutomationsStopNoRegionLine,
+                NoOcr => S.AutomationsStopNoOcrLine,
+                NotNumber => S.AutomationsStopNotNumberLine,
+                NoText => S.AutomationsStopNoTextLine,
+                TextRegex => S.AutomationsStopTextRegexLine,
+                NoType => S.AutomationsStopNoTypeLine,
+                UnknownType => S.AutomationsStopUnknownTypeLine(Arg),
+                _ => LogText,   // a stop a newer build wrote to the sidecar
+            };
+
+            public string Sentence => Code switch
+            {
+                UnknownKind => S.AutomationsStopUnknownKindSentence(app: AppIdentity.DisplayName, kind: Arg),
+                BadTime => S.AutomationsStopBadTimeSentence(Arg),
+                NoImage => S.AutomationsStopNoImageSentence,
+                AnchorEmpty => S.AutomationsStopAnchorEmptySentence,
+                AnchorRegex => S.AutomationsStopAnchorRegexSentence,
+                NoWindow => S.AutomationsStopNoWindowSentence,
+                TitleRegex => S.AutomationsStopTitleRegexSentence,
+                NoProcess => S.AutomationsStopNoProcessSentence,
+                NoFile => S.AutomationsStopNoFileSentence,
+                BadColor => S.AutomationsStopBadColorSentence(Arg),
+                NoRegion => S.AutomationsStopNoRegionSentence,
+                NoOcr => S.AutomationsStopNoOcrSentence,
+                NotNumber => S.AutomationsStopNotNumberSentence,
+                NoText => S.AutomationsStopNoTextSentence,
+                TextRegex => S.AutomationsStopTextRegexSentence,
+                NoType => S.AutomationsStopNoTypeSentence,
+                UnknownType => S.AutomationsStopUnknownTypeSentence(Arg),
+                _ => LogText,
+            };
+
+            /// The code and its value, for the log.
+            public string LogText => string.IsNullOrEmpty(Arg) ? Code ?? "" : $"{Code} '{Arg}'";
         }
 
         // Trailing debounce (300 ms): a flapping condition probe (a pixel watcher on an

@@ -99,11 +99,8 @@ namespace TrueReplayer
             // Check WebView2 Runtime before initializing UI
             if (!IsWebView2Available())
             {
-                NativeMessageBox(
-                    $"{AppIdentity.DisplayName} requires Microsoft Edge WebView2 Runtime.\n\n" +
-                    "Click OK to open the download page.\n" +
-                    $"After installing, restart {AppIdentity.DisplayName}.",
-                    $"{AppIdentity.DisplayName} — Missing Dependency");
+                // In the interface's language, resolved just above.
+                NativeMessageBox(S.WindowMissingWebViewText(app: AppIdentity.DisplayName), S.WindowMissingWebViewTitle(app: AppIdentity.DisplayName));
                 Process.Start(new ProcessStartInfo
                 {
                     FileName = "https://developer.microsoft.com/en-us/microsoft-edge/webview2/",

@@ -164,7 +164,9 @@
     <FrontendSources Include="frontend\public\**\*" />
     <!-- The text catalog and the tools that put it in the page, one build per language (plan of
          languages, §3.3). -->
-    <FrontendSources Include="i18n\**\*.ts" />
+    <!-- Not the engine's areas (engine-*.ts): the page never reads them, and a C# build after an
+         engine text changed would otherwise rebuild the page for nothing. -->
+    <FrontendSources Include="i18n\**\*.ts" Exclude="i18n\**\engine-*.ts" />
     <FrontendSources Include="tools\vite-i18n.mjs;tools\i18n-lib.mjs;tools\gen-i18n.mjs" />
   </ItemGroup>
 

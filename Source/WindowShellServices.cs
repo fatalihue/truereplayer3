@@ -252,9 +252,8 @@ namespace TrueReplayer.Services
         {
             if (_stillRunningShown || AppSettingsManager.Load().StillRunningNoticeDone) return;
             _stillRunningShown = true;
-            WindowsNotices.Show($"{AppIdentity.DisplayName} is still running",
-                "Closing the window keeps shortcuts, automations and remaps working. To quit, use the tray icon.",
-                null, ("Got it", "still-running-done"), ("Settings", "settings"));
+            WindowsNotices.Show(S.NoticesStillRunningTitle(app: AppIdentity.DisplayName), S.NoticesStillRunningText,
+                null, (S.NoticesStillRunningGotIt, "still-running-done"), (S.NoticesStillRunningSettings, "settings"));
         }
 
         /// <summary>
@@ -444,48 +443,67 @@ namespace TrueReplayer.Services
 
         // The tooltip of each state (Tray board): "TrueReplayer 3 — Ready · 2 automations armed",
         // "— Recording Untitled macro", "— Replaying Trade Roblox, loop 2 of 3", "— Clicker open ·
-        // PgDn starts", "— Shortcuts and remaps paused", "— 2 notices while you were away". Capped at
-        // 127 characters + null terminator to fit the shell's szTip buffer.
+        // PgDn starts", "— Shortcuts and remaps paused", "— 2 notices while you were away". One whole
+        // sentence per case, in the interface's language (the engine-tray area). Capped at 127
+        // characters + null terminator to fit the shell's szTip buffer.
         private static string ResolveTooltip(AppSettingsManager.AppSettings settings)
         {
-            const string name = AppIdentity.DisplayName;
+            const string app = AppIdentity.DisplayName;
+            _tipLanguage = S.Language;
             string? macro = CurrentMacro?.Invoke();
             string line;
             switch (ResolveState(settings))
             {
                 case TrayState.Recording:
-                    line = macro != null ? $"{name} — Recording {Short(macro, 60)}" : $"{name} — Recording";
+                    line = macro != null ? S.TrayTipRecordingMacro(app: app, macro: Short(macro, 60)) : S.TrayTipRecording(app: app);
                     break;
                 case TrayState.Replaying:
-                    line = macro != null ? $"{name} — Replaying {Short(macro, 50)}" : $"{name} — Replaying";
-                    if (_loopCurrent > 0) line += $", loop {_loopCurrent} of {(_loopTotal > 0 ? _loopTotal.ToString() : "∞")}";
+                    if (_loopCurrent > 0)
+                    {
+                        string current = S.Num(_loopCurrent), total = _loopTotal > 0 ? S.Num(_loopTotal) : "∞";
+                        line = macro != null
+                            ? S.TrayTipReplayingMacroLoop(app: app, macro: Short(macro, 50), current: current, total: total)
+                            : S.TrayTipReplayingLoop(app: app, current: current, total: total);
+                    }
+                    else line = macro != null ? S.TrayTipReplayingMacro(app: app, macro: Short(macro, 50)) : S.TrayTipReplaying(app: app);
                     break;
                 case TrayState.Clicker:
-                    if (_runState == "replaying") line = $"{name} — Clicking";
+                    if (_runState == "replaying") line = S.TrayTipClicking(app: app);
                     else line = string.IsNullOrEmpty(settings.CursorClickStartHotkey)
-                        ? $"{name} — Clicker open"
-                        : $"{name} — Clicker open · {settings.CursorClickStartHotkey} starts";
+                        ? S.TrayTipClickerOpen(app: app)
+                        : S.TrayTipClickerOpenKey(app: app, key: settings.CursorClickStartHotkey);
                     break;
                 case TrayState.ShortcutsOff:
                     // The Key Remaps pause with the Shortcuts (InputHookManager), when they are on at all.
-                    line = RemapService.Current.Enabled ? $"{name} — Shortcuts and remaps paused" : $"{name} — Shortcuts paused";
+                    line = RemapService.Current.Enabled ? S.TrayTipShortcutsRemapsPaused(app: app) : S.TrayTipShortcutsPaused(app: app);
                     break;
                 case TrayState.NeedsALook:
-                    line = $"{name} — {_pendingNotices} notice{(_pendingNotices == 1 ? "" : "s")} while you were away";
+                    line = S.TrayTipNotices(app: app, n: S.Num(_pendingNotices), count: _pendingNotices);
                     break;
                 default:
-                    line = $"{name} — Ready";
                     // Armed-watcher count — the tray is the daemon's only always-visible surface.
                     // Configured count (not live loops) so the "paused" hint still shows when the
                     // master switch is off.
                     int armed = TriggerService.Instance?.ConfiguredArmedCount ?? 0;
-                    if (armed > 0)
-                        line += settings.AutomationEnabled
-                            ? $" · {armed} automation{(armed == 1 ? "" : "s")} armed"
-                            : " · automations paused";
+                    line = armed <= 0 ? S.TrayTipReady(app: app)
+                        : settings.AutomationEnabled ? S.TrayTipReadyArmed(app: app, n: S.Num(armed), count: armed)
+                        : S.TrayTipReadyPaused(app: app);
                     break;
             }
             return Short(line, 127);
+        }
+
+        // The language the tooltip was last written in. The shell keeps the text it was handed, so a
+        // change of language (Settings › General) has to write it again (FollowLanguage).
+        private static string _tipLanguage = "";
+
+        /// <summary>
+        /// Writes the tooltip again when the interface's language changed since it was written, so it
+        /// does not wait for the tray's next change of state. MainWindow calls it when a page comes up.
+        /// </summary>
+        public static void FollowLanguage()
+        {
+            if (isInitialized && _tipLanguage != S.Language) UpdateTrayIcon();
         }
 
         private static void ReleaseCurrentIcon()
@@ -621,32 +639,33 @@ namespace TrueReplayer.Services
             IntPtr hMenu = CreatePopupMenu();
             IntPtr hTroubleshoot = CreatePopupMenu();
             // Each item has a mnemonic (the underlined letter, shown when the menu is opened from the
-            // keyboard); a macro's own "&" is doubled so it is not read as one.
-            AppendMenu(hMenu, MF_STRING, CmdOpen, $"&Open {AppIdentity.DisplayName}");
+            // keyboard), one per item in each language (the engine-tray area); a macro's own "&" is
+            // doubled so it is not read as one. Read now, so a change of language shows at once.
+            AppendMenu(hMenu, MF_STRING, CmdOpen, S.TrayMenuOpen(app: AppIdentity.DisplayName));
             // Stop is there while something runs, with the key that stops it from anywhere.
-            if (recording) AppendMenu(hMenu, MF_STRING, CmdStop, WithKey("&Stop recording", settings.RecordingHotkey));
-            else if (replaying && isClicker) AppendMenu(hMenu, MF_STRING, CmdStop, WithKey("&Stop the Clicker", settings.CursorClickStartHotkey));
-            else if (replaying) AppendMenu(hMenu, MF_STRING, CmdStop, WithKey(macro != null ? $"&Stop {Short(macro, 40).Replace("&", "&&")}" : "&Stop", settings.ReplayHotkey));
+            if (recording) AppendMenu(hMenu, MF_STRING, CmdStop, WithKey(S.TrayMenuStopRecording, settings.RecordingHotkey));
+            else if (replaying && isClicker) AppendMenu(hMenu, MF_STRING, CmdStop, WithKey(S.TrayMenuStopClicker, settings.CursorClickStartHotkey));
+            else if (replaying) AppendMenu(hMenu, MF_STRING, CmdStop, WithKey(macro != null ? S.TrayMenuStopMacro(macro: Short(macro, 40).Replace("&", "&&")) : S.TrayMenuStop, settings.ReplayHotkey));
             // A recording needs the engine idle and in Macro mode, as the first use's Record it does.
-            AppendMenu(hMenu, MF_STRING | (recording || replaying || isClicker ? MF_GRAYED : 0), CmdRecordNew, WithKey("&Record a new macro", settings.RecordingHotkey));
+            AppendMenu(hMenu, MF_STRING | (recording || replaying || isClicker ? MF_GRAYED : 0), CmdRecordNew, WithKey(S.TrayMenuRecordNew, settings.RecordingHotkey));
             AppendMenu(hMenu, MF_SEPARATOR, 0, null);
             // Shortcuts and Key Remaps are switches, ticked when on: the Key Remaps one is the way out
             // by mouse alone when a remap gets in the way of typing. Automations… opens its page; its
             // master switch is in the tray panel (D26). Clicker opens its page, the mode on.
-            AppendMenu(hMenu, MF_STRING | (UserProfile.Current.ProfileKeyEnabled ? MF_CHECKED : 0), CmdShortcuts, "S&hortcuts");
-            AppendMenu(hMenu, MF_STRING, CmdAutomations, "&Automations…");
+            AppendMenu(hMenu, MF_STRING | (UserProfile.Current.ProfileKeyEnabled ? MF_CHECKED : 0), CmdShortcuts, S.TrayMenuShortcuts);
+            AppendMenu(hMenu, MF_STRING, CmdAutomations, S.TrayMenuAutomations);
             bool remapsEnabled = RemapService.Current.Enabled;
-            AppendMenu(hMenu, MF_STRING | (remapsEnabled ? MF_CHECKED : 0), CmdRemaps, "&Key Remaps");
-            AppendMenu(hMenu, MF_STRING | (isClicker ? MF_CHECKED : 0), CmdClicker, "&Clicker");
-            AppendMenu(hMenu, MF_STRING, CmdSettings, "Se&ttings");
+            AppendMenu(hMenu, MF_STRING | (remapsEnabled ? MF_CHECKED : 0), CmdRemaps, S.TrayMenuRemaps);
+            AppendMenu(hMenu, MF_STRING | (isClicker ? MF_CHECKED : 0), CmdClicker, S.TrayMenuClicker);
+            AppendMenu(hMenu, MF_STRING, CmdSettings, S.TrayMenuSettings);
             AppendMenu(hMenu, MF_SEPARATOR, 0, null);
             // The way back when the page itself is broken, so it cannot live in the page (D26).
-            AppendMenu(hTroubleshoot, MF_STRING, CmdReloadUi, "&Reload UI");
-            AppendMenu(hTroubleshoot, MF_STRING, CmdDevTools, "Open &DevTools");
-            AppendMenu(hTroubleshoot, MF_STRING, CmdLogs, "Open &logs folder");
-            AppendMenu(hMenu, MF_STRING | MF_POPUP, (uint)hTroubleshoot, "Tro&ubleshoot");
+            AppendMenu(hTroubleshoot, MF_STRING, CmdReloadUi, S.TrayMenuReloadUi);
+            AppendMenu(hTroubleshoot, MF_STRING, CmdDevTools, S.TrayMenuDevTools);
+            AppendMenu(hTroubleshoot, MF_STRING, CmdLogs, S.TrayMenuLogs);
+            AppendMenu(hMenu, MF_STRING | MF_POPUP, (uint)hTroubleshoot, S.TrayMenuTroubleshoot);
             AppendMenu(hMenu, MF_SEPARATOR, 0, null);
-            AppendMenu(hMenu, MF_STRING, CmdQuit, "&Quit");
+            AppendMenu(hMenu, MF_STRING, CmdQuit, S.TrayMenuQuit);
 
             GetCursorPos(out NativeMethods.POINT pt);
             SetForegroundWindow(hwnd);
@@ -772,7 +791,8 @@ namespace TrueReplayer.Services
         [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
         [DllImport("user32.dll")] private static extern bool GetCursorPos(out NativeMethods.POINT lpPoint);
         [DllImport("user32.dll")] private static extern IntPtr CreatePopupMenu();
-        [DllImport("user32.dll")] private static extern bool AppendMenu(IntPtr hMenu, uint uFlags, uint uIDNewItem, string? lpNewItem);
+        // Unicode (AppendMenuW): the items are in the interface's language, and a macro's name can be in any script.
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool AppendMenu(IntPtr hMenu, uint uFlags, uint uIDNewItem, string? lpNewItem);
         [DllImport("user32.dll")]
         private static extern int
 

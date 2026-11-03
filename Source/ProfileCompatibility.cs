@@ -30,12 +30,16 @@ namespace TrueReplayer.Services
         /// Feature → minimum version that supports it. Add new entries here whenever
         /// you ship a feature that can be persisted into a profile and wouldn't load
         /// on older builds.
+        /// The name is what the Info tab shows after "Required by:", so it comes from the catalog
+        /// (engine-compat, feature) in the interface's language, read when asked — a getter, not
+        /// the text, because this table is built once and the language can change. It is the name
+        /// the page uses (a step, a condition, a Replay ▾ option), never an identifier.
         /// </summary>
-        private static readonly List<(Func<UserProfile, bool> Detect, Version MinVersion, string FeatureName)> FeatureMatrix = new()
+        private static readonly List<(Func<UserProfile, bool> Detect, Version MinVersion, Func<string> FeatureName)> FeatureMatrix = new()
         {
             // WaitImage was added in 2.0 — actions of this type fail on older releases.
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "WaitImage", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 0, 0), "WaitImage"),
+                new Version(2, 0, 0), () => S.CompatFeatureWaitImage),
 
             // Relative coordinates require the window-tracking pipeline, first released in 2.1.0.
             //
@@ -50,11 +54,11 @@ namespace TrueReplayer.Services
             // 2.0.0, so 2.1.0 preserves that verdict, while 2.0.0 would LOOSEN the gate and let a
             // 2.0.0 build import a profile the old pin deliberately kept away from it.
             (p => p.UseRelativeCoordinates,
-                new Version(2, 1, 0), "UseRelativeCoordinates"),
+                new Version(2, 1, 0), () => S.CompatFeatureRelativeCoordinates),
 
             // WhilePressed / Toggle trigger modes landed in 2.1.0; older builds only handle OnPress/OnRelease.
             (p => p.TriggerMode == TriggerMode.WhilePressed || p.TriggerMode == TriggerMode.Toggle,
-                new Version(2, 1, 0), "TriggerMode WhilePressed/Toggle"),
+                new Version(2, 1, 0), () => S.CompatFeatureTriggerWhilePressedToggle),
 
             // DoubleTap / Hold trigger modes — an older build's JsonStringEnumConverter THROWS
             // on the unknown enum string: the local profile.json fails to load entirely (a
@@ -64,18 +68,18 @@ namespace TrueReplayer.Services
             // metadata inside the same JSON) — it exists so the export carries an honest
             // AppMinVersion. Introduced after 2.8.1 — bump at release.
             (p => p.TriggerMode == TriggerMode.DoubleTap || p.TriggerMode == TriggerMode.Hold,
-                new Version(2, 9, 0), "TriggerMode double-tap/hold"),
+                new Version(2, 9, 0), () => S.CompatFeatureTriggerDoubleTapHold),
 
             // Mouse X-button hotkey ("XButton1"/"XButton2" in CustomHotkey) — an older build's
             // mouse hook never decodes WM_XBUTTON*, so the hotkey is silently dead (profile
             // loads fine, trigger never fires). Same divergence class as the mode pins.
             // Introduced after 2.8.1 — bump at release.
             (p => p.CustomHotkey?.Contains("XButton", StringComparison.OrdinalIgnoreCase) == true,
-                new Version(2, 9, 0), "Mouse-button hotkey"),
+                new Version(2, 9, 0), () => S.CompatFeatureMouseButtonHotkey),
 
             // WaitPixelColor + the pixel:* bridge messages were introduced in 2.1.4.
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "WaitPixelColor", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 1, 4), "WaitPixelColor"),
+                new Version(2, 1, 4), () => S.CompatFeatureWaitPixelColor),
 
             // Conditional logic (IF / ELSE / ENDIF blocks) — older builds don't understand
             // the new action types and would treat them as no-op rows (worse: the body of
@@ -85,7 +89,7 @@ namespace TrueReplayer.Services
                 string.Equals(a.ActionType, "If", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(a.ActionType, "Else", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(a.ActionType, "EndIf", StringComparison.OrdinalIgnoreCase))),
-                new Version(2, 3, 0), "Conditional logic (If/Else/EndIf)"),
+                new Version(2, 3, 0), () => S.CompatFeatureConditionalBlocks),
 
             // IF poll-timeout (ConditionTimeout > 0) shipped 2.6.9. A 2.3.0-2.6.8 build
             // understands IF but ignores this field → does an instant single probe instead of
@@ -93,7 +97,7 @@ namespace TrueReplayer.Services
             // the Else branch (silent divergence). The field is JsonIgnore-when-default so it is
             // only present when > 0; predicate is exact.
             (p => p.Actions.Any(a => a.ConditionTimeout > 0),
-                new Version(2, 6, 9), "IF condition poll timeout"),
+                new Version(2, 6, 9), () => S.CompatFeatureConditionTimeout),
 
             // New If-condition families — an older build hits the unknown-ConditionType
             // else-branch in InstantProbe → treats the probe as false → always takes the
@@ -101,32 +105,32 @@ namespace TrueReplayer.Services
             // them (2.8.0, the introducing build), same as the
             // ActivateWindow / cycle pins. One row per family so import diagnostics name it.
             (p => p.Actions.Any(a => string.Equals(a.ConditionType, "Random", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 8, 0), "If Random condition"),
+                new Version(2, 8, 0), () => S.CompatFeatureConditionRandom),
             (p => p.Actions.Any(a => string.Equals(a.ConditionType, "Variable", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 8, 0), "If Variable condition"),
+                new Version(2, 8, 0), () => S.CompatFeatureConditionVariable),
             (p => p.Actions.Any(a => string.Equals(a.ConditionType, "ProcessRunning", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 8, 0), "If Process Running condition"),
+                new Version(2, 8, 0), () => S.CompatFeatureConditionProcess),
             (p => p.Actions.Any(a => string.Equals(a.ConditionType, "FileExists", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 8, 0), "If File Exists condition"),
+                new Version(2, 8, 0), () => S.CompatFeatureConditionFile),
             (p => p.Actions.Any(a => string.Equals(a.ConditionType, "TimeWindow", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 8, 0), "If Time condition"),
+                new Version(2, 8, 0), () => S.CompatFeatureConditionTime),
 
             // The 2.6.12 If-condition families have the SAME unknown-ConditionType failure
             // mode as the 2.8.0 block above, but were never pinned. A 2.3.0-2.6.11 build
             // understands If/Else/EndIf yet hits InstantProbe's unknown-condition else-branch
             // → treats the probe as false → always takes the Else branch (silent divergence).
             (p => p.Actions.Any(a => string.Equals(a.ConditionType, "WindowOpen", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 6, 12), "If Window condition"),
+                new Version(2, 6, 12), () => S.CompatFeatureConditionWindow),
             (p => p.Actions.Any(a => string.Equals(a.ConditionType, "ClipboardMatch", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 6, 12), "If Clipboard condition"),
+                new Version(2, 6, 12), () => S.CompatFeatureConditionClipboard),
             (p => p.Actions.Any(a => string.Equals(a.ConditionType, "BrowserElementState", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 6, 12), "If Browser element condition"),
+                new Version(2, 6, 12), () => S.CompatFeatureConditionBrowser),
 
             // Data-loop table (Model A) — older builds leave {row:column} tokens literal and
             // don't loop over the rows, a silent divergence. Pin to the introducing build
             // (2.8.0).
             (p => p.Data != null,
-                new Version(2, 8, 0), "Data-loop table"),
+                new Version(2, 8, 0), () => S.CompatFeatureDataTable),
 
             // Per-row skip-on-error (OnRowError == "skip") — an older build ignores the unknown
             // JSON property and HALTS the whole run on the first failed row instead of skipping,
@@ -137,7 +141,7 @@ namespace TrueReplayer.Services
             // and each shipped in the same commit as its skip handling, so no build that runs
             // the path ignores the skip. Introduced after 2.8.1 — bump at release.
             (p => p.Data is { LoopOverData: true } d && string.Equals(d.OnRowError, "skip", StringComparison.OrdinalIgnoreCase),
-                new Version(2, 9, 0), "Data-loop skip-on-error"),
+                new Version(2, 9, 0), () => S.CompatFeatureDataSkipOnError),
 
             // Data-loop cell modifiers ({row:column:mods}) — an older build's row-token regex
             // requires '}' right after the column name, so the WHOLE token stays literal and
@@ -145,21 +149,21 @@ namespace TrueReplayer.Services
             // where at least the content substitutes). Text-scan over every token-resolved
             // string field. Introduced after 2.8.1 — bump at release.
             (p => p.Actions.Any(UsesModifiedRowToken),
-                new Version(2, 9, 0), "Data-loop cell modifiers"),
+                new Version(2, 9, 0), () => S.CompatFeatureDataCellModifiers),
 
             // Windows clipboard-history token {winclip:N} — an older build has no WinClipTokenRegex,
             // so the whole token stays literal and gets typed into the target verbatim (same failure
             // class as the modified-row token above). Text-scan over every token-resolved field.
             // Introduced in 2.9.3.
             (p => p.Actions.Any(UsesWinClipToken),
-                new Version(2, 9, 3), "Clipboard history token"),
+                new Version(2, 9, 3), () => S.CompatFeatureClipboardHistoryToken),
 
             // Sequential data-row token {rownext:column} — an older build has no RowNextTokenRegex, so
             // the whole token stays literal and gets typed into the target verbatim (same failure class
             // as the modified-row and winclip tokens above). Text-scan over every token-resolved field.
             // Introduced in 2.9.5.
             (p => p.Actions.Any(UsesRowNextToken),
-                new Version(2, 9, 5), "Sequential data-row token"),
+                new Version(2, 9, 5), () => S.CompatFeatureNextRowToken),
 
             // Sequential clipboard token {clipboard:next} — WORSE than the literal-token failures
             // above, because it doesn't look broken. ApplyClipboardModifiers documents that unknown
@@ -167,7 +171,7 @@ namespace TrueReplayer.Services
             // drops "next" and pastes the ENTIRE clipboard where the author meant ONE line — into a
             // chat, a form, a customer reply. Introduced in 2.9.9.
             (p => p.Actions.Any(UsesClipNextToken),
-                new Version(2, 9, 9), "Sequential clipboard token"),
+                new Version(2, 9, 9), () => S.CompatFeatureNextClipboardToken),
 
             // Reference modifier argument ("{clipboard:line:@i}", "{row:Qty:first:@n}") — the line
             // index comes from a variable, @counter or @row instead of a literal. An older build
@@ -178,7 +182,7 @@ namespace TrueReplayer.Services
             // Detection delegates to ActionReplayer.ChainUsesTokenArg so the pin and the engine
             // cannot disagree about which segments are arguments.
             (p => p.Actions.Any(UsesTokenArgument),
-                new Version(2, 9, 10), "Reference modifier argument"),
+                new Version(2, 9, 10), () => S.CompatFeatureReferenceArgument),
 
             // Clipboard list modifiers (range/lines/sort/dedupe/reverse/join) — shipped in 2.8.0
             // and never pinned, which was an omission rather than a decision: they degrade through
@@ -186,14 +190,14 @@ namespace TrueReplayer.Services
             // pastes the whole unsorted, un-ranged content and looks like it worked. Pinned at the
             // version that introduced them, so no profile that already uses them changes meaning.
             (p => p.Actions.Any(UsesListModifier),
-                new Version(2, 8, 0), "Clipboard list modifiers"),
+                new Version(2, 8, 0), () => S.CompatFeatureListModifiers),
 
             // Text-slice modifiers ({clipboard:words:6-}, {clipboard:after: - } and the rest of the
             // split family), plus an open-ended span on range ("range:6-", which an older parser
             // refuses outright, leaving `range` inert). Same silent class again: the author asked
             // for a fragment and an older build pastes everything. Introduced in 2.20.0.
             (p => p.Actions.Any(UsesSliceModifier),
-                new Version(2, 20, 0), "Text-slice modifiers"),
+                new Version(2, 20, 0), () => S.CompatFeatureSliceModifiers),
 
             // A colon INSIDE a split delimiter, written as the escape "::" ({clipboard:after: :: }).
             // Before this version the split family consumed exactly ONE segment, so an older build
@@ -205,7 +209,7 @@ namespace TrueReplayer.Services
             // disagree with the engine about which "::" is an escape — "{clipboard:join::upper}"
             // has meant "glue with nothing" since 2.8.0 and must NOT pin.
             (p => p.Actions.Any(UsesEscapedColonDelimiter),
-                new Version(2, 23, 0), "Colon in split delimiter"),
+                new Version(2, 23, 0), () => S.CompatFeatureColonDelimiter),
 
             // The `dropnum` modifier ({clipboard:after: - :dropnum:x } — strip a leading digit
             // run + suffix when present, pass through untouched otherwise). An older build skips
@@ -214,7 +218,7 @@ namespace TrueReplayer.Services
             // case produces identical output on both builds, hiding the divergence until the
             // one paste where it matters. Same silent class as {clipboard:next} above.
             (p => p.Actions.Any(UsesDropNumModifier),
-                new Version(2, 24, 0), "Drop count modifier"),
+                new Version(2, 24, 0), () => S.CompatFeatureDropCountModifier),
 
             // The text-filter modifiers ({clipboard:noaccents} strips diacritics, {clipboard:digits}
             // keeps ASCII 0-9 only). An older build skips the unknown names through the silent
@@ -226,7 +230,7 @@ namespace TrueReplayer.Services
             // where the old build read a failed literal gate and the new build applies the filter).
             // Shipped in 2.25.0.
             (p => p.Actions.Any(UsesTextFilterModifier),
-                new Version(2, 25, 0), "Accent/digit filter modifiers"),
+                new Version(2, 25, 0), () => S.CompatFeatureFilterModifiers),
 
             // Random text-choice token {pick:a|b|c} — an older build has no PickTokenRegex, so the
             // whole token stays literal and gets typed into the target verbatim (the winclip
@@ -234,26 +238,26 @@ namespace TrueReplayer.Services
             // engine regex — a bare "{pick}" is literal on BOTH builds and must not pin.
             // Shipped in 2.25.0.
             (p => p.Actions.Any(UsesPickToken),
-                new Version(2, 25, 0), "Random choice token"),
+                new Version(2, 25, 0), () => S.CompatFeaturePickToken),
 
             // Ask-Input token {input:Label} / {input:Label|menu:a,b,c} — an older build has no
             // InputTokenRegex, so the whole token stays literal and gets typed into the target
             // verbatim (the winclip literal-token failure class), and the prompt the author built
             // the macro around never appears. Shipped in 2.9.0.
             (p => p.Actions.Any(UsesInputToken),
-                new Version(2, 9, 0), "Ask-Input token"),
+                new Version(2, 9, 0), () => S.CompatFeatureInputToken),
 
             // Clipboard-slot token {clip:name} — the READ half of Copy to Slot. The action is pinned
             // below (2.9.0), but a slot is also filled by the capture hotkey with no action in the
             // profile at all, and then nothing pinned the token: an older build has no
             // ClipSlotTokenRegex and types "{clip:1}" verbatim. Shipped in 2.9.0.
             (p => p.Actions.Any(UsesClipSlotToken),
-                new Version(2, 9, 0), "Clipboard slot token"),
+                new Version(2, 9, 0), () => S.CompatFeatureClipSlotToken),
 
             // Random number token {random:a-b} — an older build has no RandomTokenRegex and types
             // the token verbatim (the literal-token class). Shipped in 2.8.0.
             (p => p.Actions.Any(UsesRandomToken),
-                new Version(2, 8, 0), "Random number token"),
+                new Version(2, 8, 0), () => S.CompatFeatureRandomToken),
 
             // Run-state tokens {var:name}, {counter} and bare {row} — shipped together with Set
             // Variable in 2.6.12, and only the ACTION was pinned. A {var:} fed by a later feature
@@ -261,7 +265,7 @@ namespace TrueReplayer.Services
             // pin of their own, and an older build types them verbatim. Same floor as Set Variable,
             // so no profile that already carries that action changes its number.
             (p => p.Actions.Any(UsesRunStateToken),
-                new Version(2, 6, 12), "Run-state tokens"),
+                new Version(2, 6, 12), () => S.CompatFeatureRunStateTokens),
 
             // The Stop action — ends the run early AS SUCCESS. An older build has no case for
             // it in the replay switch: the row is silently skipped and the run KEEPS GOING past
@@ -269,14 +273,14 @@ namespace TrueReplayer.Services
             // after a Stop are usually exactly the ones that must not run.
             // Shipped in 2.25.0.
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "Stop", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 25, 0), "Stop action"),
+                new Version(2, 25, 0), () => S.CompatFeatureStop),
 
             // The Return line — ends only the current pass (repeat iteration / data row); the
             // remaining passes continue. An older build no-ops the row and runs the rest of the
             // pass it was meant to cut short — the same silent-flow class as Stop.
             // Shipped in 2.25.0.
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "Return", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 25, 0), "Return flow line"),
+                new Version(2, 25, 0), () => S.CompatFeatureReturnLine),
 
             // The While loop block — an older build has no case for While/EndLoop: both rows
             // no-op through the silent default, so the BODY RUNS EXACTLY ONCE regardless of
@@ -285,7 +289,7 @@ namespace TrueReplayer.Services
             // Shipped in 2.25.0.
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "While", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(a.ActionType, "EndLoop", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 25, 0), "While loop"),
+                new Version(2, 25, 0), () => S.CompatFeatureWhileLoop),
 
             // Break / Next Iteration — an older build no-ops the jump row: a Break-guarded
             // loop keeps looping, a Next keeps running the rest of the iteration it was
@@ -293,14 +297,14 @@ namespace TrueReplayer.Services
             // Shipped in 2.25.0.
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "BreakLoop", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(a.ActionType, "ContinueLoop", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 25, 0), "Loop control (Break/Next)"),
+                new Version(2, 25, 0), () => S.CompatFeatureLoopControl),
 
             // For Each Data Row — an older build no-ops opener and closer and runs the body
             // ONCE in the ambient context: a block written to fan out over N rows silently
             // degrades to a single pass with whatever {row:col} happens to resolve.
             // Shipped in 2.25.0.
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "ForEachRow", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 25, 0), "For Each Data Row block"),
+                new Version(2, 25, 0), () => S.CompatFeatureForEachDataRow),
 
             // Assert quiet-stop (AssertOnFail == "StopReplay") — property-level pin, the
             // SlotMode=='clear' mold. An older build doesn't know the value and falls through
@@ -309,7 +313,7 @@ namespace TrueReplayer.Services
             // arm — the batch KEEPS RUNNING through the very thing the author said should end
             // it quietly. That flip is why this pins. Shipped in 2.25.0.
             (p => p.Actions.Any(a => string.Equals(a.AssertOnFail, "StopReplay", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 25, 0), "Assert quiet-stop policy"),
+                new Version(2, 25, 0), () => S.CompatFeatureAssertStopQuietly),
 
             // The Else If arm — the WORST degradation in this whole matrix, worse than the
             // While no-op class it otherwise resembles. An older build has no "ElseIf" case in
@@ -321,14 +325,14 @@ namespace TrueReplayer.Services
             // exclusive alternatives. One row pins the feature.
             // Shipped in 2.26.0.
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "ElseIf", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 26, 0), "Else If branch"),
+                new Version(2, 26, 0), () => S.CompatFeatureElseIf),
 
             // A modifier chain on {clip:name} / {var:name} / {winclip:N}. Those heads carried no
             // chain before 2.20.0, so an older build's regex does not match the token at all and
             // types it out verbatim — the literal-token failure class of the winclip and
             // modified-row pins above, not the silent one.
             (p => p.Actions.Any(UsesChainOnNameToken),
-                new Version(2, 20, 0), "Modifiers on slot/variable/history tokens"),
+                new Version(2, 20, 0), () => S.CompatFeatureNameTokenModifiers),
 
             // Desktop Assert — the worst possible degradation, which is exactly why it is pinned.
             // An older build has no "Assert" switch case, so the row is silently SKIPPED: the
@@ -337,31 +341,31 @@ namespace TrueReplayer.Services
             // sees a profile that imports cleanly and behaves like the unguarded original.
             // Introduced in 2.9.9.
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "Assert", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 9, 9), "Desktop Assert"),
+                new Version(2, 9, 9), () => S.CompatFeatureDesktopAssert),
 
             // Copy to Slot ({clip:name} capture) — an older build has no dispatch case for the
             // unknown ActionType → silently skips the capture and every {clip:} token resolves
             // empty. Introduced after 2.8.1 — bump at release.
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "CopyToSlot", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 9, 0), "Copy to Slot"),
+                new Version(2, 9, 0), () => S.CompatFeatureCopyToSlot),
 
             // BrowserAssert — a DEDICATED row (the Browser* predicate below auto-pins 2.1.0,
             // but that is INSUFFICIENT: an older build has no dispatch case for the unknown
             // type, silently SKIPS the assertion → a broken page passes unnoticed. Pin to
             // 2.8.0 (the introducing build).
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "BrowserAssert", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 8, 0), "Browser assert"),
+                new Version(2, 8, 0), () => S.CompatFeatureAssertElement),
 
             // Browser actions (BrowserClick/Type/Navigate/WaitElement/SelectOption) all rely on the
             // Chrome extension + native host bridge added in 2.1.0.
             (p => p.Actions.Any(a => !string.IsNullOrEmpty(a.ActionType) &&
                 a.ActionType.StartsWith("Browser", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 1, 0), "Browser actions"),
+                new Version(2, 1, 0), () => S.CompatFeatureBrowserActions),
 
             // HoldKey / Keystroke combos were factored out of the regular Key actions in 2.0.0.
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "HoldKey", StringComparison.OrdinalIgnoreCase) ||
                                       string.Equals(a.ActionType, "Keystroke", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 0, 0), "HoldKey/Keystroke"),
+                new Version(2, 0, 0), () => S.CompatFeatureHoldKeyKeystroke),
 
             // *ClickHold (press, hold for HoldDurationMs, release — the mouse twin of HoldKey).
             // A DEDICATED row, not a variation on the at-cursor / focus-click property pins
@@ -372,7 +376,7 @@ namespace TrueReplayer.Services
             // BrowserAssert row above. Pinned to the introducing build.
             (p => p.Actions.Any(a => !string.IsNullOrEmpty(a.ActionType) &&
                 a.ActionType.EndsWith("ClickHold", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 41, 0), "Click and hold"),
+                new Version(2, 41, 0), () => S.CompatFeatureClickHold),
 
             // Keystroke × N gap jitter (RepeatDelayJitterPct > 0) — an older build drops the
             // unknown property and fires the burst on a FIXED interval instead of the intended
@@ -380,14 +384,14 @@ namespace TrueReplayer.Services
             // divergence, exactly this matrix's purpose. Property-level Detect so plain Keystroke
             // × N rows keep the 2.0.0 floor. Introduced in 2.9.5.
             (p => p.Actions.Any(a => a.RepeatDelayJitterPct is int rj && rj > 0),
-                new Version(2, 9, 5), "Keystroke repeat jitter"),
+                new Version(2, 9, 5), () => S.CompatFeatureKeystrokeJitter),
 
             // RunProfile (profile chaining) shipped in the 2.0.0 line, same era as WaitImage /
             // HoldKey / Keystroke which ARE pinned here — but it was missed. A pre-2.0.0 build
             // has no "RunProfile" switch case (no default) → silently skips the sub-profile
             // call. Pinned to 2.0.0 for consistency.
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "RunProfile", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 0, 0), "Run Macro (macro chaining)"),
+                new Version(2, 0, 0), () => S.CompatFeatureRunMacro),
 
             // RunProfile-over-data (data-loop Phase C) — an older build drops the unknown
             // RunOverData property and runs the sub-profile ONCE instead of once per data row
@@ -395,7 +399,7 @@ namespace TrueReplayer.Services
             // plain RunProfile rows keep the 2.0.0 floor. Introduced after 2.8.1 — bump at release.
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "RunProfile", StringComparison.OrdinalIgnoreCase)
                 && a.RunOverData == true),
-                new Version(2, 9, 0), "Run Macro over data"),
+                new Version(2, 9, 0), () => S.CompatFeatureRunMacroOverData),
 
             // Combined-mode single clicks (LeftClick/RightClick/MiddleClick — press+release in one
             // row) shipped in 2.4.0. Builds without the replay switch cases silently skip the click,
@@ -405,7 +409,7 @@ namespace TrueReplayer.Services
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "LeftClick", StringComparison.OrdinalIgnoreCase) ||
                                       string.Equals(a.ActionType, "RightClick", StringComparison.OrdinalIgnoreCase) ||
                                       string.Equals(a.ActionType, "MiddleClick", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 4, 0), "Combined clicks (LeftClick/RightClick/MiddleClick)"),
+                new Version(2, 4, 0), () => S.CompatFeatureCombinedClicks),
 
             // Focus click (IsFocusClick — the click is replayed a SECOND time a few pixels away so a
             // small target actually takes focus; see ActionReplayer.FocusTap) shipped in 2.5.2. The
@@ -425,7 +429,7 @@ namespace TrueReplayer.Services
                 (string.Equals(a.ActionType, "LeftClick", StringComparison.OrdinalIgnoreCase) ||
                  string.Equals(a.ActionType, "RightClick", StringComparison.OrdinalIgnoreCase) ||
                  string.Equals(a.ActionType, "MiddleClick", StringComparison.OrdinalIgnoreCase))),
-                new Version(2, 5, 2), "Focus click"),
+                new Version(2, 5, 2), () => S.CompatFeatureFocusClick),
 
             // Click × N inline repeat (RepeatCount > 1 on a LeftClick/RightClick/MiddleClick/
             // DoubleClick) — the 2.4.0 (combined) and 2.5.4 (double) pins above only cover the
@@ -443,7 +447,7 @@ namespace TrueReplayer.Services
                  string.Equals(a.ActionType, "RightClick", StringComparison.OrdinalIgnoreCase) ||
                  string.Equals(a.ActionType, "MiddleClick", StringComparison.OrdinalIgnoreCase) ||
                  string.Equals(a.ActionType, "DoubleClick", StringComparison.OrdinalIgnoreCase))),
-                new Version(2, 9, 6), "Click repeat (× N)"),
+                new Version(2, 9, 6), () => S.CompatFeatureClickRepeat),
 
             // Click × N POSITION jitter (RepeatPositionJitterPx > 0) — an older build drops the
             // unknown property and fires every repeat at the SAME exact pixel instead of the
@@ -452,19 +456,19 @@ namespace TrueReplayer.Services
             // on to remove. Property-level Detect so plain click × N rows keep the 2.9.6 floor.
             // Introduced in 2.9.9.
             (p => p.Actions.Any(a => a.RepeatPositionJitterPx is int rp && rp > 0),
-                new Version(2, 9, 9), "Click repeat position jitter"),
+                new Version(2, 9, 9), () => S.CompatFeatureClickPointJitter),
 
             // DoubleClick (two press/release pairs replayed as one row) shipped in 2.5.4 —
             // older builds have no replay switch case and would silently skip it.
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "DoubleClick", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 5, 4), "Double click"),
+                new Version(2, 5, 4), () => S.CompatFeatureDoubleClick),
 
             // TripleClick (three press/release pairs replayed as one row, so the target reads a
             // real triple-click — select-a-paragraph, which two DoubleClick rows cannot produce).
             // Older builds have no replay switch case, and the switch has NO default, so the row
             // is a silent no-op. Introduced in 2.31.0.
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "TripleClick", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 31, 0), "Triple click"),
+                new Version(2, 31, 0), () => S.CompatFeatureTripleClick),
 
             // Click at cursor (AtCursor — the click ignores its stored X/Y and fires at the LIVE
             // cursor position). This is WORSE than a missing-type no-op: an older build HAS the
@@ -475,7 +479,7 @@ namespace TrueReplayer.Services
             // an inert flag on any other row keeps that row's own floor — same shape as the focus
             // click pin above. Introduced in 2.31.0.
             (p => p.Actions.Any(a => a.AtCursor && ActionItem.IsCombinedClickType(a.ActionType)),
-                new Version(2, 31, 0), "Click at cursor"),
+                new Version(2, 31, 0), () => S.CompatFeatureClickAtCursor),
 
             // ActivateWindow (launch/wait/focus a window mid-run) — older builds have no
             // replay switch case and would silently skip the row, leaving the following
@@ -484,7 +488,7 @@ namespace TrueReplayer.Services
             // round-trips cleanly — IsCompatible would reject a pin above the running
             // version.
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "ActivateWindow", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 8, 0), "Activate Window"),
+                new Version(2, 8, 0), () => S.CompatFeatureActivateWindow),
 
             // ActivateWindow window PLACEMENT (RestorePosition / RestoreSize + WindowX/Y/Width/
             // Height on the action) shipped AFTER 2.8.0. A 2.8.0 build has the ActivateWindow
@@ -495,7 +499,7 @@ namespace TrueReplayer.Services
             // version files (see [[workflow-release-procedure]]).
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "ActivateWindow", StringComparison.OrdinalIgnoreCase)
                 && (a.RestorePosition || a.RestoreSize)),
-                new Version(2, 8, 1), "Activate Window placement"),
+                new Version(2, 8, 1), () => S.CompatFeatureActivateWindowPlacement),
 
             // ActivateWindow Phase 3 — VERB (maximize/minimize/close) + NTH-MATCH shipped after 2.8.1.
             // An older build has the ActivateWindow replay case, so the row runs — but it drops the
@@ -505,7 +509,7 @@ namespace TrueReplayer.Services
             // version) so own-export→import round-trips; bump at release with the other pins.
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "ActivateWindow", StringComparison.OrdinalIgnoreCase)
                 && (!string.IsNullOrEmpty(a.WindowVerb) || (a.WindowMatchIndex is int mi && mi > 1))),
-                new Version(2, 9, 0), "Activate Window verb/nth-match"),
+                new Version(2, 9, 0), () => S.CompatFeatureActivateWindowAction),
 
             // SetVariable Cycle mode — older builds drop the unknown VariableMode property
             // and run the row in SET mode, storing the ENTIRE multi-line list instead of
@@ -513,14 +517,14 @@ namespace TrueReplayer.Services
             // gates). Pinned to the build that introduces it (2.8.0), same as Activate
             // Window.
             (p => p.Actions.Any(a => string.Equals(a.VariableMode, "cycle", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 8, 0), "Set Variable cycle mode"),
+                new Version(2, 8, 0), () => S.CompatFeatureSetVariableCycle),
 
             // Set Variable Add mode — an older build drops the unknown VariableMode and runs the
             // row in SET mode: the counter the author increments is OVERWRITTEN with the step
             // ("1" forever) and a While guarded by it never advances — the cycle-mode silent
             // class. Introduced after 2.36.0 — bump at release if the release number differs.
             (p => p.Actions.Any(a => string.Equals(a.VariableMode, "add", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 37, 0), "Set Variable add mode"),
+                new Version(2, 37, 0), () => S.CompatFeatureSetVariableAdd),
 
             // Loop-block tokens {loop} (iteration of the innermost While / For Each block) and
             // {datarow} (number of the current data row), plus the @loop / @datarow references in
@@ -529,14 +533,14 @@ namespace TrueReplayer.Services
             // int-argument modifiers fail empty rather than paste everything). Introduced after
             // 2.36.0 — bump at release if the release number differs.
             (p => p.Actions.Any(UsesLoopToken),
-                new Version(2, 37, 0), "Loop iteration tokens"),
+                new Version(2, 37, 0), () => S.CompatFeatureLoopTokens),
 
             // Date/time tokens with an argument — an offset ({date:+7}), a format ({time:HH:mm})
             // or both. An older build resolves only the bare {date}/{time}/{datetime} literals, so
             // the whole token is typed verbatim (the literal-token class). Introduced after 2.36.0 —
             // bump at release if the release number differs.
             (p => p.Actions.Any(UsesDateFormatToken),
-                new Version(2, 37, 0), "Date/time format and offset"),
+                new Version(2, 37, 0), () => S.CompatFeatureDateFormat),
 
             // The value-shaping modifiers (replace / count / pad / default) — an older build skips
             // the unknown names through the silent default (and, for `replace`, its two arguments
@@ -545,14 +549,14 @@ namespace TrueReplayer.Services
             // engine walk (ChainUsesShapeModifier): "join:default" is a separator and must not pin.
             // Introduced after 2.36.0 — bump at release if the release number differs.
             (p => p.Actions.Any(UsesShapeModifier),
-                new Version(2, 37, 0), "Replace/count/pad/default modifiers"),
+                new Version(2, 37, 0), () => S.CompatFeatureShapeModifiers),
 
             // A modifier chain on {counter} / {loop} / {datarow}. Those heads carried no chain before
             // this version, so an older build's literal Replace does not match the token at all and
             // types it out verbatim — the 2.20.0 slot/variable/history chain pin, for the counters.
             // Introduced after 2.36.0 — bump at release if the release number differs.
             (p => p.Actions.Any(UsesCounterChainToken),
-                new Version(2, 37, 0), "Modifiers on counter/loop/datarow tokens"),
+                new Version(2, 37, 0), () => S.CompatFeatureCounterModifiers),
 
             // Generated and machine values — {uuid} (a fresh identifier), {timestamp} (Unix time,
             // `:ms` for milliseconds) and {env:NAME} (an environment variable), each taking the
@@ -560,7 +564,7 @@ namespace TrueReplayer.Services
             // verbatim (the literal-token class). Introduced after 2.36.0 — bump at release if the
             // release number differs.
             (p => p.Actions.Any(UsesMachineValueToken),
-                new Version(2, 37, 0), "UUID/timestamp/env tokens"),
+                new Version(2, 37, 0), () => S.CompatFeatureMachineTokens),
 
             // Browser Type key grammar = Send Text's (extension 1.4.18, shipped inside this build):
             // {space}, {home}, {end}, {pageup}, {pagedown}, a repeat count on any key ({tab:2}) and
@@ -569,7 +573,7 @@ namespace TrueReplayer.Services
             // BrowserType text: the other browser actions never press keys. Introduced after
             // 2.36.0 — bump at release if the release number differs.
             (p => p.Actions.Any(UsesBrowserKeyGrammar),
-                new Version(2, 37, 0), "Browser Type key tokens (space/home/end/page, repeat, delay)"),
+                new Version(2, 37, 0), () => S.CompatFeatureTypeTextKeys),
 
             // A data column named with anything beyond letters, digits and '_' — {row:Nome Completo},
             // {rownext:Preço (R$)}. An older build's RowDataTokenRegex / RowNextTokenRegex stop at
@@ -577,14 +581,14 @@ namespace TrueReplayer.Services
             // its Data panel flags the header as an invalid token name. Introduced after 2.36.0 —
             // bump at release if the release number differs.
             (p => p.Actions.Any(UsesWideColumnName),
-                new Version(2, 37, 0), "Data column names with spaces or accents"),
+                new Version(2, 37, 0), () => S.CompatFeatureWideColumnNames),
 
             // CopyToSlot Clear mode — an older build drops the unknown SlotMode property and
             // runs the row in CAPTURE mode, grabbing the current selection into the slot
             // instead of emptying it (silent semantic flip, and it fires a synthetic Ctrl+C
             // that a clear was never meant to). Introduced in 2.9.2.
             (p => p.Actions.Any(a => string.Equals(a.SlotMode, "clear", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 9, 2), "Copy to Slot clear mode"),
+                new Version(2, 9, 2), () => S.CompatFeatureCopyToSlotClear),
 
             // SendText rich text (KeyHtml) shipped AFTER 2.8.0. An older build drops the unknown
             // KeyHtml property and pastes the plain Key — content preserved, formatting silently
@@ -597,7 +601,7 @@ namespace TrueReplayer.Services
             // and the version files.
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "SendText", StringComparison.OrdinalIgnoreCase)
                 && (!string.IsNullOrEmpty(a.KeyHtml) || !string.IsNullOrEmpty(a.KeyMarkdown))),
-                new Version(2, 8, 1), "Rich text (SendText)"),
+                new Version(2, 8, 1), () => S.CompatFeatureRichText),
 
             // SendText typed delivery (SendMethod non-null — the payload is typed key by key via
             // SendInput instead of clipboard + Ctrl+V). An older build HAS the SendText replay case,
@@ -618,7 +622,7 @@ namespace TrueReplayer.Services
             // SendMethod is set, and ComputeMinVersion takes the MAX. Introduced in 2.33.0.
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "SendText", StringComparison.OrdinalIgnoreCase)
                 && !string.IsNullOrEmpty(a.SendMethod)),
-                new Version(2, 33, 0), "Typed text delivery (SendText)"),
+                new Version(2, 33, 0), () => S.CompatFeatureTypedDelivery),
 
             // SetVariable base action ('set' mode, VariableMode null) shipped in 2.6.12.
             // Builds < 2.6.12 have no "SetVariable" case in the replay switch (which has NO
@@ -626,7 +630,7 @@ namespace TrueReplayer.Services
             // {var} tokens resolve empty. Only the CYCLE sub-mode above is otherwise pinned,
             // leaving the base action unpinned.
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "SetVariable", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 6, 12), "Set Variable"),
+                new Version(2, 6, 12), () => S.CompatFeatureSetVariable),
 
             // Automation trigger (interval / schedule / condition self-firing) — an older build
             // has no Triggers property, so the config is DROPPED at load and any save from that
@@ -636,14 +640,14 @@ namespace TrueReplayer.Services
             // NOT apply — that field is a cosmetic notice, this is a whole feature's config).
             // Introduced after 2.8.1 — bump at release.
             (p => p.Triggers != null,
-                new Version(2, 9, 0), "Automation trigger"),
+                new Version(2, 9, 0), () => S.CompatFeatureAutomationTrigger),
 
             // Automation ImageFound search region (ROI). An older build has the Triggers property but
             // no SearchRegion field → it drops the ROI and scans full-screen (slower, more false
             // positives — behavioural divergence, not a hard failure). Property-level so plain triggers
             // keep the 2.9.0 floor; gates on BOTH W and H (matches the probe + projection). Introduced in 2.9.4.
             (p => p.Triggers is { SearchRegionW: > 0, SearchRegionH: > 0 },
-                new Version(2, 9, 4), "Automation image search region"),
+                new Version(2, 9, 4), () => S.CompatFeatureAutomationSearchRegion),
 
             // Automation poll interval. Same destroy-on-round-trip mechanism as the ROI pin above:
             // there is no [JsonExtensionData] on ProfileTriggerConfig, so an older build does not
@@ -655,7 +659,7 @@ namespace TrueReplayer.Services
             // the 2.9.0 floor; gated on > 0 because 0 IS the default and carries no information.
             // Introduced in 2.9.9.
             (p => p.Triggers is { PollIntervalMs: > 0 },
-                new Version(2, 9, 9), "Automation poll interval"),
+                new Version(2, 9, 9), () => S.CompatFeatureAutomationCheckEvery),
 
             // Automation watcher anchored to a window. EXACTAMENTE o mesmo mecanismo de
             // destruicao-no-round-trip dos dois pins acima: sem [JsonExtensionData] em
@@ -688,7 +692,7 @@ namespace TrueReplayer.Services
                   && string.Equals(t.Kind, "condition", StringComparison.OrdinalIgnoreCase)
                   && (string.Equals(t.ConditionType, "PixelColorMatch", StringComparison.OrdinalIgnoreCase)
                       || string.Equals(t.ConditionType, "ImageFound", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 43, 1), "Automation watcher window anchor"),
+                new Version(2, 43, 1), () => S.CompatFeatureAutomationWindowAnchor),
 
             // Automation active hours. NOT the destroy-on-round-trip mechanism of the two pins
             // above: TimeOfDay has existed since the 2.9.0 Triggers pin, so an older build reads
@@ -708,7 +712,7 @@ namespace TrueReplayer.Services
             (p => p.Triggers is { } t
                   && !string.Equals(t.Kind, "schedule", StringComparison.OrdinalIgnoreCase)
                   && TriggerService.ParseActiveHours(t.TimeOfDay) != null,
-                new Version(2, 35, 0), "Automation active hours"),
+                new Version(2, 35, 0), () => S.CompatFeatureAutomationHours),
 
             // Per-profile loop count. Destroy-on-round-trip, same mechanism as the automation pins
             // above: an older build has no LoopCount on UserProfile (it was [JsonIgnore]d there and
@@ -723,7 +727,7 @@ namespace TrueReplayer.Services
             // build. Property-level precedents: the ROI and poll-interval pins above.
             // Introduced after 2.10.0 — bump at release if the release number differs.
             (p => p.EnableLoop && p.LoopCount > 1,
-                new Version(2, 11, 0), "Per-macro loop count"),
+                new Version(2, 11, 0), () => S.CompatFeatureMacroLoops),
 
             // Per-profile Game Mode. Same destroy-on-round-trip mechanism as the loop count just
             // above: an older build has no GameMode on UserProfile and no [JsonExtensionData], so
@@ -734,14 +738,14 @@ namespace TrueReplayer.Services
             // Accepted by the owner on 2026-10-10 — see intencionais/parte-4.md.
             // Released in 2.46.0.
             (p => p.GameMode.HasValue,
-                new Version(2, 46, 0), "Per-macro Game Mode"),
+                new Version(2, 46, 0), () => S.CompatFeatureMacroGameMode),
 
             // Per-profile cursor return. Same destroy-on-round-trip mechanism as Game Mode: an
             // older build drops the key, and the macro set to put the cursor back stops doing it
             // with nothing on screen saying why. Gated on USE the same way (written only when set).
             // Released in 2.47.0.
             (p => p.RestoreCursor.HasValue,
-                new Version(2, 47, 0), "Per-macro cursor return"),
+                new Version(2, 47, 0), () => S.CompatFeatureMacroReturnCursor),
 
             // Per-profile jitter and fast approach. Same destroy-on-round-trip mechanism as Game
             // Mode: an older build drops the keys and runs the macro on the app's values, with
@@ -749,9 +753,9 @@ namespace TrueReplayer.Services
             // TrueReplayer 3 only (plan truereplayer3-paralelo-2026-10-30.md, decision 7): pinned at
             // 3.0.0, so TrueReplayer 2 refuses such a macro with a notice instead of misreading it.
             (p => p.DelayVariation.HasValue,
-                new Version(3, 0, 0), "Per-macro jitter"),
+                new Version(3, 0, 0), () => S.CompatFeatureMacroJitter),
             (p => p.FastApproach.HasValue,
-                new Version(3, 0, 0), "Per-macro fast approach"),
+                new Version(3, 0, 0), () => S.CompatFeatureMacroFastApproach),
 
             // Screen text (OCR). Each family fails SILENTLY on an older build, which is the whole
             // reason for one row apiece: Wait for Text has no case in the action switch (no default),
@@ -762,14 +766,14 @@ namespace TrueReplayer.Services
             // pinned anyway so the import names it. Released in 2.46.0, together with per-profile
             // Game Mode (one release after 2.45.1).
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "WaitText", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 46, 0), "Wait for Text"),
+                new Version(2, 46, 0), () => S.CompatFeatureWaitText),
             (p => p.Actions.Any(a => string.Equals(a.ConditionType, "ScreenText", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 46, 0), "Screen text condition"),
+                new Version(2, 46, 0), () => S.CompatFeatureConditionScreenText),
             (p => p.Actions.Any(a => string.Equals(a.ActionType, "SetVariable", StringComparison.OrdinalIgnoreCase)
                 && string.Equals(a.VariableMode, "screen", StringComparison.OrdinalIgnoreCase)),
-                new Version(2, 46, 0), "Read screen text into a variable"),
+                new Version(2, 46, 0), () => S.CompatFeatureSetVariableScreen),
             (p => p.Triggers != null && string.Equals(p.Triggers.ConditionType, "ScreenText", StringComparison.OrdinalIgnoreCase),
-                new Version(2, 46, 0), "Automation screen text"),
+                new Version(2, 46, 0), () => S.CompatFeatureAutomationScreenText),
 
             // Restore Size split from Restore Position; older builds only honour Position. Same
             // correction as the UseRelativeCoordinates pin above — the 2.0.5 this used to name
@@ -777,13 +781,13 @@ namespace TrueReplayer.Services
             // Identical verdict for every installable build; only the number the user is shown
             // changes, from unreachable to real.
             (p => p.RestoreSize,
-                new Version(2, 1, 0), "RestoreSize"),
+                new Version(2, 1, 0), () => S.CompatFeatureRestoreSize),
 
             // Sharing-metadata round-trip itself is a 2.2 feature — anything carrying tags/description
             // came from a 2.2+ build. Older builds will ignore the metadata but load the actions fine,
             // so this is the floor for "no compatibility issues" rather than a hard requirement.
             (p => (p.Tags != null && p.Tags.Count > 0) || !string.IsNullOrEmpty(p.Description) || !string.IsNullOrEmpty(p.IconEmoji),
-                new Version(2, 2, 0), "Macro sharing metadata"),
+                new Version(2, 2, 0), () => S.CompatFeatureSharingMetadata),
         };
 
         // {row:column:mods} — a row token carrying at least one modifier segment after the
@@ -1259,15 +1263,16 @@ namespace TrueReplayer.Services
         }
 
         /// <summary>
-        /// Lists the feature names that pushed the AppMinVersion above the baseline.
-        /// Used by the Info tab to render "Min version: 2.1.0 (because: TriggerMode WhilePressed)"
-        /// so users can understand what's pinning their profile to a newer build.
+        /// Lists the feature names that pushed the AppMinVersion above the baseline, in the
+        /// interface's language. Used by the Info tab to render "Required by: Relative coordinates,
+        /// Wait Image" so users can understand what's pinning their profile to a newer build.
         /// </summary>
         public static List<string> ListContributingFeatures(UserProfile profile)
         {
             // Single pass: evaluate each detect predicate exactly once, recording the
-            // (version, name) of every feature the profile actually uses.
-            var matches = new List<(Version Version, string Name)>();
+            // (version, name) of every feature the profile actually uses. The name is read
+            // only for the ones that make the list.
+            var matches = new List<(Version Version, Func<string> Name)>();
             Version highest = BaselineVersion;
             foreach (var (detect, version, name) in FeatureMatrix)
             {
@@ -1285,7 +1290,7 @@ namespace TrueReplayer.Services
             var contributors = new List<string>();
             foreach (var (version, name) in matches)
             {
-                if (version == highest) contributors.Add(name);
+                if (version == highest) contributors.Add(name());
             }
             return contributors;
         }

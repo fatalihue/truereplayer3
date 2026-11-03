@@ -6,6 +6,1641 @@ namespace TrueReplayer.Services
 {
     public static partial class S
     {
-
+        /// <summary>engine-automations.stopped.title · {{name}} stopped watching</summary>
+        public static string AutomationsStoppedTitle(string name) => IsPt ? $"{name} parou de vigiar" : $"{name} stopped watching";
+        /// <summary>engine-automations.stopped.body · {{reason}} It's still turned on.</summary>
+        public static string AutomationsStoppedBody(string reason) => IsPt ? $"{reason} Ela continua ativada." : $"{reason} It's still turned on.";
+        /// <summary>engine-automations.stopped.open · Open automation</summary>
+        public static string AutomationsStoppedOpen => IsPt ? "Abrir automação" : "Open automation";
+        /// <summary>engine-automations.stopped.turnOff · Turn it off</summary>
+        public static string AutomationsStoppedTurnOff => IsPt ? "Desativar" : "Turn it off";
+        /// <summary>engine-automations.stopped.notice · Automation stopped: {{name}}. {{reason}} The automation is still armed, but it is not watching for anything.</summary>
+        public static string AutomationsStoppedNotice(string name, string reason) => IsPt ? $"A automação de {name} parou. {reason} Ela continua armada, mas não está vigiando nada." : $"Automation stopped: {name}. {reason} The automation is still armed, but it is not watching for anything.";
+        /// <summary>engine-automations.stop.unknownKind.line · unknown trigger kind '{{kind}}'</summary>
+        public static string AutomationsStopUnknownKindLine(string kind) => IsPt ? $"tipo de gatilho desconhecido '{kind}'" : $"unknown trigger kind '{kind}'";
+        /// <summary>engine-automations.stop.unknownKind.sentence · Its trigger kind '{{kind}}' is not known to this version of {{app}}.</summary>
+        public static string AutomationsStopUnknownKindSentence(string app, string kind) => IsPt ? $"O tipo de gatilho '{kind}' não existe nesta versão do {app}." : $"Its trigger kind '{kind}' is not known to this version of {app}.";
+        /// <summary>engine-automations.stop.badTime.line · invalid schedule time '{{time}}'</summary>
+        public static string AutomationsStopBadTimeLine(string time) => IsPt ? $"horário inválido '{time}'" : $"invalid schedule time '{time}'";
+        /// <summary>engine-automations.stop.badTime.sentence · Its schedule time '{{time}}' is not a valid time.</summary>
+        public static string AutomationsStopBadTimeSentence(string time) => IsPt ? $"O horário '{time}' não é um horário válido." : $"Its schedule time '{time}' is not a valid time.";
+        /// <summary>engine-automations.stop.noImage.line · reference image missing — watcher stopped</summary>
+        public static string AutomationsStopNoImageLine => IsPt ? "falta a imagem de referência — parou de vigiar" : "reference image missing — watcher stopped";
+        /// <summary>engine-automations.stop.noImage.sentence · Its reference image is missing.</summary>
+        public static string AutomationsStopNoImageSentence => IsPt ? "Falta a imagem de referência." : "Its reference image is missing.";
+        /// <summary>engine-automations.stop.anchorEmpty.line · coordinates are anchored to a window, but no process name or window title is set — this can never match — watcher stopped</summary>
+        public static string AutomationsStopAnchorEmptyLine => IsPt ? "as coordenadas seguem uma janela, mas não há nome de processo nem título de janela — assim, nunca casa — parou de vigiar" : "coordinates are anchored to a window, but no process name or window title is set — this can never match — watcher stopped";
+        /// <summary>engine-automations.stop.anchorEmpty.sentence · Coordinates are anchored to a window, but no process name or window title is set — this can never match.</summary>
+        public static string AutomationsStopAnchorEmptySentence => IsPt ? "As coordenadas seguem uma janela, mas não há nome de processo nem título de janela — assim, nunca casa." : "Coordinates are anchored to a window, but no process name or window title is set — this can never match.";
+        /// <summary>engine-automations.stop.anchorRegex.line · the anchor window-title regex does not compile — this can never match — watcher stopped</summary>
+        public static string AutomationsStopAnchorRegexLine => IsPt ? "a regex do título da janela que as coordenadas seguem não compila — assim, nunca casa — parou de vigiar" : "the anchor window-title regex does not compile — this can never match — watcher stopped";
+        /// <summary>engine-automations.stop.anchorRegex.sentence · The anchor window-title regex does not compile — this can never match.</summary>
+        public static string AutomationsStopAnchorRegexSentence => IsPt ? "A regex do título da janela que as coordenadas seguem não compila — assim, nunca casa." : "The anchor window-title regex does not compile — this can never match.";
+        /// <summary>engine-automations.stop.noWindow.line · no process name or window title set — this can never match — watcher stopped</summary>
+        public static string AutomationsStopNoWindowLine => IsPt ? "não há nome de processo nem título de janela — assim, nunca casa — parou de vigiar" : "no process name or window title set — this can never match — watcher stopped";
+        /// <summary>engine-automations.stop.noWindow.sentence · No process name or window title set — this can never match.</summary>
+        public static string AutomationsStopNoWindowSentence => IsPt ? "Não há nome de processo nem título de janela — assim, nunca casa." : "No process name or window title set — this can never match.";
+        /// <summary>engine-automations.stop.titleRegex.line · the window-title regex does not compile — this can never match — watcher stopped</summary>
+        public static string AutomationsStopTitleRegexLine => IsPt ? "a regex do título da janela não compila — assim, nunca casa — parou de vigiar" : "the window-title regex does not compile — this can never match — watcher stopped";
+        /// <summary>engine-automations.stop.titleRegex.sentence · The window-title regex does not compile — this can never match.</summary>
+        public static string AutomationsStopTitleRegexSentence => IsPt ? "A regex do título da janela não compila — assim, nunca casa." : "The window-title regex does not compile — this can never match.";
+        /// <summary>engine-automations.stop.noProcess.line · no process name set — this can never match — watcher stopped</summary>
+        public static string AutomationsStopNoProcessLine => IsPt ? "não há nome de processo — assim, nunca casa — parou de vigiar" : "no process name set — this can never match — watcher stopped";
+        /// <summary>engine-automations.stop.noProcess.sentence · No process name set — this can never match.</summary>
+        public static string AutomationsStopNoProcessSentence => IsPt ? "Não há nome de processo — assim, nunca casa." : "No process name set — this can never match.";
+        /// <summary>engine-automations.stop.noFile.line · no file path set — this can never match — watcher stopped</summary>
+        public static string AutomationsStopNoFileLine => IsPt ? "não há caminho de arquivo — assim, nunca casa — parou de vigiar" : "no file path set — this can never match — watcher stopped";
+        /// <summary>engine-automations.stop.noFile.sentence · No file path set — this can never match.</summary>
+        public static string AutomationsStopNoFileSentence => IsPt ? "Não há caminho de arquivo — assim, nunca casa." : "No file path set — this can never match.";
+        /// <summary>engine-automations.stop.badColor.line · the pixel colour '{{color}}' is not a 6-digit hex value — this can never match — watcher stopped</summary>
+        public static string AutomationsStopBadColorLine(string color) => IsPt ? $"a cor do pixel '{color}' não tem 6 dígitos hexadecimais — assim, nunca casa — parou de vigiar" : $"the pixel colour '{color}' is not a 6-digit hex value — this can never match — watcher stopped";
+        /// <summary>engine-automations.stop.badColor.sentence · The pixel colour '{{color}}' is not a 6-digit hex value — this can never match.</summary>
+        public static string AutomationsStopBadColorSentence(string color) => IsPt ? $"A cor do pixel '{color}' não tem 6 dígitos hexadecimais — assim, nunca casa." : $"The pixel colour '{color}' is not a 6-digit hex value — this can never match.";
+        /// <summary>engine-automations.stop.noRegion.line · no search region set — reading the whole screen every check is too slow — watcher stopped</summary>
+        public static string AutomationsStopNoRegionLine => IsPt ? "não há região de pesquisa — ler a tela inteira a cada verificação é lento demais — parou de vigiar" : "no search region set — reading the whole screen every check is too slow — watcher stopped";
+        /// <summary>engine-automations.stop.noRegion.sentence · No search region set — reading the whole screen every check is too slow.</summary>
+        public static string AutomationsStopNoRegionSentence => IsPt ? "Não há região de pesquisa — ler a tela inteira a cada verificação é lento demais." : "No search region set — reading the whole screen every check is too slow.";
+        /// <summary>engine-automations.stop.noOcr.line · no OCR language is installed on this PC — watcher stopped</summary>
+        public static string AutomationsStopNoOcrLine => IsPt ? "nenhum idioma de OCR está instalado neste PC — parou de vigiar" : "no OCR language is installed on this PC — watcher stopped";
+        /// <summary>engine-automations.stop.noOcr.sentence · No OCR language is installed on this PC.</summary>
+        public static string AutomationsStopNoOcrSentence => IsPt ? "Nenhum idioma de OCR está instalado neste PC." : "No OCR language is installed on this PC.";
+        /// <summary>engine-automations.stop.notNumber.line · the value to compare with is not a number — this can never match — watcher stopped</summary>
+        public static string AutomationsStopNotNumberLine => IsPt ? "o valor a comparar não é um número — assim, nunca casa — parou de vigiar" : "the value to compare with is not a number — this can never match — watcher stopped";
+        /// <summary>engine-automations.stop.notNumber.sentence · The value to compare with is not a number — this can never match.</summary>
+        public static string AutomationsStopNotNumberSentence => IsPt ? "O valor a comparar não é um número — assim, nunca casa." : "The value to compare with is not a number — this can never match.";
+        /// <summary>engine-automations.stop.noText.line · no text to watch for — this can never match — watcher stopped</summary>
+        public static string AutomationsStopNoTextLine => IsPt ? "não há texto a vigiar — assim, nunca casa — parou de vigiar" : "no text to watch for — this can never match — watcher stopped";
+        /// <summary>engine-automations.stop.noText.sentence · No text to watch for — this can never match.</summary>
+        public static string AutomationsStopNoTextSentence => IsPt ? "Não há texto a vigiar — assim, nunca casa." : "No text to watch for — this can never match.";
+        /// <summary>engine-automations.stop.textRegex.line · the text pattern (regex) does not compile — this can never match — watcher stopped</summary>
+        public static string AutomationsStopTextRegexLine => IsPt ? "o padrão do texto (regex) não compila — assim, nunca casa — parou de vigiar" : "the text pattern (regex) does not compile — this can never match — watcher stopped";
+        /// <summary>engine-automations.stop.textRegex.sentence · The text pattern (regex) does not compile — this can never match.</summary>
+        public static string AutomationsStopTextRegexSentence => IsPt ? "O padrão do texto (regex) não compila — assim, nunca casa." : "The text pattern (regex) does not compile — this can never match.";
+        /// <summary>engine-automations.stop.noType.line · no condition type set — this can never match — watcher stopped</summary>
+        public static string AutomationsStopNoTypeLine => IsPt ? "não há tipo de condição — assim, nunca casa — parou de vigiar" : "no condition type set — this can never match — watcher stopped";
+        /// <summary>engine-automations.stop.noType.sentence · No condition type set — this can never match.</summary>
+        public static string AutomationsStopNoTypeSentence => IsPt ? "Não há tipo de condição — assim, nunca casa." : "No condition type set — this can never match.";
+        /// <summary>engine-automations.stop.unknownType.line · unknown condition type '{{type}}' — this version cannot watch for it — watcher stopped</summary>
+        public static string AutomationsStopUnknownTypeLine(string type) => IsPt ? $"tipo de condição desconhecido '{type}' — esta versão não consegue vigiá-lo — parou de vigiar" : $"unknown condition type '{type}' — this version cannot watch for it — watcher stopped";
+        /// <summary>engine-automations.stop.unknownType.sentence · Unknown condition type '{{type}}' — this version cannot watch for it.</summary>
+        public static string AutomationsStopUnknownTypeSentence(string type) => IsPt ? $"O tipo de condição '{type}' é desconhecido — esta versão não consegue vigiá-lo." : $"Unknown condition type '{type}' — this version cannot watch for it.";
+        /// <summary>engine-automations.result.skipped.busy · skipped (busy)</summary>
+        public static string AutomationsResultSkippedBusy => IsPt ? "pulado (o app estava ocupado)" : "skipped (busy)";
+        /// <summary>engine-automations.result.skipped.unsaved · skipped (unsaved changes)</summary>
+        public static string AutomationsResultSkippedUnsaved => IsPt ? "pulado (mudanças não salvas)" : "skipped (unsaved changes)";
+        /// <summary>engine-automations.result.skipped.scope · skipped ({{what}} is open)</summary>
+        public static string AutomationsResultSkippedScope(string what) => IsPt ? $"pulado ({what} estava aberta)" : $"skipped ({what} is open)";
+        /// <summary>engine-automations.result.skipped.dialog · skipped (a dialog is open)</summary>
+        public static string AutomationsResultSkippedDialog => IsPt ? "pulado (um diálogo estava aberto)" : "skipped (a dialog is open)";
+        /// <summary>engine-automations.result.skipped.hotkey · skipped (capturing a hotkey)</summary>
+        public static string AutomationsResultSkippedHotkey => IsPt ? "pulado (capturando uma hotkey)" : "skipped (capturing a hotkey)";
+        /// <summary>engine-automations.result.skipped.dataTable · skipped (editing the data table)</summary>
+        public static string AutomationsResultSkippedDataTable => IsPt ? "pulado (editando a tabela do Data Loop)" : "skipped (editing the data table)";
+        /// <summary>engine-automations.result.skipped.automation · skipped (editing an automation)</summary>
+        public static string AutomationsResultSkippedAutomation => IsPt ? "pulado (editando uma automação)" : "skipped (editing an automation)";
+        /// <summary>engine-automations.result.skipped.step · skipped (editing a step)</summary>
+        public static string AutomationsResultSkippedStep => IsPt ? "pulado (editando um passo)" : "skipped (editing a step)";
+        /// <summary>engine-automations.result.skipped.row · skipped (editing a row)</summary>
+        public static string AutomationsResultSkippedRow => IsPt ? "pulado (editando uma linha)" : "skipped (editing a row)";
+        /// <summary>engine-automations.result.skipped.unknown · skipped (dialog open)</summary>
+        public static string AutomationsResultSkippedUnknown => IsPt ? "pulado (diálogo aberto)" : "skipped (dialog open)";
+        /// <summary>engine-automations.result.missed.busy · missed (busy past the grace window)</summary>
+        public static string AutomationsResultMissedBusy => IsPt ? "perdido (o app ficou ocupado além do prazo de tolerância)" : "missed (busy past the grace window)";
+        /// <summary>engine-automations.result.missed.starting · missed (app was still starting past the grace window)</summary>
+        public static string AutomationsResultMissedStarting => IsPt ? "perdido (o app ainda estava iniciando no fim do prazo de tolerância)" : "missed (app was still starting past the grace window)";
+        /// <summary>engine-automations.result.missed.scope · missed ({{what}} was open past the grace window)</summary>
+        public static string AutomationsResultMissedScope(string what) => IsPt ? $"perdido ({what} ficou aberta além do prazo de tolerância)" : $"missed ({what} was open past the grace window)";
+        /// <summary>engine-automations.result.missed.dialog · missed (a dialog was open past the grace window)</summary>
+        public static string AutomationsResultMissedDialog => IsPt ? "perdido (um diálogo ficou aberto além do prazo de tolerância)" : "missed (a dialog was open past the grace window)";
+        /// <summary>engine-automations.result.missed.hotkey · missed (capturing a hotkey past the grace window)</summary>
+        public static string AutomationsResultMissedHotkey => IsPt ? "perdido (capturando uma hotkey além do prazo de tolerância)" : "missed (capturing a hotkey past the grace window)";
+        /// <summary>engine-automations.result.missed.dataTable · missed (editing the data table past the grace window)</summary>
+        public static string AutomationsResultMissedDataTable => IsPt ? "perdido (editando a tabela do Data Loop além do prazo de tolerância)" : "missed (editing the data table past the grace window)";
+        /// <summary>engine-automations.result.missed.automation · missed (editing an automation past the grace window)</summary>
+        public static string AutomationsResultMissedAutomation => IsPt ? "perdido (editando uma automação além do prazo de tolerância)" : "missed (editing an automation past the grace window)";
+        /// <summary>engine-automations.result.missed.step · missed (editing a step past the grace window)</summary>
+        public static string AutomationsResultMissedStep => IsPt ? "perdido (editando um passo além do prazo de tolerância)" : "missed (editing a step past the grace window)";
+        /// <summary>engine-automations.result.missed.row · missed (editing a row past the grace window)</summary>
+        public static string AutomationsResultMissedRow => IsPt ? "perdido (editando uma linha além do prazo de tolerância)" : "missed (editing a row past the grace window)";
+        /// <summary>engine-automations.result.edge.hours · fire skipped (outside active hours {{hours}} — edge expired)</summary>
+        public static string AutomationsResultEdgeHours(string hours) => IsPt ? $"disparo pulado (fora da faixa de horas {hours} — aparição expirada)" : $"fire skipped (outside active hours {hours} — edge expired)";
+        /// <summary>engine-automations.result.edge.cooldown · fire skipped (cooldown from the previous fire still running — edge expired)</summary>
+        public static string AutomationsResultEdgeCooldown => IsPt ? "disparo pulado (a espera entre disparos ainda não tinha acabado — aparição expirada)" : "fire skipped (cooldown from the previous fire still running — edge expired)";
+        /// <summary>engine-automations.result.edge.starting · fire skipped (app was still starting — edge expired)</summary>
+        public static string AutomationsResultEdgeStarting => IsPt ? "disparo pulado (o app ainda estava iniciando — aparição expirada)" : "fire skipped (app was still starting — edge expired)";
+        /// <summary>engine-automations.result.edge.unsaved · fire skipped (unsaved changes — edge expired)</summary>
+        public static string AutomationsResultEdgeUnsaved => IsPt ? "disparo pulado (mudanças não salvas — aparição expirada)" : "fire skipped (unsaved changes — edge expired)";
+        /// <summary>engine-automations.result.edge.busy · fire skipped (busy too long — edge expired)</summary>
+        public static string AutomationsResultEdgeBusy => IsPt ? "disparo pulado (o app ficou ocupado tempo demais — aparição expirada)" : "fire skipped (busy too long — edge expired)";
+        /// <summary>engine-automations.result.edge.scope · fire skipped ({{what}} is open) — edge expired</summary>
+        public static string AutomationsResultEdgeScope(string what) => IsPt ? $"disparo pulado ({what} estava aberta) — aparição expirada" : $"fire skipped ({what} is open) — edge expired";
+        /// <summary>engine-automations.result.edge.dialog · fire skipped (a dialog is open) — edge expired</summary>
+        public static string AutomationsResultEdgeDialog => IsPt ? "disparo pulado (um diálogo estava aberto) — aparição expirada" : "fire skipped (a dialog is open) — edge expired";
+        /// <summary>engine-automations.result.edge.hotkey · fire skipped (capturing a hotkey) — edge expired</summary>
+        public static string AutomationsResultEdgeHotkey => IsPt ? "disparo pulado (capturando uma hotkey) — aparição expirada" : "fire skipped (capturing a hotkey) — edge expired";
+        /// <summary>engine-automations.result.edge.dataTable · fire skipped (editing the data table) — edge expired</summary>
+        public static string AutomationsResultEdgeDataTable => IsPt ? "disparo pulado (editando a tabela do Data Loop) — aparição expirada" : "fire skipped (editing the data table) — edge expired";
+        /// <summary>engine-automations.result.edge.automation · fire skipped (editing an automation) — edge expired</summary>
+        public static string AutomationsResultEdgeAutomation => IsPt ? "disparo pulado (editando uma automação) — aparição expirada" : "fire skipped (editing an automation) — edge expired";
+        /// <summary>engine-automations.result.edge.step · fire skipped (editing a step) — edge expired</summary>
+        public static string AutomationsResultEdgeStep => IsPt ? "disparo pulado (editando um passo) — aparição expirada" : "fire skipped (editing a step) — edge expired";
+        /// <summary>engine-automations.result.edge.row · fire skipped (editing a row) — edge expired</summary>
+        public static string AutomationsResultEdgeRow => IsPt ? "disparo pulado (editando uma linha) — aparição expirada" : "fire skipped (editing a row) — edge expired";
+        /// <summary>engine-automations.result.edge.unknown · fire skipped (a dialog was open) — edge expired</summary>
+        public static string AutomationsResultEdgeUnknown => IsPt ? "disparo pulado (um diálogo estava aberto) — aparição expirada" : "fire skipped (a dialog was open) — edge expired";
+        /// <summary>engine-automations.result.waiting · waiting (app starting)</summary>
+        public static string AutomationsResultWaiting => IsPt ? "esperando (o app está iniciando)" : "waiting (app starting)";
+        /// <summary>engine-automations.result.failed · failed to start</summary>
+        public static string AutomationsResultFailed => IsPt ? "não foi possível iniciar" : "failed to start";
+        /// <summary>engine-automations.result.late · skipped — {{minutes}} min late (machine asleep or clock changed)</summary>
+        public static string AutomationsResultLate(string minutes) => IsPt ? $"pulado — {minutes} min de atraso (o computador estava suspenso ou o relógio mudou)" : $"skipped — {minutes} min late (machine asleep or clock changed)";
+        /// <summary>engine-automations.result.outsideHours · outside active hours ({{hours}})</summary>
+        public static string AutomationsResultOutsideHours(string hours) => IsPt ? $"fora da faixa de horas ({hours})" : $"outside active hours ({hours})";
+        /// <summary>engine-automations.result.clipboardIgnored · clipboard change ignored (just after a replay)</summary>
+        public static string AutomationsResultClipboardIgnored => IsPt ? "mudança do clipboard ignorada (logo depois de uma reprodução)" : "clipboard change ignored (just after a replay)";
+        /// <summary>engine-automations.result.crashed · watcher crashed: {{reason}}</summary>
+        public static string AutomationsResultCrashed(string reason) => IsPt ? $"erro ao vigiar: {reason}" : $"watcher crashed: {reason}";
+        /// <summary>engine-bridge.alert.droppedUnreadable · Couldn't read the dropped file. Use Import… instead.</summary>
+        public static string BridgeAlertDroppedUnreadable => IsPt ? "Não foi possível ler o arquivo que você soltou. Use Importar… para escolhê-lo." : "Couldn't read the dropped file. Use Import… instead.";
+        /// <summary>engine-bridge.alert.automation.saveFailed · Could not save automation: {{reason}}</summary>
+        public static string BridgeAlertAutomationSaveFailed(string reason) => IsPt ? $"Não foi possível salvar a automação: {reason}" : $"Could not save automation: {reason}";
+        /// <summary>engine-bridge.alert.automation.armFailed · Could not arm automation: {{reason}}</summary>
+        public static string BridgeAlertAutomationArmFailed(string reason) => IsPt ? $"Não foi possível ativar ou desativar a automação: {reason}" : $"Could not arm automation: {reason}";
+        /// <summary>engine-bridge.alert.automation.unreadable · "{{name}}" could not be read from disk.</summary>
+        public static string BridgeAlertAutomationUnreadable(string name) => IsPt ? $"a macro \"{name}\" não pôde ser lida do disco." : $"\"{name}\" could not be read from disk.";
+        /// <summary>engine-bridge.alert.automation.fileGone · the file of "{{name}}" is no longer in the Profiles folder.</summary>
+        public static string BridgeAlertAutomationFileGone(string name) => IsPt ? $"o arquivo de \"{name}\" não está mais na pasta Profiles." : $"the file of \"{name}\" is no longer in the Profiles folder.";
+        /// <summary>engine-bridge.alert.captureStuck · Couldn't start {{what}}: {{holder}} is still open and didn't respond. Press Esc or right-click on it, then try again.</summary>
+        public static string BridgeAlertCaptureStuck(string holder, string what) => IsPt ? $"Não foi possível iniciar {what}: {holder} ainda está aberta e não respondeu. Aperte Esc ou clique nela com o botão direito e tente de novo." : $"Couldn't start {what}: {holder} is still open and didn't respond. Press Esc or right-click on it, then try again.";
+        /// <summary>engine-bridge.alert.image.captureSaveFailed · Couldn't save the captured image: {{reason}}</summary>
+        public static string BridgeAlertImageCaptureSaveFailed(string reason) => IsPt ? $"Não foi possível salvar a imagem capturada: {reason}" : $"Couldn't save the captured image: {reason}";
+        /// <summary>engine-bridge.alert.image.cropOpenFailed · Could not open the reference image to crop it.</summary>
+        public static string BridgeAlertImageCropOpenFailed => IsPt ? "Não foi possível abrir a imagem de referência para cortá-la." : "Could not open the reference image to crop it.";
+        /// <summary>engine-bridge.alert.image.cropSaveFailed · Could not save the cropped image: {{reason}}</summary>
+        public static string BridgeAlertImageCropSaveFailed(string reason) => IsPt ? $"Não foi possível salvar a imagem cortada: {reason}" : $"Could not save the cropped image: {reason}";
+        /// <summary>engine-bridge.alert.undoFailed · Could not undo: {{reason}}</summary>
+        public static string BridgeAlertUndoFailed(string reason) => IsPt ? $"Não foi possível desfazer: {reason}" : $"Could not undo: {reason}";
+        /// <summary>engine-bridge.alert.convert.nothing · Nothing to convert</summary>
+        public static string BridgeAlertConvertNothing => IsPt ? "Nada para converter" : "Nothing to convert";
+        /// <summary>engine-bridge.alert.convert.fieldsSaved · Fields saved, but the form was not changed — {{why}}</summary>
+        public static string BridgeAlertConvertFieldsSaved(string why) => IsPt ? $"Os campos foram salvos, mas a forma do clique não mudou — {why}" : $"Fields saved, but the form was not changed — {why}";
+        /// <summary>engine-bridge.alert.convert.fieldsSavedNothing · Fields saved, but the form was not changed — nothing to convert</summary>
+        public static string BridgeAlertConvertFieldsSavedNothing => IsPt ? "Os campos foram salvos, mas a forma do clique não mudou — nada para converter" : "Fields saved, but the form was not changed — nothing to convert";
+        /// <summary>engine-bridge.alert.convert.combinedAll · Converted to combined — {{n}} actions</summary>
+        public static string BridgeAlertConvertCombinedAll(string n, int count) => IsPt ? (count == 0 ? "Passos convertidos para combinados — nenhum passo no total" : (count < 2 ? $"Passos convertidos para combinados — {n} passo no total" : $"Passos convertidos para combinados — {n} passos no total")) : $"Converted to combined — {n} actions";
+        /// <summary>engine-bridge.alert.convert.pairedAll · Converted to paired — {{n}} actions</summary>
+        public static string BridgeAlertConvertPairedAll(string n, int count) => IsPt ? (count == 0 ? "Passos convertidos para pareados — nenhum passo no total" : (count < 2 ? $"Passos convertidos para pareados — {n} passo no total" : $"Passos convertidos para pareados — {n} passos no total")) : $"Converted to paired — {n} actions";
+        /// <summary>engine-bridge.alert.convert.mergedOne · Merged into one row</summary>
+        public static string BridgeAlertConvertMergedOne => IsPt ? "Par juntado em uma linha" : "Merged into one row";
+        /// <summary>engine-bridge.alert.convert.merged · Merged {{n}} pairs</summary>
+        public static string BridgeAlertConvertMerged(string n) => IsPt ? $"{n} pares juntados" : $"Merged {n} pairs";
+        /// <summary>engine-bridge.alert.convert.splitOne · Split into Down + Up</summary>
+        public static string BridgeAlertConvertSplitOne => IsPt ? "Passo separado em Down + Up" : "Split into Down + Up";
+        /// <summary>engine-bridge.alert.convert.split · Split {{n}} rows into Down + Up</summary>
+        public static string BridgeAlertConvertSplit(string n) => IsPt ? $"{n} passos separados em Down + Up" : $"Split {n} rows into Down + Up";
+        /// <summary>engine-bridge.alert.convert.leftSelections · {{done}} — 1 selection left as-is. {{why}}</summary>
+        public static string BridgeAlertConvertLeftSelections(string done, string n, string why, int count) => IsPt ? (count == 0 ? $"{done} — nenhuma seleção ficou como estava. {why}" : (count < 2 ? $"{done} — 1 seleção ficou como estava. {why}" : $"{done} — {n} seleções ficaram como estavam. {why}")) : (count == 1 ? $"{done} — 1 selection left as-is. {why}" : $"{done} — {n} selections left as-is. {why}");
+        /// <summary>engine-bridge.alert.convert.leftRows · {{done}} — 1 row left as-is. {{why}}</summary>
+        public static string BridgeAlertConvertLeftRows(string done, string n, string why, int count) => IsPt ? (count == 0 ? $"{done} — nenhuma linha ficou como estava. {why}" : (count < 2 ? $"{done} — 1 linha ficou como estava. {why}" : $"{done} — {n} linhas ficaram como estavam. {why}")) : (count == 1 ? $"{done} — 1 row left as-is. {why}" : $"{done} — {n} rows left as-is. {why}");
+        /// <summary>engine-bridge.alert.convert.dwellOne · {{done}} — the {{ms}} ms the button stayed down was dropped. A merged click only carries a hold from 200 ms up; Ctrl+Z restores the two rows.</summary>
+        public static string BridgeAlertConvertDwellOne(string done, string ms) => IsPt ? $"{done} — os {ms} ms com o botão apertado foram descartados. Um clique em uma linha só guarda o tempo apertado a partir de 200 ms; Ctrl+Z traz as duas linhas de volta." : $"{done} — the {ms} ms the button stayed down was dropped. A merged click only carries a hold from 200 ms up; Ctrl+Z restores the two rows.";
+        /// <summary>engine-bridge.alert.convert.dwellMany · {{done}} — {{ms}} ms of button-down time was dropped in total. A merged click only carries a hold from 200 ms up; Ctrl+Z restores the original rows.</summary>
+        public static string BridgeAlertConvertDwellMany(string done, string ms) => IsPt ? $"{done} — {ms} ms com o botão apertado foram descartados no total. Um clique em uma linha só guarda o tempo apertado a partir de 200 ms; Ctrl+Z traz as linhas originais de volta." : $"{done} — {ms} ms of button-down time was dropped in total. A merged click only carries a hold from 200 ms up; Ctrl+Z restores the original rows.";
+        /// <summary>engine-bridge.alert.browserMissing · Chrome extension not connected — 1 browser row will not work. Browser conditions read as "not found", so the macro can take the wrong branch without erroring.</summary>
+        public static string BridgeAlertBrowserMissing(string n, int count) => IsPt ? (count == 0 ? "A extensão do Chrome não está conectada." : (count < 2 ? "A extensão do Chrome não está conectada — 1 linha de navegador não vai funcionar. As condições de navegador dão \"não encontrado\", e a macro pode seguir pelo caminho errado sem dar erro." : $"A extensão do Chrome não está conectada — {n} linhas de navegador não vão funcionar. As condições de navegador dão \"não encontrado\", e a macro pode seguir pelo caminho errado sem dar erro.")) : (count == 1 ? "Chrome extension not connected — 1 browser row will not work. Browser conditions read as \"not found\", so the macro can take the wrong branch without erroring." : $"Chrome extension not connected — {n} browser rows will not work. Browser conditions read as \"not found\", so the macro can take the wrong branch without erroring.");
+        /// <summary>engine-bridge.alert.saveFailed · Could not save "{{name}}": {{reason}}</summary>
+        public static string BridgeAlertSaveFailed(string name, string reason) => IsPt ? $"Não foi possível salvar \"{name}\": {reason}" : $"Could not save \"{name}\": {reason}";
+        /// <summary>engine-bridge.alert.targetNotOpen · Target window not open: {{label}}</summary>
+        public static string BridgeAlertTargetNotOpen(string label) => IsPt ? $"A janela-alvo não está aberta: {label}" : $"Target window not open: {label}";
+        /// <summary>engine-bridge.alert.diagnosticsCopied · Diagnostics copied to the clipboard</summary>
+        public static string BridgeAlertDiagnosticsCopied => IsPt ? "Diagnóstico copiado para o clipboard" : "Diagnostics copied to the clipboard";
+        /// <summary>engine-bridge.alert.diagnosticsFailed · Could not copy diagnostics</summary>
+        public static string BridgeAlertDiagnosticsFailed => IsPt ? "Não foi possível copiar o diagnóstico" : "Could not copy diagnostics";
+        /// <summary>engine-bridge.alert.copy.clipboardFailed · Could not copy the actions to the clipboard. Try again.</summary>
+        public static string BridgeAlertCopyClipboardFailed => IsPt ? "Não foi possível copiar os passos para o clipboard. Tente de novo." : "Could not copy the actions to the clipboard. Try again.";
+        /// <summary>engine-bridge.alert.copy.copied · Copied {{n}} action(s)</summary>
+        public static string BridgeAlertCopyCopied(string n, int count) => IsPt ? (count == 0 ? "Nenhum passo copiado" : (count < 2 ? $"{n} passo copiado" : $"{n} passos copiados")) : $"Copied {n} action(s)";
+        /// <summary>engine-bridge.alert.copy.none · No actions copied</summary>
+        public static string BridgeAlertCopyNone => IsPt ? "Nenhum passo copiado" : "No actions copied";
+        /// <summary>engine-bridge.alert.copy.pasted · Pasted {{n}} action(s)</summary>
+        public static string BridgeAlertCopyPasted(string n, int count) => IsPt ? (count == 0 ? "Nenhum passo colado" : (count < 2 ? $"{n} passo colado" : $"{n} passos colados")) : $"Pasted {n} action(s)";
+        /// <summary>engine-bridge.alert.edit.rowChanged · Not saved: that row changed while it was being edited (the list or the macro changed underneath).</summary>
+        public static string BridgeAlertEditRowChanged => IsPt ? "Não salvo: essa linha mudou enquanto era editada (a lista ou a macro mudou por baixo)." : "Not saved: that row changed while it was being edited (the list or the macro changed underneath).";
+        /// <summary>engine-bridge.alert.edit.invalidDelay · "{{value}}" is not a valid delay. Use a whole number. Nothing was changed.</summary>
+        public static string BridgeAlertEditInvalidDelay(string value) => IsPt ? $"\"{value}\" não é um delay válido. Use um número inteiro. Nada foi alterado." : $"\"{value}\" is not a valid delay. Use a whole number. Nothing was changed.";
+        /// <summary>engine-bridge.alert.edit.invalidCoord · "{{value}}" is not a valid {{axis}}. Use a whole number. Nothing was changed.</summary>
+        public static string BridgeAlertEditInvalidCoord(string axis, string value) => IsPt ? $"\"{value}\" não é um {axis} válido. Use um número inteiro. Nada foi alterado." : $"\"{value}\" is not a valid {axis}. Use a whole number. Nothing was changed.";
+        /// <summary>engine-bridge.alert.edit.negativeDelay · A delay can't be negative ({{value}} ms). Use 0 or more. Nothing was changed.</summary>
+        public static string BridgeAlertEditNegativeDelay(string value) => IsPt ? $"Um delay não pode ser negativo ({value} ms). Use 0 ou mais. Nada foi alterado." : $"A delay can't be negative ({value} ms). Use 0 or more. Nothing was changed.";
+        /// <summary>engine-bridge.alert.edit.pointNotWhole · That point is not a whole number the screen can use — enter X and Y as integers.</summary>
+        public static string BridgeAlertEditPointNotWhole => IsPt ? "Esse ponto não é um número inteiro que a tela possa usar — digite X e Y como números inteiros." : "That point is not a whole number the screen can use — enter X and Y as integers.";
+        /// <summary>engine-bridge.alert.edit.atCursorSplit · An at-cursor click can't be split — the halves read a stored point.</summary>
+        public static string BridgeAlertEditAtCursorSplit => IsPt ? "Um clique no cursor não pode ser separado — as metades leem um ponto guardado." : "An at-cursor click can't be split — the halves read a stored point.";
+        /// <summary>engine-bridge.alert.bulk.none · (none)</summary>
+        public static string BridgeAlertBulkNone => IsPt ? "(nenhum)" : "(none)";
+        /// <summary>engine-bridge.alert.bulk.delayNoMode · The delay was not changed: the edit did not say whether to Set or Add.</summary>
+        public static string BridgeAlertBulkDelayNoMode => IsPt ? "O delay não foi alterado: a edição não disse se era Definir ou Somar." : "The delay was not changed: the edit did not say whether to Set or Add.";
+        /// <summary>engine-bridge.alert.bulk.delayInvalid · {{value}} is not a valid delay. Use a whole number of milliseconds.</summary>
+        public static string BridgeAlertBulkDelayInvalid(string value) => IsPt ? $"{value} não é um delay válido. Use um número inteiro de milissegundos." : $"{value} is not a valid delay. Use a whole number of milliseconds.";
+        /// <summary>engine-bridge.alert.bulk.delayNegative · A delay can't be negative ({{ms}} ms). Use 0 or more, or Add to subtract. Nothing was changed.</summary>
+        public static string BridgeAlertBulkDelayNegative(string ms) => IsPt ? $"Um delay não pode ser negativo ({ms} ms). Use 0 ou mais, ou Somar para subtrair. Nada foi alterado." : $"A delay can't be negative ({ms} ms). Use 0 or more, or Add to subtract. Nothing was changed.";
+        /// <summary>engine-bridge.alert.bulk.delayNone · The selected rows have no delay to change (block markers carry none).</summary>
+        public static string BridgeAlertBulkDelayNone => IsPt ? "Os passos selecionados não têm delay para alterar (os marcadores de bloco não têm)." : "The selected rows have no delay to change (block markers carry none).";
+        /// <summary>engine-bridge.alert.bulk.delayOverflow · Adding {{ms}} ms would push some of the selected rows past the longest possible delay. Nothing was changed.</summary>
+        public static string BridgeAlertBulkDelayOverflow(string ms) => IsPt ? $"Somar {ms} ms levaria alguns dos passos selecionados além do maior delay possível. Nada foi alterado." : $"Adding {ms} ms would push some of the selected rows past the longest possible delay. Nothing was changed.";
+        /// <summary>engine-bridge.alert.bulk.delaySame · Nothing changed: the delay is already {{ms}} ms on the selected actions.</summary>
+        public static string BridgeAlertBulkDelaySame(string ms) => IsPt ? $"Nada mudou: o delay já é {ms} ms nos passos selecionados." : $"Nothing changed: the delay is already {ms} ms on the selected actions.";
+        /// <summary>engine-bridge.alert.bulk.delayAddZero · Nothing changed: adding 0 ms leaves the delay where it was.</summary>
+        public static string BridgeAlertBulkDelayAddZero => IsPt ? "Nada mudou: somar 0 ms deixa o delay como estava." : "Nothing changed: adding 0 ms leaves the delay where it was.";
+        /// <summary>engine-bridge.alert.bulk.delayAtZero · Nothing changed: the selected actions are already at 0 ms.</summary>
+        public static string BridgeAlertBulkDelayAtZero => IsPt ? "Nada mudou: os passos selecionados já estão em 0 ms." : "Nothing changed: the selected actions are already at 0 ms.";
+        /// <summary>engine-bridge.alert.bulk.delayAdded · Added {{ms}} ms to the delay on {{n}} action(s)</summary>
+        public static string BridgeAlertBulkDelayAdded(string ms, string n, int count) => IsPt ? (count == 0 ? "Nenhum delay mudou" : (count < 2 ? $"{ms} ms somados ao delay de {n} passo" : $"{ms} ms somados ao delay de {n} passos")) : $"Added {ms} ms to the delay on {n} action(s)";
+        /// <summary>engine-bridge.alert.bulk.delayFloored · {{done}} — {{n}} stopped at 0 ms</summary>
+        public static string BridgeAlertBulkDelayFloored(string done, string n, int count) => IsPt ? (count == 0 ? $"{done} — nenhum parou em 0 ms" : (count < 2 ? $"{done} — {n} parou em 0 ms" : $"{done} — {n} pararam em 0 ms")) : $"{done} — {n} stopped at 0 ms";
+        /// <summary>engine-bridge.alert.bulk.delaySet · Set delay to {{ms}} ms on {{n}} action(s)</summary>
+        public static string BridgeAlertBulkDelaySet(string ms, string n, int count) => IsPt ? (count == 0 ? "Nenhum delay mudou" : (count < 2 ? $"Delay definido como {ms} ms em {n} passo" : $"Delay definido como {ms} ms em {n} passos")) : $"Set delay to {ms} ms on {n} action(s)";
+        /// <summary>engine-bridge.alert.bulk.coordNoMode · {{axis}} was not changed: the edit did not say whether to Set or Add.</summary>
+        public static string BridgeAlertBulkCoordNoMode(string axis) => IsPt ? $"O {axis} não foi alterado: a edição não disse se era Definir ou Somar." : $"{axis} was not changed: the edit did not say whether to Set or Add.";
+        /// <summary>engine-bridge.alert.bulk.coordInvalid · {{value}} is not a valid {{axis}} value. Use a whole number.</summary>
+        public static string BridgeAlertBulkCoordInvalid(string axis, string value) => IsPt ? $"{value} não é um valor de {axis} válido. Use um número inteiro." : $"{value} is not a valid {axis} value. Use a whole number.";
+        /// <summary>engine-bridge.alert.bulk.coordNoClicks · X/Y can only be set on mouse click actions.</summary>
+        public static string BridgeAlertBulkCoordNoClicks => IsPt ? "X/Y só podem ser definidos em passos de clique do mouse." : "X/Y can only be set on mouse click actions.";
+        /// <summary>engine-bridge.alert.bulk.coordOverflow · Adding {{value}} to {{axis}} would push some of the selected rows past the largest possible coordinate. Nothing was changed.</summary>
+        public static string BridgeAlertBulkCoordOverflow(string axis, string value) => IsPt ? $"Somar {value} ao {axis} levaria alguns dos passos selecionados além da maior coordenada possível. Nada foi alterado." : $"Adding {value} to {axis} would push some of the selected rows past the largest possible coordinate. Nothing was changed.";
+        /// <summary>engine-bridge.alert.bulk.coordAddZero · Nothing changed: adding 0 leaves {{axis}} where it was.</summary>
+        public static string BridgeAlertBulkCoordAddZero(string axis) => IsPt ? $"Nada mudou: somar 0 deixa o {axis} como estava." : $"Nothing changed: adding 0 leaves {axis} where it was.";
+        /// <summary>engine-bridge.alert.bulk.coordSame · Nothing changed: {{axis}} is already {{value}} on the selected clicks.</summary>
+        public static string BridgeAlertBulkCoordSame(string axis, string value) => IsPt ? $"Nada mudou: o {axis} já é {value} nos cliques selecionados." : $"Nothing changed: {axis} is already {value} on the selected clicks.";
+        /// <summary>engine-bridge.alert.bulk.coordAdded · Added {{value}} to {{axis}} on {{n}} action(s)</summary>
+        public static string BridgeAlertBulkCoordAdded(string axis, string n, string value, int count) => IsPt ? (count == 0 ? "Nenhum passo mudou" : (count < 2 ? $"{value} somado ao {axis} de {n} passo" : $"{value} somado ao {axis} de {n} passos")) : $"Added {value} to {axis} on {n} action(s)";
+        /// <summary>engine-bridge.alert.bulk.coordSet · Set {{axis}} to {{value}} on {{n}} action(s)</summary>
+        public static string BridgeAlertBulkCoordSet(string axis, string n, string value, int count) => IsPt ? (count == 0 ? "Nenhum passo mudou" : (count < 2 ? $"{axis} definido como {value} em {n} passo" : $"{axis} definido como {value} em {n} passos")) : $"Set {axis} to {value} on {n} action(s)";
+        /// <summary>engine-bridge.alert.cycleReset · Cycle '{{name}}' reset to the first item</summary>
+        public static string BridgeAlertCycleReset(string name) => IsPt ? $"Ciclo '{name}' voltou ao primeiro item" : $"Cycle '{name}' reset to the first item";
+        /// <summary>engine-bridge.alert.nextRow · Next run starts at row {{row}}</summary>
+        public static string BridgeAlertNextRow(string row) => IsPt ? $"A próxima execução começa na linha {row}" : $"Next run starts at row {row}";
+        /// <summary>engine-bridge.alert.rowReset · Data-loop row position reset to the first row</summary>
+        public static string BridgeAlertRowReset => IsPt ? "A posição do Data Loop voltou à primeira linha" : "Data-loop row position reset to the first row";
+        /// <summary>engine-bridge.alert.imageInsert.conditionSaveFailed · Couldn't save the captured image, so no condition was inserted: {{reason}}</summary>
+        public static string BridgeAlertImageInsertConditionSaveFailed(string reason) => IsPt ? $"Não foi possível salvar a imagem capturada, então nenhuma condição foi inserida: {reason}" : $"Couldn't save the captured image, so no condition was inserted: {reason}";
+        /// <summary>engine-bridge.alert.imageInsert.stepSaveFailed · Couldn't save the captured image, so no action was inserted: {{reason}}</summary>
+        public static string BridgeAlertImageInsertStepSaveFailed(string reason) => IsPt ? $"Não foi possível salvar a imagem capturada, então nenhum passo foi inserido: {reason}" : $"Couldn't save the captured image, so no action was inserted: {reason}";
+        /// <summary>engine-bridge.alert.imageInsert.recaptureSaveFailed · Couldn't save the recaptured image — the action still points at the old one: {{reason}}</summary>
+        public static string BridgeAlertImageInsertRecaptureSaveFailed(string reason) => IsPt ? $"Não foi possível salvar a nova imagem capturada — o passo continua com a antiga: {reason}" : $"Couldn't save the recaptured image — the action still points at the old one: {reason}";
+        /// <summary>engine-bridge.alert.imageInsert.fileUnusable · Couldn't use that file as the reference image: {{reason}}</summary>
+        public static string BridgeAlertImageInsertFileUnusable(string reason) => IsPt ? $"Não foi possível usar esse arquivo como imagem de referência: {reason}" : $"Couldn't use that file as the reference image: {reason}";
+        /// <summary>engine-bridge.alert.imageInsert.gone · That reference image isn't on disk any more. Capture it again.</summary>
+        public static string BridgeAlertImageInsertGone => IsPt ? "Essa imagem de referência não está mais no disco. Capture-a de novo." : "That reference image isn't on disk any more. Capture it again.";
+        /// <summary>engine-bridge.alert.imageInsert.savedAs · Saved {{file}}</summary>
+        public static string BridgeAlertImageInsertSavedAs(string file) => IsPt ? $"Imagem salva como {file}" : $"Saved {file}";
+        /// <summary>engine-bridge.alert.imageInsert.saveAsFailed · Couldn't save the image: {{reason}}</summary>
+        public static string BridgeAlertImageInsertSaveAsFailed(string reason) => IsPt ? $"Não foi possível salvar a imagem: {reason}" : $"Couldn't save the image: {reason}";
+        /// <summary>engine-bridge.alert.imageInsert.cropSaveFailed · Couldn't save the cropped image: {{reason}}</summary>
+        public static string BridgeAlertImageInsertCropSaveFailed(string reason) => IsPt ? $"Não foi possível salvar a imagem cortada: {reason}" : $"Couldn't save the cropped image: {reason}";
+        /// <summary>engine-bridge.alert.screenText.readFailed · Couldn't read the region: {{reason}}</summary>
+        public static string BridgeAlertScreenTextReadFailed(string reason) => IsPt ? $"Não foi possível ler a região: {reason}" : $"Couldn't read the region: {reason}";
+        /// <summary>engine-bridge.alert.screenText.noneRead · No text read in that region — type it in the editor, or try Text color.</summary>
+        public static string BridgeAlertScreenTextNoneRead => IsPt ? "Nenhum texto lido nessa região — digite-o no editor ou tente a Cor do texto." : "No text read in that region — type it in the editor, or try Text color.";
+        /// <summary>engine-bridge.alert.screenText.none · No text found in that region</summary>
+        public static string BridgeAlertScreenTextNone => IsPt ? "Nenhum texto encontrado nessa região" : "No text found in that region";
+        /// <summary>engine-bridge.alert.screenText.clipboardBusy · Couldn't write to the clipboard — another app is holding it. Try again.</summary>
+        public static string BridgeAlertScreenTextClipboardBusy => IsPt ? "Não foi possível escrever no clipboard — outro app está com ele. Tente de novo." : "Couldn't write to the clipboard — another app is holding it. Try again.";
+        /// <summary>engine-bridge.alert.screenText.copiedLines · Copied {{n}} lines: "{{text}}"</summary>
+        public static string BridgeAlertScreenTextCopiedLines(string n, string text) => IsPt ? $"{n} linhas copiadas: \"{text}\"" : $"Copied {n} lines: \"{text}\"";
+        /// <summary>engine-bridge.alert.screenText.copied · Copied: "{{text}}"</summary>
+        public static string BridgeAlertScreenTextCopied(string text) => IsPt ? $"Copiado: \"{text}\"" : $"Copied: \"{text}\"";
+        /// <summary>engine-bridge.alert.screenText.failed · Copy screen text failed: {{reason}}</summary>
+        public static string BridgeAlertScreenTextFailed(string reason) => IsPt ? $"Não foi possível copiar o texto da tela: {reason}" : $"Copy screen text failed: {reason}";
+        /// <summary>engine-bridge.alert.target.notOpenPick · Target window not open: {{label}}. Open it and pick again.</summary>
+        public static string BridgeAlertTargetNotOpenPick(string label) => IsPt ? $"A janela-alvo não está aberta: {label}. Abra-a e escolha de novo." : $"Target window not open: {label}. Open it and pick again.";
+        /// <summary>engine-bridge.alert.target.minimisedPick · Target window is minimised: {{label}}. Restore it and pick again.</summary>
+        public static string BridgeAlertTargetMinimisedPick(string label) => IsPt ? $"A janela-alvo está minimizada: {label}. Restaure-a e escolha de novo." : $"Target window is minimised: {label}. Restore it and pick again.";
+        /// <summary>engine-bridge.alert.runRefuse.replay · A replay is running — stop it first. {{why}}</summary>
+        public static string BridgeAlertRunRefuseReplay(string why) => IsPt ? $"Uma reprodução está rodando — pare-a antes. {why}" : $"A replay is running — stop it first. {why}";
+        /// <summary>engine-bridge.alert.runRefuse.recording · A recording is running — stop it first. {{why}}</summary>
+        public static string BridgeAlertRunRefuseRecording(string why) => IsPt ? $"Uma gravação está rodando — pare-a antes. {why}" : $"A recording is running — stop it first. {why}";
+        /// <summary>engine-bridge.alert.runRefuse.picker · A full-screen picker would cover the run and swallow the Stop key.</summary>
+        public static string BridgeAlertRunRefusePicker => IsPt ? "Uma escolha em tela cheia cobriria a execução e engoliria a tecla de parar." : "A full-screen picker would cover the run and swallow the Stop key.";
+        /// <summary>engine-bridge.alert.runRefuse.detection · Window detection takes the next click you make, and the run is using the mouse.</summary>
+        public static string BridgeAlertRunRefuseDetection => IsPt ? "A detecção da janela usa o próximo clique que você der, e a execução está usando o mouse." : "Window detection takes the next click you make, and the run is using the mouse.";
+        /// <summary>engine-bridge.alert.anchor.unnamedPoint · Name the anchor window first (process name or window title) — until then there is no origin to store the point against.</summary>
+        public static string BridgeAlertAnchorUnnamedPoint => IsPt ? "Identifique primeiro a janela que as coordenadas seguem (o nome do processo ou o título da janela) — até lá, não há origem para guardar o ponto." : "Name the anchor window first (process name or window title) — until then there is no origin to store the point against.";
+        /// <summary>engine-bridge.alert.anchor.closedPoint · The anchor window is not open (or is minimised) — restore it and pick again, or turn off "Relative to a window".</summary>
+        public static string BridgeAlertAnchorClosedPoint => IsPt ? "A janela que as coordenadas seguem não está aberta (ou está minimizada) — restaure-a e escolha de novo, ou desative \"Relativo a uma janela\"." : "The anchor window is not open (or is minimised) — restore it and pick again, or turn off \"Relative to a window\".";
+        /// <summary>engine-bridge.alert.anchor.unnamedRegion · Name the anchor window first (process name or window title) — until then there is no origin to store the region against.</summary>
+        public static string BridgeAlertAnchorUnnamedRegion => IsPt ? "Identifique primeiro a janela que as coordenadas seguem (o nome do processo ou o título da janela) — até lá, não há origem para guardar a região." : "Name the anchor window first (process name or window title) — until then there is no origin to store the region against.";
+        /// <summary>engine-bridge.alert.anchor.closedRegion · The anchor window is not open (or is minimised) — restore it and set the region again, or turn off "Relative to a window".</summary>
+        public static string BridgeAlertAnchorClosedRegion => IsPt ? "A janela que as coordenadas seguem não está aberta (ou está minimizada) — restaure-a e defina a região de novo, ou desative \"Relativo a uma janela\"." : "The anchor window is not open (or is minimised) — restore it and set the region again, or turn off \"Relative to a window\".";
+        /// <summary>engine-bridge.alert.clickerPresetsFull · Clicker presets are limited to {{max}}. Delete one to save another.</summary>
+        public static string BridgeAlertClickerPresetsFull(string max) => IsPt ? $"Os presets do Clicker são limitados a {max}. Exclua um para salvar outro." : $"Clicker presets are limited to {max}. Delete one to save another.";
+        /// <summary>engine-bridge.alert.clickerPresetsFullRestore · Clicker presets are limited to {{max}}. Delete one to restore "{{name}}".</summary>
+        public static string BridgeAlertClickerPresetsFullRestore(string max, string name) => IsPt ? $"Os presets do Clicker são limitados a {max}. Exclua um para restaurar \"{name}\"." : $"Clicker presets are limited to {max}. Delete one to restore \"{name}\".";
+        /// <summary>engine-bridge.alert.admin.cancelled · Restart as administrator was cancelled.</summary>
+        public static string BridgeAlertAdminCancelled => IsPt ? "A reinicialização como administrador foi cancelada." : "Restart as administrator was cancelled.";
+        /// <summary>engine-bridge.alert.admin.failed · Could not restart as administrator.</summary>
+        public static string BridgeAlertAdminFailed => IsPt ? "Não foi possível reiniciar como administrador." : "Could not restart as administrator.";
+        /// <summary>engine-bridge.alert.macro.switchBusy · Stop the recording or replay before switching macros.</summary>
+        public static string BridgeAlertMacroSwitchBusy => IsPt ? "Pare a gravação ou a reprodução antes de trocar de macro." : "Stop the recording or replay before switching macros.";
+        /// <summary>engine-bridge.alert.macro.openGone · Could not open "{{name}}" — its file is no longer in the Profiles folder.</summary>
+        public static string BridgeAlertMacroOpenGone(string name) => IsPt ? $"Não foi possível abrir \"{name}\" — o arquivo dela não está mais na pasta Profiles." : $"Could not open \"{name}\" — its file is no longer in the Profiles folder.";
+        /// <summary>engine-bridge.alert.macro.openFailed · Could not open "{{name}}": {{reason}}</summary>
+        public static string BridgeAlertMacroOpenFailed(string name, string reason) => IsPt ? $"Não foi possível abrir \"{name}\": {reason}" : $"Could not open \"{name}\": {reason}";
+        /// <summary>engine-bridge.alert.macro.revertBusy · Stop the recording or replay before reverting the macro.</summary>
+        public static string BridgeAlertMacroRevertBusy => IsPt ? "Pare a gravação ou a reprodução antes de reverter a macro." : "Stop the recording or replay before reverting the macro.";
+        /// <summary>engine-bridge.alert.macro.revertNone · There is no open macro to revert.</summary>
+        public static string BridgeAlertMacroRevertNone => IsPt ? "Não há macro aberta para reverter." : "There is no open macro to revert.";
+        /// <summary>engine-bridge.alert.macro.revertUnreadable · its file could not be read back</summary>
+        public static string BridgeAlertMacroRevertUnreadable => IsPt ? "o arquivo dela não pôde ser lido de volta" : "its file could not be read back";
+        /// <summary>engine-bridge.alert.macro.revertFailed · Could not revert "{{name}}": {{reason}}</summary>
+        public static string BridgeAlertMacroRevertFailed(string name, string reason) => IsPt ? $"Não foi possível reverter \"{name}\": {reason}" : $"Could not revert \"{name}\": {reason}";
+        /// <summary>engine-bridge.alert.macro.invalidName · Invalid macro name.</summary>
+        public static string BridgeAlertMacroInvalidName => IsPt ? "Nome de macro inválido." : "Invalid macro name.";
+        /// <summary>engine-bridge.alert.macro.nameTaken · A macro named "{{name}}" already exists</summary>
+        public static string BridgeAlertMacroNameTaken(string name) => IsPt ? $"Já existe uma macro chamada \"{name}\"" : $"A macro named \"{name}\" already exists";
+        /// <summary>engine-bridge.alert.macro.createFailed · Could not create macro: {{reason}}</summary>
+        public static string BridgeAlertMacroCreateFailed(string reason) => IsPt ? $"Não foi possível criar a macro: {reason}" : $"Could not create macro: {reason}";
+        /// <summary>engine-bridge.alert.macro.updateFailed · Could not update "{{name}}": {{reason}}</summary>
+        public static string BridgeAlertMacroUpdateFailed(string name, string reason) => IsPt ? $"Não foi possível atualizar \"{name}\": {reason}" : $"Could not update \"{name}\": {reason}";
+        /// <summary>engine-bridge.alert.macro.duplicateFailed · Could not duplicate "{{name}}": {{reason}}</summary>
+        public static string BridgeAlertMacroDuplicateFailed(string name, string reason) => IsPt ? $"Não foi possível duplicar \"{name}\": {reason}" : $"Could not duplicate \"{name}\": {reason}";
+        /// <summary>engine-bridge.alert.macro.renamedRefs · Renamed to '{{name}}' and updated {{n}} Run Macro reference.</summary>
+        public static string BridgeAlertMacroRenamedRefs(string n, string name, int count) => IsPt ? (count == 0 ? $"Renomeada para '{name}'." : (count < 2 ? $"Renomeada para '{name}', e {n} referência do Run Macro foi atualizada." : $"Renomeada para '{name}', e {n} referências do Run Macro foram atualizadas.")) : (count == 1 ? $"Renamed to '{name}' and updated {n} Run Macro reference." : $"Renamed to '{name}' and updated {n} Run Macro references.");
+        /// <summary>engine-bridge.alert.macro.renameFailed · Could not rename "{{name}}": {{reason}}</summary>
+        public static string BridgeAlertMacroRenameFailed(string name, string reason) => IsPt ? $"Não foi possível renomear \"{name}\": {reason}" : $"Could not rename \"{name}\": {reason}";
+        /// <summary>engine-bridge.alert.macro.imagesLeftBehind · Renamed to "{{name}}", but some reference images were in use and stayed under the old name. Its image steps may miss them until the next start, which moves them over.</summary>
+        public static string BridgeAlertMacroImagesLeftBehind(string name) => IsPt ? $"Renomeada para \"{name}\", mas algumas imagens de referência estavam em uso e ficaram com o nome antigo. Os passos de imagem dela podem não encontrá-las até a próxima abertura, que as move." : $"Renamed to \"{name}\", but some reference images were in use and stayed under the old name. Its image steps may miss them until the next start, which moves them over.";
+        /// <summary>engine-bridge.alert.macro.deletedDangling · Deleted '{{name}}'. {{n}} dangling reference in other macros will silently no-op at replay.</summary>
+        public static string BridgeAlertMacroDeletedDangling(string n, string name, int count) => IsPt ? (count == 0 ? $"Macro '{name}' excluída." : (count < 2 ? $"Macro '{name}' excluída. {n} referência em outras macros ficou sem destino e não vai fazer nada ao reproduzir." : $"Macro '{name}' excluída. {n} referências em outras macros ficaram sem destino e não vão fazer nada ao reproduzir.")) : (count == 1 ? $"Deleted '{name}'. {n} dangling reference in other macros will silently no-op at replay." : $"Deleted '{name}'. {n} dangling references in other macros will silently no-op at replay.");
+        /// <summary>engine-bridge.alert.macro.deleteFailed · Could not delete "{{name}}": {{reason}}</summary>
+        public static string BridgeAlertMacroDeleteFailed(string name, string reason) => IsPt ? $"Não foi possível excluir \"{name}\": {reason}" : $"Could not delete \"{name}\": {reason}";
+        /// <summary>engine-bridge.alert.macro.gone · "{{name}}" no longer exists — it was renamed or deleted. Nothing was changed.</summary>
+        public static string BridgeAlertMacroGone(string name) => IsPt ? $"\"{name}\" não existe mais — foi renomeada ou excluída. Nada foi alterado." : $"\"{name}\" no longer exists — it was renamed or deleted. Nothing was changed.";
+        /// <summary>engine-bridge.alert.hotkey.usedBy · "{{hotkey}}" is already used by {{conflict}}.</summary>
+        public static string BridgeAlertHotkeyUsedBy(string conflict, string hotkey) => IsPt ? $"\"{hotkey}\" já é usada pela {conflict}." : $"\"{hotkey}\" is already used by {conflict}.";
+        /// <summary>engine-bridge.alert.hotkey.hotstringUsedBy · Hotstring "{{sequence}}" is already used by {{conflict}}.</summary>
+        public static string BridgeAlertHotkeyHotstringUsedBy(string conflict, string sequence) => IsPt ? $"A hotstring \"{sequence}\" já é usada pela {conflict}." : $"Hotstring \"{sequence}\" is already used by {conflict}.";
+        /// <summary>engine-bridge.alert.hotkey.removeTargetHotkey · Cannot remove target: hotkey "{{hotkey}}" would conflict with {{conflict}}.</summary>
+        public static string BridgeAlertHotkeyRemoveTargetHotkey(string conflict, string hotkey) => IsPt ? $"Não é possível remover a janela-alvo: a hotkey \"{hotkey}\" entraria em conflito com a {conflict}." : $"Cannot remove target: hotkey \"{hotkey}\" would conflict with {conflict}.";
+        /// <summary>engine-bridge.alert.hotkey.removeTargetHotstring · Cannot remove target: hotstring "{{sequence}}" would conflict with {{conflict}}.</summary>
+        public static string BridgeAlertHotkeyRemoveTargetHotstring(string conflict, string sequence) => IsPt ? $"Não é possível remover a janela-alvo: a hotstring \"{sequence}\" entraria em conflito com a {conflict}." : $"Cannot remove target: hotstring \"{sequence}\" would conflict with {conflict}.";
+        /// <summary>engine-bridge.alert.hotkey.removeFolderTargetHotkey · Cannot remove folder target: hotkey "{{hotkey}}" on "{{name}}" would conflict with {{conflict}}.</summary>
+        public static string BridgeAlertHotkeyRemoveFolderTargetHotkey(string conflict, string hotkey, string name) => IsPt ? $"Não é possível remover a janela-alvo da pasta: a hotkey \"{hotkey}\" de \"{name}\" entraria em conflito com a {conflict}." : $"Cannot remove folder target: hotkey \"{hotkey}\" on \"{name}\" would conflict with {conflict}.";
+        /// <summary>engine-bridge.alert.hotkey.removeFolderTargetHotstring · Cannot remove folder target: hotstring "{{sequence}}" on "{{name}}" would conflict with {{conflict}}.</summary>
+        public static string BridgeAlertHotkeyRemoveFolderTargetHotstring(string conflict, string name, string sequence) => IsPt ? $"Não é possível remover a janela-alvo da pasta: a hotstring \"{sequence}\" de \"{name}\" entraria em conflito com a {conflict}." : $"Cannot remove folder target: hotstring \"{sequence}\" on \"{name}\" would conflict with {conflict}.";
+        /// <summary>engine-bridge.alert.hotkey.appVsMacro · "{{hotkey}}" is used by {{conflict}}, so the macro "{{name}}" on the same keys won't fire. Change one of them (Settings › Hotkeys, or the macro's hotkey).</summary>
+        public static string BridgeAlertHotkeyAppVsMacro(string conflict, string hotkey, string name) => IsPt ? $"\"{hotkey}\" é usada pela {conflict}, então a macro \"{name}\" com as mesmas teclas não vai disparar. Mude uma delas (Configurações › Hotkeys, ou a hotkey da macro)." : $"\"{hotkey}\" is used by {conflict}, so the macro \"{name}\" on the same keys won't fire. Change one of them (Settings › Hotkeys, or the macro's hotkey).";
+        /// <summary>engine-bridge.alert.hotkey.clickerSame · "{{hotkey}}" is set as both Clicker Start and Clicker Pause.</summary>
+        public static string BridgeAlertHotkeyClickerSame(string hotkey) => IsPt ? $"\"{hotkey}\" é ao mesmo tempo a hotkey “Iniciar/parar” e a “Pausar” do Clicker." : $"\"{hotkey}\" is set as both Clicker Start and Clicker Pause.";
+        /// <summary>engine-bridge.alert.hotkey.saveFailed · Could not save the hotkey of "{{name}}": {{reason}}</summary>
+        public static string BridgeAlertHotkeySaveFailed(string name, string reason) => IsPt ? $"Não foi possível salvar a hotkey de \"{name}\": {reason}" : $"Could not save the hotkey of \"{name}\": {reason}";
+        /// <summary>engine-bridge.alert.hotkey.removeFailed · Could not remove the hotkey of "{{name}}": {{reason}}</summary>
+        public static string BridgeAlertHotkeyRemoveFailed(string name, string reason) => IsPt ? $"Não foi possível remover a hotkey de \"{name}\": {reason}" : $"Could not remove the hotkey of \"{name}\": {reason}";
+        /// <summary>engine-bridge.alert.hotkey.hotstringTooShort · Hotstring must be at least 2 characters (a-z, 0-9, - . / , ; =).</summary>
+        public static string BridgeAlertHotkeyHotstringTooShort => IsPt ? "A hotstring precisa ter pelo menos 2 caracteres (a-z, 0-9, - . / , ; =)." : "Hotstring must be at least 2 characters (a-z, 0-9, - . / , ; =).";
+        /// <summary>engine-bridge.alert.hotkey.hotstringSaveFailed · Could not save the hotstring of "{{name}}": {{reason}}</summary>
+        public static string BridgeAlertHotkeyHotstringSaveFailed(string name, string reason) => IsPt ? $"Não foi possível salvar a hotstring de \"{name}\": {reason}" : $"Could not save the hotstring of \"{name}\": {reason}";
+        /// <summary>engine-bridge.alert.hotkey.hotstringRemoveFailed · Could not remove the hotstring of "{{name}}": {{reason}}</summary>
+        public static string BridgeAlertHotkeyHotstringRemoveFailed(string name, string reason) => IsPt ? $"Não foi possível remover a hotstring de \"{name}\": {reason}" : $"Could not remove the hotstring of \"{name}\": {reason}";
+        /// <summary>engine-bridge.alert.hotkey.by.macro · the macro "{{name}}"</summary>
+        public static string BridgeAlertHotkeyByMacro(string name) => IsPt ? $"macro \"{name}\"" : $"the macro \"{name}\"";
+        /// <summary>engine-bridge.alert.hotkey.by.record · “Record”</summary>
+        public static string BridgeAlertHotkeyByRecord => IsPt ? "hotkey “Gravar”" : "“Record”";
+        /// <summary>engine-bridge.alert.hotkey.by.replay · “Replay or stop”</summary>
+        public static string BridgeAlertHotkeyByReplay => IsPt ? "hotkey “Reproduzir ou parar”" : "“Replay or stop”";
+        /// <summary>engine-bridge.alert.hotkey.by.shortcuts · “Shortcuts on or off”</summary>
+        public static string BridgeAlertHotkeyByShortcuts => IsPt ? "hotkey “Atalhos ativados ou desativados”" : "“Shortcuts on or off”";
+        /// <summary>engine-bridge.alert.hotkey.by.front · “Bring {{app}} to the front”</summary>
+        public static string BridgeAlertHotkeyByFront(string app) => IsPt ? $"hotkey “Trazer o {app} para a frente”" : $"“Bring {app} to the front”";
+        /// <summary>engine-bridge.alert.hotkey.by.clicker · “Open the Clicker”</summary>
+        public static string BridgeAlertHotkeyByClicker => IsPt ? "hotkey “Abrir o Clicker”" : "“Open the Clicker”";
+        /// <summary>engine-bridge.alert.hotkey.by.clip · “Copy the selection to a clip slot”</summary>
+        public static string BridgeAlertHotkeyByClip => IsPt ? "hotkey “Copiar a seleção para um slot”" : "“Copy the selection to a clip slot”";
+        /// <summary>engine-bridge.alert.hotkey.by.screenText · “Copy text from the screen”</summary>
+        public static string BridgeAlertHotkeyByScreenText => IsPt ? "hotkey “Copiar texto da tela”" : "“Copy text from the screen”";
+        /// <summary>engine-bridge.alert.hotkey.by.clickerStart · the Clicker’s “Start and stop”</summary>
+        public static string BridgeAlertHotkeyByClickerStart => IsPt ? "hotkey “Iniciar/parar” do Clicker" : "the Clicker’s “Start and stop”";
+        /// <summary>engine-bridge.alert.hotkey.by.clickerPause · the Clicker’s “Pause”</summary>
+        public static string BridgeAlertHotkeyByClickerPause => IsPt ? "hotkey “Pausar” do Clicker" : "the Clicker’s “Pause”";
+        /// <summary>engine-bridge.alert.window.fillOne · Please specify at least a process name or window title.</summary>
+        public static string BridgeAlertWindowFillOne => IsPt ? "Informe pelo menos o nome de um processo ou o título de uma janela." : "Please specify at least a process name or window title.";
+        /// <summary>engine-bridge.alert.window.regexInvalid · Invalid regex pattern.</summary>
+        public static string BridgeAlertWindowRegexInvalid => IsPt ? "Padrão de regex inválido." : "Invalid regex pattern.";
+        /// <summary>engine-bridge.alert.window.regexInvalidCheck · Invalid regex pattern. Please check the syntax.</summary>
+        public static string BridgeAlertWindowRegexInvalidCheck => IsPt ? "Padrão de regex inválido. Confira a sintaxe." : "Invalid regex pattern. Please check the syntax.";
+        /// <summary>engine-bridge.alert.window.folderGone · The folder "{{name}}" no longer exists — it was renamed or deleted. Nothing was changed.</summary>
+        public static string BridgeAlertWindowFolderGone(string name) => IsPt ? $"A pasta \"{name}\" não existe mais — foi renomeada ou excluída. Nada foi alterado." : $"The folder \"{name}\" no longer exists — it was renamed or deleted. Nothing was changed.";
+        /// <summary>engine-bridge.alert.window.detectFailed · Could not start window detection — Windows refused the mouse hook. Type the process name or window title instead.</summary>
+        public static string BridgeAlertWindowDetectFailed => IsPt ? "Não foi possível iniciar a detecção da janela — o Windows recusou o acesso ao mouse. Digite o nome do processo ou o título da janela." : "Could not start window detection — Windows refused the mouse hook. Type the process name or window title instead.";
+        /// <summary>engine-bridge.alert.window.convertNeedsTarget · Set a process name or window title before converting.</summary>
+        public static string BridgeAlertWindowConvertNeedsTarget => IsPt ? "Defina o nome de um processo ou o título de uma janela antes de converter." : "Set a process name or window title before converting.";
+        /// <summary>engine-bridge.alert.window.applyNotFound · Target window not found. Open it first, then try Apply target   convert again.</summary>
+        public static string BridgeAlertWindowApplyNotFound => IsPt ? "Janela-alvo não encontrada. Abra-a antes e tente Aplicar alvo e converter de novo." : "Target window not found. Open it first, then try Apply target & convert again.";
+        /// <summary>engine-bridge.alert.window.applyMinimised · Target window is minimised. Restore it, then try Apply target   convert again.</summary>
+        public static string BridgeAlertWindowApplyMinimised => IsPt ? "A janela-alvo está minimizada. Restaure-a e tente Aplicar alvo e converter de novo." : "Target window is minimised. Restore it, then try Apply target & convert again.";
+        /// <summary>engine-bridge.alert.window.applyNoPosition · Could not read the target window's position. Try again.</summary>
+        public static string BridgeAlertWindowApplyNoPosition => IsPt ? "Não foi possível ler a posição da janela-alvo. Tente de novo." : "Could not read the target window's position. Try again.";
+        /// <summary>engine-bridge.alert.coords.openFirst · Open "{{name}}" first — converting coordinates rewrites the actions of the macro that is currently loaded.</summary>
+        public static string BridgeAlertCoordsOpenFirst(string name) => IsPt ? $"Abra \"{name}\" antes — converter as coordenadas reescreve os passos da macro que está aberta." : $"Open \"{name}\" first — converting coordinates rewrites the actions of the macro that is currently loaded.";
+        /// <summary>engine-bridge.alert.coords.runningReplay · A replay is running — stop it first. Converting rewrites the coordinates of actions the run is still going to play.</summary>
+        public static string BridgeAlertCoordsRunningReplay => IsPt ? "Uma reprodução está rodando — pare-a antes. Converter reescreve as coordenadas de passos que a execução ainda vai rodar." : "A replay is running — stop it first. Converting rewrites the coordinates of actions the run is still going to play.";
+        /// <summary>engine-bridge.alert.coords.runningRecording · A recording is running — stop it first. Converting now would leave this macro's actions in two coordinate spaces.</summary>
+        public static string BridgeAlertCoordsRunningRecording => IsPt ? "Uma gravação está rodando — pare-a antes. Converter agora deixaria os passos desta macro em dois espaços de coordenadas." : "A recording is running — stop it first. Converting now would leave this macro's actions in two coordinate spaces.";
+        /// <summary>engine-bridge.alert.coords.noTarget · Set a Window Target first (macro or folder).</summary>
+        public static string BridgeAlertCoordsNoTarget => IsPt ? "Defina uma janela-alvo antes (na macro ou na pasta)." : "Set a Window Target first (macro or folder).";
+        /// <summary>engine-bridge.alert.coords.notFound · Target window not found. Make sure it is open and visible.</summary>
+        public static string BridgeAlertCoordsNotFound => IsPt ? "Janela-alvo não encontrada. Confira se ela está aberta e visível." : "Target window not found. Make sure it is open and visible.";
+        /// <summary>engine-bridge.alert.coords.minimised · Target window is minimised. Restore it and convert again.</summary>
+        public static string BridgeAlertCoordsMinimised => IsPt ? "A janela-alvo está minimizada. Restaure-a e converta de novo." : "Target window is minimised. Restore it and convert again.";
+        /// <summary>engine-bridge.alert.coords.noPosition · Could not get window position.</summary>
+        public static string BridgeAlertCoordsNoPosition => IsPt ? "Não foi possível ler a posição da janela." : "Could not get window position.";
+        /// <summary>engine-bridge.alert.coords.noActions · No actions to convert.</summary>
+        public static string BridgeAlertCoordsNoActions => IsPt ? "Nenhum passo para converter." : "No actions to convert.";
+        /// <summary>engine-bridge.alert.coords.inherited · "{{name}}" inherits its window target from the folder "{{folder}}", so it inherits the coordinate space too — this conversion would be discarded at the next replay and leave the coordinates in the wrong space. Give this macro its own target first: edit the process name or window title in its Window Target dialog, then use "Apply target   convert".</summary>
+        public static string BridgeAlertCoordsInherited(string folder, string name) => IsPt ? $"\"{name}\" herda a janela-alvo da pasta \"{folder}\", e com ela o espaço das coordenadas — esta conversão seria descartada na próxima reprodução e deixaria as coordenadas no espaço errado. Dê antes a esta macro um alvo próprio: edite o nome do processo ou o título da janela na janela-alvo dela e use \"Aplicar alvo e converter\"." : $"\"{name}\" inherits its window target from the folder \"{folder}\", so it inherits the coordinate space too — this conversion would be discarded at the next replay and leave the coordinates in the wrong space. Give this macro its own target first: edit the process name or window title in its Window Target dialog, then use \"Apply target & convert\".";
+        /// <summary>engine-bridge.alert.coords.convertedRelative · Converted {{n}} action(s) to relative coordinates.</summary>
+        public static string BridgeAlertCoordsConvertedRelative(string n, int count) => IsPt ? (count == 0 ? "Nenhum passo convertido para coordenadas relativas." : (count < 2 ? $"{n} passo convertido para coordenadas relativas." : $"{n} passos convertidos para coordenadas relativas.")) : $"Converted {n} action(s) to relative coordinates.";
+        /// <summary>engine-bridge.alert.coords.convertedAbsolute · Converted {{n}} action(s) to absolute coordinates.</summary>
+        public static string BridgeAlertCoordsConvertedAbsolute(string n, int count) => IsPt ? (count == 0 ? "Nenhum passo convertido para coordenadas absolutas." : (count < 2 ? $"{n} passo convertido para coordenadas absolutas." : $"{n} passos convertidos para coordenadas absolutas.")) : $"Converted {n} action(s) to absolute coordinates.";
+        /// <summary>engine-bridge.alert.geometry.inherited · "{{name}}" inherits its window target from the folder "{{folder}}", so it inherits the geometry too. Capture it on the folder, or give this macro its own target first.</summary>
+        public static string BridgeAlertGeometryInherited(string folder, string name) => IsPt ? $"\"{name}\" herda a janela-alvo da pasta \"{folder}\", e com ela a geometria. Capture-a na pasta, ou dê antes a esta macro um alvo próprio." : $"\"{name}\" inherits its window target from the folder \"{folder}\", so it inherits the geometry too. Capture it on the folder, or give this macro its own target first.";
+        /// <summary>engine-bridge.alert.geometry.noTarget · Detect or set a Window Target first, then click Update.</summary>
+        public static string BridgeAlertGeometryNoTarget => IsPt ? "Detecte ou defina uma janela-alvo antes e depois clique em Atualizar tamanho e posição da janela." : "Detect or set a Window Target first, then click Update.";
+        /// <summary>engine-bridge.alert.geometry.minimised · Target window is minimised. Restore it to the size and position you want captured, then click Update again.</summary>
+        public static string BridgeAlertGeometryMinimised => IsPt ? "A janela-alvo está minimizada. Restaure-a no tamanho e na posição que você quer capturar e clique de novo em Atualizar tamanho e posição da janela." : "Target window is minimised. Restore it to the size and position you want captured, then click Update again.";
+        /// <summary>engine-bridge.alert.geometry.noSize · Could not get window dimensions.</summary>
+        public static string BridgeAlertGeometryNoSize => IsPt ? "Não foi possível ler o tamanho da janela." : "Could not get window dimensions.";
+        /// <summary>engine-bridge.alert.geometry.folderCaptured · Folder geometry captured: {{w}}×{{h}} @ ({{x}}, {{y}})</summary>
+        public static string BridgeAlertGeometryFolderCaptured(string h, string w, string x, string y) => IsPt ? $"Geometria da pasta capturada: {w}×{h} em ({x}, {y})" : $"Folder geometry captured: {w}×{h} @ ({x}, {y})";
+        /// <summary>engine-bridge.alert.geometry.windowCaptured · Window geometry captured: {{w}}×{{h}} @ ({{x}}, {{y}})</summary>
+        public static string BridgeAlertGeometryWindowCaptured(string h, string w, string x, string y) => IsPt ? $"Geometria da janela capturada: {w}×{h} em ({x}, {y})" : $"Window geometry captured: {w}×{h} @ ({x}, {y})";
+        /// <summary>engine-bridge.alert.folder.taken · A folder named "{{name}}" already exists</summary>
+        public static string BridgeAlertFolderTaken(string name) => IsPt ? $"Já existe uma pasta chamada \"{name}\"" : $"A folder named \"{name}\" already exists";
+        /// <summary>engine-bridge.alert.folder.profilesOpenFailed · Could not open the Profiles folder</summary>
+        public static string BridgeAlertFolderProfilesOpenFailed => IsPt ? "Não foi possível abrir a pasta Profiles" : "Could not open the Profiles folder";
+        /// <summary>engine-bridge.alert.folder.macroOpenFailed · Could not open the macro's folder</summary>
+        public static string BridgeAlertFolderMacroOpenFailed => IsPt ? "Não foi possível abrir a pasta da macro" : "Could not open the macro's folder";
+        /// <summary>engine-bridge.alert.folder.exportOpenFailed · Could not open the export folder</summary>
+        public static string BridgeAlertFolderExportOpenFailed => IsPt ? "Não foi possível abrir a pasta da exportação" : "Could not open the export folder";
+        /// <summary>engine-bridge.alert.folder.deleteFailedOne · Could not delete "{{name}}" — its file is read-only or in use. It stays in your list.</summary>
+        public static string BridgeAlertFolderDeleteFailedOne(string name) => IsPt ? $"Não foi possível excluir \"{name}\" — o arquivo dela é somente leitura ou está em uso. Ela continua na sua lista." : $"Could not delete \"{name}\" — its file is read-only or in use. It stays in your list.";
+        /// <summary>engine-bridge.alert.folder.deleteFailedMany · Could not delete {{n}} macros — their files are read-only or in use: {{names}}. They stay in your list.</summary>
+        public static string BridgeAlertFolderDeleteFailedMany(string n, string names) => IsPt ? $"Não foi possível excluir {n} macros — os arquivos delas são somente leitura ou estão em uso: {names}. Elas continuam na sua lista." : $"Could not delete {n} macros — their files are read-only or in use: {names}. They stay in your list.";
+        /// <summary>engine-bridge.alert.folder.deletedDangling · Deleted "{{name}}" and its macros. {{n}} Run Macro reference in other macros still point at them and will silently no-op at replay.</summary>
+        public static string BridgeAlertFolderDeletedDangling(string n, string name, int count) => IsPt ? (count == 0 ? $"Pasta \"{name}\" excluída com as macros dela." : (count < 2 ? $"Pasta \"{name}\" excluída com as macros dela. {n} referência do Run Macro em outras macros ainda aponta para elas e não vai fazer nada ao reproduzir." : $"Pasta \"{name}\" excluída com as macros dela. {n} referências do Run Macro em outras macros ainda apontam para elas e não vão fazer nada ao reproduzir.")) : (count == 1 ? $"Deleted \"{name}\" and its macros. {n} Run Macro reference in other macros still point at them and will silently no-op at replay." : $"Deleted \"{name}\" and its macros. {n} Run Macro references in other macros still point at them and will silently no-op at replay.");
+        /// <summary>engine-bridge.alert.folder.nowRelative · "{{name}}" now reads its recorded X/Y relative to the folder's window. They were not converted — if its clicks land in the wrong place, load it and run "Convert coordinates to relative" (Ctrl+K).</summary>
+        public static string BridgeAlertFolderNowRelative(string name) => IsPt ? $"\"{name}\" agora lê o X/Y gravado em relação à janela da pasta. Eles não foram convertidos — se os cliques dela caírem no lugar errado, abra-a e rode \"Converter coordenadas para relativas\" (Ctrl+K)." : $"\"{name}\" now reads its recorded X/Y relative to the folder's window. They were not converted — if its clicks land in the wrong place, load it and run \"Convert coordinates to relative\" (Ctrl+K).";
+        /// <summary>engine-bridge.alert.folder.nowAbsolute · "{{name}}" now reads its recorded X/Y as screen positions. They were not converted — if its clicks land in the wrong place, load it and run "Convert coordinates to absolute" (Ctrl+K).</summary>
+        public static string BridgeAlertFolderNowAbsolute(string name) => IsPt ? $"\"{name}\" agora lê o X/Y gravado como posições da tela. Eles não foram convertidos — se os cliques dela caírem no lugar errado, abra-a e rode \"Converter coordenadas para absolutas\" (Ctrl+K)." : $"\"{name}\" now reads its recorded X/Y as screen positions. They were not converted — if its clicks land in the wrong place, load it and run \"Convert coordinates to absolute\" (Ctrl+K).";
+        /// <summary>engine-bridge.alert.export.busy · Finish the current recording/replay before exporting.</summary>
+        public static string BridgeAlertExportBusy => IsPt ? "Termine a gravação ou a reprodução antes de exportar." : "Finish the current recording/replay before exporting.";
+        /// <summary>engine-bridge.alert.export.noneLoaded · Export failed: none of the selected macros could be loaded.</summary>
+        public static string BridgeAlertExportNoneLoaded => IsPt ? "A exportação falhou: nenhuma das macros selecionadas pôde ser carregada." : "Export failed: none of the selected macros could be loaded.";
+        /// <summary>engine-bridge.alert.export.failed · Export failed: {{reason}}</summary>
+        public static string BridgeAlertExportFailed(string reason) => IsPt ? $"A exportação falhou: {reason}" : $"Export failed: {reason}";
+        /// <summary>engine-bridge.alert.import.busy · Finish the current recording/replay before importing.</summary>
+        public static string BridgeAlertImportBusy => IsPt ? "Termine a gravação ou a reprodução antes de importar." : "Finish the current recording/replay before importing.";
+        /// <summary>engine-bridge.alert.import.tooLarge · That file is too large to import (over 50 MB).</summary>
+        public static string BridgeAlertImportTooLarge => IsPt ? "Esse arquivo é grande demais para importar (mais de 50 MB)." : "That file is too large to import (over 50 MB).";
+        /// <summary>engine-bridge.alert.import.parseError · That file isn't a valid TrueReplayer macro export.</summary>
+        public static string BridgeAlertImportParseError => IsPt ? "Esse arquivo não é uma exportação válida de Macros do TrueReplayer." : "That file isn't a valid TrueReplayer macro export.";
+        /// <summary>engine-bridge.alert.import.noMacros · That export file contains no macros to import.</summary>
+        public static string BridgeAlertImportNoMacros => IsPt ? "Esse arquivo de exportação não tem macros para importar." : "That export file contains no macros to import.";
+        /// <summary>engine-bridge.alert.import.readError · Couldn't read that file: {{reason}}</summary>
+        public static string BridgeAlertImportReadError(string reason) => IsPt ? $"Não foi possível ler esse arquivo: {reason}" : $"Couldn't read that file: {reason}";
+        /// <summary>engine-bridge.alert.import.failedGeneric · Import failed.</summary>
+        public static string BridgeAlertImportFailedGeneric => IsPt ? "A importação falhou." : "Import failed.";
+        /// <summary>engine-bridge.alert.import.failed · Import failed: {{reason}}</summary>
+        public static string BridgeAlertImportFailed(string reason) => IsPt ? $"A importação falhou: {reason}" : $"Import failed: {reason}";
+        /// <summary>engine-bridge.alert.import.expired · Import session expired — please try again.</summary>
+        public static string BridgeAlertImportExpired => IsPt ? "A importação expirou — tente de novo." : "Import session expired — please try again.";
+        /// <summary>engine-bridge.alert.import.duplicates · This file lists {{n}} macro(s) under a name another macro in it already uses. The copies are shown with a number, e.g. "Farm (2)".</summary>
+        public static string BridgeAlertImportDuplicates(string n, int count) => IsPt ? (count == 0 ? "Nenhuma macro do arquivo repete o nome de outra." : (count < 2 ? $"Este arquivo lista {n} macro com um nome que outra macro dele já usa. As cópias aparecem com um número, por exemplo \"Fazenda (2)\"." : $"Este arquivo lista {n} macros com um nome que outra macro dele já usa. As cópias aparecem com um número, por exemplo \"Fazenda (2)\".")) : $"This file lists {n} macro(s) under a name another macro in it already uses. The copies are shown with a number, e.g. \"Farm (2)\".";
+        /// <summary>engine-bridge.alert.import.skippedInvalid · Import skipped {{n}} macro(s) with invalid names.</summary>
+        public static string BridgeAlertImportSkippedInvalid(string n, int count) => IsPt ? (count == 0 ? "A importação não pulou nenhuma macro." : (count < 2 ? $"A importação pulou {n} macro com nome inválido." : $"A importação pulou {n} macros com nomes inválidos.")) : $"Import skipped {n} macro(s) with invalid names.";
+        /// <summary>engine-bridge.alert.import.done · Imported {{n}} macro(s).</summary>
+        public static string BridgeAlertImportDone(string n, int count) => IsPt ? (count == 0 ? "Nenhuma macro importada." : (count < 2 ? $"{n} macro importada." : $"{n} macros importadas.")) : $"Imported {n} macro(s).";
+        /// <summary>engine-bridge.alert.import.doneWithFolders · Imported {{n}} macro(s). Folder organization imported.</summary>
+        public static string BridgeAlertImportDoneWithFolders(string n, int count) => IsPt ? (count == 0 ? "Nenhuma macro importada. A organização das pastas foi importada." : (count < 2 ? $"{n} macro importada. A organização das pastas foi importada." : $"{n} macros importadas. A organização das pastas foi importada.")) : $"Imported {n} macro(s). Folder organization imported.";
+        /// <summary>engine-bridge.alert.import.allSkipped · All {{n}} macro(s) were skipped.</summary>
+        public static string BridgeAlertImportAllSkipped(string n, int count) => IsPt ? (count == 0 ? "Nenhuma macro foi pulada." : (count < 2 ? "A macro foi pulada." : $"Todas as {n} macros foram puladas.")) : $"All {n} macro(s) were skipped.";
+        /// <summary>engine-bridge.alert.import.noneImported · No macros were imported.</summary>
+        public static string BridgeAlertImportNoneImported => IsPt ? "Nenhuma macro foi importada." : "No macros were imported.";
+        /// <summary>engine-bridge.alert.settings.resetBusy · Stop the recording or replay before resetting settings.</summary>
+        public static string BridgeAlertSettingsResetBusy => IsPt ? "Pare a gravação ou a reprodução antes de redefinir as configurações." : "Stop the recording or replay before resetting settings.";
+        /// <summary>engine-bridge.alert.settings.saveFailed · Couldn't save your settings to disk. They're kept for this session and will be retried on the next change and on exit.</summary>
+        public static string BridgeAlertSettingsSaveFailed => IsPt ? "Não foi possível salvar suas configurações no disco. Elas ficam nesta sessão, e o app tenta de novo na próxima mudança e ao sair." : "Couldn't save your settings to disk. They're kept for this session and will be retried on the next change and on exit.";
+        /// <summary>engine-bridge.result.testFire.serviceNotReady · Automation service not ready.</summary>
+        public static string BridgeResultTestFireServiceNotReady => IsPt ? "O serviço das automações ainda não está pronto." : "Automation service not ready.";
+        /// <summary>engine-bridge.result.testFire.disabled · Skipped: this macro is disabled, so its automation never runs. Enable it in the library first.</summary>
+        public static string BridgeResultTestFireDisabled => IsPt ? "Pulada: esta macro está desativada, então a automação dela nunca roda. Ative-a na biblioteca antes." : "Skipped: this macro is disabled, so its automation never runs. Enable it in the library first.";
+        /// <summary>engine-bridge.result.testFire.fired · Fired — the macro is running now.</summary>
+        public static string BridgeResultTestFireFired => IsPt ? "Disparada — a macro está rodando agora." : "Fired — the macro is running now.";
+        /// <summary>engine-bridge.result.testFire.busy · Skipped: a replay, recording or clicker run is already going. Automations wait for the engine to be free.</summary>
+        public static string BridgeResultTestFireBusy => IsPt ? "Pulada: já há uma reprodução, gravação ou execução do Clicker em andamento. As automações esperam o motor ficar livre." : "Skipped: a replay, recording or clicker run is already going. Automations wait for the engine to be free.";
+        /// <summary>engine-bridge.result.testFire.dirty · Skipped: the open macro has unsaved changes. Automations never fire over unsaved edits — save it first.</summary>
+        public static string BridgeResultTestFireDirty => IsPt ? "Pulada: a macro aberta tem alterações não salvas. As automações nunca disparam sobre edições não salvas — salve-a antes." : "Skipped: the open macro has unsaved changes. Automations never fire over unsaved edits — save it first.";
+        /// <summary>engine-bridge.result.testFire.modal · Skipped: a dialog or key capture is open. Close it and try again.</summary>
+        public static string BridgeResultTestFireModal => IsPt ? "Pulada: há um diálogo ou uma captura de tecla aberta. Feche e tente de novo." : "Skipped: a dialog or key capture is open. Close it and try again.";
+        /// <summary>engine-bridge.result.testFire.notReady · Not ready: the app is still starting up.</summary>
+        public static string BridgeResultTestFireNotReady => IsPt ? "Ainda não: o app está iniciando." : "Not ready: the app is still starting up.";
+        /// <summary>engine-bridge.result.testFire.nothingRan · Nothing ran. The macro may have no steps, or its Data Loop table may be empty while it loops over the data.</summary>
+        public static string BridgeResultTestFireNothingRan => IsPt ? "Nada rodou. A macro pode não ter passos, ou a tabela do Data Loop dela pode estar vazia enquanto ela percorre os dados." : "Nothing ran. The macro may have no steps, or its Data Loop table may be empty while it loops over the data.";
+        /// <summary>engine-bridge.result.testFire.failed · Failed: {{reason}}</summary>
+        public static string BridgeResultTestFireFailed(string reason) => IsPt ? $"Falhou: {reason}" : $"Failed: {reason}";
+        /// <summary>engine-bridge.result.probe.testFailed · Test failed: {{reason}}</summary>
+        public static string BridgeResultProbeTestFailed(string reason) => IsPt ? $"O teste falhou: {reason}" : $"Test failed: {reason}";
+        /// <summary>engine-bridge.result.probe.imageMissing · Reference image not found on disk.</summary>
+        public static string BridgeResultProbeImageMissing => IsPt ? "Imagem de referência não encontrada no disco." : "Reference image not found on disk.";
+        /// <summary>engine-bridge.result.probe.pixelUnreadable · Couldn't sample pixel (off-screen or hardware-accelerated surface)</summary>
+        public static string BridgeResultProbePixelUnreadable => IsPt ? "Não foi possível ler o pixel (fora da tela ou em uma superfície com aceleração de hardware)" : "Couldn't sample pixel (off-screen or hardware-accelerated surface)";
+        /// <summary>engine-bridge.result.probe.invalidColor · Invalid target colour</summary>
+        public static string BridgeResultProbeInvalidColor => IsPt ? "Cor-alvo inválida" : "Invalid target colour";
+        /// <summary>engine-bridge.result.probe.anchorUnnamed · Name the anchor window first (process name or window title) — until then there is no origin to test against.</summary>
+        public static string BridgeResultProbeAnchorUnnamed => IsPt ? "Identifique primeiro a janela que as coordenadas seguem (o nome do processo ou o título da janela) — até lá, não há origem para o teste." : "Name the anchor window first (process name or window title) — until then there is no origin to test against.";
+        /// <summary>engine-bridge.result.probe.anchorClosed · The anchor window is not open (or is minimised) — restore it and test again, or turn off "Relative to a window".</summary>
+        public static string BridgeResultProbeAnchorClosed => IsPt ? "A janela que as coordenadas seguem não está aberta (ou está minimizada) — restaure-a e teste de novo, ou desative \"Relativo a uma janela\"." : "The anchor window is not open (or is minimised) — restore it and test again, or turn off \"Relative to a window\".";
+        /// <summary>engine-bridge.result.probe.anchorUnnamedShort · Name the anchor window first (process name or window title).</summary>
+        public static string BridgeResultProbeAnchorUnnamedShort => IsPt ? "Identifique primeiro a janela que as coordenadas seguem (o nome do processo ou o título da janela)." : "Name the anchor window first (process name or window title).";
+        /// <summary>engine-bridge.result.probe.anchorClosedShort · The anchor window is not open (or is minimised).</summary>
+        public static string BridgeResultProbeAnchorClosedShort => IsPt ? "A janela que as coordenadas seguem não está aberta (ou está minimizada)." : "The anchor window is not open (or is minimised).";
+        /// <summary>engine-bridge.result.browser.notConnectedTip · Open Chrome with the TrueReplayer extension installed.</summary>
+        public static string BridgeResultBrowserNotConnectedTip => IsPt ? "Abra o Chrome com a extensão do TrueReplayer instalada." : "Open Chrome with the TrueReplayer extension installed.";
+        /// <summary>engine-bridge.result.window.fillOne · Fill at least one of Process name or Title to test.</summary>
+        public static string BridgeResultWindowFillOne => IsPt ? "Preencha pelo menos o Nome do processo ou o Título para testar." : "Fill at least one of Process name or Title to test.";
+        /// <summary>engine-bridge.result.window.regexInvalid · Invalid regex pattern.</summary>
+        public static string BridgeResultWindowRegexInvalid => IsPt ? "Padrão de regex inválido." : "Invalid regex pattern.";
+        /// <summary>engine-bridge.result.window.noForeground · No foreground window detected.</summary>
+        public static string BridgeResultWindowNoForeground => IsPt ? "Nenhuma janela em primeiro plano encontrada." : "No foreground window detected.";
+        /// <summary>engine-bridge.result.window.fillFirst · Fill Process name or Title first.</summary>
+        public static string BridgeResultWindowFillFirst => IsPt ? "Preencha antes o Nome do processo ou o Título." : "Fill Process name or Title first.";
+        /// <summary>engine-bridge.result.window.noMatch · No window matches — open and position it first.</summary>
+        public static string BridgeResultWindowNoMatch => IsPt ? "Nenhuma janela casa — abra-a e posicione-a antes." : "No window matches — open and position it first.";
+        /// <summary>engine-bridge.result.window.minimised · Window is minimised — restore it to the size and position you want captured.</summary>
+        public static string BridgeResultWindowMinimised => IsPt ? "A janela está minimizada — restaure-a no tamanho e na posição que você quer capturar." : "Window is minimised — restore it to the size and position you want captured.";
+        /// <summary>engine-bridge.result.window.noRect · Could not read the window rect.</summary>
+        public static string BridgeResultWindowNoRect => IsPt ? "Não foi possível ler o retângulo da janela." : "Could not read the window rect.";
+        /// <summary>engine-bridge.result.window.notNth · Matching windows exist, but not #{{n}} — right now the action finds none (and runs its Launch path, if it has one).</summary>
+        public static string BridgeResultWindowNotNth(string n) => IsPt ? $"Há janelas que casam, mas não a de número {n} — agora o passo não acha nenhuma (e abre o programa de Abrir, se tiver um)." : $"Matching windows exist, but not #{n} — right now the action finds none (and runs its Launch path, if it has one).";
+        /// <summary>engine-bridge.result.window.notForeground · A matching window exists, but it is not in the foreground — with “Foreground window only” the condition reads false until it is.</summary>
+        public static string BridgeResultWindowNotForeground => IsPt ? "Uma janela casa, mas não está na frente — com “Só a janela da frente”, a condição dá falso até ela estar." : "A matching window exists, but it is not in the foreground — with “Foreground window only” the condition reads false until it is.";
+        /// <summary>engine-bridge.result.examples.busy · Finish the current recording/replay before copying an example.</summary>
+        public static string BridgeResultExamplesBusy => IsPt ? "Termine a gravação ou a reprodução antes de copiar um exemplo." : "Finish the current recording/replay before copying an example.";
+        /// <summary>engine-bridge.result.examples.missing · There is no example named "{{name}}".</summary>
+        public static string BridgeResultExamplesMissing(string name) => IsPt ? $"Não há exemplo chamado \"{name}\"." : $"There is no example named \"{name}\".";
+        /// <summary>engine-bridge.capture.what.image · the image capture</summary>
+        public static string BridgeCaptureWhatImage => IsPt ? "a captura da imagem" : "the image capture";
+        /// <summary>engine-bridge.capture.what.imageCondition · the image condition capture</summary>
+        public static string BridgeCaptureWhatImageCondition => IsPt ? "a captura da imagem da condição" : "the image condition capture";
+        /// <summary>engine-bridge.capture.what.pixelCondition · the pixel condition capture</summary>
+        public static string BridgeCaptureWhatPixelCondition => IsPt ? "a escolha da cor da condição" : "the pixel condition capture";
+        /// <summary>engine-bridge.capture.what.screenText · the screen text capture</summary>
+        public static string BridgeCaptureWhatScreenText => IsPt ? "a captura do texto da tela" : "the screen text capture";
+        /// <summary>engine-bridge.capture.what.waitImage · the Wait Image capture</summary>
+        public static string BridgeCaptureWhatWaitImage => IsPt ? "a captura do Wait Image" : "the Wait Image capture";
+        /// <summary>engine-bridge.capture.what.pixelColour · the pixel-colour capture</summary>
+        public static string BridgeCaptureWhatPixelColour => IsPt ? "a escolha da cor do pixel" : "the pixel-colour capture";
+        /// <summary>engine-bridge.capture.what.recapture · the recapture</summary>
+        public static string BridgeCaptureWhatRecapture => IsPt ? "a nova captura" : "the recapture";
+        /// <summary>engine-bridge.capture.what.position · the position pick</summary>
+        public static string BridgeCaptureWhatPosition => IsPt ? "a escolha da posição" : "the position pick";
+        /// <summary>engine-bridge.capture.what.colour · the colour pick</summary>
+        public static string BridgeCaptureWhatColour => IsPt ? "a escolha da cor" : "the colour pick";
+        /// <summary>engine-bridge.capture.what.region · the region picker</summary>
+        public static string BridgeCaptureWhatRegion => IsPt ? "a escolha da região" : "the region picker";
+        /// <summary>engine-bridge.capture.title.referenceImage · Capture the reference image</summary>
+        public static string BridgeCaptureTitleReferenceImage => IsPt ? "Capture a imagem de referência" : "Capture the reference image";
+        /// <summary>engine-bridge.capture.title.regionToRead · Draw the region to read</summary>
+        public static string BridgeCaptureTitleRegionToRead => IsPt ? "Desenhe a região a ler" : "Draw the region to read";
+        /// <summary>engine-bridge.capture.title.regionToCopy · Draw the region to copy</summary>
+        public static string BridgeCaptureTitleRegionToCopy => IsPt ? "Desenhe a região a copiar" : "Draw the region to copy";
+        /// <summary>engine-bridge.capture.title.searchArea · Draw the search area</summary>
+        public static string BridgeCaptureTitleSearchArea => IsPt ? "Desenhe a área de pesquisa" : "Draw the search area";
+        /// <summary>engine-bridge.capture.title.clickArea · Draw the click area</summary>
+        public static string BridgeCaptureTitleClickArea => IsPt ? "Desenhe a área dos cliques" : "Draw the click area";
+        /// <summary>engine-bridge.capture.title.point · Pick the point</summary>
+        public static string BridgeCaptureTitlePoint => IsPt ? "Escolha o ponto" : "Pick the point";
+        /// <summary>engine-bridge.capture.title.clickPoint · Pick the click point</summary>
+        public static string BridgeCaptureTitleClickPoint => IsPt ? "Escolha o ponto do clique" : "Pick the click point";
+        /// <summary>engine-bridge.capture.title.color · Pick the color</summary>
+        public static string BridgeCaptureTitleColor => IsPt ? "Escolha a cor" : "Pick the color";
+        /// <summary>engine-bridge.capture.title.aColor · Pick a color</summary>
+        public static string BridgeCaptureTitleAColor => IsPt ? "Escolha uma cor" : "Pick a color";
+        /// <summary>engine-bridge.capture.for.automation · for the {{name}} automation</summary>
+        public static string BridgeCaptureForAutomation(string name) => IsPt ? $"para a automação de {name}" : $"for the {name} automation";
+        /// <summary>engine-bridge.capture.for.step · for step {{n}}, {{name}}</summary>
+        public static string BridgeCaptureForStep(string n, string name) => IsPt ? $"para o passo {n}, {name}" : $"for step {n}, {name}";
+        /// <summary>engine-bridge.capture.for.stepCondition · for step {{n}}, {{name}} · {{condition}}</summary>
+        public static string BridgeCaptureForStepCondition(string condition, string n, string name) => IsPt ? $"para o passo {n}, {name} · {condition}" : $"for step {n}, {name} · {condition}";
+        /// <summary>engine-bridge.capture.for.copyHotkey · for the Copy text from the screen hotkey</summary>
+        public static string BridgeCaptureForCopyHotkey => IsPt ? "para a hotkey Copiar texto da tela" : "for the Copy text from the screen hotkey";
+        /// <summary>engine-bridge.capture.for.copyText · for Copy text from the screen</summary>
+        public static string BridgeCaptureForCopyText => IsPt ? "para Copiar texto da tela" : "for Copy text from the screen";
+        /// <summary>engine-bridge.capture.for.clicker · for Clicker</summary>
+        public static string BridgeCaptureForClicker => IsPt ? "para o Clicker" : "for Clicker";
+        /// <summary>engine-bridge.capture.hint.automationWaits · Drag around what the automation waits for</summary>
+        public static string BridgeCaptureHintAutomationWaits => IsPt ? "Arraste em volta do que a automação espera" : "Drag around what the automation waits for";
+        /// <summary>engine-bridge.capture.hint.stepWaits · Drag around what the step waits for</summary>
+        public static string BridgeCaptureHintStepWaits => IsPt ? "Arraste em volta do que o passo espera" : "Drag around what the step waits for";
+        /// <summary>engine-bridge.capture.hint.smallerFaster · Smaller regions read faster</summary>
+        public static string BridgeCaptureHintSmallerFaster => IsPt ? "Regiões menores são lidas mais rápido" : "Smaller regions read faster";
+        /// <summary>engine-bridge.capture.hint.insideOnly · The image is looked for only inside it</summary>
+        public static string BridgeCaptureHintInsideOnly => IsPt ? "A imagem é procurada só dentro dela" : "The image is looked for only inside it";
+        /// <summary>engine-bridge.capture.hint.toClipboard · The text it reads goes to the clipboard</summary>
+        public static string BridgeCaptureHintToClipboard => IsPt ? "O texto lido vai para o clipboard" : "The text it reads goes to the clipboard";
+        /// <summary>engine-bridge.dialog.cancel · Cancel</summary>
+        public static string BridgeDialogCancel => IsPt ? "Cancelar" : "Cancel";
+        /// <summary>engine-bridge.dialog.deleteFolder.title · Delete Folder</summary>
+        public static string BridgeDialogDeleteFolderTitle => IsPt ? "Excluir pasta" : "Delete Folder";
+        /// <summary>engine-bridge.dialog.deleteFolder.body · Folder "{{name}}" contains {{n}} macro(s). Delete only the folder or everything inside?</summary>
+        public static string BridgeDialogDeleteFolderBody(string n, string name, int count) => IsPt ? (count == 0 ? $"A pasta \"{name}\" está vazia.\nExcluir só a pasta ou tudo o que tem dentro?" : (count < 2 ? $"A pasta \"{name}\" tem {n} macro.\nExcluir só a pasta ou tudo o que tem dentro?" : $"A pasta \"{name}\" tem {n} macros.\nExcluir só a pasta ou tudo o que tem dentro?")) : $"Folder \"{name}\" contains {n} macro(s).\nDelete only the folder or everything inside?";
+        /// <summary>engine-bridge.dialog.deleteFolder.folderOnly · Folder Only</summary>
+        public static string BridgeDialogDeleteFolderFolderOnly => IsPt ? "Só a pasta" : "Folder Only";
+        /// <summary>engine-bridge.dialog.deleteFolder.deleteAll · Delete All</summary>
+        public static string BridgeDialogDeleteFolderDeleteAll => IsPt ? "Excluir tudo" : "Delete All";
+        /// <summary>engine-bridge.dialog.resetSettings.title · Reset Settings</summary>
+        public static string BridgeDialogResetSettingsTitle => IsPt ? "Redefinir configurações" : "Reset Settings";
+        /// <summary>engine-bridge.dialog.resetSettings.body · This will reset all settings to their default values and clear all actions.</summary>
+        public static string BridgeDialogResetSettingsBody => IsPt ? "Isso volta todas as configurações ao padrão e limpa todos os passos." : "This will reset all settings to their default values and clear all actions.";
+        /// <summary>engine-bridge.dialog.resetSettings.reset · Reset</summary>
+        public static string BridgeDialogResetSettingsReset => IsPt ? "Redefinir" : "Reset";
+        /// <summary>engine-bridge.notify.listDone.titleMacro · {{name}} used the whole list</summary>
+        public static string BridgeNotifyListDoneTitleMacro(string name) => IsPt ? $"{name} usou a lista inteira" : $"{name} used the whole list";
+        /// <summary>engine-bridge.notify.listDone.title · The data list is done</summary>
+        public static string BridgeNotifyListDoneTitle => IsPt ? "A lista de dados terminou" : "The data list is done";
+        /// <summary>engine-bridge.notify.listDone.body · The only row is done. The next run starts over at row 1.</summary>
+        public static string BridgeNotifyListDoneBody(string n, int count) => IsPt ? (count == 0 ? "A lista não tem linhas. A próxima execução recomeça na linha 1." : (count < 2 ? "A única linha foi usada. A próxima execução recomeça na linha 1." : $"As {n} linhas foram usadas. A próxima execução recomeça na linha 1.")) : (count == 1 ? "The only row is done. The next run starts over at row 1." : $"All {n} rows are done. The next run starts over at row 1.");
+        /// <summary>engine-bridge.notify.listDone.open · Open Data Loop</summary>
+        public static string BridgeNotifyListDoneOpen => IsPt ? "Abrir o Data Loop" : "Open Data Loop";
+        /// <summary>engine-bridge.notify.stopped.titleMacroStep · {{name}} stopped at step {{n}}</summary>
+        public static string BridgeNotifyStoppedTitleMacroStep(string n, string name) => IsPt ? $"{name} parou no passo {n}" : $"{name} stopped at step {n}";
+        /// <summary>engine-bridge.notify.stopped.titleMacro · {{name}} stopped</summary>
+        public static string BridgeNotifyStoppedTitleMacro(string name) => IsPt ? $"{name} parou" : $"{name} stopped";
+        /// <summary>engine-bridge.notify.stopped.titleStep · The macro stopped at step {{n}}</summary>
+        public static string BridgeNotifyStoppedTitleStep(string n) => IsPt ? $"A macro parou no passo {n}" : $"The macro stopped at step {n}";
+        /// <summary>engine-bridge.notify.stopped.title · The macro stopped</summary>
+        public static string BridgeNotifyStoppedTitle => IsPt ? "A macro parou" : "The macro stopped";
+        /// <summary>engine-bridge.notify.stopped.body · The run stopped with an error.</summary>
+        public static string BridgeNotifyStoppedBody => IsPt ? "A execução parou com um erro." : "The run stopped with an error.";
+        /// <summary>engine-bridge.notify.stopped.openReport · Open run report</summary>
+        public static string BridgeNotifyStoppedOpenReport => IsPt ? "Abrir o Run Report" : "Open run report";
+        /// <summary>engine-bridge.notify.stopped.runAgain · Run again</summary>
+        public static string BridgeNotifyStoppedRunAgain => IsPt ? "Rodar de novo" : "Run again";
+        /// <summary>engine-bridge.name.referenceImage · Reference image.png</summary>
+        public static string BridgeNameReferenceImage => IsPt ? "Imagem de referência.png" : "Reference image.png";
+        /// <summary>engine-bridge.name.macroReferenceImage · {{name}} - reference image.png</summary>
+        public static string BridgeNameMacroReferenceImage(string name) => IsPt ? $"{name} - imagem de referência.png" : $"{name} - reference image.png";
+        /// <summary>engine-bridge.name.copy · {{name}} - Copy</summary>
+        public static string BridgeNameCopy(string name) => IsPt ? $"{name} - Cópia" : $"{name} - Copy";
+        /// <summary>engine-bridge.name.copyNumbered · {{name}} - Copy ({{n}})</summary>
+        public static string BridgeNameCopyNumbered(string n, string name) => IsPt ? $"{name} - Cópia ({n})" : $"{name} - Copy ({n})";
+        /// <summary>engine-bridge.update.reason.recording · a recording is in progress</summary>
+        public static string BridgeUpdateReasonRecording => IsPt ? "uma gravação está em andamento" : "a recording is in progress";
+        /// <summary>engine-bridge.update.reason.replaying · a replay is running</summary>
+        public static string BridgeUpdateReasonReplaying => IsPt ? "uma reprodução está rodando" : "a replay is running";
+        /// <summary>engine-bridge.update.reason.open · {{what}} is open</summary>
+        public static string BridgeUpdateReasonOpen(string what) => IsPt ? $"{what} está aberta" : $"{what} is open";
+        /// <summary>engine-bridge.update.reason.editor · an open editor has changes that haven't been applied</summary>
+        public static string BridgeUpdateReasonEditor => IsPt ? "um editor aberto tem alterações que não foram aplicadas" : "an open editor has changes that haven't been applied";
+        /// <summary>engine-bridge.update.reason.unsaved · the macro has unsaved changes</summary>
+        public static string BridgeUpdateReasonUnsaved => IsPt ? "a macro tem alterações não salvas" : "the macro has unsaved changes";
+        /// <summary>engine-bridge.update.reason.promptCancelled · the unsaved-changes prompt was cancelled</summary>
+        public static string BridgeUpdateReasonPromptCancelled => IsPt ? "a pergunta das alterações não salvas foi cancelada" : "the unsaved-changes prompt was cancelled";
+        /// <summary>engine-bridge.update.postponed · Update postponed: {{reason}}</summary>
+        public static string BridgeUpdatePostponed(string reason) => IsPt ? $"Atualização adiada: {reason}" : $"Update postponed: {reason}";
+        /// <summary>engine-bridge.update.postponedNotice · An update is ready but was not installed because {{reason}}. It will be offered again once the app is idle — or install it any time with Restart and update, at the foot of Settings.</summary>
+        public static string BridgeUpdatePostponedNotice(string reason) => IsPt ? $"Uma atualização está pronta, mas não foi instalada porque {reason}. Ela volta a ser oferecida quando o app estiver livre — ou instale quando quiser com Reiniciar e atualizar, no fim das Configurações." : $"An update is ready but was not installed because {reason}. It will be offered again once the app is idle — or install it any time with Restart and update, at the foot of Settings.";
+        /// <summary>engine-bridge.update.checkFailed · Failed to check for updates</summary>
+        public static string BridgeUpdateCheckFailed => IsPt ? "Não foi possível procurar atualizações" : "Failed to check for updates";
+        /// <summary>engine-bridge.update.downloadFailed · Download failed</summary>
+        public static string BridgeUpdateDownloadFailed => IsPt ? "Falha no download" : "Download failed";
+        /// <summary>engine-bridge.update.downloadFailedNotice · The update could not be downloaded. It will be retried on the next check.</summary>
+        public static string BridgeUpdateDownloadFailedNotice => IsPt ? "Não foi possível baixar a atualização. Ela será tentada de novo na próxima verificação." : "The update could not be downloaded. It will be retried on the next check.";
+        /// <summary>engine-bridge.update.failed · Update failed: {{reason}}</summary>
+        public static string BridgeUpdateFailed(string reason) => IsPt ? $"A atualização falhou: {reason}" : $"Update failed: {reason}";
+        /// <summary>engine-bridge.update.applyFailedNotice · The update could not be applied: {{reason}}. {{app}} is still running the current version.</summary>
+        public static string BridgeUpdateApplyFailedNotice(string app, string reason) => IsPt ? $"Não foi possível aplicar a atualização: {reason}. O {app} continua na versão atual." : $"The update could not be applied: {reason}. {app} is still running the current version.";
+        /// <summary>engine-browser.notConnected · Browser extension is not connected.</summary>
+        public static string BrowserNotConnected => IsPt ? "A extensão do navegador não está conectada." : "Browser extension is not connected.";
+        /// <summary>engine-browser.unknownError · Unknown error</summary>
+        public static string BrowserUnknownError => IsPt ? "Erro desconhecido" : "Unknown error";
+        /// <summary>engine-browser.unknownAction · Unknown browser action type: {{type}}</summary>
+        public static string BrowserUnknownAction(string type) => IsPt ? $"Tipo de ação de navegador desconhecido: {type}" : $"Unknown browser action type: {type}";
+        /// <summary>engine-browser.disconnected.running · The browser bridge disconnected while the action was running.</summary>
+        public static string BrowserDisconnectedRunning => IsPt ? "A extensão do navegador se desconectou enquanto a ação rodava." : "The browser bridge disconnected while the action was running.";
+        /// <summary>engine-browser.disconnected.beforeSend · The browser bridge disconnected before the action could be sent.</summary>
+        public static string BrowserDisconnectedBeforeSend => IsPt ? "A extensão do navegador se desconectou antes de a ação ser enviada." : "The browser bridge disconnected before the action could be sent.";
+        /// <summary>engine-browser.disconnected.tip · Chrome or the TrueReplayer extension was closed, reloaded, or recycled. Reconnect and run again.</summary>
+        public static string BrowserDisconnectedTip => IsPt ? "O Chrome ou a extensão do TrueReplayer fechou, recarregou ou reiniciou. Reconecte e rode de novo." : "Chrome or the TrueReplayer extension was closed, reloaded, or recycled. Reconnect and run again.";
+        /// <summary>engine-browser.timeout.click · Click Element timed out after {{seconds}}s. Element not found or not visible.</summary>
+        public static string BrowserTimeoutClick(string seconds) => IsPt ? $"O Click Element deu timeout depois de {seconds} s. Elemento não encontrado ou não visível." : $"Click Element timed out after {seconds}s. Element not found or not visible.";
+        /// <summary>engine-browser.timeout.rightClick · Right Click Element timed out after {{seconds}}s. Element not found or not visible.</summary>
+        public static string BrowserTimeoutRightClick(string seconds) => IsPt ? $"O Right Click Element deu timeout depois de {seconds} s. Elemento não encontrado ou não visível." : $"Right Click Element timed out after {seconds}s. Element not found or not visible.";
+        /// <summary>engine-browser.timeout.type · Type Text timed out after {{seconds}}s. Target field not found or not visible.</summary>
+        public static string BrowserTimeoutType(string seconds) => IsPt ? $"O Type Text deu timeout depois de {seconds} s. Campo-alvo não encontrado ou não visível." : $"Type Text timed out after {seconds}s. Target field not found or not visible.";
+        /// <summary>engine-browser.timeout.waitElement · Wait Element timed out after {{seconds}}s. Element not found on the page.</summary>
+        public static string BrowserTimeoutWaitElement(string seconds) => IsPt ? $"O Wait Element deu timeout depois de {seconds} s. Elemento não encontrado na página." : $"Wait Element timed out after {seconds}s. Element not found on the page.";
+        /// <summary>engine-browser.timeout.navigate · Page didn't finish loading after {{seconds}}s.</summary>
+        public static string BrowserTimeoutNavigate(string seconds) => IsPt ? $"A página não terminou de carregar em {seconds} s." : $"Page didn't finish loading after {seconds}s.";
+        /// <summary>engine-browser.timeout.selectOption · Select Option timed out after {{seconds}}s. The  select  element wasn't found.</summary>
+        public static string BrowserTimeoutSelectOption(string seconds) => IsPt ? $"O Select Option deu timeout depois de {seconds} s. O elemento <select> não foi encontrado." : $"Select Option timed out after {seconds}s. The <select> element wasn't found.";
+        /// <summary>engine-browser.timeout.generic · Browser action timed out after {{seconds}}s.</summary>
+        public static string BrowserTimeoutGeneric(string seconds) => IsPt ? $"A ação de navegador deu timeout depois de {seconds} s." : $"Browser action timed out after {seconds}s.";
+        /// <summary>engine-browser.timeoutTip.click · Use the Text Match field to match by visible text, or pick the element with the crosshair.</summary>
+        public static string BrowserTimeoutTipClick => IsPt ? "Use o campo Texto para achar pelo texto visível, ou escolha o elemento com a mira." : "Use the Text Match field to match by visible text, or pick the element with the crosshair.";
+        /// <summary>engine-browser.timeoutTip.type · Refine the CSS selector or pick the element with the crosshair.</summary>
+        public static string BrowserTimeoutTipType => IsPt ? "Ajuste o seletor CSS ou escolha o elemento com a mira." : "Refine the CSS selector or pick the element with the crosshair.";
+        /// <summary>engine-browser.timeoutTip.waitElement · Use the Text Match field or increase the timeout.</summary>
+        public static string BrowserTimeoutTipWaitElement => IsPt ? "Use o campo Texto ou aumente o timeout." : "Use the Text Match field or increase the timeout.";
+        /// <summary>engine-browser.timeoutTip.navigate · Check the URL and your internet connection.</summary>
+        public static string BrowserTimeoutTipNavigate => IsPt ? "Confira a URL e a sua conexão com a internet." : "Check the URL and your internet connection.";
+        /// <summary>engine-browser.timeoutTip.selectOption · Verify the CSS selector points to a native  select  and that the option's text/value matches exactly.</summary>
+        public static string BrowserTimeoutTipSelectOption => IsPt ? "Confira se o seletor CSS aponta para um <select> nativo e se o texto ou o valor da opção corresponde exatamente." : "Verify the CSS selector points to a native <select> and that the option's text/value matches exactly.";
+        /// <summary>engine-browser.timeoutTip.generic · Make sure the page is fully loaded.</summary>
+        public static string BrowserTimeoutTipGeneric => IsPt ? "Confira se a página carregou por completo." : "Make sure the page is fully loaded.";
+        /// <summary>engine-browser.withTip · {{message}} Tip: {{tip}}</summary>
+        public static string BrowserWithTip(string message, string tip) => IsPt ? $"{message} Dica: {tip}" : $"{message} Tip: {tip}";
+        /// <summary>engine-capture.title.pickColor · Pick the color</summary>
+        public static string CaptureTitlePickColor => IsPt ? "Escolha a cor" : "Pick the color";
+        /// <summary>engine-capture.title.pickPoint · Pick the point</summary>
+        public static string CaptureTitlePickPoint => IsPt ? "Escolha o ponto" : "Pick the point";
+        /// <summary>engine-capture.title.drawArea · Draw the area</summary>
+        public static string CaptureTitleDrawArea => IsPt ? "Desenhe a área" : "Draw the area";
+        /// <summary>engine-capture.title.captureImage · Capture the image</summary>
+        public static string CaptureTitleCaptureImage => IsPt ? "Capture a imagem" : "Capture the image";
+        /// <summary>engine-capture.keys.zoom · zoom</summary>
+        public static string CaptureKeysZoom => IsPt ? "zoom" : "zoom";
+        /// <summary>engine-capture.keys.slow · slow</summary>
+        public static string CaptureKeysSlow => IsPt ? "lento" : "slow";
+        /// <summary>engine-capture.keys.nudge · 1 px</summary>
+        public static string CaptureKeysNudge => IsPt ? "1 px" : "1 px";
+        /// <summary>engine-capture.keys.pick · pick</summary>
+        public static string CaptureKeysPick => IsPt ? "escolher" : "pick";
+        /// <summary>engine-capture.hint · Drag to draw · drag the edges to adjust</summary>
+        public static string CaptureHint => IsPt ? "Arraste para desenhar · ajuste pelas bordas" : "Drag to draw · drag the edges to adjust";
+        /// <summary>engine-capture.cancel · Cancel</summary>
+        public static string CaptureCancel => IsPt ? "Cancelar" : "Cancel";
+        /// <summary>engine-capture.keepCurrent · Keep current</summary>
+        public static string CaptureKeepCurrent => IsPt ? "Manter a atual" : "Keep current";
+        /// <summary>engine-capture.done · Done</summary>
+        public static string CaptureDone => IsPt ? "Concluído" : "Done";
+        /// <summary>engine-capture.slowBadge · SLOW</summary>
+        public static string CaptureSlowBadge => IsPt ? "LENTO" : "SLOW";
+        /// <summary>engine-capture.convert.onlyWholeClick · Only a whole click can be split into Down + Up.</summary>
+        public static string CaptureConvertOnlyWholeClick => IsPt ? "Só um clique inteiro pode ser separado em Down + Up." : "Only a whole click can be split into Down + Up.";
+        /// <summary>engine-capture.convert.multiClick · A double or triple click is one unit — switch it to a single click first.</summary>
+        public static string CaptureConvertMultiClick => IsPt ? "Um clique duplo ou triplo é uma unidade só — mude-o para um clique simples primeiro." : "A double or triple click is one unit — switch it to a single click first.";
+        /// <summary>engine-capture.convert.repeating · A repeating click can't be split — set Times to 1 first.</summary>
+        public static string CaptureConvertRepeating => IsPt ? "Um clique com repetição não pode ser separado — defina Repetir como 1 primeiro." : "A repeating click can't be split — set Times to 1 first.";
+        /// <summary>engine-capture.convert.atCursor · An at-cursor click can't be split — the halves read a stored point.</summary>
+        public static string CaptureConvertAtCursor => IsPt ? "Um clique no cursor não pode ser separado — as metades leem um ponto guardado." : "An at-cursor click can't be split — the halves read a stored point.";
+        /// <summary>engine-capture.convert.focusClick · A focus click can't be split — the halves don't fire the focus tap.</summary>
+        public static string CaptureConvertFocusClick => IsPt ? "Um clique de foco não pode ser separado — as metades não dão o toque de foco." : "A focus click can't be split — the halves don't fire the focus tap.";
+        /// <summary>engine-capture.convert.selectPair · Select a click's Down half and the Up half that follows it.</summary>
+        public static string CaptureConvertSelectPair => IsPt ? "Selecione a metade Down de um clique e a metade Up que vem logo depois." : "Select a click's Down half and the Up half that follows it.";
+        /// <summary>engine-capture.convert.notSameButton · These two halves are not the same button's press and release.</summary>
+        public static string CaptureConvertNotSameButton => IsPt ? "Estas duas metades não apertam e soltam o mesmo botão." : "These two halves are not the same button's press and release.";
+        /// <summary>engine-capture.convert.drag · These halves press and release at different points — that is a drag, and only the paired form can express it.</summary>
+        public static string CaptureConvertDrag => IsPt ? "Estas metades apertam e soltam em pontos diferentes — isso é um arrasto, e só a forma em duas linhas consegue representá-lo." : "These halves press and release at different points — that is a drag, and only the paired form can express it.";
+        /// <summary>engine-capture.convert.mixedSkip · One half is turned off and the other is not — merging would switch the whole click on or off.</summary>
+        public static string CaptureConvertMixedSkip => IsPt ? "Uma metade está desativada e a outra não — juntar ativaria ou desativaria o clique inteiro." : "One half is turned off and the other is not — merging would switch the whole click on or off.";
+        /// <summary>engine-compat.feature.waitImage · Wait Image</summary>
+        public static string CompatFeatureWaitImage => IsPt ? "Wait Image" : "Wait Image";
+        /// <summary>engine-compat.feature.relativeCoordinates · Relative coordinates</summary>
+        public static string CompatFeatureRelativeCoordinates => IsPt ? "Coordenadas relativas" : "Relative coordinates";
+        /// <summary>engine-compat.feature.triggerWhilePressedToggle · Trigger mode While pressed/Toggle</summary>
+        public static string CompatFeatureTriggerWhilePressedToggle => IsPt ? "Modo do gatilho Enquanto apertada/Alternar" : "Trigger mode While pressed/Toggle";
+        /// <summary>engine-compat.feature.triggerDoubleTapHold · Trigger mode Double-tap/Hold</summary>
+        public static string CompatFeatureTriggerDoubleTapHold => IsPt ? "Modo do gatilho Toque duplo/Segurar" : "Trigger mode Double-tap/Hold";
+        /// <summary>engine-compat.feature.mouseButtonHotkey · Mouse-button hotkey</summary>
+        public static string CompatFeatureMouseButtonHotkey => IsPt ? "Hotkey de botão do mouse" : "Mouse-button hotkey";
+        /// <summary>engine-compat.feature.waitPixelColor · Wait Pixel Color</summary>
+        public static string CompatFeatureWaitPixelColor => IsPt ? "Wait Pixel Color" : "Wait Pixel Color";
+        /// <summary>engine-compat.feature.conditionalBlocks · Conditional logic (If/Else/End If)</summary>
+        public static string CompatFeatureConditionalBlocks => IsPt ? "Lógica condicional (If/Else/End If)" : "Conditional logic (If/Else/End If)";
+        /// <summary>engine-compat.feature.conditionTimeout · If condition poll timeout</summary>
+        public static string CompatFeatureConditionTimeout => IsPt ? "Timeout da condição do If" : "If condition poll timeout";
+        /// <summary>engine-compat.feature.conditionRandom · If Random condition</summary>
+        public static string CompatFeatureConditionRandom => IsPt ? "Condição Random do If" : "If Random condition";
+        /// <summary>engine-compat.feature.conditionVariable · If Variable condition</summary>
+        public static string CompatFeatureConditionVariable => IsPt ? "Condição Variable do If" : "If Variable condition";
+        /// <summary>engine-compat.feature.conditionProcess · If Process running condition</summary>
+        public static string CompatFeatureConditionProcess => IsPt ? "Condição Process running do If" : "If Process running condition";
+        /// <summary>engine-compat.feature.conditionFile · If File exists condition</summary>
+        public static string CompatFeatureConditionFile => IsPt ? "Condição File exists do If" : "If File exists condition";
+        /// <summary>engine-compat.feature.conditionTime · If Time condition</summary>
+        public static string CompatFeatureConditionTime => IsPt ? "Condição Time do If" : "If Time condition";
+        /// <summary>engine-compat.feature.conditionWindow · If Window open condition</summary>
+        public static string CompatFeatureConditionWindow => IsPt ? "Condição Window open do If" : "If Window open condition";
+        /// <summary>engine-compat.feature.conditionClipboard · If Clipboard condition</summary>
+        public static string CompatFeatureConditionClipboard => IsPt ? "Condição Clipboard do If" : "If Clipboard condition";
+        /// <summary>engine-compat.feature.conditionBrowser · If Browser element condition</summary>
+        public static string CompatFeatureConditionBrowser => IsPt ? "Condição Browser element do If" : "If Browser element condition";
+        /// <summary>engine-compat.feature.dataTable · Data Loop table</summary>
+        public static string CompatFeatureDataTable => IsPt ? "Tabela do Data Loop" : "Data Loop table";
+        /// <summary>engine-compat.feature.dataSkipOnError · Data Loop skip on error</summary>
+        public static string CompatFeatureDataSkipOnError => IsPt ? "Pular a linha com falha no Data Loop" : "Data Loop skip on error";
+        /// <summary>engine-compat.feature.dataCellModifiers · Data Loop cell modifiers</summary>
+        public static string CompatFeatureDataCellModifiers => IsPt ? "Modificadores nas células do Data Loop" : "Data Loop cell modifiers";
+        /// <summary>engine-compat.feature.clipboardHistoryToken · Clipboard history token</summary>
+        public static string CompatFeatureClipboardHistoryToken => IsPt ? "Token do histórico do clipboard" : "Clipboard history token";
+        /// <summary>engine-compat.feature.nextRowToken · Sequential data-row token</summary>
+        public static string CompatFeatureNextRowToken => IsPt ? "Token da próxima linha de dados" : "Sequential data-row token";
+        /// <summary>engine-compat.feature.nextClipboardToken · Sequential clipboard token</summary>
+        public static string CompatFeatureNextClipboardToken => IsPt ? "Token da próxima linha do clipboard" : "Sequential clipboard token";
+        /// <summary>engine-compat.feature.referenceArgument · Reference modifier argument</summary>
+        public static string CompatFeatureReferenceArgument => IsPt ? "Argumento de modificador por referência" : "Reference modifier argument";
+        /// <summary>engine-compat.feature.listModifiers · Clipboard list modifiers</summary>
+        public static string CompatFeatureListModifiers => IsPt ? "Modificadores de lista do clipboard" : "Clipboard list modifiers";
+        /// <summary>engine-compat.feature.sliceModifiers · Text-slice modifiers</summary>
+        public static string CompatFeatureSliceModifiers => IsPt ? "Modificadores de recorte de texto" : "Text-slice modifiers";
+        /// <summary>engine-compat.feature.colonDelimiter · Colon in split delimiter</summary>
+        public static string CompatFeatureColonDelimiter => IsPt ? "Dois-pontos no delimitador" : "Colon in split delimiter";
+        /// <summary>engine-compat.feature.dropCountModifier · Drop count modifier</summary>
+        public static string CompatFeatureDropCountModifier => IsPt ? "Modificador que tira a contagem" : "Drop count modifier";
+        /// <summary>engine-compat.feature.filterModifiers · Accent/digit filter modifiers</summary>
+        public static string CompatFeatureFilterModifiers => IsPt ? "Modificadores de filtro de acentos/dígitos" : "Accent/digit filter modifiers";
+        /// <summary>engine-compat.feature.pickToken · Random choice token</summary>
+        public static string CompatFeaturePickToken => IsPt ? "Token de escolha aleatória" : "Random choice token";
+        /// <summary>engine-compat.feature.inputToken · Ask-Input token</summary>
+        public static string CompatFeatureInputToken => IsPt ? "Token de pedir valor" : "Ask-Input token";
+        /// <summary>engine-compat.feature.clipSlotToken · Clipboard slot token</summary>
+        public static string CompatFeatureClipSlotToken => IsPt ? "Token de slot do clipboard" : "Clipboard slot token";
+        /// <summary>engine-compat.feature.randomToken · Random number token</summary>
+        public static string CompatFeatureRandomToken => IsPt ? "Token de número aleatório" : "Random number token";
+        /// <summary>engine-compat.feature.runStateTokens · Run-state tokens</summary>
+        public static string CompatFeatureRunStateTokens => IsPt ? "Tokens do estado da execução" : "Run-state tokens";
+        /// <summary>engine-compat.feature.stop · Stop action</summary>
+        public static string CompatFeatureStop => IsPt ? "Passo Stop" : "Stop action";
+        /// <summary>engine-compat.feature.returnLine · Return flow line</summary>
+        public static string CompatFeatureReturnLine => IsPt ? "Passo Return" : "Return flow line";
+        /// <summary>engine-compat.feature.whileLoop · While loop</summary>
+        public static string CompatFeatureWhileLoop => IsPt ? "Loop While" : "While loop";
+        /// <summary>engine-compat.feature.loopControl · Loop control (Break/Next)</summary>
+        public static string CompatFeatureLoopControl => IsPt ? "Controle de loop (Break/Next)" : "Loop control (Break/Next)";
+        /// <summary>engine-compat.feature.forEachDataRow · For Each Data Row block</summary>
+        public static string CompatFeatureForEachDataRow => IsPt ? "Bloco For Each Data Row" : "For Each Data Row block";
+        /// <summary>engine-compat.feature.assertStopQuietly · Assert quiet-stop policy</summary>
+        public static string CompatFeatureAssertStopQuietly => IsPt ? "Assert que para sem erro" : "Assert quiet-stop policy";
+        /// <summary>engine-compat.feature.elseIf · Else If branch</summary>
+        public static string CompatFeatureElseIf => IsPt ? "Ramo Else If" : "Else If branch";
+        /// <summary>engine-compat.feature.nameTokenModifiers · Modifiers on slot/variable/history tokens</summary>
+        public static string CompatFeatureNameTokenModifiers => IsPt ? "Modificadores nos tokens de slot/variável/histórico" : "Modifiers on slot/variable/history tokens";
+        /// <summary>engine-compat.feature.desktopAssert · Desktop Assert</summary>
+        public static string CompatFeatureDesktopAssert => IsPt ? "Assert da área de trabalho" : "Desktop Assert";
+        /// <summary>engine-compat.feature.copyToSlot · Copy to Slot</summary>
+        public static string CompatFeatureCopyToSlot => IsPt ? "Copy to Slot" : "Copy to Slot";
+        /// <summary>engine-compat.feature.assertElement · Assert Element</summary>
+        public static string CompatFeatureAssertElement => IsPt ? "Assert Element" : "Assert Element";
+        /// <summary>engine-compat.feature.browserActions · Browser actions</summary>
+        public static string CompatFeatureBrowserActions => IsPt ? "Ações do navegador" : "Browser actions";
+        /// <summary>engine-compat.feature.holdKeyKeystroke · Hold Key/Keystroke</summary>
+        public static string CompatFeatureHoldKeyKeystroke => IsPt ? "Hold Key/Keystroke" : "Hold Key/Keystroke";
+        /// <summary>engine-compat.feature.clickHold · Click and hold</summary>
+        public static string CompatFeatureClickHold => IsPt ? "Clicar e segurar" : "Click and hold";
+        /// <summary>engine-compat.feature.keystrokeJitter · Keystroke repeat jitter</summary>
+        public static string CompatFeatureKeystrokeJitter => IsPt ? "Variação na repetição do Keystroke" : "Keystroke repeat jitter";
+        /// <summary>engine-compat.feature.runMacro · Run Macro (macro chaining)</summary>
+        public static string CompatFeatureRunMacro => IsPt ? "Run Macro (encadear macros)" : "Run Macro (macro chaining)";
+        /// <summary>engine-compat.feature.runMacroOverData · Run Macro over data</summary>
+        public static string CompatFeatureRunMacroOverData => IsPt ? "Run Macro por linha de dados" : "Run Macro over data";
+        /// <summary>engine-compat.feature.combinedClicks · Combined clicks (Left Click/Right Click/Middle Click)</summary>
+        public static string CompatFeatureCombinedClicks => IsPt ? "Cliques combinados (Left Click/Right Click/Middle Click)" : "Combined clicks (Left Click/Right Click/Middle Click)";
+        /// <summary>engine-compat.feature.focusClick · Focus click</summary>
+        public static string CompatFeatureFocusClick => IsPt ? "Clique de foco" : "Focus click";
+        /// <summary>engine-compat.feature.clickRepeat · Click repeat (× N)</summary>
+        public static string CompatFeatureClickRepeat => IsPt ? "Repetição do clique (× N)" : "Click repeat (× N)";
+        /// <summary>engine-compat.feature.clickPointJitter · Click repeat position jitter</summary>
+        public static string CompatFeatureClickPointJitter => IsPt ? "Variação do ponto na repetição do clique" : "Click repeat position jitter";
+        /// <summary>engine-compat.feature.doubleClick · Double Click</summary>
+        public static string CompatFeatureDoubleClick => IsPt ? "Double Click" : "Double Click";
+        /// <summary>engine-compat.feature.tripleClick · Triple Click</summary>
+        public static string CompatFeatureTripleClick => IsPt ? "Triple Click" : "Triple Click";
+        /// <summary>engine-compat.feature.clickAtCursor · Click at cursor</summary>
+        public static string CompatFeatureClickAtCursor => IsPt ? "Clique no cursor" : "Click at cursor";
+        /// <summary>engine-compat.feature.activateWindow · Activate Window</summary>
+        public static string CompatFeatureActivateWindow => IsPt ? "Activate Window" : "Activate Window";
+        /// <summary>engine-compat.feature.activateWindowPlacement · Activate Window placement</summary>
+        public static string CompatFeatureActivateWindowPlacement => IsPt ? "Posicionamento do Activate Window" : "Activate Window placement";
+        /// <summary>engine-compat.feature.activateWindowAction · Window action or Match # (Activate Window)</summary>
+        public static string CompatFeatureActivateWindowAction => IsPt ? "Ação na janela ou Ocorrência nº (Activate Window)" : "Window action or Match # (Activate Window)";
+        /// <summary>engine-compat.feature.setVariableCycle · Set Variable Cycle mode</summary>
+        public static string CompatFeatureSetVariableCycle => IsPt ? "Modo Ciclo do Set Variable" : "Set Variable Cycle mode";
+        /// <summary>engine-compat.feature.setVariableAdd · Set Variable Add mode</summary>
+        public static string CompatFeatureSetVariableAdd => IsPt ? "Modo Somar do Set Variable" : "Set Variable Add mode";
+        /// <summary>engine-compat.feature.loopTokens · Loop iteration tokens</summary>
+        public static string CompatFeatureLoopTokens => IsPt ? "Tokens da volta do loop" : "Loop iteration tokens";
+        /// <summary>engine-compat.feature.dateFormat · Date/time format and offset</summary>
+        public static string CompatFeatureDateFormat => IsPt ? "Formato e deslocamento de data/hora" : "Date/time format and offset";
+        /// <summary>engine-compat.feature.shapeModifiers · Replace/count/pad/default modifiers</summary>
+        public static string CompatFeatureShapeModifiers => IsPt ? "Modificadores replace/count/pad/default" : "Replace/count/pad/default modifiers";
+        /// <summary>engine-compat.feature.counterModifiers · Modifiers on counter/loop/datarow tokens</summary>
+        public static string CompatFeatureCounterModifiers => IsPt ? "Modificadores nos tokens counter/loop/datarow" : "Modifiers on counter/loop/datarow tokens";
+        /// <summary>engine-compat.feature.machineTokens · UUID/timestamp/env tokens</summary>
+        public static string CompatFeatureMachineTokens => IsPt ? "Tokens UUID/timestamp/env" : "UUID/timestamp/env tokens";
+        /// <summary>engine-compat.feature.typeTextKeys · Type Text key tokens (space/home/end/page, repeat, delay)</summary>
+        public static string CompatFeatureTypeTextKeys => IsPt ? "Tokens de tecla do Type Text (space/home/end/page, repetição, delay)" : "Type Text key tokens (space/home/end/page, repeat, delay)";
+        /// <summary>engine-compat.feature.wideColumnNames · Data column names with spaces or accents</summary>
+        public static string CompatFeatureWideColumnNames => IsPt ? "Nomes de coluna com espaços ou acentos" : "Data column names with spaces or accents";
+        /// <summary>engine-compat.feature.copyToSlotClear · Copy to Slot Clear mode</summary>
+        public static string CompatFeatureCopyToSlotClear => IsPt ? "Modo Limpar do Copy to Slot" : "Copy to Slot Clear mode";
+        /// <summary>engine-compat.feature.richText · Rich text (Send Text)</summary>
+        public static string CompatFeatureRichText => IsPt ? "Texto formatado (Send Text)" : "Rich text (Send Text)";
+        /// <summary>engine-compat.feature.typedDelivery · Typed text delivery (Send Text)</summary>
+        public static string CompatFeatureTypedDelivery => IsPt ? "Entrega por digitação (Send Text)" : "Typed text delivery (Send Text)";
+        /// <summary>engine-compat.feature.setVariable · Set Variable</summary>
+        public static string CompatFeatureSetVariable => IsPt ? "Set Variable" : "Set Variable";
+        /// <summary>engine-compat.feature.automationTrigger · Automation trigger</summary>
+        public static string CompatFeatureAutomationTrigger => IsPt ? "Gatilho de automação" : "Automation trigger";
+        /// <summary>engine-compat.feature.automationSearchRegion · Automation image search region</summary>
+        public static string CompatFeatureAutomationSearchRegion => IsPt ? "Região de pesquisa da imagem na automação" : "Automation image search region";
+        /// <summary>engine-compat.feature.automationCheckEvery · Automation poll interval</summary>
+        public static string CompatFeatureAutomationCheckEvery => IsPt ? "Intervalo de verificação da automação" : "Automation poll interval";
+        /// <summary>engine-compat.feature.automationWindowAnchor · Automation watcher window anchor</summary>
+        public static string CompatFeatureAutomationWindowAnchor => IsPt ? "Automação relativa a uma janela" : "Automation watcher window anchor";
+        /// <summary>engine-compat.feature.automationHours · Automation active hours</summary>
+        public static string CompatFeatureAutomationHours => IsPt ? "Horários da automação" : "Automation active hours";
+        /// <summary>engine-compat.feature.macroLoops · Per-macro loop count</summary>
+        public static string CompatFeatureMacroLoops => IsPt ? "Loops por macro" : "Per-macro loop count";
+        /// <summary>engine-compat.feature.macroGameMode · Per-macro Game Mode</summary>
+        public static string CompatFeatureMacroGameMode => IsPt ? "Game Mode por macro" : "Per-macro Game Mode";
+        /// <summary>engine-compat.feature.macroReturnCursor · Per-macro cursor return</summary>
+        public static string CompatFeatureMacroReturnCursor => IsPt ? "Devolver o cursor por macro" : "Per-macro cursor return";
+        /// <summary>engine-compat.feature.macroJitter · Per-macro jitter</summary>
+        public static string CompatFeatureMacroJitter => IsPt ? "Variação por macro" : "Per-macro jitter";
+        /// <summary>engine-compat.feature.macroFastApproach · Per-macro fast approach</summary>
+        public static string CompatFeatureMacroFastApproach => IsPt ? "Aproximação rápida por macro" : "Per-macro fast approach";
+        /// <summary>engine-compat.feature.waitText · Wait Text</summary>
+        public static string CompatFeatureWaitText => IsPt ? "Wait Text" : "Wait Text";
+        /// <summary>engine-compat.feature.conditionScreenText · Text on screen condition</summary>
+        public static string CompatFeatureConditionScreenText => IsPt ? "Condição Text on screen" : "Text on screen condition";
+        /// <summary>engine-compat.feature.setVariableScreen · Read screen text into a variable</summary>
+        public static string CompatFeatureSetVariableScreen => IsPt ? "Ler o texto da tela em uma variável" : "Read screen text into a variable";
+        /// <summary>engine-compat.feature.automationScreenText · Automation screen text</summary>
+        public static string CompatFeatureAutomationScreenText => IsPt ? "Texto da tela na automação" : "Automation screen text";
+        /// <summary>engine-compat.feature.restoreSize · Restore size</summary>
+        public static string CompatFeatureRestoreSize => IsPt ? "Restaurar tamanho" : "Restore size";
+        /// <summary>engine-compat.feature.sharingMetadata · Macro sharing metadata</summary>
+        public static string CompatFeatureSharingMetadata => IsPt ? "Metadados de compartilhamento da macro" : "Macro sharing metadata";
+        /// <summary>engine-compat.repair.appended · Auto-repaired conditional blocks in '{{name}}': appended {{n}} closing marker</summary>
+        public static string CompatRepairAppended(string n, string name, int count) => IsPt ? (count == 0 ? $"O app reparou os blocos condicionais de '{name}' sem adicionar marcadores de fechamento" : (count < 2 ? $"O app reparou os blocos condicionais de '{name}': adicionou {n} marcador de fechamento" : $"O app reparou os blocos condicionais de '{name}': adicionou {n} marcadores de fechamento")) : (count == 1 ? $"Auto-repaired conditional blocks in '{name}': appended {n} closing marker" : $"Auto-repaired conditional blocks in '{name}': appended {n} closing markers");
+        /// <summary>engine-compat.repair.removed · Auto-repaired conditional blocks in '{{name}}': removed {{n}} orphan</summary>
+        public static string CompatRepairRemoved(string n, string name, int count) => IsPt ? (count == 0 ? $"O app reparou os blocos condicionais de '{name}' sem remover marcadores órfãos" : (count < 2 ? $"O app reparou os blocos condicionais de '{name}': removeu {n} marcador órfão" : $"O app reparou os blocos condicionais de '{name}': removeu {n} marcadores órfãos")) : (count == 1 ? $"Auto-repaired conditional blocks in '{name}': removed {n} orphan" : $"Auto-repaired conditional blocks in '{name}': removed {n} orphans");
+        /// <summary>engine-compat.repair.both · Auto-repaired conditional blocks in '{{name}}': appended {{markers}}, removed {{orphans}}</summary>
+        public static string CompatRepairBoth(string markers, string name, string orphans) => IsPt ? $"O app reparou os blocos condicionais de '{name}': adicionou {markers} e removeu {orphans}" : $"Auto-repaired conditional blocks in '{name}': appended {markers}, removed {orphans}";
+        /// <summary>engine-compat.repair.markers · {{n}} closing marker</summary>
+        public static string CompatRepairMarkers(string n, int count) => IsPt ? (count == 0 ? "nenhum marcador de fechamento" : (count < 2 ? $"{n} marcador de fechamento" : $"{n} marcadores de fechamento")) : (count == 1 ? $"{n} closing marker" : $"{n} closing markers");
+        /// <summary>engine-compat.repair.orphans · {{n}} orphan</summary>
+        public static string CompatRepairOrphans(string n, int count) => IsPt ? (count == 0 ? "nenhum marcador órfão" : (count < 2 ? $"{n} marcador órfão" : $"{n} marcadores órfãos")) : (count == 1 ? $"{n} orphan" : $"{n} orphans");
+        /// <summary>engine-compat.repair.noteIf · auto-repaired: unmatched IF</summary>
+        public static string CompatRepairNoteIf => IsPt ? "reparo automático: If sem End If" : "auto-repaired: unmatched IF";
+        /// <summary>engine-compat.repair.noteWhile · auto-repaired: unmatched WHILE</summary>
+        public static string CompatRepairNoteWhile => IsPt ? "reparo automático: While sem End Loop" : "auto-repaired: unmatched WHILE";
+        /// <summary>engine-compat.repair.noteForEachRow · auto-repaired: unmatched FOR EACH ROW</summary>
+        public static string CompatRepairNoteForEachRow => IsPt ? "reparo automático: For Each Row sem End Loop" : "auto-repaired: unmatched FOR EACH ROW";
+        /// <summary>engine-copy.head.action · Action</summary>
+        public static string CopyHeadAction => IsPt ? "Passo" : "Action";
+        /// <summary>engine-copy.head.key · Key</summary>
+        public static string CopyHeadKey => IsPt ? "Detalhes" : "Key";
+        /// <summary>engine-copy.head.delay · Delay</summary>
+        public static string CopyHeadDelay => IsPt ? "Delay" : "Delay";
+        /// <summary>engine-copy.head.notes · Notes</summary>
+        public static string CopyHeadNotes => IsPt ? "Notas" : "Notes";
+        /// <summary>engine-copy.summary · Actions: {{n}} | Total delay: {{total}}</summary>
+        public static string CopySummary(string n, string total) => IsPt ? $"Passos: {n} | Delay total: {total}" : $"Actions: {n} | Total delay: {total}";
+        /// <summary>engine-copy.duration.millis · {{ms}}ms</summary>
+        public static string CopyDurationMillis(string ms) => IsPt ? $"{ms} ms" : $"{ms}ms";
+        /// <summary>engine-copy.duration.seconds · {{s}}s</summary>
+        public static string CopyDurationSeconds(string s) => IsPt ? $"{s} s" : $"{s}s";
+        /// <summary>engine-copy.duration.minutes · {{m}}m {{s}}s</summary>
+        public static string CopyDurationMinutes(string m, string s) => IsPt ? $"{m} min {s} s" : $"{m}m {s}s";
+        /// <summary>engine-copy.key.clearAll · clear all slots</summary>
+        public static string CopyKeyClearAll => IsPt ? "limpar todos os slots" : "clear all slots";
+        /// <summary>engine-copy.key.clearSlot · clear {{clip}}</summary>
+        public static string CopyKeyClearSlot(string clip) => IsPt ? $"limpar {clip}" : $"clear {clip}";
+        /// <summary>engine-copy.key.changes · changes</summary>
+        public static string CopyKeyChanges => IsPt ? "muda" : "changes";
+        /// <summary>engine-copy.key.fromScreen · {{name}} ← screen</summary>
+        public static string CopyKeyFromScreen(string name) => IsPt ? $"{name} ← tela" : $"{name} ← screen";
+        /// <summary>engine-copy.key.fromScreenNumber · {{name}} ← screen #</summary>
+        public static string CopyKeyFromScreenNumber(string name) => IsPt ? $"{name} ← tela #" : $"{name} ← screen #";
+        /// <summary>engine-copy.key.window.maximize · Maximize · {{window}}</summary>
+        public static string CopyKeyWindowMaximize(string window) => IsPt ? $"Maximizar · {window}" : $"Maximize · {window}";
+        /// <summary>engine-copy.key.window.minimize · Minimize · {{window}}</summary>
+        public static string CopyKeyWindowMinimize(string window) => IsPt ? $"Minimizar · {window}" : $"Minimize · {window}";
+        /// <summary>engine-copy.key.window.close · Close · {{window}}</summary>
+        public static string CopyKeyWindowClose(string window) => IsPt ? $"Fechar · {window}" : $"Close · {window}";
+        /// <summary>engine-copy.key.window.launch · {{window}} — launch</summary>
+        public static string CopyKeyWindowLaunch(string window) => IsPt ? $"{window} — abrir" : $"{window} — launch";
+        /// <summary>engine-copy.key.window.maximizeLaunch · Maximize · {{window}} — launch</summary>
+        public static string CopyKeyWindowMaximizeLaunch(string window) => IsPt ? $"Maximizar · {window} — abrir" : $"Maximize · {window} — launch";
+        /// <summary>engine-copy.key.window.run · run: {{path}}</summary>
+        public static string CopyKeyWindowRun(string path) => IsPt ? $"abrir: {path}" : $"run: {path}";
+        /// <summary>engine-errors.fileInUse · the file is in use by another program</summary>
+        public static string ErrorsFileInUse => IsPt ? "o arquivo está em uso por outro programa" : "the file is in use by another program";
+        /// <summary>engine-errors.accessDenied · Windows denied access to the file or folder</summary>
+        public static string ErrorsAccessDenied => IsPt ? "o Windows negou o acesso ao arquivo ou à pasta" : "Windows denied access to the file or folder";
+        /// <summary>engine-errors.fileNotFound · the file is not there anymore</summary>
+        public static string ErrorsFileNotFound => IsPt ? "o arquivo não existe mais" : "the file is not there anymore";
+        /// <summary>engine-errors.folderNotFound · the folder is not there anymore</summary>
+        public static string ErrorsFolderNotFound => IsPt ? "a pasta não existe mais" : "the folder is not there anymore";
+        /// <summary>engine-errors.pathTooLong · the path is too long for Windows</summary>
+        public static string ErrorsPathTooLong => IsPt ? "o caminho é longo demais para o Windows" : "the path is too long for Windows";
+        /// <summary>engine-errors.diskFull · the disk is full</summary>
+        public static string ErrorsDiskFull => IsPt ? "o disco está cheio" : "the disk is full";
+        /// <summary>engine-guards.scope.imageCapture · the reference image capture</summary>
+        public static string GuardsScopeImageCapture => IsPt ? "a captura da imagem de referência" : "the reference image capture";
+        /// <summary>engine-guards.scope.colorPick · the screen capture to pick a color</summary>
+        public static string GuardsScopeColorPick => IsPt ? "a escolha da cor na tela" : "the screen capture to pick a color";
+        /// <summary>engine-guards.scope.pointPick · the screen capture to pick a point</summary>
+        public static string GuardsScopePointPick => IsPt ? "a escolha do ponto na tela" : "the screen capture to pick a point";
+        /// <summary>engine-guards.scope.regionCapture · the screen capture to draw a region</summary>
+        public static string GuardsScopeRegionCapture => IsPt ? "a captura da região na tela" : "the screen capture to draw a region";
+        /// <summary>engine-guards.scope.screenCapture · the screen capture</summary>
+        public static string GuardsScopeScreenCapture => IsPt ? "a captura na tela" : "the screen capture";
+        /// <summary>engine-guards.scope.windowPick · the window detection</summary>
+        public static string GuardsScopeWindowPick => IsPt ? "a detecção da janela" : "the window detection";
+        /// <summary>engine-guards.scope.pickProgram · the window to choose a program</summary>
+        public static string GuardsScopePickProgram => IsPt ? "a janela para escolher um programa" : "the window to choose a program";
+        /// <summary>engine-guards.scope.pickImage · the window to choose a reference image</summary>
+        public static string GuardsScopePickImage => IsPt ? "a janela para escolher uma imagem de referência" : "the window to choose a reference image";
+        /// <summary>engine-guards.scope.saveImage · the window to save the reference image</summary>
+        public static string GuardsScopeSaveImage => IsPt ? "a janela para salvar a imagem de referência" : "the window to save the reference image";
+        /// <summary>engine-guards.scope.saveFile · the window to save a file</summary>
+        public static string GuardsScopeSaveFile => IsPt ? "a janela para salvar um arquivo" : "the window to save a file";
+        /// <summary>engine-guards.scope.saveMacroFile · the window to save the macro</summary>
+        public static string GuardsScopeSaveMacroFile => IsPt ? "a janela para salvar a macro" : "the window to save the macro";
+        /// <summary>engine-guards.scope.openMacroFile · the window to open a macro</summary>
+        public static string GuardsScopeOpenMacroFile => IsPt ? "a janela para abrir uma macro" : "the window to open a macro";
+        /// <summary>engine-guards.scope.exportMacros · the window to export macros</summary>
+        public static string GuardsScopeExportMacros => IsPt ? "a janela para exportar macros" : "the window to export macros";
+        /// <summary>engine-guards.scope.importMacros · the window to import macros</summary>
+        public static string GuardsScopeImportMacros => IsPt ? "a janela para importar macros" : "the window to import macros";
+        /// <summary>engine-guards.scope.fileWindow · the file window</summary>
+        public static string GuardsScopeFileWindow => IsPt ? "a janela de arquivo" : "the file window";
+        /// <summary>engine-guards.scope.saveMacro · the Save Macro dialog</summary>
+        public static string GuardsScopeSaveMacro => IsPt ? "a pergunta sobre como salvar a macro" : "the Save Macro dialog";
+        /// <summary>engine-guards.scope.unsavedChanges · the Unsaved Changes dialog</summary>
+        public static string GuardsScopeUnsavedChanges => IsPt ? "a pergunta sobre as mudanças não salvas" : "the Unsaved Changes dialog";
+        /// <summary>engine-guards.scope.unappliedChanges · the Unapplied Changes dialog</summary>
+        public static string GuardsScopeUnappliedChanges => IsPt ? "a pergunta sobre as mudanças não aplicadas" : "the Unapplied Changes dialog";
+        /// <summary>engine-guards.scope.deleteFolder · the Delete Folder dialog</summary>
+        public static string GuardsScopeDeleteFolder => IsPt ? "a pergunta sobre excluir a pasta" : "the Delete Folder dialog";
+        /// <summary>engine-guards.scope.resetSettings · the Reset Settings dialog</summary>
+        public static string GuardsScopeResetSettings => IsPt ? "a pergunta sobre redefinir as configurações" : "the Reset Settings dialog";
+        /// <summary>engine-guards.scope.otherDialog · another dialog</summary>
+        public static string GuardsScopeOtherDialog => IsPt ? "outra pergunta" : "another dialog";
+        /// <summary>engine-guards.scope.unknown · another window</summary>
+        public static string GuardsScopeUnknown => IsPt ? "outra janela" : "another window";
+        /// <summary>engine-guards.unapplied.single · {{editor}} has changes that haven't been applied.</summary>
+        public static string GuardsUnappliedSingle(string editor) => IsPt ? $"{editor} tem mudanças que ainda não foram aplicadas." : $"{editor} has changes that haven't been applied.";
+        /// <summary>engine-guards.unapplied.several · {{editors}} have changes that haven't been applied.</summary>
+        public static string GuardsUnappliedSeveral(string editors) => IsPt ? $"{editors} têm mudanças que ainda não foram aplicadas." : $"{editors} have changes that haven't been applied.";
+        /// <summary>engine-guards.unapplied.start.sheet · The action editor</summary>
+        public static string GuardsUnappliedStartSheet => IsPt ? "O editor de ações" : "The action editor";
+        /// <summary>engine-guards.unapplied.start.rowDialog · A row editor</summary>
+        public static string GuardsUnappliedStartRowDialog => IsPt ? "Um editor de linha" : "A row editor";
+        /// <summary>engine-guards.unapplied.start.insertDialog · An insert dialog</summary>
+        public static string GuardsUnappliedStartInsertDialog => IsPt ? "Uma janela de inserção" : "An insert dialog";
+        /// <summary>engine-guards.unapplied.start.dataPanel · The data table</summary>
+        public static string GuardsUnappliedStartDataPanel => IsPt ? "A tabela do Data Loop" : "The data table";
+        /// <summary>engine-guards.unapplied.start.automationPanel · The Automations panel</summary>
+        public static string GuardsUnappliedStartAutomationPanel => IsPt ? "O painel de Automações" : "The Automations panel";
+        /// <summary>engine-guards.unapplied.start.inspector · The Inspector</summary>
+        public static string GuardsUnappliedStartInspector => IsPt ? "O Inspector" : "The Inspector";
+        /// <summary>engine-guards.unapplied.start.unknown · An open editor</summary>
+        public static string GuardsUnappliedStartUnknown => IsPt ? "Um editor aberto" : "An open editor";
+        /// <summary>engine-guards.unapplied.inside.sheet · the action editor</summary>
+        public static string GuardsUnappliedInsideSheet => IsPt ? "o editor de ações" : "the action editor";
+        /// <summary>engine-guards.unapplied.inside.rowDialog · a row editor</summary>
+        public static string GuardsUnappliedInsideRowDialog => IsPt ? "um editor de linha" : "a row editor";
+        /// <summary>engine-guards.unapplied.inside.insertDialog · an insert dialog</summary>
+        public static string GuardsUnappliedInsideInsertDialog => IsPt ? "uma janela de inserção" : "an insert dialog";
+        /// <summary>engine-guards.unapplied.inside.dataPanel · the data table</summary>
+        public static string GuardsUnappliedInsideDataPanel => IsPt ? "a tabela do Data Loop" : "the data table";
+        /// <summary>engine-guards.unapplied.inside.automationPanel · the Automations panel</summary>
+        public static string GuardsUnappliedInsideAutomationPanel => IsPt ? "o painel de Automações" : "the Automations panel";
+        /// <summary>engine-guards.unapplied.inside.inspector · the Inspector</summary>
+        public static string GuardsUnappliedInsideInspector => IsPt ? "o Inspector" : "the Inspector";
+        /// <summary>engine-guards.unapplied.inside.unknown · an open editor</summary>
+        public static string GuardsUnappliedInsideUnknown => IsPt ? "um editor aberto" : "an open editor";
+        /// <summary>engine-guards.editScope.macroChanged · The active macro changed from "{{from}}" to "{{to}}" — this was not applied.</summary>
+        public static string GuardsEditScopeMacroChanged(string from, string to) => IsPt ? $"A macro aberta mudou de “{from}” para “{to}” — isto não foi aplicado." : $"The active macro changed from \"{from}\" to \"{to}\" — this was not applied.";
+        /// <summary>engine-guards.editScope.listChanged · The action list changed while this was open — this was not applied.</summary>
+        public static string GuardsEditScopeListChanged => IsPt ? "A lista de passos mudou enquanto isto estava aberto — isto não foi aplicado." : "The action list changed while this was open — this was not applied.";
+        /// <summary>engine-guards.editScope.noAnchor · No anchor was captured for this operation.</summary>
+        public static string GuardsEditScopeNoAnchor => IsPt ? "Esta operação não guardou o passo em que escreveria." : "No anchor was captured for this operation.";
+        /// <summary>engine-guards.editScope.stepRemoved · That action was removed while this was open — this was not applied.</summary>
+        public static string GuardsEditScopeStepRemoved => IsPt ? "Esse passo foi removido enquanto isto estava aberto — isto não foi aplicado." : "That action was removed while this was open — this was not applied.";
+        /// <summary>engine-notices.stillRunning.title · {{app}} is still running</summary>
+        public static string NoticesStillRunningTitle(string app) => IsPt ? $"O {app} continua rodando" : $"{app} is still running";
+        /// <summary>engine-notices.stillRunning.text · Closing the window keeps shortcuts, automations and remaps working. To quit, use the tray icon.</summary>
+        public static string NoticesStillRunningText => IsPt ? "Fechar a janela mantém os atalhos, as automações e os remaps funcionando. Para sair, use o ícone da bandeja." : "Closing the window keeps shortcuts, automations and remaps working. To quit, use the tray icon.";
+        /// <summary>engine-notices.stillRunning.gotIt · Got it</summary>
+        public static string NoticesStillRunningGotIt => IsPt ? "Entendi" : "Got it";
+        /// <summary>engine-notices.stillRunning.settings · Settings</summary>
+        public static string NoticesStillRunningSettings => IsPt ? "Configurações" : "Settings";
+        /// <summary>engine-ocr.noLanguage · No OCR language installed. Settings → Screen Text → Install, or Windows Settings → Time   language → Language   region → add a language with "Optical character recognition".</summary>
+        public static string OcrNoLanguage => IsPt ? "Nenhum idioma de OCR instalado. Configurações → Screen Text → Instalar, ou Configurações do Windows → Hora e idioma → Idioma e região → adicione um idioma com \"Reconhecimento óptico de caracteres\"." : "No OCR language installed. Settings → Screen Text → Install, or Windows Settings → Time & language → Language & region → add a language with \"Optical character recognition\".";
+        /// <summary>engine-ocr.install.notOffered · '{{tag}}' is not a language {{app}} installs.</summary>
+        public static string OcrInstallNotOffered(string app, string tag) => IsPt ? $"'{tag}' não é um idioma que o {app} instala." : $"'{tag}' is not a language {app} installs.";
+        /// <summary>engine-ocr.install.dismNotStarted · DISM did not start.</summary>
+        public static string OcrInstallDismNotStarted => IsPt ? "o DISM não iniciou." : "DISM did not start.";
+        /// <summary>engine-ocr.install.stillInstalling · Windows is still installing after 20 minutes. Check again later in Settings.</summary>
+        public static string OcrInstallStillInstalling => IsPt ? "o Windows ainda está instalando depois de 20 minutos. Confira de novo mais tarde em Configurações." : "Windows is still installing after 20 minutes. Check again later in Settings.";
+        /// <summary>engine-ocr.install.failed · Windows could not add the pack (DISM 0x{{code}}).</summary>
+        public static string OcrInstallFailed(string code) => IsPt ? $"o Windows não conseguiu adicionar o pacote (DISM 0x{code})." : $"Windows could not add the pack (DISM 0x{code}).";
+        /// <summary>engine-ocr.variant.double · 2×</summary>
+        public static string OcrVariantDouble => IsPt ? "2×" : "2×";
+        /// <summary>engine-ocr.variant.doubleStretch · 2× stretch</summary>
+        public static string OcrVariantDoubleStretch => IsPt ? "2× contraste" : "2× stretch";
+        /// <summary>engine-ocr.variant.doubleKey · 2× colour key</summary>
+        public static string OcrVariantDoubleKey => IsPt ? "2× filtro de cor" : "2× colour key";
+        /// <summary>engine-ocr.variant.tripleKey · 3× colour key</summary>
+        public static string OcrVariantTripleKey => IsPt ? "3× filtro de cor" : "3× colour key";
+        /// <summary>engine-ocr.variant.doubleLabel · 2× + label</summary>
+        public static string OcrVariantDoubleLabel => IsPt ? "2× + rótulo" : "2× + label";
+        /// <summary>engine-ocr.variant.tripleKeyLabel · 3× colour key + label</summary>
+        public static string OcrVariantTripleKeyLabel => IsPt ? "3× filtro de cor + rótulo" : "3× colour key + label";
+        /// <summary>engine-ocr.variant.offScreen · off-screen</summary>
+        public static string OcrVariantOffScreen => IsPt ? "fora da tela" : "off-screen";
+        /// <summary>engine-ocr.notNumber · Value is not a number: '{{value}}'</summary>
+        public static string OcrNotNumber(string value) => IsPt ? $"O valor não é um número: '{value}'" : $"Value is not a number: '{value}'";
+        /// <summary>engine-ocr.summary.has · has "{{text}}"</summary>
+        public static string OcrSummaryHas(string text) => IsPt ? $"tem \"{text}\"" : $"has \"{text}\"";
+        /// <summary>engine-ocr.summary.regex · regex {{text}}</summary>
+        public static string OcrSummaryRegex(string text) => IsPt ? $"regex {text}" : $"regex {text}";
+        /// <summary>engine-profiles.alerts.pickerBusy · Can't open the file dialog: {{holder}} is still open and didn't respond. Press Esc or right-click on it, then try again.</summary>
+        public static string ProfilesAlertsPickerBusy(string holder) => IsPt ? $"Não foi possível abrir o diálogo de arquivos: {holder} ainda está aberta e não respondeu. Aperte Esc ou clique nela com o botão direito e tente de novo." : $"Can't open the file dialog: {holder} is still open and didn't respond. Press Esc or right-click on it, then try again.";
+        /// <summary>engine-profiles.alerts.pickerFailed · The file dialog couldn't open ({{reason}}).</summary>
+        public static string ProfilesAlertsPickerFailed(string reason) => IsPt ? $"Não foi possível abrir o diálogo de arquivos ({reason})." : $"The file dialog couldn't open ({reason}).";
+        /// <summary>engine-profiles.alerts.savedImagesMissing · Saved "{{name}}", but {{n}} reference image(s) were missing on disk and could not be carried over — recapture them in the new macro.</summary>
+        public static string ProfilesAlertsSavedImagesMissing(string n, string name, int count) => IsPt ? (count == 0 ? $"A macro \"{name}\" foi salva com todas as imagens de referência." : (count < 2 ? $"A macro \"{name}\" foi salva, mas {n} imagem de referência não estava no disco e não pôde ser copiada — capture-a de novo na nova macro." : $"A macro \"{name}\" foi salva, mas {n} imagens de referência não estavam no disco e não puderam ser copiadas — capture-as de novo na nova macro.")) : $"Saved \"{name}\", but {n} reference image(s) were missing on disk and could not be carried over — recapture them in the new macro.";
+        /// <summary>engine-profiles.alerts.saveGone · Couldn't save "{{name}}": it's no longer in the macro list (renamed or deleted outside the app?).</summary>
+        public static string ProfilesAlertsSaveGone(string name) => IsPt ? $"Não foi possível salvar a macro \"{name}\": ela não está mais na lista de macros (foi renomeada ou excluída fora do app?)." : $"Couldn't save \"{name}\": it's no longer in the macro list (renamed or deleted outside the app?).";
+        /// <summary>engine-profiles.order.locked · Couldn't read your macro organisation (folders/pins) — another program is holding the file. Macros are shown ungrouped until it can be read; the file was not changed.</summary>
+        public static string ProfilesOrderLocked => IsPt ? "Não foi possível ler as suas pastas e macros fixadas — outro programa está usando o arquivo. As macros aparecem fora das pastas até ele poder ser lido; o arquivo não foi alterado." : "Couldn't read your macro organisation (folders/pins) — another program is holding the file. Macros are shown ungrouped until it can be read; the file was not changed.";
+        /// <summary>engine-profiles.order.backedUp · Couldn't read your macro organisation (folders/pins). The unreadable file was backed up to {{file}}; your layout was reset.</summary>
+        public static string ProfilesOrderBackedUp(string file) => IsPt ? $"Não foi possível ler as suas pastas e macros fixadas. O arquivo ilegível foi copiado para {file}, e a organização recomeçou do zero." : $"Couldn't read your macro organisation (folders/pins). The unreadable file was backed up to {file}; your layout was reset.";
+        /// <summary>engine-profiles.order.reset · Couldn't read your macro organisation (folders/pins); your layout was reset.</summary>
+        public static string ProfilesOrderReset => IsPt ? "Não foi possível ler as suas pastas e macros fixadas, e a organização recomeçou do zero." : "Couldn't read your macro organisation (folders/pins); your layout was reset.";
+        /// <summary>engine-profiles.order.stillUnreadable · Your macro organisation (folders/pins) still can't be read, so that change wasn't saved. The file was not changed.</summary>
+        public static string ProfilesOrderStillUnreadable => IsPt ? "As suas pastas e macros fixadas ainda não podem ser lidas, então essa mudança não foi salva. O arquivo não foi alterado." : "Your macro organisation (folders/pins) still can't be read, so that change wasn't saved. The file was not changed.";
+        /// <summary>engine-profiles.order.reloaded · Your folders and pins hadn't loaded yet — they're back now, but that change wasn't applied. Please repeat it.</summary>
+        public static string ProfilesOrderReloaded => IsPt ? "As suas pastas e macros fixadas ainda não tinham sido carregadas — já voltaram, mas essa mudança não foi aplicada. Faça-a de novo." : "Your folders and pins hadn't loaded yet — they're back now, but that change wasn't applied. Please repeat it.";
+        /// <summary>engine-profiles.order.saveFailed · Couldn't save your macro organisation (folders/pins): {{reason}}. The change is kept for this session and will be retried.</summary>
+        public static string ProfilesOrderSaveFailed(string reason) => IsPt ? $"Não foi possível salvar as suas pastas e macros fixadas: {reason}. A mudança fica guardada nesta sessão e será gravada de novo." : $"Couldn't save your macro organisation (folders/pins): {reason}. The change is kept for this session and will be retried.";
+        /// <summary>engine-profiles.collision.hotkey · Hotkey '{{hotkey}}' is bound to {{n}} macros with the same target '{{target}}': {{names}} — only one will fire</summary>
+        public static string ProfilesCollisionHotkey(string hotkey, string n, string names, string target) => IsPt ? $"A hotkey '{hotkey}' está atribuída a {n} macros com a mesma janela-alvo ('{target}'): {names} — só uma vai disparar" : $"Hotkey '{hotkey}' is bound to {n} macros with the same target '{target}': {names} — only one will fire";
+        /// <summary>engine-profiles.collision.hotkeyNoTarget · Hotkey '{{hotkey}}' is bound to {{n}} macros with the same no target window: {{names}} — only one will fire</summary>
+        public static string ProfilesCollisionHotkeyNoTarget(string hotkey, string n, string names) => IsPt ? $"A hotkey '{hotkey}' está atribuída a {n} macros sem janela-alvo: {names} — só uma vai disparar" : $"Hotkey '{hotkey}' is bound to {n} macros with the same no target window: {names} — only one will fire";
+        /// <summary>engine-profiles.collision.hotstring · Hotstring '{{hotstring}}' is bound to {{n}} macros with the same target '{{target}}': {{names}} — only one will fire</summary>
+        public static string ProfilesCollisionHotstring(string hotstring, string n, string names, string target) => IsPt ? $"A hotstring '{hotstring}' está atribuída a {n} macros com a mesma janela-alvo ('{target}'): {names} — só uma vai disparar" : $"Hotstring '{hotstring}' is bound to {n} macros with the same target '{target}': {names} — only one will fire";
+        /// <summary>engine-profiles.collision.hotstringNoTarget · Hotstring '{{hotstring}}' is bound to {{n}} macros with the same no target window: {{names}} — only one will fire</summary>
+        public static string ProfilesCollisionHotstringNoTarget(string hotstring, string n, string names) => IsPt ? $"A hotstring '{hotstring}' está atribuída a {n} macros sem janela-alvo: {names} — só uma vai disparar" : $"Hotstring '{hotstring}' is bound to {n} macros with the same no target window: {names} — only one will fire";
+        /// <summary>engine-profiles.cancel · Cancel</summary>
+        public static string ProfilesCancel => IsPt ? "Cancelar" : "Cancel";
+        /// <summary>engine-profiles.saveDialog.title · Save Macro</summary>
+        public static string ProfilesSaveDialogTitle => IsPt ? "Salvar macro" : "Save Macro";
+        /// <summary>engine-profiles.saveDialog.loaded · Macro "{{name}}" is already loaded.</summary>
+        public static string ProfilesSaveDialogLoaded(string name) => IsPt ? $"A macro \"{name}\" já está aberta." : $"Macro \"{name}\" is already loaded.";
+        /// <summary>engine-profiles.saveDialog.overwrite · Overwrite</summary>
+        public static string ProfilesSaveDialogOverwrite => IsPt ? "Substituir" : "Overwrite";
+        /// <summary>engine-profiles.saveDialog.saveAsNew · Save as New</summary>
+        public static string ProfilesSaveDialogSaveAsNew => IsPt ? "Salvar como nova" : "Save as New";
+        /// <summary>engine-profiles.unsaved.title · Unsaved Changes</summary>
+        public static string ProfilesUnsavedTitle => IsPt ? "Mudanças não salvas" : "Unsaved Changes";
+        /// <summary>engine-profiles.unsaved.actions · You have unsaved actions. Save before {{beforeWhat}}?</summary>
+        public static string ProfilesUnsavedActions(string beforeWhat) => IsPt ? $"Os passos desta macro têm mudanças não salvas. Salvar antes de {beforeWhat}?" : $"You have unsaved actions. Save before {beforeWhat}?";
+        /// <summary>engine-profiles.unsaved.runSettings · You changed this macro's run settings. Save before {{beforeWhat}}?</summary>
+        public static string ProfilesUnsavedRunSettings(string beforeWhat) => IsPt ? $"Você mudou as configurações de execução desta macro. Salvar antes de {beforeWhat}?" : $"You changed this macro's run settings. Save before {beforeWhat}?";
+        /// <summary>engine-profiles.unsaved.save · Save</summary>
+        public static string ProfilesUnsavedSave => IsPt ? "Salvar" : "Save";
+        /// <summary>engine-profiles.unsaved.discard · Discard</summary>
+        public static string ProfilesUnsavedDiscard => IsPt ? "Descartar" : "Discard";
+        /// <summary>engine-profiles.unsaved.before.closing · closing</summary>
+        public static string ProfilesUnsavedBeforeClosing => IsPt ? "fechar" : "closing";
+        /// <summary>engine-profiles.unsaved.before.continuing · continuing</summary>
+        public static string ProfilesUnsavedBeforeContinuing => IsPt ? "continuar" : "continuing";
+        /// <summary>engine-profiles.unsaved.before.updating · updating</summary>
+        public static string ProfilesUnsavedBeforeUpdating => IsPt ? "atualizar" : "updating";
+        /// <summary>engine-profiles.unsaved.before.switching · switching macros</summary>
+        public static string ProfilesUnsavedBeforeSwitching => IsPt ? "trocar de macro" : "switching macros";
+        /// <summary>engine-profiles.unsaved.before.creating · creating a new macro</summary>
+        public static string ProfilesUnsavedBeforeCreating => IsPt ? "criar uma nova macro" : "creating a new macro";
+        /// <summary>engine-profiles.unsaved.before.exporting · exporting</summary>
+        public static string ProfilesUnsavedBeforeExporting => IsPt ? "exportar" : "exporting";
+        /// <summary>engine-profiles.unsaved.before.loading · loading another macro</summary>
+        public static string ProfilesUnsavedBeforeLoading => IsPt ? "abrir outra macro" : "loading another macro";
+        /// <summary>engine-profiles.unapplied.title · Unapplied Changes</summary>
+        public static string ProfilesUnappliedTitle => IsPt ? "Mudanças não aplicadas" : "Unapplied Changes";
+        /// <summary>engine-profiles.unapplied.body · {{sentence}} Closing now discards them.</summary>
+        public static string ProfilesUnappliedBody(string sentence) => IsPt ? $"{sentence} Fechar agora descarta essas mudanças." : $"{sentence} Closing now discards them.";
+        /// <summary>engine-profiles.unapplied.closeAnyway · Close Anyway</summary>
+        public static string ProfilesUnappliedCloseAnyway => IsPt ? "Fechar mesmo assim" : "Close Anyway";
+        /// <summary>engine-profiles.saveAs.imageFailed · Could not copy this macro's reference image "{{image}}" into "{{name}}".  Nothing was saved, so the images you have are untouched. Free up some disk space (or close whatever has the file open) and save again.</summary>
+        public static string ProfilesSaveAsImageFailed(string image, string name) => IsPt ? $"Não foi possível copiar a imagem de referência \"{image}\" desta macro para \"{name}\".\n\nNada foi salvo, então as suas imagens continuam intactas. Libere espaço no disco (ou feche o que estiver com o arquivo aberto) e salve de novo." : $"Could not copy this macro's reference image \"{image}\" into \"{name}\".\n\nNothing was saved, so the images you have are untouched. Free up some disk space (or close whatever has the file open) and save again.";
+        /// <summary>engine-profiles.saveAs.failed · Error saving macro: {{reason}}</summary>
+        public static string ProfilesSaveAsFailed(string reason) => IsPt ? $"Não foi possível salvar a macro:\n{reason}" : $"Error saving macro:\n{reason}";
+        /// <summary>engine-profiles.saveAs.errorTitle · Error</summary>
+        public static string ProfilesSaveAsErrorTitle => IsPt ? "Erro" : "Error";
+        /// <summary>engine-profiles.picker.program · Select a program to launch</summary>
+        public static string ProfilesPickerProgram => IsPt ? "Escolha um programa para abrir" : "Select a program to launch";
+        /// <summary>engine-profiles.picker.image · Choose a reference image</summary>
+        public static string ProfilesPickerImage => IsPt ? "Escolha uma imagem de referência" : "Choose a reference image";
+        /// <summary>engine-profiles.picker.saveImage · Save the reference image</summary>
+        public static string ProfilesPickerSaveImage => IsPt ? "Salvar a imagem de referência" : "Save the reference image";
+        /// <summary>engine-profiles.picker.export · Export macros</summary>
+        public static string ProfilesPickerExport => IsPt ? "Exportar macros" : "Export macros";
+        /// <summary>engine-profiles.picker.import · Import macros</summary>
+        public static string ProfilesPickerImport => IsPt ? "Importar macros" : "Import macros";
+        /// <summary>engine-profiles.filter.programs · Programs</summary>
+        public static string ProfilesFilterPrograms => IsPt ? "Programas" : "Programs";
+        /// <summary>engine-profiles.filter.pictures · Pictures</summary>
+        public static string ProfilesFilterPictures => IsPt ? "Imagens" : "Pictures";
+        /// <summary>engine-profiles.filter.png · PNG image</summary>
+        public static string ProfilesFilterPng => IsPt ? "Imagem PNG" : "PNG image";
+        /// <summary>engine-profiles.filter.json · JSON file</summary>
+        public static string ProfilesFilterJson => IsPt ? "Arquivo JSON" : "JSON file";
+        /// <summary>engine-profiles.filter.macros · TrueReplayer macros</summary>
+        public static string ProfilesFilterMacros => IsPt ? "Macros do TrueReplayer" : "TrueReplayer macros";
+        /// <summary>engine-profiles.filter.allFiles · All files</summary>
+        public static string ProfilesFilterAllFiles => IsPt ? "Todos os arquivos" : "All files";
+        /// <summary>engine-profiles.names.folder · Folder</summary>
+        public static string ProfilesNamesFolder => IsPt ? "Pasta" : "Folder";
+        /// <summary>engine-profiles.names.examples · Examples</summary>
+        public static string ProfilesNamesExamples => IsPt ? "Exemplos" : "Examples";
+        /// <summary>engine-profiles.names.saveAs · macro</summary>
+        public static string ProfilesNamesSaveAs => IsPt ? "macro" : "macro";
+        /// <summary>engine-profiles.names.export · macros-{{date}}</summary>
+        public static string ProfilesNamesExport(string date) => IsPt ? $"macros-{date}" : $"macros-{date}";
+        /// <summary>engine-profiles.names.beforeImport · Before import {{stamp}}</summary>
+        public static string ProfilesNamesBeforeImport(string stamp) => IsPt ? $"Antes de importar {stamp}" : $"Before import {stamp}";
+        /// <summary>engine-profiles.tr2.closeFirst · Close {{app}} first: its files must not change while they are copied.</summary>
+        public static string ProfilesTr2CloseFirst(string app) => IsPt ? $"Feche o {app} primeiro: os arquivos dele não podem mudar enquanto são copiados." : $"Close {app} first: its files must not change while they are copied.";
+        /// <summary>engine-profiles.tr2.chooseParts · Choose something to import.</summary>
+        public static string ProfilesTr2ChooseParts => IsPt ? "Escolha o que importar." : "Choose something to import.";
+        /// <summary>engine-profiles.tr2.failed · The import failed and nothing was changed: {{reason}}</summary>
+        public static string ProfilesTr2Failed(string reason) => IsPt ? $"Não foi possível importar, e nada foi alterado: {reason}" : $"The import failed and nothing was changed: {reason}";
+        /// <summary>engine-profiles.image.tooBig · That file is {{size}} MB; a reference image can be up to {{max}} MB.</summary>
+        public static string ProfilesImageTooBig(string max, string size) => IsPt ? $"Esse arquivo tem {size} MB; uma imagem de referência pode ter até {max} MB." : $"That file is {size} MB; a reference image can be up to {max} MB.";
+        /// <summary>engine-profiles.image.notPicture · That file isn't a picture Windows can read. Choose a PNG, JPEG, BMP or GIF.</summary>
+        public static string ProfilesImageNotPicture => IsPt ? "Esse arquivo não é uma imagem que o Windows consiga ler. Escolha um PNG, JPEG, BMP ou GIF." : "That file isn't a picture Windows can read. Choose a PNG, JPEG, BMP or GIF.";
+        /// <summary>engine-remaps.open · Open Key Remaps</summary>
+        public static string RemapsOpen => IsPt ? "Abrir Key Remaps" : "Open Key Remaps";
+        /// <summary>engine-remaps.unreadable.title · Key remaps: file unreadable</summary>
+        public static string RemapsUnreadableTitle => IsPt ? "Key Remaps: arquivo ilegível" : "Key remaps: file unreadable";
+        /// <summary>engine-remaps.unreadable.backup · remaps.json could not be read, so the last backup was loaded ({{n}} remap). The file is not overwritten — edits go to {{pending}}.</summary>
+        public static string RemapsUnreadableBackup(string n, string pending, int count) => IsPt ? (count == 0 ? $"Não foi possível ler o remaps.json, então o último backup foi carregado (nenhum remap). O arquivo não é substituído — as mudanças vão para {pending}." : (count < 2 ? $"Não foi possível ler o remaps.json, então o último backup foi carregado ({n} remap). O arquivo não é substituído — as mudanças vão para {pending}." : $"Não foi possível ler o remaps.json, então o último backup foi carregado ({n} remaps). O arquivo não é substituído — as mudanças vão para {pending}.")) : (count == 1 ? $"remaps.json could not be read, so the last backup was loaded ({n} remap). The file is not overwritten — edits go to {pending}." : $"remaps.json could not be read, so the last backup was loaded ({n} remaps). The file is not overwritten — edits go to {pending}.");
+        /// <summary>engine-remaps.unreadable.noBackup · remaps.json could not be read and there is no backup, so the list shows empty. The file was NOT overwritten — see the session log.</summary>
+        public static string RemapsUnreadableNoBackup => IsPt ? "Não foi possível ler o remaps.json e não há backup, então a lista aparece vazia. O arquivo NÃO foi substituído — veja o log da sessão." : "remaps.json could not be read and there is no backup, so the list shows empty. The file was NOT overwritten — see the session log.";
+        /// <summary>engine-remaps.notSaved.title · Key remaps not saved</summary>
+        public static string RemapsNotSavedTitle => IsPt ? "Remaps não salvos" : "Key remaps not saved";
+        /// <summary>engine-remaps.notSaved.empty · remaps.json could not be read, so nothing was written to disk. Your change is active for this session only.</summary>
+        public static string RemapsNotSavedEmpty => IsPt ? "Não foi possível ler o remaps.json, então nada foi gravado no disco. Sua mudança vale só para esta sessão." : "remaps.json could not be read, so nothing was written to disk. Your change is active for this session only.";
+        /// <summary>engine-remaps.notSaved.pending · remaps.json could not be read, so your change went to {{pending}}. It is active for this session.</summary>
+        public static string RemapsNotSavedPending(string pending) => IsPt ? $"Não foi possível ler o remaps.json, então sua mudança foi para {pending}. Ela vale para esta sessão." : $"remaps.json could not be read, so your change went to {pending}. It is active for this session.";
+        /// <summary>engine-remaps.detail.read · The file could not be opened: {{reason}}</summary>
+        public static string RemapsDetailRead(string reason) => IsPt ? $"Não foi possível abrir o arquivo: {reason}" : $"The file could not be opened: {reason}";
+        /// <summary>engine-remaps.detail.parse · The file is not valid JSON: {{reason}}</summary>
+        public static string RemapsDetailParse(string reason) => IsPt ? $"O arquivo não é um JSON válido: {reason}" : $"The file is not valid JSON: {reason}";
+        /// <summary>engine-remaps.detail.unknown · The reason is unknown.</summary>
+        public static string RemapsDetailUnknown => IsPt ? "O motivo é desconhecido." : "The reason is unknown.";
+        /// <summary>engine-run.errors.noRows · The data table has no rows — add data or pick "Next row each time".</summary>
+        public static string RunErrorsNoRows => IsPt ? "A tabela de dados não tem linhas — adicione dados ou escolha \"Uma linha por vez\"." : "The data table has no rows — add data or pick \"Next row each time\".";
+        /// <summary>engine-run.errors.run · {{reason}}</summary>
+        public static string RunErrorsRun(string reason) => IsPt ? $"A execução parou com um erro: {reason}" : $"{reason}";
+        /// <summary>engine-run.summary.dataLoop · Data loop finished — {{n}} of {{total}} row(s) skipped after errors (first: row {{row}}: {{reason}})</summary>
+        public static string RunSummaryDataLoop(string n, string reason, string row, string total, int count) => IsPt ? (count == 0 ? $"Data Loop concluído — nenhuma das {total} linhas foi pulada por erro" : (count < 2 ? $"Data Loop concluído — {n} de {total} linhas foi pulada por erro (linha {row}: {reason})" : $"Data Loop concluído — {n} de {total} linhas foram puladas por erro (a primeira foi a linha {row}: {reason})")) : $"Data loop finished — {n} of {total} row(s) skipped after errors (first: row {row}: {reason})";
+        /// <summary>engine-run.summary.forEach · For Each Data Row: {{n}} row(s) skipped after errors</summary>
+        public static string RunSummaryForEach(string n, int count) => IsPt ? (count == 0 ? "For Each Data Row: nenhuma linha pulada por erro" : (count < 2 ? $"For Each Data Row: {n} linha pulada por erro" : $"For Each Data Row: {n} linhas puladas por erro")) : $"For Each Data Row: {n} row(s) skipped after errors";
+        /// <summary>engine-run.summary.forEachFirst · For Each Data Row: {{n}} row(s) skipped after errors — first: {{reason}}</summary>
+        public static string RunSummaryForEachFirst(string n, string reason, int count) => IsPt ? (count == 0 ? "For Each Data Row: nenhuma linha pulada por erro" : (count < 2 ? $"For Each Data Row: {n} linha pulada por erro — {reason}" : $"For Each Data Row: {n} linhas puladas por erro — primeiro erro: {reason}")) : $"For Each Data Row: {n} row(s) skipped after errors — first: {reason}";
+        /// <summary>engine-run.summary.calledMacro · Called macro '{{name}}': {{n}} of {{total}} row(s) skipped</summary>
+        public static string RunSummaryCalledMacro(string n, string name, string total, int count) => IsPt ? (count == 0 ? $"Macro '{name}', chamada pelo Run Macro: nenhuma das {total} linhas foi pulada" : (count < 2 ? $"Macro '{name}', chamada pelo Run Macro: {n} de {total} linhas foi pulada" : $"Macro '{name}', chamada pelo Run Macro: {n} de {total} linhas foram puladas")) : $"Called macro '{name}': {n} of {total} row(s) skipped";
+        /// <summary>engine-run.summary.calledMacroFirst · Called macro '{{name}}': {{n}} of {{total}} row(s) skipped — first: {{reason}}</summary>
+        public static string RunSummaryCalledMacroFirst(string n, string name, string reason, string total, int count) => IsPt ? (count == 0 ? $"Macro '{name}', chamada pelo Run Macro: nenhuma das {total} linhas foi pulada" : (count < 2 ? $"Macro '{name}', chamada pelo Run Macro: {n} de {total} linhas foi pulada — {reason}" : $"Macro '{name}', chamada pelo Run Macro: {n} de {total} linhas foram puladas — primeiro erro: {reason}")) : $"Called macro '{name}': {n} of {total} row(s) skipped — first: {reason}";
+        /// <summary>engine-run.summary.error · error</summary>
+        public static string RunSummaryError => IsPt ? "erro" : "error";
+        /// <summary>engine-run.report.atCursor · at cursor</summary>
+        public static string RunReportAtCursor => IsPt ? "no cursor" : "at cursor";
+        /// <summary>engine-run.report.atCursorPoint · at cursor → {{x}}, {{y}}</summary>
+        public static string RunReportAtCursorPoint(string x, string y) => IsPt ? $"no cursor → {x}, {y}" : $"at cursor → {x}, {y}";
+        /// <summary>engine-run.report.skippedBlock · skipped block</summary>
+        public static string RunReportSkippedBlock => IsPt ? "bloco pulado" : "skipped block";
+        /// <summary>engine-run.report.noDataRows · no data rows</summary>
+        public static string RunReportNoDataRows => IsPt ? "nenhuma linha de dados" : "no data rows";
+        /// <summary>engine-run.report.overRows · over {{n}} data row(s)</summary>
+        public static string RunReportOverRows(string n, int count) => IsPt ? (count == 0 ? "nenhuma linha de dados" : (count < 2 ? $"{n} linha de dados" : $"{n} linhas de dados")) : $"over {n} data row(s)";
+        /// <summary>engine-run.report.exited · exited the {{loop}} opened at row {{row}}</summary>
+        public static string RunReportExited(string loop, string row) => IsPt ? $"saiu do {loop} aberto no passo {row}" : $"exited the {loop} opened at row {row}";
+        /// <summary>engine-run.report.jumped · jumped to the {{loop}} opened at row {{row}}</summary>
+        public static string RunReportJumped(string loop, string row) => IsPt ? $"voltou ao {loop} aberto no passo {row}" : $"jumped to the {loop} opened at row {row}";
+        /// <summary>engine-run.report.quietStop · — assert failed · stopped run (quiet)</summary>
+        public static string RunReportQuietStop => IsPt ? "— o Assert falhou · execução parada sem erro" : "— assert failed · stopped run (quiet)";
+        /// <summary>engine-run.report.quietStopAfter · {{detail}} — assert failed · stopped run (quiet)</summary>
+        public static string RunReportQuietStopAfter(string detail) => IsPt ? $"{detail} — o Assert falhou · execução parada sem erro" : $"{detail} — assert failed · stopped run (quiet)";
+        /// <summary>engine-run.report.endedByStop · run ended by Stop</summary>
+        public static string RunReportEndedByStop => IsPt ? "execução encerrada pelo Stop" : "run ended by Stop";
+        /// <summary>engine-run.report.endedPass · ended this pass</summary>
+        public static string RunReportEndedPass => IsPt ? "encerrou esta volta" : "ended this pass";
+        /// <summary>engine-run.report.textChanged · changed → "{{text}}"</summary>
+        public static string RunReportTextChanged(string text) => IsPt ? $"mudou → \"{text}\"" : $"changed → \"{text}\"";
+        /// <summary>engine-run.report.textGone · gone</summary>
+        public static string RunReportTextGone => IsPt ? "sumiu" : "gone";
+        /// <summary>engine-run.report.textFound · found "{{text}}"</summary>
+        public static string RunReportTextFound(string text) => IsPt ? $"encontrado \"{text}\"" : $"found \"{text}\"";
+        /// <summary>engine-run.report.readNothing · {{name}} ← nothing read</summary>
+        public static string RunReportReadNothing(string name) => IsPt ? $"{name} ← nada lido" : $"{name} ← nothing read";
+        /// <summary>engine-run.report.stepFailed · {{reason}}</summary>
+        public static string RunReportStepFailed(string reason) => IsPt ? $"Não foi possível concluir o passo: {reason}" : $"{reason}";
+        /// <summary>engine-run.condition.none · condition</summary>
+        public static string RunConditionNone => IsPt ? "condição" : "condition";
+        /// <summary>engine-run.condition.not · NOT {{name}}</summary>
+        public static string RunConditionNot(string name) => IsPt ? $"NÃO {name}" : $"NOT {name}";
+        /// <summary>engine-run.condition.isTrue · {{condition}} → true</summary>
+        public static string RunConditionIsTrue(string condition) => IsPt ? $"{condition} → verdadeira" : $"{condition} → true";
+        /// <summary>engine-run.condition.isFalse · {{condition}} → false</summary>
+        public static string RunConditionIsFalse(string condition) => IsPt ? $"{condition} → falsa" : $"{condition} → false";
+        /// <summary>engine-run.condition.trueRead · {{condition}} → true · read "{{text}}"</summary>
+        public static string RunConditionTrueRead(string condition, string text) => IsPt ? $"{condition} → verdadeira · leu \"{text}\"" : $"{condition} → true · read \"{text}\"";
+        /// <summary>engine-run.condition.falseRead · {{condition}} → false · read "{{text}}"</summary>
+        public static string RunConditionFalseRead(string condition, string text) => IsPt ? $"{condition} → falsa · leu \"{text}\"" : $"{condition} → false · read \"{text}\"";
+        /// <summary>engine-run.condition.trueReadNothing · {{condition}} → true · read nothing</summary>
+        public static string RunConditionTrueReadNothing(string condition) => IsPt ? $"{condition} → verdadeira · não leu nada" : $"{condition} → true · read nothing";
+        /// <summary>engine-run.condition.falseReadNothing · {{condition}} → false · read nothing</summary>
+        public static string RunConditionFalseReadNothing(string condition) => IsPt ? $"{condition} → falsa · não leu nada" : $"{condition} → false · read nothing";
+        /// <summary>engine-run.condition.probeFailed · {{reason}}</summary>
+        public static string RunConditionProbeFailed(string reason) => IsPt ? $"Não foi possível verificar a condição: {reason}" : $"{reason}";
+        /// <summary>engine-run.assert.failed · Assert failed: '{{label}}' — {{reason}}</summary>
+        public static string RunAssertFailed(string label, string reason) => IsPt ? $"O Assert '{label}' falhou: {reason}" : $"Assert failed: '{label}' — {reason}";
+        /// <summary>engine-run.assert.element · element</summary>
+        public static string RunAssertElement => IsPt ? "elemento" : "element";
+        /// <summary>engine-run.assert.unspecified · (unspecified)</summary>
+        public static string RunAssertUnspecified => IsPt ? "(não especificada)" : "(unspecified)";
+        /// <summary>engine-run.assert.bridgeOff · browser bridge not connected</summary>
+        public static string RunAssertBridgeOff => IsPt ? "a extensão do navegador não está conectada" : "browser bridge not connected";
+        /// <summary>engine-run.assert.bridgeLost · browser bridge disconnected</summary>
+        public static string RunAssertBridgeLost => IsPt ? "a extensão do navegador se desconectou" : "browser bridge disconnected";
+        /// <summary>engine-run.assert.checkFailed · could not check the condition ({{reason}})</summary>
+        public static string RunAssertCheckFailed(string reason) => IsPt ? $"não foi possível verificar a condição ({reason})" : $"could not check the condition ({reason})";
+        /// <summary>engine-run.assert.windowNotOpen · window {{window}} was not open</summary>
+        public static string RunAssertWindowNotOpen(string window) => IsPt ? $"a janela {window} não estava aberta" : $"window {window} was not open";
+        /// <summary>engine-run.assert.windowOpen · window {{window}} was open</summary>
+        public static string RunAssertWindowOpen(string window) => IsPt ? $"a janela {window} estava aberta" : $"window {window} was open";
+        /// <summary>engine-run.assert.windowNotFront · window {{window}} was not in the foreground</summary>
+        public static string RunAssertWindowNotFront(string window) => IsPt ? $"a janela {window} não estava na frente" : $"window {window} was not in the foreground";
+        /// <summary>engine-run.assert.windowFront · window {{window}} was in the foreground</summary>
+        public static string RunAssertWindowFront(string window) => IsPt ? $"a janela {window} estava na frente" : $"window {window} was in the foreground";
+        /// <summary>engine-run.assert.processNotRunning · process '{{name}}' was not running</summary>
+        public static string RunAssertProcessNotRunning(string name) => IsPt ? $"o processo '{name}' não estava rodando" : $"process '{name}' was not running";
+        /// <summary>engine-run.assert.processRunning · process '{{name}}' was running</summary>
+        public static string RunAssertProcessRunning(string name) => IsPt ? $"o processo '{name}' estava rodando" : $"process '{name}' was running";
+        /// <summary>engine-run.assert.fileNotFound · file not found: {{path}}</summary>
+        public static string RunAssertFileNotFound(string path) => IsPt ? $"arquivo não encontrado: {path}" : $"file not found: {path}";
+        /// <summary>engine-run.assert.fileExists · file exists: {{path}}</summary>
+        public static string RunAssertFileExists(string path) => IsPt ? $"o arquivo existe: {path}" : $"file exists: {path}";
+        /// <summary>engine-run.assert.variableNotMatched · variable '{{name}}' did not match {{op}} {{value}}</summary>
+        public static string RunAssertVariableNotMatched(string name, string op, string value) => IsPt ? $"a variável '{name}' não satisfez {op} {value}" : $"variable '{name}' did not match {op} {value}";
+        /// <summary>engine-run.assert.variableMatched · variable '{{name}}' matched {{op}} {{value}}</summary>
+        public static string RunAssertVariableMatched(string name, string op, string value) => IsPt ? $"a variável '{name}' satisfez {op} {value}" : $"variable '{name}' matched {op} {value}";
+        /// <summary>engine-run.assert.variableNotContained · variable '{{name}}' did not contain {{value}}</summary>
+        public static string RunAssertVariableNotContained(string name, string value) => IsPt ? $"a variável '{name}' não continha {value}" : $"variable '{name}' did not contain {value}";
+        /// <summary>engine-run.assert.variableContained · variable '{{name}}' contained {{value}}</summary>
+        public static string RunAssertVariableContained(string name, string value) => IsPt ? $"a variável '{name}' continha {value}" : $"variable '{name}' contained {value}";
+        /// <summary>engine-run.assert.clipboardNotMatched · clipboard did not match the pattern</summary>
+        public static string RunAssertClipboardNotMatched => IsPt ? "o clipboard não correspondeu ao padrão" : "clipboard did not match the pattern";
+        /// <summary>engine-run.assert.clipboardMatched · clipboard matched the pattern</summary>
+        public static string RunAssertClipboardMatched => IsPt ? "o clipboard correspondeu ao padrão" : "clipboard matched the pattern";
+        /// <summary>engine-run.assert.timeInside · the current time was inside {{when}}</summary>
+        public static string RunAssertTimeInside(string when) => IsPt ? $"o horário atual estava dentro do período {when}" : $"the current time was inside {when}";
+        /// <summary>engine-run.assert.timeInsideUnset · the current time was inside (no day or time window set)</summary>
+        public static string RunAssertTimeInsideUnset => IsPt ? "o horário atual estava dentro do período (nenhum dia ou horário definido)" : "the current time was inside (no day or time window set)";
+        /// <summary>engine-run.assert.timeWrongDay · today ({{today}}) is not one of {{days}}</summary>
+        public static string RunAssertTimeWrongDay(string days, string today) => IsPt ? $"hoje ({today}) não é um dos dias {days}" : $"today ({today}) is not one of {days}";
+        /// <summary>engine-run.assert.timeOutside · the current time was outside {{window}}</summary>
+        public static string RunAssertTimeOutside(string window) => IsPt ? $"o horário atual estava fora do período {window}" : $"the current time was outside {window}";
+        /// <summary>engine-run.assert.timeNotMet · the required window was not met ({{when}})</summary>
+        public static string RunAssertTimeNotMet(string when) => IsPt ? $"o período exigido não foi atendido ({when})" : $"the required window was not met ({when})";
+        /// <summary>engine-run.assert.timeNotMetUnset · the required window was not met (no day or time window set)</summary>
+        public static string RunAssertTimeNotMetUnset => IsPt ? "o período exigido não foi atendido (nenhum dia ou horário definido)" : "the required window was not met (no day or time window set)";
+        /// <summary>engine-run.assert.imageNotFound · the image was not on screen</summary>
+        public static string RunAssertImageNotFound => IsPt ? "a imagem não estava na tela" : "the image was not on screen";
+        /// <summary>engine-run.assert.imageFound · the image was on screen</summary>
+        public static string RunAssertImageFound => IsPt ? "a imagem estava na tela" : "the image was on screen";
+        /// <summary>engine-run.assert.pixelNotMatched · the pixel did not match the colour</summary>
+        public static string RunAssertPixelNotMatched => IsPt ? "o pixel não correspondeu à cor" : "the pixel did not match the colour";
+        /// <summary>engine-run.assert.pixelMatched · the pixel matched the colour</summary>
+        public static string RunAssertPixelMatched => IsPt ? "o pixel correspondeu à cor" : "the pixel matched the colour";
+        /// <summary>engine-run.assert.notMet · the condition was not met</summary>
+        public static string RunAssertNotMet => IsPt ? "a condição não foi atendida" : "the condition was not met";
+        /// <summary>engine-run.assert.met · the condition was met</summary>
+        public static string RunAssertMet => IsPt ? "a condição foi atendida" : "the condition was met";
+        /// <summary>engine-run.activate.failed · Activate Window: '{{label}}' — {{reason}}</summary>
+        public static string RunActivateFailed(string label, string reason) => IsPt ? $"Activate Window: '{label}' — {reason}" : $"Activate Window: '{label}' — {reason}";
+        /// <summary>engine-run.activate.launchFailed · launch failed: {{reason}}</summary>
+        public static string RunActivateLaunchFailed(string reason) => IsPt ? $"não foi possível abrir: {reason}" : $"launch failed: {reason}";
+        /// <summary>engine-run.activate.notFound · window not found</summary>
+        public static string RunActivateNotFound => IsPt ? "janela não encontrada" : "window not found";
+        /// <summary>engine-run.activate.noForeground · could not bring window to foreground</summary>
+        public static string RunActivateNoForeground => IsPt ? "não foi possível trazer a janela para a frente" : "could not bring window to foreground";
+        /// <summary>engine-run.activate.notResponding · target window not responding</summary>
+        public static string RunActivateNotResponding => IsPt ? "a janela-alvo não está respondendo" : "target window not responding";
+        /// <summary>engine-run.chain.noMacro · no macro selected</summary>
+        public static string RunChainNoMacro => IsPt ? "nenhuma macro escolhida" : "no macro selected";
+        /// <summary>engine-run.chain.cycle · cycle blocked ({{path}})</summary>
+        public static string RunChainCycle(string path) => IsPt ? $"ciclo bloqueado ({path})" : $"cycle blocked ({path})";
+        /// <summary>engine-run.chain.tooDeep · chain deeper than {{n}} levels</summary>
+        public static string RunChainTooDeep(string n) => IsPt ? $"encadeamento com mais de {n} níveis" : $"chain deeper than {n} levels";
+        /// <summary>engine-run.chain.noLookup · macro lookup unavailable</summary>
+        public static string RunChainNoLookup => IsPt ? "a consulta de macros não está disponível" : "macro lookup unavailable";
+        /// <summary>engine-run.chain.loadFailed · could not load macro ({{reason}})</summary>
+        public static string RunChainLoadFailed(string reason) => IsPt ? $"não foi possível carregar a macro ({reason})" : $"could not load macro ({reason})";
+        /// <summary>engine-run.chain.notFound · macro not found</summary>
+        public static string RunChainNotFound => IsPt ? "macro não encontrada" : "macro not found";
+        /// <summary>engine-run.chain.disabled · macro is disabled</summary>
+        public static string RunChainDisabled => IsPt ? "a macro está desativada" : "macro is disabled";
+        /// <summary>engine-run.chain.folderFailed · could not read its folder's window target ({{reason}})</summary>
+        public static string RunChainFolderFailed(string reason) => IsPt ? $"não foi possível ler a janela-alvo da pasta dela ({reason})" : $"could not read its folder's window target ({reason})";
+        /// <summary>engine-run.target.minimised · target window '{{name}}' is minimised</summary>
+        public static string RunTargetMinimised(string name) => IsPt ? $"a janela-alvo '{name}' está minimizada" : $"target window '{name}' is minimised";
+        /// <summary>engine-run.target.notFound · target window '{{name}}' not found</summary>
+        public static string RunTargetNotFound(string name) => IsPt ? $"janela-alvo '{name}' não encontrada" : $"target window '{name}' not found";
+        /// <summary>engine-run.target.minimisedAlert · Target window '{{name}}' is minimised — restore it and retry. A minimised window has no on-screen position to place relative coordinates against.</summary>
+        public static string RunTargetMinimisedAlert(string name) => IsPt ? $"A janela-alvo '{name}' está minimizada — restaure-a e tente de novo. Uma janela minimizada não tem posição na tela onde pôr as coordenadas relativas." : $"Target window '{name}' is minimised — restore it and retry. A minimised window has no on-screen position to place relative coordinates against.";
+        /// <summary>engine-run.target.notFoundAlert · Target window '{{name}}' not found — open it and retry</summary>
+        public static string RunTargetNotFoundAlert(string name) => IsPt ? $"Janela-alvo '{name}' não encontrada — abra-a e tente de novo" : $"Target window '{name}' not found — open it and retry";
+        /// <summary>engine-run.wait.textTimedOut · Wait Text timed out — last read: "{{text}}"</summary>
+        public static string RunWaitTextTimedOut(string text) => IsPt ? $"O Wait Text deu timeout — última leitura: \"{text}\"" : $"Wait Text timed out — last read: \"{text}\"";
+        /// <summary>engine-run.wait.textSetup · Wait Text: {{reason}}</summary>
+        public static string RunWaitTextSetup(string reason) => IsPt ? $"Wait Text: {reason}" : $"Wait Text: {reason}";
+        /// <summary>engine-run.wait.imageTimedOut · Wait Image timed out</summary>
+        public static string RunWaitImageTimedOut => IsPt ? "O Wait Image deu timeout" : "Wait Image timed out";
+        /// <summary>engine-run.wait.imageTimedOutNamed · Wait Image timed out ({{name}})</summary>
+        public static string RunWaitImageTimedOutNamed(string name) => IsPt ? $"O Wait Image deu timeout ({name})" : $"Wait Image timed out ({name})";
+        /// <summary>engine-run.wait.pixelTimedOut · Wait Pixel Color timed out ({{color}})</summary>
+        public static string RunWaitPixelTimedOut(string color) => IsPt ? $"O Wait Pixel Color deu timeout ({color})" : $"Wait Pixel Color timed out ({color})";
+        /// <summary>engine-tray.tip.ready · {{app}} — Ready</summary>
+        public static string TrayTipReady(string app) => IsPt ? $"{app} — Pronto" : $"{app} — Ready";
+        /// <summary>engine-tray.tip.readyArmed · {{app}} — Ready · {{n}} automation armed</summary>
+        public static string TrayTipReadyArmed(string app, string n, int count) => IsPt ? (count == 0 ? $"{app} — Pronto · {n} automações armadas" : (count < 2 ? $"{app} — Pronto · {n} automação armada" : $"{app} — Pronto · {n} automações armadas")) : (count == 1 ? $"{app} — Ready · {n} automation armed" : $"{app} — Ready · {n} automations armed");
+        /// <summary>engine-tray.tip.readyPaused · {{app}} — Ready · automations paused</summary>
+        public static string TrayTipReadyPaused(string app) => IsPt ? $"{app} — Pronto · automações pausadas" : $"{app} — Ready · automations paused";
+        /// <summary>engine-tray.tip.recording · {{app}} — Recording</summary>
+        public static string TrayTipRecording(string app) => IsPt ? $"{app} — Gravando" : $"{app} — Recording";
+        /// <summary>engine-tray.tip.recordingMacro · {{app}} — Recording {{macro}}</summary>
+        public static string TrayTipRecordingMacro(string app, string macro) => IsPt ? $"{app} — Gravando {macro}" : $"{app} — Recording {macro}";
+        /// <summary>engine-tray.tip.replaying · {{app}} — Replaying</summary>
+        public static string TrayTipReplaying(string app) => IsPt ? $"{app} — Reproduzindo" : $"{app} — Replaying";
+        /// <summary>engine-tray.tip.replayingMacro · {{app}} — Replaying {{macro}}</summary>
+        public static string TrayTipReplayingMacro(string app, string macro) => IsPt ? $"{app} — Reproduzindo {macro}" : $"{app} — Replaying {macro}";
+        /// <summary>engine-tray.tip.replayingLoop · {{app}} — Replaying, loop {{current}} of {{total}}</summary>
+        public static string TrayTipReplayingLoop(string app, string current, string total) => IsPt ? $"{app} — Reproduzindo, loop {current} de {total}" : $"{app} — Replaying, loop {current} of {total}";
+        /// <summary>engine-tray.tip.replayingMacroLoop · {{app}} — Replaying {{macro}}, loop {{current}} of {{total}}</summary>
+        public static string TrayTipReplayingMacroLoop(string app, string current, string macro, string total) => IsPt ? $"{app} — Reproduzindo {macro}, loop {current} de {total}" : $"{app} — Replaying {macro}, loop {current} of {total}";
+        /// <summary>engine-tray.tip.clicking · {{app}} — Clicking</summary>
+        public static string TrayTipClicking(string app) => IsPt ? $"{app} — Clicando" : $"{app} — Clicking";
+        /// <summary>engine-tray.tip.clickerOpen · {{app}} — Clicker open</summary>
+        public static string TrayTipClickerOpen(string app) => IsPt ? $"{app} — Clicker aberto" : $"{app} — Clicker open";
+        /// <summary>engine-tray.tip.clickerOpenKey · {{app}} — Clicker open · {{key}} starts</summary>
+        public static string TrayTipClickerOpenKey(string app, string key) => IsPt ? $"{app} — Clicker aberto · {key} inicia" : $"{app} — Clicker open · {key} starts";
+        /// <summary>engine-tray.tip.shortcutsRemapsPaused · {{app}} — Shortcuts and remaps paused</summary>
+        public static string TrayTipShortcutsRemapsPaused(string app) => IsPt ? $"{app} — Atalhos e remaps pausados" : $"{app} — Shortcuts and remaps paused";
+        /// <summary>engine-tray.tip.shortcutsPaused · {{app}} — Shortcuts paused</summary>
+        public static string TrayTipShortcutsPaused(string app) => IsPt ? $"{app} — Atalhos pausados" : $"{app} — Shortcuts paused";
+        /// <summary>engine-tray.tip.notices · {{app}} — {{n}} notice while you were away</summary>
+        public static string TrayTipNotices(string app, string n, int count) => IsPt ? (count == 0 ? $"{app} — {n} avisos enquanto você estava fora" : (count < 2 ? $"{app} — {n} aviso enquanto você estava fora" : $"{app} — {n} avisos enquanto você estava fora")) : (count == 1 ? $"{app} — {n} notice while you were away" : $"{app} — {n} notices while you were away");
+        /// <summary>engine-tray.menu.open ·  Open {{app}}</summary>
+        public static string TrayMenuOpen(string app) => IsPt ? $"&Abrir o {app}" : $"&Open {app}";
+        /// <summary>engine-tray.menu.stopRecording ·  Stop recording</summary>
+        public static string TrayMenuStopRecording => IsPt ? "&Parar a gravação" : "&Stop recording";
+        /// <summary>engine-tray.menu.stopClicker ·  Stop the Clicker</summary>
+        public static string TrayMenuStopClicker => IsPt ? "&Parar o Clicker" : "&Stop the Clicker";
+        /// <summary>engine-tray.menu.stopMacro ·  Stop {{macro}}</summary>
+        public static string TrayMenuStopMacro(string macro) => IsPt ? $"&Parar {macro}" : $"&Stop {macro}";
+        /// <summary>engine-tray.menu.stop ·  Stop</summary>
+        public static string TrayMenuStop => IsPt ? "&Parar" : "&Stop";
+        /// <summary>engine-tray.menu.recordNew ·  Record a new macro</summary>
+        public static string TrayMenuRecordNew => IsPt ? "&Gravar uma nova macro" : "&Record a new macro";
+        /// <summary>engine-tray.menu.shortcuts · S hortcuts</summary>
+        public static string TrayMenuShortcuts => IsPt ? "A&talhos" : "S&hortcuts";
+        /// <summary>engine-tray.menu.automations ·  Automations…</summary>
+        public static string TrayMenuAutomations => IsPt ? "Automaçõ&es…" : "&Automations…";
+        /// <summary>engine-tray.menu.remaps ·  Key Remaps</summary>
+        public static string TrayMenuRemaps => IsPt ? "&Key Remaps" : "&Key Remaps";
+        /// <summary>engine-tray.menu.clicker ·  Clicker</summary>
+        public static string TrayMenuClicker => IsPt ? "&Clicker" : "&Clicker";
+        /// <summary>engine-tray.menu.settings · Se ttings</summary>
+        public static string TrayMenuSettings => IsPt ? "Con&figurações" : "Se&ttings";
+        /// <summary>engine-tray.menu.troubleshoot · Tro ubleshoot</summary>
+        public static string TrayMenuTroubleshoot => IsPt ? "&Solucionar problemas" : "Tro&ubleshoot";
+        /// <summary>engine-tray.menu.reloadUi ·  Reload UI</summary>
+        public static string TrayMenuReloadUi => IsPt ? "&Recarregar a interface" : "&Reload UI";
+        /// <summary>engine-tray.menu.devTools · Open  DevTools</summary>
+        public static string TrayMenuDevTools => IsPt ? "Abrir o &DevTools" : "Open &DevTools";
+        /// <summary>engine-tray.menu.logs · Open  logs folder</summary>
+        public static string TrayMenuLogs => IsPt ? "Abrir pasta dos &logs" : "Open &logs folder";
+        /// <summary>engine-tray.menu.quit ·  Quit</summary>
+        public static string TrayMenuQuit => IsPt ? "Sai&r" : "&Quit";
+        /// <summary>engine-tray.panel.open · Open</summary>
+        public static string TrayPanelOpen => IsPt ? "Abrir" : "Open";
+        /// <summary>engine-tray.panel.notices · {{n}} notice while you were away</summary>
+        public static string TrayPanelNotices(string n, int count) => IsPt ? (count == 0 ? $"{n} avisos enquanto você estava fora" : (count < 2 ? $"{n} aviso enquanto você estava fora" : $"{n} avisos enquanto você estava fora")) : (count == 1 ? $"{n} notice while you were away" : $"{n} notices while you were away");
+        /// <summary>engine-tray.panel.clear · Clear</summary>
+        public static string TrayPanelClear => IsPt ? "Limpar" : "Clear";
+        /// <summary>engine-tray.panel.noMacro · No macro open</summary>
+        public static string TrayPanelNoMacro => IsPt ? "Nenhuma macro aberta" : "No macro open";
+        /// <summary>engine-tray.panel.macros · Macros</summary>
+        public static string TrayPanelMacros => IsPt ? "Macros" : "Macros";
+        /// <summary>engine-tray.panel.noHotkeys · No macro has a hotkey yet.</summary>
+        public static string TrayPanelNoHotkeys => IsPt ? "Nenhuma macro tem hotkey ainda." : "No macro has a hotkey yet.";
+        /// <summary>engine-tray.panel.running · Running</summary>
+        public static string TrayPanelRunning => IsPt ? "Rodando" : "Running";
+        /// <summary>engine-tray.panel.allMacros · All macros…</summary>
+        public static string TrayPanelAllMacros => IsPt ? "Todas as macros…" : "All macros…";
+        /// <summary>engine-tray.panel.shortcuts · Shortcuts</summary>
+        public static string TrayPanelShortcuts => IsPt ? "Atalhos" : "Shortcuts";
+        /// <summary>engine-tray.panel.automations · Automations</summary>
+        public static string TrayPanelAutomations => IsPt ? "Automações" : "Automations";
+        /// <summary>engine-tray.panel.remaps · Key Remaps</summary>
+        public static string TrayPanelRemaps => IsPt ? "Key Remaps" : "Key Remaps";
+        /// <summary>engine-tray.panel.armed · · {{n}} armed</summary>
+        public static string TrayPanelArmed(string n, int count) => IsPt ? (count == 0 ? $"· {n} armadas" : (count < 2 ? $"· {n} armada" : $"· {n} armadas")) : $"· {n} armed";
+        /// <summary>engine-tray.panel.active · · {{n}} active</summary>
+        public static string TrayPanelActive(string n, int count) => IsPt ? (count == 0 ? $"· {n} ativos" : (count < 2 ? $"· {n} ativo" : $"· {n} ativos")) : $"· {n} active";
+        /// <summary>engine-tray.panel.clicker · Clicker</summary>
+        public static string TrayPanelClicker => IsPt ? "Clicker" : "Clicker";
+        /// <summary>engine-tray.panel.clickerOpen · Clicker · open</summary>
+        public static string TrayPanelClickerOpen => IsPt ? "Clicker · aberto" : "Clicker · open";
+        /// <summary>engine-tray.panel.settings · Settings</summary>
+        public static string TrayPanelSettings => IsPt ? "Configurações" : "Settings";
+        /// <summary>engine-tray.panel.quit · Quit {{app}}</summary>
+        public static string TrayPanelQuit(string app) => IsPt ? $"Sair do {app}" : $"Quit {app}";
+        /// <summary>engine-tray.card.recording · Recording · {{n}} step · {{clock}}</summary>
+        public static string TrayCardRecording(string clock, string n, int count) => IsPt ? (count == 0 ? $"Gravando · {n} passos · {clock}" : (count < 2 ? $"Gravando · {n} passo · {clock}" : $"Gravando · {n} passos · {clock}")) : (count == 1 ? $"Recording · {n} step · {clock}" : $"Recording · {n} steps · {clock}");
+        /// <summary>engine-tray.card.clicking · Clicking · {{clicks}} · {{clock}}</summary>
+        public static string TrayCardClicking(string clicks, string clock) => IsPt ? $"Clicando · {clicks} · {clock}" : $"Clicking · {clicks} · {clock}";
+        /// <summary>engine-tray.card.replaying · Replaying · {{clock}}</summary>
+        public static string TrayCardReplaying(string clock) => IsPt ? $"Reproduzindo · {clock}" : $"Replaying · {clock}";
+        /// <summary>engine-tray.card.replayingLoop · Replaying · loop {{current}} of {{total}} · {{clock}}</summary>
+        public static string TrayCardReplayingLoop(string clock, string current, string total) => IsPt ? $"Reproduzindo · loop {current} de {total} · {clock}" : $"Replaying · loop {current} of {total} · {clock}";
+        /// <summary>engine-tray.card.clickerOpen · Clicker open</summary>
+        public static string TrayCardClickerOpen => IsPt ? "Clicker aberto" : "Clicker open";
+        /// <summary>engine-tray.card.clickerOpenKey · Clicker open · {{key}} starts</summary>
+        public static string TrayCardClickerOpenKey(string key) => IsPt ? $"Clicker aberto · {key} inicia" : $"Clicker open · {key} starts";
+        /// <summary>engine-tray.card.ready · Ready · {{n}} step</summary>
+        public static string TrayCardReady(string n, int count) => IsPt ? (count == 0 ? $"Pronto · {n} passos" : (count < 2 ? $"Pronto · {n} passo" : $"Pronto · {n} passos")) : (count == 1 ? $"Ready · {n} step" : $"Ready · {n} steps");
+        /// <summary>engine-tray.card.noMacro · Open a macro in the window to run it from here.</summary>
+        public static string TrayCardNoMacro => IsPt ? "Abra uma macro na janela para rodá-la daqui." : "Open a macro in the window to run it from here.";
+        /// <summary>engine-tray.card.stop · Stop</summary>
+        public static string TrayCardStop => IsPt ? "Parar" : "Stop";
+        /// <summary>engine-tray.card.replay · Replay</summary>
+        public static string TrayCardReplay => IsPt ? "Reproduzir" : "Replay";
+        /// <summary>engine-window.alerts.hotkeyIgnored · Macro '{{name}}' hotkey ignored — '{{process}}' isn't running</summary>
+        public static string WindowAlertsHotkeyIgnored(string name, string process) => IsPt ? $"Hotkey da macro \"{name}\" ignorada — \"{process}\" não está rodando" : $"Macro '{name}' hotkey ignored — '{process}' isn't running";
+        /// <summary>engine-window.alerts.hotkeyIgnoredNoProcess · Macro '{{name}}' hotkey ignored — its target window isn't open</summary>
+        public static string WindowAlertsHotkeyIgnoredNoProcess(string name) => IsPt ? $"Hotkey da macro \"{name}\" ignorada — a janela-alvo dela não está aberta" : $"Macro '{name}' hotkey ignored — its target window isn't open";
+        /// <summary>engine-window.alerts.shortcutsOff · Shortcuts are off — {{combo}} went to the app in front. Press {{hotkey}} to turn them back on.</summary>
+        public static string WindowAlertsShortcutsOff(string combo, string hotkey) => IsPt ? $"Os atalhos estão desativados — {combo} foi para o app em primeiro plano. Pressione {hotkey} para ativá-los de novo." : $"Shortcuts are off — {combo} went to the app in front. Press {hotkey} to turn them back on.";
+        /// <summary>engine-window.alerts.shortcutsOffNoKey · Shortcuts are off — {{combo}} went to the app in front. Turn them back on in the status bar or the tray.</summary>
+        public static string WindowAlertsShortcutsOffNoKey(string combo) => IsPt ? $"Os atalhos estão desativados — {combo} foi para o app em primeiro plano. Ative-os de novo na barra de status ou na bandeja." : $"Shortcuts are off — {combo} went to the app in front. Turn them back on in the status bar or the tray.";
+        /// <summary>engine-window.alerts.selectionCaptured · Selection captured → {clip:{{slot}}}</summary>
+        public static string WindowAlertsSelectionCaptured(string slot) => IsPt ? $"Seleção capturada → {{clip:{slot}}}" : $"Selection captured → {{clip:{slot}}}";
+        /// <summary>engine-window.alerts.couldNotStart · Could not start "{{name}}": {{reason}}</summary>
+        public static string WindowAlertsCouldNotStart(string name, string reason) => IsPt ? $"Não foi possível rodar a macro \"{name}\": {reason}" : $"Could not start \"{name}\": {reason}";
+        /// <summary>engine-window.startup.macrosNotLoaded · {{n}} macro(s) couldn't load: {{names}}</summary>
+        public static string WindowStartupMacrosNotLoaded(string n, string names, int count) => IsPt ? (count == 0 ? $"Não foi possível carregar {n} macros: {names}" : (count < 2 ? $"Não foi possível carregar {n} macro: {names}" : $"Não foi possível carregar {n} macros: {names}")) : $"{n} macro(s) couldn't load: {names}";
+        /// <summary>engine-window.startup.manyMacrosNotLoaded · {{n}} macros couldn't load (first 5: {{names}}, …)</summary>
+        public static string WindowStartupManyMacrosNotLoaded(string n, string names) => IsPt ? $"Não foi possível carregar {n} macros (as 5 primeiras: {names}, …)" : $"{n} macros couldn't load (first 5: {names}, …)";
+        /// <summary>engine-window.startup.settingsUnreadable · Your settings file couldn't be read (another program was holding it), so this session runs on default settings and won't save changes to them. Restart {{app}} to load your settings.</summary>
+        public static string WindowStartupSettingsUnreadable(string app) => IsPt ? $"Não foi possível ler o arquivo de configurações (outro programa estava com ele aberto), então esta sessão usa as configurações padrão e não salva alterações nelas. Reinicie o {app} para carregar suas configurações." : $"Your settings file couldn't be read (another program was holding it), so this session runs on default settings and won't save changes to them. Restart {app} to load your settings.";
+        /// <summary>engine-window.startup.dataFailed · Startup data couldn't load fully. Some macros or hotkeys may be unavailable.</summary>
+        public static string WindowStartupDataFailed => IsPt ? "Não foi possível carregar todos os dados ao abrir o app. Algumas macros ou hotkeys podem estar indisponíveis." : "Startup data couldn't load fully. Some macros or hotkeys may be unavailable.";
+        /// <summary>engine-window.dialogs.webViewFailed · {{app}} couldn't start its UI because the Microsoft Edge WebView2 Runtime failed to initialize.  Install or repair the WebView2 Runtime, then restart {{app}}.</summary>
+        public static string WindowDialogsWebViewFailed(string app) => IsPt ? $"Não foi possível abrir a interface do {app}, porque o Microsoft Edge WebView2 Runtime não inicializou.\n\nInstale ou repare o WebView2 Runtime e reinicie o {app}." : $"{app} couldn't start its UI because the Microsoft Edge WebView2 Runtime failed to initialize.\n\nInstall or repair the WebView2 Runtime, then restart {app}.";
+        /// <summary>engine-window.dialogs.uiFilesMissing · {{app}} couldn't load its UI files.  They may have been removed or quarantined by antivirus. Reinstall or repair {{app}}, and allow-list its install folder if your antivirus flagged it.</summary>
+        public static string WindowDialogsUiFilesMissing(string app) => IsPt ? $"Não foi possível carregar os arquivos da interface do {app}.\n\nEles podem ter sido removidos ou colocados em quarentena pelo antivírus. Reinstale ou repare o {app} e, se o antivírus marcou a pasta de instalação dele, adicione-a às exceções." : $"{app} couldn't load its UI files.\n\nThey may have been removed or quarantined by antivirus. Reinstall or repair {app}, and allow-list its install folder if your antivirus flagged it.";
+        /// <summary>engine-window.dialogs.uiNotFinished · {{app}} couldn't finish starting its UI.  Please restart {{app}}. If the problem persists, repair the Microsoft Edge WebView2 Runtime.</summary>
+        public static string WindowDialogsUiNotFinished(string app) => IsPt ? $"Não foi possível terminar de abrir a interface do {app}.\n\nReinicie o {app}. Se o problema continuar, repare o Microsoft Edge WebView2 Runtime." : $"{app} couldn't finish starting its UI.\n\nPlease restart {app}. If the problem persists, repair the Microsoft Edge WebView2 Runtime.";
+        /// <summary>engine-window.dialogs.saveFailed · Error saving macro: {{reason}}  {{app}} stayed open so your changes aren't lost.</summary>
+        public static string WindowDialogsSaveFailed(string app, string reason) => IsPt ? $"Não foi possível salvar a macro:\n{reason}\n\nO {app} continuou aberto para que suas alterações não se percam." : $"Error saving macro:\n{reason}\n\n{app} stayed open so your changes aren't lost.";
+        /// <summary>engine-window.dialogs.recoveryExhausted · {{app}}'s interface didn't finish loading, and restarting the app didn't help.  The app is still running — right-click its tray icon and choose "{{reload}}" to try again, or "{{logs}}" to see what failed.  If it keeps happening, allow-list {{app}}'s install folder in your antivirus, then reinstall or repair the app.</summary>
+        public static string WindowDialogsRecoveryExhausted(string app, string logs, string reload) => IsPt ? $"A interface do {app} não terminou de carregar, e reiniciar o app não resolveu.\n\nO app continua rodando — clique com o botão direito no ícone dele na bandeja e escolha \"{reload}\" para tentar de novo, ou \"{logs}\" para ver o que falhou.\n\nSe isso continuar acontecendo, adicione a pasta de instalação do {app} às exceções do antivírus e depois reinstale ou repare o app." : $"{app}'s interface didn't finish loading, and restarting the app didn't help.\n\nThe app is still running — right-click its tray icon and choose \"{reload}\" to try again, or \"{logs}\" to see what failed.\n\nIf it keeps happening, allow-list {app}'s install folder in your antivirus, then reinstall or repair the app.";
+        /// <summary>engine-window.dialogs.recoveryExhaustedLogs · {{app}}'s interface didn't finish loading, and restarting the app didn't help.  The app is still running — right-click its tray icon and choose "{{reload}}" to try again, or "{{logs}}" to see what failed.  If it keeps happening, allow-list {{app}}'s install folder in your antivirus, then reinstall or repair the app.  Logs: {{dir}}</summary>
+        public static string WindowDialogsRecoveryExhaustedLogs(string app, string dir, string logs, string reload) => IsPt ? $"A interface do {app} não terminou de carregar, e reiniciar o app não resolveu.\n\nO app continua rodando — clique com o botão direito no ícone dele na bandeja e escolha \"{reload}\" para tentar de novo, ou \"{logs}\" para ver o que falhou.\n\nSe isso continuar acontecendo, adicione a pasta de instalação do {app} às exceções do antivírus e depois reinstale ou repare o app.\n\nLogs: {dir}" : $"{app}'s interface didn't finish loading, and restarting the app didn't help.\n\nThe app is still running — right-click its tray icon and choose \"{reload}\" to try again, or \"{logs}\" to see what failed.\n\nIf it keeps happening, allow-list {app}'s install folder in your antivirus, then reinstall or repair the app.\n\nLogs: {dir}";
+        /// <summary>engine-window.missingWebView.text · {{app}} requires Microsoft Edge WebView2 Runtime.  Click OK to open the download page. After installing, restart {{app}}.</summary>
+        public static string WindowMissingWebViewText(string app) => IsPt ? $"O {app} precisa do Microsoft Edge WebView2 Runtime.\n\nClique em OK para abrir a página de download.\nDepois de instalar, reinicie o {app}." : $"{app} requires Microsoft Edge WebView2 Runtime.\n\nClick OK to open the download page.\nAfter installing, restart {app}.";
+        /// <summary>engine-window.missingWebView.title · {{app}} — Missing Dependency</summary>
+        public static string WindowMissingWebViewTitle(string app) => IsPt ? $"{app} — Dependência ausente" : $"{app} — Missing Dependency";
+        /// <summary>engine-window.coexist.heading · {{tr2}} is open</summary>
+        public static string WindowCoexistHeading(string tr2) => IsPt ? $"O {tr2} está aberto" : $"{tr2} is open";
+        /// <summary>engine-window.coexist.text · Only one can run at a time: shortcuts, remapped keys, automations and the browser extension would clash.  Close {{tr2}} from its tray menu (Exit asks about anything unsaved), and {{app}} opens by itself.</summary>
+        public static string WindowCoexistText(string app, string tr2) => IsPt ? $"Só um pode ficar aberto por vez: atalhos, teclas remapeadas, automações e a extensão do navegador entrariam em conflito.\n\nFeche o {tr2} pelo menu da bandeja dele (o Exit pergunta sobre o que não foi salvo), e o {app} abre sozinho." : $"Only one can run at a time: shortcuts, remapped keys, automations and the browser extension would clash.\n\nClose {tr2} from its tray menu (Exit asks about anything unsaved), and {app} opens by itself.";
+        /// <summary>engine-window.coexist.close · Close {{tr2}}…</summary>
+        public static string WindowCoexistClose(string tr2) => IsPt ? $"Fechar o {tr2}…" : $"Close {tr2}…";
+        /// <summary>engine-window.coexist.show · Show {{tr2}}</summary>
+        public static string WindowCoexistShow(string tr2) => IsPt ? $"Mostrar o {tr2}" : $"Show {tr2}";
+        /// <summary>engine-window.coexist.cancel · Cancel</summary>
+        public static string WindowCoexistCancel => IsPt ? "Cancelar" : "Cancel";
     }
 }

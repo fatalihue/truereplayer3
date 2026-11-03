@@ -684,10 +684,11 @@ namespace TrueReplayer
             // Through the held-notices path: some of these are raised by the startup list load (an
             // unreadable profile order, an auto-repaired block), before the UI is up or while an
             // autostart has the window hidden. After that it is an immediate toast, as before.
-            this.profileController.OnAlert = message =>
+            // Each notice says its kind ("success", "info" or "error"), passed on as it is.
+            this.profileController.OnAlert = (message, type) =>
             {
                 if (_disposed) return;
-                dispatcherQueue.TryEnqueue(() => ShowNoticeWhenSeen(message));
+                dispatcherQueue.TryEnqueue(() => ShowNoticeWhenSeen(message, type));
             };
             // Both already arrive on the UI thread (the watcher enqueues them).
             this.profileController.OnListChangedExternally = () =>
@@ -1257,7 +1258,7 @@ namespace TrueReplayer
                     // A .trprofile dropped on the first-run screen: the same import, from its path.
                     case "profile:importDropped":
                         if (droppedFile != null) HandleProfileImport(droppedFile);
-                        else SendMessage("alert:show", new { message = "Couldn't read the dropped file. Use Import… instead.", type = "error" });
+                        else SendMessage("alert:show", new { message = S.BridgeAlertDroppedUnreadable, type = "error" });
                         break;
                     // ── Sharing metadata (Info tab + Import Preview) ──
                     case "profile:getMetadata": HandleProfileGetMetadata(payload); break;
@@ -1424,7 +1425,7 @@ namespace TrueReplayer
             string errorText = wasError ? status[6..] : "";
             if (wasError)
             {
-                SendMessage("alert:show", new { message = errorText });
+                SendMessage("alert:show", new { message = errorText, type = "error" });
                 status = "ready";
             }
             // "ready:stopped" = the run ended because the USER stopped it (Stop
@@ -2068,7 +2069,7 @@ namespace TrueReplayer
                 if (name != "No Profile" && entry != null && File.Exists(entry.FilePath))
                 {
                     var profile = await profileController.LoadProfileByNameAsync(name)
-                        ?? throw new InvalidOperationException($"\"{name}\" could not be read from disk.");
+                        ?? throw new InvalidOperationException(S.BridgeAlertAutomationUnreadable(name));
                     profile.Triggers = trigger;
                     await profileController.SaveProfileByNameAsync(name, profile);
                 }
@@ -2083,7 +2084,7 @@ namespace TrueReplayer
                     // through here used to report success — the panel showed the automation armed —
                     // and the change was gone at the next launch. The catch below rolls the mirrors
                     // back and the caller says why.
-                    throw new InvalidOperationException($"the file of \"{name}\" is no longer in the Profiles folder.");
+                    throw new InvalidOperationException(S.BridgeAlertAutomationFileGone(name));
                 }
             }
             catch
@@ -2194,7 +2195,7 @@ namespace TrueReplayer
             catch (Exception ex)
             {
                 DiagnosticLog.Error("automation:save failed", ex);
-                SendMessage("alert:show", new { message = $"Could not save automation: {ex.Message}" });
+                SendMessage("alert:show", new { message = S.BridgeAlertAutomationSaveFailed(S.Reason(ex)), type = "error" });
             }
             finally
             {
@@ -2224,7 +2225,7 @@ namespace TrueReplayer
                 // Arming used to be silent on failure: entry.Triggers was mutated in memory, the
                 // disk write threw, and the automation looked armed until the next launch dropped
                 // it. Say so, and put the list back in step with what is actually on disk.
-                SendMessage("alert:show", new { message = $"Could not arm automation: {ex.Message}" });
+                SendMessage("alert:show", new { message = S.BridgeAlertAutomationArmFailed(S.Reason(ex)), type = "error" });
                 PushAutomationState();
             }
             finally
@@ -2250,7 +2251,7 @@ namespace TrueReplayer
                 var fire = TriggerService.Instance?.FireProfile;
                 if (fire == null)
                 {
-                    SendMessage("automation:testFireResult", new { requestId, fired = false, detail = "Automation service not ready." });
+                    SendMessage("automation:testFireResult", new { requestId, fired = false, detail = S.BridgeResultTestFireServiceNotReady });
                     return;
                 }
                 // The daemon can never fire a disabled profile — GetProfileTriggers drops those,
@@ -2261,7 +2262,7 @@ namespace TrueReplayer
                 if (entry?.IsDisabled == true)
                 {
                     SendMessage("automation:testFireResult", new { requestId, fired = false,
-                        detail = "Skipped: this macro is disabled, so its automation never runs. Enable it in the library first." });
+                        detail = S.BridgeResultTestFireDisabled });
                     return;
                 }
                 var result = await fire(name);
@@ -2270,25 +2271,25 @@ namespace TrueReplayer
                 // the interface's words: a profile is a macro there, its actions are steps.
                 string detail = result switch
                 {
-                    TriggerFireResult.Fired => "Fired — the macro is running now.",
-                    TriggerFireResult.SkippedBusy => "Skipped: a replay, recording or clicker run is already going. Automations wait for the engine to be free.",
-                    TriggerFireResult.SkippedDirty => "Skipped: the open macro has unsaved changes. Automations never fire over unsaved edits — save it first.",
-                    TriggerFireResult.SkippedModal => "Skipped: a dialog or key capture is open. Close it and try again.",
-                    TriggerFireResult.NotReady => "Not ready: the app is still starting up.",
+                    TriggerFireResult.Fired => S.BridgeResultTestFireFired,
+                    TriggerFireResult.SkippedBusy => S.BridgeResultTestFireBusy,
+                    TriggerFireResult.SkippedDirty => S.BridgeResultTestFireDirty,
+                    TriggerFireResult.SkippedModal => S.BridgeResultTestFireModal,
+                    TriggerFireResult.NotReady => S.BridgeResultTestFireNotReady,
                     // Failed has four sources, and "could not be loaded" was the one that is almost
                     // never true — so a profile with no actions, or one whose data table is empty
                     // with loop-over-data on, got told to check that its file still exists. The
                     // data-table case additionally shows the real cause in its own toast, leaving
                     // two contradictory messages on screen. The advice about being disabled was
                     // dead outright: a disabled profile is refused higher up, above.
-                    _ => "Nothing ran. The macro may have no steps, or its Data Loop table may be empty while it loops over the data.",
+                    _ => S.BridgeResultTestFireNothingRan,
                 };
                 SendMessage("automation:testFireResult", new { requestId, fired = result == TriggerFireResult.Fired, detail });
             }
             catch (Exception ex)
             {
                 DiagnosticLog.Error($"automation:testFire '{name}' failed", ex);
-                SendMessage("automation:testFireResult", new { requestId, fired = false, detail = $"Failed: {ex.Message}" });
+                SendMessage("automation:testFireResult", new { requestId, fired = false, detail = S.BridgeResultTestFireFailed(S.Reason(ex)) });
             }
         }
 
@@ -2311,7 +2312,7 @@ namespace TrueReplayer
             string holder = Services.InteractionScope.ExclusiveOwner;
             SendMessage("alert:show", new
             {
-                message = $"Couldn't start {what}: \"{holder}\" is still open and didn't respond. Press Esc or right-click on it, then try again.",
+                message = S.BridgeAlertCaptureStuck(what: what, holder: Services.InteractionScope.Describe(holder)),
                 type = "error",
             });
         }
@@ -2396,7 +2397,7 @@ namespace TrueReplayer
             // holder. The old silence is what made the wedge unreadable from inside the app.
             if (interaction == null)
             {
-                ReportOverlayRefused("the image capture");
+                ReportOverlayRefused(S.BridgeCaptureWhatImage);
                 SendMessage("automation:imageCaptured", new { requestId, cancelled = true, refused = true, busyOwner = Services.InteractionScope.ExclusiveOwner });
                 return;
             }
@@ -2424,7 +2425,7 @@ namespace TrueReplayer
                 // the lifecycle log all live in CaptureOverlayHost now — the eight siblings that
                 // used to point at the copy here point at that one instead.
                 var selection = await overlayHost.RunAsync(() => new ScreenOverlayForm(screenshot,
-                    bar: new CaptureBar("Capture the reference image", $"for the {profileName} automation", "Drag around what the automation waits for")));
+                    bar: new CaptureBar(S.BridgeCaptureTitleReferenceImage, S.BridgeCaptureForAutomation(profileName), S.BridgeCaptureHintAutomationWaits)));
 
                 dispatcherQueue.TryEnqueue(() =>
                 {
@@ -2459,7 +2460,7 @@ namespace TrueReplayer
                 catch (Exception ex)
                 {
                     DiagnosticLog.Error($"Automation capture image save failed [profile='{profileName}']", ex);
-                    SendMessage("alert:show", new { message = $"Couldn't save the captured image: {ex.Message}", type = "error" });
+                    SendMessage("alert:show", new { message = S.BridgeAlertImageCaptureSaveFailed(S.Reason(ex)), type = "error" });
                     SendMessage("automation:imageCaptured", new { requestId, cancelled = true });
                     return;
                 }
@@ -2502,7 +2503,7 @@ namespace TrueReplayer
                 // said, while the equivalent failure on the action-index sibling toasts.
                 DiagnosticLog.Warn($"Automation crop: reference image '{imagePath}' could not be loaded for '{profileName}'");
                 SendMessage("automation:imageCaptured", new { requestId, cancelled = true });
-                SendMessage("alert:show", new { message = "Could not open the reference image to crop it." });
+                SendMessage("alert:show", new { message = S.BridgeAlertImageCropOpenFailed, type = "error" });
                 return;
             }
             // Clamp to the image bounds (belt-and-suspenders over the frontend clamp); reject tiny or
@@ -2524,7 +2525,7 @@ namespace TrueReplayer
             {
                 DiagnosticLog.Warn($"Automation crop failed: {ex.Message}");
                 SendMessage("automation:imageCaptured", new { requestId, cancelled = true });
-                SendMessage("alert:show", new { message = $"Could not save the cropped image: {ex.Message}" });
+                SendMessage("alert:show", new { message = S.BridgeAlertImageCropSaveFailed(S.Reason(ex)), type = "error" });
                 return;
             }
             SendMessage("automation:imageCaptured", new { requestId, cancelled = false, imagePath = newPath, imageBase64 = GetImageBase64Cached(profileName, newPath) });
@@ -2748,7 +2749,7 @@ namespace TrueReplayer
                 catch (Exception ex)
                 {
                     Services.DiagnosticLog.Error("Putting a macro setting back failed", ex);
-                    SendMessage("alert:show", new { message = $"Could not undo: {ex.Message}" });
+                    SendMessage("alert:show", new { message = S.BridgeAlertUndoFailed(S.Reason(ex)), type = "error" });
                 }
                 return;
             }
@@ -2798,7 +2799,7 @@ namespace TrueReplayer
                         UserProfile.Current.BringToFocus = profileController.GetEffectiveBringToFocus(name);
                     }
                     foreach (var message in profileController.GetAndClearHotkeyCollisions())
-                        SendMessage("alert:show", new { message });
+                        SendMessage("alert:show", new { message, type = "info" });
                     PushProfilesUpdate();
                     break;
             }
@@ -2952,7 +2953,7 @@ namespace TrueReplayer
                 }
                 return null;
             }
-            if (run.Count < 2) return "Select a click's Down half and the Up half that follows it.";
+            if (run.Count < 2) return S.CaptureConvertSelectPair;
             for (int i = 0; i + 1 < run.Count; i += 2)
             {
                 var why = ActionModeConverter.WhyCannotMerge(run[i], run[i + 1]);
@@ -3018,7 +3019,7 @@ namespace TrueReplayer
                 else output = ActionModeConverter.ToPaired(input);
                 if (!ShapeChanged(input, output))
                 {
-                    SendMessage("alert:show", new { message = "Nothing to convert" });
+                    SendMessage("alert:show", new { message = S.BridgeAlertConvertNothing, type = "info" });
                     return;
                 }
             }
@@ -3082,8 +3083,9 @@ namespace TrueReplayer
                     SendMessage("alert:show", new
                     {
                         message = pushUndo
-                            ? (refusal ?? "Nothing to convert")
-                            : $"Fields saved, but the form was not changed — {refusal ?? "nothing to convert"}",
+                            ? (refusal ?? S.BridgeAlertConvertNothing)
+                            : refusal != null ? S.BridgeAlertConvertFieldsSaved(refusal) : S.BridgeAlertConvertFieldsSavedNothing,
+                        type = "info",
                     });
                     return;
                 }
@@ -3098,21 +3100,18 @@ namespace TrueReplayer
             // actions" after splitting one click names a number the user did not ask about and
             // cannot check. The whole-profile form keeps its original wording.
             string message = picked == null
-                ? (toCombined ? $"Converted to combined — {output.Count} actions"
-                              : $"Converted to paired — {output.Count} actions")
+                ? (toCombined ? S.BridgeAlertConvertCombinedAll(n: S.Num(output.Count), count: output.Count)
+                              : S.BridgeAlertConvertPairedAll(n: S.Num(output.Count), count: output.Count))
                 : (toCombined
-                    ? (rowDelta <= 1 ? "Merged into one row" : $"Merged {rowDelta} pairs")
-                    : (rowDelta <= 1 ? "Split into Down + Up" : $"Split {rowDelta} rows into Down + Up"));
+                    ? (rowDelta <= 1 ? S.BridgeAlertConvertMergedOne : S.BridgeAlertConvertMerged(S.Num(rowDelta)))
+                    : (rowDelta <= 1 ? S.BridgeAlertConvertSplitOne : S.BridgeAlertConvertSplit(S.Num(rowDelta))));
 
             // A run that was refused OUTRIGHT had its reason dropped on the floor whenever any
             // other run in the same Split/Merge applied: `refusal` was only ever shown on the
             // all-refused path below. Selecting two blocks and having one silently keep its rows
             // is exactly the case the reason exists for.
             if (refusedRuns > 0)
-            {
-                string sel = refusedRuns == 1 ? "1 selection" : $"{refusedRuns} selections";
-                message += $" — {sel} left as-is. {refusal}";
-            }
+                message = S.BridgeAlertConvertLeftSelections(done: message, n: S.Num(refusedRuns), why: refusal ?? "", count: refusedRuns);
 
             // A merge that dropped a dwell is NOT a plain success, and the row it produces looks
             // identical to one that lost nothing — so the toast has to carry the number. It says
@@ -3120,10 +3119,7 @@ namespace TrueReplayer
             // not 300?". Downgraded from success to info for the same reason: the outcome is the
             // one asked for MINUS something.
             if (partialSkipped > 0)
-            {
-                string rows = partialSkipped == 1 ? "1 row" : $"{partialSkipped} rows";
-                message += $" — {rows} left as-is. {partialReason}";
-            }
+                message = S.BridgeAlertConvertLeftRows(done: message, n: S.Num(partialSkipped), why: partialReason ?? "", count: partialSkipped);
             if (dwellDropped > 0)
             {
                 // Singular only when it really was ONE press. dwellDropped is a SUM, and printing
@@ -3132,18 +3128,16 @@ namespace TrueReplayer
                 // dwell is below it while the total need not be. "the two rows" was wrong for the
                 // same reason: a multi-pair merge has more than two to restore.
                 bool single = dwellRuns <= 1 && rowDelta <= 1;
-                message += single
-                    ? $" — the {dwellDropped} ms the button stayed down was dropped. "
-                      + "A merged click only carries a hold from 200 ms up; Ctrl+Z restores the two rows."
-                    : $" — {dwellDropped} ms of button-down time was dropped in total. "
-                      + "A merged click only carries a hold from 200 ms up; Ctrl+Z restores the original rows.";
+                message = single
+                    ? S.BridgeAlertConvertDwellOne(done: message, ms: S.Num(dwellDropped))
+                    : S.BridgeAlertConvertDwellMany(done: message, ms: S.Num(dwellDropped));
             }
             // Anything less than the whole ask is NOT a success, and the row it leaves behind looks
             // identical to one nobody selected. Downgraded so the tone matches the sentence.
             SendMessage("alert:show", new
             {
                 message,
-                type = partialSkipped > 0 || dwellDropped > 0 ? "info" : "success",
+                type = refusedRuns > 0 || partialSkipped > 0 || dwellDropped > 0 ? "info" : "success",
             });
         }
 
@@ -3827,9 +3821,7 @@ namespace TrueReplayer
             // than the state — "not connected" alone reads as a status line worth ignoring.
             SendMessage("alert:show", new
             {
-                message = rowCount == 1
-                    ? "Chrome extension not connected — 1 browser row will not work. Browser conditions read as \"not found\", so the macro can take the wrong branch without erroring."
-                    : $"Chrome extension not connected — {rowCount} browser rows will not work. Browser conditions read as \"not found\", so the macro can take the wrong branch without erroring.",
+                message = S.BridgeAlertBrowserMissing(n: S.Num(rowCount), count: rowCount),
                 type = "info",
                 // Longer than the default: this lands as the user is switching away to the
                 // target window, and it is the one chance to catch the run before it misbehaves.
@@ -4018,9 +4010,9 @@ namespace TrueReplayer
             {
                 Services.DiagnosticLog.Error($"Save as you go of '{name}' failed", ex);
                 if (!_autoSaveFailing)
-                    SendMessage("alert:show", new { message = $"Could not save \"{name}\": {ex.Message}" });
+                    SendMessage("alert:show", new { message = S.BridgeAlertSaveFailed(name: name, reason: S.Reason(ex)), type = "error" });
                 _autoSaveFailing = true;
-                SendMessage("profile:saved", new { ok = false, name, error = ex.Message });
+                SendMessage("profile:saved", new { ok = false, name, error = S.Reason(ex) });
                 return false;
             }
             _autoSaveFailing = false;
@@ -4077,9 +4069,13 @@ namespace TrueReplayer
         /// Checks for unsaved changes and prompts Save/Discard/Cancel.
         /// Returns true if the caller should proceed, false to cancel.
         /// </summary>
-        /// <param name="beforeWhat">Completes "Save before ___?" — see ShowUnsavedChangesDialogAsync.</param>
-        private async Task<bool> CheckUnsavedChangesAsync(string beforeWhat = "continuing")
+        /// <param name="beforeWhat">
+        /// Completes "Save before ___?": one of the catalog's S.ProfilesUnsavedBefore* texts — see
+        /// ShowUnsavedChangesDialogAsync. Left out, "continuing".
+        /// </param>
+        private async Task<bool> CheckUnsavedChangesAsync(string? beforeWhat = null)
         {
+            beforeWhat ??= S.ProfilesUnsavedBeforeContinuing;
             // Save as you go: what the countdown has not written yet is written now, and there is
             // nothing to ask. Without a file to write to, or when the write fails, the prompt below
             // still guards the work.
@@ -4510,7 +4506,7 @@ namespace TrueReplayer
             // does not repeat it.
             if (_pendingHotkeyConflict != null)
             {
-                ShowNoticeWhenSeen(_pendingHotkeyConflict);
+                ShowNoticeWhenSeen(_pendingHotkeyConflict, "info");
                 _pendingHotkeyConflict = null;
             }
             // App hotkey against a PROFILE hotkey: the hook matches the app's own hotkeys first, so
@@ -4521,7 +4517,7 @@ namespace TrueReplayer
             {
                 _appVsProfileHotkeyChecked = true;
                 var clash = DescribeAppVsProfileHotkeyConflict();
-                if (clash != null) ShowNoticeWhenSeen(clash);
+                if (clash != null) ShowNoticeWhenSeen(clash, "info");
             }
 
             // The UI is up: whatever was held for it goes out now, if the window is on screen.
@@ -4539,12 +4535,16 @@ namespace TrueReplayer
         // before any of them is raised, and each one rendered in a WebView nobody could see and
         // expired in seconds, with no history to find it in. Held here, they appear when the
         // window is shown. Dispatcher thread only.
-        private readonly List<(string Message, DateTime At)> _pendingNotices = new();
+        private readonly List<(string Message, string Type, DateTime At)> _pendingNotices = new();
         private bool _uiInitialized;
 
-        public void ShowNoticeWhenSeen(string message)
+        /// <param name="type">
+        /// The toast's kind — "success", "info" or "error". Every notice says it: the page used to
+        /// guess it from English words, and in another language every notice would read as info.
+        /// </param>
+        public void ShowNoticeWhenSeen(string message, string type = "info")
         {
-            _pendingNotices.Add((message, DateTime.Now));
+            _pendingNotices.Add((message, type, DateTime.Now));
             FlushPendingNotices();
             // What is still held makes the tray icon "Needs a look" and is listed in the tray panel
             // (Tray board, "No painel, o que o Windows silenciou").
@@ -4558,14 +4558,14 @@ namespace TrueReplayer
         public void FlushPendingNotices()
         {
             if (_pendingNotices.Count == 0 || !_uiInitialized || !window.IsOnScreen) return;
-            foreach (var (message, _) in _pendingNotices)
-                SendMessage("alert:show", new { message });
+            foreach (var (message, type, _) in _pendingNotices)
+                SendMessage("alert:show", new { message, type });
             _pendingNotices.Clear();
             TrayIconService.SetPendingNotices(0);
         }
 
         /// <summary>The held notices with when they came, for the tray panel. Dispatcher thread.</summary>
-        public IReadOnlyList<(string Message, DateTime At)> PendingNotices => _pendingNotices.ToList();
+        public IReadOnlyList<(string Message, DateTime At)> PendingNotices => _pendingNotices.Select(n => (n.Message, n.At)).ToList();
 
         /// <summary>The tray panel's Clear: the held notices are dropped, read there.</summary>
         public void ClearPendingNotices()
@@ -4604,20 +4604,24 @@ namespace TrueReplayer
         // apply path would then have no dialog to resolve the block with — a permanent stall.
         private enum UpdateGate { Clear, Busy, Unsaved }
 
-        private UpdateGate EvaluateUpdateGate(out string reason)
+        // Why an update waits, twice: in the log's words (English, like every log line) and in the
+        // person's, in the interface's language — the clause that follows "because" in the notice.
+        private readonly record struct UpdateWhy(string Log, string Said);
+
+        private UpdateGate EvaluateUpdateGate(out UpdateWhy reason)
         {
-            if (recordingService.IsRecording) { reason = "a recording is in progress"; return UpdateGate.Busy; }
-            if (replayService.IsReplaying) { reason = "a replay is running"; return UpdateGate.Busy; }
+            if (recordingService.IsRecording) { reason = new("a recording is in progress", S.BridgeUpdateReasonRecording); return UpdateGate.Busy; }
+            if (replayService.IsReplaying) { reason = new("a replay is running", S.BridgeUpdateReasonReplaying); return UpdateGate.Busy; }
             // The two signals AutomationGuard already holds the other autonomous actor to: a
             // capture overlay or a native file picker (Save As, Import, Export) mid-flight, and a
             // row editor with typed fields not yet sent. Exiting under either loses that work with
             // no prompt, so they are Busy — never Unsaved, whose resolution is the Save/Discard
             // dialog, which has nothing to say about a picker (see the enum's remark).
             // SuppressAllHotkeys is NOT read: the update overlay is itself a React modal.
-            if (Services.InteractionScope.CurrentOwner is { } open) { reason = $"{open} is open"; return UpdateGate.Busy; }
-            if (Services.AutomationGuard.EditorHoldsUnsavedWork()) { reason = "an open editor has changes that haven't been applied"; return UpdateGate.Busy; }
-            if (HasUnsavedLoopChange || HasUnsavedActionWork) { reason = "the macro has unsaved changes"; return UpdateGate.Unsaved; }
-            reason = string.Empty;
+            if (Services.InteractionScope.CurrentOwner is { } open) { reason = new($"{open} is open", S.BridgeUpdateReasonOpen(Services.InteractionScope.Describe(open))); return UpdateGate.Busy; }
+            if (Services.AutomationGuard.EditorHoldsUnsavedWork()) { reason = new("an open editor has changes that haven't been applied", S.BridgeUpdateReasonEditor); return UpdateGate.Busy; }
+            if (HasUnsavedLoopChange || HasUnsavedActionWork) { reason = new("the macro has unsaved changes", S.BridgeUpdateReasonUnsaved); return UpdateGate.Unsaved; }
+            reason = new(string.Empty, string.Empty);
             return UpdateGate.Clear;
         }
 
@@ -4643,15 +4647,16 @@ namespace TrueReplayer
         // disabled state, but the frontend never renders its payload text — so the toast beside it
         // is the only thing that actually tells the user WHY. Skipping the toast is how a blocked
         // update turns into an update the user never learns about.
-        private void ReportUpdatePostponed(string reason, string? version = null)
+        private void ReportUpdatePostponed(UpdateWhy reason, string? version = null)
         {
-            DiagnosticLog.Info($"[Update] Apply postponed — {reason}");
+            DiagnosticLog.Info($"[Update] Apply postponed — {reason.Log}");
             // The version lets Settings say which one is ready to install (D24); the new shell reads
-            // it, today's ignores the field.
-            SendMessage("update:error", new { message = $"Update postponed: {reason}", version });
+            // it, today's ignores the field. `postponed` says what the message's first words used to
+            // say in English only ("Update postponed: …"), for a page that reads it in any language.
+            SendMessage("update:error", new { message = S.BridgeUpdatePostponed(reason.Said), version, postponed = true });
             SendMessage("alert:show", new
             {
-                message = $"An update is ready but was not installed because {reason}. It will be offered again once the app is idle — or install it any time with Restart and update, at the foot of Settings.",
+                message = S.BridgeUpdatePostponedNotice(reason.Said),
                 type = "info"
             });
         }
@@ -4783,7 +4788,7 @@ namespace TrueReplayer
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[Update] Check failed: {ex.Message}");
-                SendMessage("update:error", new { message = "Failed to check for updates" });
+                SendMessage("update:error", new { message = S.BridgeUpdateCheckFailed });
             }
         }
 
@@ -4814,9 +4819,9 @@ namespace TrueReplayer
                 // It runs before the download so a Cancel doesn't cost a pointless transfer, and
                 // it is the same Save/Discard/Cancel the window close guard runs: an update IS a
                 // close, it just comes back afterwards. Cancel means "not now", not "lose it".
-                if (gate == UpdateGate.Unsaved && !await CheckUnsavedChangesAsync("updating"))
+                if (gate == UpdateGate.Unsaved && !await CheckUnsavedChangesAsync(S.ProfilesUnsavedBeforeUpdating))
                 {
-                    ReportUpdatePostponed("the unsaved-changes prompt was cancelled");
+                    ReportUpdatePostponed(new("the unsaved-changes prompt was cancelled", S.BridgeUpdateReasonPromptCancelled));
                     return;
                 }
 
@@ -4869,10 +4874,10 @@ namespace TrueReplayer
                 {
                     // The overlay just hides on update:error without rendering the message, so the
                     // download failure would otherwise be a splash that silently vanishes.
-                    SendMessage("update:error", new { message = "Download failed" });
+                    SendMessage("update:error", new { message = S.BridgeUpdateDownloadFailed });
                     SendMessage("alert:show", new
                     {
-                        message = "The update could not be downloaded. It will be retried on the next check.",
+                        message = S.BridgeUpdateDownloadFailedNotice,
                         type = "error"
                     });
                 }
@@ -4889,10 +4894,10 @@ namespace TrueReplayer
                 // ever sent and nothing in the UI to contradict it. update:error is what dismisses
                 // that splash; the toast is what replaces the lie with the truth.
                 DiagnosticLog.Error("[Update] Apply failed", ex);
-                SendMessage("update:error", new { message = $"Update failed: {ex.Message}" });
+                SendMessage("update:error", new { message = S.BridgeUpdateFailed(S.Reason(ex)) });
                 SendMessage("alert:show", new
                 {
-                    message = $"The update could not be applied: {ex.Message}. {AppIdentity.DisplayName} is still running the current version.",
+                    message = S.BridgeUpdateApplyFailedNotice(app: AppIdentity.DisplayName, reason: S.Reason(ex)),
                     type = "error"
                 });
             }
@@ -5167,7 +5172,7 @@ namespace TrueReplayer
                         ? effTarget.ProcessName
                         : effTarget.WindowTitle;
                     DiagnosticLog.Warn($"Replay refused (button): target window not open [{label}], profile='{CurrentProfileName}'");
-                    SendMessage("alert:show", new { message = $"Target window not open: {label}" });
+                    SendMessage("alert:show", new { message = S.BridgeAlertTargetNotOpen(label), type = "error" });
                     return;
                 }
             }
@@ -5247,12 +5252,12 @@ namespace TrueReplayer
             try
             {
                 ClipboardService.CopyText(string.Join(Environment.NewLine, lines));
-                SendMessage("alert:show", new { message = "Diagnostics copied to the clipboard", type = "success" });
+                SendMessage("alert:show", new { message = S.BridgeAlertDiagnosticsCopied, type = "success" });
             }
             catch (Exception ex)
             {
                 DiagnosticLog.Error("diagnostics:copy failed", ex);
-                SendMessage("alert:show", new { message = "Could not copy diagnostics" });
+                SendMessage("alert:show", new { message = S.BridgeAlertDiagnosticsFailed, type = "error" });
             }
         }
 
@@ -5343,7 +5348,7 @@ namespace TrueReplayer
             catch (Exception ex)
             {
                 DiagnosticLog.Error("actions:copy failed", ex);
-                SendMessage("alert:show", new { message = "Could not copy the actions to the clipboard. Try again." });
+                SendMessage("alert:show", new { message = S.BridgeAlertCopyClipboardFailed, type = "error" });
             }
         }
 
@@ -5361,7 +5366,7 @@ namespace TrueReplayer
                 if (idx >= 0 && idx < actions.Count)
                     _copiedActions.Add(actions[idx].Clone());
             }
-            SendMessage("alert:show", new { message = $"Copied {_copiedActions.Count} action(s)" });
+            SendMessage("alert:show", new { message = S.BridgeAlertCopyCopied(n: S.Num(_copiedActions.Count), count: _copiedActions.Count), type = "success" });
             PushButtonStates();
         }
 
@@ -5369,7 +5374,7 @@ namespace TrueReplayer
         {
             if (_copiedActions == null || _copiedActions.Count == 0)
             {
-                SendMessage("alert:show", new { message = "No actions copied" });
+                SendMessage("alert:show", new { message = S.BridgeAlertCopyNone, type = "info" });
                 return;
             }
 
@@ -5446,7 +5451,7 @@ namespace TrueReplayer
             // Use the effective paste count (may include auto-appended EndIf rows) so the
             // toast tells the user what actually landed in the grid, not the pre-fix
             // clipboard count.
-            SendMessage("alert:show", new { message = $"Pasted {paste.Count} action(s)" });
+            SendMessage("alert:show", new { message = S.BridgeAlertCopyPasted(n: S.Num(paste.Count), count: paste.Count), type = "success" });
             PushActionsUpdate();
         }
 
@@ -5466,7 +5471,7 @@ namespace TrueReplayer
             var id = idEl.GetString();
             if (string.IsNullOrEmpty(id) || string.Equals(actions[index].Id, id, StringComparison.Ordinal)) return true;
             DiagnosticLog.Warn($"{door} refused: row {index} is no longer the row the editor opened (the list changed under it).");
-            SendMessage("alert:show", new { message = "Not saved: that row changed while it was being edited (the list or the macro changed underneath).", type = "error" });
+            SendMessage("alert:show", new { message = S.BridgeAlertEditRowChanged, type = "error" });
             return false;
         }
 
@@ -5480,17 +5485,22 @@ namespace TrueReplayer
         private bool RefusedFreeTextNumber(string door, int index, string field, string value)
         {
             if (field is not ("delay" or "x" or "y")) return false;
-            string name = field == "delay" ? "delay" : field.ToUpperInvariant();
             if (!int.TryParse(value, out int n))
             {
                 DiagnosticLog.Warn($"{door} rejected non-numeric {field} '{value}' at index {index}");
-                SendMessage("alert:show", new { message = $"\"{value}\" is not a valid {name}. Use a whole number. Nothing was changed." });
+                SendMessage("alert:show", new
+                {
+                    message = field == "delay"
+                        ? S.BridgeAlertEditInvalidDelay(value)
+                        : S.BridgeAlertEditInvalidCoord(value: value, axis: field.ToUpperInvariant()),
+                    type = "error",
+                });
                 return true;
             }
             if (field == "delay" && n < 0)
             {
                 DiagnosticLog.Warn($"{door} rejected negative delay '{value}' at index {index}");
-                SendMessage("alert:show", new { message = $"A delay can't be negative ({value} ms). Use 0 or more. Nothing was changed." });
+                SendMessage("alert:show", new { message = S.BridgeAlertEditNegativeDelay(value), type = "error" });
                 return true;
             }
             return false;
@@ -6120,7 +6130,7 @@ namespace TrueReplayer
             if (mode is not ("set" or "add"))
             {
                 DiagnosticLog.Warn($"actions:bulkUpdateDelay refused: mode '{mode ?? "(none)"}' is neither set nor add");
-                SendMessage("alert:show", new { message = "The delay was not changed: the edit did not say whether to Set or Add.", type = "error" });
+                SendMessage("alert:show", new { message = S.BridgeAlertBulkDelayNoMode, type = "error" });
                 return;
             }
             bool add = mode == "add";
@@ -6134,15 +6144,15 @@ namespace TrueReplayer
                 || delayEl.ValueKind != JsonValueKind.Number
                 || !delayEl.TryGetInt32(out int delay))
             {
-                string shown = payload.TryGetProperty("delay", out var raw) ? raw.GetRawText() : "(none)";
-                SendMessage("alert:show", new { message = $"{shown} is not a valid delay. Use a whole number of milliseconds." });
+                string shown = payload.TryGetProperty("delay", out var raw) ? raw.GetRawText() : S.BridgeAlertBulkNone;
+                SendMessage("alert:show", new { message = S.BridgeAlertBulkDelayInvalid(shown), type = "error" });
                 return;
             }
             // A Set to a negative delay is refused, not floored: the old Math.Max(0, …) turned it
             // into 0 in silence. Only an ADD may land below zero, and that one stops at 0 (below).
             if (!add && delay < 0)
             {
-                SendMessage("alert:show", new { message = $"A delay can't be negative ({delay} ms). Use 0 or more, or Add to subtract. Nothing was changed." });
+                SendMessage("alert:show", new { message = S.BridgeAlertBulkDelayNegative(S.Num(delay)), type = "error" });
                 return;
             }
             var targets = payload.GetProperty("indices").EnumerateArray()
@@ -6163,7 +6173,7 @@ namespace TrueReplayer
 
             if (targets.Count == 0)
             {
-                SendMessage("alert:show", new { message = "The selected rows have no delay to change (block markers carry none)." });
+                SendMessage("alert:show", new { message = S.BridgeAlertBulkDelayNone, type = "info" });
                 return;
             }
 
@@ -6173,7 +6183,7 @@ namespace TrueReplayer
             // user hunt that row down. Stopping is said in the toast, with the count, never silent.
             if (add && targets.Any(a => (long)a.Delay + delay > int.MaxValue))
             {
-                SendMessage("alert:show", new { message = $"Adding {delay} ms would push some of the selected rows past the longest possible delay. Nothing was changed." });
+                SendMessage("alert:show", new { message = S.BridgeAlertBulkDelayOverflow(S.Num(delay)), type = "error" });
                 return;
             }
             int NewDelay(ActionItem a) => add ? (int)Math.Max(0, (long)a.Delay + delay) : delay;
@@ -6189,9 +6199,9 @@ namespace TrueReplayer
             {
                 SendMessage("alert:show", new
                 {
-                    message = !add ? $"Nothing changed: the delay is already {delay} ms on the selected actions."
-                        : delay == 0 ? "Nothing changed: adding 0 ms leaves the delay where it was."
-                        : "Nothing changed: the selected actions are already at 0 ms.",
+                    message = !add ? S.BridgeAlertBulkDelaySame(S.Num(delay))
+                        : delay == 0 ? S.BridgeAlertBulkDelayAddZero
+                        : S.BridgeAlertBulkDelayAtZero,
                     type = "info",
                 });
                 return;
@@ -6200,12 +6210,11 @@ namespace TrueReplayer
             PushUndoState();
             foreach (var a in targets) a.Delay = NewDelay(a);
 
-            SendMessage("alert:show", new
-            {
-                message = add
-                    ? $"Added {delay} ms to the delay on {moved} action(s)" + (floored > 0 ? $" — {floored} stopped at 0 ms" : "")
-                    : $"Set delay to {delay} ms on {targets.Count} action(s)",
-            });
+            string done = add
+                ? S.BridgeAlertBulkDelayAdded(ms: S.Num(delay), n: S.Num(moved), count: moved)
+                : S.BridgeAlertBulkDelaySet(ms: S.Num(delay), n: S.Num(targets.Count), count: targets.Count);
+            if (floored > 0) done = S.BridgeAlertBulkDelayFloored(done: done, n: S.Num(floored), count: floored);
+            SendMessage("alert:show", new { message = done, type = "success" });
             HasUnsavedChanges = true;
             PushActionsUpdate();
         }
@@ -6225,7 +6234,7 @@ namespace TrueReplayer
             if (mode is not ("set" or "add"))
             {
                 DiagnosticLog.Warn($"actions:bulkUpdateCoord refused: mode '{mode ?? "(none)"}' is neither set nor add");
-                SendMessage("alert:show", new { message = $"{axis.ToUpper()} was not changed: the edit did not say whether to Set or Add.", type = "error" });
+                SendMessage("alert:show", new { message = S.BridgeAlertBulkCoordNoMode(axis.ToUpper()), type = "error" });
                 return;
             }
             bool add = mode == "add";
@@ -6241,8 +6250,8 @@ namespace TrueReplayer
                 || valueEl.ValueKind != JsonValueKind.Number
                 || !valueEl.TryGetInt32(out int val))
             {
-                string shown = payload.TryGetProperty("value", out var raw) ? raw.GetRawText() : "(none)";
-                SendMessage("alert:show", new { message = $"{shown} is not a valid {axis.ToUpper()} value. Use a whole number." });
+                string shown = payload.TryGetProperty("value", out var raw) ? raw.GetRawText() : S.BridgeAlertBulkNone;
+                SendMessage("alert:show", new { message = S.BridgeAlertBulkCoordInvalid(value: shown, axis: axis.ToUpper()), type = "error" });
                 return;
             }
 
@@ -6274,7 +6283,7 @@ namespace TrueReplayer
 
             if (targets.Count == 0)
             {
-                SendMessage("alert:show", new { message = "X/Y can only be set on mouse click actions." });
+                SendMessage("alert:show", new { message = S.BridgeAlertBulkCoordNoClicks, type = "error" });
                 return;
             }
 
@@ -6284,7 +6293,7 @@ namespace TrueReplayer
             // undo push, like the other rejections here, so nothing changes.
             if (add && targets.Any(a => (long)(axis == "x" ? a.X : a.Y) + val is > int.MaxValue or < int.MinValue))
             {
-                SendMessage("alert:show", new { message = $"Adding {val} to {axis.ToUpper()} would push some of the selected rows past the largest possible coordinate. Nothing was changed." });
+                SendMessage("alert:show", new { message = S.BridgeAlertBulkCoordOverflow(value: Plain(val), axis: axis.ToUpper()), type = "error" });
                 return;
             }
 
@@ -6296,8 +6305,8 @@ namespace TrueReplayer
                 SendMessage("alert:show", new
                 {
                     message = add
-                        ? $"Nothing changed: adding 0 leaves {axis.ToUpper()} where it was."
-                        : $"Nothing changed: {axis.ToUpper()} is already {val} on the selected clicks.",
+                        ? S.BridgeAlertBulkCoordAddZero(axis.ToUpper())
+                        : S.BridgeAlertBulkCoordSame(axis: axis.ToUpper(), value: Plain(val)),
                     type = "info",
                 });
                 return;
@@ -6316,8 +6325,9 @@ namespace TrueReplayer
             SendMessage("alert:show", new
             {
                 message = add
-                    ? $"Added {val} to {axis.ToUpper()} on {targets.Count} action(s)"
-                    : $"Set {axis.ToUpper()} to {val} on {targets.Count} action(s)",
+                    ? S.BridgeAlertBulkCoordAdded(value: Plain(val), axis: axis.ToUpper(), n: S.Num(targets.Count), count: targets.Count)
+                    : S.BridgeAlertBulkCoordSet(axis: axis.ToUpper(), value: Plain(val), n: S.Num(targets.Count), count: targets.Count),
+                type = "success",
             });
             HasUnsavedChanges = true;
             PushActionsUpdate();
@@ -6411,7 +6421,7 @@ namespace TrueReplayer
                 || !string.Equals(action.VariableMode, "cycle", StringComparison.OrdinalIgnoreCase))
                 return;
             replayService.ResetCycleCursor(action.Id);
-            SendMessage("alert:show", new { message = $"Cycle '{action.Key}' reset to the first item", type = "success" });
+            SendMessage("alert:show", new { message = S.BridgeAlertCycleReset(action.Key), type = "success" });
         }
 
         // Move the data-loop row cursor (Model B). No payload row = reset to the first row (the
@@ -6438,13 +6448,13 @@ namespace TrueReplayer
                 if (row < 0 || row >= rowCount) return;
                 replayService.SetRowCursor(row);
                 PushRowCursor(row);
-                SendMessage("alert:show", new { message = $"Next run starts at row {row + 1}", type = "success" });
+                SendMessage("alert:show", new { message = S.BridgeAlertNextRow(Plain(row + 1)), type = "success" });
                 return;
             }
 
             replayService.ResetRowCursor();
             PushRowCursor(0);   // RemoveRow leaves no key; StartAsync then reads row 0
-            SendMessage("alert:show", new { message = "Data-loop row position reset to the first row", type = "success" });
+            SendMessage("alert:show", new { message = S.BridgeAlertRowReset, type = "success" });
         }
 
         private void HandleActionsReorder(JsonElement payload)
@@ -7434,7 +7444,7 @@ namespace TrueReplayer
         {
             if (scope.TryResume(CurrentProfileName, out var why)) return true;
             DiagnosticLog.Warn($"{what} discarded: {why}");
-            SendMessage("alert:show", new { message = why, type = "error" });
+            SendMessage("alert:show", new { message = why, type = "info" });
             return false;
         }
 
@@ -7459,7 +7469,7 @@ namespace TrueReplayer
             // early return needs no cleanup, and why a refusal is now reported rather than
             // swallowed. This handler has no reply channel at all (its screenshot-failure path
             // just returns), so the toast is the whole report.
-            if (interaction == null) { ReportOverlayRefused("the image condition capture"); return; }
+            if (interaction == null) { ReportOverlayRefused(S.BridgeCaptureWhatImageCondition); return; }
             var mainHwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
             NativeMethods.ShowWindow(mainHwnd, NativeMethods.SW_MINIMIZE);
             await Task.Delay(400);
@@ -7479,7 +7489,7 @@ namespace TrueReplayer
             try
             {
                 var selection = await overlayHost.RunAsync(() => new ScreenOverlayForm(screenshot,
-                    bar: new CaptureBar("Capture the reference image", ForStep(insertIndex, openerType, "Image found"), "Drag around what the step waits for")));
+                    bar: new CaptureBar(S.BridgeCaptureTitleReferenceImage, ForStep(insertIndex, openerType, "Image found"), S.BridgeCaptureHintStepWaits)));
 
                 dispatcherQueue.TryEnqueue(() => NativeMethods.ShowWindow(mainHwnd, NativeMethods.SW_RESTORE));
 
@@ -7504,7 +7514,7 @@ namespace TrueReplayer
                 catch (Exception ex)
                 {
                     DiagnosticLog.Error($"Insert If-Image save failed [profile='{scope.ProfileName}']", ex);
-                    SendMessage("alert:show", new { message = $"Couldn't save the captured image, so no condition was inserted: {ex.Message}", type = "error" });
+                    SendMessage("alert:show", new { message = S.BridgeAlertImageInsertConditionSaveFailed(S.Reason(ex)), type = "error" });
                     return;
                 }
                 finally
@@ -7583,7 +7593,7 @@ namespace TrueReplayer
             // 2026-08-24: it entered, never returned, and the slot it held refused the next twelve
             // requests without a word. Both halves of that are addressed now — the overlay can be
             // asked to close, and a refusal says so.
-            if (interaction == null) { ReportOverlayRefused("the pixel condition capture"); return; }
+            if (interaction == null) { ReportOverlayRefused(S.BridgeCaptureWhatPixelCondition); return; }
             var mainHwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
             NativeMethods.ShowWindow(mainHwnd, NativeMethods.SW_MINIMIZE);
             await Task.Delay(400);
@@ -7606,7 +7616,7 @@ namespace TrueReplayer
                     screenshot,
                     regionOnly: false,
                     pointPick: true,
-                    bar: new CaptureBar("Pick the color", ForStep(insertIndex, openerType, "Pixel color")),
+                    bar: new CaptureBar(S.BridgeCaptureTitleColor, ForStep(insertIndex, openerType, "Pixel color")),
                     showColor: true));
 
                 dispatcherQueue.TryEnqueue(() => NativeMethods.ShowWindow(mainHwnd, NativeMethods.SW_RESTORE));
@@ -7946,7 +7956,7 @@ namespace TrueReplayer
                     DiagnosticLog.Warn($"actions:insertClick rejected: x/y are not whole numbers in range ({actionType})");
                     SendMessage("alert:show", new
                     {
-                        message = "That point is not a whole number the screen can use — enter X and Y as integers.",
+                        message = S.BridgeAlertEditPointNotWhole,
                         type = "error",
                     });
                     return;
@@ -8003,7 +8013,7 @@ namespace TrueReplayer
                 }
                 if (atCursor)
                 {
-                    SendMessage("alert:show", new { message = "An at-cursor click can't be split — the halves read a stored point." });
+                    SendMessage("alert:show", new { message = S.BridgeAlertEditAtCursorSplit, type = "error" });
                     return;
                 }
                 string btn = actionType![..^"Click".Length];   // "LeftClick" → "Left"
@@ -8107,7 +8117,7 @@ namespace TrueReplayer
             var overlayHost = new Services.CaptureOverlayHost("insert screen text overlay");
             using var interaction = await Services.InteractionScope.EnterExclusiveAsync(
                 "insert screen text overlay", overlayHost.IsAlive, overlayHost.RequestCancel);
-            if (interaction == null) { ReportOverlayRefused("the screen text capture"); return; }
+            if (interaction == null) { ReportOverlayRefused(S.BridgeCaptureWhatScreenText); return; }
             var mainHwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
             NativeMethods.ShowWindow(mainHwnd, NativeMethods.SW_MINIMIZE);
             await Task.Delay(400);
@@ -8127,9 +8137,9 @@ namespace TrueReplayer
             try
             {
                 var selection = await overlayHost.RunAsync(() => new ScreenOverlayForm(screenshot,
-                    bar: new CaptureBar("Draw the region to read",
+                    bar: new CaptureBar(S.BridgeCaptureTitleRegionToRead,
                         rowType == "WaitText" ? ForStep(insertIndex, rowType) : ForStep(insertIndex, rowType, "Text on screen"),
-                        "Smaller regions read faster")));
+                        S.BridgeCaptureHintSmallerFaster)));
                 dispatcherQueue.TryEnqueue(() => NativeMethods.ShowWindow(mainHwnd, NativeMethods.SW_RESTORE));
                 if (selection?.CroppedImage == null) return;
 
@@ -8150,7 +8160,7 @@ namespace TrueReplayer
                 catch (Exception ex)
                 {
                     DiagnosticLog.Warn($"[OCR] insert read failed: {ex.Message}");
-                    readError = "Couldn't read the region: " + ex.Message;
+                    readError = S.BridgeAlertScreenTextReadFailed(S.Reason(ex));
                 }
                 finally { selection.CroppedImage.Dispose(); }
 
@@ -8202,7 +8212,7 @@ namespace TrueReplayer
                     if (readError != null)
                         SendMessage("alert:show", new { message = readError, type = "error" });
                     else if (firstLine.Length == 0)
-                        SendMessage("alert:show", new { message = "No text read in that region — type it in the editor, or try Text color.", type = "info" });
+                        SendMessage("alert:show", new { message = S.BridgeAlertScreenTextNoneRead, type = "info" });
                 });
             }
             finally
@@ -8222,7 +8232,7 @@ namespace TrueReplayer
             using var interaction = await Services.InteractionScope.EnterExclusiveAsync(
                 "insert WaitImage overlay", overlayHost.IsAlive, overlayHost.RequestCancel);
             // Refused — see HandleAutomationCaptureImageAsync.
-            if (interaction == null) { ReportOverlayRefused("the WaitImage capture"); return; }
+            if (interaction == null) { ReportOverlayRefused(S.BridgeCaptureWhatWaitImage); return; }
             // Minimize main window to get a clean screenshot
             var mainHwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
             NativeMethods.ShowWindow(mainHwnd, NativeMethods.SW_MINIMIZE);
@@ -8243,7 +8253,7 @@ namespace TrueReplayer
             try
             {
                 var selection = await overlayHost.RunAsync(() => new ScreenOverlayForm(screenshot,
-                    bar: new CaptureBar("Capture the reference image", ForStep(insertIndex, "WaitImage"), "Drag around what the step waits for")));
+                    bar: new CaptureBar(S.BridgeCaptureTitleReferenceImage, ForStep(insertIndex, "WaitImage"), S.BridgeCaptureHintStepWaits)));
 
                 // Restore main window
                 dispatcherQueue.TryEnqueue(() =>
@@ -8268,7 +8278,7 @@ namespace TrueReplayer
                 catch (Exception ex)
                 {
                     DiagnosticLog.Error($"Insert WaitImage save failed [profile='{scope.ProfileName}']", ex);
-                    SendMessage("alert:show", new { message = $"Couldn't save the captured image, so no action was inserted: {ex.Message}", type = "error" });
+                    SendMessage("alert:show", new { message = S.BridgeAlertImageInsertStepSaveFailed(S.Reason(ex)), type = "error" });
                     return;
                 }
                 finally
@@ -8342,7 +8352,7 @@ namespace TrueReplayer
             // Refused — see HandleAutomationCaptureImageAsync. The EditScope captured just above is
             // simply dropped, which is what every other early return on this path already does: an
             // uncommitted capture is a discarded undo snapshot, not a leak.
-            if (interaction == null) { ReportOverlayRefused("the pixel-colour capture"); return; }
+            if (interaction == null) { ReportOverlayRefused(S.BridgeCaptureWhatPixelColour); return; }
             var mainHwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
             NativeMethods.ShowWindow(mainHwnd, NativeMethods.SW_MINIMIZE);
             await Task.Delay(400);
@@ -8365,7 +8375,7 @@ namespace TrueReplayer
                     screenshot,
                     regionOnly: false,
                     pointPick: true,
-                    bar: new CaptureBar("Pick the color", ForStep(insertIndex, "WaitPixelColor")),
+                    bar: new CaptureBar(S.BridgeCaptureTitleColor, ForStep(insertIndex, "WaitPixelColor")),
                     showColor: true));
 
                 dispatcherQueue.TryEnqueue(() => NativeMethods.ShowWindow(mainHwnd, NativeMethods.SW_RESTORE));
@@ -8451,7 +8461,7 @@ namespace TrueReplayer
                 "WaitImage recapture overlay", overlayHost.IsAlive, overlayHost.RequestCancel);
             // Refused — see HandleAutomationCaptureImageAsync. The caller's EditScope is dropped
             // uncommitted, same as this handler's own screenshot-failure path.
-            if (interaction == null) { ReportOverlayRefused("the recapture"); return; }
+            if (interaction == null) { ReportOverlayRefused(S.BridgeCaptureWhatRecapture); return; }
             var mainHwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
             NativeMethods.ShowWindow(mainHwnd, NativeMethods.SW_MINIMIZE);
             await Task.Delay(400);
@@ -8471,7 +8481,7 @@ namespace TrueReplayer
             try
             {
                 var selection = await overlayHost.RunAsync(() => new ScreenOverlayForm(screenshot,
-                    bar: new CaptureBar("Capture the reference image", captureFor, "Drag around what the step waits for")));
+                    bar: new CaptureBar(S.BridgeCaptureTitleReferenceImage, captureFor, S.BridgeCaptureHintStepWaits)));
 
                 dispatcherQueue.TryEnqueue(() =>
                 {
@@ -8497,7 +8507,7 @@ namespace TrueReplayer
                 catch (Exception ex)
                 {
                     DiagnosticLog.Error($"WaitImage recapture save failed [profile='{scope.ProfileName}']", ex);
-                    SendMessage("alert:show", new { message = $"Couldn't save the recaptured image — the action still points at the old one: {ex.Message}", type = "error" });
+                    SendMessage("alert:show", new { message = S.BridgeAlertImageInsertRecaptureSaveFailed(S.Reason(ex)), type = "error" });
                     return;
                 }
                 finally
@@ -8520,7 +8530,7 @@ namespace TrueReplayer
             if (!scope.TryResolveIndex(actions, CurrentProfileName, out int at, out var why))
             {
                 DiagnosticLog.Warn($"{what} discarded: {why}");
-                SendMessage("alert:show", new { message = why, type = "error" });
+                SendMessage("alert:show", new { message = why, type = "info" });
                 return;
             }
             // Snapshot here, right before the write — the callers keep the old PNG on disk so
@@ -8572,7 +8582,7 @@ namespace TrueReplayer
         // What to tell the user when a chosen picture could not become a reference image.
         private static string PictureFileFailure(Exception ex) => ex is InvalidDataException
             ? ex.Message
-            : $"Couldn't use that file as the reference image: {ex.Message}";
+            : S.BridgeAlertImageInsertFileUnusable(S.Reason(ex));
 
         // Save image… — a reference PNG copied where the user chooses, through the system's Save
         // dialog: to keep it, to send it, or to edit it and choose it back. A step's image is among the
@@ -8587,24 +8597,25 @@ namespace TrueReplayer
             string? source = ImageStorageService.GetReferenceImageFile(storage, imagePath);
             if (source == null)
             {
-                SendMessage("alert:show", new { message = "That reference image isn't on disk any more. Capture it again.", type = "error" });
+                SendMessage("alert:show", new { message = S.BridgeAlertImageInsertGone, type = "error" });
                 return;
             }
-            // A macro's name is already a safe file name (ProfileNameValidator).
+            // A macro's name is already a safe file name (ProfileNameValidator). The suggestion is in
+            // the interface's language, like any name the app gives.
             string suggested = string.IsNullOrEmpty(profileName) || profileName == "No Profile"
-                ? "Reference image.png"
-                : $"{profileName} - reference image.png";
+                ? S.BridgeNameReferenceImage
+                : S.BridgeNameMacroReferenceImage(profileName);
             var dest = await profileController.PickImageSavePathAsync(suggested);
             if (dest == null) return; // Cancelled
             try
             {
                 await Task.Run(() => File.Copy(source, dest, overwrite: true));
-                SendMessage("alert:show", new { message = $"Saved {Path.GetFileName(dest)}", type = "success" });
+                SendMessage("alert:show", new { message = S.BridgeAlertImageInsertSavedAs(Path.GetFileName(dest)), type = "success" });
             }
             catch (Exception ex)
             {
                 DiagnosticLog.Error($"Save image failed [dest='{dest}']", ex);
-                SendMessage("alert:show", new { message = $"Couldn't save the image: {ex.Message}", type = "error" });
+                SendMessage("alert:show", new { message = S.BridgeAlertImageInsertSaveAsFailed(S.Reason(ex)), type = "error" });
             }
         }
 
@@ -8636,8 +8647,8 @@ namespace TrueReplayer
             if (absolute && anchorRequested && !TryGetAnchorCaptureOffset(anchorTarget, out _))
             {
                 Reply(new { requestId, error = anchorTarget == null
-                    ? "Name the anchor window first (process name or window title) — until then there is no origin to test against."
-                    : "The anchor window is not open (or is minimised) — restore it and test again, or turn off \"Relative to a window\"." });
+                    ? S.BridgeResultProbeAnchorUnnamed
+                    : S.BridgeResultProbeAnchorClosed });
                 return;
             }
 
@@ -8678,7 +8689,7 @@ namespace TrueReplayer
             }
             catch (Exception ex)
             {
-                Reply(new { requestId, error = ex is OcrUnavailableException ? ex.Message : $"Test failed: {ex.Message}" });
+                Reply(new { requestId, error = ex is OcrUnavailableException ? ex.Message : S.BridgeResultProbeTestFailed(S.Reason(ex)) });
             }
         }
 
@@ -8736,7 +8747,7 @@ namespace TrueReplayer
             System.Drawing.Rectangle? initial = TryParseRegion(UserProfile.Current.CopyScreenTextRegion, out var cur) ? cur : null;
             var selection = await RunRegionPickerAsync(
                 initial,
-                new CaptureBar("Draw the region to read", "for the Copy text from the screen hotkey", "Smaller regions read faster"),
+                new CaptureBar(S.BridgeCaptureTitleRegionToRead, S.BridgeCaptureForCopyHotkey, S.BridgeCaptureHintSmallerFaster),
                 logPrefix: "Copy screen text");
             if (selection == null) return;
             UserProfile.Current.CopyScreenTextRegion = $"{selection.ScreenX},{selection.ScreenY},{selection.Width},{selection.Height}";
@@ -8794,10 +8805,10 @@ namespace TrueReplayer
                     var overlayHost = new Services.CaptureOverlayHost("copy screen text overlay");
                     using var interaction = await Services.InteractionScope.EnterExclusiveAsync(
                         "copy screen text overlay", overlayHost.IsAlive, overlayHost.RequestCancel);
-                    if (interaction == null) { ReportOverlayRefused("the screen text capture"); return; }
+                    if (interaction == null) { ReportOverlayRefused(S.BridgeCaptureWhatScreenText); return; }
                     using var screenshot = await Task.Run(ScreenCaptureService.CaptureVirtualScreen);
                     var selection = await overlayHost.RunAsync(() => new ScreenOverlayForm(screenshot,
-                        bar: new CaptureBar("Draw the region to copy", "for Copy text from the screen", "The text it reads goes to the clipboard")));
+                        bar: new CaptureBar(S.BridgeCaptureTitleRegionToCopy, S.BridgeCaptureForCopyText, S.BridgeCaptureHintToClipboard)));
                     if (previousForeground != IntPtr.Zero) NativeMethods.SetForegroundWindow(previousForeground);
                     if (selection?.CroppedImage == null) return;
                     crop = selection.CroppedImage;
@@ -8816,7 +8827,7 @@ namespace TrueReplayer
                 if (text.Length == 0)
                 {
                     DiagnosticLog.Info($"Copy screen text: nothing read ({read.ElapsedMs} ms)");
-                    SendMessage("alert:show", new { message = "No text found in that region", type = "info" });
+                    SendMessage("alert:show", new { message = S.BridgeAlertScreenTextNone, type = "info" });
                     return;
                 }
                 bool copied = false;
@@ -8827,14 +8838,14 @@ namespace TrueReplayer
                 }
                 if (!copied)
                 {
-                    SendMessage("alert:show", new { message = "Couldn't write to the clipboard — another app is holding it. Try again.", type = "error" });
+                    SendMessage("alert:show", new { message = S.BridgeAlertScreenTextClipboardBusy, type = "error" });
                     return;
                 }
                 DiagnosticLog.Info($"Copy screen text: {text.Length} char(s) in {read.ElapsedMs} ms");
                 int lines = read.Lines.Count;
                 var shown = text.Replace("\r\n", " ");
                 if (shown.Length > 40) shown = shown[..40] + "…";
-                SendMessage("alert:show", new { message = lines > 1 ? $"Copied {lines} lines: \"{shown}\"" : $"Copied: \"{shown}\"", type = "success" });
+                SendMessage("alert:show", new { message = lines > 1 ? S.BridgeAlertScreenTextCopiedLines(n: S.Num(lines), text: shown) : S.BridgeAlertScreenTextCopied(shown), type = "success" });
             }
             catch (OcrUnavailableException ex)
             {
@@ -8843,7 +8854,7 @@ namespace TrueReplayer
             catch (Exception ex)
             {
                 DiagnosticLog.Error("Copy screen text failed", ex);
-                SendMessage("alert:show", new { message = $"Copy screen text failed: {ex.Message}", type = "error" });
+                SendMessage("alert:show", new { message = S.BridgeAlertScreenTextFailed(S.Reason(ex)), type = "error" });
             }
             finally
             {
@@ -8892,8 +8903,8 @@ namespace TrueReplayer
                     score = 0.0,
                     x = 0, y = 0, w = 0, h = 0,
                     error = anchorTarget == null
-                        ? "Name the anchor window first (process name or window title) — until then there is no origin to test against."
-                        : "The anchor window is not open (or is minimised) — restore it and test again, or turn off \"Relative to a window\"."
+                        ? S.BridgeResultProbeAnchorUnnamed
+                        : S.BridgeResultProbeAnchorClosed
                 });
                 return;
             }
@@ -8938,7 +8949,7 @@ namespace TrueReplayer
                         found = false,
                         score = 0.0,
                         x = 0, y = 0, w = 0, h = 0,
-                        error = "Reference image not found on disk."
+                        error = S.BridgeResultProbeImageMissing
                     });
                     return;
                 }
@@ -8989,7 +9000,7 @@ namespace TrueReplayer
                     found = false,
                     score = 0.0,
                     x = 0, y = 0, w = 0, h = 0,
-                    error = $"Test failed: {ex.Message}"
+                    error = S.BridgeResultProbeTestFailed(S.Reason(ex))
                 });
             }
         }
@@ -9049,7 +9060,7 @@ namespace TrueReplayer
                 // — recorded nothing either. Its profile-addressed twin
                 // (HandleAutomationCropReference) already logs this properly.
                 DiagnosticLog.Warn($"Reference image crop failed [profile='{profileName}']: {ex.Message}");
-                SendMessage("alert:show", new { message = $"Couldn't save the cropped image: {ex.Message}", type = "error" });
+                SendMessage("alert:show", new { message = S.BridgeAlertImageInsertCropSaveFailed(S.Reason(ex)), type = "error" });
                 return;
             }
 
@@ -9107,11 +9118,11 @@ namespace TrueReplayer
         {
             bool replaying = mainController.IsReplayInProgress();
             if (!replaying && !recordingService.IsRecording) return false;
-            string subject = replaying ? "A replay is running" : "A recording is running";
             DiagnosticLog.Warn($"{what} refused: run in progress (replay={replaying})");
+            string because = why ?? S.BridgeAlertRunRefusePicker;
             SendMessage("alert:show", new
             {
-                message = $"{subject} — stop it first. {why ?? "A full-screen picker would cover the run and swallow the Stop key."}",
+                message = replaying ? S.BridgeAlertRunRefuseReplay(because) : S.BridgeAlertRunRefuseRecording(because),
                 type = "error",
             });
             return true;
@@ -9157,15 +9168,15 @@ namespace TrueReplayer
                         ? relTarget.ProcessName
                         : relTarget.WindowTitle;
                     IntPtr relHwnd = TrueReplayer.Helpers.WindowMatcher.FindWindow(relTarget);
-                    string? refusal = relHwnd == IntPtr.Zero
-                        ? $"Target window not open: {label}. Open it and pick again."
-                        : NativeMethods.IsIconic(relHwnd)
-                            ? $"Target window is minimised: {label}. Restore it and pick again."
-                            : null;
-                    if (refusal != null)
+                    bool notOpen = relHwnd == IntPtr.Zero;
+                    if (notOpen || NativeMethods.IsIconic(relHwnd))
                     {
-                        DiagnosticLog.Warn($"Position pick refused: {refusal} [profile='{CurrentProfileName}']");
-                        SendMessage("alert:show", new { message = refusal });
+                        DiagnosticLog.Warn($"Position pick refused: target window {(notOpen ? "not open" : "minimised")}: {label} [profile='{CurrentProfileName}']");
+                        SendMessage("alert:show", new
+                        {
+                            message = notOpen ? S.BridgeAlertTargetNotOpenPick(label) : S.BridgeAlertTargetMinimisedPick(label),
+                            type = "error",
+                        });
                         SendMessage("mouse:positionPicked", new { requestId, cancelled = true });
                         return;
                     }
@@ -9186,7 +9197,7 @@ namespace TrueReplayer
             // frontend never hears back from leaves its pick button disabled forever.
             if (interaction == null)
             {
-                ReportOverlayRefused("the position pick");
+                ReportOverlayRefused(S.BridgeCaptureWhatPosition);
                 SendMessage("mouse:positionPicked", new { requestId, cancelled = true, refused = true, busyOwner = Services.InteractionScope.ExclusiveOwner });
                 return;
             }
@@ -9213,7 +9224,7 @@ namespace TrueReplayer
                     screenshot,
                     regionOnly: false,
                     pointPick: true,
-                    bar: new CaptureBar("Pick the point", captureFor)));
+                    bar: new CaptureBar(S.BridgeCaptureTitlePoint, captureFor)));
 
                 dispatcherQueue.TryEnqueue(() => NativeMethods.ShowWindow(mainHwnd, NativeMethods.SW_RESTORE));
 
@@ -9295,7 +9306,7 @@ namespace TrueReplayer
             // as the position pick: the frontend is waiting on this requestId.
             if (interaction == null)
             {
-                ReportOverlayRefused("the colour pick");
+                ReportOverlayRefused(S.BridgeCaptureWhatColour);
                 SendMessage("pixel:colorPicked", new { requestId, cancelled = true, refused = true, busyOwner = Services.InteractionScope.ExclusiveOwner });
                 return;
             }
@@ -9322,7 +9333,7 @@ namespace TrueReplayer
                     screenshot,
                     regionOnly: false,
                     pointPick: true,
-                    bar: new CaptureBar(colorOnly ? "Pick a color" : "Pick the color", captureFor),
+                    bar: new CaptureBar(colorOnly ? S.BridgeCaptureTitleAColor : S.BridgeCaptureTitleColor, captureFor),
                     showColor: true));
 
                 dispatcherQueue.TryEnqueue(() => NativeMethods.ShowWindow(mainHwnd, NativeMethods.SW_RESTORE));
@@ -9362,8 +9373,8 @@ namespace TrueReplayer
                 {
                     SendMessage("pixel:colorPicked", new { requestId, cancelled = true, refused = true });
                     SendMessage("alert:show", new { message = anchorTarget == null
-                        ? "Name the anchor window first (process name or window title) — until then there is no origin to store the point against."
-                        : "The anchor window is not open (or is minimised) — restore it and pick again, or turn off \"Relative to a window\"." });
+                        ? S.BridgeAlertAnchorUnnamedPoint
+                        : S.BridgeAlertAnchorClosedPoint, type = "error" });
                     return;
                 }
 
@@ -9422,8 +9433,8 @@ namespace TrueReplayer
                         matches = false,
                         sampledHex = (string?)null,
                         error = anchorTarget == null
-                            ? "Name the anchor window first (process name or window title)."
-                            : "The anchor window is not open (or is minimised).",
+                            ? S.BridgeResultProbeAnchorUnnamedShort
+                            : S.BridgeResultProbeAnchorClosedShort,
                     });
                     return;
                 }
@@ -9442,8 +9453,8 @@ namespace TrueReplayer
                     matches = false,
                     sampledHex = sampled.HasValue ? PixelColorService.ToHex(sampled.Value) : null,
                     error = sampled == null
-                        ? "Couldn't sample pixel (off-screen or hardware-accelerated surface)"
-                        : "Invalid target colour",
+                        ? S.BridgeResultProbePixelUnreadable
+                        : S.BridgeResultProbeInvalidColor,
                 });
                 return;
             }
@@ -9481,8 +9492,14 @@ namespace TrueReplayer
                 "ElseIf" => "Else If",
                 _ => actionType,
             };
-            return $"for step {index + 1}, {name}{(condition != null ? " · " + condition : "")}";
+            return condition != null
+                ? S.BridgeCaptureForStepCondition(n: Plain(index + 1), name: name, condition: condition)
+                : S.BridgeCaptureForStep(n: Plain(index + 1), name: name);
         }
+
+        // A number that names a place (a step, a row, a coordinate), written as is: no thousands
+        // separator in any language. Counts go through S.Num.
+        private static string Plain(long n) => n.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
         // Shared infrastructure for the "draw a rectangle on screen" flows (search region, read
         // region, Clicker click area and point, the Copy-text region). Minimises the main window,
@@ -9511,7 +9528,7 @@ namespace TrueReplayer
             // Refused — see HandleAutomationCaptureImageAsync. null is this method's own
             // "cancelled" answer, identical to Esc and to a failed screenshot, so every caller
             // already handles it; the toast is what stops that reading as "nothing happened".
-            if (interaction == null) { ReportOverlayRefused("the region picker"); return null; }
+            if (interaction == null) { ReportOverlayRefused(S.BridgeCaptureWhatRegion); return null; }
             var mainHwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
             NativeMethods.ShowWindow(mainHwnd, NativeMethods.SW_MINIMIZE);
             await Task.Delay(400);
@@ -9608,8 +9625,8 @@ namespace TrueReplayer
             var selection = await RunRegionPickerAsync(
                 initialRect,
                 reads
-                    ? new CaptureBar("Draw the region to read", captureFor, "Smaller regions read faster")
-                    : new CaptureBar("Draw the search area", captureFor, "The image is looked for only inside it"),
+                    ? new CaptureBar(S.BridgeCaptureTitleRegionToRead, captureFor, S.BridgeCaptureHintSmallerFaster)
+                    : new CaptureBar(S.BridgeCaptureTitleSearchArea, captureFor, S.BridgeCaptureHintInsideOnly),
                 logPrefix: absolute ? "Automation ImageFound" : "WaitImage");
 
             if (selection == null)
@@ -9643,8 +9660,8 @@ namespace TrueReplayer
             {
                 SendMessage("waitimage:searchRegionSet", new { requestId, cancelled = true, refused = true });
                 SendMessage("alert:show", new { message = anchorTarget == null
-                    ? "Name the anchor window first (process name or window title) — until then there is no origin to store the region against."
-                    : "The anchor window is not open (or is minimised) — restore it and set the region again, or turn off \"Relative to a window\"." });
+                    ? S.BridgeAlertAnchorUnnamedRegion
+                    : S.BridgeAlertAnchorClosedRegion, type = "error" });
                 return;
             }
 
@@ -9677,7 +9694,7 @@ namespace TrueReplayer
 
             var selection = await RunRegionPickerAsync(
                 initialRect,
-                new CaptureBar("Draw the click area", captureFor ?? "for Clicker"),
+                new CaptureBar(S.BridgeCaptureTitleClickArea, captureFor ?? S.BridgeCaptureForClicker),
                 logPrefix: "Clicker");
 
             if (selection == null) return;
@@ -9701,7 +9718,7 @@ namespace TrueReplayer
             if (RefuseCaptureDuringRun("Clicker point pick")) return;
             var selection = await RunRegionPickerAsync(
                 null,
-                new CaptureBar("Pick the click point", CaptureFor(payload) ?? "for Clicker"),
+                new CaptureBar(S.BridgeCaptureTitleClickPoint, CaptureFor(payload) ?? S.BridgeCaptureForClicker),
                 logPrefix: "Clicker",
                 pointPick: true);
 
@@ -9740,7 +9757,7 @@ namespace TrueReplayer
             var existing = FindClickerPreset(name);
             if (existing == null && ClickerPresets.Count >= MaxClickerPresets)
             {
-                SendMessage("alert:show", new { message = $"Clicker presets are limited to {MaxClickerPresets}. Delete one to save another." });
+                SendMessage("alert:show", new { message = S.BridgeAlertClickerPresetsFull(S.Num(MaxClickerPresets)), type = "error" });
                 return;
             }
             // Snapshot the mirrors with the same parse-and-clamp the save path uses, so a preset
@@ -9836,7 +9853,7 @@ namespace TrueReplayer
             if (FindClickerPreset(name) != null) return;
             if (ClickerPresets.Count >= MaxClickerPresets)
             {
-                SendMessage("alert:show", new { message = $"Clicker presets are limited to {MaxClickerPresets}. Delete one to restore \"{last.Preset.Name}\"." });
+                SendMessage("alert:show", new { message = S.BridgeAlertClickerPresetsFullRestore(max: S.Num(MaxClickerPresets), name: last.Preset.Name), type = "error" });
                 return;
             }
             ClickerPresets.Insert(Math.Clamp(last.Index, 0, ClickerPresets.Count), last.Preset);
@@ -9907,13 +9924,13 @@ namespace TrueReplayer
             }
             catch (System.ComponentModel.Win32Exception wex) when (wex.NativeErrorCode == 1223)
             {
-                SendMessage("alert:show", new { message = "Restart as administrator was cancelled.", type = "info" });
+                SendMessage("alert:show", new { message = S.BridgeAlertAdminCancelled, type = "info" });
                 return;
             }
             catch (Exception ex)
             {
                 DiagnosticLog.Error("Restart as administrator failed", ex);
-                SendMessage("alert:show", new { message = "Could not restart as administrator.", type = "error" });
+                SendMessage("alert:show", new { message = S.BridgeAlertAdminFailed, type = "error" });
                 return;
             }
             DiagnosticLog.Info("Restart as administrator: the elevated replacement started, exiting");
@@ -10023,7 +10040,7 @@ namespace TrueReplayer
 
             if (browserBridge == null || !browserBridge.IsConnected)
             {
-                SendMessage("browser:pickResult", new { requestId, selector = (string?)null, alternatives = new object[0], error = "Browser extension is not connected." });
+                SendMessage("browser:pickResult", new { requestId, selector = (string?)null, alternatives = new object[0], error = S.BrowserNotConnected });
                 return;
             }
 
@@ -10039,7 +10056,7 @@ namespace TrueReplayer
             }
             catch (Exception ex)
             {
-                SendMessage("browser:pickResult", new { requestId, selector = (string?)null, alternatives = new object[0], error = ex.Message });
+                SendMessage("browser:pickResult", new { requestId, selector = (string?)null, alternatives = new object[0], error = S.Reason(ex) });
             }
         }
 
@@ -10140,8 +10157,8 @@ namespace TrueReplayer
             {
                 TrySendTestResult(requestId, success: false, durationMs: 0,
                     code: "EXTENSION_DISCONNECTED",
-                    message: "Browser extension is not connected.",
-                    tip: "Open Chrome with the TrueReplayer extension installed.");
+                    message: S.BrowserNotConnected,
+                    tip: S.BridgeResultBrowserNotConnectedTip);
                 return;
             }
 
@@ -10269,7 +10286,7 @@ namespace TrueReplayer
             catch (Exception ex)
             {
                 TrySendTestResult(requestId, success: false, durationMs: 0,
-                    code: "UNKNOWN_ERROR", message: ex.Message, tip: null);
+                    code: "UNKNOWN_ERROR", message: S.Reason(ex), tip: null);
             }
         }
 
@@ -10337,12 +10354,12 @@ namespace TrueReplayer
             // live run, so the backend refuses it as well.
             if (recordingService.IsRecording || replayService.IsReplaying)
             {
-                SendMessage("alert:show", new { message = "Stop the recording or replay before switching macros." });
+                SendMessage("alert:show", new { message = S.BridgeAlertMacroSwitchBusy, type = "error" });
                 return;
             }
 
             // Guard: check for unsaved changes before switching
-            if (!await CheckUnsavedChangesAsync("switching macros")) return;
+            if (!await CheckUnsavedChangesAsync(S.ProfilesUnsavedBeforeSwitching)) return;
 
             // Deselect if clicking the already-active profile
             if (toggleIfOpen && CurrentProfileName == name)
@@ -10375,7 +10392,7 @@ namespace TrueReplayer
                 // handler is async void: the app-wide net caught it and the click did nothing.
                 Services.DiagnosticLog.Error($"Opening '{name}' failed", ex);
                 profile = null;
-                loadError = ex.Message;
+                loadError = S.Reason(ex);
             }
             if (profile != null)
             {
@@ -10386,8 +10403,8 @@ namespace TrueReplayer
                 // The file is gone (renamed or deleted outside the app) or unreadable, and the
                 // list is stale. Say so, and re-read the list so the dead row goes away.
                 SendMessage("alert:show", new { message = loadError == null
-                    ? $"Could not open \"{name}\" — its file is no longer in the Profiles folder."
-                    : $"Could not open \"{name}\": {loadError}" });
+                    ? S.BridgeAlertMacroOpenGone(name)
+                    : S.BridgeAlertMacroOpenFailed(name: name, reason: loadError), type = "error" });
                 try { await profileController.RefreshProfileListAsync(true); }
                 catch (Exception ex) { Services.DiagnosticLog.Error("Profile list refresh after a failed open failed", ex); }
                 PushProfilesUpdate();
@@ -10433,7 +10450,7 @@ namespace TrueReplayer
         {
             if (recordingService.IsRecording || replayService.IsReplaying)
             {
-                RefuseRevert("Stop the recording or replay before reverting the macro.");
+                RefuseRevert(S.BridgeAlertMacroRevertBusy);
                 return;
             }
             string name = CurrentProfileName;
@@ -10441,7 +10458,7 @@ namespace TrueReplayer
             string? copy = _openedCopy;
             if (name == "No Profile" || path == null || copy == null)
             {
-                RefuseRevert("There is no open macro to revert.");
+                RefuseRevert(S.BridgeAlertMacroRevertNone);
                 return;
             }
             // Save as you go must not write the edits back over the copy: the write in flight
@@ -10455,7 +10472,7 @@ namespace TrueReplayer
                 // the automation daemon re-read them from what is now on disk.
                 await profileController.RefreshProfileListAsync(true);
                 var profile = await profileController.LoadProfileByNameAsync(name)
-                    ?? throw new InvalidOperationException("its file could not be read back");
+                    ?? throw new InvalidOperationException(S.BridgeAlertMacroRevertUnreadable);
                 ActivateLoadedProfile(name, profile);
                 ResyncAutomationDaemon();
                 SendMessage("profile:reverted", new { ok = true, name });
@@ -10463,7 +10480,7 @@ namespace TrueReplayer
             catch (Exception ex)
             {
                 Services.DiagnosticLog.Error($"Reverting '{name}' failed", ex);
-                RefuseRevert($"Could not revert \"{name}\": {ex.Message}");
+                RefuseRevert(S.BridgeAlertMacroRevertFailed(name: name, reason: S.Reason(ex)));
             }
             finally
             {
@@ -10473,7 +10490,7 @@ namespace TrueReplayer
 
         private void RefuseRevert(string message)
         {
-            SendMessage("alert:show", new { message });
+            SendMessage("alert:show", new { message, type = "error" });
             SendMessage("profile:reverted", new { ok = false, error = message });
         }
 
@@ -10493,7 +10510,7 @@ namespace TrueReplayer
             if (string.IsNullOrEmpty(name)) return;
             if (!IsSafeProfileName(name))
             {
-                SendMessage("alert:show", new { message = "Invalid macro name." });
+                SendMessage("alert:show", new { message = S.BridgeAlertMacroInvalidName, type = "error" });
                 return;
             }
 
@@ -10516,7 +10533,7 @@ namespace TrueReplayer
                 // exists: Cancel then creates nothing, and a Save-As picked in this prompt under the
                 // same name finds its file in place instead of being overwritten by the empty
                 // default below. Inside the try because its Save writes to disk too.
-                if (!await CheckUnsavedChangesAsync("creating a new macro")) return;
+                if (!await CheckUnsavedChangesAsync(S.ProfilesUnsavedBeforeCreating)) return;
 
                 Directory.CreateDirectory(profileDir);
 
@@ -10525,7 +10542,7 @@ namespace TrueReplayer
                     // Silent no-op before — now surfaces a toast so the user knows why nothing
                     // happened. The frontend dialog also blocks this inline, but a hotkey / race
                     // could still reach here, so it stays defended on the backend too.
-                    SendMessage("alert:show", new { message = $"A macro named \"{Path.GetFileNameWithoutExtension(name)}\" already exists" });
+                    SendMessage("alert:show", new { message = S.BridgeAlertMacroNameTaken(Path.GetFileNameWithoutExtension(name)), type = "error" });
                     return;
                 }
 
@@ -10581,7 +10598,7 @@ namespace TrueReplayer
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[Bridge] Create error: {ex.Message}");
-                SendMessage("alert:show", new { message = $"Could not create macro: {ex.Message}" });
+                SendMessage("alert:show", new { message = S.BridgeAlertMacroCreateFailed(S.Reason(ex)), type = "error" });
             }
         }
 
@@ -10628,7 +10645,7 @@ namespace TrueReplayer
                 // silence in the only build the owner runs — with a toast on screen and nothing
                 // written down to explain it.
                 Services.DiagnosticLog.Error($"Toggle-disable '{name}' failed", ex);
-                SendMessage("alert:show", new { message = $"Could not update \"{name}\": {ex.Message}" });
+                SendMessage("alert:show", new { message = S.BridgeAlertMacroUpdateFailed(name: name, reason: S.Reason(ex)), type = "error" });
             }
         }
 
@@ -10642,16 +10659,15 @@ namespace TrueReplayer
 
             string? dir = Path.GetDirectoryName(entry.FilePath);
             if (string.IsNullOrEmpty(dir)) return;
-            string copyName = $"{name} - Copy";
+            // The copy is named in the interface's language ("X - Copy", "X - Cópia"), then (2), (3)…
+            // A number counts as taken when a copy in EITHER language holds it, so changing the
+            // language does not start a second series beside the first.
+            bool Taken(int n) => CopySuffixes.Any(suffix =>
+                File.Exists(Path.Combine(dir, name + suffix + (n == 1 ? "" : $" ({n})") + ".json")));
+            int number = 1;
+            while (Taken(number)) number++;
+            string copyName = number == 1 ? S.BridgeNameCopy(name) : S.BridgeNameCopyNumbered(name: name, n: Plain(number));
             string copyPath = Path.Combine(dir, copyName + ".json");
-
-            int counter = 2;
-            while (File.Exists(copyPath))
-            {
-                copyName = $"{name} - Copy ({counter})";
-                copyPath = Path.Combine(dir, copyName + ".json");
-                counter++;
-            }
 
             try
             {
@@ -10732,9 +10748,14 @@ namespace TrueReplayer
                 // the app. Mirror HandleProfileRename/HandleProfileDelete's catch (Debug.WriteLine)
                 // and additionally surface a toast so a recoverable I/O failure is visible.
                 System.Diagnostics.Debug.WriteLine($"[Bridge] Duplicate error: {ex.Message}");
-                SendMessage("alert:show", new { message = $"Could not duplicate \"{name}\": {ex.Message}" });
+                SendMessage("alert:show", new { message = S.BridgeAlertMacroDuplicateFailed(name: name, reason: S.Reason(ex)), type = "error" });
             }
         }
+
+        // The Duplicate suffixes of both languages, whatever the interface's: a copy made before a
+        // change of language still holds its number. A recognizer, not text on screen — the names
+        // themselves come from the catalog (name.copy, name.copyNumbered).
+        private static readonly string[] CopySuffixes = { " - Copy", " - Cópia" };
 
         private async void HandleProfileRename(JsonElement payload)
         {
@@ -10743,7 +10764,7 @@ namespace TrueReplayer
             if (string.IsNullOrEmpty(oldName) || string.IsNullOrEmpty(newName)) return;
             if (!IsSafeProfileName(newName))
             {
-                SendMessage("alert:show", new { message = "Invalid macro name." });
+                SendMessage("alert:show", new { message = S.BridgeAlertMacroInvalidName, type = "error" });
                 return;
             }
             // Save as you go: the open macro's pending edit goes to its file before the file moves —
@@ -10763,7 +10784,7 @@ namespace TrueReplayer
             // Allow case-only rename (e.g. "teste" → "TESTE") on case-insensitive file systems
             if (File.Exists(newFilePath) && !string.Equals(entry.FilePath, newFilePath, StringComparison.OrdinalIgnoreCase))
             {
-                SendMessage("alert:show", new { message = $"A macro named \"{Path.GetFileNameWithoutExtension(newFileName)}\" already exists" });
+                SendMessage("alert:show", new { message = S.BridgeAlertMacroNameTaken(Path.GetFileNameWithoutExtension(newFileName)), type = "error" });
                 return;
             }
 
@@ -10830,11 +10851,10 @@ namespace TrueReplayer
                     // "in other profiles" was a lie: refsUpdated is the SUM of the on-disk scan and
                     // the active profile's own in-memory rows, so a rename that only touched the
                     // profile in front of the user still claimed to have edited someone else.
-                    string plural = refsUpdated == 1 ? "reference" : "references";
-                    SendMessage("alert:show", new { message = $"Renamed to '{actualNewName}' and updated {refsUpdated} Run Macro {plural}." });
+                    SendMessage("alert:show", new { message = S.BridgeAlertMacroRenamedRefs(name: actualNewName, n: S.Num(refsUpdated), count: refsUpdated), type = "success" });
                 }
                 if (!imagesCarried)
-                    SendMessage("alert:show", new { message = ImagesLeftBehindMessage(actualNewName) });
+                    SendMessage("alert:show", new { message = ImagesLeftBehindMessage(actualNewName), type = "info" });
             }
             catch (Exception ex)
             {
@@ -10842,7 +10862,7 @@ namespace TrueReplayer
                 // or a full disk failed with nothing on screen and nothing in the log — the
                 // defect HandleProfileToggleDisable already names.
                 Services.DiagnosticLog.Error($"Rename '{oldName}' -> '{newName}' failed", ex);
-                SendMessage("alert:show", new { message = $"Could not rename \"{oldName}\": {ex.Message}" });
+                SendMessage("alert:show", new { message = S.BridgeAlertMacroRenameFailed(name: oldName, reason: S.Reason(ex)), type = "error" });
                 // Whether the file moved, not whether the new path exists: after a case-only rename
                 // that failed, the new spelling "exists" as the untouched old file.
                 if (!moved) _selfRenamedPaths.Remove(newFilePath);
@@ -10850,8 +10870,7 @@ namespace TrueReplayer
         }
 
         // Both renames say the same thing when RenameProfileDirectory could not carry every image.
-        private static string ImagesLeftBehindMessage(string newName) =>
-            $"Renamed to \"{newName}\", but some reference images were in use and stayed under the old name. Its image steps may miss them until the next start, which moves them over.";
+        private static string ImagesLeftBehindMessage(string newName) => S.BridgeAlertMacroImagesLeftBehind(newName);
 
         // Paths this app just renamed a profile TO. The folder watcher reports those moves like any
         // other; the entry lets HandleExternalProfileRename tell its own echo from a real outside
@@ -10873,7 +10892,7 @@ namespace TrueReplayer
             if (_selfRenamedPaths.Remove(newPath)) return;
 
             if (!ImageStorageService.RenameProfileDirectory(oldName, newName))
-                SendMessage("alert:show", new { message = ImagesLeftBehindMessage(newName) });
+                SendMessage("alert:show", new { message = ImagesLeftBehindMessage(newName), type = "info" });
             TriggerService.Instance?.RenameStats(oldName, newName);
             RunCursorService.RenameProfile(oldName, newName);
             // The profile on screen: without this its next Save wrote the OLD file back next to the
@@ -11151,15 +11170,14 @@ namespace TrueReplayer
 
                 if (danglingRefs > 0)
                 {
-                    string plural = danglingRefs == 1 ? "reference" : "references";
-                    SendMessage("alert:show", new { message = $"Deleted '{name}'. {danglingRefs} dangling {plural} in other macros will silently no-op at replay." });
+                    SendMessage("alert:show", new { message = S.BridgeAlertMacroDeletedDangling(name: name, n: S.Num(danglingRefs), count: danglingRefs), type = "info" });
                 }
             }
             catch (Exception ex)
             {
                 // Same Release-silence as the rename above.
                 Services.DiagnosticLog.Error($"Delete '{name}' failed", ex);
-                SendMessage("alert:show", new { message = $"Could not delete \"{name}\": {ex.Message}" });
+                SendMessage("alert:show", new { message = S.BridgeAlertMacroDeleteFailed(name: name, reason: S.Reason(ex)), type = "error" });
             }
         }
 
@@ -11192,7 +11210,7 @@ namespace TrueReplayer
             var conflict = GetHotkeyConflict(hotkey, excludeSettingKey: null, excludeProfileName: name, effectiveTarget: effectiveTarget);
             if (conflict != null)
             {
-                SendMessage("alert:show", new { message = $"\"{hotkey}\" is already used by {conflict}." });
+                SendMessage("alert:show", new { message = S.BridgeAlertHotkeyUsedBy(hotkey: hotkey, conflict: conflict), type = "error" });
                 return;
             }
 
@@ -11226,7 +11244,7 @@ namespace TrueReplayer
                     // colliding combo, "only one will fire" wording is in the helper.
                     foreach (var msg in profileController.GetAndClearHotkeyCollisions())
                     {
-                        SendMessage("alert:show", new { message = msg });
+                        SendMessage("alert:show", new { message = msg, type = "info" });
                     }
                     PushProfilesUpdate();
                 }
@@ -11234,7 +11252,7 @@ namespace TrueReplayer
             catch (Exception ex)
             {
                 Services.DiagnosticLog.Error($"Assign hotkey to '{name}' failed", ex);
-                SendMessage("alert:show", new { message = $"Could not save the hotkey of \"{name}\": {ex.Message}" });
+                SendMessage("alert:show", new { message = S.BridgeAlertHotkeySaveFailed(name: name, reason: S.Reason(ex)), type = "error" });
             }
         }
 
@@ -11265,7 +11283,7 @@ namespace TrueReplayer
             catch (Exception ex)
             {
                 Services.DiagnosticLog.Error($"Remove hotkey of '{name}' failed", ex);
-                SendMessage("alert:show", new { message = $"Could not remove the hotkey of \"{name}\": {ex.Message}" });
+                SendMessage("alert:show", new { message = S.BridgeAlertHotkeyRemoveFailed(name: name, reason: S.Reason(ex)), type = "error" });
             }
         }
 
@@ -11280,7 +11298,7 @@ namespace TrueReplayer
             sequence = sequence.ToLowerInvariant().Trim();
             if (sequence.Length < 2 || !System.Text.RegularExpressions.Regex.IsMatch(sequence, @"^[a-z0-9\-./,;=]+$"))
             {
-                SendMessage("alert:show", new { message = "Hotstring must be at least 2 characters (a-z, 0-9, - . / , ; =)." });
+                SendMessage("alert:show", new { message = S.BridgeAlertHotkeyHotstringTooShort, type = "error" });
                 return;
             }
 
@@ -11288,7 +11306,7 @@ namespace TrueReplayer
             var conflict = GetHotstringConflict(sequence, excludeProfileName: name, effectiveTarget: effectiveTarget);
             if (conflict != null)
             {
-                SendMessage("alert:show", new { message = $"Hotstring \"{sequence}\" is already used by {conflict}." });
+                SendMessage("alert:show", new { message = S.BridgeAlertHotkeyHotstringUsedBy(sequence: sequence, conflict: conflict), type = "error" });
                 return;
             }
 
@@ -11313,7 +11331,7 @@ namespace TrueReplayer
             catch (Exception ex)
             {
                 Services.DiagnosticLog.Error($"Assign hotstring to '{name}' failed", ex);
-                SendMessage("alert:show", new { message = $"Could not save the hotstring of \"{name}\": {ex.Message}" });
+                SendMessage("alert:show", new { message = S.BridgeAlertHotkeyHotstringSaveFailed(name: name, reason: S.Reason(ex)), type = "error" });
             }
         }
 
@@ -11343,7 +11361,7 @@ namespace TrueReplayer
             catch (Exception ex)
             {
                 Services.DiagnosticLog.Error($"Remove hotstring of '{name}' failed", ex);
-                SendMessage("alert:show", new { message = $"Could not remove the hotstring of \"{name}\": {ex.Message}" });
+                SendMessage("alert:show", new { message = S.BridgeAlertHotkeyHotstringRemoveFailed(name: name, reason: S.Reason(ex)), type = "error" });
             }
         }
 
@@ -11358,7 +11376,7 @@ namespace TrueReplayer
 
                 var otherTarget = profileController.GetEffectiveWindowTarget(entry.Name);
                 if (EffectiveTargetsOverlap(effectiveTarget, otherTarget))
-                    return $"the macro \"{entry.Name}\"";
+                    return S.BridgeAlertHotkeyByMacro(entry.Name);
             }
 
             return null;
@@ -11442,7 +11460,7 @@ namespace TrueReplayer
         // Typed: untyped, the frontend guessed the colour from the words, and "deleted" made this
         // refusal a green success toast.
         private void ReportProfileGone(string name) =>
-            SendMessage("alert:show", new { message = $"\"{name}\" no longer exists — it was renamed or deleted. Nothing was changed.", type = "error" });
+            SendMessage("alert:show", new { message = S.BridgeAlertMacroGone(name), type = "error" });
 
         private async void HandleProfileSetWindowTarget(JsonElement payload)
         {
@@ -11490,7 +11508,7 @@ namespace TrueReplayer
             // A plain Set Target (no convertDirection) is untouched and still works on any profile.
             if (convertDirection != null && CurrentProfileName != name)
             {
-                SendMessage("alert:show", new { message = $"Open \"{name}\" first — converting coordinates rewrites the actions of the macro that is currently loaded." });
+                SendMessage("alert:show", new { message = S.BridgeAlertCoordsOpenFirst(name), type = "error" });
                 SendMessage("windowTarget:applyConvertCompleted", new { ok = false });
                 return;
             }
@@ -11522,7 +11540,7 @@ namespace TrueReplayer
             {
                 if (string.IsNullOrWhiteSpace(processName) && string.IsNullOrWhiteSpace(windowTitle))
                 {
-                    SendMessage("alert:show", new { message = "Set a process name or window title before converting." });
+                    SendMessage("alert:show", new { message = S.BridgeAlertWindowConvertNeedsTarget, type = "error" });
                     return;
                 }
                 var tentativeTarget = new WindowTarget
@@ -11542,10 +11560,11 @@ namespace TrueReplayer
                     {
                         message = preflightStatus switch
                         {
-                            WindowRectStatus.NotFound => "Target window not found. Open it first, then try Apply target & convert again.",
-                            WindowRectStatus.Minimised => "Target window is minimised. Restore it, then try Apply target & convert again.",
-                            _ => "Could not read the target window's position. Try again.",
-                        }
+                            WindowRectStatus.NotFound => S.BridgeAlertWindowApplyNotFound,
+                            WindowRectStatus.Minimised => S.BridgeAlertWindowApplyMinimised,
+                            _ => S.BridgeAlertWindowApplyNoPosition,
+                        },
+                        type = "error",
                     });
                     return;
                 }
@@ -11556,7 +11575,7 @@ namespace TrueReplayer
             {
                 if (string.IsNullOrWhiteSpace(processName) && string.IsNullOrWhiteSpace(windowTitle))
                 {
-                    SendMessage("alert:show", new { message = "Please specify at least a process name or window title." });
+                    SendMessage("alert:show", new { message = S.BridgeAlertWindowFillOne, type = "error" });
                     return;
                 }
 
@@ -11568,7 +11587,7 @@ namespace TrueReplayer
                     }
                     catch
                     {
-                        SendMessage("alert:show", new { message = "Invalid regex pattern. Please check the syntax." });
+                        SendMessage("alert:show", new { message = S.BridgeAlertWindowRegexInvalidCheck, type = "error" });
                         return;
                     }
                 }
@@ -11709,7 +11728,7 @@ namespace TrueReplayer
                     var conflict = GetHotkeyConflict(entry.Hotkey, excludeSettingKey: null, excludeProfileName: name, effectiveTarget: newEffectiveTarget);
                     if (conflict != null)
                     {
-                        SendMessage("alert:show", new { message = $"Cannot remove target: hotkey \"{entry.Hotkey}\" would conflict with {conflict}." });
+                        SendMessage("alert:show", new { message = S.BridgeAlertHotkeyRemoveTargetHotkey(hotkey: entry.Hotkey, conflict: conflict), type = "error" });
                         return;
                     }
                 }
@@ -11718,7 +11737,7 @@ namespace TrueReplayer
                     var conflict = GetHotstringConflict(entry.Hotstring, excludeProfileName: name, effectiveTarget: newEffectiveTarget);
                     if (conflict != null)
                     {
-                        SendMessage("alert:show", new { message = $"Cannot remove target: hotstring \"{entry.Hotstring}\" would conflict with {conflict}." });
+                        SendMessage("alert:show", new { message = S.BridgeAlertHotkeyRemoveTargetHotstring(sequence: entry.Hotstring, conflict: conflict), type = "error" });
                         return;
                     }
                 }
@@ -11782,7 +11801,7 @@ namespace TrueReplayer
                 : null;
             bool ok = false;
             if (name != null && name != CurrentProfileName)
-                SendMessage("alert:show", new { message = $"Open \"{name}\" first — converting coordinates rewrites the actions of the macro that is currently loaded." });
+                SendMessage("alert:show", new { message = S.BridgeAlertCoordsOpenFirst(name), type = "error" });
             else if (!RefuseConvertDuringRun())
                 ok = ExecuteConvertCoordinates(direction);
             // The dialog used to dismiss its hint the moment it SENT, so a refusal (window not
@@ -11806,9 +11825,7 @@ namespace TrueReplayer
             if (!replaying && !recordingService.IsRecording) return false;
             SendMessage("alert:show", new
             {
-                message = replaying
-                    ? "A replay is running — stop it first. Converting rewrites the coordinates of actions the run is still going to play."
-                    : "A recording is running — stop it first. Converting now would leave this macro's actions in two coordinate spaces.",
+                message = replaying ? S.BridgeAlertCoordsRunningReplay : S.BridgeAlertCoordsRunningRecording,
                 type = "error",
             });
             return true;
@@ -11831,7 +11848,7 @@ namespace TrueReplayer
                 : UserProfile.Current.TargetWindow;
             if (target == null || (string.IsNullOrEmpty(target.ProcessName) && string.IsNullOrEmpty(target.WindowTitle)))
             {
-                SendMessage("alert:show", new { message = "Set a Window Target first (macro or folder)." });
+                SendMessage("alert:show", new { message = S.BridgeAlertCoordsNoTarget, type = "error" });
                 return false;
             }
 
@@ -11847,10 +11864,11 @@ namespace TrueReplayer
                 {
                     message = convertStatus switch
                     {
-                        WindowRectStatus.NotFound => "Target window not found. Make sure it is open and visible.",
-                        WindowRectStatus.Minimised => "Target window is minimised. Restore it and convert again.",
-                        _ => "Could not get window position.",
-                    }
+                        WindowRectStatus.NotFound => S.BridgeAlertCoordsNotFound,
+                        WindowRectStatus.Minimised => S.BridgeAlertCoordsMinimised,
+                        _ => S.BridgeAlertCoordsNoPosition,
+                    },
+                    type = "error",
                 });
                 return false;
             }
@@ -11873,7 +11891,7 @@ namespace TrueReplayer
         {
             if (actions.Count == 0)
             {
-                SendMessage("alert:show", new { message = "No actions to convert." });
+                SendMessage("alert:show", new { message = S.BridgeAlertCoordsNoActions, type = "info" });
                 return false;
             }
 
@@ -11912,7 +11930,7 @@ namespace TrueReplayer
             if (inheritedFolder is string ownerFolder
                 && profileController.GetEffectiveRelativeCoordinates(CurrentProfileName) != (direction == "toRelative"))
             {
-                SendMessage("alert:show", new { message = $"\"{CurrentProfileName}\" inherits its window target from the folder \"{ownerFolder}\", so it inherits the coordinate space too — this conversion would be discarded at the next replay and leave the coordinates in the wrong space. Give this macro its own target first: edit the process name or window title in its Window Target dialog, then use \"Apply target & convert\"." });
+                SendMessage("alert:show", new { message = S.BridgeAlertCoordsInherited(name: CurrentProfileName, folder: ownerFolder), type = "error" });
                 return false;
             }
 
@@ -12022,7 +12040,13 @@ namespace TrueReplayer
 
             HasUnsavedChanges = true;
             PushActionsUpdate();
-            SendMessage("alert:show", new { message = $"Converted {converted} action(s) to {(direction == "toRelative" ? "relative" : "absolute")} coordinates." });
+            SendMessage("alert:show", new
+            {
+                message = direction == "toRelative"
+                    ? S.BridgeAlertCoordsConvertedRelative(n: S.Num(converted), count: converted)
+                    : S.BridgeAlertCoordsConvertedAbsolute(n: S.Num(converted), count: converted),
+                type = "success",
+            });
             return true;
         }
 
@@ -12076,7 +12100,7 @@ namespace TrueReplayer
                         && string.Equals(string.IsNullOrWhiteSpace(dialogMatchMode) ? "contains" : dialogMatchMode, inherited.TitleMatchMode, StringComparison.OrdinalIgnoreCase));
                     if (!definesOwnTarget)
                     {
-                        SendMessage("alert:show", new { message = $"\"{scopeName}\" inherits its window target from the folder \"{ownerFolder}\", so it inherits the geometry too. Capture it on the folder, or give this macro its own target first." });
+                        SendMessage("alert:show", new { message = S.BridgeAlertGeometryInherited(name: scopeName, folder: ownerFolder), type = "error" });
                         return;
                     }
                 }
@@ -12108,7 +12132,7 @@ namespace TrueReplayer
 
             if (target == null || (string.IsNullOrEmpty(target.ProcessName) && string.IsNullOrEmpty(target.WindowTitle)))
             {
-                SendMessage("alert:show", new { message = "Detect or set a Window Target first, then click Update." });
+                SendMessage("alert:show", new { message = S.BridgeAlertGeometryNoTarget, type = "error" });
                 return;
             }
 
@@ -12124,10 +12148,11 @@ namespace TrueReplayer
                 {
                     message = geometryStatus switch
                     {
-                        WindowRectStatus.NotFound => "Target window not found. Make sure it is open and visible.",
-                        WindowRectStatus.Minimised => "Target window is minimised. Restore it to the size and position you want captured, then click Update again.",
-                        _ => "Could not get window dimensions.",
-                    }
+                        WindowRectStatus.NotFound => S.BridgeAlertCoordsNotFound,
+                        WindowRectStatus.Minimised => S.BridgeAlertGeometryMinimised,
+                        _ => S.BridgeAlertGeometryNoSize,
+                    },
+                    type = "error",
                 });
                 return;
             }
@@ -12141,7 +12166,7 @@ namespace TrueReplayer
             {
                 await profileController.SetFolderGeometryAsync(targetFolderName, rect.Left, rect.Top, w, hgt);
                 PushProfilesUpdate();
-                SendMessage("alert:show", new { message = $"Folder geometry captured: {w}×{hgt} @ ({rect.Left}, {rect.Top})" });
+                SendMessage("alert:show", new { message = S.BridgeAlertGeometryFolderCaptured(w: Plain(w), h: Plain(hgt), x: Plain(rect.Left), y: Plain(rect.Top)), type = "success" });
                 return;
             }
 
@@ -12176,7 +12201,7 @@ namespace TrueReplayer
             {
                 HasUnsavedChanges = true;
             }
-            SendMessage("alert:show", new { message = $"Window geometry captured: {w}×{hgt} @ ({rect.Left}, {rect.Top})" });
+            SendMessage("alert:show", new { message = S.BridgeAlertGeometryWindowCaptured(w: Plain(w), h: Plain(hgt), x: Plain(rect.Left), y: Plain(rect.Top)), type = "success" });
         }
 
         private async void HandleSetFolderWindowTarget(JsonElement payload)
@@ -12198,7 +12223,7 @@ namespace TrueReplayer
 
             if (string.IsNullOrWhiteSpace(processName) && string.IsNullOrWhiteSpace(windowTitle))
             {
-                SendMessage("alert:show", new { message = "Please specify at least a process name or window title." });
+                SendMessage("alert:show", new { message = S.BridgeAlertWindowFillOne, type = "error" });
                 return;
             }
 
@@ -12206,14 +12231,14 @@ namespace TrueReplayer
             // since the message left, typically before an Undo. Say so instead.
             if (!profileController.GetProfileOrder().Folders.Any(f => f.Name == folderName))
             {
-                SendMessage("alert:show", new { message = $"The folder \"{folderName}\" no longer exists — it was renamed or deleted. Nothing was changed.", type = "error" });
+                SendMessage("alert:show", new { message = S.BridgeAlertWindowFolderGone(folderName), type = "error" });
                 return;
             }
 
             if (titleMatchMode == "regex" && !string.IsNullOrWhiteSpace(windowTitle))
             {
                 try { _ = new System.Text.RegularExpressions.Regex(windowTitle.Trim()); }
-                catch { SendMessage("alert:show", new { message = "Invalid regex pattern." }); return; }
+                catch { SendMessage("alert:show", new { message = S.BridgeAlertWindowRegexInvalid, type = "error" }); return; }
             }
 
             await profileController.SetFolderWindowTargetAsync(folderName, new WindowTarget
@@ -12251,7 +12276,7 @@ namespace TrueReplayer
                         var conflict = GetHotkeyConflict(entry.Hotkey, excludeSettingKey: null, excludeProfileName: profileName, effectiveTarget: null);
                         if (conflict != null)
                         {
-                            SendMessage("alert:show", new { message = $"Cannot remove folder target: hotkey \"{entry.Hotkey}\" on \"{profileName}\" would conflict with {conflict}." });
+                            SendMessage("alert:show", new { message = S.BridgeAlertHotkeyRemoveFolderTargetHotkey(hotkey: entry.Hotkey, name: profileName, conflict: conflict), type = "error" });
                             return;
                         }
                     }
@@ -12260,7 +12285,7 @@ namespace TrueReplayer
                         var conflict = GetHotstringConflict(entry.Hotstring, excludeProfileName: profileName, effectiveTarget: null);
                         if (conflict != null)
                         {
-                            SendMessage("alert:show", new { message = $"Cannot remove folder target: hotstring \"{entry.Hotstring}\" on \"{profileName}\" would conflict with {conflict}." });
+                            SendMessage("alert:show", new { message = S.BridgeAlertHotkeyRemoveFolderTargetHotstring(sequence: entry.Hotstring, name: profileName, conflict: conflict), type = "error" });
                             return;
                         }
                     }
@@ -12269,7 +12294,7 @@ namespace TrueReplayer
 
             if (folder == null)
             {
-                SendMessage("alert:show", new { message = $"The folder \"{folderName}\" no longer exists — it was renamed or deleted. Nothing was changed.", type = "error" });
+                SendMessage("alert:show", new { message = S.BridgeAlertWindowFolderGone(folderName), type = "error" });
                 return;
             }
             // Everything the removal wipes, for the confirmation below: the toast's Undo has to put
@@ -12361,8 +12386,7 @@ namespace TrueReplayer
             // A run's clicks are injected, and the hook below ignores them now, but the user's own
             // next click would still be taken as the target — and a recording would keep the UP of
             // the click the hook swallowed, an orphan LeftClickUp. Refused like the pickers.
-            if (RefuseCaptureDuringRun("Window detection",
-                    "Window detection takes the next click you make, and the run is using the mouse."))
+            if (RefuseCaptureDuringRun("Window detection", S.BridgeAlertRunRefuseDetection))
             {
                 SendMessage("windowTarget:detectState", new { requestId, detecting = false });
                 return;
@@ -12379,7 +12403,7 @@ namespace TrueReplayer
                 _detectMouseProc = null;
                 Services.DiagnosticLog.Warn($"Window detection: SetMouseHook failed (Win32 error {err})");
                 SendMessage("windowTarget:detectState", new { requestId, detecting = false });
-                SendMessage("alert:show", new { message = "Could not start window detection — Windows refused the mouse hook. Type the process name or window title instead." });
+                SendMessage("alert:show", new { message = S.BridgeAlertWindowDetectFailed, type = "error" });
                 return;
             }
             _isDetectingWindow = true;
@@ -12503,7 +12527,7 @@ namespace TrueReplayer
             {
                 SendMessage("windowTarget:testResult", new {
                     matches = false,
-                    error = "Fill at least one of Process name or Title to test.",
+                    error = S.BridgeResultWindowFillOne,
                     foregroundProcess = "",
                     foregroundTitle = ""
                 });
@@ -12522,7 +12546,7 @@ namespace TrueReplayer
             {
                 SendMessage("windowTarget:testResult", new {
                     matches = false,
-                    error = "Invalid regex pattern.",
+                    error = S.BridgeResultWindowRegexInvalid,
                     foregroundProcess = "",
                     foregroundTitle = ""
                 });
@@ -12556,7 +12580,7 @@ namespace TrueReplayer
             {
                 SendMessage("windowTarget:testResult", new {
                     matches = false,
-                    error = "No foreground window detected.",
+                    error = S.BridgeResultWindowNoForeground,
                     foregroundProcess = "",
                     foregroundTitle = ""
                 });
@@ -12635,7 +12659,7 @@ namespace TrueReplayer
             catch (Exception ex)
             {
                 DiagnosticLog.Error("Save file (dialog:saveFile) failed", ex);
-                SendMessage("dialog:saveFileResult", new { requestId, path = (string?)null, error = ex.Message });
+                SendMessage("dialog:saveFileResult", new { requestId, path = (string?)null, error = S.Reason(ex) });
             }
         }
 
@@ -12656,7 +12680,7 @@ namespace TrueReplayer
 
             if (string.IsNullOrWhiteSpace(processName) && string.IsNullOrWhiteSpace(windowTitle))
             {
-                Fail("Fill Process name or Title first.");
+                Fail(S.BridgeResultWindowFillFirst);
                 return;
             }
 
@@ -12664,12 +12688,12 @@ namespace TrueReplayer
             if (string.Equals(target.TitleMatchMode, "regex", StringComparison.Ordinal)
                 && !string.IsNullOrWhiteSpace(windowTitle) && regex == null)
             {
-                Fail("Invalid regex pattern.");
+                Fail(S.BridgeResultWindowRegexInvalid);
                 return;
             }
 
             IntPtr hwnd = TrueReplayer.Services.ActionReplayer.FindWindowExcludingSelf(target, regex);
-            if (hwnd == IntPtr.Zero) { Fail("No window matches — open and position it first."); return; }
+            if (hwnd == IntPtr.Zero) { Fail(S.BridgeResultWindowNoMatch); return; }
             // The fifth resolve-and-rect site, and the one TryGetWindowRect cannot serve: it
             // resolves through FindWindowExcludingSelf (pre-compiled regex, skips TrueReplayer's
             // own window) rather than WindowMatcher.FindWindow. The IsIconic guard still has to be
@@ -12677,8 +12701,8 @@ namespace TrueReplayer
             // GetWindowRect answers with the (-32000,-32000) parking rect. This rect is written
             // into an ActivateWindow row's geometry, so capturing it minimised makes every later
             // replay park the target off-screen. Refuse and say what to do, like the siblings.
-            if (NativeMethods.IsIconic(hwnd)) { Fail("Window is minimised — restore it to the size and position you want captured."); return; }
-            if (!NativeMethods.GetWindowRect(hwnd, out var rect)) { Fail("Could not read the window rect."); return; }
+            if (NativeMethods.IsIconic(hwnd)) { Fail(S.BridgeResultWindowMinimised); return; }
+            if (!NativeMethods.GetWindowRect(hwnd, out var rect)) { Fail(S.BridgeResultWindowNoRect); return; }
 
             SendMessage("window:captureGeometryResult", new
             {
@@ -12703,7 +12727,7 @@ namespace TrueReplayer
                 SendMessage("window:testProbeResult", new {
                     requestId,
                     found = false,
-                    error = "Fill at least one of Process name or Title to test.",
+                    error = S.BridgeResultWindowFillOne,
                     matchProcess = "",
                     matchTitle = ""
                 });
@@ -12717,7 +12741,7 @@ namespace TrueReplayer
                 SendMessage("window:testProbeResult", new {
                     requestId,
                     found = false,
-                    error = "Invalid regex pattern.",
+                    error = S.BridgeResultWindowRegexInvalid,
                     matchProcess = "",
                     matchTitle = ""
                 });
@@ -12737,7 +12761,7 @@ namespace TrueReplayer
             if (hwnd == IntPtr.Zero && matchIndex > 1
                 && TrueReplayer.Services.ActionReplayer.FindWindowExcludingSelf(target, regex) != IntPtr.Zero)
             {
-                notice = $"Matching windows exist, but not #{matchIndex} — right now the action finds none (and runs its Launch path, if it has one).";
+                notice = S.BridgeResultWindowNotNth(Plain(matchIndex));
             }
             else if (hwnd != IntPtr.Zero && foregroundOnly
                 && !TrueReplayer.Helpers.WindowMatcher.Matches(NativeMethods.GetForegroundWindow(), target, regex))
@@ -12745,7 +12769,7 @@ namespace TrueReplayer
                 // With "foreground only" the replay asks the window in FRONT — which, while this
                 // button is being clicked, is TrueReplayer itself.
                 hwnd = IntPtr.Zero;
-                notice = "A matching window exists, but it is not in the foreground — with “Foreground only” the condition reads false until it is.";
+                notice = S.BridgeResultWindowNotForeground;
             }
             if (hwnd == IntPtr.Zero)
             {
@@ -12859,7 +12883,7 @@ namespace TrueReplayer
             {
                 var entry = profileController.ProfileEntries.FirstOrDefault(p => p.Name == name);
                 if (entry != null)
-                    RevealInExplorer(entry.FilePath, "Could not open the macro's folder");
+                    RevealInExplorer(entry.FilePath, S.BridgeAlertFolderMacroOpenFailed);
                 return;
             }
 
@@ -12874,7 +12898,7 @@ namespace TrueReplayer
             catch (Exception ex)
             {
                 DiagnosticLog.Error("profile:openFolder failed to open the Profiles directory", ex);
-                SendMessage("alert:show", new { message = "Could not open the Profiles folder" });
+                SendMessage("alert:show", new { message = S.BridgeAlertFolderProfilesOpenFailed, type = "error" });
             }
         }
 
@@ -12906,7 +12930,7 @@ namespace TrueReplayer
             bool created = await profileController.CreateFolderAsync(name, color);
             if (!created)
             {
-                SendMessage("alert:show", new { message = $"A folder named \"{name.Trim()}\" already exists" });
+                SendMessage("alert:show", new { message = S.BridgeAlertFolderTaken(name.Trim()), type = "error" });
                 PushProfilesUpdate(); // re-sync so any optimistic UI state reverts
                 return;
             }
@@ -12921,7 +12945,7 @@ namespace TrueReplayer
             bool renamed = await profileController.RenameFolderAsync(oldName, newName);
             if (!renamed)
             {
-                SendMessage("alert:show", new { message = $"A folder named \"{newName.Trim()}\" already exists" });
+                SendMessage("alert:show", new { message = S.BridgeAlertFolderTaken(newName.Trim()), type = "error" });
                 PushProfilesUpdate(); // revert the inline rename back to the stored name
                 return;
             }
@@ -12945,17 +12969,17 @@ namespace TrueReplayer
             {
                 var msgBlock = new Microsoft.UI.Xaml.Controls.TextBlock
                 {
-                    Text = $"Folder \"{name}\" contains {profileCount} macro(s).\nDelete only the folder or everything inside?",
+                    Text = S.BridgeDialogDeleteFolderBody(name: name, n: S.Num(profileCount), count: profileCount),
                     TextWrapping = Microsoft.UI.Xaml.TextWrapping.Wrap
                 };
                 var dialog = new Microsoft.UI.Xaml.Controls.ContentDialog
                 {
-                    Title = "Delete Folder",
+                    Title = S.BridgeDialogDeleteFolderTitle,
                     XamlRoot = window.Content.XamlRoot,
                     RequestedTheme = Microsoft.UI.Xaml.ElementTheme.Dark,
-                    PrimaryButtonText = "Folder Only",
-                    SecondaryButtonText = "Delete All",
-                    CloseButtonText = "Cancel",
+                    PrimaryButtonText = S.BridgeDialogDeleteFolderFolderOnly,
+                    SecondaryButtonText = S.BridgeDialogDeleteFolderDeleteAll,
+                    CloseButtonText = S.BridgeDialogCancel,
                     DefaultButton = Microsoft.UI.Xaml.Controls.ContentDialogButton.Primary,
                     CornerRadius = new Microsoft.UI.Xaml.CornerRadius(8),
                     Content = msgBlock
@@ -13009,8 +13033,9 @@ namespace TrueReplayer
                         SendMessage("alert:show", new
                         {
                             message = failed.Count == 1
-                                ? $"Could not delete \"{failed[0]}\" — its file is read-only or in use. It stays in your list."
-                                : $"Could not delete {failed.Count} macros — their files are read-only or in use: {string.Join(", ", failed)}. They stay in your list."
+                                ? S.BridgeAlertFolderDeleteFailedOne(failed[0])
+                                : S.BridgeAlertFolderDeleteFailedMany(n: S.Num(failed.Count), names: string.Join(", ", failed)),
+                            type = "error",
                         });
                     }
                     if (hadActive)
@@ -13029,8 +13054,7 @@ namespace TrueReplayer
                     int dangling = await CountRunProfileReferencesAsync(deletedNames);
                     if (dangling > 0)
                     {
-                        string plural = dangling == 1 ? "reference" : "references";
-                        SendMessage("alert:show", new { message = $"Deleted \"{name}\" and its macros. {dangling} Run Macro {plural} in other macros still point at them and will silently no-op at replay." });
+                        SendMessage("alert:show", new { message = S.BridgeAlertFolderDeletedDangling(name: name, n: S.Num(dangling), count: dangling), type = "info" });
                     }
                 }
                 else
@@ -13133,8 +13157,8 @@ namespace TrueReplayer
                 SendMessage("alert:show", new
                 {
                     message = relativeAfter
-                        ? $"\"{profileName}\" now reads its recorded X/Y relative to the folder's window. They were not converted — if its clicks land in the wrong place, load it and run \"Convert coordinates to relative\" (Ctrl+K)."
-                        : $"\"{profileName}\" now reads its recorded X/Y as screen positions. They were not converted — if its clicks land in the wrong place, load it and run \"Convert coordinates to absolute\" (Ctrl+K).",
+                        ? S.BridgeAlertFolderNowRelative(profileName)
+                        : S.BridgeAlertFolderNowAbsolute(profileName),
                     type = "info"
                 });
             }
@@ -13283,7 +13307,7 @@ namespace TrueReplayer
                 .ToList();
 
             if (names.Count == 0) return;
-            if (replayService.IsReplaying || recordingService.IsRecording) { SendMessage("alert:show", new { message = "Finish the current recording/replay before exporting." }); return; }
+            if (replayService.IsReplaying || recordingService.IsRecording) { SendMessage("alert:show", new { message = S.BridgeAlertExportBusy, type = "error" }); return; }
 
             try
             {
@@ -13308,7 +13332,7 @@ namespace TrueReplayer
                         var closure = await profileController.ExpandWithRunProfileDependenciesAsync(names);
                         activeInExport = closure.Any(n => string.Equals(n, CurrentProfileName, StringComparison.OrdinalIgnoreCase));
                     }
-                    if (activeInExport && !await CheckUnsavedChangesAsync("exporting")) return;
+                    if (activeInExport && !await CheckUnsavedChangesAsync(S.ProfilesUnsavedBeforeExporting)) return;
                 }
 
                 var (exported, missingImages, bundledDependencies, savedPath) = await profileController.ExportProfilesAsync(names, includeOrganization, includeDependencies);
@@ -13339,12 +13363,12 @@ namespace TrueReplayer
                     });
                 }
                 else if (exported == 0)
-                    SendMessage("alert:show", new { message = "Export failed: none of the selected macros could be loaded." });
+                    SendMessage("alert:show", new { message = S.BridgeAlertExportNoneLoaded, type = "error" });
                 // exported < 0 => user cancelled the Save dialog: stay silent.
             }
             catch (Exception ex)
             {
-                SendMessage("alert:show", new { message = $"Export failed: {ex.Message}" });
+                SendMessage("alert:show", new { message = S.BridgeAlertExportFailed(S.Reason(ex)), type = "error" });
             }
         }
 
@@ -13364,7 +13388,7 @@ namespace TrueReplayer
         {
             if (!payload.TryGetProperty("exportId", out var idProp) || !idProp.TryGetInt32(out int id)) return;
             if (!_recentExportPaths.TryGetValue(id, out var path)) return;
-            RevealInExplorer(path, "Could not open the export folder");
+            RevealInExplorer(path, S.BridgeAlertFolderExportOpenFailed);
         }
 
         /// <summary>
@@ -13382,7 +13406,7 @@ namespace TrueReplayer
             catch (Exception ex)
             {
                 DiagnosticLog.Error($"Failed to reveal '{path}' in Explorer", ex);
-                SendMessage("alert:show", new { message = failureMessage });
+                SendMessage("alert:show", new { message = failureMessage, type = "error" });
             }
         }
 
@@ -13408,7 +13432,7 @@ namespace TrueReplayer
         private async void HandleProfileImport(string? droppedFile = null)
         {
             if (_importPickerOpen) return;   // a second click while the picker is open is a no-op
-            if (replayService.IsReplaying || recordingService.IsRecording) { SendMessage("alert:show", new { message = "Finish the current recording/replay before importing." }); return; }
+            if (replayService.IsReplaying || recordingService.IsRecording) { SendMessage("alert:show", new { message = S.BridgeAlertImportBusy, type = "error" }); return; }
             _importPickerOpen = true;
             try
             {
@@ -13422,20 +13446,19 @@ namespace TrueReplayer
                     // Every non-Ok outcome clears any pending state. Cancelled is the ONE legitimate
                     // silence (user closed the picker); the rest get an actionable error toast so a
                     // corrupt / unreadable / empty file is never indistinguishable from a cancel.
-                    // Strings stay ENGLISH — they cross the bridge from C# where tt() doesn't exist,
-                    // matching every other backend alert:show. Pass type explicitly (don't rely on
-                    // the frontend word-sniffing an error out of the message).
+                    // In the interface's language, from the catalog like every other backend
+                    // alert:show, and with its type (the page no longer guesses it from the words).
                     _pendingImportEnvelope = null;
                     _pendingImportFileName = null;
                     if (prep.Status != ImportPrepareStatus.Cancelled)
                     {
                         string m = prep.Status switch
                         {
-                            ImportPrepareStatus.TooLarge => "That file is too large to import (over 50 MB).",
-                            ImportPrepareStatus.ParseError => "That file isn't a valid TrueReplayer macro export.",
-                            ImportPrepareStatus.NoProfiles => "That export file contains no macros to import.",
-                            ImportPrepareStatus.ReadError => $"Couldn't read that file: {prep.Detail}",
-                            _ => "Import failed.",
+                            ImportPrepareStatus.TooLarge => S.BridgeAlertImportTooLarge,
+                            ImportPrepareStatus.ParseError => S.BridgeAlertImportParseError,
+                            ImportPrepareStatus.NoProfiles => S.BridgeAlertImportNoMacros,
+                            ImportPrepareStatus.ReadError => S.BridgeAlertImportReadError(prep.Detail ?? ""),
+                            _ => S.BridgeAlertImportFailedGeneric,
                         };
                         SendMessage("alert:show", new { message = m, type = "error" });
                     }
@@ -13443,7 +13466,7 @@ namespace TrueReplayer
             }
             catch (Exception ex)
             {
-                SendMessage("alert:show", new { message = $"Import failed: {ex.Message}" });
+                SendMessage("alert:show", new { message = S.BridgeAlertImportFailed(S.Reason(ex)), type = "error" });
                 _pendingImportEnvelope = null;
                 _pendingImportFileName = null;
             }
@@ -13555,7 +13578,7 @@ namespace TrueReplayer
             {
                 SendMessage("alert:show", new
                 {
-                    message = $"This file lists {renamedDuplicates} macro(s) under a name another macro in it already uses. The copies are shown with a number, e.g. \"Farm (2)\".",
+                    message = S.BridgeAlertImportDuplicates(n: S.Num(renamedDuplicates), count: renamedDuplicates),
                     type = "info",
                 });
             }
@@ -13601,12 +13624,12 @@ namespace TrueReplayer
             if (_pendingImportEnvelope == null)
             {
                 // Stale confirm — most likely the bridge was reloaded between preview and confirm.
-                SendMessage("alert:show", new { message = "Import session expired — please try again." });
+                SendMessage("alert:show", new { message = S.BridgeAlertImportExpired, type = "error" });
                 return;
             }
             if (replayService.IsReplaying || recordingService.IsRecording)
             {
-                SendMessage("alert:show", new { message = "Finish the current recording/replay before importing." });
+                SendMessage("alert:show", new { message = S.BridgeAlertImportBusy, type = "error" });
                 _pendingImportEnvelope = null;
                 _pendingImportFileName = null;
                 return;
@@ -13664,7 +13687,7 @@ namespace TrueReplayer
                 // All selected names were dropped as unsafe (or none were sent). Don't fail silently —
                 // the picker-cancel path is the only legitimate silence.
                 if (unsafeDropped > 0)
-                    SendMessage("alert:show", new { message = $"Import skipped {unsafeDropped} macro(s) with invalid names.", type = "error" });
+                    SendMessage("alert:show", new { message = S.BridgeAlertImportSkippedInvalid(n: S.Num(unsafeDropped), count: unsafeDropped), type = "error" });
                 return;
             }
 
@@ -13758,8 +13781,9 @@ namespace TrueReplayer
 
                     if (!hasWarnings)
                     {
-                        string msg = $"Imported {imported} macro(s).";
-                        if (hasOrganization) msg += " Folder organization imported.";
+                        string msg = hasOrganization
+                            ? S.BridgeAlertImportDoneWithFolders(n: S.Num(imported), count: imported)
+                            : S.BridgeAlertImportDone(n: S.Num(imported), count: imported);
                         SendMessage("alert:show", new { message = msg, type = "success" });
                     }
                     else
@@ -13791,19 +13815,19 @@ namespace TrueReplayer
                 }
                 else if (totalSkipped > 0)
                 {
-                    SendMessage("alert:show", new { message = $"All {totalSkipped} macro(s) were skipped.", type = "info" });
+                    SendMessage("alert:show", new { message = S.BridgeAlertImportAllSkipped(n: S.Num(totalSkipped), count: totalSkipped), type = "info" });
                 }
                 else
                 {
                     // imported == 0 && nothing skipped: the selected names matched no envelope entry
                     // (a stale or hand-crafted confirm payload). Previously fell through both branches
                     // and showed NOTHING — the user clicked Import and got silence.
-                    SendMessage("alert:show", new { message = "No macros were imported.", type = "info" });
+                    SendMessage("alert:show", new { message = S.BridgeAlertImportNoneImported, type = "info" });
                 }
             }
             catch (Exception ex)
             {
-                SendMessage("alert:show", new { message = $"Import failed: {ex.Message}", type = "error" });
+                SendMessage("alert:show", new { message = S.BridgeAlertImportFailed(S.Reason(ex)), type = "error" });
             }
             finally
             {
@@ -13844,13 +13868,13 @@ namespace TrueReplayer
             string name = payload.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
             if (replayService.IsReplaying || recordingService.IsRecording)
             {
-                SendMessage("examples:useResult", new { ok = false, requested = name, error = "Finish the current recording/replay before copying an example." });
+                SendMessage("examples:useResult", new { ok = false, requested = name, error = S.BridgeResultExamplesBusy });
                 return;
             }
             var package = ExampleLibrary.PackageFor(name);
             if (package == null)
             {
-                SendMessage("examples:useResult", new { ok = false, requested = name, error = $"There is no example named \"{name}\"." });
+                SendMessage("examples:useResult", new { ok = false, requested = name, error = S.BridgeResultExamplesMissing(name) });
                 return;
             }
             var selected = new HashSet<string>(package.Profiles.Select(p => p.Name).Where(IsSafeProfileName), StringComparer.Ordinal);
@@ -13865,7 +13889,7 @@ namespace TrueReplayer
             }
             catch (Exception ex)
             {
-                SendMessage("examples:useResult", new { ok = false, requested = name, error = ex.Message });
+                SendMessage("examples:useResult", new { ok = false, requested = name, error = S.Reason(ex) });
             }
         }
 
@@ -14140,7 +14164,7 @@ namespace TrueReplayer
             catch (Exception ex)
             {
                 Services.DiagnosticLog.Error($"Save of '{CurrentProfileName}' failed", ex);
-                SendMessage("alert:show", new { message = $"Could not save \"{CurrentProfileName}\": {ex.Message}" });
+                SendMessage("alert:show", new { message = S.BridgeAlertSaveFailed(name: CurrentProfileName, reason: S.Reason(ex)), type = "error" });
             }
             PushProfileLoop();
             PushProfilesUpdate();
@@ -14149,7 +14173,7 @@ namespace TrueReplayer
         private async void HandleProfileLoad()
         {
             // Guard: check for unsaved changes before loading
-            if (!await CheckUnsavedChangesAsync("loading another macro")) return;
+            if (!await CheckUnsavedChangesAsync(S.ProfilesUnsavedBeforeLoading)) return;
 
             string? loadedPath = await profileController.LoadProfileAsync();
             if (loadedPath == null) return;
@@ -14170,17 +14194,17 @@ namespace TrueReplayer
         {
             var messageBlock = new Microsoft.UI.Xaml.Controls.TextBlock
             {
-                Text = "This will reset all settings to their default values and clear all actions.",
+                Text = S.BridgeDialogResetSettingsBody,
                 TextWrapping = Microsoft.UI.Xaml.TextWrapping.Wrap
             };
 
             var dialog = new Microsoft.UI.Xaml.Controls.ContentDialog
             {
-                Title = "Reset Settings",
+                Title = S.BridgeDialogResetSettingsTitle,
                 XamlRoot = window.Content.XamlRoot,
                 RequestedTheme = Microsoft.UI.Xaml.ElementTheme.Dark,
-                PrimaryButtonText = "Reset",
-                CloseButtonText = "Cancel",
+                PrimaryButtonText = S.BridgeDialogResetSettingsReset,
+                CloseButtonText = S.BridgeDialogCancel,
                 DefaultButton = Microsoft.UI.Xaml.Controls.ContentDialogButton.Close,
                 CornerRadius = new Microsoft.UI.Xaml.CornerRadius(8),
                 Content = messageBlock
@@ -14231,7 +14255,7 @@ namespace TrueReplayer
         {
             if (recordingService.IsRecording || replayService.IsReplaying)
             {
-                SendMessage("alert:show", new { message = "Stop the recording or replay before resetting settings." });
+                SendMessage("alert:show", new { message = S.BridgeAlertSettingsResetBusy, type = "error" });
                 return;
             }
             var defaults = SaveDefaultGlobalSettings(keepAutomationEnabled: true);
@@ -14439,7 +14463,7 @@ namespace TrueReplayer
             // save retries it; said once per failure streak, not on every settings change.
             bool wasUnwritten = AppSettingsManager.HasUnwrittenSettings;
             if (!AppSettingsManager.Save(s) && !wasUnwritten)
-                SendMessage("alert:show", new { message = "Couldn't save your settings to disk. They're kept for this session and will be retried on the next change and on exit." });
+                SendMessage("alert:show", new { message = S.BridgeAlertSettingsSaveFailed, type = "error" });
             return s;
         }
 
@@ -14631,8 +14655,8 @@ namespace TrueReplayer
                 var owner = profileController.ProfileEntries
                     .FirstOrDefault(e => string.Equals(e.Hotkey, value, StringComparison.OrdinalIgnoreCase));
                 if (owner == null) continue;
-                DiagnosticLog.Info($"Hotkey conflict: \"{value}\" is {HotkeyDisplayNames[key]} and the hotkey of profile \"{owner.Name}\".");
-                return $"\"{value}\" is used by {HotkeyDisplayNames[key]}, so the macro \"{owner.Name}\" on the same keys won't fire. Change one of them (Settings › Hotkeys, or the macro's hotkey).";
+                DiagnosticLog.Info($"Hotkey conflict: \"{value}\" is {key} and the hotkey of profile \"{owner.Name}\".");
+                return S.BridgeAlertHotkeyAppVsMacro(hotkey: value, conflict: HotkeyName(key), name: owner.Name);
             }
             return null;
         }
@@ -14662,7 +14686,7 @@ namespace TrueReplayer
                 && string.Equals(CursorClickStartHotkey, CursorClickPauseHotkey, StringComparison.OrdinalIgnoreCase))
             {
                 DiagnosticLog.Info($"Hotkey conflict in settings: \"{CursorClickStartHotkey}\" is set as both the Clicker start and the Clicker pause hotkey.");
-                return $"\"{CursorClickStartHotkey}\" is set as both Clicker Start and Clicker Pause.";
+                return S.BridgeAlertHotkeyClickerSame(CursorClickStartHotkey);
             }
             foreach (var clicker in new[] { CursorClickStartHotkey, CursorClickPauseHotkey })
             {
@@ -14671,25 +14695,28 @@ namespace TrueReplayer
                 {
                     if (string.IsNullOrEmpty(value)) continue;
                     if (!string.Equals(value, clicker, StringComparison.OrdinalIgnoreCase)) continue;
-                    DiagnosticLog.Info($"Hotkey conflict in settings: \"{clicker}\" is used by both a Clicker hotkey and {HotkeyDisplayNames[key]}.");
-                    return $"\"{clicker}\" is already used by {HotkeyDisplayNames[key]}.";
+                    DiagnosticLog.Info($"Hotkey conflict in settings: \"{clicker}\" is used by both a Clicker hotkey and {key}.");
+                    return S.BridgeAlertHotkeyUsedBy(hotkey: clicker, conflict: HotkeyName(key));
                 }
             }
             return null;
         }
 
-        // The hotkeys as Settings › Hotkeys and the Clicker page name them, for "… is already used by …".
-        private static readonly Dictionary<string, string> HotkeyDisplayNames = new()
+        // The hotkeys as Settings › Hotkeys and the Clicker page name them, for "… is already used by …",
+        // in the interface's language (alert.hotkey.by; in pt-BR each one starts with a feminine noun,
+        // "hotkey …", which the sentences' "pela" and "com a" fit). An unknown key reads as itself.
+        private static string HotkeyName(string key) => key switch
         {
-            ["recordingHotkey"] = "“Record”",
-            ["replayHotkey"] = "“Replay or stop”",
-            ["profileKeyToggleHotkey"] = "“Shortcuts on or off”",
-            ["foregroundHotkey"] = $"“Bring {AppIdentity.DisplayName} to the front”",
-            ["modeToggleHotkey"] = "“Open the Clicker”",
-            ["captureSlotHotkey"] = "“Copy the selection to a clip slot”",
-            ["copyScreenTextHotkey"] = "“Copy text from the screen”",
-            ["cursorClickStartHotkey"] = "the Clicker’s “Start and stop”",
-            ["cursorClickPauseHotkey"] = "the Clicker’s “Pause”",
+            "recordingHotkey" => S.BridgeAlertHotkeyByRecord,
+            "replayHotkey" => S.BridgeAlertHotkeyByReplay,
+            "profileKeyToggleHotkey" => S.BridgeAlertHotkeyByShortcuts,
+            "foregroundHotkey" => S.BridgeAlertHotkeyByFront(AppIdentity.DisplayName),
+            "modeToggleHotkey" => S.BridgeAlertHotkeyByClicker,
+            "captureSlotHotkey" => S.BridgeAlertHotkeyByClip,
+            "copyScreenTextHotkey" => S.BridgeAlertHotkeyByScreenText,
+            "cursorClickStartHotkey" => S.BridgeAlertHotkeyByClickerStart,
+            "cursorClickPauseHotkey" => S.BridgeAlertHotkeyByClickerPause,
+            _ => key,
         };
 
         // The global hotkeys that stay live in BOTH modes. The Clicker pair may collide with
@@ -14752,11 +14779,11 @@ namespace TrueReplayer
             Func<string, string> read = valueOf ?? new Func<string, string>(CurrentHotkey);
             string otherKey = editingKey == "cursorClickStartHotkey" ? "cursorClickPauseHotkey" : "cursorClickStartHotkey";
             if (string.Equals(read(otherKey), hotkey, StringComparison.OrdinalIgnoreCase))
-                return HotkeyDisplayNames[otherKey];
+                return HotkeyName(otherKey);
             foreach (var k in ModeAgnosticHotkeyKeys)
             {
                 if (string.Equals(read(k), hotkey, StringComparison.OrdinalIgnoreCase))
-                    return HotkeyDisplayNames[k];
+                    return HotkeyName(k);
             }
             return null;
         }
@@ -14825,7 +14852,7 @@ namespace TrueReplayer
             {
                 if (kv.Key == excludeSettingKey) continue;
                 if (string.Equals(kv.Value, hotkey, StringComparison.OrdinalIgnoreCase))
-                    return HotkeyDisplayNames.GetValueOrDefault(kv.Key, kv.Key);
+                    return HotkeyName(kv.Key);
             }
 
             // The reverse of GetClickerHotkeyConflict: editing one of the four mode-agnostic
@@ -14834,9 +14861,9 @@ namespace TrueReplayer
             if (excludeSettingKey != null && Array.IndexOf(ModeAgnosticHotkeyKeys, excludeSettingKey) >= 0)
             {
                 if (string.Equals(read("cursorClickStartHotkey"), hotkey, StringComparison.OrdinalIgnoreCase))
-                    return HotkeyDisplayNames["cursorClickStartHotkey"];
+                    return HotkeyName("cursorClickStartHotkey");
                 if (string.Equals(read("cursorClickPauseHotkey"), hotkey, StringComparison.OrdinalIgnoreCase))
-                    return HotkeyDisplayNames["cursorClickPauseHotkey"];
+                    return HotkeyName("cursorClickPauseHotkey");
             }
 
             foreach (var entry in profileController.ProfileEntries)
@@ -14846,7 +14873,7 @@ namespace TrueReplayer
 
                 var otherTarget = profileController.GetEffectiveWindowTarget(entry.Name);
                 if (EffectiveTargetsOverlap(effectiveTarget, otherTarget))
-                    return $"the macro \"{entry.Name}\"";
+                    return S.BridgeAlertHotkeyByMacro(entry.Name);
             }
 
             return null;
@@ -14884,7 +14911,7 @@ namespace TrueReplayer
                         ? GetClickerHotkeyConflict(next[k], k, s => next[s])
                         : GetHotkeyConflict(next[k], excludeSettingKey: k, valueOf: s => next[s]);
                     if (conflict == null) continue;
-                    refused.Add($"\"{next[k]}\" is already used by {conflict}.");
+                    refused.Add(S.BridgeAlertHotkeyUsedBy(hotkey: next[k], conflict: conflict));
                     next[k] = CurrentHotkey(k);
                     moved = true;
                 }
@@ -14907,7 +14934,8 @@ namespace TrueReplayer
                 }
             }
             PushSettingsLoaded(SaveGlobalSettings());
-            if (refused.Count > 0) SendMessage("alert:show", new { message = string.Join(" ", refused) });
+            // Whole sentences, one after the other.
+            if (refused.Count > 0) SendMessage("alert:show", new { message = string.Join(" ", refused), type = "error" });
         }
 
         private void HandleSettingsChange(JsonElement payload)
@@ -14935,7 +14963,7 @@ namespace TrueReplayer
                 var conflict = GetHotkeyConflict(newHotkey, excludeSettingKey: key);
                 if (conflict != null)
                 {
-                    SendMessage("alert:show", new { message = $"\"{newHotkey}\" is already used by {conflict}." });
+                    SendMessage("alert:show", new { message = S.BridgeAlertHotkeyUsedBy(hotkey: newHotkey, conflict: conflict), type = "error" });
                     PushSettingsLoaded(); // revert UI to current value
                     return;
                 }
@@ -14950,7 +14978,7 @@ namespace TrueReplayer
                 var conflict = GetClickerHotkeyConflict(newHotkey, key);
                 if (conflict != null)
                 {
-                    SendMessage("alert:show", new { message = $"\"{newHotkey}\" is already used by {conflict}." });
+                    SendMessage("alert:show", new { message = S.BridgeAlertHotkeyUsedBy(hotkey: newHotkey, conflict: conflict), type = "error" });
                     PushSettingsLoaded(); // revert UI to current value
                     return;
                 }
@@ -15294,8 +15322,8 @@ namespace TrueReplayer
                 // the per-run cue, whereas finishing the list is a rare, explicitly opted-in event (the
                 // Data panel toggle already decided it should be announced).
                 string? macro = CurrentProfileName == "No Profile" ? null : CurrentProfileName;
-                WindowsNotices.Show(macro != null ? $"{macro} used the whole list" : "The data list is done",
-                    $"All {rows} rows are done. The next run starts over at row 1.", macro, ("Open Data Loop", "dataloop-open"));
+                WindowsNotices.Show(macro != null ? S.BridgeNotifyListDoneTitleMacro(macro) : S.BridgeNotifyListDoneTitle,
+                    S.BridgeNotifyListDoneBody(n: S.Num(rows), count: rows), macro, (S.BridgeNotifyListDoneOpen, "dataloop-open"));
 
                 // The chime only when Windows is holding the notification back (nativo-021). NOT gated
                 // on RunEndSound: that governs the cue after EVERY run, which is why people switch it
@@ -15367,11 +15395,15 @@ namespace TrueReplayer
         {
             string? macro = CurrentProfileName == "No Profile" ? null : CurrentProfileName;
             var failed = replayService.GetRunReport().Steps.LastOrDefault(st => st.Status == "failed");
-            string title = (macro ?? "The macro") + (failed != null ? $" stopped at step {failed.Row}" : " stopped");
-            string text = !string.IsNullOrWhiteSpace(errorText) ? errorText : failed?.ErrorMessage ?? "The run stopped with an error.";
+            // One whole title per case: with or without the macro's name, with or without the step.
+            string? step = failed != null ? Plain(failed.Row) : null;
+            string title = macro != null
+                ? (step != null ? S.BridgeNotifyStoppedTitleMacroStep(name: macro, n: step) : S.BridgeNotifyStoppedTitleMacro(macro))
+                : (step != null ? S.BridgeNotifyStoppedTitleStep(step) : S.BridgeNotifyStoppedTitle);
+            string text = !string.IsNullOrWhiteSpace(errorText) ? errorText : failed?.ErrorMessage ?? S.BridgeNotifyStoppedBody;
             return macro != null
-                ? WindowsNotices.Show(title, text, macro, ("Open run report", "report-open"), ("Run again", "run-again"))
-                : WindowsNotices.Show(title, text, null, ("Open run report", "report-open"));
+                ? WindowsNotices.Show(title, text, macro, (S.BridgeNotifyStoppedOpenReport, "report-open"), (S.BridgeNotifyStoppedRunAgain, "run-again"))
+                : WindowsNotices.Show(title, text, null, (S.BridgeNotifyStoppedOpenReport, "report-open"));
         }
 
         /// <summary>A notification's Turn it off (WindowsNotices): the macro's automation, disarmed.</summary>

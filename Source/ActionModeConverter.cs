@@ -179,23 +179,25 @@ namespace TrueReplayer.Services
         //
         // They are the same conditions the transforms enforce, written once more rather than
         // inferred by the caller — a caller re-deriving "is this splittable?" is exactly how the
-        // explanation and the behaviour drift apart. Keep each string next to the branch it
+        // explanation and the behaviour drift apart. Keep each reason next to the branch it
         // mirrors: the RepeatCount/AtCursor pair below is the ToPaired guard, the Double/Triple
-        // case is its intentional passthrough.
+        // case is its intentional passthrough. The sentences are in the interface's language
+        // (i18n/*/engine-capture.ts, convert), each a whole one: the caller shows it alone or after
+        // "— 1 row left as-is.".
 
         /// <summary>Null when <paramref name="a"/> splits into Down+Up; otherwise the reason it will not.</summary>
         public static string? WhyCannotSplit(ActionItem a)
         {
             if (!ActionItem.IsCombinedClickType(a.ActionType))
-                return "Only a whole click can be split into Down + Up.";
+                return S.CaptureConvertOnlyWholeClick;
             if (a.ActionType is "DoubleClick" or "TripleClick")
-                return "A double or triple click is one unit — switch it to a single click first.";
+                return S.CaptureConvertMultiClick;
             if (a.RepeatCount > 1)
-                return "A repeating click can't be split — set Times to 1 first.";
+                return S.CaptureConvertRepeating;
             if (a.AtCursor)
-                return "An at-cursor click can't be split — the halves read a stored point.";
+                return S.CaptureConvertAtCursor;
             if (a.IsFocusClick)
-                return "A focus click can't be split — the halves don't fire the focus tap.";
+                return S.CaptureConvertFocusClick;
             return null;
         }
 
@@ -228,7 +230,7 @@ namespace TrueReplayer.Services
                     {
                         string? why = i + 1 < input.Count
                             ? WhyCannotMerge(input[i], input[i + 1])
-                            : "Select a click's Down half and the Up half that follows it.";
+                            : S.CaptureConvertSelectPair;
                         if (why == null) { i++; continue; }   // merged — skip its Up too
                         count++;
                         first ??= why;
@@ -245,7 +247,7 @@ namespace TrueReplayer.Services
                     if (TryClickButton(input[i].ActionType, down: false, out _))
                     {
                         count++;
-                        first ??= "Select a click's Down half and the Up half that follows it.";
+                        first ??= S.CaptureConvertSelectPair;
                     }
                 }
             }
@@ -270,13 +272,13 @@ namespace TrueReplayer.Services
         public static string? WhyCannotMerge(ActionItem down, ActionItem up)
         {
             if (!TryClickButton(down.ActionType, down: true, out string btn))
-                return "Select a click's Down half and the Up half that follows it.";
+                return S.CaptureConvertSelectPair;
             if (!TryClickButton(up.ActionType, down: false, out string upBtn) || upBtn != btn)
-                return "These two halves are not the same button's press and release.";
+                return S.CaptureConvertNotSameButton;
             if (Math.Abs(up.X - down.X) > ClickCoordTolerance || Math.Abs(up.Y - down.Y) > ClickCoordTolerance)
-                return "These halves press and release at different points — that is a drag, and only the paired form can express it.";
+                return S.CaptureConvertDrag;
             if (up.IsSkipped != down.IsSkipped)
-                return "One half is turned off and the other is not — merging would switch the whole click on or off.";
+                return S.CaptureConvertMixedSkip;
             return null;
         }
 

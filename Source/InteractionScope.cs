@@ -86,7 +86,10 @@ namespace TrueReplayer.Services
             public Action<string>? ForceClose;
         }
 
-        /// <summary>Name of the exclusive holder, or "" — diagnostics and refusal messages.</summary>
+        /// <summary>
+        /// Name of the exclusive holder, or "" — diagnostics and refusal messages (a message says it
+        /// through <see cref="Describe"/>, never raw).
+        /// </summary>
         public static string ExclusiveOwner
         {
             get { lock (_lock) return _exclusiveOwner; }
@@ -96,8 +99,75 @@ namespace TrueReplayer.Services
         public static bool IsAnyOpen => Volatile.Read(ref _count) > 0;
 
         /// <summary>
-        /// Name of an open scope, for diagnostics only ("skipped — region overlay open" beats
-        /// "skipped"). Takes the lock, so never call it from a hook callback.
+        /// What an owner's internal name ("insert WaitImage overlay", "file picker: launch target",
+        /// "dialog: save macro") is, said for the person, in the interface's language: a text that names
+        /// an open scope shows this, never the raw name (plan of languages, I5; the catalog area
+        /// engine-guards, scope).
+        ///
+        /// The shape is fixed, because other areas' sentences are written around it: a noun phrase with
+        /// its article, lower-case and without a full stop ("the reference image capture", "the window to
+        /// export macros"), and in Portuguese ALWAYS feminine singular ("a captura…", "a escolha…", "a
+        /// janela…", "a pergunta…"), so "… is still open" / "… ainda está aberta" agrees whichever one
+        /// comes. Pure — no lock, no state — so any thread may call it, the hook path included.
+        ///
+        /// The names are the call sites' own: every Enter/EnterExclusive/EnterExclusiveAsync owner, the
+        /// "dialog: " that ModalGate.TryEnter puts before its <c>what</c>, and the "file picker: " of
+        /// ProfileController.ShowFileDialogAsync. A new owner that is not listed here still reads right
+        /// (a capture, a file window, a dialog, a window), just less precisely — add it here.
+        /// </summary>
+        public static string Describe(string owner)
+        {
+            const string DialogPrefix = "dialog: ", PickerPrefix = "file picker: ";
+            if (string.IsNullOrEmpty(owner)) return S.GuardsScopeUnknown;
+            if (owner.StartsWith(DialogPrefix, StringComparison.Ordinal))
+            {
+                return owner[DialogPrefix.Length..] switch
+                {
+                    "save macro" => S.GuardsScopeSaveMacro,
+                    "unsaved changes" => S.GuardsScopeUnsavedChanges,
+                    "unapplied edits" => S.GuardsScopeUnappliedChanges,
+                    "delete folder" => S.GuardsScopeDeleteFolder,
+                    "reset settings" => S.GuardsScopeResetSettings,
+                    _ => S.GuardsScopeOtherDialog,
+                };
+            }
+            if (owner.StartsWith(PickerPrefix, StringComparison.Ordinal))
+            {
+                return owner[PickerPrefix.Length..] switch
+                {
+                    "launch target" => S.GuardsScopePickProgram,
+                    "reference image" => S.GuardsScopePickImage,
+                    "save image" => S.GuardsScopeSaveImage,
+                    "save file" => S.GuardsScopeSaveFile,
+                    "save macro" => S.GuardsScopeSaveMacroFile,
+                    "load macro" => S.GuardsScopeOpenMacroFile,
+                    "export macros" => S.GuardsScopeExportMacros,
+                    "import macros" => S.GuardsScopeImportMacros,
+                    _ => S.GuardsScopeFileWindow,
+                };
+            }
+            return owner switch
+            {
+                "automation capture overlay" or "insert If-Image overlay" or "insert WaitImage overlay"
+                    or "WaitImage recapture overlay" => S.GuardsScopeImageCapture,
+                "insert If-Pixel overlay" or "insert WaitPixelColor overlay"
+                    or "pixel colour pick overlay" => S.GuardsScopeColorPick,
+                "position pick overlay" => S.GuardsScopePointPick,
+                // RunRegionPickerAsync's "{logPrefix} region overlay": the hotkey's region, the search
+                // area or the region to read. The Clicker's goes through it too, for an area OR a point,
+                // so it falls to the plain "screen capture" below.
+                "insert screen text overlay" or "copy screen text overlay" or "Copy screen text region overlay"
+                    or "Automation ImageFound region overlay" or "WaitImage region overlay" => S.GuardsScopeRegionCapture,
+                "window detection" => S.GuardsScopeWindowPick,
+                _ when owner.EndsWith(" overlay", StringComparison.Ordinal) => S.GuardsScopeScreenCapture,
+                _ => S.GuardsScopeUnknown,
+            };
+        }
+
+        /// <summary>
+        /// Name of an open scope, for diagnostics and for what a skip line names (through
+        /// <see cref="Describe"/>: "skipped (the reference image capture is open)" beats "skipped").
+        /// Takes the lock, so never call it from a hook callback.
         /// Returns the EARLIEST-opened scope: with several open it is the outermost one, which is
         /// the one that describes what the user is actually doing.
         /// </summary>

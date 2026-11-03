@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useBridge } from '../../bridge/BridgeContext';
 import type { ActionItem, BrowserTestResult, SelectorAlternative } from '../../bridge/messageTypes';
-import { fmtNum, t } from '../../i18n';
+import { fmtNum, LANG, t, tn } from '../../i18n';
 import { newRequestId, useEditorTools } from '../../logic/useEditorTools';
 import { useSteps } from '../../logic/useSteps';
 import { typeBudgetMs } from '../../utils/typeBudget';
@@ -18,6 +18,9 @@ import './browserEditors.css';
 const TypeTextField = lazy(() => import('./browserText'));
 
 // What the engine waits with no timeout of its own, and the floor of the field (editor-passo-158).
+/** The extension's error codes, said in the interface's language (the same table as the Dock's). */
+const CODES: Readonly<Record<string, string | undefined>> = tn('dock.codes');
+
 const DEFAULT_TIMEOUT_MS = 5000;
 const MIN_TIMEOUT_MS = 1000;
 const MAX_TIMEOUT_MS = 86_400_000;
@@ -411,6 +414,12 @@ function TestAction({ step, locked }: { step: ActionItem; locked: boolean }) {
   };
 
   const via = result?.success ? result.matchedVia : null;
+  // The extension writes its message in English, naming the selector: the English build shows it as it
+  // came; another language says a code it knows in its own words (as the Dock does). Its tip goes
+  // under it unless the message already ends with it.
+  const known = LANG !== 'en-US' && result?.error?.code ? CODES[result.error.code] : undefined;
+  const said = known || result?.error?.message;
+  const tip = result?.error?.tip && !(said ?? '').includes(result.error.tip) ? result.error.tip : null;
   return (
     <>
       <button type="button" className="insp-button" disabled={locked || waiting} onClick={run}>
@@ -419,8 +428,8 @@ function TestAction({ step, locked }: { step: ActionItem; locked: boolean }) {
       </button>
       {result && !waiting && (
         <ResultCard ok={result.success} title={result.success ? t('browser.test.success', { ms: fmtNum(result.durationMs ?? 0) }) : result.error?.code || t('browser.test.failed')}>
-          {!result.success && result.error?.message && <span>{result.error.message}</span>}
-          {!result.success && result.error?.tip && <span className="insp-test-tip">{result.error.tip}</span>}
+          {!result.success && said && <span>{said}</span>}
+          {!result.success && tip && <span className="insp-test-tip">{tip}</span>}
           {via && <span><Tier selector={via.selector} tier={tierOf(via.tier)} /> {t('browser.test.viaFallback')}</span>}
           {via && (
             <span className="insp-test-via">

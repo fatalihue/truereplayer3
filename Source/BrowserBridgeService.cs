@@ -338,8 +338,8 @@ namespace TrueReplayer.Services
                     {
                         pending.Value.TrySetException(new BrowserActionException(
                             "EXTENSION_DISCONNECTED",
-                            "The browser bridge disconnected while the action was running.",
-                            "Chrome or the TrueReplayer extension was closed, reloaded, or recycled. Reconnect and run again."));
+                            S.BrowserDisconnectedRunning,
+                            S.BrowserDisconnectedTip));
                     }
                     _pendingCommands.Clear();
                 }
@@ -480,14 +480,14 @@ namespace TrueReplayer.Services
                                     // Support legacy string format and new {code, message, tip} object format
                                     if (errEl.ValueKind == JsonValueKind.String)
                                     {
-                                        tcs.TrySetException(new BrowserActionException(null, errEl.GetString() ?? "Unknown error", null) { TabUrl = failedOn, TabId = failedTab });
+                                        tcs.TrySetException(new BrowserActionException(null, errEl.GetString() ?? S.BrowserUnknownError, null) { TabUrl = failedOn, TabId = failedTab });
                                     }
                                     else if (errEl.ValueKind == JsonValueKind.Object)
                                     {
                                         var code = errEl.TryGetProperty("code", out var c) ? c.GetString() : null;
                                         var msg = errEl.TryGetProperty("message", out var m) ? m.GetString() : null;
                                         var tip = errEl.TryGetProperty("tip", out var t) ? t.GetString() : null;
-                                        tcs.TrySetException(new BrowserActionException(code, msg ?? "Unknown error", tip) { TabUrl = failedOn, TabId = failedTab });
+                                        tcs.TrySetException(new BrowserActionException(code, msg ?? S.BrowserUnknownError, tip) { TabUrl = failedOn, TabId = failedTab });
                                     }
                                     else
                                     {
@@ -647,7 +647,7 @@ namespace TrueReplayer.Services
         public async Task<PickResult> PickElementAsync(CancellationToken token, int timeoutMs = 30000)
         {
             if (!IsConnected)
-                throw new InvalidOperationException("Browser extension is not connected.");
+                throw new InvalidOperationException(S.BrowserNotConnected);
 
             var requestId = Guid.NewGuid().ToString("N")[..8];
             // RunContinuationsAsynchronously: these are completed from ReadMessagesAsync, i.e. the
@@ -664,7 +664,7 @@ namespace TrueReplayer.Services
             if (!SendMessage(new { type = "browser:pickElement", requestId }))
             {
                 _pendingCommands.TryRemove(requestId, out _);
-                throw new InvalidOperationException("Browser extension is not connected.");
+                throw new InvalidOperationException(S.BrowserNotConnected);
             }
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -914,7 +914,7 @@ namespace TrueReplayer.Services
             string? resolvedText = null, bool ignoreTabPin = false)
         {
             if (!IsConnected)
-                throw new InvalidOperationException("Browser extension is not connected.");
+                throw new InvalidOperationException(S.BrowserNotConnected);
 
             var commandId = Guid.NewGuid().ToString("N")[..8];
             // RunContinuationsAsynchronously: these are completed from ReadMessagesAsync, i.e. the
@@ -952,7 +952,7 @@ namespace TrueReplayer.Services
                     break;
                 default:
                     _pendingCommands.TryRemove(commandId, out _);
-                    throw new ArgumentException($"Unknown browser action type: {action.ActionType}");
+                    throw new ArgumentException(S.BrowserUnknownAction(type: action.ActionType));
             }
 
             // The action's timeout budget arrives ALREADY DECIDED in timeoutMs — all three callers
@@ -1049,8 +1049,8 @@ namespace TrueReplayer.Services
                 _pendingCommands.TryRemove(commandId, out _);
                 throw new BrowserActionException(
                     "EXTENSION_DISCONNECTED",
-                    "The browser bridge disconnected before the action could be sent.",
-                    "Chrome or the TrueReplayer extension was closed, reloaded, or recycled. Reconnect and run again.");
+                    S.BrowserDisconnectedBeforeSend,
+                    S.BrowserDisconnectedTip);
             }
 
             using var timeoutCts = new CancellationTokenSource(pipeTimeout);
@@ -1175,18 +1175,20 @@ namespace TrueReplayer.Services
             SendMessage(new { type = "browser:setRecording", enabled });
         }
 
+        // In the interface's language (i18n/*/engine-browser.ts): one sentence per step, its name and
+        // what was missing. The seconds are grouped as the language writes a number.
         private static string GetFriendlyTimeoutMessage(string command, int timeoutMs)
         {
-            var seconds = timeoutMs / 1000;
+            var seconds = S.Num(timeoutMs / 1000);
             return command switch
             {
-                "click" => $"Click Element timed out after {seconds}s. Element not found or not visible.",
-                "rightClick" => $"Right Click Element timed out after {seconds}s. Element not found or not visible.",
-                "type" => $"Type Text timed out after {seconds}s. Target field not found or not visible.",
-                "waitElement" => $"Wait Element timed out after {seconds}s. Element not found on the page.",
-                "navigate" => $"Page didn't finish loading after {seconds}s.",
-                "selectOption" => $"Select Option timed out after {seconds}s. The <select> element wasn't found.",
-                _ => $"Browser action timed out after {seconds}s."
+                "click" => S.BrowserTimeoutClick(seconds),
+                "rightClick" => S.BrowserTimeoutRightClick(seconds),
+                "type" => S.BrowserTimeoutType(seconds),
+                "waitElement" => S.BrowserTimeoutWaitElement(seconds),
+                "navigate" => S.BrowserTimeoutNavigate(seconds),
+                "selectOption" => S.BrowserTimeoutSelectOption(seconds),
+                _ => S.BrowserTimeoutGeneric(seconds)
             };
         }
 
@@ -1194,13 +1196,13 @@ namespace TrueReplayer.Services
         {
             return command switch
             {
-                "click" or "rightClick" => "Use the Text Match field to match by visible text, or pick the element with the crosshair.",
+                "click" or "rightClick" => S.BrowserTimeoutTipClick,
                 // BrowserType has no Text Match field in the editor — only CSS selector + crosshair.
-                "type" => "Refine the CSS selector or pick the element with the crosshair.",
-                "waitElement" => "Use the Text Match field or increase the timeout.",
-                "navigate" => "Check the URL and your internet connection.",
-                "selectOption" => "Verify the CSS selector points to a native <select> and that the option's text/value matches exactly.",
-                _ => "Make sure the page is fully loaded."
+                "type" => S.BrowserTimeoutTipType,
+                "waitElement" => S.BrowserTimeoutTipWaitElement,
+                "navigate" => S.BrowserTimeoutTipNavigate,
+                "selectOption" => S.BrowserTimeoutTipSelectOption,
+                _ => S.BrowserTimeoutTipGeneric
             };
         }
 
@@ -1249,7 +1251,9 @@ namespace TrueReplayer.Services
             Tip = tip;
         }
 
+        // One sentence with both blanks, in the interface's language ("… Tip: …" / "… Dica: …"). A
+        // message or tip the extension wrote arrives in English and goes in as it came.
         private static string BuildMessage(string message, string? tip)
-            => string.IsNullOrEmpty(tip) ? message : $"{message} Tip: {tip}";
+            => string.IsNullOrEmpty(tip) ? message : S.BrowserWithTip(message: message, tip: tip);
     }
 }

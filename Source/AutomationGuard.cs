@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 
 namespace TrueReplayer.Services
@@ -21,9 +22,30 @@ namespace TrueReplayer.Services
     /// </summary>
     internal static class AutomationGuard
     {
+        /// <summary>What kind of thing held an autonomous fire.</summary>
+        internal enum BlockKind
+        {
+            /// An InteractionScope: an overlay, a file picker, a ContentDialog, window detection.
+            Scope,
+            /// Editors holding unsaved work (see HeldEditors), one kind per thing the line can name.
+            DataTable, Automation, Step, Row,
+            /// No scope, but the frontend's suppression: a React modal is up.
+            Dialog,
+            /// A hotkey field waiting for its key.
+            HotkeyCapture,
+        }
+
         /// <summary>
-        /// Null when nothing blocks an autonomous fire. Otherwise a short phrase naming what does,
-        /// suitable for the Automation panel's result line.
+        /// What held a fire: the kind, and for a scope or an editor its internal name (the scope's owner,
+        /// the editor's claim). Kept as what happened rather than as words: the result line says it when
+        /// it is read (<see cref="SkippedLine"/> and its two siblings), in the interface's language.
+        /// </summary>
+        internal sealed record Block(BlockKind Kind, string Owner = "");
+
+        /// <summary>
+        /// Null when nothing blocks an autonomous fire. Otherwise the result line naming what does
+        /// ("skipped (the reference image capture is open)"), suitable for the Automation panel —
+        /// the bookkeeping itself reads <see cref="LastBlock"/>.
         ///
         /// IsCaptureDialogOpen rather than CaptureHotkeyMode: the latter is additionally gated on
         /// TrueReplayer being the foreground app, which an autonomous fire by definition almost
@@ -31,47 +53,33 @@ namespace TrueReplayer.Services
         /// </summary>
         public static string? BlockedReason()
         {
+            var block = CurrentBlock();
+            if (block == null) return null;
+            LastBlock = block;
+            return SkippedLine(block);
+        }
+
+        private static Block? CurrentBlock()
+        {
             // Most specific first: the scope knows WHICH interaction, and it is also the most
             // common blocker now that overlays and pickers register.
             var owner = InteractionScope.CurrentOwner;
-            if (owner != null)
-            {
-                var reason = $"skipped ({owner})";
-                LastReason = reason;
-                return reason;
-            }
+            if (owner != null) return new Block(BlockKind.Scope, owner);
             // Only the editors a profile swap can hurt. The Automations panel edits a trigger by
             // profile NAME and re-seeds only when it holds nothing of the user's, so a fire that
             // swaps the active profile leaves its draft alone — holding every automation off while
             // someone tunes one of them would lose schedule fires for nothing. Its claim is for the
             // two gates that END the process (the close guard and the update gate).
-            string? editor = null;
             foreach (var held in HeldEditors())
-                if (!FireSafeEditors.Contains(held)) { editor = held; break; }
-            if (editor != null)
-            {
-                var reason = $"skipped ({EditorActivity(editor)})";
-                LastReason = reason;
-                return reason;
-            }
-            if (TrueReplayer.InputHookManager.SuppressAllHotkeys)
-            {
-                // No scope open, so this is the frontend channel: a React modal is up.
-                const string reason = "skipped (a dialog is open)";
-                LastReason = reason;
-                return reason;
-            }
-            if (TrueReplayer.InputHookManager.IsCaptureDialogOpen)
-            {
-                const string reason = "skipped (capturing a hotkey)";
-                LastReason = reason;
-                return reason;
-            }
+                if (!FireSafeEditors.Contains(held)) return new Block(EditorKind(held), held);
+            // No scope open, so this is the frontend channel: a React modal is up.
+            if (TrueReplayer.InputHookManager.SuppressAllHotkeys) return new Block(BlockKind.Dialog);
+            if (TrueReplayer.InputHookManager.IsCaptureDialogOpen) return new Block(BlockKind.HotkeyCapture);
             return null;
         }
 
         /// <summary>
-        /// The phrase from the most recent blocked check.
+        /// What the most recent blocked check found.
         ///
         /// It exists because the decision and the bookkeeping happen in different places: the fire
         /// path decides (and returns a bare enum), TriggerService records. Re-asking BlockedReason
@@ -81,13 +89,52 @@ namespace TrueReplayer.Services
         /// Two skips racing can therefore label one with the other's reason. That is a cosmetic
         /// mislabel in a diagnostics line, and both were genuinely blocked; nothing branches on it.
         /// </summary>
-        public static string? LastReason
+        public static Block? LastBlock
         {
-            get => Volatile.Read(ref _lastReason);
-            private set => Volatile.Write(ref _lastReason, value);
+            get => Volatile.Read(ref _lastBlock);
+            private set => Volatile.Write(ref _lastBlock, value);
         }
 
-        private static string? _lastReason;
+        private static Block? _lastBlock;
+
+        // ── The result lines that name a block, one whole sentence per kind (catalog area
+        // engine-automations, result). Null is a modal skip with nothing on record. ──
+
+        /// <summary>A fire refused right now: "skipped (…)".</summary>
+        internal static string SkippedLine(Block? block) => block is null ? S.AutomationsResultSkippedUnknown : block.Kind switch
+        {
+            BlockKind.Scope => S.AutomationsResultSkippedScope(InteractionScope.Describe(block.Owner)),
+            BlockKind.DataTable => S.AutomationsResultSkippedDataTable,
+            BlockKind.Automation => S.AutomationsResultSkippedAutomation,
+            BlockKind.Step => S.AutomationsResultSkippedStep,
+            BlockKind.Row => S.AutomationsResultSkippedRow,
+            BlockKind.HotkeyCapture => S.AutomationsResultSkippedHotkey,
+            _ => S.AutomationsResultSkippedDialog,
+        };
+
+        /// <summary>An interval or schedule tick that waited its grace window out: "missed (… past the grace window)".</summary>
+        internal static string MissedLine(Block? block) => block is null ? S.AutomationsResultMissedDialog : block.Kind switch
+        {
+            BlockKind.Scope => S.AutomationsResultMissedScope(InteractionScope.Describe(block.Owner)),
+            BlockKind.DataTable => S.AutomationsResultMissedDataTable,
+            BlockKind.Automation => S.AutomationsResultMissedAutomation,
+            BlockKind.Step => S.AutomationsResultMissedStep,
+            BlockKind.Row => S.AutomationsResultMissedRow,
+            BlockKind.HotkeyCapture => S.AutomationsResultMissedHotkey,
+            _ => S.AutomationsResultMissedDialog,
+        };
+
+        /// <summary>A condition's edge that aged out while held: "fire skipped (…) — edge expired".</summary>
+        internal static string EdgeExpiredLine(Block? block) => block is null ? S.AutomationsResultEdgeUnknown : block.Kind switch
+        {
+            BlockKind.Scope => S.AutomationsResultEdgeScope(InteractionScope.Describe(block.Owner)),
+            BlockKind.DataTable => S.AutomationsResultEdgeDataTable,
+            BlockKind.Automation => S.AutomationsResultEdgeAutomation,
+            BlockKind.Step => S.AutomationsResultEdgeStep,
+            BlockKind.Row => S.AutomationsResultEdgeRow,
+            BlockKind.HotkeyCapture => S.AutomationsResultEdgeHotkey,
+            _ => S.AutomationsResultEdgeDialog,
+        };
 
         /// <summary>
         /// The row editor's pending-edit claim, as a UTC tick stamp (0 = nothing pending).
@@ -177,41 +224,44 @@ namespace TrueReplayer.Services
         /// <summary>Owners whose work an autonomous fire cannot reach — see BlockedReason.</summary>
         private static readonly HashSet<string> FireSafeEditors = new(StringComparer.Ordinal) { "automation-panel" };
 
-        /// <summary>What the skip line says the user is doing.</summary>
-        private static string EditorActivity(string owner) => owner switch
+        /// <summary>What the skip line says the user is doing, by the editor's claim.</summary>
+        private static BlockKind EditorKind(string owner) => owner switch
         {
-            "data-panel" => "editing the data table",
-            "automation-panel" => "editing an automation",
-            _ => "editing a row",
+            "data-panel" => BlockKind.DataTable,
+            "automation-panel" => BlockKind.Automation,
+            "inspector" => BlockKind.Step,
+            _ => BlockKind.Row,
         };
 
         /// <summary>
         /// The close guard's sentence: which editors hold changes that never reached the profile.
-        /// Several owners read as a list, with the verb agreeing.
+        /// One whole sentence for one editor, and for several a list with the verb agreeing — the first
+        /// name in its sentence-start form, so nothing is capitalised by code.
         /// </summary>
         internal static string DescribeUnappliedEdits(IReadOnlyList<string> owners)
         {
-            var names = new List<string>();
+            var editors = new List<(string Start, string Inside)>();
             foreach (var owner in owners)
             {
-                string name = owner switch
-                {
-                    "sheet" => "the action editor",
-                    "row-dialog" => "a row editor",
-                    "insert-dialog" => "an insert dialog",
-                    "data-panel" => "the data table",
-                    "automation-panel" => "the Automations panel",
-                    _ => "an open editor",
-                };
-                if (!names.Contains(name)) names.Add(name);
+                var names = EditorNames(owner);
+                if (!editors.Contains(names)) editors.Add(names);
             }
-            if (names.Count == 0) names.Add("an open editor");
-            var text = names.Count == 1
-                ? names[0]
-                : string.Join(", ", names.GetRange(0, names.Count - 1)) + " and " + names[^1];
-            return char.ToUpperInvariant(text[0]) + text[1..]
-                + (names.Count == 1 ? " has" : " have") + " changes that haven't been applied.";
+            if (editors.Count == 0) editors.Add(EditorNames(""));
+            if (editors.Count == 1) return S.GuardsUnappliedSingle(editors[0].Start);
+            return S.GuardsUnappliedSeveral(S.List(editors.Select((e, i) => i == 0 ? e.Start : e.Inside)));
         }
+
+        /// <summary>An editor's name at the start of the sentence and inside the list.</summary>
+        private static (string Start, string Inside) EditorNames(string owner) => owner switch
+        {
+            "sheet" => (S.GuardsUnappliedStartSheet, S.GuardsUnappliedInsideSheet),
+            "row-dialog" => (S.GuardsUnappliedStartRowDialog, S.GuardsUnappliedInsideRowDialog),
+            "insert-dialog" => (S.GuardsUnappliedStartInsertDialog, S.GuardsUnappliedInsideInsertDialog),
+            "data-panel" => (S.GuardsUnappliedStartDataPanel, S.GuardsUnappliedInsideDataPanel),
+            "automation-panel" => (S.GuardsUnappliedStartAutomationPanel, S.GuardsUnappliedInsideAutomationPanel),
+            "inspector" => (S.GuardsUnappliedStartInspector, S.GuardsUnappliedInsideInspector),
+            _ => (S.GuardsUnappliedStartUnknown, S.GuardsUnappliedInsideUnknown),
+        };
 
         /// <summary>True while any editor holds a claim — for the bridge's transition log.</summary>
         public static bool AnyEditorClaim

@@ -1055,7 +1055,7 @@ export type IncomingMessage =
   | { type: 'update:progress'; payload: { percent: number } }
   | { type: 'update:ready'; payload: Record<string, never> }
   // version: on "Update postponed: …", the version put off, when the engine knows it.
-  | { type: 'update:error'; payload: { message: string; version?: string } }
+  | { type: 'update:error'; payload: { message: string; version?: string; /** The update was put off (it waits for the next chance), not failed. */ postponed?: boolean } }
   | { type: 'update:none'; payload: { currentVersion: string } }
   | { type: 'browser:status'; payload: { connected: boolean } }
   | { type: 'browser:pickResult'; payload: { requestId?: string; selector: string | null; alternatives?: SelectorAlternative[]; error?: string } }

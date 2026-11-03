@@ -15,7 +15,21 @@ namespace TrueReplayer.Services
     /// </summary>
     public static class ExampleLibrary
     {
-        public const string FolderName = "Examples";
+        /// <summary>
+        /// The folder "Use this example" puts the copies in. A name the app writes, so it is born in
+        /// the interface's language (Examples / Exemplos, plan of languages §2.4); the examples
+        /// themselves stay in Portuguese in both (the owner's decision).
+        /// </summary>
+        public static string FolderName => S.ProfilesNamesExamples;
+
+        // Both languages' names, whatever the interface's: whoever switched languages already has the
+        // folder under the other one. A recognizer, not text on screen — the catalog's names.examples.
+        private static readonly string[] FolderNames = { "Examples", "Exemplos" };
+
+        /// <summary>Whether a library folder is the examples' folder, in either language.</summary>
+        public static bool IsFolderName(string? name) =>
+            name != null && FolderNames.Any(n => string.Equals(n, name.Trim(), StringComparison.OrdinalIgnoreCase));
+
         private const string ResourceName = "TrueReplayer.Examples.trprofile";
 
         public sealed record ExampleInfo(string Name, string? Description, List<string> Tags, string? IconEmoji, int ActionCount, List<string> Runs);

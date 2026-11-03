@@ -166,8 +166,8 @@ namespace TrueReplayer.Services
             }
 
             _bar = bar ?? new CaptureBar(pointPick
-                ? (_showColor ? "Pick the color" : "Pick the point")
-                : regionOnly ? "Draw the area" : "Capture the image");
+                ? (_showColor ? S.CaptureTitlePickColor : S.CaptureTitlePickPoint)
+                : regionOnly ? S.CaptureTitleDrawArea : S.CaptureTitleCaptureImage);
 
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.Manual;
@@ -1113,6 +1113,9 @@ namespace TrueReplayer.Services
             public RectangleF Bar;
             public RectangleF Cancel;
             public RectangleF Done = RectangleF.Empty;
+            // The buttons' words as they were measured, so the paint draws exactly what was laid out.
+            public string CancelText = "";
+            public string DoneText = "";
             public float Scale;
             public readonly List<(string Text, Font Font, Brush Brush, PointF At)> Texts = new();
             public readonly List<(RectangleF Rect, string Text, bool OnAccent)> Caps = new();
@@ -1149,16 +1152,19 @@ namespace TrueReplayer.Services
             float Measure(string text, Font font) => g.MeasureString(text, font, PointF.Empty, StringFormat.GenericTypographic).Width;
             float CapWidth(string text) => Measure(text, fonts.Cap) + 10 * s;
 
+            // The caps are keys and stay as the keycap writes them; the words after them, the hint and
+            // the buttons are in the interface's language (i18n/*/engine-capture.ts).
             var keys = new List<(string Cap, string Label)>();
             if (_pointPick)
             {
-                keys.Add(("Scroll", "zoom"));
-                keys.Add(("Shift", "slow"));
-                keys.Add(("Arrows", "1 px"));
-                keys.Add(("Enter", "pick"));
+                keys.Add(("Scroll", S.CaptureKeysZoom));
+                keys.Add(("Shift", S.CaptureKeysSlow));
+                keys.Add(("Arrows", S.CaptureKeysNudge));
+                keys.Add(("Enter", S.CaptureKeysPick));
             }
-            string? hint = _pointPick ? null : (_bar.Hint ?? "Drag to draw · drag the edges to adjust");
-            string cancelText = _seeded ? "Keep current" : "Cancel";
+            string? hint = _pointPick ? null : (_bar.Hint ?? S.CaptureHint);
+            string cancelText = _seeded ? S.CaptureKeepCurrent : S.CaptureCancel;
+            string doneText = S.CaptureDone;
             bool hasDone = !_pointPick;
 
             float titleW = Measure(_bar.Title, fonts.Title);
@@ -1169,7 +1175,7 @@ namespace TrueReplayer.Services
             float hintW = hint != null ? Measure(hint, fonts.Body) : 0;
             float middleW = keys.Count > 0 ? keysW : hintW;
             float ButtonW(string text, string cap) => 12 * s + Measure(text, fonts.Button) + 6 * s + CapWidth(cap) + 8 * s;
-            float buttonsW = ButtonW(cancelText, "Esc") + (hasDone ? gap + ButtonW("Done", "Enter") : 0);
+            float buttonsW = ButtonW(cancelText, "Esc") + (hasDone ? gap + ButtonW(doneText, "Enter") : 0);
 
             float sep = 1 + 2 * groupGap;
             float Total(bool withFor, bool withMiddle) =>
@@ -1230,7 +1236,9 @@ namespace TrueReplayer.Services
             float cancelW = ButtonW(cancelText, "Esc");
             layout.Cancel = new RectangleF(bx, cy - bh / 2f, cancelW, bh);
             if (hasDone)
-                layout.Done = new RectangleF(bx + cancelW + gap, cy - bh / 2f, ButtonW("Done", "Enter"), bh);
+                layout.Done = new RectangleF(bx + cancelW + gap, cy - bh / 2f, ButtonW(doneText, "Enter"), bh);
+            layout.CancelText = cancelText;
+            layout.DoneText = doneText;
             return layout;
         }
 
@@ -1258,9 +1266,9 @@ namespace TrueReplayer.Services
             foreach (float sx in l.Separators)
                 g.DrawLine(BarSeparatorPen, sx, bar.Y + bar.Height / 2f - 10 * s, sx, bar.Y + bar.Height / 2f + 10 * s);
 
-            DrawButton(g, l.Cancel, _seeded ? "Keep current" : "Cancel", "Esc", accent: false, hover: _barHover == BarHit.Cancel, fonts, s);
+            DrawButton(g, l.Cancel, l.CancelText, "Esc", accent: false, hover: _barHover == BarHit.Cancel, fonts, s);
             if (!l.Done.IsEmpty)
-                DrawButton(g, l.Done, "Done", "Enter", accent: true, hover: _barHover == BarHit.Done, fonts, s);
+                DrawButton(g, l.Done, l.DoneText, "Enter", accent: true, hover: _barHover == BarHit.Done, fonts, s);
 
             g.SmoothingMode = oldSmoothing;
             g.TextRenderingHint = oldText;
@@ -1506,7 +1514,9 @@ namespace TrueReplayer.Services
             // narrow enough to fit the chord at that height even on the smallest zoom level.
             if (_precisionActive)
             {
-                const string slowText = "SLOW";
+                // In the interface's language ("SLOW" / "LENTO"): five letters still fit the chord of
+                // the smallest disc (143 px) at this height.
+                string slowText = S.CaptureSlowBadge;
                 var slowSize = g.MeasureString(slowText, SlowBadgeFont);
                 float badgeW = slowSize.Width + 10;
                 float badgeH = slowSize.Height + 2;

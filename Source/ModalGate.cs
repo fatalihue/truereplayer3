@@ -45,6 +45,8 @@ namespace TrueReplayer.Services
         /// means "Exit from the tray did nothing" and "the close button did nothing" look
         /// identical to a user cancelling, in the UI AND in the session log. One line here makes
         /// the difference visible without inventing UI for a case nobody should hit often.
+        /// It also names the scope ("dialog: {what}"), which a skip line or a refusal shows through
+        /// InteractionScope.Describe — a new name gets its words there.
         /// </param>
         public static IDisposable? TryEnter(string what = "dialog")
         {

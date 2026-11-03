@@ -81,6 +81,13 @@ namespace TrueReplayer.Services
         private static ToggleSwitch _shortcuts = null!, _automations = null!, _remaps = null!;
         private static TextBlock _automationsText = null!, _remapsText = null!;
         private static TextBlock _clickerText = null!;
+        // The fixed labels, written in the interface's language when it changes (ApplyLabels): the
+        // panel is made once, and the language can change while the app runs.
+        private static Button _open = null!, _clicker = null!, _settings = null!, _quit = null!;
+        private static HyperlinkButton _clear = null!, _allMacros = null!;
+        private static TextBlock _macrosCaption = null!, _shortcutsLabel = null!, _automationsLabel = null!, _remapsLabel = null!;
+        private static TextBlock _settingsLabel = null!, _quitLabel = null!;
+        private static string? _labelsLanguage;
         // Start as no list could be, so the first fill always draws (an empty list draws its own line).
         private static string _macrosKey = "(not drawn yet)", _noticesKey = "(not drawn yet)";
         private static bool _refreshing;
@@ -218,10 +225,10 @@ namespace TrueReplayer.Services
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             header.Children.Add(new TextBlock { Text = AppIdentity.DisplayName, FontSize = 14, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
-            var open = new Button { Content = "Open", Padding = new Thickness(12, 4, 12, 5) };
-            open.Click += (_, _) => { Hide(); OnOpenWindow?.Invoke(); };
-            Grid.SetColumn(open, 1);
-            header.Children.Add(open);
+            _open = new Button { Padding = new Thickness(12, 4, 12, 5) };
+            _open.Click += (_, _) => { Hide(); OnOpenWindow?.Invoke(); };
+            Grid.SetColumn(_open, 1);
+            header.Children.Add(_open);
             stack.Children.Add(header);
 
             // The notices held while the window was hidden, with Clear.
@@ -231,10 +238,10 @@ namespace TrueReplayer.Services
             noticeHead.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             _noticeTitle = new TextBlock { FontSize = 13, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
             noticeHead.Children.Add(_noticeTitle);
-            var clear = new HyperlinkButton { Content = "Clear", Padding = new Thickness(6, 2, 6, 2) };
-            clear.Click += (_, _) => { OnClearNotices?.Invoke(); Refresh(); Place(); };
-            Grid.SetColumn(clear, 1);
-            noticeHead.Children.Add(clear);
+            _clear = new HyperlinkButton { Padding = new Thickness(6, 2, 6, 2) };
+            _clear.Click += (_, _) => { OnClearNotices?.Invoke(); Refresh(); Place(); };
+            Grid.SetColumn(_clear, 1);
+            noticeHead.Children.Add(_clear);
             _noticeBox.Children.Add(noticeHead);
             _noticeList = new StackPanel { Spacing = 6 };
             _noticeBox.Children.Add(_noticeList);
@@ -258,74 +265,99 @@ namespace TrueReplayer.Services
             stack.Children.Add(_card);
 
             // The macros with a hotkey (the pinned ones first): a click runs one, as its hotkey would.
-            stack.Children.Add(Caption("Macros"));
+            _macrosCaption = Caption();
+            stack.Children.Add(_macrosCaption);
             _macroList = new StackPanel { Spacing = 0 };
             stack.Children.Add(_macroList);
-            var all = new HyperlinkButton { Content = "All macros…", Padding = new Thickness(6, 2, 6, 2) };
-            all.Click += (_, _) => { Hide(); OnAllMacros?.Invoke(); };
-            stack.Children.Add(all);
+            _allMacros = new HyperlinkButton { Padding = new Thickness(6, 2, 6, 2) };
+            _allMacros.Click += (_, _) => { Hide(); OnAllMacros?.Invoke(); };
+            stack.Children.Add(_allMacros);
 
             // The master switches, and the Clicker.
             stack.Children.Add(Separator());
-            _shortcuts = AddSwitch(stack, "Shortcuts", out _, on => OnSetShortcuts?.Invoke(on));
-            _automations = AddSwitch(stack, "Automations", out _automationsText, on => OnSetAutomations?.Invoke(on));
-            _remaps = AddSwitch(stack, "Key Remaps", out _remapsText, on => OnSetRemaps?.Invoke(on));
-            var clicker = new Button { HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(8, 6, 8, 6), Background = new SolidColorBrush(Colors.Transparent), BorderThickness = new Thickness(0) };
+            _shortcuts = AddSwitch(stack, out _shortcutsLabel, out _, on => OnSetShortcuts?.Invoke(on));
+            _automations = AddSwitch(stack, out _automationsLabel, out _automationsText, on => OnSetAutomations?.Invoke(on));
+            _remaps = AddSwitch(stack, out _remapsLabel, out _remapsText, on => OnSetRemaps?.Invoke(on));
+            _clicker = new Button { HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(8, 6, 8, 6), Background = new SolidColorBrush(Colors.Transparent), BorderThickness = new Thickness(0) };
             var clickerGrid = new Grid();
             clickerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             clickerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            _clickerText = new TextBlock { Text = "Clicker" };
+            _clickerText = new TextBlock { Text = S.TrayPanelClicker };   // Refresh writes it from then on
             clickerGrid.Children.Add(_clickerText);
             var chevron = new FontIcon { Glyph = "", FontSize = 12 };
             Grid.SetColumn(chevron, 1);
             clickerGrid.Children.Add(chevron);
-            clicker.Content = clickerGrid;
-            AutomationProperties.SetName(clicker, "Clicker");
-            clicker.Click += (_, _) => { Hide(); OnOpenClicker?.Invoke(); };
-            stack.Children.Add(clicker);
+            _clicker.Content = clickerGrid;
+            _clicker.Click += (_, _) => { Hide(); OnOpenClicker?.Invoke(); };
+            stack.Children.Add(_clicker);
 
             // Settings and Quit.
             stack.Children.Add(Separator());
             var footer = new Grid();
             footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            var settings = IconButton("", "Settings");
-            settings.Click += (_, _) => { Hide(); OnOpenSettings?.Invoke(); };
-            footer.Children.Add(settings);
-            var quit = IconButton("", $"Quit {AppIdentity.DisplayName}");
-            quit.Click += (_, _) => { Hide(); OnQuit?.Invoke(); };
-            Grid.SetColumn(quit, 1);
-            footer.Children.Add(quit);
+            _settings = IconButton("", out _settingsLabel);
+            _settings.Click += (_, _) => { Hide(); OnOpenSettings?.Invoke(); };
+            footer.Children.Add(_settings);
+            _quit = IconButton("", out _quitLabel);
+            _quit.Click += (_, _) => { Hide(); OnQuit?.Invoke(); };
+            Grid.SetColumn(_quit, 1);
+            footer.Children.Add(_quit);
             stack.Children.Add(footer);
+            ApplyLabels();
             return _root;
         }
 
-        private static TextBlock Caption(string text) => new() { Text = text, FontSize = 12, Opacity = 0.7, Margin = new Thickness(0, 2, 0, -4) };
+        /// <summary>
+        /// The fixed labels in the interface's language (the engine-tray area), and the names a screen
+        /// reader says for them. Again at the first refresh after the language changed.
+        /// </summary>
+        private static void ApplyLabels()
+        {
+            _labelsLanguage = S.Language;
+            _open.Content = S.TrayPanelOpen;
+            _clear.Content = S.TrayPanelClear;
+            _macrosCaption.Text = S.TrayPanelMacros;
+            _allMacros.Content = S.TrayPanelAllMacros;
+            SetLabel(_shortcuts, _shortcutsLabel, S.TrayPanelShortcuts);
+            SetLabel(_automations, _automationsLabel, S.TrayPanelAutomations);
+            SetLabel(_remaps, _remapsLabel, S.TrayPanelRemaps);
+            AutomationProperties.SetName(_clicker, S.TrayPanelClicker);
+            SetLabel(_settings, _settingsLabel, S.TrayPanelSettings);
+            SetLabel(_quit, _quitLabel, S.TrayPanelQuit(app: AppIdentity.DisplayName));
+        }
+
+        private static void SetLabel(Control control, TextBlock label, string text)
+        {
+            label.Text = text;
+            AutomationProperties.SetName(control, text);
+        }
+
+        private static TextBlock Caption() => new() { FontSize = 12, Opacity = 0.7, Margin = new Thickness(0, 2, 0, -4) };
 
         private static Border Separator() => new() { Height = 1, Opacity = 0.18, Background = new SolidColorBrush(Colors.Gray), Margin = new Thickness(0, 2, 0, 2) };
 
-        private static Button IconButton(string glyph, string label)
+        private static Button IconButton(string glyph, out TextBlock label)
         {
             var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
             content.Children.Add(new FontIcon { Glyph = glyph, FontSize = 14 });
-            content.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center });
-            var b = new Button { Content = content, Padding = new Thickness(8, 5, 10, 6), Background = new SolidColorBrush(Colors.Transparent), BorderThickness = new Thickness(0) };
-            AutomationProperties.SetName(b, label);
-            return b;
+            label = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
+            content.Children.Add(label);
+            return new Button { Content = content, Padding = new Thickness(8, 5, 10, 6), Background = new SolidColorBrush(Colors.Transparent), BorderThickness = new Thickness(0) };
         }
 
-        private static ToggleSwitch AddSwitch(StackPanel parent, string label, out TextBlock detail, Action<bool> changed)
+        private static ToggleSwitch AddSwitch(StackPanel parent, out TextBlock label, out TextBlock detail, Action<bool> changed)
         {
             var row = new Grid { Padding = new Thickness(8, 0, 0, 0) };
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             var text = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
-            text.Children.Add(new TextBlock { Text = label });
+            label = new TextBlock();
+            text.Children.Add(label);
             detail = new TextBlock { Opacity = 0.7 };
             text.Children.Add(detail);
             row.Children.Add(text);
             var toggle = new ToggleSwitch { OnContent = "", OffContent = "", MinWidth = 0, HorizontalAlignment = HorizontalAlignment.Right };
-            AutomationProperties.SetName(toggle, label);
             toggle.Toggled += (_, _) => { if (!_refreshing) changed(toggle.IsOn); };
             Grid.SetColumn(toggle, 1);
             row.Children.Add(toggle);
@@ -360,6 +392,9 @@ namespace TrueReplayer.Services
             _refreshing = true;
             try
             {
+                // The language changed since the labels were written (Settings › General).
+                if (_labelsLanguage != S.Language) ApplyLabels();
+
                 // The notices: rebuilt only when they change, the rest in place.
                 string noticesKey = string.Join("\n", s.Notices.Select(n => n.At.Ticks + n.Message));
                 if (noticesKey != _noticesKey)
@@ -372,16 +407,16 @@ namespace TrueReplayer.Services
                         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                         row.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, MaxLines = 3, TextTrimming = TextTrimming.CharacterEllipsis, FontSize = 12 });
-                        var time = new TextBlock { Text = at.ToString("HH:mm"), FontSize = 12, Opacity = 0.7, Margin = new Thickness(8, 0, 0, 0) };
+                        var time = new TextBlock { Text = at.ToString("HH:mm", S.Culture), FontSize = 12, Opacity = 0.7, Margin = new Thickness(8, 0, 0, 0) };
                         Grid.SetColumn(time, 1);
                         row.Children.Add(time);
                         _noticeList.Children.Add(row);
                     }
                 }
                 _noticeBox.Visibility = s.Notices.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-                _noticeTitle.Text = $"{s.Notices.Count} notice{(s.Notices.Count == 1 ? "" : "s")} while you were away";
+                _noticeTitle.Text = S.TrayPanelNotices(n: S.Num(s.Notices.Count), count: s.Notices.Count);
 
-                _macroName.Text = s.Macro ?? "No macro open";
+                _macroName.Text = s.Macro ?? S.TrayPanelNoMacro;
                 _macroLine.Text = s.Line;
                 _macroAction.Visibility = s.ActionText != null ? Visibility.Visible : Visibility.Collapsed;
                 _macroActionText.Text = s.ActionText ?? "";
@@ -393,20 +428,21 @@ namespace TrueReplayer.Services
                 if (s.ActionStops || _accent != null) _macroAction.Foreground = new SolidColorBrush(Colors.White);
                 else _macroAction.ClearValue(Control.ForegroundProperty);
 
-                string macrosKey = string.Join("\n", s.Macros.Select(m => $"{m.Name}|{m.Hotkey}|{m.Running}"));
+                // The language too: the empty line and "Running" are written into the rows.
+                string macrosKey = S.Language + "\n" + string.Join("\n", s.Macros.Select(m => $"{m.Name}|{m.Hotkey}|{m.Running}"));
                 if (macrosKey != _macrosKey)
                 {
                     _macrosKey = macrosKey;
                     _macroList.Children.Clear();
                     if (s.Macros.Count == 0)
-                        _macroList.Children.Add(new TextBlock { Text = "No macro has a hotkey yet.", FontSize = 12, Opacity = 0.7, Margin = new Thickness(8, 4, 0, 4) });
+                        _macroList.Children.Add(new TextBlock { Text = S.TrayPanelNoHotkeys, FontSize = 12, Opacity = 0.7, Margin = new Thickness(8, 4, 0, 4) });
                     foreach (var m in s.Macros)
                     {
                         var grid = new Grid();
                         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                         grid.Children.Add(new TextBlock { Text = m.Name, TextTrimming = TextTrimming.CharacterEllipsis });
-                        var side = new TextBlock { Text = m.Running ? "Running" : m.Hotkey ?? "", FontSize = 12, Opacity = m.Running ? 1 : 0.7, Margin = new Thickness(10, 0, 0, 0) };
+                        var side = new TextBlock { Text = m.Running ? S.TrayPanelRunning : m.Hotkey ?? "", FontSize = 12, Opacity = m.Running ? 1 : 0.7, Margin = new Thickness(10, 0, 0, 0) };
                         if (m.Running) side.FontWeight = FontWeights.SemiBold;
                         Grid.SetColumn(side, 1);
                         grid.Children.Add(side);
@@ -420,10 +456,10 @@ namespace TrueReplayer.Services
 
                 _shortcuts.IsOn = s.Shortcuts;
                 _automations.IsOn = s.Automations;
-                _automationsText.Text = s.Armed > 0 ? $"· {s.Armed} armed" : "";
+                _automationsText.Text = s.Armed > 0 ? S.TrayPanelArmed(n: S.Num(s.Armed), count: s.Armed) : "";
                 _remaps.IsOn = s.Remaps;
-                _remapsText.Text = s.ActiveRemaps > 0 ? $"· {s.ActiveRemaps} active" : "";
-                _clickerText.Text = s.Clicker ? "Clicker · open" : "Clicker";
+                _remapsText.Text = s.ActiveRemaps > 0 ? S.TrayPanelActive(n: S.Num(s.ActiveRemaps), count: s.ActiveRemaps) : "";
+                _clickerText.Text = s.Clicker ? S.TrayPanelClickerOpen : S.TrayPanelClicker;
             }
             finally { _refreshing = false; }
         }

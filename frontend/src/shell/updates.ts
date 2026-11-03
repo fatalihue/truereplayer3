@@ -22,7 +22,8 @@ export function hearUpdate(msg: IncomingMessage) {
       return;
     case 'update:error':
       useUpdates.setState(s => ({
-        postponed: msg.payload.message.startsWith('Update postponed') ? { version: msg.payload.version ?? s.offered } : null,
+        // The engine says so with a flag: its message is in the interface's language now (I5).
+        postponed: msg.payload.postponed === true ? { version: msg.payload.version ?? s.offered } : null,
       }));
       return;
     case 'update:none':

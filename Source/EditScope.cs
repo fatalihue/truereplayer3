@@ -81,20 +81,20 @@ namespace TrueReplayer.Services
 
         /// <summary>
         /// True when the result may still be applied. On false, <paramref name="reason"/> is a
-        /// user-facing sentence — callers are expected to surface it (alert:show + Warn), never to
-        /// abort silently. Aborting without a word after the user has drawn a rectangle is worse
-        /// than the exception this replaces.
+        /// user-facing sentence, in the interface's language — callers are expected to surface it
+        /// (alert:show with type "info", + Warn), never to abort silently. Aborting without a word
+        /// after the user has drawn a rectangle is worse than the exception this replaces.
         /// </summary>
         public bool TryResume(string currentProfileName, out string reason)
         {
             if (!string.Equals(currentProfileName, ProfileName, System.StringComparison.Ordinal))
             {
-                reason = $"The active macro changed from \"{ProfileName}\" to \"{currentProfileName}\" — this was not applied.";
+                reason = S.GuardsEditScopeMacroChanged(from: ProfileName, to: currentProfileName);
                 return false;
             }
             if (ProfileEpoch.Current != Epoch)
             {
-                reason = "The action list changed while this was open — this was not applied.";
+                reason = S.GuardsEditScopeListChanged;
                 return false;
             }
             reason = string.Empty;
@@ -111,7 +111,7 @@ namespace TrueReplayer.Services
             if (!TryResume(currentProfileName, out reason)) return false;
             if (Anchor == null)
             {
-                reason = "No anchor was captured for this operation.";
+                reason = S.GuardsEditScopeNoAnchor;
                 return false;
             }
             // Reference identity, not Equals: two rows can be value-equal (duplicated actions are
@@ -120,7 +120,7 @@ namespace TrueReplayer.Services
             {
                 if (ReferenceEquals(actions[i], Anchor)) { index = i; return true; }
             }
-            reason = "That action was removed while this was open — this was not applied.";
+            reason = S.GuardsEditScopeStepRemoved;
             return false;
         }
     }

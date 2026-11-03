@@ -294,7 +294,8 @@ namespace TrueReplayer
             });
             // A watcher that took itself out of service. Already on the dispatcher (the daemon
             // marshals it); held like the boot notices, since it can happen at an autostart boot.
-            triggerService.OnNotice = message => bridge?.ShowNoticeWhenSeen(message);
+            // "info": a watcher that stopped is news, not a failure of something the user did.
+            triggerService.OnNotice = message => bridge?.ShowNoticeWhenSeen(message, "info");
             // The ctor's ApplyGlobalSettings (line above) ran before this instance existed —
             // seed the master switch now so a disabled-on-disk setting is honored before the
             // first profile-list load can arm anything.
@@ -577,9 +578,7 @@ namespace TrueReplayer
                 {
                     Services.DiagnosticLog.Error("InitializeWebView: WebView2 environment creation failed", ex);
                     _webViewStarted.TrySetResult();
-                    NativeMethods.MessageBoxW(hwnd,
-                        $"{AppIdentity.DisplayName} couldn't start its UI because the Microsoft Edge WebView2 Runtime " +
-                        $"failed to initialize.\n\nInstall or repair the WebView2 Runtime, then restart {AppIdentity.DisplayName}.",
+                    NativeMethods.MessageBoxW(hwnd, S.WindowDialogsWebViewFailed(app: AppIdentity.DisplayName),
                         AppIdentity.DisplayName, NativeMethods.MB_ICONERROR);
                     // The rest of the tray menu is wired only with the bridge, which will never
                     // exist. "Reload UI" becomes the restart the message asks for, so a repaired
@@ -845,10 +844,7 @@ namespace TrueReplayer
                         // window — and say what to do about it.
                         Services.DiagnosticLog.Error("Navigation recovery exhausted — leaving the error page visible");
                         WebView.Opacity = 1;
-                        NativeMethods.MessageBoxW(hwnd,
-                            $"{AppIdentity.DisplayName} couldn't load its UI files.\n\nThey may have been removed or " +
-                            $"quarantined by antivirus. Reinstall or repair {AppIdentity.DisplayName}, and allow-list " +
-                            "its install folder if your antivirus flagged it.",
+                        NativeMethods.MessageBoxW(hwnd, S.WindowDialogsUiFilesMissing(app: AppIdentity.DisplayName),
                             AppIdentity.DisplayName, NativeMethods.MB_ICONERROR);
                         return;
                     }
@@ -991,19 +987,18 @@ namespace TrueReplayer
                 {
                     var names = string.Join(", ", failures.Take(5));
                     var msg = failures.Count <= 5
-                        ? $"{failures.Count} macro(s) couldn't load: {names}"
-                        : $"{failures.Count} macros couldn't load (first 5: {names}, …)";
+                        ? S.WindowStartupMacrosNotLoaded(n: S.Num(failures.Count), names: names, count: failures.Count)
+                        : S.WindowStartupManyMacrosNotLoaded(n: S.Num(failures.Count), names: names);
                     // Held until the window is on screen — an autostart boot hides it first
-                    // (see WebViewBridge.ShowNoticeWhenSeen). Same for every notice below.
-                    bridge.ShowNoticeWhenSeen(msg);
+                    // (see WebViewBridge.ShowNoticeWhenSeen). Same for every notice below. Each says
+                    // its type: these three are failures ("error"), the collisions are not ("info").
+                    bridge.ShowNoticeWhenSeen(msg, "error");
                 }
 
                 // appsettings.json was present but locked for the whole read — this session runs
                 // on defaults and will not write the file (AppSettingsManager.WriteLocked).
                 if (AppSettingsManager.IsUnreadableThisSession)
-                    bridge.ShowNoticeWhenSeen(
-                        "Your settings file couldn't be read (another program was holding it), so this session " +
-                        $"runs on default settings and won't save changes to them. Restart {AppIdentity.DisplayName} to load your settings.");
+                    bridge.ShowNoticeWhenSeen(S.WindowStartupSettingsUnreadable(app: AppIdentity.DisplayName), "error");
 
                 // Hotkeys and trigger modes are deliberately NOT re-registered here.
                 // LoadProfileListAsync arms both as the last thing it does, off the same
@@ -1019,13 +1014,13 @@ namespace TrueReplayer
                 // fires, and which one depends on Dictionary iteration order).
                 foreach (var msg in profileController.GetAndClearHotkeyCollisions())
                 {
-                    bridge.ShowNoticeWhenSeen(msg);
+                    bridge.ShowNoticeWhenSeen(msg, "info");
                 }
                 }
                 catch (Exception ex)
                 {
                     Services.DiagnosticLog.Error("Initial-data load failed", ex);
-                    try { bridge.ShowNoticeWhenSeen("Startup data couldn't load fully. Some macros or hotkeys may be unavailable."); }
+                    try { bridge.ShowNoticeWhenSeen(S.WindowStartupDataFailed, "error"); }
                     catch { /* toast is best-effort — never let the failure handler throw */ }
                 }
                 finally
@@ -1050,9 +1045,7 @@ namespace TrueReplayer
             catch (Exception ex)
             {
                 Services.DiagnosticLog.Error("InitializeWebView: post-environment wiring failed", ex);
-                NativeMethods.MessageBoxW(hwnd,
-                    $"{AppIdentity.DisplayName} couldn't finish starting its UI.\n\nPlease restart {AppIdentity.DisplayName}. " +
-                    "If the problem persists, repair the Microsoft Edge WebView2 Runtime.",
+                NativeMethods.MessageBoxW(hwnd, S.WindowDialogsUiNotFinished(app: AppIdentity.DisplayName),
                     AppIdentity.DisplayName, NativeMethods.MB_ICONERROR);
                 // Same reason as the enqueue guard: a throw before (or during) the enqueue leaves
                 // nothing that would ever complete it.
@@ -1132,8 +1125,7 @@ namespace TrueReplayer
                         catch (Exception ex)
                         {
                             Services.DiagnosticLog.Error($"Close-guard save to '{bridge.CurrentProfilePath}' failed", ex);
-                            NativeMethods.MessageBoxW(hwnd,
-                                $"Error saving macro:\n{ex.Message}\n\n{AppIdentity.DisplayName} stayed open so your changes aren't lost.",
+                            NativeMethods.MessageBoxW(hwnd, S.WindowDialogsSaveFailed(app: AppIdentity.DisplayName, reason: S.Reason(ex)),
                                 AppIdentity.DisplayName, NativeMethods.MB_ICONERROR);
                             canClose = false;
                         }
@@ -1216,10 +1208,14 @@ namespace TrueReplayer
                 DispatcherQueue.TryEnqueue(() =>
                 {
                     var target = profileController.GetEffectiveWindowTarget(profileName);
-                    var procName = target?.ProcessName ?? "target window";
+                    // A target picked by its title alone has no process to name.
+                    var procName = target?.ProcessName;
                     bridge?.SendMessage("alert:show", new
                     {
-                        message = $"Macro '{profileName}' hotkey ignored — '{procName}' isn't running"
+                        message = string.IsNullOrEmpty(procName)
+                            ? S.WindowAlertsHotkeyIgnoredNoProcess(name: profileName)
+                            : S.WindowAlertsHotkeyIgnored(name: profileName, process: procName),
+                        type = "info",
                     });
                     // The toast alone is in the wrong place: a profile hotkey (or its hotstring) is
                     // pressed while the user is in ANOTHER app, which is exactly when this window is
@@ -1237,10 +1233,13 @@ namespace TrueReplayer
             {
                 DispatcherQueue.TryEnqueue(() =>
                 {
+                    var toggle = UserProfile.Current.ProfileKeyToggleHotkey;
                     bridge?.SendMessage("alert:show", new
                     {
-                        message = $"Shortcuts are off — {combo} went to the app in front. "
-                                + $"Press {UserProfile.Current.ProfileKeyToggleHotkey} to turn them back on."
+                        message = string.IsNullOrEmpty(toggle)
+                            ? S.WindowAlertsShortcutsOffNoKey(combo: combo)
+                            : S.WindowAlertsShortcutsOff(combo: combo, hotkey: toggle),
+                        type = "info",
                     });
                 });
             };
@@ -1290,7 +1289,7 @@ namespace TrueReplayer
                             if (value != null)
                             {
                                 Services.DiagnosticLog.Info($"Capture to Slot: {value.Length} char(s) → {{clip:{slot}}}");
-                                bridge?.SendMessage("alert:show", new { message = $"Selection captured → {{clip:{slot}}}" });
+                                bridge?.SendMessage("alert:show", new { message = S.WindowAlertsSelectionCaptured(slot: slot), type = "success" });
                             }
                             else
                             {
@@ -1534,7 +1533,7 @@ namespace TrueReplayer
                         catch (Exception ex)
                         {
                             Services.DiagnosticLog.Error($"Profile hotkey '{profileName}' failed", ex);
-                            bridge?.SendMessage("alert:show", new { message = $"Could not start \"{profileName}\": {ex.Message}", type = "error" });
+                            bridge?.SendMessage("alert:show", new { message = S.WindowAlertsCouldNotStart(name: profileName, reason: S.Reason(ex)), type = "error" });
                             TrayIconService.CueOutOfView();
                         }
                     }
@@ -1915,23 +1914,26 @@ namespace TrueReplayer
             bool recording = mainController.IsRecording();
             bool replaying = mainController.IsReplayInProgress();
             bool clicker = settings.UseCursorClick;
-            static string StepsOf(int n) => $"{n} step{(n == 1 ? "" : "s")}";
+            int steps = Actions.Count;
             var elapsed = TrayIconService.RunElapsed;
             string clock = $"{(int)elapsed.TotalMinutes}:{elapsed.Seconds:00}";
             string line;
             string? action = null, key = null;
             bool stops = false;
-            if (recording) { line = $"Recording · {StepsOf(Actions.Count)} · {clock}"; action = "Stop"; key = settings.RecordingHotkey; stops = true; }
-            else if (replaying && clicker) { line = $"Clicking · {TrayIconService.Clicks:N0} · {clock}"; action = "Stop"; key = settings.CursorClickStartHotkey; stops = true; }
+            // The line and the button in the interface's language (the engine-tray area), read at each refresh.
+            if (recording) { line = S.TrayCardRecording(clock: clock, n: S.Num(steps), count: steps); action = S.TrayCardStop; key = settings.RecordingHotkey; stops = true; }
+            else if (replaying && clicker) { line = S.TrayCardClicking(clicks: S.Num(TrayIconService.Clicks), clock: clock); action = S.TrayCardStop; key = settings.CursorClickStartHotkey; stops = true; }
             else if (replaying)
             {
                 var (cur, tot) = TrayIconService.Loop;
-                line = "Replaying" + (cur > 0 ? $" · loop {cur} of {(tot > 0 ? tot.ToString() : "∞")}" : "") + $" · {clock}";
-                action = "Stop"; key = settings.ReplayHotkey; stops = true;
+                line = cur > 0
+                    ? S.TrayCardReplayingLoop(clock: clock, current: S.Num(cur), total: tot > 0 ? S.Num(tot) : "∞")
+                    : S.TrayCardReplaying(clock: clock);
+                action = S.TrayCardStop; key = settings.ReplayHotkey; stops = true;
             }
-            else if (clicker) line = string.IsNullOrEmpty(settings.CursorClickStartHotkey) ? "Clicker open" : $"Clicker open · {settings.CursorClickStartHotkey} starts";
-            else if (macro != null) { line = $"Ready · {StepsOf(Actions.Count)}"; action = "Replay"; key = settings.ReplayHotkey; }
-            else line = "Open a macro in the window to run it from here.";
+            else if (clicker) line = string.IsNullOrEmpty(settings.CursorClickStartHotkey) ? S.TrayCardClickerOpen : S.TrayCardClickerOpenKey(key: settings.CursorClickStartHotkey);
+            else if (macro != null) { line = S.TrayCardReady(n: S.Num(steps), count: steps); action = S.TrayCardReplay; key = settings.ReplayHotkey; }
+            else line = S.TrayCardNoMacro;
 
             var entries = profileController.ProfileEntries.Where(e => !e.IsDisabled).ToList();
             var pinned = profileController.PinnedNames;
@@ -2147,6 +2149,9 @@ namespace TrueReplayer
             _starvationCreditUsedMs = 0;
             // Every later load in this process is a warm one — see FirstLoadReadyGraceMs.
             _uiReadyEverReceived = true;
+            // The page may have come back in another language (ui:language): the tray's tooltip
+            // follows it now, not at the tray's next change. The menu and the panel read it when shown.
+            TrayIconService.FollowLanguage();
             // A notification's click that came before the page could take it.
             if (_pendingNotice is { } notice)
             {
@@ -2320,19 +2325,18 @@ namespace TrueReplayer
             try { if (WebView != null) WebView.Opacity = 1; }
             catch (Exception ex) { Services.DiagnosticLog.Warn($"Reveal-on-exhaustion failed: {ex.Message}"); }
 
-            var logsLine = string.IsNullOrEmpty(Services.DiagnosticLog.LogDirectory)
-                ? ""
-                : $"\n\nLogs: {Services.DiagnosticLog.LogDirectory}";
+            // The two tray items it names are the menu's own texts, in the same language, without the
+            // access key's "&".
+            const string app = AppIdentity.DisplayName;
+            string reload = S.TrayMenuReloadUi.Replace("&", ""), logs = S.TrayMenuLogs.Replace("&", "");
+            var dir = Services.DiagnosticLog.LogDirectory;
+            var text = string.IsNullOrEmpty(dir)
+                ? S.WindowDialogsRecoveryExhausted(app: app, reload: reload, logs: logs)
+                : S.WindowDialogsRecoveryExhaustedLogs(app: app, reload: reload, logs: logs, dir: dir);
 
             // Native box, matching the navigation-failure path above: at this point the React
             // UI is exactly the thing that isn't working, so it can't be asked to render this.
-            NativeMethods.MessageBoxW(hwnd,
-                $"{AppIdentity.DisplayName}'s interface didn't finish loading, and restarting the app didn't help.\n\n" +
-                "The app is still running — right-click its tray icon and choose \"Reload UI\" to try " +
-                "again, or \"Open logs folder\" to see what failed.\n\n" +
-                $"If it keeps happening, allow-list {AppIdentity.DisplayName}'s install folder in your antivirus, " +
-                "then reinstall or repair the app." + logsLine,
-                AppIdentity.DisplayName, NativeMethods.MB_ICONERROR);
+            NativeMethods.MessageBoxW(hwnd, text, app, NativeMethods.MB_ICONERROR);
         }
 
         /// <summary>

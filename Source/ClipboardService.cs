@@ -29,10 +29,13 @@ namespace TrueReplayer.Services
             Clipboard.SetContent(dataPackage);
         }
 
-        // The two clipboard flavors, built apart from the clipboard itself.
+        // The two clipboard flavors, built apart from the clipboard itself. The table follows the
+        // interface's language (the engine-copy texts): the headers, the summary, the durations and
+        // the Key column (ActionItem.DisplayKey). The step names do not: they are the list's own,
+        // glossary, the same in both languages (FriendlyActionType below).
         private static (string Tsv, string Html) BuildFlavors(IList<ActionItem> actions)
         {
-            var headers = new[] { "#", "Action", "Key", "X", "Y", "Delay", "Notes" };
+            var headers = new[] { "#", S.CopyHeadAction, S.CopyHeadKey, "X", "Y", S.CopyHeadDelay, S.CopyHeadNotes };
             var rows = new List<string[]>(actions.Count);
             for (int i = 0; i < actions.Count; i++)
             {
@@ -56,7 +59,7 @@ namespace TrueReplayer.Services
                 : cell.Replace("\r\n", " ").Replace('\r', ' ').Replace('\n', ' ').Replace('\t', ' ');
 
             int totalDelay = actions.Sum(a => a.Delay);
-            string summary = $"Actions: {actions.Count} | Total delay: {FormatDuration(totalDelay)}";
+            string summary = S.CopySummary(S.Num(actions.Count), FormatDuration(totalDelay));
 
             // TSV format (for spreadsheets)
             var tsv = new StringBuilder();
@@ -88,20 +91,25 @@ namespace TrueReplayer.Services
 
         private static readonly char[] TsvBreakers = { '\t', '\r', '\n' };
 
+        // "450ms", "1.5s", "2m 3.5s" — and "450 ms", "1,5 s", "2 min 3,5 s" in Portuguese: the numbers
+        // in the interface's culture (S.Num, S.Fixed), not the machine's, so an English table on a
+        // Brazilian Windows no longer reads "1,5s".
         private static string FormatDuration(int totalMs)
         {
-            if (totalMs < 1000) return $"{totalMs}ms";
+            if (totalMs < 1000) return S.CopyDurationMillis(S.Num(totalMs));
             double seconds = totalMs / 1000.0;
-            if (seconds < 60) return $"{seconds:F1}s";
+            if (seconds < 60) return S.CopyDurationSeconds(S.Fixed(seconds, 1));
             int minutes = (int)(seconds / 60);
             double remainingSeconds = seconds - (minutes * 60);
-            return $"{minutes}m {remainingSeconds:F1}s";
+            return S.CopyDurationMinutes(S.Num(minutes), S.Fixed(remainingSeconds, 1));
         }
 
         // Every explicit case is the step list's own name (frontend/src/shell/list/stepTypes.ts,
         // NAMES), copied VERBATIM and in the same order; every other type has its CamelCase split
         // into words, as the list's stepName does ("Wait Pixel Color", "If", "Left Click Down"). A
         // pasted row then reads as the list does, in a spreadsheet or an email. Keep the two in step.
+        // The names are glossary (i18n/glossario.ts, PASSOS): English in both languages, so they stay
+        // here and out of the catalog — and the split leaves no raw identifier ("LeftClickDown").
         private static string FriendlyActionType(string? type)
         {
             if (string.IsNullOrEmpty(type)) return "";

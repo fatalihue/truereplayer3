@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using S = TrueReplayer.Services.S;
 
 namespace TrueReplayer.Models
 {
@@ -703,14 +704,30 @@ namespace TrueReplayer.Models
             NoCoordinateActionTypes.Contains(ActionType ?? "")
             || (AtCursor && IsCombinedClickType(ActionType));
 
-        // Compact day-of-week label for the If-Time grid display. Bitmask Sun=1<<0 … Sat=1<<6.
-        // 0 or all-7 → "" (every day, no need to show). Collapses Mon–Fri to a range where it
-        // reads cleaner; otherwise lists the 2-letter abbreviations.
+        // Compact day-of-week label for the If-Time grid display (the Copy as text's Key column, and
+        // the run report's Assert reason). Bitmask Sun=1<<0 … Sat=1<<6. 0 or all-7 → "" (every day,
+        // no need to show). Collapses Mon–Fri and the weekend to a range where it reads cleaner;
+        // otherwise lists the days. In the interface's language: in English, the text it always had
+        // (the 2-letter days, "Mon–Fri", "Sat–Sun"); in Portuguese, the abbreviated days of the pt-BR
+        // calendar (S.Culture), without the period ICU ends them with — "seg–sex", "sáb–dom",
+        // "dom,ter,qui" — as the list's Details column writes them (shell/list/details.tsx).
         private static readonly string[] DayAbbr = { "Su", "Mo", "Tu", "We", "Th", "Fr", "Sa" };
         internal static string FormatDaysOfWeek(int mask)
         {
             mask &= 0x7F;
             if (mask == 0 || mask == 0x7F) return "";
+            if (S.IsPt)
+            {
+                // Sunday first, as the mask counts them.
+                var names = S.Culture.DateTimeFormat.AbbreviatedDayNames;
+                string Day(int d) => names[d].TrimEnd('.');
+                if (mask == 0b0111110) return $"{Day(1)}–{Day(5)}";   // seg..sex
+                if (mask == 0b1000001) return $"{Day(6)}–{Day(0)}";   // sáb + dom
+                var days = new List<string>();
+                for (int d = 0; d < 7; d++)
+                    if ((mask & (1 << d)) != 0) days.Add(Day(d));
+                return string.Join(",", days);
+            }
             if (mask == 0b0111110) return "Mon–Fri";      // Mon..Fri
             if (mask == 0b1000001) return "Sat–Sun";      // Sat + Sun
             var parts = new List<string>();
@@ -767,13 +784,18 @@ namespace TrueReplayer.Models
         {
             get
             {
+                // The texts below are the interface's language (the engine-copy area of the catalog;
+                // the ones the list also shows say what its Details column says). Key names, tokens,
+                // paths and symbols carry none.
                 if (ActionType == "Pause")
                 {
                     bool hasHotkey = !string.IsNullOrWhiteSpace(Key);
                     bool hasTimeout = Timeout > 0;
-                    if (hasHotkey && hasTimeout) return $"{Key} / {Timeout / 1000.0:0.##}s";
+                    // Up to two decimals, in the interface's culture: "1.5s" / "1,5 s".
+                    string seconds = hasTimeout ? S.CopyDurationSeconds((Timeout / 1000.0).ToString("0.##", S.Culture)) : "";
+                    if (hasHotkey && hasTimeout) return $"{Key} / {seconds}";
                     if (hasHotkey) return Key;
-                    if (hasTimeout) return $"{Timeout / 1000.0:0.##}s";
+                    if (hasTimeout) return seconds;
                     return "—";
                 }
 
@@ -783,7 +805,7 @@ namespace TrueReplayer.Models
                 if (string.Equals(ActionType, "CopyToSlot", StringComparison.OrdinalIgnoreCase))
                 {
                     if (string.Equals(SlotMode, "clear", StringComparison.OrdinalIgnoreCase))
-                        return string.IsNullOrWhiteSpace(Key) ? "clear all slots" : $"clear {{clip:{Key.Trim().ToLowerInvariant()}}}";
+                        return string.IsNullOrWhiteSpace(Key) ? S.CopyKeyClearAll : S.CopyKeyClearSlot($"{{clip:{Key.Trim().ToLowerInvariant()}}}");
                     return string.IsNullOrWhiteSpace(Key) ? "" : $"{{clip:{Key.Trim().ToLowerInvariant()}}}";
                 }
 
@@ -865,7 +887,7 @@ namespace TrueReplayer.Models
                 if (string.Equals(ActionType, "WaitText", StringComparison.OrdinalIgnoreCase))
                 {
                     return string.Equals(WaitMode, "changes", StringComparison.OrdinalIgnoreCase)
-                        ? "changes"
+                        ? S.CopyKeyChanges
                         : TrueReplayer.Services.ScreenTextMatcher.Summary(this);
                 }
 
@@ -875,7 +897,7 @@ namespace TrueReplayer.Models
                 {
                     if (string.IsNullOrWhiteSpace(Key)) return "";
                     return string.Equals(OcrReadAs, "number", StringComparison.OrdinalIgnoreCase)
-                        ? $"{Key} ← screen #" : $"{Key} ← screen";
+                        ? S.CopyKeyFromScreenNumber(Key) : S.CopyKeyFromScreen(Key);
                 }
 
                 // Else / EndIf rows carry no Key data.
@@ -895,25 +917,27 @@ namespace TrueReplayer.Models
                         hasProc && hasTitle ? $"{WindowProcessName} · {WindowTitle}" :
                         hasProc ? WindowProcessName! :
                         hasTitle ? WindowTitle! : "";
-                    // Phase-3: verb prefix (non-activate) + nth-match suffix.
+                    // Phase-3: the verb (non-activate) + nth-match suffix, one whole text per case.
                     string verb = WindowVerb?.ToLowerInvariant() ?? "";
-                    string verbPrefix = verb switch
-                    {
-                        "maximize" => "Maximize · ",
-                        "minimize" => "Minimize · ",
-                        "close" => "Close · ",
-                        _ => "",
-                    };
                     string nth = (WindowMatchIndex is int mi && mi > 1) ? $" #{mi}" : "";
                     // "— launch" wherever a miss really launches: Maximize launches too
                     // (ExecuteActivateWindow); only Minimize and Close never do.
                     bool launches = hasLaunch && verb != "minimize" && verb != "close";
                     if (matcher.Length > 0)
-                        return $"{verbPrefix}{matcher}{nth}{(launches ? " — launch" : "")}";
+                    {
+                        string window = matcher + nth;
+                        return verb switch
+                        {
+                            "maximize" => launches ? S.CopyKeyWindowMaximizeLaunch(window) : S.CopyKeyWindowMaximize(window),
+                            "minimize" => S.CopyKeyWindowMinimize(window),
+                            "close" => S.CopyKeyWindowClose(window),
+                            _ => launches ? S.CopyKeyWindowLaunch(window) : window,
+                        };
+                    }
                     if (hasLaunch)
                     {
                         var path = LaunchPath!.Trim();
-                        return path.Length > 40 ? $"run: {path[..37]}..." : $"run: {path}";
+                        return S.CopyKeyWindowRun(path.Length > 40 ? $"{path[..37]}..." : path);
                     }
                     return "";
                 }

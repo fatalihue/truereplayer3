@@ -63,13 +63,15 @@ namespace TrueReplayer.Controllers
         public ObservableCollection<ProfileEntry> ProfileEntries { get; } = new();
 
         /// <summary>
-        /// Optional callback fired when a load-time operation surfaces a user-facing
-        /// notice (currently: ConditionalBlockValidator auto-repair on profile load).
-        /// The bridge wires this to SendMessage("alert:show", { message }) so the
-        /// frontend renders a toast. Wrapped in null-check so headless test contexts
-        /// don't have to provide one.
+        /// Optional callback fired when an operation surfaces a user-facing notice (the
+        /// ConditionalBlockValidator auto-repair on profile load, the picker that cannot open, the
+        /// organisation file that cannot be read or written…), with (message, type): the message
+        /// already in the interface's language, and its type — "success", "info" or "error", the
+        /// page's toast types — because the page can only guess the colour from English words. The bridge wires
+        /// this to SendMessage("alert:show", { message, type }) through its held notices. Wrapped in
+        /// null-check so headless test contexts don't have to provide one.
         /// </summary>
-        public Action<string>? OnAlert { get; set; }
+        public Action<string, string>? OnAlert { get; set; }
 
         /// <summary>
         /// Raised on the UI thread after the folder watcher re-read the list for a change made
@@ -213,7 +215,7 @@ namespace TrueReplayer.Controllers
             var interaction = await Services.InteractionScope.EnterExclusiveAsync($"file picker: {what}", TimeSpan.FromMinutes(20));
             if (interaction == null)
             {
-                OnAlert?.Invoke($"Can't open the file dialog: \"{Services.InteractionScope.ExclusiveOwner}\" is still open and didn't respond. Press Esc or right-click on it, then try again.");
+                OnAlert?.Invoke(S.ProfilesAlertsPickerBusy(holder: Services.InteractionScope.Describe(Services.InteractionScope.ExclusiveOwner)), "info");
                 // Disposing here is not tidiness — the dialog's usual disposal lives in the
                 // thread's finally, and that thread is never going to start. Skipping it leaks the
                 // native dialog's resources on every refusal.
@@ -253,7 +255,7 @@ namespace TrueReplayer.Controllers
             if (failure != null)
             {
                 DiagnosticLog.Error($"File dialog ({what}) failed", failure);
-                OnAlert?.Invoke($"The file dialog couldn't open ({failure.Message}).");
+                OnAlert?.Invoke(S.ProfilesAlertsPickerFailed(reason: S.Reason(failure)), "error");
             }
             return picked;
         }
@@ -266,8 +268,8 @@ namespace TrueReplayer.Controllers
         public Task<string?> PickExecutableFileAsync()
             => ShowFileDialogAsync(new WinForms.OpenFileDialog
             {
-                Title = "Select a program to launch",
-                Filter = "Programs (*.exe;*.bat;*.cmd;*.com;*.lnk)|*.exe;*.bat;*.cmd;*.com;*.lnk|All files (*.*)|*.*",
+                Title = S.ProfilesPickerProgram,
+                Filter = $"{S.ProfilesFilterPrograms} (*.exe;*.bat;*.cmd;*.com;*.lnk)|*.exe;*.bat;*.cmd;*.com;*.lnk|{S.ProfilesFilterAllFiles} (*.*)|*.*",
                 CheckFileExists = true,
             }, "launch target");
 
@@ -277,8 +279,8 @@ namespace TrueReplayer.Controllers
         public Task<string?> PickImageFileAsync()
             => ShowFileDialogAsync(new WinForms.OpenFileDialog
             {
-                Title = "Choose a reference image",
-                Filter = "Pictures (*.png;*.jpg;*.jpeg;*.bmp;*.gif)|*.png;*.jpg;*.jpeg;*.bmp;*.gif|All files (*.*)|*.*",
+                Title = S.ProfilesPickerImage,
+                Filter = $"{S.ProfilesFilterPictures} (*.png;*.jpg;*.jpeg;*.bmp;*.gif)|*.png;*.jpg;*.jpeg;*.bmp;*.gif|{S.ProfilesFilterAllFiles} (*.*)|*.*",
                 CheckFileExists = true,
             }, "reference image");
 
@@ -288,8 +290,8 @@ namespace TrueReplayer.Controllers
         public Task<string?> PickImageSavePathAsync(string suggestedName)
             => ShowFileDialogAsync(new WinForms.SaveFileDialog
             {
-                Title = "Save the reference image",
-                Filter = "PNG image (*.png)|*.png",
+                Title = S.ProfilesPickerSaveImage,
+                Filter = $"{S.ProfilesFilterPng} (*.png)|*.png",
                 FileName = suggestedName,
                 DefaultExt = "png",
             }, "save image");
@@ -304,7 +306,7 @@ namespace TrueReplayer.Controllers
             var path = await ShowFileDialogAsync(new WinForms.SaveFileDialog
             {
                 Title = title,
-                Filter = "JSON file (*.json)|*.json",
+                Filter = $"{S.ProfilesFilterJson} (*.json)|*.json",
                 FileName = suggestedName,
                 DefaultExt = "json"
             }, "save file");
@@ -387,8 +389,8 @@ namespace TrueReplayer.Controllers
 
             var fileName = await ShowFileDialogAsync(new WinForms.SaveFileDialog
             {
-                Filter = "JSON file (*.json)|*.json",
-                FileName = "macro",
+                Filter = $"{S.ProfilesFilterJson} (*.json)|*.json",
+                FileName = S.ProfilesNamesSaveAs,
                 InitialDirectory = profileDir
             }, "save macro");
 
@@ -411,9 +413,8 @@ namespace TrueReplayer.Controllers
                     // keeps HasUnsavedChanges set at every call site, so the close guard will ask
                     // again instead of letting the work go.
                     WinForms.MessageBox.Show(
-                        $"Could not copy this macro's reference image \"{failedImage}\" into \"{newProfileName}\".\n\n" +
-                        "Nothing was saved, so the images you have are untouched. Free up some disk space (or close whatever has the file open) and save again.",
-                        "Error", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
+                        S.ProfilesSaveAsImageFailed(image: failedImage ?? "", name: newProfileName),
+                        S.ProfilesSaveAsErrorTitle, WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
                     return false;
                 }
 
@@ -426,12 +427,12 @@ namespace TrueReplayer.Controllers
                     // the user is the only one who can recapture them. Say so instead of letting
                     // them find out at the next replay.
                     if (droppedImages > 0)
-                        OnAlert?.Invoke($"Saved \"{newProfileName}\", but {droppedImages} reference image(s) were missing on disk and could not be carried over — recapture them in the new macro.");
+                        OnAlert?.Invoke(S.ProfilesAlertsSavedImagesMissing(n: S.Num(droppedImages), name: newProfileName, count: droppedImages), "info");
                     return true;
                 }
                 catch (Exception ex)
                 {
-                    WinForms.MessageBox.Show($"Error saving macro:\n{ex.Message}", "Error", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
+                    WinForms.MessageBox.Show(S.ProfilesSaveAsFailed(reason: S.Reason(ex)), S.ProfilesSaveAsErrorTitle, WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
                 }
             }
             return false;
@@ -600,7 +601,7 @@ namespace TrueReplayer.Controllers
 
             var path = await ShowFileDialogAsync(new WinForms.OpenFileDialog
             {
-                Filter = "JSON file (*.json)|*.json",
+                Filter = $"{S.ProfilesFilterJson} (*.json)|*.json",
                 InitialDirectory = profileDir
             }, "load macro");
 
@@ -619,7 +620,7 @@ namespace TrueReplayer.Controllers
                     {
                         var name = Path.GetFileNameWithoutExtension(path);
                         DiagnosticLog.Info($"[ConditionalBlocks] Auto-repaired '{name}': removed {blockFix.OrphansRemoved} orphan(s), appended {blockFix.EndIfsAppended} synthetic ENDIF(s)");
-                        OnAlert?.Invoke(FormatBlockFixupToast(name, blockFix));
+                        OnAlert?.Invoke(FormatBlockFixupToast(name, blockFix), "info");
                     }
 
                     AppSettingsManager.ActivateProfile(profile);
@@ -671,7 +672,7 @@ namespace TrueReplayer.Controllers
             if (blockFix.HadFixups && FirstBlockFixNotice(filePath))
             {
                 DiagnosticLog.Info($"[ConditionalBlocks] Auto-repaired '{profileName}': removed {blockFix.OrphansRemoved} orphan(s), appended {blockFix.EndIfsAppended} synthetic ENDIF(s)");
-                OnAlert?.Invoke(FormatBlockFixupToast(profileName, blockFix));
+                OnAlert?.Invoke(FormatBlockFixupToast(profileName, blockFix), "info");
             }
 
             return profile;
@@ -700,20 +701,24 @@ namespace TrueReplayer.Controllers
 
         /// <summary>
         /// Builds a one-line human-readable summary of what the conditional-block validator
-        /// just fixed up. Reads naturally on a toast ("Auto-repaired 'X': appended 2 EndIf,
-        /// removed 1 orphan"). Pluralisation handled by branching strings rather than a
-        /// helper because the two counters are independent and rarely both non-zero.
+        /// just fixed up ("Auto-repaired conditional blocks in 'X': appended 2 closing markers,
+        /// removed 1 orphan"), in the interface's language: one whole sentence per case, the
+        /// plurals in the catalog (engine-compat, repair). Both counters at once take the two
+        /// counted phrases into one sentence, since a plural follows one count.
         /// </summary>
         private static string FormatBlockFixupToast(string profileName, ConditionalBlockValidator.BlockValidationResult fix)
         {
-            var parts = new List<string>(2);
             // "closing marker", not "EndIf": since the loop blocks joined, the synthetic
             // closer may be an EndLoop — the counter is family-blind by design.
-            if (fix.EndIfsAppended > 0)
-                parts.Add($"appended {fix.EndIfsAppended} closing marker{(fix.EndIfsAppended == 1 ? "" : "s")}");
-            if (fix.OrphansRemoved > 0)
-                parts.Add($"removed {fix.OrphansRemoved} orphan{(fix.OrphansRemoved == 1 ? "" : "s")}");
-            return $"Auto-repaired conditional blocks in '{profileName}': {string.Join(", ", parts)}";
+            int appended = fix.EndIfsAppended, removed = fix.OrphansRemoved;
+            if (removed == 0)
+                return S.CompatRepairAppended(n: S.Num(appended), name: profileName, count: appended);
+            if (appended == 0)
+                return S.CompatRepairRemoved(n: S.Num(removed), name: profileName, count: removed);
+            return S.CompatRepairBoth(
+                markers: S.CompatRepairMarkers(n: S.Num(appended), count: appended),
+                name: profileName,
+                orphans: S.CompatRepairOrphans(n: S.Num(removed), count: removed));
         }
 
         /// <summary>
@@ -728,7 +733,7 @@ namespace TrueReplayer.Controllers
             if (entry == null)
             {
                 DiagnosticLog.Warn($"[Profiles] Save of '{profileName}' skipped: it is no longer in the profile list.");
-                OnAlert?.Invoke($"Couldn't save \"{profileName}\": it's no longer in the macro list (renamed or deleted outside the app?).");
+                OnAlert?.Invoke(S.ProfilesAlertsSaveGone(name: profileName), "error");
                 return false;
             }
 
@@ -1426,18 +1431,18 @@ namespace TrueReplayer.Controllers
         {
             var messageBlock = new TextBlock
             {
-                Text = $"Macro \"{profileName}\" is already loaded.",
+                Text = S.ProfilesSaveDialogLoaded(name: profileName),
                 TextWrapping = TextWrapping.Wrap
             };
 
             var dialog = new ContentDialog
             {
-                Title = "Save Macro",
+                Title = S.ProfilesSaveDialogTitle,
                 XamlRoot = window.Content.XamlRoot,
                 RequestedTheme = ElementTheme.Dark,
-                PrimaryButtonText = "Overwrite",
-                SecondaryButtonText = "Save as New",
-                CloseButtonText = "Cancel",
+                PrimaryButtonText = S.ProfilesSaveDialogOverwrite,
+                SecondaryButtonText = S.ProfilesSaveDialogSaveAsNew,
+                CloseButtonText = S.ProfilesCancel,
                 DefaultButton = ContentDialogButton.Primary,
                 CornerRadius = new CornerRadius(8),
                 Content = messageBlock
@@ -1471,26 +1476,30 @@ namespace TrueReplayer.Controllers
         /// What the user is about to do, completing "Save before ___?". The text used to say
         /// "closing" for every caller, including the profile switch — so answering it looked like
         /// it would close the app, and when it merely switched profiles the app staying open read
-        /// as the dialog having failed. Name the actual action instead.
+        /// as the dialog having failed. Name the actual action instead: one of the catalog's
+        /// S.ProfilesUnsavedBefore* texts (closing, continuing, updating, switching, creating,
+        /// exporting, loading), which in Portuguese are infinitives that follow "antes de". Null
+        /// is "closing".
         /// </param>
-        public async Task<ContentDialogResult> ShowUnsavedChangesDialogAsync(bool loopOnly = false, string beforeWhat = "closing")
+        public async Task<ContentDialogResult> ShowUnsavedChangesDialogAsync(bool loopOnly = false, string? beforeWhat = null)
         {
+            beforeWhat ??= S.ProfilesUnsavedBeforeClosing;
             var messageBlock = new TextBlock
             {
                 Text = loopOnly
-                    ? $"You changed this macro's run settings. Save before {beforeWhat}?"
-                    : $"You have unsaved actions. Save before {beforeWhat}?",
+                    ? S.ProfilesUnsavedRunSettings(beforeWhat: beforeWhat)
+                    : S.ProfilesUnsavedActions(beforeWhat: beforeWhat),
                 TextWrapping = TextWrapping.Wrap
             };
 
             var dialog = new ContentDialog
             {
-                Title = "Unsaved Changes",
+                Title = S.ProfilesUnsavedTitle,
                 XamlRoot = window.Content.XamlRoot,
                 RequestedTheme = ElementTheme.Dark,
-                PrimaryButtonText = "Save",
-                SecondaryButtonText = "Discard",
-                CloseButtonText = "Cancel",
+                PrimaryButtonText = S.ProfilesUnsavedSave,
+                SecondaryButtonText = S.ProfilesUnsavedDiscard,
+                CloseButtonText = S.ProfilesCancel,
                 DefaultButton = ContentDialogButton.Primary,
                 CornerRadius = new CornerRadius(8),
                 Content = messageBlock
@@ -1518,17 +1527,17 @@ namespace TrueReplayer.Controllers
         {
             var messageBlock = new TextBlock
             {
-                Text = $"{sentence} Closing now discards them.",
+                Text = S.ProfilesUnappliedBody(sentence: sentence),
                 TextWrapping = TextWrapping.Wrap
             };
 
             var dialog = new ContentDialog
             {
-                Title = "Unapplied Changes",
+                Title = S.ProfilesUnappliedTitle,
                 XamlRoot = window.Content.XamlRoot,
                 RequestedTheme = ElementTheme.Dark,
-                PrimaryButtonText = "Close Anyway",
-                CloseButtonText = "Cancel",
+                PrimaryButtonText = S.ProfilesUnappliedCloseAnyway,
+                CloseButtonText = S.ProfilesCancel,
                 // Cancel is the default: Enter on a prompt the user did not expect must not be the
                 // key that throws the work away.
                 DefaultButton = ContentDialogButton.Close,
@@ -1557,8 +1566,9 @@ namespace TrueReplayer.Controllers
 
         /// <summary>
         /// Hotkey collisions detected on the most recent <see cref="GetProfileHotkeys"/> call.
-        /// Each entry is "Hotkey assigned to: A, B, C" — the bridge surfaces these as toasts
-        /// so the user knows two profiles fight for the same combo. Cleared at the start of
+        /// Each entry is a whole sentence in the interface's language ("Hotkey 'Ctrl+F5' is bound to
+        /// 2 macros … — only one will fire") — the bridge surfaces these as toasts (type "info": a
+        /// warning, nothing failed) so the user knows two profiles fight for the same combo. Cleared at the start of
         /// each GetProfileHotkeys call so we don't accumulate stale warnings.
         /// </summary>
         private readonly List<string> _hotkeyCollisions = new();
@@ -1620,12 +1630,10 @@ namespace TrueReplayer.Controllers
                     // disagree with the warning the user was shown.
                     foreach (var e in collidingGroup) e.HotkeyConflict = true;
                     var names = collidingGroup.Select(e => e.Name).ToList();
-                    var targetDesc = string.IsNullOrEmpty(collidingGroup.Key)
-                        ? "no target window"
-                        : $"target '{collidingGroup.Key}'";
-                    _hotkeyCollisions.Add(
-                        $"Hotkey '{hotkey}' is bound to {names.Count} macros with the same {targetDesc}: " +
-                        $"{string.Join(", ", names)} — only one will fire");
+                    var list = string.Join(", ", names);
+                    _hotkeyCollisions.Add(string.IsNullOrEmpty(collidingGroup.Key)
+                        ? S.ProfilesCollisionHotkeyNoTarget(hotkey: hotkey, n: S.Num(names.Count), names: list)
+                        : S.ProfilesCollisionHotkey(hotkey: hotkey, n: S.Num(names.Count), names: list, target: DescribeEffectiveTarget(collidingGroup.First())));
                 }
             }
 
@@ -1652,6 +1660,19 @@ namespace TrueReplayer.Controllers
             var title = e.EffectiveTargetWindowTitle ?? "";
             if (!regex) title = title.ToLowerInvariant();
             return $"{proc}|{title}|{(regex ? "regex" : "contains")}";
+        }
+
+        /// <summary>
+        /// The effective target a collision warning names, written the way the page writes a window —
+        /// the process and the title, "notepad.exe / Untitled". The signature the entries are grouped
+        /// by ("notepad|untitled|contains") is an internal key, lowered, never something to show.
+        /// </summary>
+        private static string DescribeEffectiveTarget(ProfileEntry e)
+        {
+            var proc = (e.EffectiveTargetProcessName ?? "").Trim();
+            var title = (e.EffectiveTargetWindowTitle ?? "").Trim();
+            if (proc.Length == 0) return title;
+            return title.Length == 0 ? proc : $"{proc} / {title}";
         }
 
         public Dictionary<string, TriggerMode> GetProfileTriggerModes()
@@ -1720,10 +1741,10 @@ namespace TrueReplayer.Controllers
                 .Where(g => g.Count() > 1))
             {
                 var names = group.Select(e => e.Name).ToList();
-                var targetDesc = string.IsNullOrEmpty(group.Key.Target) ? "no target window" : $"target '{group.Key.Target}'";
-                _hotstringCollisions.Add(
-                    $"Hotstring '{group.Key.Seq}' is bound to {names.Count} macros with the same {targetDesc}: " +
-                    $"{string.Join(", ", names)} — only one will fire");
+                var list = string.Join(", ", names);
+                _hotstringCollisions.Add(string.IsNullOrEmpty(group.Key.Target)
+                    ? S.ProfilesCollisionHotstringNoTarget(hotstring: group.Key.Seq, n: S.Num(names.Count), names: list)
+                    : S.ProfilesCollisionHotstring(hotstring: group.Key.Seq, n: S.Num(names.Count), names: list, target: DescribeEffectiveTarget(group.First())));
             }
 
             return hotstrings;
@@ -2083,11 +2104,11 @@ namespace TrueReplayer.Controllers
             // export overwrite the previous one in the sender's Save dialog.
             var defaultName = profileNames.Count == 1
                 ? profileNames[0]
-                : $"macros-{DateTime.Now:yyyy-MM-dd}";
+                : S.ProfilesNamesExport(date: DateTime.Now.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture));
             var fileName = await ShowFileDialogAsync(new WinForms.SaveFileDialog
             {
-                Title = "Export macros",
-                Filter = "TrueReplayer macros (*.trprofile)|*.trprofile",
+                Title = S.ProfilesPickerExport,
+                Filter = $"{S.ProfilesFilterMacros} (*.trprofile)|*.trprofile",
                 FileName = defaultName,
                 DefaultExt = "trprofile"
             }, "export macros");
@@ -2280,8 +2301,8 @@ namespace TrueReplayer.Controllers
             // lost. A null Downloads (shell refusal) leaves the default behavior.
             var fileName = droppedFile ?? await ShowFileDialogAsync(new WinForms.OpenFileDialog
             {
-                Title = "Import macros",
-                Filter = "TrueReplayer macros (*.trprofile)|*.trprofile",
+                Title = S.ProfilesPickerImport,
+                Filter = $"{S.ProfilesFilterMacros} (*.trprofile)|*.trprofile",
                 DefaultExt = "trprofile",
                 InitialDirectory = Interop.NativeMethods.TryGetDownloadsFolder() ?? string.Empty
             }, "import macros");
@@ -2310,7 +2331,9 @@ namespace TrueReplayer.Controllers
             catch (Exception ex)
             {
                 try { DiagnosticLog.Info($"[Import] Read error: {ex.Message}"); } catch { }
-                return new ImportPrepareResult(ImportPrepareStatus.ReadError, null, fileName, ex.Message);
+                // Detail follows a colon in the bridge's notice: the engine's own sentence for the
+                // common failures (in use, access denied…), in the interface's language.
+                return new ImportPrepareResult(ImportPrepareStatus.ReadError, null, fileName, S.Reason(ex));
             }
         }
 
@@ -2855,7 +2878,13 @@ namespace TrueReplayer.Controllers
                 // duplicate heal then renamed to "Roblox (2)" — and their own folder never received
                 // the target.
                 var existingFolder = _profileOrder.Folders
-                    .FirstOrDefault(f => string.Equals(f.Name, importedFolder.Name, StringComparison.OrdinalIgnoreCase));
+                    .FirstOrDefault(f => string.Equals(f.Name, importedFolder.Name, StringComparison.OrdinalIgnoreCase))
+                    // The examples' folder is named in the interface's language (Examples / Exemplos):
+                    // whoever switched languages already has it under the other name, and a second
+                    // folder of examples beside it would only split them.
+                    ?? (ExampleLibrary.IsFolderName(importedFolder.Name)
+                        ? _profileOrder.Folders.FirstOrDefault(f => ExampleLibrary.IsFolderName(f.Name))
+                        : null);
                 // A profile belongs to exactly ONE folder. Every effective-target resolver in this
                 // file picks the owning folder with FirstOrDefault(f => f.Items.Contains(name)), so
                 // a name left in two folders resolves to whichever sits EARLIER in the list — the
@@ -2999,7 +3028,7 @@ namespace TrueReplayer.Controllers
                     if (!_profileOrderKnown)
                     {
                         if (!_profileOrderUnreadable)
-                            OnAlert?.Invoke("Couldn't read your macro organisation (folders/pins) — another program is holding the file. Macros are shown ungrouped until it can be read; the file was not changed.");
+                            OnAlert?.Invoke(S.ProfilesOrderLocked, "info");
                         _profileOrderUnreadable = true;
                     }
                 }
@@ -3024,12 +3053,12 @@ namespace TrueReplayer.Controllers
                         {
                             string backupPath = ProfileOrderPath + ".bak";
                             File.Copy(ProfileOrderPath, backupPath, overwrite: true);
-                            OnAlert?.Invoke($"Couldn't read your macro organisation (folders/pins). The unreadable file was backed up to {Path.GetFileName(backupPath)}; your layout was reset.");
+                            OnAlert?.Invoke(S.ProfilesOrderBackedUp(file: Path.GetFileName(backupPath)), "error");
                         }
                         catch (Exception backupEx)
                         {
                             DiagnosticLog.Error("LoadProfileOrder backup failed", backupEx);
-                            OnAlert?.Invoke("Couldn't read your macro organisation (folders/pins); your layout was reset.");
+                            OnAlert?.Invoke(S.ProfilesOrderReset, "error");
                         }
                         order = new ProfileOrderData();
                     }
@@ -3098,7 +3127,8 @@ namespace TrueReplayer.Controllers
             foreach (var folder in order.Folders)
             {
                 var baseName = (folder.Name ?? string.Empty).Trim();
-                if (string.IsNullOrEmpty(baseName)) baseName = "Folder";
+                // A name the app writes, so it is born in the interface's language (Folder / Pasta).
+                if (string.IsNullOrEmpty(baseName)) baseName = S.ProfilesNamesFolder;
                 var unique = baseName;
                 int suffix = 2;
                 while (seenFolderNames.Contains(unique)) unique = $"{baseName} ({suffix++})";
@@ -3146,9 +3176,10 @@ namespace TrueReplayer.Controllers
                 // file again instead. If it reads now, its layout takes over and the change is lost
                 // — said so; if not, the change stays unsaved, and so does the file.
                 await LoadProfileOrderAsync();
-                OnAlert?.Invoke(_profileOrderUnreadable
-                    ? "Your macro organisation (folders/pins) still can't be read, so that change wasn't saved. The file was not changed."
-                    : "Your folders and pins hadn't loaded yet — they're back now, but that change wasn't applied. Please repeat it.");
+                // Either way the change did not take: an error while the file still cannot be read,
+                // a notice once it is back (the layout is fine, the change only needs repeating).
+                if (_profileOrderUnreadable) OnAlert?.Invoke(S.ProfilesOrderStillUnreadable, "error");
+                else OnAlert?.Invoke(S.ProfilesOrderReloaded, "info");
                 return;
             }
             await _profileOrderLock.WaitAsync();
@@ -3166,7 +3197,7 @@ namespace TrueReplayer.Controllers
                 // failure streak, not per retry.
                 DiagnosticLog.Error("SaveProfileOrder write failed", ex);
                 if (!_profileOrderUnwritten)
-                    OnAlert?.Invoke($"Couldn't save your macro organisation (folders/pins): {ex.Message}. The change is kept for this session and will be retried.");
+                    OnAlert?.Invoke(S.ProfilesOrderSaveFailed(reason: S.Reason(ex)), "error");
                 _profileOrderUnwritten = true;
             }
             finally

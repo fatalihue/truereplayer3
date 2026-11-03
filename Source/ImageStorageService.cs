@@ -74,8 +74,10 @@ namespace TrueReplayer.Services
         public static string SaveReferenceImageFromFile(string path, string profileName)
         {
             long length = new FileInfo(path).Length;
+            // The reasons below are the engine's own sentences, in the interface's language: the bridge
+            // shows ex.Message (through S.Reason, which passes these through).
             if (length > MaxReferenceImageBytes)
-                throw new InvalidDataException($"That file is {length / (1024 * 1024)} MB; a reference image can be up to {MaxReferenceImageBytes / (1024 * 1024)} MB.");
+                throw new InvalidDataException(S.ProfilesImageTooBig(max: S.Num(MaxReferenceImageBytes / (1024 * 1024)), size: S.Num(length / (1024 * 1024))));
             Bitmap picture;
             try
             {
@@ -87,7 +89,7 @@ namespace TrueReplayer.Services
             }
             catch (Exception ex) when (ex is ArgumentException || ex is OutOfMemoryException || ex is ExternalException)
             {
-                throw new InvalidDataException("That file isn't a picture Windows can read. Choose a PNG, JPEG, BMP or GIF.", ex);
+                throw new InvalidDataException(S.ProfilesImageNotPicture, ex);
             }
             using (picture) return SaveReferenceImage(picture, profileName);
         }

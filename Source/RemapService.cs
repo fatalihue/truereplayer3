@@ -80,8 +80,16 @@ namespace TrueReplayer.Services
         /// </summary>
         public static bool LoadFailed { get; private set; }
 
-        /// <summary>Why <see cref="LoadFailed"/> is set, in one line, for the log and the UI.</summary>
-        public static string? LoadFailureDetail { get; private set; }
+        /// <summary>
+        /// Why <see cref="LoadFailed"/> is set, in one line, for the Key Remaps page (under its
+        /// quarantine notice): the engine's sentence and the error's own words. Said when it is read,
+        /// so it follows the interface's language; the log writes the exception itself.
+        /// </summary>
+        public static string? LoadFailureDetail => LoadFailed ? FailureDetail(_loadError, _loadErrorIsParse) : null;
+
+        // What LoadFailureDetail says, kept as the failure rather than as words.
+        private static Exception? _loadError;
+        private static bool _loadErrorIsParse;
 
         /// <summary>
         /// True when <see cref="Current"/> came from <see cref="BackupFileName"/> because
@@ -124,7 +132,8 @@ namespace TrueReplayer.Services
 
                 // A retry is a fresh verdict: a file that reads fine now is no longer quarantined.
                 LoadFailed = false;
-                LoadFailureDetail = null;
+                _loadError = null;
+                _loadErrorIsParse = false;
                 LoadedFromBackup = false;
 
                 if (!File.Exists(path))
@@ -137,6 +146,7 @@ namespace TrueReplayer.Services
                 }
 
                 // PRESENT. From here on, every failure path must leave the file alone.
+                bool parseFailed = false;
                 if (TryReadText(path, out var json, out var readError))
                 {
                     var parsed = TryParse(json, out var parseError);
@@ -150,10 +160,12 @@ namespace TrueReplayer.Services
                         return;
                     }
                     readError = parseError;
+                    parseFailed = true;
                 }
 
                 LoadFailed = true;
-                LoadFailureDetail = Describe(readError);
+                _loadError = readError;
+                _loadErrorIsParse = parseFailed;
                 DiagnosticLog.Error(
                     $"remaps.json could not be read — it will NOT be overwritten; edits this session go to {PendingFileName}",
                     readError ?? new IOException("unknown read failure"));
@@ -162,14 +174,13 @@ namespace TrueReplayer.Services
                 {
                     Current = backup;
                     LoadedFromBackup = true;
-                    Announce("Key remaps: file unreadable",
-                        $"remaps.json could not be read, so the last backup was loaded ({backup.Remaps.Count} remaps). The file is not overwritten — edits go to {PendingFileName}.");
+                    int count = backup.Remaps.Count;
+                    Announce(S.RemapsUnreadableTitle, S.RemapsUnreadableBackup(n: S.Num(count), pending: PendingFileName, count: count));
                 }
                 else
                 {
                     Current = new RemapConfig();
-                    Announce("Key remaps: file unreadable",
-                        "remaps.json could not be read and there is no backup, so the list shows empty. The file was NOT overwritten — see the session log.");
+                    Announce(S.RemapsUnreadableTitle, S.RemapsUnreadableNoBackup);
                 }
                 Publish();
             }
@@ -204,16 +215,14 @@ namespace TrueReplayer.Services
                             // that may be perfectly intact by then. Write nothing.
                             DiagnosticLog.Warn(
                                 "Key remaps: change NOT written — remaps.json is unreadable and the in-memory list is empty. Live for this session only.");
-                            Announce("Key remaps not saved",
-                                "remaps.json could not be read, so nothing was written to disk. Your change is active for this session only.");
+                            Announce(S.RemapsNotSavedTitle, S.RemapsNotSavedEmpty);
                         }
                         else
                         {
                             FileHelper.WriteAllTextAtomic(SiblingPath(PendingFileName), json);
                             DiagnosticLog.Warn(
                                 $"Key remaps: remaps.json is unreadable, so the change was written to {PendingFileName} instead. remaps.json is untouched.");
-                            Announce("Key remaps not saved",
-                                $"remaps.json could not be read, so your change went to {PendingFileName}. It is active for this session.");
+                            Announce(S.RemapsNotSavedTitle, S.RemapsNotSavedPending(PendingFileName));
                         }
                         // Note the backup is NOT refreshed here: while the main file is unreadable
                         // it is the last known-good copy, and this content never came off disk.
@@ -227,7 +236,8 @@ namespace TrueReplayer.Services
                             // The user chose to replace the unreadable file and we did: the file on
                             // disk is ours again, so the quarantine has nothing left to protect.
                             LoadFailed = false;
-                            LoadFailureDetail = null;
+                            _loadError = null;
+                            _loadErrorIsParse = false;
                             LoadedFromBackup = false;
                             DiagnosticLog.Info("remaps.json overwritten on explicit request — load-failure quarantine cleared.");
                         }
@@ -331,15 +341,20 @@ namespace TrueReplayer.Services
             }
         }
 
-        private static string Describe(Exception? ex) =>
-            ex == null ? "unknown read failure" : $"{ex.GetType().Name}: {ex.Message}";
+        // The engine's sentence for the failure and, after it, the error's own words: the engine's
+        // phrase for the common ones (in use, access denied — S.Reason), the .NET text otherwise. A
+        // parse error is .NET's JSON message, which says the line and the column.
+        private static string FailureDetail(Exception? ex, bool isParse) =>
+            ex == null ? S.RemapsDetailUnknown
+            : isParse ? S.RemapsDetailParse(ex.Message)
+            : S.RemapsDetailRead(S.Reason(ex));
 
         // A Windows notification is the only user-facing surface this service can reach on its own: Load
         // runs in the window ctor, long before WebView2 (and in tray-daemon usage the panel may
         // never open at all). Never let a notification failure break a load or a save.
         private static void Announce(string title, string text)
         {
-            try { WindowsNotices.Show(title, text, null, ("Open Key Remaps", "remaps-open")); }
+            try { WindowsNotices.Show(title, text, null, (S.RemapsOpen, "remaps-open")); }
             catch (Exception ex) { DiagnosticLog.Warn($"remap notification failed: {ex.GetType().Name}: {ex.Message}"); }
         }
 

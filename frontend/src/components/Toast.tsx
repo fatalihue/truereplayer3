@@ -53,6 +53,8 @@ export function Toast() {
         // shadow), the same surface every menu and flyout floats on — a toast is one more
         // thing floating over the app, not its own kind of box.
         className="toast-enter menu-surface flex items-center gap-2.5 px-3.5 py-2.5 max-w-[23.75rem] pointer-events-auto"
+        // The kind, for the checks: since the engine names it (I5), it no longer follows English words.
+        data-type={toast.type}
         // Freeze the countdown while the pointer is over the toast — an 8s error shouldn't be a
         // reading race — and while the keyboard is on one of its buttons, for the same reason.
         // Each side resumes only if the other is not still holding it.

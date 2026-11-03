@@ -47,7 +47,7 @@ namespace TrueReplayer.Services
             if (number)
             {
                 if (!TryParseNumber(operand, out var target))
-                    throw new FormatException($"Value is not a number: '{operand}'");
+                    throw new FormatException(S.OcrNotNumber(value: operand));
                 if (!TryExtractNumber(read, out var value, out var span)) return new Result(false, null, null);
                 bool ok = effective switch
                 {
@@ -93,7 +93,10 @@ namespace TrueReplayer.Services
             return TryExtractNumber(read, out var v, out _) ? v.ToString("0.############################", CultureInfo.InvariantCulture) : "";
         }
 
-        /// <summary>Grid / run-report summary: `has "Victory"`, `= "Ready"`, `regex ^Lv`, `&lt; 30`.</summary>
+        /// <summary>
+        /// Grid / run-report summary: `has "Victory"`, `= "Ready"`, `regex ^Lv`, `&lt; 30`. The words in the
+        /// interface's language, the same as the list's Details column (i18n/*/engine-ocr.ts, summary).
+        /// </summary>
         public static string Summary(ActionItem a)
         {
             bool number = IsNumberMode(a.OcrReadAs);
@@ -109,8 +112,8 @@ namespace TrueReplayer.Services
             return op switch
             {
                 "eq" => $"= \"{operand}\"",
-                "regex" => $"regex {operand}",
-                _ => $"has \"{operand}\"",
+                "regex" => S.OcrSummaryRegex(text: operand),
+                _ => S.OcrSummaryHas(text: operand),
             };
         }
 

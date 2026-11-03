@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 
 namespace TrueReplayer.Services
@@ -61,6 +64,58 @@ namespace TrueReplayer.Services
             }
             return Language != before;
         }
+
+        // ── What the texts put in their blanks, in the interface's language ────────────────────────
+
+        // Made on first use, and never a throw: a process that runs .NET without culture data (the test
+        // probes load this dll with InvariantGlobalization) would otherwise fail on every text of S.
+        private static CultureInfo? _en, _pt;
+        private static CultureInfo Named(string name)
+        {
+            try { return CultureInfo.GetCultureInfo(name); }
+            catch (CultureNotFoundException) { return CultureInfo.InvariantCulture; }
+        }
+
+        /// <summary>The interface's culture, for a number or a date inside a text (not the machine's: {date} and {time} keep that one).</summary>
+        public static CultureInfo Culture => IsPt ? (_pt ??= Named("pt-BR")) : (_en ??= Named("en-US"));
+
+        /// <summary>A count for a text, grouped as the language writes it: 1,000 / 1.000.</summary>
+        public static string Num(long n) => n.ToString("N0", Culture);
+
+        /// <summary>A number with its decimals for a text: 2.5 / 2,5.</summary>
+        public static string Fixed(double value, int decimals) => value.ToString("F" + decimals, Culture);
+
+        /// <summary>A list for a text: "a, b and c" / "a, b e c".</summary>
+        public static string List(IEnumerable<string> items)
+        {
+            var all = items.ToList();
+            if (all.Count <= 1) return all.Count == 1 ? all[0] : "";
+            return string.Join(", ", all.Take(all.Count - 1)) + (IsPt ? " e " : " and ") + all[^1];
+        }
+
+        /// <summary>
+        /// Why something failed, to follow a colon in a text. In English it is what .NET wrote, as it
+        /// always was (it says the path); in Portuguese, the engine's own sentence for the exceptions a
+        /// person meets — a file in use, access denied, a path that is not there, a full disk — and the
+        /// .NET message for any other, which only it can say.
+        /// </summary>
+        public static string Reason(Exception ex)
+        {
+            if (!IsPt) return ex.Message;
+            return ex switch
+            {
+                UnauthorizedAccessException => ErrorsAccessDenied,
+                FileNotFoundException => ErrorsFileNotFound,
+                DirectoryNotFoundException => ErrorsFolderNotFound,
+                PathTooLongException => ErrorsPathTooLong,
+                IOException io when Win32Code(io) is 32 or 33 => ErrorsFileInUse,
+                IOException io when Win32Code(io) is 39 or 112 => ErrorsDiskFull,
+                _ => ex.Message,
+            };
+        }
+
+        /// <summary>The Win32 error an IOException carries in its HResult (0x8007xxxx), or -1.</summary>
+        private static int Win32Code(IOException ex) => (ex.HResult & 0xFFFF0000) == 0x80070000 ? ex.HResult & 0xFFFF : -1;
 
         /// <summary>The display language Windows uses for this user (the first preferred UI language).</summary>
         public static string WindowsLanguage()

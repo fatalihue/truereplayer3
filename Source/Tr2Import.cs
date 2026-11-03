@@ -98,8 +98,8 @@ namespace TrueReplayer.Services
         public static async Task<string?> StageAsync(Parts parts, IntPtr parentWindow)
         {
             if (!CoexistenceGuard.Bypassed && CoexistenceGuard.Tr2Running())
-                return $"Close {AppIdentity.Tr2.DisplayName} first: its files must not change while they are copied.";
-            if (parts == Parts.None) return "Choose something to import.";
+                return S.ProfilesTr2CloseFirst(app: AppIdentity.Tr2.DisplayName);
+            if (parts == Parts.None) return S.ProfilesTr2ChooseParts;
 
             string stamp = DateTime.Now.ToString("yyyy-MM-dd HHmmss");
             string docsStage = Path.Combine(AppIdentity.DocumentsRoot, ".import-" + stamp.Replace(' ', '-'));
@@ -155,7 +155,7 @@ namespace TrueReplayer.Services
                 DiagnosticLog.Error("[Import] staging failed", ex);
                 TryDelete(docsStage);
                 TryDelete(localStage);
-                return $"The import failed and nothing was changed: {ex.Message}";
+                return S.ProfilesTr2Failed(reason: S.Reason(ex));
             }
         }
 
@@ -260,7 +260,9 @@ namespace TrueReplayer.Services
             string stamp = pending?["stamp"]?.GetValue<string>() ?? DateTime.Now.ToString("yyyy-MM-dd HHmmss");
             string docsStage = pending?["docsStage"]?.GetValue<string>() ?? "";
             string localStage = pending?["localStage"]?.GetValue<string>() ?? "";
-            string backup = Path.Combine(AppIdentity.DocumentsRoot, "Backups", "Before import " + stamp);
+            // "Backups" is a path and stays; the folder inside is a name the app writes, born in the
+            // interface's language ("Before import …" / "Antes de importar …"), read before this runs.
+            string backup = Path.Combine(AppIdentity.DocumentsRoot, "Backups", S.ProfilesNamesBeforeImport(stamp: stamp));
             try
             {
                 if (Directory.Exists(docsStage))

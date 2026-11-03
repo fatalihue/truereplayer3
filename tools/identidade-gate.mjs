@@ -23,7 +23,14 @@ const ALLOWED_CS = [
   /^TrueReplayerBridge\b/,                   // the extension's pipe (decision 6)
   /^TrueReplayer extension\b/,               // the browser extension, the same for both apps
   /^TrueReplayer macros \(\*\.trprofile\)/,  // the file type, the same for both apps
+  /^TrueReplayer macros\b/,                  // the file type's name in a file picker's filter (Strings.g.cs)
   /^TrueReplayer macro export\b/,            // "isn't a valid TrueReplayer macro export": the file format too
+];
+// ...or when the text right before it matches one of these: the engine's texts in pt-BR (Strings.g.cs,
+// generated from i18n/) name the shared things with the family name after the noun.
+const ALLOWED_CS_BEFORE = [
+  /extensão do $/,                           // "a extensão do TrueReplayer"
+  /Macros do $/,                             // "Macros do TrueReplayer", the file type's filter
 ];
 const ALLOWED_DIST = [
   /^TrueReplayer [23]\b/,                    // APP_NAME and TR2_NAME (frontend/src/appIdentity.ts)
@@ -73,6 +80,7 @@ function scanCs() {
       if (!line.includes('TrueReplayer') || ALLOWED_CS_LINE.some((r) => r.test(line))) return;
       for (let i = line.indexOf('TrueReplayer'); i !== -1; i = line.indexOf('TrueReplayer', i + 1)) {
         if (ALLOWED_CS.some((r) => r.test(line.slice(i)))) continue;
+        if (ALLOWED_CS_BEFORE.some((r) => r.test(line.slice(Math.max(0, i - 20), i)))) continue;
         failures.push(`${path.relative(repo, file)}:${n + 1}: ${original.trim()}`);
         break;
       }
