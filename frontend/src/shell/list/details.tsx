@@ -7,8 +7,6 @@ import { isNumberMode, screenTextSummary } from '../../utils/screenText';
 // The Send Text cell carries the engine's token grammar; it loads with the first Send Text step.
 const SendTextCell = lazy(() => import('./SendTextCell'));
 
-type Language = 'en' | 'pt-BR';
-
 /**
  * The Details cell of a step: what it acts on, in one line (lista-003). A plain function, not a
  * component, so a row costs no extra component instance; it is called by the row, which the
@@ -17,10 +15,9 @@ type Language = 'en' | 'pt-BR';
  * Where the concept changed a summary, this follows it: a condition names its family ("Image
  * found", "Pixel color"), a Wait Image reads "95% · up to 10 s", a Pause "F8 or 3,000 ms" and a
  * While's ceiling "max 20×". The words come from the catalog (i18n/<language>/list.ts), each
- * summary a whole phrase; the families are glossary and stay as they are. `language` is the build's,
- * for formatMs.
+ * summary a whole phrase; the families are glossary and stay as they are.
  */
-export function stepDetails(step: ActionItem, dataRows: number, language: Language): ReactNode {
+export function stepDetails(step: ActionItem, dataRows: number): ReactNode {
   const type = step.actionType;
   if (type === 'If' || type === 'ElseIf' || type === 'While' || type === 'Assert') return condition(step);
   switch (type) {
@@ -36,13 +33,13 @@ export function stepDetails(step: ActionItem, dataRows: number, language: Langua
     case 'Pause': {
       const key = step.key ? getDisplayKey(step.key) : '';
       const ms = step.timeout ?? 0;
-      if (key && ms > 0) return <span className="step-mono">{t('list.details.keyOrTime', { key, ms: formatMs(ms, language) })}</span>;
+      if (key && ms > 0) return <span className="step-mono">{t('list.details.keyOrTime', { key, ms: formatMs(ms) })}</span>;
       if (key) return <span className="step-mono">{key}</span>;
-      if (ms > 0) return <span className="step-mono">{msText(ms, language)}</span>;
+      if (ms > 0) return <span className="step-mono">{msText(ms)}</span>;
       return <span className="step-quiet">{t('list.details.skipped')}</span>;
     }
     case 'HoldKey':
-      return <span className="step-mono">{t('list.details.holdFor', { key: formatKeyCombo(step.key), ms: formatMs(holdMs(step), language) })}</span>;
+      return <span className="step-mono">{t('list.details.holdFor', { key: formatKeyCombo(step.key), ms: formatMs(holdMs(step)) })}</span>;
     case 'Keystroke':
       return <span className="step-mono step-combo">{formatKeyCombo(step.key)}</span>;
     case 'SendText':
@@ -67,7 +64,7 @@ export function stepDetails(step: ActionItem, dataRows: number, language: Langua
   if (type.startsWith('Browser')) return cut(step.key ?? '');
   if (isCoordinateClick(type)) {
     const point = step.atCursor && isCombinedClick(type) ? '' : `${step.x}, ${step.y}`;
-    const hold = isClickHold(type) ? msText(holdMs(step), language) : '';
+    const hold = isClickHold(type) ? msText(holdMs(step)) : '';
     return <span className="step-mono">{[point, hold].filter(Boolean).join(' · ')}</span>;
   }
   return <span className="step-mono">{getDisplayKey(step.key)}</span>;
@@ -218,7 +215,7 @@ function seconds(ms: number): string {
 }
 
 // A time alone: the unit is the same in both languages.
-const msText = (ms: number, language: Language) => `${formatMs(ms, language)} ms`;
+const msText = (ms: number) => `${formatMs(ms)} ms`;
 
 const mono = (text: string) => (text ? <span className="step-mono step-cut" data-tip={text} data-tip-reveal="">{text}</span> : null);
 const cut = (text: string) => mono(text);

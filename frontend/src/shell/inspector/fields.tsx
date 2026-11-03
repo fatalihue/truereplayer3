@@ -4,7 +4,6 @@ import { splitCombo } from '../../components/common/KbdTag';
 import { isPureModifier, SINGLE_KEY_CAPTURE_IDLE_MS, useKeyCapture } from '../../logic/useKeyCapture';
 import { useSteps } from '../../logic/useSteps';
 import { fmtNum, t } from '../../i18n';
-import { useLanguage } from '../../state/LanguageContext';
 import { formatMs } from '../../utils/displayUtils';
 import { compactKey } from '../../utils/keyNames';
 import { useCheckTarget, type CheckTarget } from './checkTarget';
@@ -78,11 +77,10 @@ export function Clear({ label, onClear, disabled }: { label: string; onClear: ()
 
 /** Quick durations under a field (DurationChips): the current one lit; ∞ is "no timeout" (0). */
 export function Chips({ values, current, onPick, disabled, forever }: { values: number[]; current: number; onPick: (ms: number) => void; disabled?: boolean; forever?: boolean }) {
-  const { language } = useLanguage();
   return (
     <div className="insp-chips">
       {values.map(v => (
-        <button key={v} type="button" aria-pressed={v === current} disabled={disabled} onClick={() => onPick(v)}>{formatMs(v, language)} ms</button>
+        <button key={v} type="button" aria-pressed={v === current} disabled={disabled} onClick={() => onPick(v)}>{formatMs(v)} ms</button>
       ))}
       {forever && (
         <button type="button" aria-pressed={current === 0} disabled={disabled} data-tip={t('inspector.fields.noTimeoutTip')} onClick={() => onPick(0)}>{t('inspector.fields.noTimeout')}</button>

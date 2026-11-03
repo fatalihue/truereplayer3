@@ -1,7 +1,6 @@
 import type { ActionItem } from '../../bridge/messageTypes';
 import { t } from '../../i18n';
 import { useSteps } from '../../logic/useSteps';
-import { useLanguage } from '../../state/LanguageContext';
 import { formatMs } from '../../utils/displayUtils';
 import { keycaps } from '../library/model';
 import { Chips, DraftField, KeyCapture, Section } from './fields';
@@ -18,11 +17,10 @@ const MAX_TIMEOUT_MS = 86_400_000;
  */
 export function PauseEditor({ step, locked }: { step: ActionItem; locked: boolean }) {
   const cmds = useSteps();
-  const { language } = useLanguage();
   const id = step.id ?? '';
   const setKey = (key: string) => applyEdits(cmds, id, [{ field: 'key', value: key }]);
   const timeout = step.timeout ?? 0;
-  const ms = formatMs(timeout, language);
+  const ms = formatMs(timeout);
   const key = step.key ? keycaps(step.key) : '';
   const summary = key && timeout > 0 ? t('editors.pause.summary.either', { key, ms })
     : key ? t('editors.pause.summary.key', { key })

@@ -159,7 +159,7 @@ namespace TrueReplayer.Services
         /// <summary>engine-automations.result.clipboardIgnored · clipboard change ignored (just after a replay)</summary>
         public static string AutomationsResultClipboardIgnored => IsPt ? "mudança do clipboard ignorada (logo depois de uma reprodução)" : "clipboard change ignored (just after a replay)";
         /// <summary>engine-automations.result.crashed · watcher crashed: {{reason}}</summary>
-        public static string AutomationsResultCrashed(string reason) => IsPt ? $"erro ao vigiar: {reason}" : $"watcher crashed: {reason}";
+        public static string AutomationsResultCrashed(string reason) => IsPt ? $"parou de vigiar por um erro: {reason}" : $"watcher crashed: {reason}";
         /// <summary>engine-bridge.alert.droppedUnreadable · Couldn't read the dropped file. Use Import… instead.</summary>
         public static string BridgeAlertDroppedUnreadable => IsPt ? "Não foi possível ler o arquivo que você soltou. Use Importar… para escolhê-lo." : "Couldn't read the dropped file. Use Import… instead.";
         /// <summary>engine-bridge.alert.automation.saveFailed · Could not save automation: {{reason}}</summary>

@@ -9,10 +9,6 @@
 //
 // A key that does not exist, a blank left out or added, a key that is not a literal: a build error at
 // the call. tools/gen-i18n.mjs has already checked the catalog itself by then.
-//
-// Until every screen is in the catalog, the old pairs tt('English', 'Português') of useTt() are picked
-// here too, by the same language (slice I1): a build never carries the other language, and the qps
-// build keeps them unmarked, so its sweep still finds them.
 import path from 'node:path';
 import { RAIZ, DIR, catalogo, codigoTexto, lacunas, regraPlural, ts } from './i18n-lib.mjs';
 
@@ -49,10 +45,7 @@ export default function i18n({ lang }) {
     async transform(code, id) {
       const arquivo = id.split('?')[0];
       if (!arquivo.toLowerCase().startsWith(FONTES) || !/\.tsx?$/.test(arquivo)) return null;
-      // The old pairs, tt('English', 'Português') from useTt(), until their screen moves to the catalog:
-      // the build's language picks one at compile time too, so a build never carries the other.
-      const comPares = /\btt\(|\bt = useTt\(\)/.test(code);
-      if (!comPares && !/\bi18n['"]/.test(code)) return null;
+      if (!/\bi18n['"]/.test(code)) return null;
       if (!cat) await carregar();
       const sf = ts.createSourceFile(arquivo, code, ts.ScriptTarget.Latest, true, arquivo.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
 
@@ -66,18 +59,13 @@ export default function i18n({ lang }) {
           if (original === 't' || original === 'tn') nomes.set(el.name.text, original);
         }
       }
-      // Two pages name the pair function t (const t = useTt()); there t(a, b) with a text that is not a key
-      // is a pair, not the catalog.
-      const parT = !nomes.has('t') && /\bt = useTt\(\)/.test(code);
-      const ehPar = (n) => ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.arguments.length === 2
-        && (n.expression.text === 'tt' || (parT && n.expression.text === 't'));
-      if (!nomes.size && !comPares) return null;
+      if (!nomes.size) return null;
 
       const erro = (node, msg) => {
         const { line, character } = sf.getLineAndCharacterOfPosition(node.getStart(sf));
         this.error({ message: `[i18n] ${msg}`, id: arquivo, loc: { file: arquivo, line: line + 1, column: character } });
       };
-      const ehChamada = (n) => ehPar(n) || (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && nomes.has(n.expression.text));
+      const ehChamada = (n) => ts.isCallExpression(n) && ts.isIdentifier(n.expression) && nomes.has(n.expression.text);
       // The outermost t()/tn() calls inside a node, not the node itself.
       const chamadasEm = (raiz) => {
         const achadas = [];
@@ -100,8 +88,6 @@ export default function i18n({ lang }) {
         || n.kind === ts.SyntaxKind.ThisKeyword || (ts.isPropertyAccessExpression(n) && !n.questionDotToken && simples(n.expression));
 
       const gerar = (call) => {
-        // A pair keeps its own text, unmarked even in qps: it is not in the catalog yet.
-        if (ehPar(call)) return `(${fonte(call.arguments[lang === 'pt-BR' ? 1 : 0])})`;
         const funcao = nomes.get(call.expression.text);
         const [chaveNo, argsNo, ...sobra] = call.arguments;
         if (!chaveNo || !(ts.isStringLiteral(chaveNo) || ts.isNoSubstitutionTemplateLiteral(chaveNo))) {

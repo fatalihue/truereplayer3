@@ -176,7 +176,7 @@ export default {
     // De onde veio um valor resolvido: a dica dele.
     note: {
       clock: 'Preview time. Month and day names follow the machine locale at replay.',
-      'first-data-row': 'The FIRST data row. A run uses the row it is on; ForEach and Run Macro can use another table.',
+      'first-data-row': 'The FIRST data row. A run uses the row it is on; For Each Data Row and Run Macro can use another table.',
       'last-run': 'From the LAST run — variables reset at every start.',
     },
     // O texto no lugar de uma peça pendente, dentro da mensagem · minúscula, curto.

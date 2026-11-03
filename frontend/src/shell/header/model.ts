@@ -47,11 +47,8 @@ export const loopsShown = (loop: ProfileLoopState) => (loop.enabled ? loop.count
 let tenths: Intl.NumberFormat | undefined;
 let clock: Intl.DateTimeFormat | undefined;
 
-/**
- * "450 ms", "3.5 s", "2 min 5 s", "1 h 4 min", in this build's language. The second parameter is the
- * old language of the tips, kept for the callers not yet moved to the catalog; the build decides now.
- */
-export function formatDuration(ms: number, _language: 'en' | 'pt-BR' = 'en'): string {
+/** "450 ms", "3.5 s", "2 min 5 s", "1 h 4 min", in this build's language. */
+export function formatDuration(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)} ms`;
   if (ms < 59_950) return `${(tenths ??= new Intl.NumberFormat(LANG, { maximumFractionDigits: 1 })).format(Math.round(ms / 100) / 10)} s`;
   const seconds = Math.round(ms / 1000);

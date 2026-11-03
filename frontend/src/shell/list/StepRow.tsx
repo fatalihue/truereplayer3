@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 import type { ActionItem } from '../../bridge/messageTypes';
-import { LANG, t } from '../../i18n';
+import { t } from '../../i18n';
 import { hasConditionFields } from '../../utils/conditionalBlocks';
 import { formatMs, getActionTypeColors, isCombinedClick, isFocusClickEligible } from '../../utils/displayUtils';
 import { useShell } from '../store';
@@ -8,9 +8,6 @@ import { blockColor, type RowBlock } from './blocks';
 import { stepDetails } from './details';
 import { useSelection } from './selection';
 import { NO_DELAY_TYPES, stepIcon, stepName } from './stepTypes';
-
-/** The build's language as formatMs still names it (plan §3.4: it loses the parameter later). */
-const MS_LANGUAGE = LANG === 'pt-BR' ? 'pt-BR' : 'en';
 
 /**
  * One step of the list (⑦). It only draws: the list handles the pointer and the keys for every
@@ -102,9 +99,9 @@ export function StepRow({ step, index, k, depth, kind, owner, rails, broken, tip
         </span>
         {skipped && <span className="step-icon step-skipped" data-icon="eye-off" role="img" aria-label={t('list.row.skipped')} />}
       </span>
-      <span className="step-what">{stepDetails(step, dataRows, MS_LANGUAGE)}</span>
+      <span className="step-what">{stepDetails(step, dataRows)}</span>
       <span className="step-delay">
-        {delay && <>{formatMs(step.delay, MS_LANGUAGE)}<span className="step-ms">ms</span></>}
+        {delay && <>{formatMs(step.delay)}<span className="step-ms">ms</span></>}
       </span>
       <span className="step-note">{step.comment}</span>
     </div>

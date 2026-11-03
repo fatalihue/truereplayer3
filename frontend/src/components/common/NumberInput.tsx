@@ -1,7 +1,6 @@
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { t } from '../../i18n';
-import { useLanguage } from '../../state/LanguageContext';
 import { formatMs } from '../../utils/displayUtils';
 
 export interface NumberInputProps {
@@ -88,7 +87,6 @@ export function NumberInput({
   ghostSuffix,
   integer = false,
 }: NumberInputProps) {
-  const { language } = useLanguage();
   // Text-mode (type=text + digit-strip) is needed for both locale grouping and an inside unit,
   // since a type=number input can render neither a separator nor a trailing " ms".
   const textMode = thousands || suffixInside;
@@ -217,7 +215,7 @@ export function NumberInput({
   // suffixInside mode, is a SEPARATE dim span (below) — never part of the editable value — so
   // it stays visible while typing and can't be selected or deleted (matches SettingsPanel).
   const displayValue = !isFocused && text !== '' && Number.isFinite(Number(text)) && thousands
-    ? formatMs(Number(text), language)
+    ? formatMs(Number(text))
     : text;
 
   const inc = () => commit((value ?? (min ?? 0)) + step);

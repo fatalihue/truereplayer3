@@ -2,7 +2,6 @@ import { useState, type KeyboardEvent } from 'react';
 import type { ActionItem } from '../../bridge/messageTypes';
 import { fmtNum, t } from '../../i18n';
 import { useSteps } from '../../logic/useSteps';
-import { useLanguage } from '../../state/LanguageContext';
 import { useToast } from '../../state/ToastContext';
 import { formatMs, isCombinedClick, isCoordinateClick } from '../../utils/displayUtils';
 import { blockMap, scopeOf } from '../list/blocks';
@@ -38,19 +37,17 @@ function parseBulk(text: string, mode: Mode, kind: 'delay' | 'coord'): { value?:
  */
 export function BatchEditor({ indices, steps, locked }: { indices: number[]; steps: ActionItem[]; locked: boolean }) {
   const cmds = useSteps();
-  const { language } = useLanguage();
   const { showToast } = useToast();
   const sel = indices;
   const n = sel.length;
-  const ms = (v: number) => formatMs(v, language);
 
   const delayRows = sel.filter(i => !NO_DELAY.has(steps[i].actionType));
   const delays = delayRows.map(i => steps[i].delay);
   const low = Math.min(...delays);
   const high = Math.max(...delays);
   const delayNow = delayRows.length === 0 ? t('inspector.batch.delayNone')
-    : low === high ? t('inspector.batch.delaySame', { ms: ms(low) })
-    : t('inspector.batch.delayMixed', { low: ms(low), high: ms(high) });
+    : low === high ? t('inspector.batch.delaySame', { ms: formatMs(low) })
+    : t('inspector.batch.delayMixed', { low: formatMs(low), high: formatMs(high) });
   // The clicks with a point of their own: an at-cursor click reads the mouse, not its X and Y.
   const clicks = sel.filter(i => isCoordinateClick(steps[i].actionType) && !(steps[i].atCursor && isCombinedClick(steps[i].actionType)));
   const notes = new Set(sel.map(i => steps[i].comment ?? ''));

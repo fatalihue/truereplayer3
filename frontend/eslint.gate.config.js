@@ -34,10 +34,9 @@
 // The interface speaks en-US and pt-BR (plan .claude/planos/idiomas-tr3-2026-11-02.md, §3.2), and
 // its text comes from the catalog in i18n/ through t(): one build per language, the text put in at
 // compile time. Text written straight into JSX — a child, or aria-label / data-tip / placeholder /
-// title / alt — would stay in English in the pt-BR build, and so would the old tt('en', 'pt') pairs,
-// which are reported too. What is only glossary (step names, keys, brands, the features: i18n/
-// glossario.ts) is the same in both languages and passes. The screens not yet moved to the catalog
-// are in the suppressions, and each slice of the plan lowers the count.
+// title / alt — would stay in English in the pt-BR build. What is only glossary (step names, keys,
+// brands, the features: i18n/glossario.ts) is the same in both languages and passes. Every screen is
+// in the catalog, so this rule has no suppressions: a text written in the code fails the build.
 //
 // Pre-existing violations live in eslint-gate-suppressions.json (generated with --suppress-all).
 // Today's count is frozen and any NEW one fails the build. To clear one: fix it, then run
@@ -76,8 +75,6 @@ const SEM_TERMOS = new RegExp(String.raw`(?<![\p{L}\p{N}])(?:${TERMOS.map(escapa
 /** Text that needs the catalog: two letters in a row once the tokens and the glossary are out. */
 const solto = (texto) => /\p{L}{2}/u.test(texto.replace(/\{[^{}]*\}/g, ' ').replace(SEM_TERMOS, ' '))
 const ATRIBUTOS = new Set(['aria-label', 'data-tip', 'placeholder', 'title', 'alt'])
-/** A key of the catalog, as t() takes it: 'area.key' or 'area.group.key'. */
-const CHAVE = /^[a-z][\w-]*(\.[\w-]+)+$/
 
 const textoSolto = {
   meta: { type: 'problem', messages: { solto: 'Interface text outside the catalog: "{{texto}}". It goes in i18n/ and comes through t() (eslint.gate.config.js, rule 3).' } },
@@ -109,14 +106,6 @@ const textoSolto = {
       },
       JSXExpressionContainer(node) {
         if (node.parent.type === 'JSXElement' || node.parent.type === 'JSXFragment') conferir(node.expression)
-      },
-      // The old pairs: tt('English', 'Português'), and the t = useTt() of two pages.
-      CallExpression(node) {
-        const c = node.callee
-        if (c.type !== 'Identifier') return
-        const primeiro = node.arguments[0]
-        const ehChave = primeiro?.type === 'Literal' && typeof primeiro.value === 'string' && CHAVE.test(primeiro.value)
-        if (c.name === 'tt' || (c.name === 't' && node.arguments.length === 2 && !ehChave)) report(node, 'tt(…)')
       },
     }
   },

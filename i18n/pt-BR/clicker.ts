@@ -91,7 +91,7 @@ export default {
   },
   // Concordam com "a execução" da frase de lastRun.
   end: {
-    stopped: 'interrompida',
+    stopped: 'parada',
     time: 'tempo esgotado',
     clicks: 'limite atingido',
     error: 'falhou',

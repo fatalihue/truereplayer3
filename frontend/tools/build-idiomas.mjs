@@ -92,4 +92,4 @@ if (problemas.length) {
   console.error(`[build-idiomas] um build tem o texto do outro idioma:\n  ${[...new Set(problemas)].join('\n  ')}`);
   process.exit(1);
 }
-console.log(`[build-idiomas] cada build tem só o texto dele (${en.entradas.size} chaves conferidas; ${aindaNoCodigo.size} textos do catálogo ainda escritos em telas que não passaram por ele)`);
+console.log(`[build-idiomas] cada build tem só o texto dele (${en.entradas.size} chaves conferidas; ${aindaNoCodigo.size} textos do catálogo que o código também tem, como dado, identificador ou nome do glossário)`);

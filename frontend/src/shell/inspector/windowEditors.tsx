@@ -4,7 +4,6 @@ import { t, tn } from '../../i18n';
 import { useEditorTools } from '../../logic/useEditorTools';
 import { useMacro } from '../../logic/useMacro';
 import { useSteps } from '../../logic/useSteps';
-import { useLanguage } from '../../state/LanguageContext';
 import { formatMs } from '../../utils/displayUtils';
 import { arrival } from '../list/selection';
 import { useApp, useShell } from '../store';
@@ -51,7 +50,6 @@ function frontOpening(placed: Placed, path: string): string {
 export function ActivateWindowEditor({ step, locked }: { step: ActionItem; locked: boolean }) {
   const cmds = useSteps();
   const tools = useEditorTools();
-  const { language } = useLanguage();
   const id = step.id ?? '';
   const edit = (edits: StepEdit[]) => applyEdits(cmds, id, edits);
   const verb: Verb = step.windowVerb === 'maximize' || step.windowVerb === 'minimize' || step.windowVerb === 'close' ? step.windowVerb : 'activate';
@@ -81,7 +79,7 @@ export function ActivateWindowEditor({ step, locked }: { step: ActionItem; locke
     if (r.path) edit([{ field: 'launchPath', value: r.path }]);
   });
 
-  const upTo = formatMs(timeout, language);
+  const upTo = formatMs(timeout);
   const placed: Placed = verb === 'maximize' ? 'maximize'
     : verb !== 'activate' ? 'plain'
     : position && size ? 'place' : position ? 'move' : size ? 'resize' : 'plain';

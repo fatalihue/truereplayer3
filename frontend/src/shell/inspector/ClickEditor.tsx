@@ -4,7 +4,6 @@ import { useBridge } from '../../bridge/BridgeContext';
 import { t, tn } from '../../i18n';
 import { newRequestId, useEditorTools } from '../../logic/useEditorTools';
 import { useSteps } from '../../logic/useSteps';
-import { useLanguage } from '../../state/LanguageContext';
 import { useToast } from '../../state/ToastContext';
 import { CLICK_COORD_TOLERANCE_PX, clickDefaultGap } from '../../utils/actionCost';
 import { clickFormOf, formatMs, isClickHold, isCombinedClick, isFocusClickEligible } from '../../utils/displayUtils';
@@ -48,7 +47,6 @@ export function ClickEditor({ step, index, steps, locked }: { step: ActionItem; 
   const captureFor = useCaptureFor();
   const { send, subscribe } = useBridge();
   const { showToast } = useToast();
-  const { language } = useLanguage();
   const target = useApp(a => {
     const p = a.profiles.find(x => x.name === a.activeProfile);
     return p?.effectiveUseRelativeCoordinates ? (p.effectiveTargetWindowTitle || p.effectiveTargetProcessName || '') : null;
@@ -173,7 +171,7 @@ export function ClickEditor({ step, index, steps, locked }: { step: ActionItem; 
   };
 
   const gap = step.repeatDelayMs ?? clickDefaultGap(type);
-  const times = form === '' && repeat > 1 ? t('editors.click.summary.times', { n: repeat, ms: formatMs(gap, language) }) : '';
+  const times = form === '' && repeat > 1 ? t('editors.click.summary.times', { n: repeat, ms: formatMs(gap) }) : '';
   const btn = BUTTON_WORDS[button];
   // The summary (D13), a whole sentence for each case: a half of a click is never at the cursor.
   const summary = form === 'Down'
@@ -185,8 +183,8 @@ export function ClickEditor({ step, index, steps, locked }: { step: ActionItem; 
     : form === 'Up' ? t('editors.click.summary.up', { button: btn, x: step.x, y: step.y })
     : kind === 'hold'
       ? atCursor
-        ? t('editors.click.summary.holdCursor', { button: btn, ms: formatMs(step.holdDurationMs || DEFAULT_HOLD_MS, language) })
-        : t('editors.click.summary.hold', { button: btn, x: step.x, y: step.y, ms: formatMs(step.holdDurationMs || DEFAULT_HOLD_MS, language) })
+        ? t('editors.click.summary.holdCursor', { button: btn, ms: formatMs(step.holdDurationMs || DEFAULT_HOLD_MS) })
+        : t('editors.click.summary.hold', { button: btn, x: step.x, y: step.y, ms: formatMs(step.holdDurationMs || DEFAULT_HOLD_MS) })
     : kind === 'double'
       ? atCursor ? t('editors.click.summary.doubleCursor', { times }) : t('editors.click.summary.double', { x: step.x, y: step.y, times })
     : kind === 'triple'

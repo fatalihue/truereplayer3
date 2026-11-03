@@ -52,7 +52,6 @@ export function Library() {
   const macro = useMacro();
   const steps = useSteps();
   const { showToast } = useToast();
-  // Only for macroMenuEntries, which still takes the old pairs' function until they are gone everywhere.
   const imports = useImport();
   const band = useShellBand();
   // Laid over the steps for a moment: from the folded library's Expand, or from the rail where the

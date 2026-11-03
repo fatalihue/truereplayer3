@@ -156,7 +156,7 @@ export default {
     // "formato regional": o nome que o Windows dá ao ajuste que o motor segue (Hora e idioma › Idioma e região).
     note: {
       clock: 'Hora da prévia. Os nomes de mês e de dia seguem o formato regional do Windows ao reproduzir.',
-      'first-data-row': 'A PRIMEIRA linha de dados. Uma execução usa a linha em que está; ForEach e Run Macro podem usar outra tabela.',
+      'first-data-row': 'A PRIMEIRA linha de dados. Uma execução usa a linha em que está; For Each Data Row e Run Macro podem usar outra tabela.',
       'last-run': 'Da ÚLTIMA execução — as variáveis zeram a cada início.',
     },
     pending: {

@@ -41,20 +41,20 @@ export function readsScreenText(a: Pick<ActionItem, 'actionType' | 'conditionTyp
 }
 
 /**
- * Why a Regex operand will not compile, or null. The pattern runs in .NET, so JS is only a proxy:
- * syntax .NET accepts and JS rejects — inline options "(?i)", atomic "(?>", conditionals "(?(",
- * balancing groups "(?<a-b>", the \A \Z \z \G anchors — is let through rather than flagged
- * falsely; anything else JS refuses, .NET refuses too ("Level (\d+" with an unclosed group).
- * A pattern with a {token} is resolved at run time and is not judged here.
+ * Whether a Regex operand will not compile (the callers say so in the interface's language). The
+ * pattern runs in .NET, so JS is only a proxy: syntax .NET accepts and JS rejects — inline options
+ * "(?i)", atomic "(?>", conditionals "(?(", balancing groups "(?<a-b>", the \A \Z \z \G anchors — is
+ * let through rather than flagged falsely; anything else JS refuses, .NET refuses too ("Level (\d+"
+ * with an unclosed group). A pattern with a {token} is resolved at run time and is not judged here.
  */
-export function regexProblem(pattern: string): string | null {
+export function regexProblem(pattern: string): boolean {
   // A token opens with a letter ({var:x}); a quantifier with a digit (\d{2}) is still judged.
-  if (!pattern || /\{[A-Za-z]/.test(pattern)) return null;
+  if (!pattern || /\{[A-Za-z]/.test(pattern)) return false;
   // Inline options need at least ONE flag letter: with `*`, a plain non-capturing "(?:" matched as
   // "options" and switched the check off for the whole pattern — "(?:Level (\d+)" passed unflagged.
-  if (/\(\?[imnsx-]+[:)]|\(\?>|\(\?\(|\(\?<\w+-\w*>|\\[AZzG]/.test(pattern)) return null;
-  try { new RegExp(pattern, 'i'); return null; }
-  catch { return 'This pattern does not compile'; }
+  if (/\(\?[imnsx-]+[:)]|\(\?>|\(\?\(|\(\?<\w+-\w*>|\\[AZzG]/.test(pattern)) return false;
+  try { new RegExp(pattern, 'i'); return false; }
+  catch { return true; }
 }
 
 /** Number parse with the same separator rule as the C# matcher (used to validate the Value field). */

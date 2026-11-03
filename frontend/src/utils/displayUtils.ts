@@ -1,3 +1,4 @@
+import { fmtNum } from '../i18n';
 import { compactKey } from './keyNames';
 
 // Raw key names as older profiles and the hook report them (numeric VK codes, WinForms enum
@@ -55,26 +56,21 @@ export function formatKeyCombo(combo: string): string {
   return parts.join(' + ');
 }
 
-// Format a millisecond value for display with locale thousands separators, so a
-// large delay reads at a glance: 30000 → "30.000" (pt-BR) / "30,000" (en). Values
-// under 1000 render as bare integers. The separator follows the UI language toggle
+// Format a millisecond value for display with the build's thousands separator, so a
+// large delay reads at a glance: 30000 → "30.000" (pt-BR) / "30,000" (en-US). Values
+// under 1000 render as bare integers. The separator follows the interface's language
 // on purpose — a hardcoded "." would read as a decimal to an English user, and a
 // "," would to a Brazilian one. The unit ("ms") is added by the caller so it can be
 // styled as a separate quiet suffix. Floats are truncated; NaN/±∞ fall back to 0.
 //
-// One formatter per language, built once. `n.toLocaleString(locale)` is specified as
+// fmtNum keeps one formatter, built once. `n.toLocaleString(locale)` is specified as
 // `new Intl.NumberFormat(locale).format(n)`, and V8 really does build a fresh ICU formatter on
 // every call that names a locale — ~60-80 µs each under the 4× CPU throttle. The grid calls this
 // once per row on every render (the Delay column), so a 500-row list paid 40-60 ms per render for
-// formatter construction alone. Same output: same locale, default options.
-const MS_FORMAT = {
-  en: new Intl.NumberFormat('en-US'),
-  'pt-BR': new Intl.NumberFormat('pt-BR'),
-} as const;
-export function formatMs(ms: number, language: 'en' | 'pt-BR'): string {
+// formatter construction alone.
+export function formatMs(ms: number): string {
   // `|| 0` folds the -0 that Math.trunc gives for (-1, 0) into 0 — Intl prints it as "-0".
-  const n = Number.isFinite(ms) ? Math.trunc(ms) || 0 : 0;
-  return MS_FORMAT[language === 'pt-BR' ? 'pt-BR' : 'en'].format(n);
+  return fmtNum(Number.isFinite(ms) ? Math.trunc(ms) || 0 : 0);
 }
 // The combined click types — mirrors ActionItem.IsCombinedClickType on the C# side.
 // Only these read the at-cursor flag, so only these may blank their coordinates because of it.

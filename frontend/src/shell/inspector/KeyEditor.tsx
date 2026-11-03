@@ -3,7 +3,6 @@ import { splitCombo } from '../../components/common/KbdTag';
 import type { ActionItem } from '../../bridge/messageTypes';
 import { t } from '../../i18n';
 import { useSteps } from '../../logic/useSteps';
-import { useLanguage } from '../../state/LanguageContext';
 import { formatMs } from '../../utils/displayUtils';
 import { keycaps } from '../library/model';
 import { arrival } from '../list/selection';
@@ -48,7 +47,6 @@ function KeyInput({ step, single, locked, onKey }: { step: ActionItem; single?: 
  */
 export function KeyEditor({ step, locked }: { step: ActionItem; locked: boolean }) {
   const cmds = useSteps();
-  const { language } = useLanguage();
   const id = step.id ?? '';
   const hold = step.actionType === 'HoldKey';
   const repeat = step.repeatCount ?? 1;
@@ -73,8 +71,8 @@ export function KeyEditor({ step, locked }: { step: ActionItem; locked: boolean 
 
   const gap = step.repeatDelayMs ?? DEFAULT_KEY_GAP_MS;
   const summary = !step.key ? t('editors.key.summary.none')
-    : hold ? t('editors.key.summary.hold', { key: keycaps(step.key), ms: formatMs(step.holdDurationMs || DEFAULT_HOLD_MS, language) })
-    : repeat > 1 ? t('editors.key.summary.repeat', { key: keycaps(step.key), n: repeat, ms: formatMs(gap, language) })
+    : hold ? t('editors.key.summary.hold', { key: keycaps(step.key), ms: formatMs(step.holdDurationMs || DEFAULT_HOLD_MS) })
+    : repeat > 1 ? t('editors.key.summary.repeat', { key: keycaps(step.key), n: repeat, ms: formatMs(gap) })
     : t('editors.key.summary.press', { key: keycaps(step.key) });
 
   return (

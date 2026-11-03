@@ -4500,6 +4500,10 @@ namespace TrueReplayer
 
             // A run the UI reloaded under: its pause and its Ask-Input prompt (see _livePause).
             ReseedLiveWaits();
+            // The last run's report: the header's "ran at 2:05 PM, no errors" comes from it, and a page
+            // that reloaded (Reload UI, a change of language) showed nothing until the next run. A
+            // report of a run still going is ignored by the page, which waits for the one at its end.
+            if (replayService.GetRunReport().Steps.Count > 0) PushRunReport();
 
             // A Clicker/utility hotkey collision found while LOADING settings (see the load path)
             // — said once, now that there is a UI to say it to. Cleared after, so a UI reload

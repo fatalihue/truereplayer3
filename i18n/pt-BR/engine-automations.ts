@@ -129,6 +129,6 @@ export default {
     late: 'pulado — {{minutes}} min de atraso (o computador estava suspenso ou o relógio mudou)',
     outsideHours: 'fora da faixa de horas ({{hours}})',
     clipboardIgnored: 'mudança do clipboard ignorada (logo depois de uma reprodução)',
-    crashed: 'erro ao vigiar: {{reason}}',
+    crashed: 'parou de vigiar por um erro: {{reason}}',
   },
 } satisfies Catalogo<typeof en>;
