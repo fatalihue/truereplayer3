@@ -68,8 +68,19 @@ export type MacroTab = 'steps' | 'data';
 export type Page = 'macros' | 'clicker' | 'automations' | 'remaps' | 'settings';
 export type SettingsCategory = 'general' | 'hotkeys' | 'appearance' | 'recording' | 'screen' | 'browser' | 'diagnostics';
 
+// After a change of language the engine loads the other build of the page back in Settings › General
+// (index.html?volta=settings, plan of languages §3.6). The address goes back to the plain one at once,
+// so a reload opens on the macros.
+const backToSettings = (() => {
+  try {
+    if (new URLSearchParams(location.search).get('volta') !== 'settings') return false;
+    history.replaceState(null, '', location.pathname);
+    return true;
+  } catch { return false; }
+})();
+
 export const useUi = create<ShellUi>(() => ({
-  page: 'macros', settingsCategory: 'general', settingsQuery: '', settingsReset: false, remapNew: false, automationAsk: null,
+  page: backToSettings ? 'settings' : 'macros', settingsCategory: 'general', settingsQuery: '', settingsReset: false, remapNew: false, automationAsk: null,
   dialog: null, nameFocus: null, libraryPeek: false, startImport: null, settingsOpen: false, settingsFocus: null,
   expanded: false, crop: null, macroTab: 'steps', dataSettings: false, dataHint: null, examples: null, tips: false,
 }));

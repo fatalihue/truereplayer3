@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import type { Language } from '../../../state/LanguageContext';
 import { themes } from '../../../themePresets';
 import { DEFAULT_THEME_ID, DEFAULT_UI_SETTINGS, type CustomThemePreset, type ThemeConfig, type ThemePreset, type ThemeUISettings } from '../../../themes';
 
@@ -22,7 +21,9 @@ interface Ap {
   past: Snap[];
   future: Snap[];
 }
-export interface Snap { config: ThemeConfig; language: Language }
+// The theme only: the interface's language left the page's history (D30), because changing it loads
+// the page's build of the other language.
+export interface Snap { config: ThemeConfig }
 
 export const useAp = create<Ap>(() => ({ view: 'main', focus: null, hoverColor: null, hoverTheme: null, cameFrom: null, past: [], future: [] }));
 
@@ -65,13 +66,13 @@ const sameConfig = (a: ThemeConfig, b: ThemeConfig) => {
 /** The next change (within a moment) is not a step: it has an undo of its own, or it is one. */
 export const quietNextChange = () => { quietUntil = performance.now() + 150; };
 
-/** Called with every theme and language the page sees: the change before a pause becomes a step. */
+/** Called with every theme the page sees: the change before a pause becomes a step. */
 export function record(now: Snap) {
   const t = performance.now();
   const prev = last;
   last = now;
   if (!prev || t < quietUntil) { lastAt = -Infinity; return; }
-  if (sameConfig(prev.config, now.config) && prev.language === now.language) return;
+  if (sameConfig(prev.config, now.config)) return;
   if (t - lastAt > MERGE_MS) useAp.setState(s => ({ past: [...s.past.slice(1 - MAX_STEPS), prev], future: [] }));
   else if (useAp.getState().future.length) useAp.setState({ future: [] });
   lastAt = t;

@@ -500,7 +500,12 @@ namespace TrueReplayer
                 // Off, the popup shows no eyedropper; the theme editor's rows carry the app's own
                 // pick (pixel:pickColor) beside their swatch.
                 AdditionalBrowserArguments = "--disable-features=EyeDropper",
+                // The browser's own language follows the interface's (plan of languages, §3.6): its
+                // menus, Accept-Language and the <input type="time"> format. Fixed when the environment
+                // is created, so a change of language reaches it on the next launch.
+                Language = Services.S.Language,
             };
+            Services.DiagnosticLog.Info($"[Language] {Services.S.Language} ({Services.S.Source}); Windows shows {Services.S.WindowsLanguage()}");
             // CreateWithOptionsAsync is the WinRT projection's name for the 3-arg factory
             // (the net462 dll exposes plain CreateAsync, but the .NET 8 WinMD-backed
             // projection renamed it with the "WithOptions" suffix per WinRT convention).
@@ -2087,6 +2092,34 @@ namespace TrueReplayer
 
         /// <summary>The compact layout's ×: the window to the tray, everything else still running.</summary>
         public void HideToTray() => windowEventManager?.HideToTray();
+
+        /// <summary>
+        /// ui:language — the interface's language picked in Settings › General (plan of languages,
+        /// §3.6): Windows (null), en-US or pt-BR, kept in interface.json. When the language changes, the
+        /// page's build of it loads, back in Settings › General, with the app's state coming from here
+        /// as on a Reload UI; what an editor holds is put in first (editor:commit). The tray, the notices
+        /// and the dialogs read S.Language when they show, so they change at once; the browser's own
+        /// language (WebView2's Language) changes on the next launch.
+        /// </summary>
+        public async void SetPageLanguage(string? value)
+        {
+            var pick = Services.S.Normalize(value);
+            Services.InterfaceStore.SetValue(Services.S.LanguageKey, pick);
+            if (!Services.S.Resolve(pick)) return;
+            Services.DiagnosticLog.Info($"[Language] {Services.S.Language} ({Services.S.Source}): loading the page's build of it");
+            try
+            {
+                if (bridge is { AutoSaveEnabled: true }) await CommitEditorsAsync();
+#if DEBUG
+                // The development server serves one language (npm run dev, npm run dev:pt).
+                WebView.CoreWebView2?.Navigate(_targetUrl);
+#else
+                _targetUrl = $"https://app.local/{Services.S.Language}/index.html";
+                WebView.CoreWebView2?.Navigate(_targetUrl + "?volta=settings");
+#endif
+            }
+            catch (Exception ex) { Services.DiagnosticLog.Error("[Language] the page's build of the new language did not load", ex); }
+        }
 
         /// <summary>
         /// Settings › General › Compact view while a macro runs (CompactWindow board): a macro run that

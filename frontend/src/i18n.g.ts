@@ -12,6 +12,11 @@ export type Chaves = {
   'rail.nav': never;
   'rail.backToMacros': never;
   'rail.automationsArmed': { count: number };
+  'settings.language.label': never;
+  'settings.language.hint': never;
+  'settings.language.windows': never;
+  'settings.language.english': never;
+  'settings.language.portugues': never;
   'statusbar.switches': never;
   'statusbar.shortcutsOn': never;
   'statusbar.shortcutsOff': never;
@@ -58,4 +63,5 @@ export type Chaves = {
 /** The groups of plain texts, without blanks, that tn() gives as an object. */
 export type Tabelas = {
   'common.pages': 'macros' | 'clicker' | 'automations' | 'remaps' | 'settings';
+  'settings.language': 'label' | 'hint' | 'windows' | 'english' | 'portugues';
 };

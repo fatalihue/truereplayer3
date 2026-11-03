@@ -1323,6 +1323,7 @@ namespace TrueReplayer
                         break;
                     case "data:openFolder": HandleDataOpenFolder(); break;
                     case "interface:set": InterfaceStore.Set(payload); break;
+                    case "ui:language": window.SetPageLanguage(payload.TryGetProperty("value", out var languageValue) && languageValue.ValueKind == JsonValueKind.String ? languageValue.GetString() : null); break;
                     case "extension:help": HandleExtensionHelp(payload); break;
                     case "extension:openFolder": HandleExtensionOpenFolder(); break;
                     case "clipboard:read": _ = HandleClipboardRead(); break;

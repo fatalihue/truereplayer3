@@ -6,7 +6,6 @@ import { ErrorBoundary } from './components/common/ErrorBoundary'
 import { Shell } from './shell/Shell'
 import { ShellBridge } from './shell/ShellBridge'
 import { useShell } from './shell/store'
-import { LanguageProvider } from './state/LanguageContext'
 import { ThemeProvider } from './state/ThemeContext'
 import { ToastProvider } from './state/ToastContext'
 import { applyThemeConfig, loadCustomPresets, loadThemeConfig, resolveThemeColors } from './themes'
@@ -45,14 +44,12 @@ const render = () => createRoot(document.getElementById('root')!).render(
       <ThemeProvider>
         <BridgeProvider capabilities={CAPABILITIES}>
           <ShellBridge>
-            <LanguageProvider>
-              {/* The engine's notices (alert:show) and the export result come through the toasts. */}
-              <ToastProvider>
-                <ErrorBoundary>
-                  <Shell />
-                </ErrorBoundary>
-              </ToastProvider>
-            </LanguageProvider>
+            {/* The engine's notices (alert:show) and the export result come through the toasts. */}
+            <ToastProvider>
+              <ErrorBoundary>
+                <Shell />
+              </ErrorBoundary>
+            </ToastProvider>
           </ShellBridge>
         </BridgeProvider>
       </ThemeProvider>

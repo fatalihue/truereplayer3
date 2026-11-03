@@ -189,9 +189,12 @@ export function conferirTermos(en, pt, g, terminologia) {
     const p = pt.get(chave);
     if (!p || p.tipo !== e.tipo || chave in g.ISENCOES) continue;
     const pares = e.tipo === 'texto' ? [[e.texto, p.texto]] : Object.keys(e.formas).filter((f) => f in p.formas).map((f) => [e.formas[f], p.formas[f]]);
-    for (const [te, tp] of pares) {
-      for (const { termo, re } of termos) if (re.test(te) && !re.test(tp)) erros.push(`${chave}: "${termo}" é do glossário e fica em inglês ("${tp}")`);
-      for (const t of terminologia) if (t.en && t.pt && t.en.test(te) && !t.pt.test(tp)) erros.push(`${chave}: "${t.ingles}" é "${t.portugues}" em pt-BR ("${tp}")`);
+    // The words of the text only: a blank's name ({{step}}) is not a word the screen shows.
+    const palavras = (s) => s.replace(/\{\{[^}]*\}\}/g, ' ');
+    for (const [te0, tp0] of pares) {
+      const te = palavras(te0), tp = palavras(tp0);
+      for (const { termo, re } of termos) if (re.test(te) && !re.test(tp)) erros.push(`${chave}: "${termo}" é do glossário e fica em inglês ("${tp0}")`);
+      for (const t of terminologia) if (t.en && t.pt && t.en.test(te) && !t.pt.test(tp)) erros.push(`${chave}: "${t.ingles}" é "${t.portugues}" em pt-BR ("${tp0}")`);
     }
   }
   return [...new Set(erros)];

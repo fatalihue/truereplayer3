@@ -83,6 +83,9 @@ namespace TrueReplayer.Services
                         return;
                     }
                     _start = TryApplyFileLocked(json) ? Start.FromFile : Start.Seed;
+                    // The tips' language of the builds before D30 ("en") is now the interface's
+                    // (en-US); written back at once, so the file says what the app reads.
+                    if (_start == Start.FromFile && NormalizeLanguageLocked()) SaveLocked();
                 }
                 catch (Exception ex)
                 {
@@ -145,6 +148,7 @@ namespace TrueReplayer.Services
                     if (p.Value.ValueKind == JsonValueKind.String) _values[p.Name] = p.Value.GetString()!;
                     else if (p.Value.ValueKind == JsonValueKind.Null) _values.Remove(p.Name);
                 }
+                NormalizeLanguageLocked();
                 if (_start == Start.Seed && !seed) return;
                 // From here on the file is the truth, for a page that loads again in this run too.
                 _start = Start.FromFile;
@@ -153,6 +157,48 @@ namespace TrueReplayer.Services
                 _saveTimer ??= new Timer(_ => Flush(), null, Timeout.Infinite, Timeout.Infinite);
                 _saveTimer.Change(SaveDebounceMs, Timeout.Infinite);
             }
+        }
+
+        /// <summary>The value of one key as held now, or null.</summary>
+        public static string? Get(string key)
+        {
+            lock (_lock) return _values.TryGetValue(key, out var v) ? v : null;
+        }
+
+        /// <summary>
+        /// One key set by the engine itself — the interface's language, which the page asks for with
+        /// ui:language (D30). Kept and written like the page's own writes; null removes the key.
+        /// </summary>
+        public static void SetValue(string key, string? value)
+        {
+            if (!KeySet.Contains(key)) return;
+            lock (_lock)
+            {
+                if (_start == Start.Unread && !TryLateLoadLocked()) return;
+                if (value == null) _values.Remove(key); else _values[key] = value;
+                // A data folder still waiting for the page's seed keeps it until the seed comes.
+                if (_start == Start.Seed) return;
+                _start = Start.FromFile;
+                _dirty = true;
+                _saveTimer ??= new Timer(_ => Flush(), null, Timeout.Infinite, Timeout.Infinite);
+                _saveTimer.Change(SaveDebounceMs, Timeout.Infinite);
+            }
+        }
+
+        /// <summary>
+        /// The interface's language straight from the file, before Load: Main reads it ahead of the
+        /// one-at-a-time guard, whose dialog speaks it. An import the previous run staged is put in place
+        /// after the guard, and Load reads the language again then. Null when there is none to read.
+        /// </summary>
+        public static string? PeekLanguage()
+        {
+            try
+            {
+                if (!File.Exists(FilePath) || !FileHelper.TryReadAllTextShared(FilePath, out var json, out _)) return null;
+                var parsed = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+                return parsed != null && parsed.TryGetValue(S.LanguageKey, out var v) ? v : null;
+            }
+            catch { return null; }
         }
 
         /// <summary>
@@ -174,6 +220,18 @@ namespace TrueReplayer.Services
         public static void Flush()
         {
             lock (_lock) { if (_dirty) SaveLocked(); }
+        }
+
+        // Caller holds _lock. The interface's language as the app keeps it (S.Normalize): "en" becomes
+        // "en-US", and a value it does not know goes, which is Windows's. True when it changed.
+        private static bool NormalizeLanguageLocked()
+        {
+            if (!_values.TryGetValue(S.LanguageKey, out var stored)) return false;
+            var normal = S.Normalize(stored);
+            if (normal == stored) return false;
+            if (normal == null) _values.Remove(S.LanguageKey); else _values[S.LanguageKey] = normal;
+            _dirty = true;
+            return true;
         }
 
         // Caller holds _lock. True when the text was a usable file.

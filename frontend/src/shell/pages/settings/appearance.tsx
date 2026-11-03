@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { Check, ChevronDown, Dices, X } from 'lucide-react';
-import { DEFAULT_LANGUAGE, useLanguage, useTt } from '../../../state/LanguageContext';
+import { useTt } from '../../../state/LanguageContext';
 import { useTheme } from '../../../state/ThemeContext';
 import { useToast } from '../../../state/ToastContext';
 import { ACCENT_SWATCHES, FEATURED_THEMES, getThemeTags, themes, type ThemeTag } from '../../../themePresets';
@@ -62,16 +62,15 @@ export function AppearancePanel() {
 
 /**
  * The page's history (D22: Appearance applies at once, with Ctrl+Z; the Revert of today's editor
- * goes): every theme and language the page sees, a change after a pause a step. Ctrl+Z, and Ctrl+Y
+ * goes): every theme the page sees, a change after a pause a step. Ctrl+Z, and Ctrl+Y
  * or Ctrl+Shift+Z, while the page is on screen; a text field keeps its own.
  */
 function useUndo() {
   const { config, restoreConfig } = useTheme();
-  const { language, setLanguage } = useLanguage();
-  useEffect(() => { record({ config, language }); }, [config, language]);
+  useEffect(() => { record({ config }); }, [config]);
   useEffect(() => forgetLast, []);
-  const latest = useRef({ config, language, restoreConfig, setLanguage });
-  useEffect(() => { latest.current = { config, language, restoreConfig, setLanguage }; });
+  const latest = useRef({ config, restoreConfig });
+  useEffect(() => { latest.current = { config, restoreConfig }; });
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (!e.ctrlKey || e.altKey || e.metaKey) return;
@@ -83,10 +82,9 @@ function useUndo() {
       if (typing || isModalDialogOpen()) return;
       e.preventDefault();
       const now = latest.current;
-      const to = step(key === 'z' && !e.shiftKey, { config: now.config, language: now.language });
+      const to = step(key === 'z' && !e.shiftKey, { config: now.config });
       if (!to) return;
       now.restoreConfig(to.config);
-      if (to.language !== now.language) now.setLanguage(to.language);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -648,17 +646,16 @@ const COLOR_DEFAULTS = Object.fromEntries(UI_COLOR_FIELDS.map(f => [f, DEFAULT_U
  * theme editor's chunk, which the pointer or the focus on them brings sooner), Save as my theme…
  * (settings-160 to 162: the colours as they are now become a theme of your own, which opens; the
  * same name updates it, a name that would take another's place is refused) and Reset to the theme
- * (settings-142 to 144, D22: its colours, or with the interface and the tips' language too).
+ * (settings-142 to 144, D22: its colours, or with the interface too; the language left it, D30).
  */
 function Actions() {
   const tt = useTt();
   const { showToast } = useToast();
   const { config, customPresets, saveAsPreset, restoreConfig } = useTheme();
-  const { language, setLanguage } = useLanguage();
   const base = baseOf(config.baseThemeId, customPresets);
   const changed = Object.keys(config.colorOverrides).length > 0;
   const colorsChanged = changed || UI_COLOR_FIELDS.some(f => config.uiSettings[f] !== DEFAULT_UI_SETTINGS[f]);
-  const asItComes = !colorsChanged && language === DEFAULT_LANGUAGE
+  const asItComes = !colorsChanged
     && (Object.keys(DEFAULT_UI_SETTINGS) as (keyof ThemeUISettings)[]).every(k => config.uiSettings[k] === DEFAULT_UI_SETTINGS[k]);
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState('');
@@ -705,16 +702,14 @@ function Actions() {
   };
   // Back to the theme as it comes, with the toast's Undo (Ctrl+Z too: it is a step like any other).
   const reset = (everything: boolean) => {
-    const before = { config, language };
+    const before = config;
     restoreConfig(everything
       ? { ...config, colorOverrides: {}, uiSettings: { ...DEFAULT_UI_SETTINGS } }
       : { ...config, colorOverrides: {}, uiSettings: { ...config.uiSettings, ...COLOR_DEFAULTS } });
-    if (everything && language !== DEFAULT_LANGUAGE) setLanguage(DEFAULT_LANGUAGE);
     showToast(tt(`Back to ${base.name} as it comes`, `De volta ao ${base.name} como vem`), {
       type: 'success',
       duration: 10000,
-      // The language comes back only with the reset that took it.
-      action: { label: 'Undo', onClick: () => { restoreConfig(before.config); if (everything) setLanguage(before.language); } },
+      action: { label: 'Undo', onClick: () => restoreConfig(before) },
     });
   };
 
@@ -782,7 +777,7 @@ function Actions() {
           focusFirst
           entries={[
             { label: 'Colors', disabled: !colorsChanged, onSelect: () => reset(false) },
-            { label: 'Colors, interface and tooltips language', onSelect: () => reset(true) },
+            { label: 'Colors and interface', onSelect: () => reset(true) },
           ]}
           onClose={() => setResetMenu(null)}
         />

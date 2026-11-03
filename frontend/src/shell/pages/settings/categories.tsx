@@ -3,11 +3,12 @@ import { ChevronDown, ClipboardCopy, FolderOpen, RefreshCw, ScrollText } from 'l
 import { APP_NAME, TR2_NAME } from '../../../appIdentity';
 import { useBridge } from '../../../bridge/BridgeContext';
 import type { HotkeySettingKey, OcrLanguagesPayload, SettingsState } from '../../../bridge/messageTypes';
-import { useAppActions, useExtensionHelp, useOcrLanguages, useSettings } from '../../../logic/useSettings';
-import { useLanguage, useTt } from '../../../state/LanguageContext';
+import { readLanguagePick, useAppActions, useExtensionHelp, useOcrLanguages, useSettings, type LanguagePick } from '../../../logic/useSettings';
+import { t } from '../../../i18n';
+import { useTt } from '../../../state/LanguageContext';
 import { useToast } from '../../../state/ToastContext';
 import { ocrLanguageNote, ocrLanguageOptions, ocrPickerLanguages } from '../../../utils/ocrLanguages';
-import { DraftField, Segmented, Switch } from '../../inspector/fields';
+import { DraftField, Switch } from '../../inspector/fields';
 import { Menu } from '../../Menu';
 import { anchorBelow } from '../../menuAnchor';
 import { preload, useLoaded } from '../../lazyModule';
@@ -118,15 +119,49 @@ function RunEndSoundControl() {
   const settings = useSettings();
   return <Switch label="Sound on replay end" checked={on} onChange={settings.setRunEndSound} />;
 }
-function TooltipsControl() {
-  const { language, setLanguage } = useLanguage();
+/**
+ * The interface's language (settings-132, D30): Windows, English or Português, each language in its own
+ * name, in the same list as Screen Text's language. It lives in tr-language (interface.json, through
+ * InterfaceStore); the engine loads the page's build of the language, and the page comes back here
+ * (plan of languages, §3.6). Windows — no key — follows the language Windows shows.
+ */
+function LanguageControl() {
+  const settings = useSettings();
+  const [pick, setPick] = useState(readLanguagePick);
+  const [menu, setMenu] = useState<HTMLButtonElement | null>(null);
+  const options: { value: LanguagePick; label: string }[] = [
+    { value: 'auto', label: t('settings.language.windows') },
+    { value: 'en-US', label: t('settings.language.english') },
+    { value: 'pt-BR', label: t('settings.language.portugues') },
+  ];
+  const choose = (value: LanguagePick) => {
+    setPick(value);
+    settings.setLanguage(value);
+  };
   return (
-    <Segmented<'en' | 'pt-BR'>
-      label="Tooltips"
-      value={language}
-      options={[{ value: 'en', label: 'English' }, { value: 'pt-BR', label: 'Português (BR)' }]}
-      onChange={setLanguage}
-    />
+    <span className="set-stack">
+      <button
+        type="button"
+        className="insp-button set-choice"
+        aria-label={t('settings.language.label')}
+        aria-haspopup="menu"
+        aria-expanded={!!menu}
+        onClick={(e) => setMenu(menu ? null : e.currentTarget)}
+      >
+        <span className="set-choice-label">{options.find(o => o.value === pick)?.label}</span>
+        <ChevronDown aria-hidden="true" />
+      </button>
+      {menu && (
+        <Menu
+          anchor={anchorBelow(menu, 'end')}
+          label={t('settings.language.label')}
+          toggle={menu}
+          focusFirst
+          entries={options.map(o => ({ label: o.label, checked: o.value === pick, onSelect: () => choose(o.value) }))}
+          onClose={() => setMenu(null)}
+        />
+      )}
+    </span>
   );
 }
 /** Reset all settings… (D23): asks first, in the page (SettingsPage's dialog). */
@@ -274,21 +309,21 @@ function useInstallToasts(langs: OcrLanguagesPayload | null) {
   useEffect(() => { latest.current = { langs, tt, showToast }; });
   useEffect(() => subscribe((msg) => {
     if (msg.type !== 'ocr:installResult') return;
-    const { langs: l, tt: t, showToast: toast } = latest.current;
+    const { langs: l, tt, showToast: toast } = latest.current;
     const r = msg.payload;
     const opt = l && ocrLanguageOptions(ocrPickerLanguages(l.offered, l.available)).find(o => o.value.toLowerCase() === r.tag.toLowerCase());
     const name = opt?.label ?? r.tag;
     if (r.ok) {
       toast(r.restartApp
-        ? t(`${name} text recognition installed — restart ${APP_NAME} to use it.`, `Reconhecimento de texto em ${name} instalado — reinicie o ${APP_NAME} para usar.`)
+        ? tt(`${name} text recognition installed — restart ${APP_NAME} to use it.`, `Reconhecimento de texto em ${name} instalado — reinicie o ${APP_NAME} para usar.`)
         : r.restartWindows
-          ? t(`${name} text recognition installed — restart Windows to finish.`, `Reconhecimento de texto em ${name} instalado — reinicie o Windows para concluir.`)
-          : t(`${name} text recognition installed.`, `Reconhecimento de texto em ${name} instalado.`),
+          ? tt(`${name} text recognition installed — restart Windows to finish.`, `Reconhecimento de texto em ${name} instalado — reinicie o Windows para concluir.`)
+          : tt(`${name} text recognition installed.`, `Reconhecimento de texto em ${name} instalado.`),
       'success');
     } else if (r.canceled) {
-      toast(t('Install canceled — Windows needs your permission to add the pack.', 'Instalação cancelada — o Windows precisa da sua permissão para adicionar o pacote.'), 'info');
+      toast(tt('Install canceled — Windows needs your permission to add the pack.', 'Instalação cancelada — o Windows precisa da sua permissão para adicionar o pacote.'), 'info');
     } else {
-      toast(t(`Couldn't install ${name} text recognition: ${r.error ?? 'unknown error'}`, `Não foi possível instalar o reconhecimento de texto em ${name}: ${r.error ?? 'erro desconhecido'}`), 'error');
+      toast(tt(`Couldn't install ${name} text recognition: ${r.error ?? 'unknown error'}`, `Não foi possível instalar o reconhecimento de texto em ${name}: ${r.error ?? 'erro desconhecido'}`), 'error');
     }
   }), [subscribe]);
 }
@@ -435,7 +470,8 @@ export const CATEGORIES: Category[] = [
       {
         title: 'Interface',
         rows: [
-          { id: 'tooltips', label: 'Tooltips', hint: 'The language of the tips; names and labels stay in English.', words: 'language portuguese english idioma', Control: TooltipsControl },
+          // Found by either language's words, whatever the one on screen (plan of languages, §3.6).
+          { id: 'language', label: t('settings.language.label'), hint: t('settings.language.hint'), words: 'language idioma lingua língua portuguese português portugues english inglês ingles interface', Control: LanguageControl },
         ],
       },
       {

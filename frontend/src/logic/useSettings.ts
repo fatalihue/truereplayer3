@@ -3,10 +3,32 @@ import { useBridge } from '../bridge/BridgeContext';
 import { useGetAppState } from '../state/AppStateContext';
 import type { HotkeySettingKey, IncomingMessage, OcrLanguagesPayload } from '../bridge/messageTypes';
 
+/** The interface's language as the user picked it: Windows (auto), English or Português (D30). */
+export type LanguagePick = 'auto' | 'en-US' | 'pt-BR';
+const LANGUAGE_KEY = 'tr-language';
+
+/** The pick this page holds (tr-language; the 'en' of the tips' language before D30 is English). */
+export function readLanguagePick(): LanguagePick {
+  try {
+    const v = localStorage.getItem(LANGUAGE_KEY);
+    return v === 'en-US' || v === 'en' ? 'en-US' : v === 'pt-BR' ? 'pt-BR' : 'auto';
+  } catch { return 'auto'; }
+}
+
 /**
  * The app's settings, as commands. Every write is echoed back as settings:loaded, which is what
  * repaints the controls; nothing here keeps a local copy.
  */
+// The page's own copy, for the build that loads next; the engine keeps the file's and loads that build
+// when the language changes (plan of languages, §3.6).
+function sendLanguage(send: ReturnType<typeof useBridge>['send'], value: LanguagePick) {
+  try {
+    if (value === 'auto') localStorage.removeItem(LANGUAGE_KEY);
+    else localStorage.setItem(LANGUAGE_KEY, value);
+  } catch { /* the engine keeps it anyway */ }
+  send({ type: 'ui:language', payload: { value } });
+}
+
 export function useSettings() {
   const { send } = useBridge();
   const getState = useGetAppState();
@@ -24,7 +46,13 @@ export function useSettings() {
      * Puts every app setting back to its default, keeping the open macro (its steps and its own run
      * settings) and the Automations master switch (D23). The page asks first: no native dialog.
      */
-    resetAll: () => send({ type: 'settings:resetAll', payload: {} }),
+    resetAll: () => {
+      send({ type: 'settings:resetAll', payload: {} });
+      // The language too, back to Windows's (plan of languages, §3.6).
+      sendLanguage(send, 'auto');
+    },
+    /** The interface's language: Windows (auto), English or Português. */
+    setLanguage: (value: LanguagePick) => sendLanguage(send, value),
     setMinimizeToTray: (enabled: boolean) => send({ type: 'window:minimizeToTray', payload: { enabled } }),
     /** Run on startup. Turning it off also turns off "start minimized", which means nothing without it. */
     setRunOnStartup: (enabled: boolean) => {

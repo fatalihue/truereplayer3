@@ -329,7 +329,7 @@ function useItems(): PaletteItem[] {
     cmd('automation-new', 'New automation', () => useUi.setState({ page: 'automations', automationAsk: { kind: 'new' }, libraryPeek: false }), { icon: Plus, detail: 'Automations', words: 'add automation trigger schedule timer interval condition', disabled: !automationLeft, hint: tt('Every macro has its automation: one per macro', 'Todo macro já tem a sua automação: uma por macro') }),
     cmd('remaps-page', 'Key Remaps', () => openPage('remaps'), { icon: ArrowRightLeft, words: 'remap remaps keys rebind swap caps disable mouse button' }),
     cmd('remap-new', 'New remap', () => useUi.setState({ page: 'remaps', remapNew: true, libraryPeek: false }), { icon: Plus, detail: 'Key Remaps', words: 'add remap rebind key swap disable', disabled: remapsFull, hint: tt(`${MAX_REMAPS} is the limit`, `${MAX_REMAPS} é o limite`) }),
-    cmd('settings', 'Settings', () => openSettings(), { icon: Settings, words: 'preferences options configuration' }),
+    cmd('settings', 'Settings', () => openSettings(), { icon: Settings, words: 'preferences options configuration language idioma lingua portugues english' }),
     cmd('settings-hotkeys', 'Hotkeys', () => openSettings('hotkeys'), { icon: Settings, detail: 'Settings', words: 'shortcut keys global record replay foreground clicker conflict suggested' }),
     cmd('settings-appearance', 'Appearance', () => openSettings('appearance'), { icon: Settings, detail: 'Settings', words: 'theme themes dark light accent color colour density text size font zoom motion animations corner' }),
     cmd('settings-recording', 'Recording and playback', () => openSettings('recording'), { icon: Settings, detail: 'Settings', words: 'delay timing jitter game mode return cursor fast approach' }),

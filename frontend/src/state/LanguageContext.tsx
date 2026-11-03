@@ -1,38 +1,24 @@
-import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from 'react';
+import { LANG } from '../i18n';
 
-// Optional PT-BR tooltip mode. Names/labels across the app stay in English (universal); only the
-// TOOLTIP text is localized. The language lives in localStorage (frontend-only — tooltips never
-// touch the backend), survives updates via the pinned WebView2 UserDataFolder, and switches live.
-// Default is PT-BR (the audience is Brazilian); only an explicit stored 'en' opts out.
+// The interface's language is the build's (plan of languages, §3.7 — D30): each build of the page is in
+// one language, i18n/ holds the text, and changing the language loads the other build. The language
+// of the tips alone, switched live, is gone with its Provider and its setter.
+//
+// What stays here is for the screens not yet moved to the catalog, until their slice moves them: the
+// old pairs tt('English', 'Português') pick the build's language — tools/vite-i18n.mjs already picks
+// them at compile time, so a build never carries the other — and useLanguage() tells which one this is.
 export type Language = 'en' | 'pt-BR';
-const STORAGE_KEY = 'tr-language';
-export const DEFAULT_LANGUAGE: Language = 'pt-BR';
 
-function loadLanguage(): Language {
-  try { return localStorage.getItem(STORAGE_KEY) === 'en' ? 'en' : DEFAULT_LANGUAGE; } catch { return DEFAULT_LANGUAGE; }
+/** This build's language, in the old pairs' terms. */
+export const LANGUAGE: Language = LANG === 'pt-BR' ? 'pt-BR' : 'en';
+
+export function useLanguage(): { language: Language } {
+  return { language: LANGUAGE };
 }
 
-type LanguageContextValue = { language: Language; setLanguage: (l: Language) => void };
-const LanguageContext = createContext<LanguageContextValue>({ language: DEFAULT_LANGUAGE, setLanguage: () => {} });
+const pick = (en: string, ptBr: string) => (LANGUAGE === 'pt-BR' ? ptBr : en);
 
-export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLang] = useState<Language>(loadLanguage);
-  const setLanguage = useCallback((l: Language) => {
-    setLang(l);
-    try { localStorage.setItem(STORAGE_KEY, l); } catch { /* quota — ignore */ }
-  }, []);
-  // Memoised so the value only changes when the language actually does — a fresh object literal
-  // here invalidates every consumer on any re-render of this provider.
-  const value = useMemo(() => ({ language, setLanguage }), [language, setLanguage]);
-  return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
-}
-
-export function useLanguage() { return useContext(LanguageContext); }
-
-// tt('English text', 'Texto PT-BR') → the right string for the current language. Use it for tooltip
-// text only. Keep tokens ({clipboard}), hotkeys (Ctrl, PageDown) and units (ms, px, %) in English
-// inside the PT-BR string too. Returns a memoised fn so consumers re-render on language change.
+/** The old pairs' function: tt('English', 'Português') → this build's one. */
 export function useTt() {
-  const { language } = useContext(LanguageContext);
-  return useCallback((en: string, ptBr: string) => (language === 'pt-BR' ? ptBr : en), [language]);
+  return pick;
 }

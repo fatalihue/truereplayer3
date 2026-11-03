@@ -1490,6 +1490,10 @@ export type OutgoingMessage =
   // Sent by the engine's own script (InterfaceStore), not by the page's code: a write of one of the
   // localStorage keys that live in interface.json (null removes it); seed carries all of them once.
   | { type: 'interface:set'; payload: { values: Record<string, string | null>; seed?: true } }
+  // The interface's language (plan of languages, §3.6): Windows (auto), English or Português. The engine
+  // keeps it (tr-language) and, when the language changes, loads the page's build of it, back in
+  // Settings › General (index.html?volta=settings).
+  | { type: 'ui:language'; payload: { value: 'auto' | 'en-US' | 'pt-BR' } }
   // The Browser extension dialog: help copies the extension folder's path to the clipboard and
   // answers with extension:help; openFolder shows that folder in Explorer.
   // copy: false asks for the folder without putting its path on the clipboard (Settings › Browser

@@ -1,3 +1,7 @@
+using System;
+using System.Globalization;
+using System.Runtime.InteropServices;
+
 namespace TrueReplayer.Services
 {
     /// <summary>
@@ -9,13 +13,81 @@ namespace TrueReplayer.Services
     /// </summary>
     public static partial class S
     {
-        /// <summary>
-        /// The interface's language: "en-US" or "pt-BR". The page's folder in wwwroot has the same name.
-        /// Still fixed in en-US until the language setting comes (slice I1).
-        /// </summary>
+        /// <summary>The interface.json key, shared with the page (the tips' language before D30).</summary>
+        public const string LanguageKey = "tr-language";
+
+        /// <summary>Asks a test house to follow Windows like an install does, not to open in en-US.</summary>
+        private const string TestLanguageVariable = "TRUEREPLAYER3_TEST_IDIOMA";
+
+        /// <summary>The interface's language: "en-US" or "pt-BR". The page's folder in wwwroot has the same name.</summary>
         public static string Language { get; private set; } = "en-US";
 
         /// <summary>Whether the texts come out in Portuguese.</summary>
         public static bool IsPt => Language == "pt-BR";
+
+        /// <summary>Where the language came from, for the log: the user's pick, Windows, or a test house.</summary>
+        public static string Source { get; private set; } = "default";
+
+        /// <summary>
+        /// A stored pick as the app keeps it: "en-US" or "pt-BR", or null for Windows (no key). The tips'
+        /// language of the builds before D30 wrote "en" for English.
+        /// </summary>
+        public static string? Normalize(string? stored) => stored switch
+        {
+            "en-US" or "en" => "en-US",
+            "pt-BR" => "pt-BR",
+            _ => null,
+        };
+
+        /// <summary>
+        /// Sets the language from the stored pick (null: none). Without one it follows the display
+        /// language of Windows — any Portuguese is pt-BR, anything else en-US — except in a test house,
+        /// which opens in en-US so the scripts do not depend on this PC's Windows. True when it changed.
+        /// </summary>
+        public static bool Resolve(string? stored)
+        {
+            var before = Language;
+            var pick = Normalize(stored);
+            if (pick != null) { Language = pick; Source = "chosen"; }
+            else if (CoexistenceGuard.Bypassed && !string.Equals(Environment.GetEnvironmentVariable(TestLanguageVariable), "windows", StringComparison.OrdinalIgnoreCase))
+            {
+                Language = "en-US";
+                Source = "test house";
+            }
+            else
+            {
+                Language = WindowsLanguage().StartsWith("pt", StringComparison.OrdinalIgnoreCase) ? "pt-BR" : "en-US";
+                Source = "Windows";
+            }
+            return Language != before;
+        }
+
+        /// <summary>The display language Windows uses for this user (the first preferred UI language).</summary>
+        public static string WindowsLanguage()
+        {
+            try
+            {
+                uint size = 0;
+                if (GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, out _, null, ref size) && size > 1)
+                {
+                    var buffer = new char[size];
+                    if (GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, out _, buffer, ref size))
+                    {
+                        // A double-null-terminated list; the first entry is the one Windows shows.
+                        int end = Array.IndexOf(buffer, '\0');
+                        var first = new string(buffer, 0, end >= 0 ? end : buffer.Length);
+                        if (first.Length > 0) return first;
+                    }
+                }
+            }
+            catch { /* the culture below says the same on every Windows this app runs on */ }
+            return CultureInfo.CurrentUICulture.Name;
+        }
+
+        private const uint MUI_LANGUAGE_NAME = 0x8;
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetUserPreferredUILanguages(uint dwFlags, out uint pulNumLanguages, char[]? pwszLanguagesBuffer, ref uint pcchLanguagesBuffer);
     }
 }

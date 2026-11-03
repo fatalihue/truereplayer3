@@ -69,6 +69,10 @@ namespace TrueReplayer
                 }
             }
 
+            // The interface's language, straight from interface.json (plan of languages, §3.6): the
+            // one-at-a-time dialog below speaks it.
+            S.Resolve(InterfaceStore.PeekLanguage());
+
             // One of TrueReplayer 2 and 3 at a time (CoexistenceGuard): before any hook, hotkey,
             // automation or the extension's pipe exists. After the elevation step, so the dialog it
             // may show comes up once, in the process that stays.
@@ -89,6 +93,8 @@ namespace TrueReplayer
             // The interface's own choices (InterfaceStore), read now: an import may have just put a new
             // interface.json in place, and nothing has created the Profiles folder of a new data folder yet.
             InterfaceStore.Load();
+            // Again, from what Load holds: an import may have brought another one.
+            S.Resolve(InterfaceStore.Get(S.LanguageKey));
 
             // Check WebView2 Runtime before initializing UI
             if (!IsWebView2Available())
