@@ -1,12 +1,20 @@
 // Shared formatters for Clicker live stats — consumed by StatusBar (compact one-line
 // readout) and ClickerDashboard (large hero + grid). Keeping one source of truth so the
 // "rate >= 10 → integer, else 1 decimal" rule + MM:SS convention stay consistent.
+import { LANG } from '../i18n';
 
 export interface ClickerStatsView {
   elapsed: string;     // "M:SS"
   rate: number;        // clicks per second (raw)
   rateLabel: string;   // "9.8" or "120"
 }
+
+// The decimal mark is this build's language's ("9.8" / "9,8"), with no thousands: a rate is at most
+// 200 a second, and what the Rate field shows is typed back. Made on first use, never at the
+// opening: an Intl object is not free.
+let whole: Intl.NumberFormat | undefined;
+let oneDecimal: Intl.NumberFormat | undefined;
+let upToOneDecimal: Intl.NumberFormat | undefined;
 
 // Integer-only above 10 CPS — at high rates a trailing ".0" reads as noise; at low
 // rates the decimal carries useful precision (1.2/s vs 1.8/s).
@@ -15,7 +23,14 @@ export interface ClickerStatsView {
 export function formatRate(rate: number): string {
   // Decided on the value AS ROUNDED to one decimal: 9.96 rounds to "10.0", the very ".0" this rule
   // exists to drop, and a measured rate lands there (996 clicks in 100 s).
-  return Math.round(rate * 10) / 10 >= 10 ? rate.toFixed(0) : rate.toFixed(1);
+  return Math.round(rate * 10) / 10 >= 10
+    ? (whole ??= new Intl.NumberFormat(LANG, { maximumFractionDigits: 0, useGrouping: false })).format(rate)
+    : (oneDecimal ??= new Intl.NumberFormat(LANG, { minimumFractionDigits: 1, maximumFractionDigits: 1, useGrouping: false })).format(rate);
+}
+
+/** A number with one decimal at most and no thousands, in this build's language: "9.8" / "9,8", "20", "1.5". */
+export function formatTenths(x: number): string {
+  return (upToOneDecimal ??= new Intl.NumberFormat(LANG, { maximumFractionDigits: 1, useGrouping: false })).format(x);
 }
 
 /** "M:SS" — the one clock format every Clicker surface uses (elapsed, the Time limit, the ETA). */
@@ -127,7 +142,7 @@ export function holdCapsRate(delayMs: number, intervalMs: number, holdMs: number
 // is how they drifted; this is the single place that knows the engine's precedence
 // (Area > Fixed > Position) and that both limits are optional and independent.
 
-/** The fields the summary reads. SettingsState satisfies it structurally, so this file stays import-free. */
+/** The fields the summary reads. SettingsState satisfies it structurally, so this file imports none of the app's types. */
 export interface ClickerConfigInput {
   cursorClickButton: string;
   cursorClickDelay: string;

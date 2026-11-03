@@ -1,25 +1,22 @@
 import type { ProfileEntry, RemapEntryDto, SettingsState } from '../../../bridge/messageTypes';
 import { splitCombo } from '../../../components/common/KbdTag';
+import { t, tn } from '../../../i18n';
 import { compactKey } from '../../../utils/keyNames';
 
 /**
  * Key Remaps' rules, without React (phase 3, slice 5): the names the engine knows, what makes a rule
  * the same rule, the file a list travels in, and what a rule does to the app's hotkeys. Ported from
- * today's RemapSection, whose decisions they keep.
+ * today's RemapSection, whose decisions they keep. The words come from the catalog (the remaps area of
+ * i18n/), one whole sentence per case.
  */
 
 export const MAX_REMAPS = 32;
 
-/** The mouse-side targets RemapService.MouseTargets resolves, with their names on the page. */
-export const MOUSE_TARGETS: { name: string; label: string }[] = [
-  { name: 'LeftClick', label: 'Left click' },
-  { name: 'MiddleClick', label: 'Middle click' },
-  { name: 'RightClick', label: 'Right click' },
-  { name: 'XButton1', label: 'Side button 1' },
-  { name: 'XButton2', label: 'Side button 2' },
-  { name: 'ScrollUp', label: 'Scroll up' },
-  { name: 'ScrollDown', label: 'Scroll down' },
-];
+/** The mouse-side targets RemapService.MouseTargets resolves, in the panel's order, with their names on the page. */
+const MOUSE_NAMES = tn('remaps.mouse');
+export const MOUSE_TARGETS: { name: string; label: string }[] = (
+  ['LeftClick', 'MiddleClick', 'RightClick', 'XButton1', 'XButton2', 'ScrollUp', 'ScrollDown'] as const
+).map(name => ({ name, label: MOUSE_NAMES[name] }));
 export const mouseTarget = (name: string) => MOUSE_TARGETS.find(m => m.name.toLowerCase() === name.toLowerCase());
 /** A side, in words: the mouse target's name, or the key as its keycap says it (PgDn, Esc, Caps). */
 export const describeKey = (name: string) => mouseTarget(name)?.label ?? compactKey(name);
@@ -54,14 +51,18 @@ export function indexOf(entries: RemapEntryDto[], ref: RuleRef | null): number |
 
 /** The rule in words: "Caps to Esc", "F1 disabled", "Q to left click in RobloxPlayerBeta". */
 export function ruleWords(r: RemapEntryDto): string {
-  const where = r.process ? ` in ${appName(r.process)}` : '';
-  if (!r.to) return `${describeKey(r.from)} disabled${where}`;
+  const from = describeKey(r.from);
+  const app = r.process ? appName(r.process) : '';
+  if (!r.to) return app ? t('remaps.rule.offIn', { from, app }) : t('remaps.rule.off', { from });
   const m = mouseTarget(r.to);
-  return `${describeKey(r.from)} to ${m ? m.label.toLowerCase() : describeKey(r.to)}${where}`;
+  const to = m ? m.label.toLowerCase() : describeKey(r.to);
+  return app ? t('remaps.rule.toIn', { from, to, app }) : t('remaps.rule.to', { from, to });
 }
 
 /** The rule as the panel's title says it: "Caps → Esc", "F1 → Nothing", "Q → Left click". */
-export const ruleArrow = (r: RemapEntryDto) => `${describeKey(r.from)} → ${r.to ? describeKey(r.to) : 'Nothing'}`;
+export const ruleArrow = (r: RemapEntryDto) => (r.to
+  ? t('remaps.rule.arrow', { from: describeKey(r.from), to: describeKey(r.to) })
+  : t('remaps.rule.arrowNothing', { from: describeKey(r.from) }));
 
 // ── The panel's working copy ──
 
@@ -99,17 +100,17 @@ export function ruleOf(d: Draft, enabled: boolean): RemapEntryDto {
  * refusal (red: the same key twice, the same key on both sides) or a step still to take.
  */
 export function draftProblem(d: Draft, entries: RemapEntryDto[], editing: number | null): { kind: 'todo' | 'refused'; text: string } | null {
-  if (!d.from) return { kind: 'todo', text: 'Press the key to remap.' };
+  if (!d.from) return { kind: 'todo', text: t('remaps.problem.pressFrom') };
   // The key taken where the rule applies is said at once, before anything else is asked.
   const scope = normProcess(d.where === 'app' ? d.process : '');
   if ((d.where === 'everywhere' || scope)
     && entries.some((r, j) => j !== editing && r.from.toLowerCase() === d.from.toLowerCase() && normProcess(r.process) === scope)) {
-    return { kind: 'refused', text: scope ? 'That key is already remapped in this app.' : 'That key is already remapped.' };
+    return { kind: 'refused', text: scope ? t('remaps.problem.takenInApp') : t('remaps.problem.taken') };
   }
-  if (d.does === 'key' && !d.toKey) return { kind: 'todo', text: 'Press the key it sends.' };
-  if (d.does === 'key' && d.toKey.toLowerCase() === d.from.toLowerCase()) return { kind: 'refused', text: 'Source and target are the same key.' };
-  if (d.where === 'app' && !scope) return { kind: 'todo', text: 'Name the app, or pick one that is running.' };
-  if (editing === null && entries.length >= MAX_REMAPS) return { kind: 'refused', text: `${MAX_REMAPS} remaps is the limit.` };
+  if (d.does === 'key' && !d.toKey) return { kind: 'todo', text: t('remaps.problem.pressTo') };
+  if (d.does === 'key' && d.toKey.toLowerCase() === d.from.toLowerCase()) return { kind: 'refused', text: t('remaps.problem.same') };
+  if (d.where === 'app' && !scope) return { kind: 'todo', text: t('remaps.problem.nameApp') };
+  if (editing === null && entries.length >= MAX_REMAPS) return { kind: 'refused', text: t('remaps.problem.limit', { max: MAX_REMAPS }) };
   return null;
 }
 
@@ -120,25 +121,26 @@ const showCombo = (combo: string) => splitCombo(combo).map(compactKey).join('+')
 const mainKey = (combo: string) => { const parts = splitCombo(combo); return parts[parts.length - 1] ?? combo; };
 const hasModifiers = (combo: string) => splitCombo(combo).length > 1;
 interface HotkeyRef { label: string; combo: string }
+/** The hotkeys a message names, each with its keys when asked: "the Record hotkey (Ctrl+F9) and macro "Login"". */
 const listHits = (hits: HotkeyRef[], withCombo: (h: HotkeyRef) => boolean) => {
   const items = hits.map(h => (withCombo(h) ? `${h.label} (${showCombo(h.combo)})` : h.label));
-  return items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+  return items.length <= 1 ? items.join('') : t('remaps.hotkeys.and', { first: items.slice(0, -1).join(', '), last: items[items.length - 1] });
 };
 
 /** Every hotkey the app listens for, with the name a message uses (the Clicker pair stays out, as today). */
 export function hotkeysOf(s: SettingsState, profiles: ProfileEntry[]): HotkeyRef[] {
   const app: [string | undefined, string][] = [
-    [s.recordingHotkey, 'the Record hotkey'],
-    [s.replayHotkey, 'the Replay hotkey'],
-    [s.profileKeyToggleHotkey, 'the Shortcuts hotkey'],
-    [s.foregroundHotkey, 'the Bring to front hotkey'],
-    [s.modeToggleHotkey, 'the Open the Clicker hotkey'],
-    [s.captureSlotHotkey, 'the clip slot hotkey'],
-    [s.copyScreenTextHotkey, 'the Copy text from the screen hotkey'],
+    [s.recordingHotkey, t('remaps.hotkeys.record')],
+    [s.replayHotkey, t('remaps.hotkeys.replay')],
+    [s.profileKeyToggleHotkey, t('remaps.hotkeys.shortcuts')],
+    [s.foregroundHotkey, t('remaps.hotkeys.front')],
+    [s.modeToggleHotkey, t('remaps.hotkeys.clicker')],
+    [s.captureSlotHotkey, t('remaps.hotkeys.clip')],
+    [s.copyScreenTextHotkey, t('remaps.hotkeys.screenText')],
   ];
   return [
     ...app.filter(([combo]) => !!combo).map(([combo, label]) => ({ label, combo: combo as string })),
-    ...profiles.filter(p => !!p.hotkey).map(p => ({ label: `macro "${p.name}"`, combo: p.hotkey as string })),
+    ...profiles.filter(p => !!p.hotkey).map(p => ({ label: t('remaps.hotkeys.macro', { name: p.name }), combo: p.hotkey as string })),
   ];
 }
 
@@ -147,7 +149,8 @@ export function fromWarning(from: string, hotkeys: HotkeyRef[]): string | null {
   if (!from) return null;
   const hits = hotkeys.filter(h => splitCombo(h.combo).some(seg => keyFamily(seg) === keyFamily(from)));
   if (hits.length === 0) return null;
-  return `Also ${listHits(hits, () => true)} — the remap overrides ${hits.length > 1 ? 'them and those hotkeys stop' : 'it and that hotkey stops'} firing.`;
+  const named = listHits(hits, () => true);
+  return t('remaps.fromWarn', { count: hits.length, hits: named });
 }
 
 /** A key it sends that is a hotkey's main key fires that hotkey; a mouse one does not (injected input). */
@@ -155,11 +158,14 @@ export function toNote(from: string, to: string, hotkeys: HotkeyRef[]): string |
   if (!to) return null;
   const hits = hotkeys.filter(h => keyFamily(mainKey(h.combo)) === keyFamily(to));
   if (hits.length === 0) return null;
-  const many = hits.length > 1;
+  const count = hits.length;
   const named = listHits(hits, h => hasModifiers(h.combo));
-  if (mouseTarget(to)) return `${describeKey(to)} is also ${named} — a remapped press will not trigger ${many ? 'them' : 'it'} (hotkeys ignore injected input).`;
-  const modified = hits.some(h => hasModifiers(h.combo));
-  return `${describeKey(to)} is also ${named} — ${from ? describeKey(from) : 'the remapped key'} will trigger ${many ? 'them' : 'it'}${modified ? ' with those modifiers held' : ''}.`;
+  const target = describeKey(to);
+  if (mouseTarget(to)) return t('remaps.toNote.mouse', { count, to: target, named });
+  const held = hits.some(h => hasModifiers(h.combo));
+  if (!from) return held ? t('remaps.toNote.noFromHeld', { count, to: target, named }) : t('remaps.toNote.noFrom', { count, to: target, named });
+  const pressed = describeKey(from);
+  return held ? t('remaps.toNote.keyHeld', { count, to: target, named, from: pressed }) : t('remaps.toNote.key', { count, to: target, named, from: pressed });
 }
 
 // ── The file a list travels in (today's envelope, and the bare remaps.json, PascalCase) ──
@@ -169,10 +175,10 @@ type ImportResult = { ok: true; entries: RemapEntryDto[] } | { ok: false; reason
 const pick = (o: Record<string, unknown>, key: string): unknown => o[key] ?? o[key.charAt(0).toUpperCase() + key.slice(1)];
 export function parseRemapImport(text: string): ImportResult {
   let data: unknown;
-  try { data = JSON.parse(text); } catch { return { ok: false, reason: 'That file is not valid JSON' }; }
-  if (!data || typeof data !== 'object') return { ok: false, reason: 'That is not a remaps file' };
+  try { data = JSON.parse(text); } catch { return { ok: false, reason: t('remaps.file.notJson') }; }
+  if (!data || typeof data !== 'object') return { ok: false, reason: t('remaps.file.notRemaps') };
   const list = pick(data as Record<string, unknown>, 'remaps') ?? pick(data as Record<string, unknown>, 'entries');
-  if (!Array.isArray(list)) return { ok: false, reason: 'That is not a remaps file' };
+  if (!Array.isArray(list)) return { ok: false, reason: t('remaps.file.notRemaps') };
   const entries: RemapEntryDto[] = [];
   for (const raw of list) {
     if (!raw || typeof raw !== 'object') continue;
@@ -188,7 +194,7 @@ export function parseRemapImport(text: string): ImportResult {
       ...(typeof process === 'string' && process.trim() ? { process: process.trim() } : {}),
     });
   }
-  if (entries.length === 0) return { ok: false, reason: 'No usable remaps in that file' };
+  if (entries.length === 0) return { ok: false, reason: t('remaps.file.noneUsable') };
   return { ok: true, entries };
 }
 

@@ -25,7 +25,7 @@ export default {
     notFound: 'Os dados do {{tr2}} não estão neste computador.',
     closeTr2First: 'Feche o {{tr2}} antes: os arquivos dele não podem mudar durante a cópia.',
     // "Abrir com o Windows" é o nome que o ajuste "Run on startup" tem em pt-BR.
-    stayOff: 'As automações e o “Abrir com o Windows” ficam desativados aqui até você ativá-los.',
+    stayOff: 'As automações e o “{{>settings.rows.runOnStartup.label}}” ficam desativados aqui até você ativá-los.',
     backupFirst: 'O que o {{app}} tem agora fica guardado antes em Documentos\\{{dir}}\\Backups.',
     restarts: 'O {{app}} reinicia para terminar.',
     importing: 'Importando…',

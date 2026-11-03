@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Keyboard } from 'lucide-react';
 import { DialogShell, DialogFooter  } from './common/DialogShell';
 import { useAskInput } from '../logic/useReplay';
+import { t } from '../i18n';
 
 
 /**
@@ -30,7 +31,7 @@ export function AskInputDialog({ label, options, onSubmit, onCancel }: AskInputD
   return (
     <DialogShell
       icon={<Keyboard size={14} className="text-accent-solid" />}
-      title="Input needed"
+      title={t('dialogs.askInput.title')}
       size="sm"
       // Above every editor layer (the Sheet is z-60/70, the panels opened over it z-80, their
       // prompts z-90): a run's prompt arrives from outside any stack, and at the default z-50 it
@@ -39,9 +40,9 @@ export function AskInputDialog({ label, options, onSubmit, onCancel }: AskInputD
       onClose={onCancel}
       closeOnBackdrop={false}
       footerHint={isMenu
-        ? 'Esc cancels the run'
-        : 'Enter submits · Esc cancels the run'}
-      footer={isMenu ? undefined : <DialogFooter secondary={{ label: 'Cancel', onClick: onCancel }} primary={{ label: 'Submit', onClick: () => onSubmit(value) }} />}
+        ? t('dialogs.askInput.menuHint')
+        : t('dialogs.askInput.fieldHint')}
+      footer={isMenu ? undefined : <DialogFooter secondary={{ label: t('common.actions.cancel'), onClick: onCancel }} primary={{ label: t('dialogs.askInput.submit'), onClick: () => onSubmit(value) }} />}
       onCardKeyDown={(e) => {
         if (!isMenu && e.key === 'Enter') { e.preventDefault(); onSubmit(value); }
       }}

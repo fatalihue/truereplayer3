@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { CheckCircle2, XCircle, Info, X } from 'lucide-react';
 import { useDockPx } from '../shell/dock/dockState';
 import { useToast, useToasts, type ToastType } from '../state/ToastContext';
+import { t } from '../i18n';
 
 // The toast's two buttons: Button's ghost at xs and IconButton's sm, written out. Nothing else in the
 // new shell's opening bundle uses those two components, and with them came their tables of every
@@ -81,7 +82,7 @@ export function Toast() {
           type="button"
           onClick={() => dismissToast(toast.id)}
           className={DISMISS_CLASS}
-          aria-label="Dismiss notification"
+          aria-label={t('ui.toast.dismiss')}
         >
           <X size={12} />
         </button>

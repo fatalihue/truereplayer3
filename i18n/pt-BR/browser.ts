@@ -39,7 +39,7 @@ export default {
     hint: 'O https:// é adicionado se faltar.',
     missing: 'Digite o endereço a abrir.',
     placeholder: 'https://example.com',
-    newTab: 'Abrir em nova aba',
+    newTab: 'Abrir em nova guia',          // "guia", como o Chrome e o Edge chamam a aba deles em pt-BR
     after: 'Depois de navegar',
     pattern: 'Padrão de URL',
     patternHint: 'Glob (*) ou /regex/.',

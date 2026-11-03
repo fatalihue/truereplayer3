@@ -2,14 +2,15 @@ import { useEffect, useRef, useState, type KeyboardEvent, type MutableRefObject 
 import { Check, ChevronRight, Clock, Ellipsis, Play, Plus, ScanText, Search, Timer, TriangleAlert, X, Zap } from 'lucide-react';
 import type { AutomationEntry, TriggerConfig } from '../../../bridge/messageTypes';
 import { useBridge } from '../../../bridge/BridgeContext';
+import { fmtNum, t, tn } from '../../../i18n';
 import { useAutomationRefresh, useAutomations } from '../../../logic/useAutomations';
 import { useMacro } from '../../../logic/useMacro';
-import { useTt } from '../../../state/LanguageContext';
 import { useToast } from '../../../state/ToastContext';
 import { clockSeconds, phaseLockRisk, rangeParts } from '../../../utils/activeHours';
 import { isModalDialogOpen } from '../../../utils/modalDialog';
 import { DraftField, Segmented, Switch } from '../../inspector/fields';
 import { MacroPicker } from '../../inspector/MacroPicker';
+import { VALUE_A } from '../../inspector/probes';
 import { selection } from '../../list/selection';
 import { Menu } from '../../Menu';
 import { anchorBelow, type MenuAnchor } from '../../menuAnchor';
@@ -17,8 +18,8 @@ import { Popover } from '../../Popover';
 import { useApp, useShell } from '../../store';
 import { openMacroSettings, openPage, useUi } from '../../ui';
 import {
-  defaultCooldown, defaultPollMs, defaultTrigger, secondsText, STARTS, statusOf, triggerText, triggerWords,
-  UNIT_SECONDS, unitOf, WEEK, whenText, whyCannotFire, type Status, type Unit,
+  defaultCooldown, defaultPollMs, defaultTrigger, phraseOf, secondsText, STARTS, statusOf, triggerText, triggerWords,
+  UNIT_SECONDS, unitOf, weekDays, whenText, whyCannotFire, type Status, type Unit,
 } from './automationModel';
 import { Condition, CropView } from './AutomationCondition';
 import { useAutomationImages } from './automationImages';
@@ -83,9 +84,9 @@ export default function AutomationsPage() {
       if (!e.ctrlKey || e.altKey || e.metaKey) return;
       const key = e.key.toLowerCase();
       if (key !== 'z' && key !== 'y') return;
-      const t = e.target as HTMLElement | null;
-      const typing = !!t && (t.isContentEditable || t.tagName === 'TEXTAREA'
-        || (t.tagName === 'INPUT' && !['range', 'checkbox', 'radio', 'button'].includes((t as HTMLInputElement).type)));
+      const el = e.target as HTMLElement | null;
+      const typing = !!el && (el.isContentEditable || el.tagName === 'TEXTAREA'
+        || (el.tagName === 'INPUT' && !['range', 'checkbox', 'radio', 'button'].includes((el as HTMLInputElement).type)));
       if (typing || isModalDialogOpen()) return;
       e.preventDefault();
       const profiles = useShell.getState().app.profiles;
@@ -104,7 +105,7 @@ export default function AutomationsPage() {
     setPick(pick?.button === button ? null : { patch, anchor: anchorBelow(button, button.classList.contains('am-new') ? 'end' : 'start'), button });
 
   return (
-    <section className="shell-page am" aria-label="Automations" data-panel={entry ? '' : undefined} data-crop={(entry && cropping) || undefined}>
+    <section className="shell-page am" aria-label={t('common.pages.automations')} data-panel={entry ? '' : undefined} data-crop={(entry && cropping) || undefined}>
       <div className="am-main">
         <Head onNew={(button) => startPick({}, button)} />
         {entries.length > 0
@@ -117,7 +118,7 @@ export default function AutomationsPage() {
           : <Empty onStart={startPick} />}
       </div>
       {entry && (cropping
-        ? <aside className="am-panel am-crop" aria-label="Automation settings"><CropView entry={entry} /></aside>
+        ? <aside className="am-panel am-crop" aria-label={t('automations.panel.label')}><CropView entry={entry} /></aside>
         : <Panel key={entry.profile} entry={entry} />)}
       {pick && (
         <PickMacro
@@ -154,7 +155,6 @@ function useMacrosLeft(): string[] {
 }
 
 function Head({ onNew }: { onNew: (button: HTMLButtonElement) => void }) {
-  const tt = useTt();
   const cmds = useAutomations();
   const on = useRunAutomations();
   const left = useMacrosLeft();
@@ -162,18 +162,16 @@ function Head({ onNew }: { onNew: (button: HTMLButtonElement) => void }) {
   return (
     <header className="am-head">
       <div className="am-titles">
-        <h1 className="am-title">Automations</h1>
-        <p className="am-sub">Each one runs a macro by itself: every so often, at a set time, or when something shows up</p>
+        <h1 className="am-title">{t('common.pages.automations')}</h1>
+        <p className="am-sub">{t('automations.head.sub')}</p>
       </div>
       <div className="am-head-end">
         <span className="am-run">
-          Run automations
+          {t('automations.head.runAll')}
           <Switch
-            label="Run automations"
+            label={t('automations.head.runAll')}
             checked={on}
-            tip={on
-              ? tt('The automations that are on run their macros when their trigger comes. Off holds them all.', 'As automações ligadas rodam seus macros quando o gatilho chega. Desligado, todas esperam.')
-              : tt('Off: no automation runs, on or not.', 'Desligado: nenhuma automação roda, ligada ou não.')}
+            tip={on ? t('automations.head.runAllOnTip') : t('automations.head.runAllOffTip')}
             onChange={(v) => setRunAutomations(v, cmds)}
           />
         </span>
@@ -184,13 +182,11 @@ function Head({ onNew }: { onNew: (button: HTMLButtonElement) => void }) {
           data-variant="primary"
           aria-haspopup="dialog"
           disabled={left.length === 0}
-          data-tip={left.length > 0 ? undefined
-            : none ? tt('Create a macro first', 'Crie um macro antes')
-            : tt('Every macro has its automation: one per macro', 'Todo macro já tem a sua automação: uma por macro')}
+          data-tip={left.length > 0 ? undefined : none ? t('automations.head.noMacro') : t('automations.head.allTaken')}
           onClick={(e) => onNew(e.currentTarget)}
         >
           <Plus aria-hidden="true" />
-          New automation
+          {t('automations.head.new')}
         </button>
       </div>
     </header>
@@ -201,10 +197,10 @@ function Head({ onNew }: { onNew: (button: HTMLButtonElement) => void }) {
 function PickMacro({ at, onPick, onClose }: { at: Pick; onPick: (name: string) => void; onClose: () => void }) {
   const names = useMacrosLeft();
   return (
-    <Popover anchor={at.anchor} label="Pick the macro it runs" toggle={at.button} focusFirst onClose={onClose}>
+    <Popover anchor={at.anchor} label={t('automations.pick.title')} toggle={at.button} focusFirst onClose={onClose}>
       <div className="am-pick">
-        <span className="am-pick-title">Pick the macro it runs</span>
-        <MacroPicker names={names} value={null} autoFocus label="Macros without an automation" onPick={onPick} />
+        <span className="am-pick-title">{t('automations.pick.title')}</span>
+        <MacroPicker names={names} value={null} autoFocus label={t('automations.pick.list')} onPick={onPick} />
       </div>
     </Popover>
   );
@@ -215,14 +211,13 @@ function PickMacro({ at, onPick, onClose }: { at: Pick; onPick: (name: string) =
 const START_ICONS = { timer: Timer, clock: Clock, text: ScanText };
 
 function Empty({ onStart }: { onStart: (patch: Partial<TriggerConfig>, button: HTMLElement) => void }) {
-  const tt = useTt();
   const left = useMacrosLeft();
   return (
     <div className="am-empty">
       <span className="am-empty-icon" aria-hidden="true"><Zap /></span>
-      <span className="am-empty-title">No automations yet</span>
-      <span className="am-empty-text">An automation runs a macro by itself — on a timer, at a set time, or when something shows on screen.</span>
-      <span className="am-empty-from">Start from</span>
+      <span className="am-empty-title">{t('automations.empty.title')}</span>
+      <span className="am-empty-text">{t('automations.empty.text')}</span>
+      <span className="am-empty-from">{t('automations.empty.from')}</span>
       <div className="am-empty-list">
         {STARTS.map(s => {
           const Icon = START_ICONS[s.icon];
@@ -233,7 +228,7 @@ function Empty({ onStart }: { onStart: (patch: Partial<TriggerConfig>, button: H
               className="am-start"
               aria-haspopup="dialog"
               disabled={left.length === 0}
-              data-tip={left.length === 0 ? tt('Create a macro first', 'Crie um macro antes') : undefined}
+              data-tip={left.length === 0 ? t('automations.head.noMacro') : undefined}
               onClick={(e) => onStart(s.patch, e.currentTarget)}
             >
               <Icon className="am-start-icon" aria-hidden="true" />
@@ -250,10 +245,10 @@ function Empty({ onStart }: { onStart: (patch: Partial<TriggerConfig>, button: H
 // ── The list ──
 
 const FILTERS: { f: Filter; label: string }[] = [
-  { f: 'all', label: 'All' },
-  { f: 'armed', label: 'Armed' },
-  { f: 'off', label: 'Off' },
-  { f: 'attention', label: 'Needs attention' },
+  { f: 'all', label: t('automations.filters.all') },
+  { f: 'armed', label: t('automations.filters.armed') },
+  { f: 'off', label: t('automations.filters.off') },
+  { f: 'attention', label: t('automations.filters.attention') },
 ];
 /** The filter in effect: the one chosen, or All once nothing is left in it. */
 function useShownFilter(entries: AutomationEntry[], on: boolean): Filter {
@@ -273,11 +268,11 @@ function Bar({ entries }: { entries: AutomationEntry[] }) {
   for (const e of entries) counts[statusOf(e, on).group]++;
   return (
     <div className="am-bar">
-      <div className="am-chips" role="group" aria-label="Filter by status">
+      <div className="am-chips" role="group" aria-label={t('automations.filterGroup')}>
         {FILTERS.filter(c => c.f === 'all' || counts[c.f] > 0).map(({ f, label }) => (
           <button key={f} type="button" className="am-chip" data-tone={f === 'attention' ? 'warn' : undefined} aria-pressed={filter === f}
             onClick={() => useAutomationsUi.setState({ filter: f })}>
-            {label}{' '}<span className="am-chip-n">{counts[f]}</span>
+            {label}{' '}<span className="am-chip-n">{fmtNum(counts[f])}</span>
           </button>
         ))}
       </div>
@@ -286,8 +281,8 @@ function Bar({ entries }: { entries: AutomationEntry[] }) {
         <Search aria-hidden="true" />
         <input
           type="text"
-          aria-label="Filter automations"
-          placeholder="Filter by macro or trigger"
+          aria-label={t('automations.search')}
+          placeholder={t('automations.searchHint')}
           value={query}
           spellCheck={false}
           autoComplete="off"
@@ -323,20 +318,20 @@ function Table({ entries, open }: { entries: AutomationEntry[]; open: string | n
         </colgroup>
         <thead>
           <tr>
-            <th className="am-c">On</th>
-            <th>Macro</th>
-            <th>Trigger</th>
-            <th>Status</th>
-            <th>Last fired</th>
-            <th className="am-n">Fires</th>
+            <th className="am-c">{t('automations.columns.on')}</th>
+            <th>{t('automations.columns.macro')}</th>
+            <th>{t('automations.columns.trigger')}</th>
+            <th>{t('automations.columns.status')}</th>
+            <th>{t('automations.columns.lastFired')}</th>
+            <th className="am-n">{t('automations.columns.fires')}</th>
           </tr>
         </thead>
         <tbody>
           {rows.map(e => <Row key={e.profile} entry={e} here={e.profile === open} on={on} />)}
         </tbody>
       </table>
-      {rows.length === 0 && <p className="am-none" role="status">{query ? `No automation matches “${query}”.` : 'No automations in this filter.'}</p>}
-      <p className="am-note">Hotkeys and hotstrings are not automations: they live on each macro, in its settings.</p>
+      {rows.length === 0 && <p className="am-none" role="status">{query ? t('automations.noMatch', { query }) : t('automations.noneInFilter')}</p>}
+      <p className="am-note">{t('automations.hotkeysNote')}</p>
     </div>
   );
 }
@@ -346,7 +341,6 @@ function Table({ entries, open }: { entries: AutomationEntry[]; open: string | n
  * others keep their entry while only what was sent covers it.
  */
 function Row({ entry: e, here, on }: { entry: AutomationEntry; here: boolean; on: boolean }) {
-  const tt = useTt();
   const cmds = useAutomations();
   // A disabled macro's automation can be turned off, not on (the engine never runs it).
   const blocked = e.isDisabled && !e.trigger.armed;
@@ -355,44 +349,50 @@ function Row({ entry: e, here, on }: { entry: AutomationEntry; here: boolean; on
       onClick={(ev) => { if (!(ev.target as HTMLElement).closest('button')) openAutomation(e.profile); }}>
       <td className="am-c">
         <Switch
-          label={`${e.profile} automation`}
+          label={t('automations.row.switch', { name: e.profile })}
           checked={e.trigger.armed}
           disabled={blocked}
-          tip={blocked ? tt('The macro is disabled — enable it in the library first', 'O macro está desativado — reative na biblioteca antes') : undefined}
+          tip={blocked ? t('automations.row.disabledTip') : undefined}
           onChange={(v) => { const now = triggerNow(e.profile); if (now) commit(e.profile, { ...now, armed: v }, cmds); }}
         />
       </td>
       <td>
-        <button type="button" className="am-edit" aria-current={here || undefined} aria-label={`Edit the automation of ${e.profile}`} onClick={() => openAutomation(e.profile)}>
+        <button type="button" className="am-edit" aria-current={here || undefined} aria-label={t('automations.row.edit', { name: e.profile })} onClick={() => openAutomation(e.profile)}>
           {e.profile}
         </button>
       </td>
-      <td className="am-trigger"><TriggerCell t={e.trigger} /></td>
+      <td className="am-trigger"><TriggerCell trigger={e.trigger} /></td>
       <td><StatusCell status={statusOf(e, on)} /></td>
       <td className="am-mono am-when">{whenText(e.lastFiredAt)}</td>
-      <td className="am-mono am-n">{e.fireCount}</td>
+      <td className="am-mono am-n">{fmtNum(e.fireCount)}</td>
     </tr>
   );
 }
 
-function TriggerCell({ t }: { t: TriggerConfig }) {
-  const w = triggerWords(t);
+/**
+ * The trigger's phrase ("Every 15 min", "When text on screen"), its main part drawn plain and the
+ * rest quieter wherever the language puts it: the phrase is asked with a mark in the main part's
+ * place and cut there (as the probes' answers are). Then the value watched for and the hours or days.
+ */
+function TriggerCell({ trigger }: { trigger: TriggerConfig }) {
+  const w = triggerWords(trigger);
+  const [before, after] = phraseOf(w.kind, VALUE_A).split(VALUE_A);
   return (
-    <span className="am-trig" data-tip={triggerText(t)} data-tip-reveal>
-      <span className="am-lead">{w.lead}</span>{' '}{w.main}
+    <span className="am-trig" data-tip={triggerText(trigger)} data-tip-reveal>
+      {before && <span className="am-lead">{before}</span>}{w.main}{after && <span className="am-lead">{after}</span>}
       {w.quote && <>{' '}<span className="am-quote">“{w.quote}”</span></>}
       {w.tail && <span className="am-tail"> · {w.tail}</span>}
     </span>
   );
 }
 
-/** Why a status is what it is, in both languages; the engine's own reasons come as it says them. */
-function statusTip(s: Status, tt: (en: string, pt: string) => string): string | undefined {
+/** Why a status is what it is; the engine's own reasons come as it says them. */
+function statusTip(s: Status): string | undefined {
   switch (s.why) {
-    case 'disabled': return tt('The macro is disabled, so its automation can’t run. Enable it in the library.', 'O macro está desativado, então a automação não roda. Reative na biblioteca.');
-    case 'paused': return tt('Run automations is off: nothing runs until it is on.', 'Run automations está desligado: nada roda até ele ligar.');
-    case 'true': return tt('Watching · the condition is true now', 'Vigiando · a condição está verdadeira agora');
-    case 'false': return tt('Watching · the condition is false now', 'Vigiando · a condição está falsa agora');
+    case 'disabled': return t('automations.statusTip.disabled');
+    case 'paused': return t('automations.statusTip.paused');
+    case 'true': return t('automations.statusTip.conditionTrue');
+    case 'false': return t('automations.statusTip.conditionFalse');
     case 'never':
     case 'stopped': return s.detail;
     default: return undefined;
@@ -400,9 +400,8 @@ function statusTip(s: Status, tt: (en: string, pt: string) => string): string | 
 }
 
 function StatusCell({ status }: { status: Status }) {
-  const tt = useTt();
   return (
-    <span className="am-status" data-tone={status.tone} data-tip={statusTip(status, tt)}>
+    <span className="am-status" data-tone={status.tone} data-tip={statusTip(status)}>
       {status.tone === 'warn' ? <TriangleAlert aria-hidden="true" /> : <span className="am-dot" aria-hidden="true" />}
       {status.text}
     </span>
@@ -418,17 +417,16 @@ type Change = (patch: Patch, control?: string) => void;
 function useRemove() {
   const cmds = useAutomations();
   const { showToast } = useToast();
-  const tt = useTt();
   return (name: string) => {
     const was = triggerNow(name);
     if (!was) return;
     commit(name, null, cmds);
     requestAnimationFrame(() => document.querySelector<HTMLElement>('.am-new:not(:disabled)')?.focus());
-    showToast(tt(`Deleted the automation of ${name}`, `Automação de ${name} apagada`), {
+    showToast(t('automations.deleted', { name }), {
       type: 'success',
       duration: 10000,
       action: {
-        label: 'Undo',
+        label: t('common.actions.undo'),
         onClick: () => {
           if (triggerNow(name) || !useShell.getState().app.profiles.some(p => p.name === name)) return;
           commit(name, was, cmds);
@@ -444,7 +442,6 @@ function useRemove() {
  * the page's Ctrl+Z undoes it.
  */
 function Panel({ entry }: { entry: AutomationEntry }) {
-  const tt = useTt();
   const cmds = useAutomations();
   const macro = useMacro();
   const on = useRunAutomations();
@@ -454,7 +451,7 @@ function Panel({ entry }: { entry: AutomationEntry }) {
   const [ran, setRan] = useState<{ ok: boolean; text: string } | null>(null);
   const fireRef = useRef<string | null>(null);
   const name = entry.profile;
-  const t = entry.trigger;
+  const trigger = entry.trigger;
   const status = statusOf(entry, on);
 
   // Run now's answer: the one asked here (a late one belongs to no other automation).
@@ -493,41 +490,39 @@ function Panel({ entry }: { entry: AutomationEntry }) {
   };
 
   return (
-    <aside className="am-panel" aria-label="Automation settings" onKeyDown={onKeyDown}>
+    <aside className="am-panel" aria-label={t('automations.panel.label')} onKeyDown={onKeyDown}>
       <div className="am-panel-head">
         <span className="am-panel-icon" data-tone={status.tone} aria-hidden="true"><Zap /></span>
         <div className="am-panel-titles">
           <span className="am-panel-title">{name}</span>
-          <span className="am-panel-sub">{t.armed ? 'Runs this macro' : 'Runs this macro · off'}</span>
+          <span className="am-panel-sub">{trigger.armed ? t('automations.panel.runs') : t('automations.panel.runsOff')}</span>
         </div>
         <button
           type="button"
           className="insp-button am-run-now"
           disabled={entry.isDisabled}
-          data-tip={entry.isDisabled
-            ? tt('The macro is disabled — enable it in the library first', 'O macro está desativado — reative na biblioteca antes')
-            : tt('Runs the macro once now, as the automation would', 'Roda o macro uma vez agora, como a automação faria')}
+          data-tip={entry.isDisabled ? t('automations.row.disabledTip') : t('automations.panel.runNowTip')}
           onClick={() => { setRan(null); fireRef.current = cmds.testFire(name); }}
         >
           <Play aria-hidden="true" />
-          Run now
+          {t('automations.panel.runNow')}
         </button>
-        <button type="button" className="insp-icon-button" aria-label="Automation actions" aria-haspopup="menu" aria-expanded={!!menu}
+        <button type="button" className="insp-icon-button" aria-label={t('automations.panel.actions')} aria-haspopup="menu" aria-expanded={!!menu}
           onClick={(e) => setMenu(menu ? null : { anchor: anchorBelow(e.currentTarget, 'end'), button: e.currentTarget })}>
           <Ellipsis aria-hidden="true" />
         </button>
-        <button type="button" className="insp-icon-button" aria-label="Close automation settings" onClick={close}>
+        <button type="button" className="insp-icon-button" aria-label={t('automations.panel.close')} onClick={close}>
           <X aria-hidden="true" />
         </button>
       </div>
       {menu && (
-        <Menu anchor={menu.anchor} label="Automation actions" toggle={menu.button} onClose={() => setMenu(null)}
+        <Menu anchor={menu.anchor} label={t('automations.panel.actions')} toggle={menu.button} onClose={() => setMenu(null)}
           entries={[
-            { label: 'Open macro', onSelect: () => toMacro() },
-            { label: t.armed ? 'Turn off' : 'Turn on', disabled: entry.isDisabled && !t.armed, onSelect: toggle },
-            { label: 'Reset counters', disabled: !counted, onSelect: () => cmds.resetCounters(name) },
+            { label: t('automations.panel.openMacro'), onSelect: () => toMacro() },
+            { label: trigger.armed ? t('automations.panel.turnOff') : t('automations.panel.turnOn'), disabled: entry.isDisabled && !trigger.armed, onSelect: toggle },
+            { label: t('automations.panel.resetCounters'), disabled: !counted, onSelect: () => cmds.resetCounters(name) },
             'separator',
-            { label: 'Delete', danger: true, onSelect: () => remove(name) },
+            { label: t('common.actions.delete'), danger: true, onSelect: () => remove(name) },
           ]} />
       )}
       <div className="am-panel-body">
@@ -540,29 +535,29 @@ function Panel({ entry }: { entry: AutomationEntry }) {
           </p>
         )}
         <Notices entry={entry} on={on} toTarget={() => toMacro('target')} />
-        <Runs name={name} t={t} change={change} cmds={cmds} />
-        {t.kind === 'condition' && <Rhythm name={name} t={t} change={change} />}
+        <Runs name={name} trigger={trigger} change={change} cmds={cmds} />
+        {trigger.kind === 'condition' && <Rhythm name={name} trigger={trigger} change={change} />}
         <Activity entry={entry} counted={counted} />
       </div>
-      <div className="am-panel-foot"><Check aria-hidden="true" />Applies as you type · Ctrl+Z undoes</div>
+      <div className="am-panel-foot"><Check aria-hidden="true" />{t('automations.panel.foot')}</div>
     </aside>
   );
 }
 
 /** What stands in the automation's way, said where it can be fixed (paineis-019, 021 and 022). */
 function Notices({ entry, on, toTarget }: { entry: AutomationEntry; on: boolean; toTarget: () => void }) {
-  const t = entry.trigger;
-  const stopped = on && t.armed && !entry.isDisabled && !entry.running && !!entry.lastResult && entry.lastResult !== 'fired' && !whyCannotFire(t);
+  const trigger = entry.trigger;
+  const stopped = on && trigger.armed && !entry.isDisabled && !entry.running && !!entry.lastResult && entry.lastResult !== 'fired' && !whyCannotFire(trigger);
   return (
     <>
       {entry.isDisabled && (
-        <p className="am-notice" data-tone="warn">The macro is disabled, so its automation can’t run or be turned on. Enable it in the library.</p>
+        <p className="am-notice" data-tone="warn">{t('automations.notices.disabled')}</p>
       )}
-      {stopped && <p className="am-notice" data-tone="warn">On, but not watching: {entry.lastResult}.</p>}
+      {stopped && <p className="am-notice" data-tone="warn">{t('automations.notices.notWatching', { reason: entry.lastResult ?? '' })}</p>}
       {!entry.hasEffectiveTarget && (
         <div className="am-notice">
-          <span>No target window — it acts on whichever window is focused when it fires.</span>
-          <button type="button" className="insp-link" onClick={toTarget}>Set a window target</button>
+          <span>{t('automations.notices.noTarget')}</span>
+          <button type="button" className="insp-link" onClick={toTarget}>{t('automations.notices.setTarget')}</button>
         </div>
       )}
     </>
@@ -570,51 +565,52 @@ function Notices({ entry, on, toTarget }: { entry: AutomationEntry; on: boolean;
 }
 
 const KINDS: { value: TriggerConfig['kind']; label: string }[] = [
-  { value: 'interval', label: 'Every…' },
-  { value: 'schedule', label: 'At a time' },
-  { value: 'condition', label: 'When…' },
+  { value: 'interval', label: t('automations.runs.kinds.interval') },
+  { value: 'schedule', label: t('automations.runs.kinds.schedule') },
+  { value: 'condition', label: t('automations.runs.kinds.condition') },
 ];
 
 /** Runs: every so often, at a time on some days, or when a condition shows up (paineis-023 to 067). */
-function Runs({ name, t, change, cmds }: { name: string; t: TriggerConfig; change: Change; cmds: Cmds }) {
-  const never = whyCannotFire(t);
-  const at = t.timeOfDay && !rangeParts(t.timeOfDay) ? t.timeOfDay : '';
+function Runs({ name, trigger, change, cmds }: { name: string; trigger: TriggerConfig; change: Change; cmds: Cmds }) {
+  const never = whyCannotFire(trigger);
+  const at = trigger.timeOfDay && !rangeParts(trigger.timeOfDay) ? trigger.timeOfDay : '';
   const toKind = (kind: TriggerConfig['kind']) => change(now => (kind === 'schedule'
     // At a time keeps a time it can fire at; a range of hours, or nothing, gives way to 09:00.
     ? { kind, timeOfDay: now.timeOfDay && !rangeParts(now.timeOfDay) && clockSeconds(now.timeOfDay) !== null ? now.timeOfDay : '09:00' }
     // Leaving it, its time is not a range of hours: the automation runs at any hour.
     : { kind, ...(now.kind === 'schedule' ? { timeOfDay: null } : {}) }));
   return (
-    <section className="am-sec am-runs" aria-label="Runs">
-      <span className="am-sec-title">Runs</span>
-      <Segmented<TriggerConfig['kind']> label="Runs" value={t.kind} options={KINDS} onChange={toKind} />
-      {t.kind === 'interval' && (
+    <section className="am-sec am-runs" aria-label={t('automations.runs.title')}>
+      <span className="am-sec-title">{t('automations.runs.title')}</span>
+      <Segmented<TriggerConfig['kind']> label={t('automations.runs.title')} value={trigger.kind} options={KINDS} onChange={toKind} />
+      {trigger.kind === 'interval' && (
         <>
-          <IntervalField name={name} seconds={t.intervalSeconds} onSeconds={(s, control) => change({ intervalSeconds: s }, control)} />
-          <span className="insp-hint">At least 5 s. The first run comes one interval after it is turned on.</span>
-          <Hours name={name} t={t} change={change} />
+          <IntervalField name={name} seconds={trigger.intervalSeconds} onSeconds={(s, control) => change({ intervalSeconds: s }, control)} />
+          <span className="insp-hint">{t('automations.runs.intervalHint')}</span>
+          <Hours name={name} trigger={trigger} change={change} />
         </>
       )}
-      {t.kind === 'schedule' && (
+      {trigger.kind === 'schedule' && (
         <>
           <div className="insp-row">
-            <span className="insp-row-label">At</span>
-            <TimeBox label="At" value={at} onApply={(v) => change({ timeOfDay: v || null }, 'at')} />
+            <span className="insp-row-label">{t('automations.runs.at')}</span>
+            <TimeBox label={t('automations.runs.at')} value={at} onApply={(v) => change({ timeOfDay: v || null }, 'at')} />
           </div>
-          <Days mask={t.daysOfWeek} change={change} />
-          <span className="insp-hint">None = every day.</span>
-          {never && <p className="am-msg" data-tone="warn">Never fires as it is: {never}</p>}
+          <Days mask={trigger.daysOfWeek} change={change} />
+          <span className="insp-hint">{t('automations.runs.daysHint')}</span>
+          {never && <p className="am-msg" data-tone="warn">{t('automations.runs.never', { reason: never })}</p>}
         </>
       )}
-      {t.kind === 'condition' && <Condition name={name} t={t} never={never} change={change} cmds={cmds} />}
+      {trigger.kind === 'condition' && <Condition name={name} trigger={trigger} never={never} change={change} cmds={cmds} />}
     </section>
   );
 }
 
+// The units stay as they are written (s, min, h), in both languages; their tips say them whole.
 const UNITS: { value: Unit; label: string; tip: string }[] = [
-  { value: 's', label: 's', tip: 'Seconds' },
-  { value: 'min', label: 'min', tip: 'Minutes' },
-  { value: 'h', label: 'h', tip: 'Hours' },
+  { value: 's', label: 's', tip: t('automations.runs.units.s') },
+  { value: 'min', label: 'min', tip: t('automations.runs.units.min') },
+  { value: 'h', label: 'h', tip: t('automations.runs.units.h') },
 ];
 const clampInterval = (s: number) => Math.min(86400, Math.max(5, Math.round(s)));
 
@@ -641,12 +637,12 @@ function IntervalField({ name, seconds, onSeconds }: { name: string; seconds: nu
   };
   return (
     <div className="insp-row am-every">
-      <span className="insp-row-label">Every</span>
+      <span className="insp-row-label">{t('automations.runs.every')}</span>
       <span className="am-every-n">
-        <DraftField stepId={`automation:${name}`} field="intervalSeconds" label="Every" kind="int" min={shown === 's' ? 5 : 1} max={Math.floor(86400 / per)}
+        <DraftField stepId={`automation:${name}`} field="intervalSeconds" label={t('automations.runs.every')} kind="int" min={shown === 's' ? 5 : 1} max={Math.floor(86400 / per)}
           stored={String(seconds / per)} onApply={(v) => write(clampInterval(Number(v) * per), 'interval')} />
       </span>
-      <Segmented<Unit> label="Unit" value={shown} options={UNITS} onChange={(u) => {
+      <Segmented<Unit> label={t('automations.runs.unit')} value={shown} options={UNITS} onChange={(u) => {
         setUnit(u);
         write(clampInterval((seconds / per) * UNIT_SECONDS[u]), 'unit');
       }} />
@@ -654,15 +650,17 @@ function IntervalField({ name, seconds, onSeconds }: { name: string; seconds: nu
   );
 }
 
-/** The days of a schedule, Mon to Sun; none is every day. Days clicked in a row are one Ctrl+Z. */
+/**
+ * The days of a schedule, Mon to Sun, by their names in the build's language ("Mon", "Seg."); none is
+ * every day. Days clicked in a row are one Ctrl+Z.
+ */
 function Days({ mask, change }: { mask: number; change: Change }) {
-  const tt = useTt();
   return (
-    <div className="insp-days am-days" role="group" aria-label="Days">
-      {WEEK.map(d => (
-        <button key={d.short} type="button" aria-pressed={(mask & d.bit) !== 0} aria-label={d.name} data-tip={tt(d.name, d.pt)}
+    <div className="insp-days am-days" role="group" aria-label={t('conditions.time.days')}>
+      {weekDays().map(d => (
+        <button key={d.bit} type="button" aria-pressed={(mask & d.bit) !== 0} aria-label={d.name} data-tip={d.name}
           onClick={() => change(now => ({ daysOfWeek: now.daysOfWeek ^ d.bit }), 'days')}>
-          {d.short}
+          {d.label}
         </button>
       ))}
     </div>
@@ -674,18 +672,17 @@ function Days({ mask, change }: { mask: number; change: Change }) {
  * here while one of them is still empty, and the switch remembers them: off and on again, they come
  * back. Today's ActiveHoursField is the reference.
  */
-function Hours({ name, t, change }: { name: string; t: TriggerConfig; change: Change }) {
-  const tt = useTt();
-  const range = rangeParts(t.timeOfDay);
+function Hours({ name, trigger, change }: { name: string; trigger: TriggerConfig; change: Change }) {
+  const range = rangeParts(trigger.timeOfDay);
   const [pair, setPair] = useState(() => range ?? { from: '', to: '' });
   const [on, setOn] = useState(!!range);
   // A change from outside (an undo, another window) reads the hours again; this field's own writes
   // come back as the value its pair already says.
-  const [seen, setSeen] = useState(t.timeOfDay);
-  if (t.timeOfDay !== seen) {
-    setSeen(t.timeOfDay);
+  const [seen, setSeen] = useState(trigger.timeOfDay);
+  if (trigger.timeOfDay !== seen) {
+    setSeen(trigger.timeOfDay);
     const said = on && pair.from && pair.to ? `${pair.from}-${pair.to}` : null;
-    if ((range ? t.timeOfDay : null) !== said) {
+    if ((range ? trigger.timeOfDay : null) !== said) {
       setOn(!!range);
       if (range) setPair(range);
     }
@@ -694,32 +691,31 @@ function Hours({ name, t, change }: { name: string; t: TriggerConfig; change: Ch
     setPair(next);
     setOn(isOn);
     const value = isOn && next.from && next.to && rangeParts(`${next.from}-${next.to}`) ? `${next.from}-${next.to}` : null;
-    if (value !== (range ? t.timeOfDay : null)) change({ timeOfDay: value }, 'hours');
+    if (value !== (range ? trigger.timeOfDay : null)) change({ timeOfDay: value }, 'hours');
   };
   const half = on && !!pair.from !== !!pair.to;
   return (
     <div className="am-hours">
       <div className="insp-row">
-        <Switch label="Only between these hours" checked={on}
+        <Switch label={t('automations.hours.only')} checked={on}
           onChange={(v) => write(v && !pair.from && !pair.to ? { from: '09:00', to: '18:00' } : pair, v)} />
-        <span className="insp-row-label">Only between these hours</span>
+        <span className="insp-row-label">{t('automations.hours.only')}</span>
       </div>
       {on && (
         <>
           <div className="am-hours-times">
-            <TimeBox label="From" value={pair.from} onApply={(v) => write({ ...pair, from: v }, on)} />
-            <span className="am-and">and</span>
-            <TimeBox label="To" value={pair.to} onApply={(v) => write({ ...pair, to: v }, on)} />
+            <TimeBox label={t('conditions.time.from')} value={pair.from} onApply={(v) => write({ ...pair, from: v }, on)} />
+            <span className="am-and">{t('automations.hours.and')}</span>
+            <TimeBox label={t('conditions.time.to')} value={pair.to} onApply={(v) => write({ ...pair, to: v }, on)} />
           </div>
           <span className="insp-hint am-hours-hint" data-tone={half ? 'warn' : undefined}>
-            {half ? 'Fill in both times — until then it runs at any hour.' : 'An end before the start crosses midnight.'}
+            {half ? t('automations.hours.half') : t('automations.hours.overnight')}
           </span>
         </>
       )}
-      {phaseLockRisk(t) && (
-        <span className="am-msg" data-tone="warn" key={name}
-          data-tip={tt('This interval only comes at a few times of day — all may fall outside the hours', 'Este intervalo só chega em alguns horários do dia — todos podem cair fora das horas')}>
-          Interval longer than the hours it may run in — it may never fire. Shorten it or widen the hours.
+      {phaseLockRisk(trigger) && (
+        <span className="am-msg" data-tone="warn" key={name} data-tip={t('automations.hours.phaseLockTip')}>
+          {t('automations.hours.phaseLock')}
         </span>
       )}
     </div>
@@ -727,45 +723,45 @@ function Hours({ name, t, change }: { name: string; t: TriggerConfig; change: Ch
 }
 
 /** Rhythm, for a condition: once each time it shows or again while it shows, how often it is checked, the wait between fires and the hours. */
-function Rhythm({ name, t, change }: { name: string; t: TriggerConfig; change: Change }) {
-  const tt = useTt();
-  const type = t.conditionType;
+function Rhythm({ name, trigger, change }: { name: string; trigger: TriggerConfig; change: Change }) {
+  const type = trigger.conditionType;
   const poll = defaultPollMs(type);
   const cooldown = defaultCooldown(type);
   return (
-    <section className="am-sec" aria-label="Rhythm">
-      <span className="am-sec-title">Rhythm</span>
+    <section className="am-sec" aria-label={t('automations.rhythm.title')}>
+      <span className="am-sec-title">{t('automations.rhythm.title')}</span>
       {/* The clipboard fires on a change, not while it lasts (D17). */}
       {type !== 'ClipboardChanged' && (
         <Segmented<'edge' | 'level'>
-          label="Rhythm"
-          value={t.retrigger === 'level' ? 'level' : 'edge'}
+          label={t('automations.rhythm.title')}
+          value={trigger.retrigger === 'level' ? 'level' : 'edge'}
           options={[
-            { value: 'edge', label: 'Once each time it shows', tip: tt('Fires when it shows; again only after it goes away', 'Dispara quando aparece; de novo só depois de sumir') },
-            { value: 'level', label: 'Repeat while it shows', tip: tt('Fires again after each wait while it stays', 'Dispara de novo a cada espera enquanto continua') },
+            { value: 'edge', label: t('automations.rhythm.edge'), tip: t('automations.rhythm.edgeTip') },
+            { value: 'level', label: t('automations.rhythm.level'), tip: t('automations.rhythm.levelTip') },
           ]}
           onChange={(v) => change({ retrigger: v })}
         />
       )}
       <div className="insp-row">
-        <span className="insp-row-label">Check every</span>
+        <span className="insp-row-label">{t('automations.rhythm.checkEvery')}</span>
         <span className="insp-row-end">
-          <DraftField stepId={`automation:${name}`} field="pollIntervalMs" label="Check every" kind="dec" min={0.1} max={600} step={0.25} format={(s) => secondsText(s * 1000)} unit="s" placeholder={secondsText(poll)}
-            stored={t.pollIntervalMs > 0 ? secondsText(t.pollIntervalMs) : ''} filter={(v) => v.replace(/[^\d.,]/g, '')} parse={parseSeconds}
-            onApply={(v) => change({ pollIntervalMs: v === '' ? 0 : Math.round(Number(v) * 1000) }, 'poll')} />
+          {/* The seconds are written with the build's decimal sign ("0,5" in pt-BR): read back with either. */}
+          <DraftField stepId={`automation:${name}`} field="pollIntervalMs" label={t('automations.rhythm.checkEvery')} kind="dec" min={0.1} max={600} step={0.25} format={(s) => secondsText(s * 1000)} unit="s" placeholder={secondsText(poll)}
+            stored={trigger.pollIntervalMs > 0 ? secondsText(trigger.pollIntervalMs) : ''} filter={(v) => v.replace(/[^\d.,]/g, '')} parse={parseSeconds}
+            onApply={(v) => change({ pollIntervalMs: v === '' ? 0 : Math.round(Number(v.replace(',', '.')) * 1000) }, 'poll')} />
         </span>
       </div>
-      {type === 'ImageFound' && <span className="insp-hint">Image checks scan the whole screen — raise this if you can wait a few seconds.</span>}
+      {type === 'ImageFound' && <span className="insp-hint">{t('automations.rhythm.imageHint')}</span>}
       <div className="insp-row">
-        <span className="insp-row-label">Wait between fires</span>
+        <span className="insp-row-label">{t('automations.rhythm.cooldown')}</span>
         <span className="insp-row-end">
-          <DraftField stepId={`automation:${name}`} field="cooldownSeconds" label="Cooldown" kind="int" min={0} max={86400} unit="s" empty="clear"
-            placeholder={String(cooldown)} stored={t.cooldownSeconds > 0 ? String(t.cooldownSeconds) : ''}
+          <DraftField stepId={`automation:${name}`} field="cooldownSeconds" label={t('automations.rhythm.cooldownField')} kind="int" min={0} max={86400} unit="s" empty="clear"
+            placeholder={String(cooldown)} stored={trigger.cooldownSeconds > 0 ? String(trigger.cooldownSeconds) : ''}
             onApply={(v) => change({ cooldownSeconds: v === '' ? 0 : Number(v) }, 'cooldown')} />
         </span>
       </div>
-      <span className="insp-hint">Empty = the usual: a check every {secondsText(poll)} s, {cooldown} s between fires.</span>
-      <Hours name={name} t={t} change={change} />
+      <span className="insp-hint">{t('automations.rhythm.usual', { check: secondsText(poll), cooldown: fmtNum(cooldown) })}</span>
+      <Hours name={name} trigger={trigger} change={change} />
     </section>
   );
 }
@@ -778,27 +774,42 @@ function parseSeconds(text: string): string | null {
   return secondsText(Math.min(600000, Math.max(100, Math.round(Number(s) * 1000))));
 }
 
+type Skip = 'busy' | 'modal' | 'dirty';
+/** Why a fire was skipped, with how many times in front: "2 another macro was running". */
+function skipCounted(why: Skip, n: number): string {
+  switch (why) {
+    case 'busy': return t('automations.activity.whyCounted.busy', { n: fmtNum(n) });
+    case 'modal': return t('automations.activity.whyCounted.modal', { n: fmtNum(n) });
+    case 'dirty': return t('automations.activity.whyCounted.dirty', { n: fmtNum(n) });
+  }
+}
+
 /** Activity (paineis-072 to 074): how many times it fired and when, what was skipped and why, and the reset. */
 function Activity({ entry, counted }: { entry: AutomationEntry; counted: boolean }) {
   const cmds = useAutomations();
-  const reasons = ([[entry.skippedBusy, 'another macro was running'], [entry.skippedModal, 'a dialog was open'], [entry.skippedDirty, 'unsaved changes']] as const)
+  const reasons = ([[entry.skippedBusy, 'busy'], [entry.skippedModal, 'modal'], [entry.skippedDirty, 'dirty']] as const)
     .filter(([n]) => n > 0);
   const skipped = reasons.reduce((sum, [n]) => sum + n, 0);
   const next = entry.trigger.armed && entry.running && entry.trigger.kind !== 'condition' && entry.nextDueAt;
   const last = entry.lastResult && entry.lastResult !== 'fired' ? entry.lastResult : null;
   return (
-    <section className="am-sec" aria-label="Activity">
-      <span className="am-sec-title">Activity</span>
-      <Line label="Fired" value={entry.fireCount > 0 ? `${entry.fireCount}× · last ${whenText(entry.lastFiredAt)}` : 'Not yet'} />
-      {next && <Line label="Next" value={whenText(entry.nextDueAt)} />}
+    <section className="am-sec" aria-label={t('automations.activity.title')}>
+      <span className="am-sec-title">{t('automations.activity.title')}</span>
+      <Line label={t('automations.activity.fired')} value={entry.fireCount > 0
+        ? t('automations.activity.firedValue', { n: fmtNum(entry.fireCount), when: whenText(entry.lastFiredAt) })
+        : t('automations.activity.notYet')} />
+      {next && <Line label={t('automations.activity.next')} value={whenText(entry.nextDueAt)} />}
       {skipped > 0 && (
-        <Line label="Skipped" value={reasons.length === 1 ? `${skipped} · ${reasons[0][1]}` : `${skipped} · ${reasons.map(([n, why]) => `${n} ${why}`).join(', ')}`} />
+        <Line label={t('automations.activity.skipped')} value={reasons.length === 1
+          ? t('automations.activity.skippedOne', { n: fmtNum(skipped), why: tn('automations.activity.why')[reasons[0][1]] })
+          : t('automations.activity.skippedSeveral', { n: fmtNum(skipped), list: reasons.map(([n, why]) => skipCounted(why, n)).join(', ') })} />
       )}
       {entry.skippedSuppressed > 0 && (
-        <Line label="Ignored" value={`${entry.skippedSuppressed} clipboard change${entry.skippedSuppressed === 1 ? '' : 's'} just after a replay`} />
+        <Line label={t('automations.activity.ignored')}
+          value={t('automations.activity.ignoredValue', { count: entry.skippedSuppressed, n: fmtNum(entry.skippedSuppressed) })} />
       )}
-      {last && <Line label="Last result" value={last} />}
-      {counted && <button type="button" className="insp-button am-reset" onClick={() => cmds.resetCounters(entry.profile)}>Reset counters</button>}
+      {last && <Line label={t('automations.activity.lastResult')} value={last} />}
+      {counted && <button type="button" className="insp-button am-reset" onClick={() => cmds.resetCounters(entry.profile)}>{t('automations.panel.resetCounters')}</button>}
     </section>
   );
 }

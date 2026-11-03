@@ -4,6 +4,7 @@ import { useBridge } from '../bridge/BridgeContext';
 import type { IncomingMessage } from '../bridge/messageTypes';
 import { useAppActions } from '../logic/useSettings';
 import { APP_NAME } from '../appIdentity';
+import { t } from '../i18n';
 import { Button } from './common/Button';
 
 type Phase =
@@ -242,28 +243,28 @@ export function UpdateOverlay({ pending }: { pending?: readonly IncomingMessage[
             done) is spoken as it lands; the percent below is left out of it on purpose. */}
         <div aria-live="polite" aria-atomic="true">
           <div id={titleId} className={`text-center text-[17px] font-semibold font-display tracking-tight mb-1 ${isComplete || isInstalling ? 'text-[color:var(--color-replay-fg)]' : 'text-text-primary'}`}>
-            {phase.step === 'available' && 'Update available'}
-            {phase.step === 'downloading' && 'Downloading update'}
-            {phase.step === 'installing' && `Updating to v${version}`}
-            {phase.step === 'complete' && 'Update complete'}
+            {phase.step === 'available' && t('update.title.available')}
+            {phase.step === 'downloading' && t('update.title.downloading')}
+            {phase.step === 'installing' && t('update.title.installing', { version })}
+            {phase.step === 'complete' && t('update.title.complete')}
           </div>
           <div id={subtitleId} className="text-center text-[11px] text-text-tertiary mb-[18px]">
-            {phase.step === 'available' && `A new version of ${APP_NAME} is ready`}
-            {phase.step === 'downloading' && 'Do not close the app'}
-            {phase.step === 'installing' && `Closing ${APP_NAME}…`}
-            {phase.step === 'complete' && 'You are now on the latest version'}
+            {phase.step === 'available' && t('update.sub.available', { app: APP_NAME })}
+            {phase.step === 'downloading' && t('update.sub.downloading')}
+            {phase.step === 'installing' && t('update.sub.installing', { app: APP_NAME })}
+            {phase.step === 'complete' && t('update.sub.complete')}
           </div>
         </div>
 
         {/* Version tiles (current ➜ new), or a single tile on the 'complete' phase. */}
         <div className="flex items-center justify-center gap-2.5 mb-4">
           {isComplete ? (
-            <VersionTile label="Current version" value={version} accent className="min-w-[120px]" />
+            <VersionTile label={t('update.currentVersion')} value={version} accent className="min-w-[120px]" />
           ) : (
             <>
-              <VersionTile label="Current version" value={currentVersion} />
+              <VersionTile label={t('update.currentVersion')} value={currentVersion} />
               <span className="text-accent text-sm" aria-hidden="true">&#10132;</span>
-              <VersionTile label="New version" value={version} accent />
+              <VersionTile label={t('update.newVersion')} value={version} accent />
             </>
           )}
         </div>
@@ -273,7 +274,7 @@ export function UpdateOverlay({ pending }: { pending?: readonly IncomingMessage[
           <div className="mb-[18px]">
             <div className="flex items-center gap-1.5 text-[11px] font-semibold text-text-secondary mb-2">
               <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent" aria-hidden="true" />
-              What's new
+              {t('update.whatsNew')}
             </div>
             <ul className="list-none p-0 m-0">
               {phase.notes.slice(0, 6).map((note, i) => (
@@ -297,7 +298,7 @@ export function UpdateOverlay({ pending }: { pending?: readonly IncomingMessage[
             <div className="mb-3">
               <div
                 role="progressbar"
-                aria-label="Update progress"
+                aria-label={t('update.progress')}
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-valuenow={phase.step === 'downloading' ? phase.percent : 100}
@@ -310,15 +311,15 @@ export function UpdateOverlay({ pending }: { pending?: readonly IncomingMessage[
               </div>
               {phase.step === 'downloading' && (
                 <div className="flex justify-between mt-1.5 text-[11px] text-text-tertiary tabular-nums">
-                  <span>Downloading…</span>
+                  <span>{t('update.downloadingBar')}</span>
                   <span className="text-accent font-semibold">{phase.percent}%</span>
                 </div>
               )}
             </div>
             {phase.step === 'installing' && (
               <>
-                <div className="text-center text-xs text-text-tertiary mt-1">Applying update, please wait…</div>
-                <div className="text-center text-[11px] text-text-tertiary mt-3.5">The app will restart automatically</div>
+                <div className="text-center text-xs text-text-tertiary mt-1">{t('update.applying')}</div>
+                <div className="text-center text-[11px] text-text-tertiary mt-3.5">{t('update.restart')}</div>
               </>
             )}
           </>
@@ -328,7 +329,7 @@ export function UpdateOverlay({ pending }: { pending?: readonly IncomingMessage[
         {phase.step === 'available' && (
           <Button variant="primary" size="md" className="w-full" onClick={handleAccept}>
             <Download size={14} />
-            Download and install
+            {t('update.install')}
           </Button>
         )}
       </div>

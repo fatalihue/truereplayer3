@@ -164,7 +164,7 @@ export default {
       'runtime-datarow': 'The number of the current data row — there is no value outside a run.',
       'runtime-row': "The action's own grid row — there is no value outside a run.",  // {row}: a linha do próprio passo
       // O Data Loop em "uma linha por vez": a posição fica guardada de uma execução para a outra.
-      'runtime-rowcursor': 'Loop over data is off: each run takes the NEXT row, and that position lives between runs.',
+      'runtime-rowcursor': 'With “{{>dataLoop.settings.modes.next}}”, each run takes the NEXT row, and that position lives between runs.',
       'runtime-norows': 'The Data table has no rows, so this resolves to nothing at replay.',
       'runtime-cursor': 'Auto-advancing: the line depends on how many runs came before.',
       'unmodeled-chain': 'The builder cannot model this chain, so it shows no result. It still runs.',

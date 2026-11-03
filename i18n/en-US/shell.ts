@@ -34,7 +34,7 @@ export default {
     notFound: "{{tr2}}'s data isn't on this computer.",
     closeTr2First: 'Close {{tr2}} first: its files must not change while they are copied.',  // o 2 está aberto
     // "Run on startup" é o ajuste de Settings › General que abre o app com o Windows.
-    stayOff: 'Automations and “Run on startup” stay off here until you turn them on.',
+    stayOff: 'Automations and “{{>settings.rows.runOnStartup.label}}” stay off here until you turn them on.',
     backupFirst: 'What {{app}} has now is kept in Documents\\{{dir}}\\Backups first.',  // dir = a pasta deste app em Documentos
     restarts: '{{app}} restarts to finish.',
     importing: 'Importing…',                   // o botão Import enquanto copia

@@ -1,5 +1,5 @@
 import { useEffect, useRef, type CSSProperties, type KeyboardEvent } from 'react';
-import { useLanguage, useTt } from '../../state/LanguageContext';
+import { t } from '../../i18n';
 import { formatDuration, lastRunOutcome, timeOfDay } from '../header/model';
 import { preload, useLoaded } from '../lazyModule';
 import { useApp, useShell } from '../store';
@@ -8,8 +8,8 @@ import { dock, loadDockPanel, useDock, useDockPx, type DockTab } from './dockSta
 import './dock.css';
 
 const TABS: { id: DockTab; label: string }[] = [
-  { id: 'report', label: 'Run Report' },
-  { id: 'vars', label: 'Live Variables' },
+  { id: 'report', label: t('dock.tabs.report') },
+  { id: 'vars', label: t('dock.tabs.vars') },
 ];
 
 /**
@@ -26,8 +26,6 @@ export function Dock() {
   const tab = useDock(s => s.tab);
   const height = useDock(s => s.height);
   const tableHint = useUi(s => (s.macroTab === 'data' ? s.dataHint : null));
-  const { language } = useLanguage();
-  const tt = useTt();
   const ref = useRef<HTMLElement>(null);
   const panel = useLoaded(loadDockPanel);
   useEffect(() => {
@@ -50,9 +48,15 @@ export function Dock() {
 
   if (!active) return null;
   const run = lastRun && lastRun.profile === active ? lastRun : null;
-  const summary = status === 'replaying' ? 'Running'
-    : run ? `Last run ${timeOfDay(run.startedAt)} · ${run.ok} of ${run.total} steps · ${formatDuration(run.durationMs, language)} · ${lastRunOutcome(run, active)}`
-    : 'No run yet';
+  const summary = status === 'replaying' ? t('dock.summary.running')
+    : run ? t('dock.summary.last', {
+      time: timeOfDay(run.startedAt),
+      ok: run.ok,
+      total: run.total,
+      duration: formatDuration(run.durationMs),
+      outcome: lastRunOutcome(run, active),
+    })
+    : t('dock.summary.none');
   // On the Data Loop tab, the bar says what the table's keys and clicks do (the concept's "Click a
   // row number to make it the next row") in place of the run's line.
   const hint = status === 'ready' ? tableHint : null;
@@ -61,7 +65,7 @@ export function Dock() {
   const onTabKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Home' && e.key !== 'End') return;
     e.preventDefault();
-    const at = TABS.findIndex(t => t.id === tab);
+    const at = TABS.findIndex(x => x.id === tab);
     const next = e.key === 'Home' ? 0 : e.key === 'End' ? TABS.length - 1 : (at + (e.key === 'ArrowRight' ? 1 : -1) + TABS.length) % TABS.length;
     if (open) dock.show(TABS[next].id);
     else useDock.setState({ tab: TABS[next].id });
@@ -69,22 +73,22 @@ export function Dock() {
   };
 
   return (
-    <section ref={ref} className="dock" aria-label="Run Report and Live Variables" data-open={open || undefined} style={{ '--dock-panel': `${height}rem` } as CSSProperties}>
+    <section ref={ref} className="dock" aria-label={t('dock.region')} data-open={open || undefined} style={{ '--dock-panel': `${height}rem` } as CSSProperties}>
       <div className="dock-bar">
-        <div className="dock-tabs" role="tablist" aria-label="Dock" onKeyDown={onTabKey}>
-          {TABS.map(t => (
+        <div className="dock-tabs" role="tablist" aria-label={t('dock.tabsLabel')} onKeyDown={onTabKey}>
+          {TABS.map(x => (
             <button
-              key={t.id}
+              key={x.id}
               type="button"
               role="tab"
-              id={`dock-tab-${t.id}`}
-              aria-selected={t.id === tab}
-              aria-controls={open && t.id === tab ? 'dock-panel' : undefined}
-              tabIndex={t.id === tab ? 0 : -1}
-              data-open={open && t.id === tab ? '' : undefined}
-              onClick={() => dock.show(t.id)}
+              id={`dock-tab-${x.id}`}
+              aria-selected={x.id === tab}
+              aria-controls={open && x.id === tab ? 'dock-panel' : undefined}
+              tabIndex={x.id === tab ? 0 : -1}
+              data-open={open && x.id === tab ? '' : undefined}
+              onClick={() => dock.show(x.id)}
             >
-              {t.label}
+              {x.label}
             </button>
           ))}
         </div>
@@ -95,7 +99,7 @@ export function Dock() {
             type="button"
             className="dock-summary"
             data-run={run && status !== 'replaying' ? (run.failedCount > 0 || run.outcome === 'failed' ? 'failed' : run.outcome === 'stopped' ? 'stopped' : 'ok') : undefined}
-            data-tip={tt('Open the run report', 'Abrir o relatório da execução')}
+            data-tip={t('dock.summary.tip')}
             onClick={() => dock.show('report')}
           >
             {summary}
@@ -104,9 +108,9 @@ export function Dock() {
         <button
           type="button"
           className="dock-toggle"
-          aria-label={open ? 'Close panel' : 'Open panel'}
+          aria-label={open ? t('dock.close') : t('dock.open')}
           aria-expanded={open}
-          data-tip={open ? tt('Close panel', 'Fechar o painel') : tt('Open panel', 'Abrir o painel')}
+          data-tip={open ? t('dock.close') : t('dock.open')}
           onClick={() => dock.setOpen(!open)}
         >
           <span className="step-icon" data-icon={open ? 'arrow-down' : 'arrow-up'} />

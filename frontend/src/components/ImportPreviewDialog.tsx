@@ -5,8 +5,14 @@ import { Checkbox, CheckboxBox } from './Checkbox';
 import { DialogShell, DialogFooter  } from './common/DialogShell';
 import { SegmentedControl, type SegmentOption } from './common/SegmentedControl';
 import { KbdTag } from './common/KbdTag';
-import { useTt } from '../state/LanguageContext';
+import { fmtNum, t } from '../i18n';
 import { formatDate, formatRelative } from '../utils/dateFormat';
+
+// The target's line is a sentence of the catalog with the target in the monospaced face: t() is handed
+// this private-use mark in the target's place and the sentence is cut there, so the target sits wherever
+// the language puts it (as the tips cut theirs at the key cap). No text has this character.
+const TARGET = '\uE000';
+const [TARGETS_BEFORE, TARGETS_AFTER = ''] = t('dialogs.importPreview.targets', { target: TARGET }).split(TARGET);
 
 interface ImportPreviewDialogProps {
   preview: ImportPreviewPayload;
@@ -38,7 +44,6 @@ interface ImportPreviewDialogProps {
  * during confirm; this dialog only shows whether a name conflict EXISTS via a chip.
  */
 export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPreviewDialogProps) {
-  const tt = useTt();
   // Default selection: every compatible profile checked. The user opts out per item
   // rather than opting in — matches the "I'm importing this file because I want it all"
   // mental model and matches Stream Deck / VS Code profile import UX.
@@ -146,23 +151,23 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
   // and where it is explained; the row controls are the same three labels, now silent.
   const resolutionOptions = (iconSize: number, withTips = false): SegmentOption<ImportConflictResolution>[] => [
     {
-      value: 'rename', label: 'Rename', icon: <Pencil size={iconSize} />,
-      tip: withTips ? tt("Imports as 'Name (2)'", "Importa como 'Nome (2)'") : undefined,
+      value: 'rename', label: t('common.actions.rename'), icon: <Pencil size={iconSize} />,
+      tip: withTips ? t('dialogs.importPreview.resolution.renameTip') : undefined,
     },
     {
-      value: 'overwrite', label: 'Overwrite', icon: <Replace size={iconSize} />,
-      tip: withTips ? tt('Replaces your local macro', 'Substitui o seu macro local') : undefined,
+      value: 'overwrite', label: t('dialogs.importPreview.resolution.overwrite'), icon: <Replace size={iconSize} />,
+      tip: withTips ? t('dialogs.importPreview.resolution.overwriteTip') : undefined,
     },
     {
-      value: 'skip', label: 'Skip', icon: <Ban size={iconSize} />,
-      tip: withTips ? tt('Not imported', 'Não importa') : undefined,
+      value: 'skip', label: t('dialogs.importPreview.resolution.skip'), icon: <Ban size={iconSize} />,
+      tip: withTips ? t('dialogs.importPreview.resolution.skipTip') : undefined,
     },
   ];
 
   return (
     <DialogShell
       icon={<Download size={14} style={{ color: 'var(--color-accent)' }} />}
-      title="Import macros"
+      title={t('dialogs.importPreview.title')}
       // max-h keeps the review list scrollable inside the card on short windows
       // (the profile list below is the flex-1 overflow-y-auto region).
       size="xl"
@@ -177,11 +182,11 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
       footerHint={
         <span className="tabular-nums">
           {skipResolvedCount > 0
-            ? <>{effectiveImportCount} will be imported · {skipResolvedCount} skipped</>
-            : <>{effectiveImportCount} of {compatibleCount} will be imported</>}
+            ? `${t('dialogs.importPreview.willImport', { count: effectiveImportCount })} · ${t('dialogs.importPreview.skipped', { count: skipResolvedCount })}`
+            : t('dialogs.importPreview.willImportOf', { count: effectiveImportCount, total: compatibleCount })}
         </span>
       }
-      footer={<DialogFooter secondary={{ label: 'Cancel', onClick: onCancel }} primary={{ label: `Import Selected (${effectiveImportCount})`, onClick: handleConfirm, disabled: effectiveImportCount === 0, className: 'tabular-nums' }} />}
+      footer={<DialogFooter secondary={{ label: t('common.actions.cancel'), onClick: onCancel }} primary={{ label: t('dialogs.importPreview.importSelected', { n: effectiveImportCount }), onClick: handleConfirm, disabled: effectiveImportCount === 0, className: 'tabular-nums' }} />}
       // No Enter rule (unchanged from the hand-rolled version); this handler only
       // preserves the old scrim-level stopPropagation so keystrokes typed while
       // reviewing don't leak to app-level shortcut handlers. Esc is owned by the
@@ -198,32 +203,32 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
             <span className="text-text-secondary font-medium truncate">{preview.fileName}</span>
           </div>
           <div className="mt-1 text-minor text-text-secondary flex flex-wrap items-center gap-x-3 gap-y-0.5">
-            <span>{preview.profiles.length} macro{preview.profiles.length === 1 ? '' : 's'}</span>
+            <span>{t('dialogs.file.macros', { count: preview.profiles.length })}</span>
             {conflictCountAll > 0 && (
               <span
                 className="text-warning-ink flex items-center gap-1"
-                data-tip={tt('Set per row below', 'Definido linha a linha abaixo')}
+                data-tip={t('dialogs.importPreview.conflictsTip')}
               >
                 <AlertTriangle size={11} style={{ color: 'var(--color-warning-ink)' }} />
-                {conflictCountAll} name conflict{conflictCountAll === 1 ? '' : 's'}
+                {t('dialogs.importPreview.conflicts', { count: conflictCountAll })}
               </span>
             )}
             {incompatibleCount > 0 && (
               <span
                 className="text-warning-ink"
-                data-tip={tt('Cannot be selected', 'Não podem ser selecionados')}
+                data-tip={t('dialogs.importPreview.incompatibleTip', { count: incompatibleCount })}
               >
-                {incompatibleCount} incompatible
+                {t('dialogs.importPreview.incompatible', { count: incompatibleCount })}
               </span>
             )}
             {preview.hasOrganization && (
-              <span className="text-accent-hover">+ folder organization</span>
+              <span className="text-accent-hover">{t('dialogs.importPreview.organization')}</span>
             )}
           </div>
           <div className="mt-1 text-caption text-text-tertiary flex flex-wrap gap-x-4 gap-y-0.5">
-            <span>Exported {formatDate(preview.exportedAt)}</span>
-            <span>Format v{preview.envelopeVersion}</span>
-            <span>Your app v{preview.runningVersion}</span>
+            <span>{t('dialogs.importPreview.exported', { date: formatDate(preview.exportedAt) })}</span>
+            <span>{t('dialogs.importPreview.format', { version: preview.envelopeVersion })}</span>
+            <span>{t('dialogs.importPreview.yourApp', { version: preview.runningVersion })}</span>
           </div>
         </div>
 
@@ -240,7 +245,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
             className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg-surface cursor-pointer text-left disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <CheckboxBox checked={allSelected} indeterminate={selectedCount > 0 && !allSelected} />
-            <span className="text-minor font-medium text-text-secondary">Select all</span>
+            <span className="text-minor font-medium text-text-secondary">{t('dialogs.importPreview.selectAll')}</span>
             <span className="ml-auto text-caption text-text-tertiary tabular-nums">{selectedCount}/{compatibleCount}</span>
           </button>
         </div>
@@ -253,13 +258,13 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
           <div className="warning-band px-4 py-3 border-b border-border-subtle flex items-center gap-4 flex-wrap">
             <span className="text-minor font-medium text-warning-ink flex items-center gap-2">
               <AlertTriangle size={14} style={{ color: 'var(--color-warning-ink)' }} />
-              {selectedConflictNames.length} name conflict{selectedConflictNames.length === 1 ? '' : 's'} — apply to all:
+              {t('dialogs.importPreview.applyAll', { count: selectedConflictNames.length })}
             </span>
             <SegmentedControl
               options={resolutionOptions(12, true)}
               value={bulkResolution}
               onChange={applyBulkResolution}
-              ariaLabel="Resolve all name conflicts"
+              ariaLabel={t('dialogs.importPreview.resolveAll')}
             />
           </div>
         )}
@@ -306,7 +311,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
                     // Box-only, so it needs a name: the row's profile name.
                     ariaLabel={p.name}
                     title={!p.compatible
-                      ? tt(`Requires TrueReplayer ${p.appMinVersion} or newer`, `Requer TrueReplayer ${p.appMinVersion} ou mais novo`)
+                      ? t('dialogs.importPreview.requires', { version: p.appMinVersion ?? '' })
                       : undefined}
                     onChange={(value) => {
                       setSelected(prev => ({ ...prev, [p.name]: value }));
@@ -331,9 +336,9 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
                     {p.updatedAt && (
                       <span
                         className="ml-auto shrink-0 text-caption text-text-tertiary"
-                        data-tip={p.createdAt ? tt(`Created ${formatDate(p.createdAt)}`, `Criado em ${formatDate(p.createdAt)}`) : undefined}
+                        data-tip={p.createdAt ? t('dialogs.importPreview.created', { date: formatDate(p.createdAt) }) : undefined}
                       >
-                        Updated {formatRelative(p.updatedAt)}
+                        {t('dialogs.importPreview.updated', { when: formatRelative(p.updatedAt) })}
                       </span>
                     )}
                   </div>
@@ -362,7 +367,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
                       {p.hotstring && (
                         <span
                           className="font-mono flex items-center gap-1 max-w-[160px]"
-                          data-tip={tt('Fires when this text is typed.', 'Dispara quando este texto é digitado.')}
+                          data-tip={t('dialogs.importPreview.hotstringTip')}
                         >
                           <Type size={10} className="text-text-tertiary shrink-0" />
                           <span className="truncate">{p.hotstring}</span>
@@ -372,25 +377,22 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
                           repeats: an incoming profile that fires 500 clicks per press
                           should not be a surprise the receiver discovers by running it. */}
                       {p.enableLoop && (p.loopCount ?? 1) > 1 && (
-                        <span>repeats {p.loopCount}×</span>
+                        <span>{t('dialogs.importPreview.repeats', { n: fmtNum(p.loopCount ?? 1) })}</span>
                       )}
                       {(p.targetProcessName || p.targetWindowTitle) && (
                         <span className="truncate">
                           {/* Falls back to the window TITLE when no process name travels —
                               the target used to vanish entirely in that case. */}
-                          Targets: <span className="font-mono">{p.targetProcessName ?? p.targetWindowTitle}</span>
+                          {TARGETS_BEFORE}<span className="font-mono">{p.targetProcessName ?? p.targetWindowTitle}</span>{TARGETS_AFTER}
                         </span>
                       )}
                       {p.hasTrigger && (
                         <span
                           className="flex items-center gap-1 text-warning-ink"
-                          data-tip={tt(
-                            'Automation trigger — arrives disarmed',
-                            'Gatilho de automação — chega desarmado'
-                          )}
+                          data-tip={t('dialogs.importPreview.triggerTip')}
                         >
                           <Zap size={10} style={{ color: 'var(--color-warning-ink)' }} />
-                          Automation trigger
+                          {t('dialogs.importPreview.trigger')}
                         </span>
                       )}
                     </div>
@@ -403,7 +405,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
                       title shows in sans — mono is for data and tokens only. */}
                   {p.dependencies && p.dependencies.length > 0 && (
                     <div className="mt-1 flex flex-wrap items-center gap-1">
-                      <span className="text-caption text-text-tertiary">Runs:</span>
+                      <span className="text-caption text-text-tertiary">{t('dialogs.importPreview.runs')}</span>
                       {p.dependencies.map(d => {
                         const DepIcon = d.status === 'inEnvelope' ? PackageCheck
                                       : d.status === 'missing' ? AlertTriangle
@@ -414,10 +416,10 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
                             className="text-caption px-1.5 py-0.5 rounded border inline-flex items-center gap-1"
                             data-tip={
                               d.status === 'inEnvelope'
-                                ? tt('Bundled — imported alongside', 'Incluído — importado junto')
+                                ? t('dialogs.importPreview.depBundled')
                                 : d.status === 'localOnly'
-                                  ? tt('Not in the file — uses your local macro', 'Fora do arquivo — usa o seu macro local')
-                                  : tt('Missing here and locally — the step does nothing', 'Não existe aqui nem localmente — o passo não faz nada')
+                                  ? t('dialogs.importPreview.depLocal')
+                                  : t('dialogs.importPreview.depMissing')
                             }
                             // Both hues use their DERIVED ink, not the raw token: this is 10px
                             // text. Raw --color-replay measured 1.32–1.89:1 on all 14 light
@@ -441,13 +443,13 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
 
                   {p.tags && p.tags.length > 0 && (
                     <div className="mt-1.5 flex flex-wrap gap-1">
-                      {p.tags.map(t => (
+                      {p.tags.map(tag => (
                         <span
-                          key={t}
+                          key={tag}
                           className="text-caption px-1.5 py-0.5 rounded bg-bg-surface text-text-tertiary border border-border-subtle"
                         >
                           <Hash size={8} className="inline -mt-px mr-0.5" />
-                          {t}
+                          {tag}
                         </span>
                       ))}
                     </div>
@@ -455,12 +457,12 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
 
                   {/* Z4 — scale, demoted to the last line in tertiary. */}
                   <div className="mt-1 text-caption text-text-tertiary flex items-center gap-3 flex-wrap">
-                    <span>{p.actionCount} step{p.actionCount === 1 ? '' : 's'}</span>
+                    <span>{t('dialogs.importPreview.steps', { count: p.actionCount, n: fmtNum(p.actionCount) })}</span>
                     {!!p.imageCount && (
-                      <span>{p.imageCount} image{p.imageCount === 1 ? '' : 's'}</span>
+                      <span>{t('dialogs.importPreview.images', { count: p.imageCount, n: fmtNum(p.imageCount) })}</span>
                     )}
                     {p.dataRowCount > 0 && (
-                      <span>{p.dataRowCount} data row{p.dataRowCount === 1 ? '' : 's'}</span>
+                      <span>{t('dialogs.importPreview.dataRows', { count: p.dataRowCount, n: fmtNum(p.dataRowCount) })}</span>
                     )}
                   </div>
 
@@ -468,7 +470,7 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
                     <div className="mt-1.5 flex items-start gap-1.5 text-caption text-warning-ink">
                       <AlertTriangle size={11} className="mt-0.5 flex-shrink-0" style={{ color: 'var(--color-warning-ink)' }} />
                       <span>
-                        Requires TrueReplayer {p.appMinVersion} or newer — cannot import.
+                        {t('dialogs.importPreview.cantImport', { version: p.appMinVersion ?? '' })}
                       </span>
                     </div>
                   )}
@@ -482,19 +484,23 @@ export function ImportPreviewDialog({ preview, onConfirm, onCancel }: ImportPrev
                           editorialize — a newer date doesn't imply better. */}
                       {p.localVersion != null && (
                         <div className="mt-1.5 text-caption text-text-tertiary">
-                          Incoming v{p.profileVersion}{p.updatedAt ? ` · ${formatRelative(p.updatedAt)}` : ''}
+                          {p.updatedAt
+                            ? t('dialogs.importPreview.incomingWhen', { version: p.profileVersion, when: formatRelative(p.updatedAt) })
+                            : t('dialogs.importPreview.incoming', { version: p.profileVersion })}
                           {' → '}
-                          Yours v{p.localVersion}{p.localUpdatedAt ? ` · ${formatRelative(p.localUpdatedAt)}` : ''}
+                          {p.localUpdatedAt
+                            ? t('dialogs.importPreview.yoursWhen', { version: p.localVersion, when: formatRelative(p.localUpdatedAt) })
+                            : t('dialogs.importPreview.yours', { version: p.localVersion })}
                         </div>
                       )}
                       <div className="mt-1.5 flex items-center gap-1.5 text-caption text-warning-ink">
-                        <span>Name exists:</span>
+                        <span>{t('dialogs.importPreview.nameExists')}</span>
                         <SegmentedControl
                           options={resolutionOptions(11)}
                           dense
                           value={conflictResolutions[p.name] ?? 'rename'}
                           onChange={(res) => setConflictResolutions(prev => ({ ...prev, [p.name]: res }))}
-                          ariaLabel={`Resolve name conflict for ${p.name}`}
+                          ariaLabel={t('dialogs.importPreview.resolveOne', { name: p.name })}
                         />
                       </div>
                     </>

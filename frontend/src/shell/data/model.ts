@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import type { ProfileDataTable } from '../../bridge/messageTypes';
 import { rowsToSave, useDataLoop, type DataTableToSave } from '../../logic/useDataLoop';
 import { encodeTsv, parseTsv, sniffDelimiter, tokenizeTsvGrid } from '../../lib/tsv';
+import { t } from '../../i18n';
 import { useApp, useShell } from '../store';
 
 /**
@@ -18,6 +19,12 @@ import { useApp, useShell } from '../store';
 /** A column name is a {row:…} token's name unless it is empty or holds { } or :, the token's own characters. */
 const VALID_NAME = /^[^{}:]+$/;
 export const validName = (name: string) => VALID_NAME.test(name.trim());
+
+/**
+ * A blank's stand-in for an element inside a sentence of the catalog (a <code>, a <strong>): the
+ * sentence is split there and the element drawn in its place, where each language puts it.
+ */
+export const CUT = '\u0001';
 
 export interface Cell { r: number; c: number }
 /** r = -1 is the header row, c = -1 the row numbers. */
@@ -56,14 +63,14 @@ export const useDataTab = create<DataTab>(() => ({ macro: null, ...START }));
 const EMPTY_ROW: string[] = [];
 
 /** The table as a save writes it, from the engine's copy. */
-function toSave(t: ProfileDataTable): DataTableToSave {
-  return { headers: t.headers, rows: t.rows, loopOverData: t.loopOverData, onRowError: t.onRowError, notifyOnLapComplete: t.notifyOnLapComplete };
+function toSave(table: ProfileDataTable): DataTableToSave {
+  return { headers: table.headers, rows: table.rows, loopOverData: table.loopOverData, onRowError: table.onRowError, notifyOnLapComplete: table.notifyOnLapComplete };
 }
 
 /** As the engine keeps it: no table at all goes back to the defaults (HandleDataSave stores null). */
-function normalized(t: DataTableToSave): DataTableToSave {
-  if (t.headers.length === 0 && t.rows.length === 0) return { headers: [], rows: [], loopOverData: false, onRowError: 'halt', notifyOnLapComplete: true };
-  return { ...t, onRowError: t.onRowError === 'skip' ? 'skip' : 'halt', notifyOnLapComplete: t.notifyOnLapComplete !== false };
+function normalized(table: DataTableToSave): DataTableToSave {
+  if (table.headers.length === 0 && table.rows.length === 0) return { headers: [], rows: [], loopOverData: false, onRowError: 'halt', notifyOnLapComplete: true };
+  return { ...table, onRowError: table.onRowError === 'skip' ? 'skip' : 'halt', notifyOnLapComplete: table.notifyOnLapComplete !== false };
 }
 
 const sameList = (a: string[], b: string[]) => a === b || (a.length === b.length && a.every((v, i) => v === b[i]));
@@ -80,18 +87,18 @@ export interface Shown extends DataTableToSave {
 }
 
 function shownOf(engine: ProfileDataTable, sent: DataTableToSave | null, blank: number): Shown {
-  const t = sent ?? toSave(engine);
-  const rows = blank > 0 ? [...t.rows, ...Array.from({ length: blank }, () => EMPTY_ROW)] : t.rows;
+  const table = sent ?? toSave(engine);
+  const rows = blank > 0 ? [...table.rows, ...Array.from({ length: blank }, () => EMPTY_ROW)] : table.rows;
   // A row wider than the headers (a table saved before the paste extended them) shows its extra
   // cells under colN columns, which the next edit saves: no cell is out of sight.
-  const width = t.rows.reduce((m, r) => Math.max(m, r.length), t.headers.length);
-  let headers = t.headers;
+  const width = table.rows.reduce((m, r) => Math.max(m, r.length), table.headers.length);
+  let headers = table.headers;
   if (width > headers.length) {
     headers = headers.slice();
     while (headers.length < width) headers.push(nextColName(headers));
   }
   // -1 is "never moved", which runs row 1.
-  return { ...t, headers, rows, saved: t.rows.length, cursorRow: Math.max(0, engine.cursorRow ?? 0) };
+  return { ...table, headers, rows, saved: table.rows.length, cursorRow: Math.max(0, engine.cursorRow ?? 0) };
 }
 
 /** The table on screen: what was sent, else the engine's, with the blank rows after it. */
@@ -141,10 +148,10 @@ export function nextColName(headers: string[]): string {
 /** Why a name cannot be this column's, or null. Names ignore case, as the tokens do. */
 export function nameProblem(name: string, headers: string[], c: number): string | null {
   const n = name.trim();
-  if (n === '') return 'A column needs a name';
-  if (!validName(n)) return 'A column name can’t hold { } or :';
+  if (n === '') return t('dataLoop.name.empty');
+  if (!validName(n)) return t('dataLoop.name.invalid');
   const key = n.toLowerCase();
-  if (headers.some((h, i) => i !== c && h.trim().toLowerCase() === key)) return `There is already a column named ${n}`;
+  if (headers.some((h, i) => i !== c && h.trim().toLowerCase() === key)) return t('dataLoop.name.taken', { name: n });
   return null;
 }
 
@@ -191,6 +198,7 @@ const padded = (rows: string[][], width: number) => rows.map(r => {
   return row;
 });
 
+/** Use sample data's table: example data, the same in both languages (its column names are tokens). */
 export const SAMPLE = {
   headers: ['name', 'email', 'amount'],
   rows: [
@@ -199,6 +207,9 @@ export const SAMPLE = {
     ['Ana', 'ana@example.com', '32.50'],
   ],
 };
+
+/** The paste box's placeholder: the sample's header and first two rows, as a spreadsheet copies them. */
+export const SAMPLE_TEXT = encodeTsv(SAMPLE.headers, SAMPLE.rows.slice(0, 2));
 
 /** The table's edits, each one save (and one undo entry). */
 export function useDataOps() {
@@ -427,12 +438,12 @@ let found: { rows: string[][]; term: string; out: number[] } | null = null;
 
 /** The rows the search finds (it highlights them; it never hides any). */
 export function matchingRows(rows: string[][], term: string): number[] {
-  const t = term.trim().toLowerCase();
-  if (t === '') return [];
-  if (found && found.rows === rows && found.term === t) return found.out;
+  const needle = term.trim().toLowerCase();
+  if (needle === '') return [];
+  if (found && found.rows === rows && found.term === needle) return found.out;
   const out: number[] = [];
-  rows.forEach((row, r) => { if (row.some(cell => cell.toLowerCase().includes(t))) out.push(r); });
-  found = { rows, term: t, out };
+  rows.forEach((row, r) => { if (row.some(cell => cell.toLowerCase().includes(needle))) out.push(r); });
+  found = { rows, term: needle, out };
   return out;
 }
 

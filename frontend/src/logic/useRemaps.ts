@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useBridge } from '../bridge/BridgeContext';
+import { t } from '../i18n';
 import { useGetAppState } from '../state/AppStateContext';
 import type { RemapEntryDto } from '../bridge/messageTypes';
 
@@ -10,8 +11,8 @@ import type { RemapEntryDto } from '../bridge/messageTypes';
  * through SendInput's mouse path.
  */
 export function remapKeyProblem(combo: string, side: 'from' | 'to'): string | null {
-  if (combo.includes('+')) return 'Single keys only — combos are not remappable.';
-  if (side === 'from' && (combo === 'ScrollUp' || combo === 'ScrollDown')) return 'The scroll wheel can be a target, not a source.';
+  if (combo.includes('+')) return t('remaps.refuse.combo');
+  if (side === 'from' && (combo === 'ScrollUp' || combo === 'ScrollDown')) return t('remaps.refuse.wheel');
   return null;
 }
 

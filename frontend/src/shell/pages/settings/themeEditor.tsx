@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from 'react';
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Clipboard, ClipboardPaste, Download, Pipette, RotateCcw, SlidersHorizontal, TriangleAlert, Upload, Wand2 } from 'lucide-react';
+import { fmtNum, LANG, t } from '../../../i18n';
 import { useEditorTools } from '../../../logic/useEditorTools';
-import { useTt } from '../../../state/LanguageContext';
 import { useTheme } from '../../../state/ThemeContext';
 import { useToast } from '../../../state/ToastContext';
 import { measurePaintedContrast, withOriginalAlpha } from '../../../themeChecks';
@@ -25,52 +25,54 @@ import './themeEditor.css';
 
 type Kind = 'theme' | 'ui';
 interface Field { key: string; label: string; kind: Kind }
-interface Section { title: string; fields: Field[]; pairs?: boolean; accent?: boolean }
+/** A group of colours: `id` keeps it open or closed, `title` is what it says. */
+interface Section { id: string; title: string; fields: Field[]; pairs?: boolean; accent?: boolean }
 
+// The names are the catalog's (appearance.colors.names), the ones the live preview says too.
 const SECTIONS: Section[] = [
-  { title: 'Accent', accent: true, fields: [
-    { key: 'accent', label: 'Accent', kind: 'theme' },
-    { key: 'accent-solid', label: 'Solid', kind: 'theme' },
-    { key: 'accent-hover', label: 'Hover', kind: 'theme' },
+  { id: 'accent', title: t('appearance.colors.groups.accent'), accent: true, fields: [
+    { key: 'accent', label: t('appearance.colors.names.accent'), kind: 'theme' },
+    { key: 'accent-solid', label: t('appearance.colors.names.accentSolid'), kind: 'theme' },
+    { key: 'accent-hover', label: t('appearance.colors.names.accentHover'), kind: 'theme' },
   ] },
-  { title: 'Backgrounds', fields: [
-    { key: 'bg-base', label: 'Base', kind: 'theme' },
-    { key: 'bg-surface', label: 'Surface', kind: 'theme' },
-    { key: 'bg-card', label: 'Card', kind: 'theme' },
-    { key: 'bg-elevated', label: 'Elevated', kind: 'theme' },
-    { key: 'bg-input', label: 'Input', kind: 'theme' },
+  { id: 'backgrounds', title: t('appearance.colors.groups.backgrounds'), fields: [
+    { key: 'bg-base', label: t('appearance.colors.names.bgBase'), kind: 'theme' },
+    { key: 'bg-surface', label: t('appearance.colors.names.bgSurface'), kind: 'theme' },
+    { key: 'bg-card', label: t('appearance.colors.names.bgCard'), kind: 'theme' },
+    { key: 'bg-elevated', label: t('appearance.colors.names.bgElevated'), kind: 'theme' },
+    { key: 'bg-input', label: t('appearance.colors.names.bgInput'), kind: 'theme' },
   ] },
-  { title: 'Text', fields: [
-    { key: 'text-primary', label: 'Primary', kind: 'theme' },
-    { key: 'text-secondary', label: 'Secondary', kind: 'theme' },
-    { key: 'text-tertiary', label: 'Tertiary', kind: 'theme' },
-    { key: 'text-disabled', label: 'Disabled', kind: 'theme' },
+  { id: 'text', title: t('appearance.colors.groups.text'), fields: [
+    { key: 'text-primary', label: t('appearance.colors.names.textPrimary'), kind: 'theme' },
+    { key: 'text-secondary', label: t('appearance.colors.names.textSecondary'), kind: 'theme' },
+    { key: 'text-tertiary', label: t('appearance.colors.names.textTertiary'), kind: 'theme' },
+    { key: 'text-disabled', label: t('appearance.colors.names.textDisabled'), kind: 'theme' },
   ] },
-  { title: 'Borders', fields: [
-    { key: 'border-subtle', label: 'Subtle', kind: 'theme' },
-    { key: 'border-default', label: 'Default', kind: 'theme' },
-    { key: 'border-strong', label: 'Strong', kind: 'theme' },
+  { id: 'borders', title: t('appearance.colors.groups.borders'), fields: [
+    { key: 'border-subtle', label: t('appearance.colors.names.borderSubtle'), kind: 'theme' },
+    { key: 'border-default', label: t('appearance.colors.names.borderDefault'), kind: 'theme' },
+    { key: 'border-strong', label: t('appearance.colors.names.borderStrong'), kind: 'theme' },
   ] },
-  { title: 'Semantic', fields: [
-    { key: 'recordingColor', label: 'Recording', kind: 'ui' },
-    { key: 'replayColor', label: 'Replay', kind: 'ui' },
-    { key: 'clickerColor', label: 'Clicker', kind: 'ui' },
+  { id: 'semantic', title: t('appearance.colors.groups.semantic'), fields: [
+    { key: 'recordingColor', label: t('appearance.colors.names.recording'), kind: 'ui' },
+    { key: 'replayColor', label: t('appearance.colors.names.replay'), kind: 'ui' },
+    { key: 'clickerColor', label: t('appearance.colors.names.clicker'), kind: 'ui' },
   ] },
-  { title: 'Action types', pairs: true, fields: [
-    { key: 'actionMouseColor', label: 'Mouse', kind: 'ui' },
-    { key: 'actionKeyColor', label: 'Key', kind: 'ui' },
-    { key: 'actionScrollColor', label: 'Scroll', kind: 'ui' },
-    { key: 'actionSendTextColor', label: 'Send Text', kind: 'ui' },
-    { key: 'actionSetVariableColor', label: 'Set Variable', kind: 'ui' },
+  { id: 'actionTypes', title: t('appearance.colors.groups.actionTypes'), pairs: true, fields: [
+    { key: 'actionMouseColor', label: t('appearance.colors.names.mouse'), kind: 'ui' },
+    { key: 'actionKeyColor', label: t('appearance.colors.names.key'), kind: 'ui' },
+    { key: 'actionScrollColor', label: t('appearance.colors.names.scroll'), kind: 'ui' },
+    { key: 'actionSendTextColor', label: t('appearance.colors.names.sendText'), kind: 'ui' },
+    { key: 'actionSetVariableColor', label: t('appearance.colors.names.setVariable'), kind: 'ui' },
     // One colour for the Wait family (Image, Pixel Color, Text), as today.
-    { key: 'actionWaitImageColor', label: 'Wait', kind: 'ui' },
-    { key: 'actionBrowserColor', label: 'Browser', kind: 'ui' },
-    { key: 'actionRunProfileColor', label: 'Run Macro', kind: 'ui' },
-    { key: 'actionPauseColor', label: 'Pause', kind: 'ui' },
-    { key: 'actionIfColor', label: 'Conditional', kind: 'ui' },
-    { key: 'actionLoopColor', label: 'Loop', kind: 'ui' },
-    { key: 'actionFlowColor', label: 'Stop / Return', kind: 'ui' },
-    { key: 'actionActivateWindowColor', label: 'Activate Window', kind: 'ui' },
+    { key: 'actionWaitImageColor', label: t('appearance.colors.names.wait'), kind: 'ui' },
+    { key: 'actionBrowserColor', label: t('appearance.colors.names.browser'), kind: 'ui' },
+    { key: 'actionRunProfileColor', label: t('appearance.colors.names.runMacro'), kind: 'ui' },
+    { key: 'actionPauseColor', label: t('appearance.colors.names.pause'), kind: 'ui' },
+    { key: 'actionIfColor', label: t('appearance.colors.names.conditional'), kind: 'ui' },
+    { key: 'actionLoopColor', label: t('appearance.colors.names.loop'), kind: 'ui' },
+    { key: 'actionFlowColor', label: t('appearance.colors.names.flow'), kind: 'ui' },
+    { key: 'actionActivateWindowColor', label: t('appearance.colors.names.activateWindow'), kind: 'ui' },
   ] },
 ];
 const FIELDS = SECTIONS.flatMap(s => s.fields);
@@ -78,13 +80,17 @@ const FIELDS = SECTIONS.flatMap(s => s.fields);
 /** The file's name in a path the Save dialog chose. */
 const fileOf = (path: string) => path.split(/[\\/]/).pop() || path;
 
+// A contrast as the build's language writes it, with one decimal (4.5 / 4,5). Made on first use.
+let ratioFormat: Intl.NumberFormat | undefined;
+const fmtRatio = (n: number) => (ratioFormat ??= new Intl.NumberFormat(LANG, { minimumFractionDigits: 1, maximumFractionDigits: 1 })).format(n);
+
 /** The way back to the page, and what the view is. */
 function Head({ title, detail }: { title: string; detail?: string }) {
   return (
     <div className="te-head">
       <button type="button" className="te-back" autoFocus onClick={() => showView('main')}>
         <ChevronLeft aria-hidden="true" />
-        Appearance
+        {t('settings.categories.appearance')}
       </button>
       <h3 className="te-title">{title}</h3>
       {detail && <span className="te-detail">{detail}</span>}
@@ -98,7 +104,6 @@ function Head({ title, detail }: { title: string; detail?: string }) {
  * contrast it reaches once painted. A preview hotspot opens its colour here.
  */
 export function ColorsView() {
-  const tt = useTt();
   const { showToast } = useToast();
   const { config, resolvedColors, customPresets, setColorOverride, clearColorOverride, setAccentColor, setUISetting } = useTheme();
   const focus = useAp(s => s.focus);
@@ -113,7 +118,7 @@ export function ColorsView() {
     setSeen(focus.seq);
     setHsl(focus.key);
     const group = SECTIONS.find(s => s.fields.some(f => f.key === focus.key));
-    if (group && closed.has(group.title)) setClosed(new Set([...closed].filter(t => t !== group.title)));
+    if (group && closed.has(group.id)) setClosed(new Set([...closed].filter(id => id !== group.id)));
   }
   useEffect(() => {
     if (!focus) return;
@@ -171,7 +176,7 @@ export function ColorsView() {
   });
   const pickFor = (f: Field) => {
     picking.current = f;
-    pick.ask(requestId => tools.pickColor({ requestId, absolute: true, colorOnly: true, captureFor: 'for the theme' }));
+    pick.ask(requestId => tools.pickColor({ requestId, absolute: true, colorOnly: true, captureFor: t('appearance.colors.captureFor') }));
   };
   const open = hsl ? FIELDS.find(f => f.key === hsl) : undefined;
   // A recent colour goes to the field whose HSL is open; with none open, it is copied.
@@ -182,27 +187,27 @@ export function ColorsView() {
       setCopied(c);
       setTimeout(() => setCopied(p => (p === c ? null : p)), 1200);
     } catch {
-      showToast(tt('Could not copy the color — click inside the window and try again.', 'Não foi possível copiar a cor — clique dentro da janela e tente de novo.'), 'error');
+      showToast(t('appearance.colors.copyFailed'), 'error');
     }
   };
 
   return (
     <div className="te">
-      <Head title="Colors" detail={count ? `${base.name} · ${count} changed` : base.name} />
+      <Head title={t('appearance.colors.title')} detail={t('appearance.colors.detail', { name: base.name, count })} />
       {SECTIONS.map(section => {
-        const isClosed = closed.has(section.title);
+        const isClosed = closed.has(section.id);
         const n = section.fields.filter(changed).length;
         return (
-          <section key={section.title} className="te-group" aria-label={section.title}>
+          <section key={section.id} className="te-group" aria-label={section.title}>
             <button
               type="button"
               className="te-group-head"
               aria-expanded={!isClosed}
-              onClick={() => setClosed(isClosed ? new Set([...closed].filter(t => t !== section.title)) : new Set([...closed, section.title]))}
+              onClick={() => setClosed(isClosed ? new Set([...closed].filter(id => id !== section.id)) : new Set([...closed, section.id]))}
             >
               {isClosed ? <ChevronRight aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
               {section.title}
-              {n > 0 && <span className="te-count">· {n} changed</span>}
+              {n > 0 && <span className="te-count">{t('appearance.colors.changed', { count: n })}</span>}
               {isClosed && (
                 <span className="te-dots" aria-hidden="true">
                   {section.fields.map(f => <span key={f.key} style={{ '--swatch': value(f) } as CSSProperties} />)}
@@ -229,7 +234,7 @@ export function ColorsView() {
                 {section.accent && (
                   <button type="button" className="te-derive" onClick={() => setAccentColor(toHex(resolvedColors.accent))}>
                     <Wand2 aria-hidden="true" />
-                    Derive solid &amp; hover
+                    {t('appearance.colors.derive')}
                   </button>
                 )}
               </div>
@@ -239,17 +244,17 @@ export function ColorsView() {
       })}
       {recent.length > 0 && (
         <div className="te-recent">
-          <span className="te-recent-label">Recent</span>
+          <span className="te-recent-label">{t('appearance.colors.recent')}</span>
           {recent.map(c => (
             <button
               key={c}
               type="button"
               className="te-recent-swatch"
               style={{ '--swatch': c } as CSSProperties}
-              aria-label={open ? `Apply ${c} to ${open.label}` : `Copy ${c}`}
+              aria-label={open ? t('appearance.colors.applyTo', { color: c, name: open.label }) : t('appearance.colors.copy', { color: c })}
               data-tip={open
-                ? tt(`Apply ${c} to ${open.label}`, `Aplicar ${c} em ${open.label}`)
-                : copied === c ? tt(`${c} — copied!`, `${c} — copiado!`) : tt(`${c} — click to copy`, `${c} — clique para copiar`)}
+                ? t('appearance.colors.applyTo', { color: c, name: open.label })
+                : copied === c ? t('appearance.colors.copied', { color: c }) : t('appearance.colors.copyTip', { color: c })}
               onClick={() => { void pickRecent(c); }}
             >
               {copied === c && <Check aria-hidden="true" style={{ color: pickInk(c) }} />}
@@ -261,13 +266,13 @@ export function ColorsView() {
   );
 }
 
-// What the contrast is measured against, in the tip's language.
-const WHAT_PT: Record<string, string> = {
-  'worst surface': 'pior superfície',
-  'UI boundary': 'limite de componente',
-  'label on solid fill': 'rótulo sobre o preenchimento',
-  'accent as text': 'destaque como texto',
-  'derived ink on its own wash': 'tinta derivada sobre o próprio fundo',
+// What the contrast is measured against: themeChecks.ts says it in English, the tip in the build's.
+const MEASURED: Record<string, string> = {
+  'worst surface': t('appearance.colors.measures.worstSurface'),
+  'UI boundary': t('appearance.colors.measures.uiBoundary'),
+  'label on solid fill': t('appearance.colors.measures.labelOnSolid'),
+  'accent as text': t('appearance.colors.measures.accentAsText'),
+  'derived ink on its own wash': t('appearance.colors.measures.derivedInk'),
 };
 
 function ColorRow({ field, value, changed, check, hslOpen, picking, onChange, onPick, onReset, onToggleHsl }: {
@@ -284,7 +289,6 @@ function ColorRow({ field, value, changed, check, hslOpen, picking, onChange, on
   onReset: () => void;
   onToggleHsl: () => void;
 }) {
-  const tt = useTt();
   const { label } = field;
   const hex = toHex(value);
   // The field's own text while it has the focus: a complete #rrggbb applies as typed; leaving it
@@ -302,8 +306,9 @@ function ColorRow({ field, value, changed, check, hslOpen, picking, onChange, on
   };
   const passing = check ? check.ratio >= check.target : true;
   const bad = check ? check.ratio < check.target * 0.67 : false;
-  const tip = check ? tt(`${check.what}: ${check.ratio.toFixed(1)}:1 — wants ${check.target}+`,
-    `${WHAT_PT[check.what] ?? check.what}: ${check.ratio.toFixed(1)}:1 — precisa de ${check.target}+`) : undefined;
+  const tip = check
+    ? t('appearance.colors.contrastTip', { what: MEASURED[check.what] ?? check.what, ratio: fmtRatio(check.ratio), target: fmtNum(check.target) })
+    : undefined;
   return (
     <div className="te-row-wrap">
       <div className="te-row" data-key={field.key}
@@ -312,12 +317,12 @@ function ColorRow({ field, value, changed, check, hslOpen, picking, onChange, on
       >
         <span className="te-label">{label}</span>
         <label className="te-swatch" style={{ '--swatch': value } as CSSProperties}>
-          <input type="color" aria-label={`${label} color`} value={hex} onChange={(e) => onChange(e.target.value)} />
+          <input type="color" aria-label={t('appearance.colors.swatch', { name: label })} value={hex} onChange={(e) => onChange(e.target.value)} />
         </label>
         <input
           className="te-hex"
           type="text"
-          aria-label={`${label} hex`}
+          aria-label={t('appearance.colors.hex', { name: label })}
           spellCheck={false}
           value={draft ?? hex}
           onFocus={() => setDraft(hex)}
@@ -328,15 +333,15 @@ function ColorRow({ field, value, changed, check, hslOpen, picking, onChange, on
           }}
         />
         <span className="te-tools">
-          <button type="button" className="te-tool" aria-label={`Pick ${label} color from screen`} data-tip={tt('Pick a color from the screen', 'Pegar uma cor da tela')} disabled={picking} onClick={onPick}>
+          <button type="button" className="te-tool" aria-label={t('appearance.colors.pick', { name: label })} data-tip={t('appearance.colors.pickTip')} disabled={picking} onClick={onPick}>
             <Pipette aria-hidden="true" />
           </button>
-          <button type="button" className="te-tool" data-on={hslOpen || undefined} aria-label={`${label} HSL sliders`} aria-expanded={hslOpen} data-tip={tt('HSL sliders', 'Controles HSL')} onClick={onToggleHsl}>
+          <button type="button" className="te-tool" data-on={hslOpen || undefined} aria-label={t('appearance.colors.hsl', { name: label })} aria-expanded={hslOpen} data-tip={t('appearance.colors.hslTip')} onClick={onToggleHsl}>
             <SlidersHorizontal aria-hidden="true" />
           </button>
           {changed
             ? (
-              <button type="button" className="te-tool te-tool-reset" aria-label={`Reset ${label} to the theme's color`} data-tip={tt('Back to the theme’s color', 'Voltar à cor do tema')} onClick={onReset}>
+              <button type="button" className="te-tool te-tool-reset" aria-label={t('appearance.colors.reset', { name: label })} data-tip={t('appearance.colors.resetTip')} onClick={onReset}>
                 <RotateCcw aria-hidden="true" />
               </button>
             )
@@ -344,17 +349,17 @@ function ColorRow({ field, value, changed, check, hslOpen, picking, onChange, on
         </span>
         {check && (
           passing
-            ? <span className="te-contrast" data-tip={tip}>{check.ratio.toFixed(1)}</span>
-            : <span className="te-contrast" data-tone={bad ? 'bad' : 'warn'} data-tip={tip}><TriangleAlert aria-hidden="true" />{check.ratio.toFixed(1)}</span>
+            ? <span className="te-contrast" data-tip={tip}>{fmtRatio(check.ratio)}</span>
+            : <span className="te-contrast" data-tone={bad ? 'bad' : 'warn'} data-tip={tip}><TriangleAlert aria-hidden="true" />{fmtRatio(check.ratio)}</span>
         )}
       </div>
       {hslOpen && (
         <div className="te-hsl">
-          <Channel short="H" name={`${label} hue`} max={360} unit="°" value={Math.round(hslNow.h)} track={tracks.hue}
+          <Channel short="H" name={t('appearance.colors.hue', { name: label })} max={360} unit="°" value={Math.round(hslNow.h)} track={tracks.hue}
             onChange={(v) => setHslValue(v, hslNow.s, hslNow.l)} />
-          <Channel short="S" name={`${label} saturation`} max={100} unit="%" value={Math.round(hslNow.s)} track={tracks.saturation}
+          <Channel short="S" name={t('appearance.colors.saturation', { name: label })} max={100} unit="%" value={Math.round(hslNow.s)} track={tracks.saturation}
             onChange={(v) => setHslValue(hslNow.h, v, hslNow.l)} />
-          <Channel short="L" name={`${label} lightness`} max={100} unit="%" value={Math.round(hslNow.l)} track={tracks.lightness}
+          <Channel short="L" name={t('appearance.colors.lightness', { name: label })} max={100} unit="%" value={Math.round(hslNow.l)} track={tracks.lightness}
             onChange={(v) => setHslValue(hslNow.h, hslNow.s, v)} />
         </div>
       )}
@@ -383,10 +388,9 @@ function Channel({ short, name, max, unit, value, track, onChange }: { short: st
  * toast's Undo (Ctrl+Z too).
  */
 export function ShareView() {
-  const tt = useTt();
   const { showToast } = useToast();
   const { config, exportTheme, importTheme, restoreConfig } = useTheme();
-  const [name, setName] = useState('My theme');
+  const [name, setName] = useState(t('appearance.share.defaultName'));
   const [copy, setCopy] = useState<'idle' | 'ok' | 'failed'>('idle');
   const [text, setText] = useState('');
   const [error, setError] = useState('');
@@ -397,18 +401,18 @@ export function ShareView() {
     return () => clearTimeout(id);
   }, [copy]);
 
-  const theName = () => name.trim() || 'My theme';
+  const theName = () => name.trim() || t('appearance.share.defaultName');
   // Export to file goes through the system's Save dialog: a download from the page went to
   // Downloads without asking where. Said once written; a cancel says nothing.
   const tools = useEditorTools();
   const saving = useAsk('dialog:saveFileResult', (r) => {
-    if (r.error) showToast(tt(`Could not save the theme: ${r.error}`, `Não foi possível salvar o tema: ${r.error}`), 'error');
-    else if (r.path) showToast(tt(`Saved ${fileOf(r.path)}`, `${fileOf(r.path)} salvo`), 'success');
+    if (r.error) showToast(t('appearance.share.saveFailed', { error: r.error }), 'error');
+    else if (r.path) showToast(t('appearance.share.saved', { file: fileOf(r.path) }), 'success');
   });
   const exportFile = () => {
-    const file = `${theName().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'theme'}.json`;
+    const file = `${theName().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || t('appearance.share.fileFallback')}.json`;
     const text = JSON.stringify(exportTheme(theName()), null, 2);
-    saving.ask(requestId => tools.saveFile({ requestId, name: file, text, title: 'Export theme' }));
+    saving.ask(requestId => tools.saveFile({ requestId, name: file, text, title: t('appearance.share.dialogTitle') }));
   };
   const copyJson = async () => {
     try {
@@ -424,21 +428,21 @@ export function ShareView() {
     try {
       parsed = JSON.parse(json);
     } catch {
-      setError('Invalid JSON: paste the whole exported theme.');
+      setError(t('appearance.share.invalidJson'));
       return;
     }
     const before = config;
     if (!validateExportedTheme(parsed) || !importTheme(parsed as ExportedTheme)) {
-      setError('Invalid theme: missing color keys or UI settings.');
+      setError(t('appearance.share.invalidTheme'));
       return;
     }
     setText('');
     showView('main');
-    showToast(tt(`Imported the theme “${parsed.name}”`, `Tema “${parsed.name}” importado`), {
+    showToast(t('appearance.share.imported', { name: parsed.name }), {
       type: 'success',
       duration: 10000,
       // What the page was before it: a change like any other, which Ctrl+Z can take back too.
-      action: { label: 'Undo', onClick: () => restoreConfig(before) },
+      action: { label: t('common.actions.undo'), onClick: () => restoreConfig(before) },
     });
   };
   const fromFile = (e: ChangeEvent<HTMLInputElement>) => {
@@ -447,7 +451,7 @@ export function ShareView() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => take(String(reader.result));
-    reader.onerror = () => setError('Could not read the selected file.');
+    reader.onerror = () => setError(t('appearance.share.readFailed'));
     reader.readAsText(file);
   };
   const paste = async () => {
@@ -455,7 +459,7 @@ export function ShareView() {
     try {
       clip = await navigator.clipboard.readText();
     } catch {
-      setError('Could not read the clipboard — paste the JSON manually.');
+      setError(t('appearance.share.clipboardFailed'));
       return;
     }
     setText(clip);
@@ -464,28 +468,28 @@ export function ShareView() {
 
   return (
     <div className="te">
-      <Head title="Share or import" />
+      <Head title={t('appearance.share.title')} />
       <section className="te-share" aria-labelledby="te-export">
-        <h4 id="te-export" className="te-share-title">Export this theme</h4>
+        <h4 id="te-export" className="te-share-title">{t('appearance.share.exportTitle')}</h4>
         <div className="te-share-row">
-          <input className="te-name" type="text" aria-label="Theme name" placeholder="My theme" spellCheck={false} maxLength={60} value={name} onChange={(e) => setName(e.target.value)} />
-          <button type="button" className="insp-button" disabled={saving.waiting} onClick={exportFile}><Download aria-hidden="true" />Export to file</button>
+          <input className="te-name" type="text" aria-label={t('appearance.share.name')} placeholder={t('appearance.share.defaultName')} spellCheck={false} maxLength={60} value={name} onChange={(e) => setName(e.target.value)} />
+          <button type="button" className="insp-button" disabled={saving.waiting} onClick={exportFile}><Download aria-hidden="true" />{t('appearance.share.exportFile')}</button>
           <button type="button" className="insp-button" onClick={() => { void copyJson(); }}>
             <Clipboard aria-hidden="true" />
-            {copy === 'ok' ? 'Copied' : copy === 'failed' ? 'Copy failed' : 'Copy to clipboard'}
+            {copy === 'ok' ? t('appearance.share.copied') : copy === 'failed' ? t('appearance.share.copyFailed') : t('appearance.share.copy')}
           </button>
         </div>
-        <p className="te-share-hint">One JSON with the theme’s colors, your changes to them and the interface settings.</p>
+        <p className="te-share-hint">{t('appearance.share.hint')}</p>
       </section>
       <section className="te-share" aria-labelledby="te-import">
-        <h4 id="te-import" className="te-share-title">Import a theme</h4>
+        <h4 id="te-import" className="te-share-title">{t('appearance.share.importTitle')}</h4>
         <div className="te-share-row">
-          <button type="button" className="insp-button" onClick={() => fileRef.current?.click()}><Upload aria-hidden="true" />Import from file</button>
+          <button type="button" className="insp-button" onClick={() => fileRef.current?.click()}><Upload aria-hidden="true" />{t('appearance.share.importFile')}</button>
           <input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={fromFile} />
-          <button type="button" className="insp-button" onClick={() => { void paste(); }}><ClipboardPaste aria-hidden="true" />Paste from clipboard</button>
+          <button type="button" className="insp-button" onClick={() => { void paste(); }}><ClipboardPaste aria-hidden="true" />{t('appearance.share.paste')}</button>
         </div>
-        <textarea className="te-json" aria-label="Theme JSON" placeholder="Paste theme JSON here…" spellCheck={false} value={text} onChange={(e) => { setText(e.target.value); setError(''); }} />
-        {text.trim() && <button type="button" className="insp-button" data-variant="primary" onClick={() => take(text)}>Apply theme</button>}
+        <textarea className="te-json" aria-label={t('appearance.share.json')} placeholder={t('appearance.share.jsonPlaceholder')} spellCheck={false} value={text} onChange={(e) => { setText(e.target.value); setError(''); }} />
+        {text.trim() && <button type="button" className="insp-button" data-variant="primary" onClick={() => take(text)}>{t('appearance.share.apply')}</button>}
         {/* Mounted always (aria-live): an error that mounts with its text is not read. */}
         <p className="te-error" role="alert" aria-live="assertive">{error}</p>
       </section>

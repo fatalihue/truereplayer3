@@ -5,8 +5,8 @@ import { APP_VERSION } from '../../../appVersion';
 import { useBridge } from '../../../bridge/BridgeContext';
 import type { SettingsState } from '../../../bridge/messageTypes';
 import { DialogFooter, DialogShell } from '../../../components/common/DialogShell';
+import { t } from '../../../i18n';
 import { useAppActions, useSettings } from '../../../logic/useSettings';
-import { useTt } from '../../../state/LanguageContext';
 import { useApp } from '../../store';
 import { useUi, type SettingsCategory } from '../../ui';
 import { useUpdates } from '../../updates';
@@ -52,14 +52,14 @@ export default function SettingsPage() {
     useUi.setState({ settingsCategory: id });
   };
   return (
-    <section className="shell-page set" aria-label="Settings">
+    <section className="shell-page set" aria-label={t('common.pages.settings')}>
       <div className="set-nav">
-        <span className="set-title">Settings</span>
+        <span className="set-title">{t('common.pages.settings')}</span>
         <input
           className="set-search"
           type="search"
-          aria-label="Search settings"
-          placeholder="Search settings"
+          aria-label={t('settings.search.field')}
+          placeholder={t('settings.search.field')}
           spellCheck={false}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -83,7 +83,6 @@ export default function SettingsPage() {
 
 /** The categories, one tab each: ↑ ↓ Home End move between them, and the panel follows (settings-074). */
 function Categories({ current, onPick }: { current: SettingsCategory; onPick: (id: SettingsCategory) => void }) {
-  const tt = useTt();
   const listRef = useRef<HTMLDivElement>(null);
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Home' && e.key !== 'End') return;
@@ -94,7 +93,7 @@ function Categories({ current, onPick }: { current: SettingsCategory; onPick: (i
     listRef.current?.querySelector<HTMLElement>(`#set-tab-${BUILT[next].id}`)?.focus();
   };
   return (
-    <div ref={listRef} className="set-cats" role="tablist" aria-orientation="vertical" aria-label="Settings categories" onKeyDown={onKeyDown}>
+    <div ref={listRef} className="set-cats" role="tablist" aria-orientation="vertical" aria-label={t('settings.categoriesLabel')} onKeyDown={onKeyDown}>
       {SHOWN.map(({ id, label, built, Badge, warm }) => (
         <button
           key={id}
@@ -106,7 +105,7 @@ function Categories({ current, onPick }: { current: SettingsCategory; onPick: (i
           aria-controls="set-panel"
           tabIndex={id === current ? 0 : -1}
           disabled={!built}
-          data-tip={built ? undefined : tt(`${label} — not built yet`, `${label} — ainda não feito`)}
+          data-tip={built ? undefined : t('shell.notBuilt', { what: label })}
           onPointerEnter={warm}
           onFocus={warm}
           onClick={() => onPick(id)}
@@ -160,22 +159,29 @@ function RowView({ row }: { row: Row }) {
   );
 }
 
+// The search ignores case and accents, as Ctrl+K does: "configuracoes" finds "Configurações".
+const fold = (s: string) => s.normalize('NFD').replace(/\p{Mn}/gu, '').toLowerCase();
+
 /**
- * The search, over every setting of every category: its name, what it does, and more words for it.
- * The settings found keep their controls, under their category, which a press opens.
+ * The search, over every setting of every category: its name, what it does, and more words for it
+ * (each language's own, from the catalog). The settings found keep their controls, under their
+ * category, which a press opens.
  */
 function Results({ query, onGo }: { query: string; onGo: (id: SettingsCategory) => void }) {
   const settings = useApp(a => a.settings);
-  const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const hit = (text: string) => tokens.every(t => text.toLowerCase().includes(t));
+  const tokens = fold(query).split(/\s+/).filter(Boolean);
+  const hit = (text: string) => {
+    const folded = fold(text);
+    return tokens.every(word => folded.includes(word));
+  };
   const found = BUILT.flatMap(c => {
     if (c.Panel) return hit(`${c.label} ${c.words ?? ''}`) ? [{ c, rows: [] as Row[] }] : [];
     const rows = (c.groups ?? []).flatMap(g => g.rows).filter(r => isShown(r, settings) && hit(`${r.label} ${r.hint ?? ''} ${r.words ?? ''} ${c.label}`));
     return rows.length > 0 ? [{ c, rows }] : [];
   });
-  if (found.length === 0) return <p className="set-empty" role="status">No settings match “{query.trim()}”</p>;
+  if (found.length === 0) return <p className="set-empty" role="status">{t('settings.search.none', { query: query.trim() })}</p>;
   return (
-    <div className="set-content" role="region" aria-label="Search results">
+    <div className="set-content" role="region" aria-label={t('settings.search.results')}>
       {found.map(({ c, rows }) => (
         <section key={c.id} className="set-group" aria-label={c.label}>
           <button type="button" className="set-go" onClick={() => onGo(c.id)}>
@@ -207,11 +213,12 @@ function Foot() {
   }), [subscribe]);
   return (
     <div className="set-foot">
-      <span className="set-version">{APP_NAME} · {APP_VERSION.replace(/^v/, '')}</span>
+      {/* The name and the version: a brand and a number, the same in every language. */}
+      <span className="set-version" data-glossary="">{APP_NAME} · {APP_VERSION.replace(/^v/, '')}</span>
       {postponed ? (
         <>
-          <span className="set-update" role="status">{postponed.version ? `${postponed.version} is ready to install` : 'An update is ready to install'}</span>
-          <button type="button" className="set-link" onClick={app.applyUpdate}>Restart and update</button>
+          <span className="set-update" role="status">{postponed.version ? t('settings.update.readyVersion', { version: postponed.version }) : t('settings.update.ready')}</span>
+          <button type="button" className="set-link" onClick={app.applyUpdate}>{t('settings.update.restart')}</button>
         </>
       ) : (
         <button
@@ -220,7 +227,10 @@ function Foot() {
           disabled={check === 'checking'}
           onClick={() => { setCheck('checking'); settings.checkForUpdate(); }}
         >
-          {check === 'checking' ? 'Checking…' : check === 'none' ? 'Up to date' : check === 'error' ? 'Check failed — retry' : 'Check for updates'}
+          {check === 'checking' ? t('settings.update.checking')
+            : check === 'none' ? t('settings.update.upToDate')
+            : check === 'error' ? t('settings.update.failed')
+            : t('settings.update.check')}
         </button>
       )}
     </div>
@@ -236,14 +246,14 @@ function ResetDialog({ onClose }: { onClose: () => void }) {
   return (
     <DialogShell
       icon={<RotateCcw size={14} style={{ color: 'var(--color-recording-fg)' }} />}
-      title="Reset all settings"
+      title={t('settings.reset.title')}
       size="sm"
       onClose={onClose}
-      footer={<DialogFooter danger secondary={{ label: 'Cancel', onClick: onClose, autoFocus: true }} primary={{ label: 'Reset', onClick: () => { settings.resetAll(); onClose(); } }} />}
+      footer={<DialogFooter danger secondary={{ label: t('common.actions.cancel'), onClick: onClose, autoFocus: true }} primary={{ label: t('common.actions.reset'), onClick: () => { settings.resetAll(); onClose(); } }} />}
     >
       <div className="p-4 flex flex-col gap-2">
-        <p className="text-body text-text-secondary">Every setting goes back to its default.</p>
-        <p className="text-minor text-text-tertiary">Your macros, their steps and the Clicker presets stay. This can't be undone.</p>
+        <p className="text-body text-text-secondary">{t('settings.reset.body')}</p>
+        <p className="text-minor text-text-tertiary">{t('settings.reset.keeps')}</p>
       </div>
     </DialogShell>
   );

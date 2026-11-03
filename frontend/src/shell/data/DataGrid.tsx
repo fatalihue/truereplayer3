@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
 import { ArrowLeft, ArrowRight, Copy, Play, Plus, Trash2 } from 'lucide-react';
+import { fmtNum, t } from '../../i18n';
 import { scanRowTokenUsage } from '../../lib/rowTokenUsage';
-import { useTt } from '../../state/LanguageContext';
 import { useToast } from '../../state/ToastContext';
 import { Menu, type MenuEntry } from '../Menu';
 import type { MenuAnchor } from '../menuAnchor';
@@ -62,6 +62,11 @@ function useRowWindow(scrollRef: RefObject<HTMLDivElement | null>, headRef: RefO
 
 const cellId = (r: number, c: number) => (r < 0 ? `dl-h-${c < 0 ? 'n' : c}` : `dl-${r}-${c < 0 ? 'n' : c}`);
 
+/** The open cell, for the screen reader: its column (by name, or by number with none) and its row. */
+const cellLabel = (name: string, c: number, r: number) => (name !== ''
+  ? t('dataLoop.grid.cellLabel', { name, row: r + 1 })
+  : t('dataLoop.grid.cellLabelUnnamed', { column: c + 1, row: r + 1 }));
+
 /** Brings a cell into view, under the sticky header and right of the row numbers (centred for a search's jump). */
 function revealCell(el: HTMLDivElement | null, head: HTMLDivElement | null, m: Metrics, cell: Cell, center = false) {
   if (!el) return;
@@ -109,7 +114,6 @@ export function DataGrid({ locked }: { locked: boolean }) {
   const active = useDataTab(s => s.active);
   const term = useDataTab(s => s.term);
   const hit = useDataTab(s => s.hit);
-  const tt = useTt();
   const { showToast } = useToast();
   const scrollRef = useRef<HTMLDivElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -173,7 +177,7 @@ export function DataGrid({ locked }: { locked: boolean }) {
     navigator.clipboard?.writeText('{row}').then(() => {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1000);
-    }, () => showToast(tt('Could not copy — click inside the window and try again.', 'Não foi possível copiar — clique dentro da janela e tente de novo.'), 'error'));
+    }, () => showToast(t('dataLoop.copyFailed'), 'error'));
   };
 
   // A key that closes an editor gives the table the focus at once (a key right after it is the
@@ -187,12 +191,12 @@ export function DataGrid({ locked }: { locked: boolean }) {
   // were discarded." did: the engine saves only the open macro's table, and a run is reading it.
   const dropped = (edit: Extract<Editing, { kind: 'cell' }>, value: string) => {
     const app = useShell.getState().app;
-    const why = app.activeProfile !== edit.macro ? tt('Another macro was opened', 'Outro macro foi aberto')
-      : app.settings.useCursorClick ? tt('The Clicker turned on', 'O Clicker foi ligado')
-      : app.status === 'recording' ? tt('A recording started', 'Uma gravação começou')
-      : app.status === 'replaying' ? tt('A run started', 'Uma execução começou')
+    const why = app.activeProfile !== edit.macro ? t('dataLoop.grid.discarded.macro')
+      : app.settings.useCursorClick ? t('dataLoop.grid.discarded.clicker')
+      : app.status === 'recording' ? t('dataLoop.grid.discarded.recording')
+      : app.status === 'replaying' ? t('dataLoop.grid.discarded.run')
       : null;
-    if (why) showToast(`${why} — ${tt('the cell’s edit was discarded.', 'a edição da célula foi descartada.')}`, 'error');
+    if (why) showToast(why, 'error');
     else ops.setCell(edit.r, edit.c, value);
   };
   const finishCell = (edit: Extract<Editing, { kind: 'cell' }>, value: string | null, nav: Nav | undefined, byKey: boolean) => {
@@ -314,7 +318,7 @@ export function DataGrid({ locked }: { locked: boolean }) {
           ref={sheetRef}
           className="dl-sheet"
           role="grid"
-          aria-label="Data Loop table"
+          aria-label={t('dataLoop.grid.label')}
           aria-rowcount={rows.length + 1}
           aria-colcount={cols + 1}
           aria-readonly={locked || undefined}
@@ -332,8 +336,8 @@ export function DataGrid({ locked }: { locked: boolean }) {
                 type="button"
                 tabIndex={-1}
                 className="dl-num-button"
-                aria-label="# — copy the {row} token"
-                data-tip={tt('{row} is the row number — click to copy the token', '{row} é o número da linha — clique para copiar o token')}
+                aria-label={t('dataLoop.grid.numberLabel')}
+                data-tip={t('dataLoop.grid.numberTip')}
                 onClick={copyRowToken}
               >
                 {copied ? <span className="step-icon" data-icon="check" /> : '#'}
@@ -356,7 +360,7 @@ export function DataGrid({ locked }: { locked: boolean }) {
                 onDone={finishHeader}
               />
             ))}
-            <div className="dl-end" role="columnheader" aria-label="Add column">
+            <div className="dl-end" role="columnheader" aria-label={t('dataLoop.grid.addColumn')}>
               {!locked && (
                 <button
                   type="button"
@@ -367,7 +371,7 @@ export function DataGrid({ locked }: { locked: boolean }) {
                   }}
                 >
                   <span className="step-icon" data-icon="plus" />
-                  Column
+                  {t('dataLoop.grid.column')}
                 </button>
               )}
             </div>
@@ -385,7 +389,7 @@ export function DataGrid({ locked }: { locked: boolean }) {
                 locked={locked}
                 activeC={active?.r === r ? active.c : null}
                 edit={editing?.kind === 'cell' && editing.r === r ? editing : null}
-                editLabel={editing?.kind === 'cell' && editing.r === r ? `${headers[editing.c]?.trim() || `Column ${editing.c + 1}`}, row ${r + 1}` : ''}
+                editLabel={editing?.kind === 'cell' && editing.r === r ? cellLabel(headers[editing.c]?.trim() ?? '', editing.c, r) : ''}
                 term={termLower}
                 current={r === hitRow}
                 onCursor={moveCursor}
@@ -407,7 +411,7 @@ export function DataGrid({ locked }: { locked: boolean }) {
               }}
             >
               <span className="step-icon" data-icon="plus" />
-              Add row
+              {t('dataLoop.grid.addRow')}
             </button>
           </div>
         )}
@@ -416,8 +420,8 @@ export function DataGrid({ locked }: { locked: boolean }) {
       {menu && (
         <Menu
           anchor={menu.anchor}
-          label={menu.at.r < 0 ? 'Column options' : `Row ${menu.at.r + 1}`}
-          entries={menu.at.r < 0 ? columnMenu(menu.at.c, heads[menu.at.c], cols, ops, macro, tt, showToast) : rowMenu(menu.at.r, saved, cursorMode, shown.cursorRow, ops)}
+          label={menu.at.r < 0 ? t('dataLoop.grid.columnOptions') : t('dataLoop.grid.rowMenu', { number: menu.at.r + 1 })}
+          entries={menu.at.r < 0 ? columnMenu(menu.at.c, heads[menu.at.c], cols, ops, macro, showToast) : rowMenu(menu.at.r, saved, cursorMode, shown.cursorRow, ops)}
           focusFirst
           toggle={menu.button}
           onClose={() => setMenu(null)}
@@ -441,7 +445,6 @@ function HeaderCell({ c, head, headers, active, editing, locked, onRename, onMen
   onMenu: (button: HTMLElement) => void;
   onDone: (edit: Extract<Editing, { kind: 'header' }>, value: string | null, byKey: boolean) => void;
 }) {
-  const tt = useTt();
   return (
     <div
       role="columnheader"
@@ -462,7 +465,7 @@ function HeaderCell({ c, head, headers, active, editing, locked, onRename, onMen
             <span
               className="step-icon dl-warn"
               data-icon="triangle-alert"
-              data-tip={tt('Not a token name ({ } and : are not allowed) — Fix it in the Inspector', 'Não serve de nome de token ({ } e : não podem) — corrija no Inspector')}
+              data-tip={t('dataLoop.grid.invalidTip')}
             />
           )}
           <button
@@ -471,18 +474,18 @@ function HeaderCell({ c, head, headers, active, editing, locked, onRename, onMen
             className="dl-hname"
             data-dup={head.dup || undefined}
             disabled={locked}
-            data-tip={head.dup ? tt('Duplicate column — the last one wins', 'Coluna duplicada — a última vence') : undefined}
+            data-tip={head.dup ? t('dataLoop.grid.duplicateTip') : undefined}
             onClick={onRename}
           >
-            {head.name || <span className="dl-empty-name">(empty)</span>}
+            {head.name || <span className="dl-empty-name">{t('dataLoop.emptyName')}</span>}
           </button>
           {head.valid && (
             <span
               className="dl-uses"
               data-used={head.count > 0 || undefined}
-              data-tip={head.count > 0 ? tt(`Read ${head.count} time${head.count === 1 ? '' : 's'} by the steps`, `Lida ${head.count} vez${head.count === 1 ? '' : 'es'} pelos passos`) : undefined}
+              data-tip={head.count > 0 ? t('dataLoop.grid.readTimes', { count: head.count, n: fmtNum(head.count) }) : undefined}
             >
-              {head.count > 0 ? `×${head.count}` : 'unused'}
+              {head.count > 0 ? `×${fmtNum(head.count)}` : t('dataLoop.grid.unused')}
             </span>
           )}
           <button
@@ -490,8 +493,8 @@ function HeaderCell({ c, head, headers, active, editing, locked, onRename, onMen
             tabIndex={-1}
             className="dl-hmenu"
             aria-haspopup="menu"
-            aria-label={`Column options for ${head.name || `column ${c + 1}`}`}
-            data-tip={tt('Column options', 'Opções da coluna')}
+            aria-label={head.name ? t('dataLoop.grid.columnOptionsFor', { name: head.name }) : t('dataLoop.grid.columnOptionsForNumber', { number: c + 1 })}
+            data-tip={t('dataLoop.grid.columnOptions')}
             onClick={(e) => onMenu(e.currentTarget)}
           >
             <span className="step-icon" data-icon="ellipsis" />
@@ -535,7 +538,7 @@ function HeaderEditor({ edit, initial, headers, onDone }: {
         ref={ref}
         className="dl-input"
         value={value}
-        aria-label="Column name"
+        aria-label={t('dataLoop.grid.columnName')}
         aria-invalid={!!shownProblem || undefined}
         aria-describedby={shownProblem ? 'dl-name-problem' : undefined}
         spellCheck={false}
@@ -579,7 +582,6 @@ function GridRow({ r, row, cols, blank, cursor, cursorMode, locked, activeC, edi
   onDone: (edit: Extract<Editing, { kind: 'cell' }>, value: string | null, nav: Nav | undefined, byKey: boolean) => void;
   onDropped: (edit: Extract<Editing, { kind: 'cell' }>, value: string) => void;
 }) {
-  const tt = useTt();
   const cells: ReactNode[] = [];
   for (let c = 0; c < cols; c++) {
     const value = row[c] ?? '';
@@ -619,9 +621,9 @@ function GridRow({ r, row, cols, blank, cursor, cursorMode, locked, activeC, edi
             tabIndex={-1}
             className="dl-num-button"
             disabled={locked}
-            aria-label={cursor ? `Row ${r + 1}, the next replay uses it` : `Make row ${r + 1} the next row`}
+            aria-label={cursor ? t('dataLoop.grid.nextLabel', { number: r + 1 }) : t('dataLoop.grid.makeNextLabel', { number: r + 1 })}
             aria-current={cursor || undefined}
-            data-tip={cursor ? tt('The next replay uses this row', 'A próxima execução usa esta linha') : tt('Make it the next row', 'Tornar a próxima linha')}
+            data-tip={cursor ? t('dataLoop.grid.nextTip') : t('dataLoop.grid.makeNext')}
             onClick={() => onCursor(r)}
           >
             {cursor && <span className="step-icon" data-icon="play" />}
@@ -633,13 +635,13 @@ function GridRow({ r, row, cols, blank, cursor, cursorMode, locked, activeC, edi
       </div>
       {cells}
       <div className="dl-end">
-        {cursor && <span className="dl-next">next replay</span>}
+        {cursor && <span className="dl-next">{t('dataLoop.grid.next')}</span>}
         {!locked && (
           <span className="dl-acts">
-            <button type="button" tabIndex={-1} className="dl-act" aria-label={`Duplicate row ${r + 1}`} data-tip={tt('Duplicate row', 'Duplicar a linha')} onClick={() => ops.duplicateRow(r)}>
+            <button type="button" tabIndex={-1} className="dl-act" aria-label={t('dataLoop.grid.duplicateRowLabel', { number: r + 1 })} data-tip={t('dataLoop.grid.duplicateRow')} onClick={() => ops.duplicateRow(r)}>
               <span className="step-icon" data-icon="copy" />
             </button>
-            <button type="button" tabIndex={-1} className="dl-act" data-danger="" aria-label={`Delete row ${r + 1}`} data-tip={tt('Delete row', 'Apagar a linha')} onClick={() => ops.deleteRow(r)}>
+            <button type="button" tabIndex={-1} className="dl-act" data-danger="" aria-label={t('dataLoop.grid.deleteRowLabel', { number: r + 1 })} data-tip={t('dataLoop.grid.deleteRow')} onClick={() => ops.deleteRow(r)}>
               <span className="step-icon" data-icon="trash-2" />
             </button>
           </span>
@@ -747,10 +749,9 @@ function CellEditor({ edit, initial, label, onDone, onDropped }: {
 }
 
 type Toast = ReturnType<typeof useToast>['showToast'];
-type Tt = ReturnType<typeof useTt>;
 
 /** A column's ⋯: its token, a column beside it, its moves and its deletion (paineis-103 to 108). */
-function columnMenu(c: number, head: Head | undefined, cols: number, ops: DataOps, macro: string, tt: Tt, showToast: Toast): MenuEntry[] {
+function columnMenu(c: number, head: Head | undefined, cols: number, ops: DataOps, macro: string, showToast: Toast): MenuEntry[] {
   const locked = lockedNow();
   const insert = (at: number) => {
     const made = ops.addColumn(at);
@@ -758,23 +759,23 @@ function columnMenu(c: number, head: Head | undefined, cols: number, ops: DataOp
   };
   return [
     {
-      label: head?.valid ? `Copy {row:${head.name}}` : 'Not a token name',
+      label: head?.valid ? t('dataLoop.grid.copyToken', { token: `{row:${head.name}}` }) : t('dataLoop.grid.notToken'),
       icon: Copy,
       disabled: !head?.valid,
       onSelect: () => {
         navigator.clipboard?.writeText(`{row:${head?.name}}`).then(
-          () => showToast(tt('Token copied', 'Token copiado'), 'success'),
-          () => showToast(tt('Could not copy — click inside the window and try again.', 'Não foi possível copiar — clique dentro da janela e tente de novo.'), 'error'),
+          () => showToast(t('dataLoop.grid.tokenCopied'), 'success'),
+          () => showToast(t('dataLoop.copyFailed'), 'error'),
         );
       },
     },
     'separator',
-    { label: 'Insert column left', icon: Plus, disabled: locked, onSelect: () => insert(c) },
-    { label: 'Insert column right', icon: Plus, disabled: locked, onSelect: () => insert(c + 1) },
-    { label: 'Move left', icon: ArrowLeft, disabled: locked || c === 0, onSelect: () => ops.moveColumn(c, c - 1) },
-    { label: 'Move right', icon: ArrowRight, disabled: locked || c === cols - 1, onSelect: () => ops.moveColumn(c, c + 1) },
+    { label: t('dataLoop.grid.insertLeft'), icon: Plus, disabled: locked, onSelect: () => insert(c) },
+    { label: t('dataLoop.grid.insertRight'), icon: Plus, disabled: locked, onSelect: () => insert(c + 1) },
+    { label: t('dataLoop.grid.moveLeft'), icon: ArrowLeft, disabled: locked || c === 0, onSelect: () => ops.moveColumn(c, c - 1) },
+    { label: t('dataLoop.grid.moveRight'), icon: ArrowRight, disabled: locked || c === cols - 1, onSelect: () => ops.moveColumn(c, c + 1) },
     'separator',
-    { label: 'Delete column', icon: Trash2, confirm: 'Really delete column?', disabled: locked, onSelect: () => ops.deleteColumn(c) },
+    { label: t('dataLoop.grid.deleteColumn'), icon: Trash2, confirm: t('dataLoop.grid.deleteColumnConfirm'), disabled: locked, onSelect: () => ops.deleteColumn(c) },
   ];
 }
 
@@ -782,11 +783,11 @@ function columnMenu(c: number, head: Head | undefined, cols: number, ops: DataOp
 function rowMenu(r: number, saved: number, cursorMode: boolean, cursorRow: number, ops: DataOps): MenuEntry[] {
   const entries: MenuEntry[] = [];
   if (cursorMode && r < saved) {
-    entries.push({ label: r === cursorRow ? 'The next replay uses this row' : 'Make it the next row', icon: Play, disabled: r === cursorRow, onSelect: () => ops.setCursor(r) }, 'separator');
+    entries.push({ label: r === cursorRow ? t('dataLoop.grid.nextTip') : t('dataLoop.grid.makeNext'), icon: Play, disabled: r === cursorRow, onSelect: () => ops.setCursor(r) }, 'separator');
   }
   entries.push(
-    { label: 'Duplicate row', icon: Copy, onSelect: () => ops.duplicateRow(r) },
-    { label: 'Delete row', icon: Trash2, danger: true, onSelect: () => ops.deleteRow(r) },
+    { label: t('dataLoop.grid.duplicateRow'), icon: Copy, onSelect: () => ops.duplicateRow(r) },
+    { label: t('dataLoop.grid.deleteRow'), icon: Trash2, danger: true, onSelect: () => ops.deleteRow(r) },
   );
   return entries;
 }

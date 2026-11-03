@@ -5,7 +5,7 @@ import { APP_NAME } from '../../../appIdentity';
 import type { HotkeySettingKey, SettingsState } from '../../../bridge/messageTypes';
 import { isPureModifier, SINGLE_KEY_CAPTURE_IDLE_MS, useKeyCapture } from '../../../logic/useKeyCapture';
 import { useSettings } from '../../../logic/useSettings';
-import { useTt } from '../../../state/LanguageContext';
+import { t } from '../../../i18n';
 import { useToast } from '../../../state/ToastContext';
 import { keycaps } from '../../library/model';
 import { useApp } from '../../store';
@@ -20,12 +20,12 @@ import { useApp } from '../../store';
 // What other apps do with a key, by the key ('major': a key people use every day, that a suggestion
 // takes the hotkey off). No key is free of them: Ctrl+F9 and Ctrl+F10, the suggestions, are minor.
 const KNOWN: Record<string, { note: string; major?: true }> = {
-  'ctrl+pageup': { note: 'Also switches tabs in Chrome, Edge and VS Code', major: true },
-  'ctrl+pagedown': { note: 'Also switches tabs in Chrome, Edge and VS Code', major: true },
-  insert: { note: 'Ins also switches typing to overwrite', major: true },
-  scrolllock: { note: 'Excel uses ScrLk', major: true },
-  'ctrl+f9': { note: 'Excel also minimizes a workbook with it' },
-  'ctrl+f10': { note: 'Excel also maximizes or restores a workbook with it' },
+  'ctrl+pageup': { note: t('settings.conflict.tabs'), major: true },
+  'ctrl+pagedown': { note: t('settings.conflict.tabs'), major: true },
+  insert: { note: t('settings.conflict.ins'), major: true },
+  scrolllock: { note: t('settings.conflict.scrollLock'), major: true },
+  'ctrl+f9': { note: t('settings.conflict.minimize') },
+  'ctrl+f10': { note: t('settings.conflict.maximize') },
 };
 const known = (combo: string) => (combo ? KNOWN[combo.toLowerCase()] : undefined);
 
@@ -74,7 +74,7 @@ function useConflicts() {
 export function HotkeysIntro() {
   return (
     <>
-      <p className="set-intro">Keys that work anywhere in Windows, even with {APP_NAME} in the background. Each macro’s own hotkey lives on the macro.</p>
+      <p className="set-intro">{t('settings.hotkeys.intro', { app: APP_NAME })}</p>
       <ConflictNotice />
     </>
   );
@@ -89,11 +89,10 @@ function ConflictNotice() {
   // The notice's buttons go with it: the focus moves to what happened, not to the page's top.
   useEffect(() => { if (showDone) doneRef.current?.focus(); }, [showDone]);
   if (!open) return done ? <p ref={doneRef} tabIndex={-1} className="set-intro" role="status">{done}</p> : null;
-  const n = list.length;
   return (
-    <div className="set-notice" role="region" aria-label="Hotkeys on keys other apps use">
+    <div className="set-notice" role="region" aria-label={t('settings.hotkeys.noticeLabel')}>
       <p className="set-notice-text">
-        {n === 1 ? '1 hotkey takes a key that other apps use.' : `${n} hotkeys take keys that other apps use.`} While {APP_NAME} runs, those apps stop getting them.
+        {t('settings.hotkeys.notice', { count: list.length, app: APP_NAME })}
       </p>
       <div className="set-actions">
         <button
@@ -102,20 +101,20 @@ function ConflictNotice() {
           data-variant="primary"
           onClick={() => {
             settings.useSuggestedHotkeys(list.map(p => p.slice(0, p.indexOf('=')) as HotkeySettingKey));
-            setDone('The suggested keys are in use.');
+            setDone(t('settings.hotkeys.usedSuggested'));
           }}
         >
-          Use the suggested keys
+          {t('settings.hotkeys.useSuggested')}
         </button>
         <button
           type="button"
           className="insp-button"
           onClick={() => {
             keep(list);
-            setDone('Your keys stay. This notice comes back only if another hotkey takes a key other apps use.');
+            setDone(t('settings.hotkeys.keptMine'));
           }}
         >
-          Keep mine
+          {t('settings.hotkeys.keepMine')}
         </button>
       </div>
     </div>
@@ -140,12 +139,11 @@ export function HotkeyField({ settingKey, label }: { settingKey: HotkeySettingKe
   const settings = useSettings();
   const capture = useKeyCapture();
   const { showToast } = useToast();
-  const tt = useTt();
   const [owner] = useState(() => `settings-hotkey-${settingKey}-${crypto.randomUUID()}`);
   const [listening, setListening] = useState(false);
   const [held, setHeld] = useState<string | null>(null);
-  const latest = useRef({ value, change: settings.change, showToast, tt });
-  useEffect(() => { latest.current = { value, change: settings.change, showToast, tt }; });
+  const latest = useRef({ value, change: settings.change, showToast });
+  useEffect(() => { latest.current = { value, change: settings.change, showToast }; });
 
   // Armed while listening, released on every way out, unmount included: an armed hook is an app
   // with no keyboard, the Stop hotkey included.
@@ -158,11 +156,10 @@ export function HotkeyField({ settingKey, label }: { settingKey: HotkeySettingKe
       if (typeof combo !== 'string' || combo === '') return;
       clearTimeout(idle);
       idle = setTimeout(stop, SINGLE_KEY_CAPTURE_IDLE_MS);
-      const { value: now, change, showToast: toast, tt: t } = latest.current;
+      const { value: now, change, showToast: toast } = latest.current;
       // A bare wheel can't be one: firing it would swallow that scroll everywhere (the engine drops it too).
       if (combo === 'ScrollUp' || combo === 'ScrollDown') {
-        toast(t('Use a modifier with the scroll wheel (e.g. Ctrl+ScrollDown) — a bare wheel hotkey would block scrolling everywhere.',
-                'Use um modificador com a roda (ex.: Ctrl+ScrollDown) — uma hotkey de roda pura bloquearia a rolagem em todo lugar.'), 'error');
+        toast(t('settings.field.bareWheel'), 'error');
         return;
       }
       if (isPureModifier(combo)) { setHeld(combo); return; }
@@ -182,29 +179,26 @@ export function HotkeyField({ settingKey, label }: { settingKey: HotkeySettingKe
     <span className="set-hotkey" data-listening={listening || undefined}>
       <span className="set-hotkey-keys">
         {listening
-          ? (held ? <kbd className="kbd">{keycaps(held)}</kbd> : <span className="set-hotkey-wait">Press the new key…</span>)
-          : value ? <kbd className="kbd">{keycaps(value)}</kbd> : <span className="set-hotkey-none">No key</span>}
+          ? (held ? <kbd className="kbd">{keycaps(held)}</kbd> : <span className="set-hotkey-wait">{t('settings.field.press')}</span>)
+          : value ? <kbd className="kbd">{keycaps(value)}</kbd> : <span className="set-hotkey-none">{t('settings.field.none')}</span>}
       </span>
       <button
         type="button"
         className="insp-button"
-        aria-label={listening ? `Listening for the ${label} hotkey` : `Change ${label} hotkey`}
+        aria-label={listening ? t('settings.field.listeningLabel', { label }) : t('settings.field.changeLabel', { label })}
         aria-pressed={listening}
-        data-tip={listening
-          ? tt('A key, a combo, a side button or a modifier with the wheel · 4 s or a click elsewhere cancels',
-               'Uma tecla, uma combinação, um botão lateral ou um modificador com a roda · 4 s ou um clique fora cancelam')
-          : undefined}
+        data-tip={listening ? t('settings.field.listeningTip') : undefined}
         onClick={() => { setHeld(null); setListening(on => !on); }}
         onBlur={() => { setListening(false); setHeld(null); }}
       >
-        {listening ? 'Listening…' : 'Change'}
+        {listening ? t('settings.field.listening') : t('settings.field.change')}
       </button>
       {value && !listening ? (
         <button
           type="button"
           className="set-hotkey-clear"
-          aria-label={`Clear ${label} hotkey`}
-          data-tip={tt('No key — the hotkey is off', 'Sem tecla — o atalho fica desligado')}
+          aria-label={t('settings.field.clearLabel', { label })}
+          data-tip={t('settings.field.clearTip')}
           onClick={() => settings.change(settingKey, '')}
         >
           <X aria-hidden="true" />
@@ -223,12 +217,15 @@ export function ConflictNote({ settingKey, noKeyWhy }: { settingKey: HotkeySetti
   const suggested = useApp(a => a.settings.hotkeyDefaults?.[settingKey]);
   const conflict = known(value);
   if (!conflict) return null;
+  // noKeyWhy is a clause of its own, from the catalog (settings.hotkeys.front.noKeyWhy).
   const suggest = conflict.major && suggested !== undefined && suggested.toLowerCase() !== value.toLowerCase()
-    ? (suggested ? `suggested ${keycaps(suggested)}` : `suggested: no key${noKeyWhy ? `, ${noKeyWhy}` : ''}`)
+    ? (suggested ? t('settings.conflict.suggested', { key: keycaps(suggested) })
+      : noKeyWhy ? t('settings.conflict.suggestedNoneWhy', { why: noKeyWhy })
+      : t('settings.conflict.suggestedNone'))
     : null;
   return (
     <span className="set-row-hint" data-tone={conflict.major ? 'warn' : undefined}>
-      {suggest ? `${conflict.note} · ${suggest}` : conflict.note}
+      {suggest ? t('settings.conflict.withSuggestion', { note: conflict.note, suggestion: suggest }) : conflict.note}
     </span>
   );
 }
@@ -241,24 +238,23 @@ export function ScreenTextNote() {
   const hotkey = useApp(a => a.settings.copyScreenTextHotkey) ?? '';
   const region = useApp(a => a.settings.copyScreenTextRegion) ?? '';
   const settings = useSettings();
-  const tt = useTt();
   const parts = region.split(',').map(Number);
   const [x, y, w, h] = parts;
   const fixed = parts.length === 4 && w > 0 && h > 0;
-  const shown = fixed ? `${w}×${h} at (${x}, ${y})` : 'drag one each time';
+  const shown = fixed ? t('settings.region.fixed', { w, h, x, y }) : t('settings.region.drag');
   return (
     <>
       <ConflictNote settingKey="copyScreenTextHotkey" />
       <span className="set-row-hint">
-        Region:{' '}
+        {t('settings.region.label')}{' '}
         <button
           type="button"
           className="set-link"
           disabled={!hotkey}
-          aria-label={`Region: ${shown} — ${fixed ? 'draw another' : 'fix one'}`}
-          data-tip={!hotkey ? tt('Set the hotkey first', 'Defina o atalho primeiro')
-            : fixed ? tt(`${w}×${h} at (${x}, ${y}) — click to redraw`, `${w}×${h} em (${x}, ${y}) — clique para redesenhar`)
-            : tt('Drag a region each time — click to fix one', 'Arraste uma região a cada vez — clique para fixar uma')}
+          aria-label={fixed ? t('settings.region.fixedLabel', { w, h, x, y }) : t('settings.region.dragLabel')}
+          data-tip={!hotkey ? t('settings.region.needsHotkey')
+            : fixed ? t('settings.region.fixedTip', { w, h, x, y })
+            : t('settings.region.dragTip')}
           onClick={settings.pickCopyScreenTextRegion}
         >
           {shown}
@@ -269,11 +265,11 @@ export function ScreenTextNote() {
             <button
               type="button"
               className="set-link"
-              aria-label="Clear the region"
-              data-tip={tt('Back to dragging a region each time', 'Voltar a arrastar uma região a cada vez')}
+              aria-label={t('settings.region.clearLabel')}
+              data-tip={t('settings.region.clearTip')}
               onClick={() => settings.change('copyScreenTextRegion', '')}
             >
-              Clear
+              {t('common.actions.clear')}
             </button>
           </>
         )}

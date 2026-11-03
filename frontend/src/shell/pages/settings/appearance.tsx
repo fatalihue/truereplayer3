@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { Check, ChevronDown, Dices, X } from 'lucide-react';
-import { useTt } from '../../../state/LanguageContext';
+import { fmtNum, t, tn } from '../../../i18n';
 import { useTheme } from '../../../state/ThemeContext';
 import { useToast } from '../../../state/ToastContext';
 import { ACCENT_SWATCHES, FEATURED_THEMES, getThemeTags, themes, type ThemeTag } from '../../../themePresets';
@@ -76,9 +76,9 @@ function useUndo() {
       if (!e.ctrlKey || e.altKey || e.metaKey) return;
       const key = e.key.toLowerCase();
       if (key !== 'z' && key !== 'y') return;
-      const t = e.target as HTMLElement | null;
-      const typing = !!t && (t.isContentEditable || t.tagName === 'TEXTAREA'
-        || (t.tagName === 'INPUT' && !['range', 'color', 'checkbox', 'radio', 'button'].includes((t as HTMLInputElement).type)));
+      const el = e.target as HTMLElement | null;
+      const typing = !!el && (el.isContentEditable || el.tagName === 'TEXTAREA'
+        || (el.tagName === 'INPUT' && !['range', 'color', 'checkbox', 'radio', 'button'].includes((el as HTMLInputElement).type)));
       if (typing || isModalDialogOpen()) return;
       e.preventDefault();
       const now = latest.current;
@@ -94,26 +94,34 @@ function useUndo() {
 // ── Theme ──
 
 type Filter = 'all' | ThemeTag;
-const FILTERS: { id: Filter; label: string }[] = [
-  { id: 'all', label: `All ${themes.length}` },
-  { id: 'dark', label: 'Dark' },
-  { id: 'light', label: 'Light' },
-  { id: 'vivid', label: 'Vivid' },
-  { id: 'pastel', label: 'Pastel' },
-  { id: 'monochrome', label: 'Monochrome' },
-];
+const FILTERS: Filter[] = ['all', 'dark', 'light', 'vivid', 'pastel', 'monochrome'];
+// The chips but the first, which says how many themes there are.
+const FILTER_NAMES = tn('appearance.theme.filters');
 // The featured eight first, then the rest in the presets' order (by accent hue).
 const ORDER: ThemePreset[] = [
-  ...FEATURED_THEMES.flatMap(id => themes.filter(t => t.id === id)),
-  ...themes.filter(t => !FEATURED_THEMES.includes(t.id)),
+  ...FEATURED_THEMES.flatMap(id => themes.filter(theme => theme.id === id)),
+  ...themes.filter(theme => !FEATURED_THEMES.includes(theme.id)),
 ];
+
+/** The gallery with nothing to show: a sentence for each filter, with the search or without it. */
+function emptyText(filter: Filter, query: string): string {
+  if (!query) return tn('appearance.theme.none')[filter];
+  switch (filter) {
+    case 'dark': return t('appearance.theme.noMatch.dark', { query });
+    case 'light': return t('appearance.theme.noMatch.light', { query });
+    case 'vivid': return t('appearance.theme.noMatch.vivid', { query });
+    case 'pastel': return t('appearance.theme.noMatch.pastel', { query });
+    case 'monochrome': return t('appearance.theme.noMatch.monochrome', { query });
+    default: return t('appearance.theme.noMatch.all', { query });
+  }
+}
+
 // Two rows of four until "Show all".
 const FIRST = 8;
 // Outside the component: the compiler leaves a component that calls Math.random uncompiled.
 const anyOf = <T,>(list: T[]): T => list[Math.floor(Math.random() * list.length)];
 
 function ThemeSection() {
-  const tt = useTt();
   const { showToast } = useToast();
   const { config, customPresets, selectPreset, deleteCustomPreset, restoreCustomPreset } = useTheme();
   const [filter, setFilter] = useState<Filter>('all');
@@ -124,13 +132,13 @@ function ThemeSection() {
   const q = query.trim().toLowerCase();
   const named = (name: string) => !q || name.toLowerCase().includes(q);
 
-  const builtin = ORDER.filter(t => (filter === 'all' || getThemeTags(t.id).includes(filter)) && named(t.name));
+  const builtin = ORDER.filter(theme => (filter === 'all' || getThemeTags(theme.id).includes(filter)) && named(theme.name));
   // Folded: the first two rows, with the open theme in them.
   const folded = filter === 'all' && !q && !all;
   let shown = builtin;
   if (folded) {
     shown = builtin.slice(0, FIRST);
-    const open = builtin.find(t => t.id === active);
+    const open = builtin.find(theme => theme.id === active);
     if (open && !shown.includes(open)) shown = [...shown.slice(0, FIRST - 1), open];
   }
   // Your own themes: Dark and Light by their background; Vivid, Pastel and Monochrome cannot be
@@ -142,8 +150,7 @@ function ThemeSection() {
     return light === null || light === (filter === 'light');
   });
   const uncategorised = filter === 'vivid' || filter === 'pastel' || filter === 'monochrome';
-  const pool = builtin.filter(t => t.id !== active);
-  const filterName = filter === 'all' ? '' : FILTERS.find(f => f.id === filter)?.label.toLowerCase() ?? filter;
+  const pool = builtin.filter(theme => theme.id !== active);
 
   // Picking the theme already open changes nothing: its accent and colours stay (Theme default and,
   // in slice 4, Reset to it are the ways back).
@@ -157,10 +164,10 @@ function ThemeSection() {
     // Not a step of the page's history: the toast's Undo is this one's.
     quietNextChange();
     deleteCustomPreset(preset.id);
-    showToast(tt(`Deleted the theme "${preset.name}"`, `Tema "${preset.name}" excluído`), {
+    showToast(t('appearance.theme.deleted', { name: preset.name }), {
       type: 'success',
       duration: 10000,
-      action: { label: 'Undo', onClick: () => { quietNextChange(); restoreCustomPreset(preset, index, before); } },
+      action: { label: t('common.actions.undo'), onClick: () => { quietNextChange(); restoreCustomPreset(preset, index, before); } },
     });
     // Its ✕ went with it: the focus goes to the open theme, or to the search.
     requestAnimationFrame(() => {
@@ -171,13 +178,13 @@ function ThemeSection() {
 
   return (
     <section ref={sectionRef} className="ap-section" aria-labelledby="ap-theme">
-      <h3 id="ap-theme" className="ap-title">Theme</h3>
+      <h3 id="ap-theme" className="ap-title">{t('appearance.theme.title')}</h3>
       <FollowWindows />
       <div className="ap-filters">
-        <div className="ap-chips" role="group" aria-label="Filter themes">
+        <div className="ap-chips" role="group" aria-label={t('appearance.theme.filterGroup')}>
           {FILTERS.map(f => (
-            <button key={f.id} type="button" className="ap-chip" aria-pressed={filter === f.id} onClick={() => setFilter(f.id)}>
-              {f.label}
+            <button key={f} type="button" className="ap-chip" aria-pressed={filter === f} onClick={() => setFilter(f)}>
+              {f === 'all' ? t('appearance.theme.all', { n: fmtNum(themes.length) }) : FILTER_NAMES[f]}
             </button>
           ))}
         </div>
@@ -185,11 +192,9 @@ function ThemeSection() {
         <button
           type="button"
           className="insp-icon-button ap-random"
-          aria-label="Random theme"
+          aria-label={t('appearance.theme.random')}
           disabled={pool.length === 0}
-          data-tip={pool.length === 0
-            ? tt('No other themes in this filter', 'Nenhum outro tema neste filtro')
-            : tt('A random theme from this filter', 'Um tema aleatório deste filtro')}
+          data-tip={pool.length === 0 ? t('appearance.theme.randomNone') : t('appearance.theme.randomTip')}
           onClick={() => selectPreset(anyOf(pool).id)}
         >
           <Dices aria-hidden="true" />
@@ -197,8 +202,8 @@ function ThemeSection() {
         <input
           className="ap-search"
           type="search"
-          aria-label="Search themes"
-          placeholder="Search themes"
+          aria-label={t('appearance.theme.search')}
+          placeholder={t('appearance.theme.search')}
           spellCheck={false}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -213,24 +218,25 @@ function ThemeSection() {
       </div>
       {shown.length === 0 && own.length === 0 ? (
         <p className="set-empty" role="status">
-          {q && filterName ? `No ${filterName} themes match “${query.trim()}”.` : q ? `No themes match “${query.trim()}”.` : `No ${filterName} themes.`}
+          {emptyText(filter, query.trim())}
         </p>
       ) : (
         <>
           {shown.length > 0 && (
             <div className="ap-grid">
-              {shown.map(t => <ThemeCard key={t.id} theme={t} active={t.id === active} onPick={() => pick(t.id)} />)}
+              {shown.map(theme => <ThemeCard key={theme.id} theme={theme} active={theme.id === active} onPick={() => pick(theme.id)} />)}
             </div>
           )}
           {filter === 'all' && !q && (
             <button type="button" className="set-link ap-more" aria-expanded={all} onClick={() => setAll(!all)}>
-              {all ? 'Show fewer themes' : `Show all ${themes.length} themes`}
+              {all ? t('appearance.theme.showFewer') : t('appearance.theme.showAll', { n: fmtNum(themes.length) })}
             </button>
           )}
           {own.length > 0 && (
             <>
               <h4 className="ap-subtitle">
-                My themes{uncategorised && <span className="ap-subtitle-note"> (not categorised)</span>}
+                {t('appearance.theme.myThemes')}
+                {uncategorised && <span className="ap-subtitle-note"> {t('appearance.theme.uncategorised')}</span>}
               </h4>
               <div className="ap-grid">
                 {own.map(p => <ThemeCard key={p.id} theme={p} active={p.id === active} onPick={() => pick(p.id)} onDelete={() => remove(p)} />)}
@@ -245,10 +251,10 @@ function ThemeSection() {
 
 /**
  * A theme: its colours in a small window, and its name; the open one is marked. Your own have a ✕.
- * Under the pointer or the focus, the live preview paints it.
+ * Under the pointer or the focus, the live preview paints it. The name is a name, the same in every
+ * language (data-glossary), the presets' and the ones you made alike.
  */
 function ThemeCard({ theme, active, onPick, onDelete }: { theme: ThemePreset; active: boolean; onPick: () => void; onDelete?: () => void }) {
-  const tt = useTt();
   const [base, surface, card, accent] = theme.preview;
   const colors = { '--p-base': base, '--p-surface': surface, '--p-card': card, '--p-accent': accent } as CSSProperties;
   const show = () => useAp.setState({ hoverTheme: theme.id });
@@ -263,7 +269,7 @@ function ThemeCard({ theme, active, onPick, onDelete }: { theme: ThemePreset; ac
           <span className="ap-p-line" />
         </span>
         <span className="ap-card-name">
-          <span className="ap-card-text">{theme.name}</span>
+          <span className="ap-card-text" data-glossary="">{theme.name}</span>
           {active && <Check aria-hidden="true" />}
         </span>
       </button>
@@ -271,8 +277,8 @@ function ThemeCard({ theme, active, onPick, onDelete }: { theme: ThemePreset; ac
         <button
           type="button"
           className="ap-card-delete"
-          aria-label={`Delete the theme ${theme.name}`}
-          data-tip={tt('Delete this theme', 'Excluir este tema')}
+          aria-label={t('appearance.theme.deleteTheme', { name: theme.name })}
+          data-tip={t('appearance.theme.deleteTip')}
           onClick={onDelete}
         >
           <X aria-hidden="true" />
@@ -290,8 +296,8 @@ function FollowWindows() {
     <div className="ap-follow">
       {/* The text is the switch's label: a press on it presses the switch. */}
       <label className="ap-follow-switch">
-        <Switch label="Follow Windows light and dark" checked={on} onChange={(v) => setUISetting('matchSystemTheme', v)} />
-        <span>Follow Windows light and dark</span>
+        <Switch label={t('appearance.follow.label')} checked={on} onChange={(v) => setUISetting('matchSystemTheme', v)} />
+        <span>{t('appearance.follow.label')}</span>
       </label>
       {on && <ThemeForWindows kind="dark" />}
       {on && <ThemeForWindows kind="light" />}
@@ -304,30 +310,30 @@ function ThemeForWindows({ kind }: { kind: 'dark' | 'light' }) {
   const [menu, setMenu] = useState<HTMLButtonElement | null>(null);
   const key = kind === 'dark' ? 'darkPresetId' : 'lightPresetId';
   const id = config.uiSettings[key];
-  const label = kind === 'dark' ? 'Dark' : 'Light';
-  const name = themes.find(t => t.id === id)?.name ?? id;
-  const list = themes.filter(t => getThemeTags(t.id).includes('light') === (kind === 'light'));
+  const name = themes.find(theme => theme.id === id)?.name ?? id;
+  const list = themes.filter(theme => getThemeTags(theme.id).includes('light') === (kind === 'light'));
+  const dark = kind === 'dark';
   return (
     <span className="ap-pick">
-      <span className="ap-pick-label" aria-hidden="true">{label}</span>
+      <span className="ap-pick-label" aria-hidden="true">{dark ? t('appearance.follow.dark') : t('appearance.follow.light')}</span>
       <button
         type="button"
         className="insp-button set-choice"
-        aria-label={`${label} theme: ${name}`}
+        aria-label={dark ? t('appearance.follow.darkChoice', { name }) : t('appearance.follow.lightChoice', { name })}
         aria-haspopup="menu"
         aria-expanded={!!menu}
         onClick={(e) => setMenu(menu ? null : e.currentTarget)}
       >
-        <span className="set-choice-label">{name}</span>
+        <span className="set-choice-label" data-glossary="">{name}</span>
         <ChevronDown aria-hidden="true" />
       </button>
       {menu && (
         <Menu
           anchor={anchorBelow(menu, 'start')}
-          label={`${label} theme`}
+          label={dark ? t('appearance.follow.darkTheme') : t('appearance.follow.lightTheme')}
           toggle={menu}
           focusFirst
-          entries={list.map(t => ({ label: t.name, checked: t.id === id, onSelect: () => setUISetting(key, t.id) }))}
+          entries={list.map(theme => ({ label: theme.name, named: true, checked: theme.id === id, onSelect: () => setUISetting(key, theme.id) }))}
           onClose={() => setMenu(null)}
         />
       )}
@@ -337,16 +343,28 @@ function ThemeForWindows({ kind }: { kind: 'dark' | 'light' }) {
 
 // ── Accent ──
 
-/** A colour's name, for the theme's own accent ("Theme default, blue"). */
-function hueName(color: string): string {
+type Hue = 'white' | 'black' | 'gray' | 'red' | 'orange' | 'yellow' | 'lime' | 'green' | 'teal' | 'cyan' | 'blue' | 'violet' | 'purple' | 'pink';
+
+/** A colour's name, for the theme's own accent ("Theme default, blue"): its key in the catalog's hues. */
+function hueName(color: string): Hue {
   const { h, s, l } = hexToHSL(toHex(color));
   if (s < 12) return l > 70 ? 'white' : l < 25 ? 'black' : 'gray';
-  const names: [number, string][] = [
+  const names: [number, Hue][] = [
     [15, 'red'], [40, 'orange'], [65, 'yellow'], [90, 'lime'], [155, 'green'], [185, 'teal'],
     [200, 'cyan'], [245, 'blue'], [275, 'violet'], [320, 'purple'], [345, 'pink'], [361, 'red'],
   ];
   return names.find(([below]) => h < below)?.[1] ?? 'red';
 }
+
+// The six swatches' names (ACCENT_SWATCHES keeps them in English, as their ids), as the page says them.
+const SWATCH_NAMES: Record<string, string> = {
+  Periwinkle: t('appearance.accent.swatches.periwinkle'),
+  Teal: t('appearance.accent.swatches.teal'),
+  Violet: t('appearance.accent.swatches.violet'),
+  Amber: t('appearance.accent.swatches.amber'),
+  Lime: t('appearance.accent.swatches.lime'),
+  Red: t('appearance.accent.swatches.red'),
+};
 
 /**
  * A swatch as it reads on this theme: lighter on a dark one, darker on a light one, hue and saturation
@@ -392,13 +410,12 @@ function swatchesFor(colors: ThemeColors): string[] {
  * today's picker). Solid and Hover come from it. A radio group: ← → ↑ ↓ Home End pick as they move.
  */
 function AccentSection() {
-  const tt = useTt();
   const { config, resolvedColors, customPresets, setAccentColor, clearColorOverride } = useTheme();
   const base = baseOf(config.baseThemeId, customPresets);
   const values = swatchesFor(resolvedColors);
   const options = [
-    { id: 'default', label: `Theme default, ${hueName(base.colors.accent)}`, color: base.colors.accent },
-    ...ACCENT_SWATCHES.map((s, i) => ({ id: s.name, label: s.name, color: values[i] })),
+    { id: 'default', label: t('appearance.accent.themeDefault', { color: tn('appearance.accent.hues')[hueName(base.colors.accent)] }), color: base.colors.accent },
+    ...ACCENT_SWATCHES.map((s, i) => ({ id: s.name, label: SWATCH_NAMES[s.name] ?? s.name, color: values[i] })),
   ];
   const override = config.colorOverrides.accent;
   const picked = override === undefined ? 'default' : options.find(o => o.id !== 'default' && o.color.toLowerCase() === override.toLowerCase())?.id ?? 'custom';
@@ -427,9 +444,9 @@ function AccentSection() {
 
   return (
     <section className="ap-section" aria-labelledby="ap-accent">
-      <h3 id="ap-accent" className="ap-title">Accent</h3>
+      <h3 id="ap-accent" className="ap-title">{t('appearance.accent.title')}</h3>
       <div className="ap-accent">
-        <div className="ap-swatches" role="radiogroup" aria-label="Accent color" onKeyDown={onKeyDown}>
+        <div className="ap-swatches" role="radiogroup" aria-label={t('appearance.accent.group')} onKeyDown={onKeyDown}>
           {options.map((o, i) => {
             const checked = picked === o.id;
             return (
@@ -452,14 +469,14 @@ function AccentSection() {
         <label
           className="ap-custom"
           data-active={picked === 'custom' || undefined}
-          data-tip={tt(`Accent · ${toHex(resolvedColors.accent)} — click to change`, `Destaque · ${toHex(resolvedColors.accent)} — clique para mudar`)}
+          data-tip={t('appearance.accent.customTip', { hex: toHex(resolvedColors.accent) })}
         >
           {picked === 'custom' && <span className="ap-custom-dot" style={{ '--swatch': resolvedColors.accent } as CSSProperties} aria-hidden="true" />}
-          Custom…
+          {t('appearance.accent.custom')}
           <input
             type="color"
             className="ap-custom-input"
-            aria-label={picked === 'custom' ? `Custom accent color, ${toHex(resolvedColors.accent)}` : 'Custom accent color'}
+            aria-label={picked === 'custom' ? t('appearance.accent.customColorValue', { hex: toHex(resolvedColors.accent) }) : t('appearance.accent.customColor')}
             value={toHex(resolvedColors.accent)}
             onChange={(e) => setAccentColor(e.target.value)}
           />
@@ -472,9 +489,9 @@ function AccentSection() {
 // ── Interface ──
 
 const DENSITY = [
-  { id: 'compact', label: 'Compact', fontSize: 12, rowHeight: 28, borderRadius: 2 },
-  { id: 'normal', label: 'Normal', fontSize: 13, rowHeight: 34, borderRadius: 3 },
-  { id: 'spacious', label: 'Spacious', fontSize: 14, rowHeight: 42, borderRadius: 4 },
+  { id: 'compact', label: t('appearance.interface.densities.compact'), fontSize: 12, rowHeight: 28, borderRadius: 2 },
+  { id: 'normal', label: t('appearance.interface.densities.normal'), fontSize: 13, rowHeight: 34, borderRadius: 3 },
+  { id: 'spacious', label: t('appearance.interface.densities.spacious'), fontSize: 14, rowHeight: 42, borderRadius: 4 },
 ] as const;
 type Density = typeof DENSITY[number]['id'] | '';
 const ZOOMS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200];
@@ -487,12 +504,12 @@ function InterfaceSection() {
   const density: Density = DENSITY.find(d => d.fontSize === ui.fontSize && d.rowHeight === ui.rowHeight && d.borderRadius === ui.borderRadius)?.id ?? '';
   return (
     <section className="ap-section" aria-labelledby="ap-interface">
-      <h3 id="ap-interface" className="ap-title">Interface</h3>
+      <h3 id="ap-interface" className="ap-title">{t('appearance.interface.title')}</h3>
       <div className="ap-ui">
         <div className="ap-field">
-          <span className="ap-field-label" aria-hidden="true">Density</span>
+          <span className="ap-field-label" aria-hidden="true">{t('appearance.interface.density')}</span>
           <Segmented<Density>
-            label="Density"
+            label={t('appearance.interface.density')}
             value={density}
             options={DENSITY.map(d => ({ value: d.id, label: d.label }))}
             onChange={(id) => {
@@ -505,19 +522,23 @@ function InterfaceSection() {
           />
         </div>
         <div className="ap-field">
-          <span className="ap-field-label" aria-hidden="true">Motion</span>
+          <span className="ap-field-label" aria-hidden="true">{t('appearance.interface.motion')}</span>
           <Segmented
-            label="Motion"
+            label={t('appearance.interface.motion')}
             value={ui.animationMode}
-            options={[{ value: 'system', label: 'Follow Windows' }, { value: 'on', label: 'On' }, { value: 'off', label: 'Off' }]}
+            options={[
+              { value: 'system', label: t('appearance.interface.motions.system') },
+              { value: 'on', label: t('appearance.interface.motions.on') },
+              { value: 'off', label: t('appearance.interface.motions.off') },
+            ]}
             onChange={(mode) => setUISetting('animationMode', mode)}
           />
           {ui.animationMode === 'system' && (
-            <span className="ap-field-hint">{osReducedMotion ? 'Windows has animation effects off' : 'Windows has animation effects on'}</span>
+            <span className="ap-field-hint">{osReducedMotion ? t('appearance.interface.motionOff') : t('appearance.interface.motionOn')}</span>
           )}
         </div>
-        <Slider label="Text size" value={ui.fontSize} min={10} max={18} onChange={(v) => setUISetting('fontSize', v)} />
-        <Slider label="Corner roundness" value={ui.borderRadius} min={0} max={16} onChange={(v) => setUISetting('borderRadius', v)} />
+        <Slider label={t('appearance.interface.textSize')} value={ui.fontSize} min={10} max={18} onChange={(v) => setUISetting('fontSize', v)} />
+        <Slider label={t('appearance.interface.corners')} value={ui.borderRadius} min={0} max={16} onChange={(v) => setUISetting('borderRadius', v)} />
         <ZoomField />
         <FontField />
       </div>
@@ -571,11 +592,11 @@ function ZoomField() {
   const steps = ZOOMS.includes(zoom) ? ZOOMS : [...ZOOMS, zoom].sort((a, b) => a - b);
   return (
     <div className="ap-field ap-field-row">
-      <span className="ap-field-label" aria-hidden="true">Zoom</span>
+      <span className="ap-field-label" aria-hidden="true">{t('appearance.interface.zoom')}</span>
       <button
         type="button"
         className="insp-button set-choice ap-choice"
-        aria-label={`Zoom: ${zoom}%`}
+        aria-label={t('appearance.interface.zoomChoice', { zoom })}
         aria-haspopup="menu"
         aria-expanded={!!menu}
         onClick={(e) => setMenu(menu ? null : e.currentTarget)}
@@ -586,11 +607,11 @@ function ZoomField() {
       {menu && (
         <Menu
           anchor={anchorBelow(menu, 'end')}
-          label="Zoom"
+          label={t('appearance.interface.zoom')}
           toggle={menu}
           focusFirst
           entries={steps.map(z => ({
-            label: z === DEFAULT_UI_SETTINGS.zoom ? `${z}% (default)` : `${z}%`,
+            label: z === DEFAULT_UI_SETTINGS.zoom ? t('appearance.interface.zoomDefault', { zoom: z }) : `${z}%`,
             checked: z === zoom,
             onSelect: () => setUISetting('zoom', z),
           }))}
@@ -609,26 +630,26 @@ function FontField() {
   const fonts = MONO_FONTS.includes(font) ? MONO_FONTS : [...MONO_FONTS, font];
   return (
     <div className="ap-field ap-field-row">
-      <span className="ap-field-label" aria-hidden="true">Font for data</span>
+      <span className="ap-field-label" aria-hidden="true">{t('appearance.interface.font')}</span>
       <button
         type="button"
         className="insp-button set-choice ap-choice"
-        aria-label={`Font for data: ${font}`}
+        aria-label={t('appearance.interface.fontChoice', { font })}
         aria-haspopup="menu"
         aria-expanded={!!menu}
         style={{ fontFamily: `'${font}', monospace` }}
         onClick={(e) => setMenu(menu ? null : e.currentTarget)}
       >
-        <span className="set-choice-label">{font}</span>
+        <span className="set-choice-label" data-glossary="">{font}</span>
         <ChevronDown aria-hidden="true" />
       </button>
       {menu && (
         <Menu
           anchor={anchorBelow(menu, 'end')}
-          label="Font for data"
+          label={t('appearance.interface.font')}
           toggle={menu}
           focusFirst
-          entries={fonts.map(f => ({ label: f, font: f, checked: f === font, onSelect: () => setUISetting('fontMono', f) }))}
+          entries={fonts.map(f => ({ label: f, font: f, named: true, checked: f === font, onSelect: () => setUISetting('fontMono', f) }))}
           onClose={() => setMenu(null)}
         />
       )}
@@ -649,7 +670,6 @@ const COLOR_DEFAULTS = Object.fromEntries(UI_COLOR_FIELDS.map(f => [f, DEFAULT_U
  * (settings-142 to 144, D22: its colours, or with the interface too; the language left it, D30).
  */
 function Actions() {
-  const tt = useTt();
   const { showToast } = useToast();
   const { config, customPresets, saveAsPreset, restoreConfig } = useTheme();
   const base = baseOf(config.baseThemeId, customPresets);
@@ -693,7 +713,7 @@ function Actions() {
     // The id is the name's slug, and a theme with the same id is replaced: two names can slug alike.
     const clash = customPresets.find(p => p.id === makeCustomPresetId(n) && p.name !== n);
     if (clash) {
-      showToast(tt(`“${n}” would replace “${clash.name}” — pick another name.`, `“${n}” substituiria “${clash.name}” — escolha outro nome.`), 'error');
+      showToast(t('appearance.actions.clash', { name: n, other: clash.name }), 'error');
       return;
     }
     saveAsPreset(n);
@@ -706,25 +726,25 @@ function Actions() {
     restoreConfig(everything
       ? { ...config, colorOverrides: {}, uiSettings: { ...DEFAULT_UI_SETTINGS } }
       : { ...config, colorOverrides: {}, uiSettings: { ...config.uiSettings, ...COLOR_DEFAULTS } });
-    showToast(tt(`Back to ${base.name} as it comes`, `De volta ao ${base.name} como vem`), {
+    showToast(t('appearance.actions.resetDone', { name: base.name }), {
       type: 'success',
       duration: 10000,
-      action: { label: 'Undo', onClick: () => restoreConfig(before) },
+      action: { label: t('common.actions.undo'), onClick: () => restoreConfig(before) },
     });
   };
 
   return (
     <div className="ap-actions">
       <button ref={editRef} type="button" className="insp-button" onPointerEnter={warmEditor} onFocus={warmEditor} onClick={() => showView('colors')}>
-        Edit colors…
+        {t('appearance.actions.editColors')}
       </button>
       {naming ? (
         <span className="ap-naming">
           <input
             className="ap-name"
             type="text"
-            aria-label="Name of your theme"
-            placeholder="Theme name"
+            aria-label={t('appearance.actions.name')}
+            placeholder={t('appearance.actions.namePlaceholder')}
             spellCheck={false}
             maxLength={60}
             autoFocus
@@ -739,8 +759,8 @@ function Actions() {
               if (!name.trim() && !e.currentTarget.parentElement?.contains(e.relatedTarget as Node | null)) close();
             }}
           />
-          <button type="button" className="insp-button" data-variant="primary" disabled={!name.trim()} onClick={save}>Save</button>
-          <button type="button" className="insp-button" onClick={close}>Cancel</button>
+          <button type="button" className="insp-button" data-variant="primary" disabled={!name.trim()} onClick={save}>{t('common.actions.save')}</button>
+          <button type="button" className="insp-button" onClick={close}>{t('common.actions.cancel')}</button>
         </span>
       ) : (
         <button
@@ -748,14 +768,14 @@ function Actions() {
           type="button"
           className="insp-button"
           disabled={!changed}
-          data-tip={changed ? undefined : tt(`This is ${base.name} as it comes — change the accent or a color first`, `Este é o ${base.name} como vem — mude o destaque ou uma cor antes`)}
+          data-tip={changed ? undefined : t('appearance.actions.saveAsTip', { name: base.name })}
           onClick={() => { setSaved(null); setNaming(true); }}
         >
-          Save as my theme…
+          {t('appearance.actions.saveAs')}
         </button>
       )}
       <button ref={shareRef} type="button" className="insp-button" onPointerEnter={warmEditor} onFocus={warmEditor} onClick={() => showView('share')}>
-        Share or import…
+        {t('appearance.actions.share')}
       </button>
       <button
         type="button"
@@ -763,28 +783,28 @@ function Actions() {
         aria-haspopup="menu"
         aria-expanded={!!resetMenu}
         disabled={asItComes}
-        data-tip={asItComes ? tt(`This is ${base.name} as it comes`, `Este é o ${base.name} como vem`) : undefined}
+        data-tip={asItComes ? t('appearance.actions.asItComes', { name: base.name }) : undefined}
         onClick={(e) => setResetMenu(resetMenu ? null : e.currentTarget)}
       >
-        Reset to {base.name}
+        {t('appearance.actions.reset', { name: base.name })}
         <ChevronDown aria-hidden="true" />
       </button>
       {resetMenu && (
         <Menu
           anchor={anchorBelow(resetMenu, 'start')}
-          label={`Reset to ${base.name}`}
+          label={t('appearance.actions.reset', { name: base.name })}
           toggle={resetMenu}
           focusFirst
           entries={[
-            { label: 'Colors', disabled: !colorsChanged, onSelect: () => reset(false) },
-            { label: 'Colors and interface', onSelect: () => reset(true) },
+            { label: t('appearance.actions.resetColors'), disabled: !colorsChanged, onSelect: () => reset(false) },
+            { label: t('appearance.actions.resetAll'), onSelect: () => reset(true) },
           ]}
           onClose={() => setResetMenu(null)}
         />
       )}
       {saved !== null && (
         <p ref={savedRef} className="ap-saved" role="status" tabIndex={-1}>
-          {saved && <>Saved as “{saved}”, in My themes.</>}
+          {saved && t('appearance.actions.saved', { name: saved })}
         </p>
       )}
     </div>

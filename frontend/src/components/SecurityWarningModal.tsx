@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AlertTriangle, FolderOpen } from 'lucide-react';
 import { Checkbox } from './Checkbox';
 import { DialogShell, DialogFooter  } from './common/DialogShell';
+import { t } from '../i18n';
 
 interface SecurityWarningModalProps {
   /** Name of the .trprofile that triggered the warning — anchors the generic text
@@ -33,22 +34,21 @@ export function SecurityWarningModal({ fileName, profileCount, onContinue, onCan
   return (
     <DialogShell
       icon={<AlertTriangle size={14} style={{ color: 'var(--color-warning-ink)' }} />}
-      title="Heads up"
+      title={t('dialogs.security.title')}
       size="lg"
       onClose={onCancel}
       // Security warning exists to be READ before proceeding — a stray click on the
       // scrim must not dismiss it (dismissal is an explicit Cancel or Esc only).
       closeOnBackdrop={false}
-      footerHint="Esc cancels"
+      footerHint={t('dialogs.security.escHint')}
       // "Continue to review", not "I understand, continue": the Import Preview comes NEXT — a
       // label that read as a final commit could make a cautious user cancel.
-      footer={<DialogFooter secondary={{ label: 'Cancel', onClick: onCancel }} primary={{ label: 'Continue to review', onClick: () => onContinue(dontShowAgain) }} />}
+      footer={<DialogFooter secondary={{ label: t('common.actions.cancel'), onClick: onCancel }} primary={{ label: t('dialogs.security.continue'), onClick: () => onContinue(dontShowAgain) }} />}
     >
       {/* Body */}
       <div className="px-4 py-4 space-y-3">
         <p className="text-minor text-text-secondary leading-relaxed">
-          Macros run automated mouse and keyboard actions. Only import macros
-          from sources you trust.
+          {t('dialogs.security.intro')}
         </p>
 
         {/* File chip — same idiom as the Import Preview's file summary, so the two
@@ -59,7 +59,7 @@ export function SecurityWarningModal({ fileName, profileCount, onContinue, onCan
             <span className="text-text-secondary font-medium truncate">{fileName}</span>
             {profileCount !== undefined && (
               <span className="text-caption text-text-tertiary shrink-0">
-                · {profileCount} macro{profileCount === 1 ? '' : 's'}
+                · {t('dialogs.file.macros', { count: profileCount })}
               </span>
             )}
           </div>
@@ -68,11 +68,11 @@ export function SecurityWarningModal({ fileName, profileCount, onContinue, onCan
         {/* The danger facts get the DS warning band (left rule + translucent tint) —
             visually marked without shouting. */}
         <div className="warning-band text-minor text-text-secondary leading-relaxed pl-3 py-2 rounded-r">
-          Imported macros can:
+          {t('dialogs.security.canTitle')}
           <ul className="mt-1.5 ml-4 space-y-1 list-disc text-text-tertiary">
-            <li>Click anywhere on screen</li>
-            <li>Type any text (including passwords if a password field is focused)</li>
-            <li>Trigger automatically on windows you allow</li>
+            <li>{t('dialogs.security.canClick')}</li>
+            <li>{t('dialogs.security.canType')}</li>
+            <li>{t('dialogs.security.canTrigger')}</li>
           </ul>
         </div>
 
@@ -80,7 +80,7 @@ export function SecurityWarningModal({ fileName, profileCount, onContinue, onCan
           <Checkbox
             checked={dontShowAgain}
             onChange={setDontShowAgain}
-            label="Don't show this again"
+            label={t('dialogs.security.dontShow')}
           />
         </div>
       </div>

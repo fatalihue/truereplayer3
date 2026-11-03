@@ -2,9 +2,9 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 import { Check, ChevronDown, Crop, Crosshair, Ellipsis, Lock, MousePointerClick, Pause, Play, Plus, Square, TriangleAlert, X } from 'lucide-react';
 import type { ClickerPreset } from '../../../bridge/messageTypes';
 import { useBridge } from '../../../bridge/BridgeContext';
+import { fmtHora, t, tn } from '../../../i18n';
 import { matchingPreset, useClicker } from '../../../logic/useClicker';
 import { useReplay } from '../../../logic/useReplay';
-import { useTt } from '../../../state/LanguageContext';
 import { useToast } from '../../../state/ToastContext';
 import { formatRate } from '../../../utils/clickerFormat';
 import { isModalDialogOpen } from '../../../utils/modalDialog';
@@ -16,7 +16,7 @@ import { useApp, useShell } from '../../store';
 import { useUi } from '../../ui';
 import { ConflictNote, HotkeyField } from '../settings/hotkeys';
 import {
-  bits, clicksLimit, clock, delayFor, displayOf, endWords, fieldsOf, grouped, limitText, MAX_CLICKS, MAX_NAME, MAX_PRESETS,
+  bits, BUTTONS, clicksLimit, clock, delayFor, displayOf, endWords, fieldsOf, grouped, limitText, MAX_CLICKS, MAX_NAME, MAX_PRESETS,
   MAX_SPREAD_PX, MAX_TIME_S, presetLine, progressOf, quickRates, rateLine, rateNote, rateOf, rateShort, rateShown, sameFields,
   sentence, spreadPx, takesSec, takesWords, timeLimitS, whereOf, type FieldKey, type Fields, type Where,
 } from './clickerModel';
@@ -91,9 +91,9 @@ export default function ClickerPage() {
       if (!e.ctrlKey || e.altKey || e.metaKey) return;
       const key = e.key.toLowerCase();
       if (key !== 'z' && key !== 'y') return;
-      const t = e.target as HTMLElement | null;
-      const typing = !!t && (t.isContentEditable || t.tagName === 'TEXTAREA'
-        || (t.tagName === 'INPUT' && !['range', 'checkbox', 'radio', 'button'].includes((t as HTMLInputElement).type)));
+      const el = e.target as HTMLElement | null;
+      const typing = !!el && (el.isContentEditable || el.tagName === 'TEXTAREA'
+        || (el.tagName === 'INPUT' && !['range', 'checkbox', 'radio', 'button'].includes((el as HTMLInputElement).type)));
       if (typing || isModalDialogOpen()) return;
       e.preventDefault();
       if (latest.current.running) return;
@@ -105,7 +105,7 @@ export default function ClickerPage() {
 
   const peek = useClickerUi(s => s.peek);
   return (
-    <section className="shell-page ck" aria-label="Clicker" data-peek={peek || undefined}>
+    <section className="shell-page ck" aria-label={t('common.pages.clicker')} data-peek={peek || undefined}>
       <Presets running={running} />
       <div className="ck-main">
         <Head running={running} />
@@ -206,7 +206,6 @@ function useUnseedSpread() {
 // ── Presets ──
 
 function Presets({ running }: { running: boolean }) {
-  const tt = useTt();
   const presets = useApp(a => a.settings.cursorClickPresets) ?? [];
   const selected = useClickerUi(s => s.selected);
   const naming = useClickerUi(s => s.naming);
@@ -219,19 +218,19 @@ function Presets({ running }: { running: boolean }) {
     choosePreset(p.name, fieldsOf(p), clicker.applyPreset);
   };
   return (
-    <aside className="ck-presets" aria-label="Presets">
+    <aside className="ck-presets" aria-label={t('clicker.presets.title')}>
       <div className="ck-presets-head">
-        <h2 className="ck-presets-title">Presets</h2>
+        <h2 className="ck-presets-title" data-glossary="">{t('clicker.presets.title')}</h2>
         <button
           type="button"
           className="insp-button ck-small"
           aria-expanded={naming}
           disabled={full || running}
-          data-tip={full ? tt(`${MAX_PRESETS} is the limit`, `${MAX_PRESETS} é o limite`) : tt('Keeps the settings on this page under a name', 'Guarda os ajustes desta página com um nome')}
+          data-tip={full ? t('clicker.presets.full', { n: MAX_PRESETS }) : t('clicker.presets.newTip')}
           onClick={() => useClickerUi.setState(naming ? { naming: false, draftName: '' } : { naming: true })}
         >
           <Plus aria-hidden="true" />
-          New
+          {t('common.actions.new')}
         </button>
       </div>
       {naming && <NewPreset presets={presets} />}
@@ -245,10 +244,10 @@ function Presets({ running }: { running: boolean }) {
             </button>
           );
         })}
-        {presets.length === 0 && !naming && <p className="ck-presets-none">No presets yet. New keeps the settings on this page under a name.</p>}
+        {presets.length === 0 && !naming && <p className="ck-presets-none">{t('clicker.presets.none')}</p>}
       </div>
       <p className="ck-presets-foot">
-        {running ? 'Switching presets waits until this run stops.' : 'A preset keeps every setting on this page. Edits save into the one that is selected.'}
+        {running ? t('clicker.presets.footRunning') : t('clicker.presets.foot')}
       </p>
     </aside>
   );
@@ -264,7 +263,7 @@ function NewPreset({ presets }: { presets: ClickerPreset[] }) {
   const save = () => {
     const n = name.trim().slice(0, MAX_NAME);
     if (!n) { close(); return; }
-    if (presets.some(p => sameName(p.name, n))) { setError('A preset has that name already.'); return; }
+    if (presets.some(p => sameName(p.name, n))) { setError(t('clicker.presets.taken')); return; }
     flushSave(clicker);
     clicker.savePreset(n);
     useClickerUi.setState({ selected: n, naming: false, draftName: '' });
@@ -273,8 +272,8 @@ function NewPreset({ presets }: { presets: ClickerPreset[] }) {
     <div className="ck-name-wrap">
       <input
         className="ck-name"
-        aria-label="Preset name"
-        placeholder="Name, then Enter"
+        aria-label={t('clicker.presets.name')}
+        placeholder={t('clicker.presets.namePlaceholder')}
         maxLength={MAX_NAME}
         spellCheck={false}
         autoComplete="off"
@@ -296,7 +295,6 @@ function NewPreset({ presets }: { presets: ClickerPreset[] }) {
 // ── The run ──
 
 function Head({ running }: { running: boolean }) {
-  const tt = useTt();
   const fields = useFields();
   const selected = useClickerUi(s => s.selected);
   const renaming = useClickerUi(s => s.renaming);
@@ -314,51 +312,57 @@ function Head({ running }: { running: boolean }) {
   const takes = takesSec(fields);
   // casca-110: the countdown of a start from the button, before the first click.
   const sub = running
-    ? (paused ? 'Paused' : counting ? `Starting in ${countdownS} s — move the mouse to the target` : `Clicking since ${hhmm(startedAt)}`)
-    : `${selected ? 'Clicker preset' : 'No preset'} · ${takes === null ? 'runs until you stop it' : `takes ${takesWords(takes)}`}`;
+    ? (paused ? t('clicker.head.paused')
+      : counting ? t('clicker.head.starting', { n: countdownS })
+      : t('clicker.head.clickingSince', { time: fmtHora(new Date(startedAt)) }))
+    : selected
+      ? (takes === null ? t('clicker.head.presetUntil') : t('clicker.head.presetTakes', { duration: takesWords(takes) }))
+      : (takes === null ? t('clicker.head.noPresetUntil') : t('clicker.head.noPresetTakes', { duration: takesWords(takes) }));
   const remove = () => {
     if (!selected) return;
     const name = selected;
     // A step of the page's history too: Ctrl+Z brings it back, as the toast's Undo does.
     recordDelete(name);
     clicker.deletePreset(name);
-    showToast(tt(`Deleted preset "${name}"`, `Preset "${name}" excluído`), {
+    showToast(t('clicker.presets.deleted', { name }), {
       type: 'success',
       duration: 10000,
-      action: { label: 'Undo', onClick: () => undoDelete(name, sendOf(clicker), presetStepsOf(clicker)) },
+      action: { label: t('common.actions.undo'), onClick: () => undoDelete(name, sendOf(clicker), presetStepsOf(clicker)) },
     });
   };
   return (
     <header className="ck-head">
       <div className="ck-titles">
-        {renaming && selected ? <RenameField name={selected} /> : <h1 className="ck-title">{selected ?? 'Clicker'}</h1>}
+        {renaming && selected
+          ? <RenameField name={selected} />
+          : <h1 className="ck-title" data-glossary={selected ? undefined : ''}>{selected ?? t('common.pages.clicker')}</h1>}
         <p className="ck-sub">{sub}</p>
       </div>
       <div className="ck-head-end">
-        <button type="button" className="insp-button ck-presets-toggle" aria-expanded={peek} onClick={() => useClickerUi.setState({ peek: !peek })}>
-          Presets
+        <button type="button" className="insp-button ck-presets-toggle" data-glossary="" aria-expanded={peek} onClick={() => useClickerUi.setState({ peek: !peek })}>
+          {t('clicker.presets.title')}
           <ChevronDown aria-hidden="true" />
         </button>
         <button type="button" className="ck-start" data-running={running || undefined} onClick={replay.toggle}>
           {running ? <span className="ck-stop-square" aria-hidden="true" /> : <Play aria-hidden="true" />}
-          {running ? 'Stop' : 'Start'}
+          {running ? t('common.actions.stop') : t('clicker.head.start')}
           {startKey && <kbd className="ck-key">{keycaps(startKey)}</kbd>}
         </button>
         {/* The countdown pauses by the key only; paused, Resume takes it on (casca-111). */}
         <button type="button" className="insp-button ck-pause" disabled={!running || (counting && !paused)} onClick={paused ? replay.resume : clicker.pause}>
           {paused ? <Play aria-hidden="true" /> : <Pause aria-hidden="true" />}
-          {paused ? 'Resume' : 'Pause'}
+          {paused ? t('common.actions.resume') : t('common.actions.pause')}
           {pauseKey && <kbd className="ck-key">{keycaps(pauseKey)}</kbd>}
         </button>
         {running && !counting && <HeadProgress />}
         <button
           type="button"
           className="insp-icon-button"
-          aria-label="Preset actions"
+          aria-label={t('clicker.presets.actions')}
           aria-haspopup="menu"
           aria-expanded={!!menu}
           disabled={!selected}
-          data-tip={selected ? undefined : tt('No preset selected', 'Nenhum preset escolhido')}
+          data-tip={selected ? undefined : t('clicker.presets.noneSelected')}
           onClick={(e) => setMenu(menu ? null : { anchor: anchorBelow(e.currentTarget, 'end'), button: e.currentTarget })}
         >
           <Ellipsis aria-hidden="true" />
@@ -367,13 +371,13 @@ function Head({ running }: { running: boolean }) {
       {menu && (
         <Menu
           anchor={menu.anchor}
-          label="Preset actions"
+          label={t('clicker.presets.actions')}
           toggle={menu.button}
           onClose={() => setMenu(null)}
           entries={[
-            { label: 'Rename…', onSelect: () => useClickerUi.setState({ renaming: true }) },
+            { label: t('common.actions.renameEllipsis'), onSelect: () => useClickerUi.setState({ renaming: true }) },
             'separator',
-            { label: 'Delete', danger: true, onSelect: remove },
+            { label: t('common.actions.delete'), danger: true, onSelect: remove },
           ]}
         />
       )}
@@ -393,7 +397,7 @@ function RenameField({ name }: { name: string }) {
     if (finished.current) return;
     const n = text.trim().slice(0, MAX_NAME);
     if (save && n && n !== name) {
-      if (presets.some(p => sameName(p.name, n) && !sameName(p.name, name))) { setError('A preset has that name already.'); return; }
+      if (presets.some(p => sameName(p.name, n) && !sameName(p.name, name))) { setError(t('clicker.presets.taken')); return; }
       clicker.renamePreset(name, n);
       useClickerUi.setState({ selected: n });
     }
@@ -404,7 +408,7 @@ function RenameField({ name }: { name: string }) {
     <span className="ck-rename">
       <input
         className="ck-title-input"
-        aria-label="Preset name"
+        aria-label={t('clicker.presets.name')}
         maxLength={MAX_NAME}
         spellCheck={false}
         autoComplete="off"
@@ -423,8 +427,6 @@ function RenameField({ name }: { name: string }) {
   );
 }
 
-const hhmm = (at: number) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
 /** In the header while it clicks: "412 of 1,000 · ~0:29 left", over a thin bar (paineis-144). Only with a limit. */
 function HeadProgress() {
   const fields = useFields();
@@ -433,10 +435,10 @@ function HeadProgress() {
   const p = progressOf(fields, count, elapsed);
   if (!p) return null;
   return (
-    <div className="ck-progress" role="progressbar" aria-label="Run progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(p.pct * 100)}>
+    <div className="ck-progress" role="progressbar" aria-label={t('clicker.progress.label')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(p.pct * 100)}>
       <span className="ck-progress-text">
         <span>{p.text}</span>
-        {p.leftSec !== null && <span className="ck-progress-left">~{clock(p.leftSec)} left</span>}
+        {p.leftSec !== null && <span className="ck-progress-left">{t('clicker.progress.left', { clock: clock(p.leftSec) })}</span>}
       </span>
       <span className="ck-bar"><span style={{ width: `${p.pct * 100}%` }} /></span>
     </div>
@@ -451,20 +453,20 @@ function Center({ running }: { running: boolean }) {
 function Ready() {
   const fields = useFields();
   const c = clicksLimit(fields);
-  const t = timeLimitS(fields);
+  const secs = timeLimitS(fields);
   const takes = takesSec(fields);
   return (
     <div className="ck-center">
       <div className="ck-ready">
-        <span className="ck-ready-title">Ready to click</span>
+        <span className="ck-ready-title">{t('clicker.readyTitle')}</span>
         <span className="ck-sentence">{sentence(fields)}</span>
       </div>
       <Figure />
       <div className="ck-cells">
-        <Cell value={rateShort(rateOf(fields))} label="Rate" />
-        <Cell value={c ? grouped(c) : '∞'} label="Clicks" off={!c} />
-        <Cell value={t ? clock(t) : '∞'} label="Time limit" off={!t} />
-        <Cell value={takes === null ? '—' : `~${clock(takes)}`} label="Takes" off={takes === null} />
+        <Cell value={rateShort(rateOf(fields))} label={t('clicker.cells.rate')} />
+        <Cell value={c ? grouped(c) : '∞'} label={t('clicker.cells.clicks')} off={!c} />
+        <Cell value={secs ? clock(secs) : '∞'} label={t('clicker.cells.timeLimit')} off={!secs} />
+        <Cell value={takes === null ? '—' : `~${clock(takes)}`} label={t('clicker.cells.takes')} off={takes === null} />
       </div>
       <HotkeyLine running={false} paused={false} />
       <LastRun />
@@ -491,13 +493,13 @@ function Run() {
     <div className="ck-center">
       <div className="ck-hero">
         <span className="ck-hero-n">{counting ? Math.ceil(stats.countdownMs / 1000) : grouped(stats.count)}</span>
-        <span className="ck-hero-label">{counting ? 'starting in' : paused ? 'clicks · paused' : 'clicks'}</span>
+        <span className="ck-hero-label">{counting ? t('clicker.run.startingIn') : paused ? t('clicker.run.clicksPaused') : t('clicker.run.clicks')}</span>
       </div>
       <div className="ck-cells">
-        <Cell value={counting ? '—' : `${formatRate(rate)}/s`} label="Rate" off={counting} />
-        <Cell value={clock(stats.elapsedMs / 1000)} label="Elapsed" />
-        <Cell value={limit} label="Limit" off={limit === '∞'} />
-        <Cell value={left === null ? '—' : `~${clock(left)}`} label="Left" off={left === null} />
+        <Cell value={counting ? '—' : `${formatRate(rate)}/s`} label={t('clicker.cells.rate')} off={counting} />
+        <Cell value={clock(stats.elapsedMs / 1000)} label={t('clicker.cells.elapsed')} />
+        <Cell value={limit} label={t('clicker.cells.limit')} off={limit === '∞'} />
+        <Cell value={left === null ? '—' : `~${clock(left)}`} label={t('clicker.cells.left')} off={left === null} />
       </div>
       {p && <span className="ck-bar ck-bar-wide"><span style={{ width: `${p.pct * 100}%` }} /></span>}
       <span className="ck-bits">{bits(fields)}</span>
@@ -505,8 +507,8 @@ function Run() {
         <div className="ck-alert" role="alert">
           <TriangleAlert aria-hidden="true" />
           <div className="ck-alert-body">
-            <span className="ck-alert-text">The window under the cursor runs as administrator, so Windows drops these clicks.</span>
-            <span><button type="button" className="insp-button ck-small" onClick={clicker.restartAsAdmin}>Restart as administrator</button></span>
+            <span className="ck-alert-text">{t('clicker.run.elevated')}</span>
+            <span><button type="button" className="insp-button ck-small" onClick={clicker.restartAsAdmin}>{t('clicker.run.restartAdmin')}</button></span>
           </div>
         </div>
       )}
@@ -524,6 +526,14 @@ function Cell({ value, label, off }: { value: string; label: string; off?: boole
   );
 }
 
+// Where the key goes in a clause of the catalog: a character no text has (the tips cut theirs the same way).
+const KEY_MARK = '\uE000';
+/** A clause with its key cap where the language puts it ("PgDn starts and stops"); the line's gap spaces them. */
+function withKey(clause: string, key: string): ReactNode {
+  const [before, after = ''] = clause.split(KEY_MARK);
+  return <>{before.trim() || null}<kbd className="ck-key">{keycaps(key)}</kbd>{after.trim() || null}</>;
+}
+
 /**
  * "PgDn starts and stops · PgUp pauses · both only while this page is open" (paineis-149, nativo-110
  * and 111). With one key only, the button above stands in for the other.
@@ -531,13 +541,17 @@ function Cell({ value, label, off }: { value: string; label: string; off?: boole
 function HotkeyLine({ running, paused }: { running: boolean; paused: boolean }) {
   const startKey = useApp(a => a.settings.cursorClickStartHotkey);
   const pauseKey = useApp(a => a.settings.cursorClickPauseHotkey);
-  if (!startKey && !pauseKey) return <p className="ck-keys">No Clicker hotkeys: Start and Pause above do it.</p>;
+  if (!startKey && !pauseKey) return <p className="ck-keys">{t('clicker.keys.none')}</p>;
   return (
     <p className="ck-keys">
-      {startKey ? <><kbd className="ck-key">{keycaps(startKey)}</kbd>{running ? 'stops' : 'starts and stops'}</> : running ? 'Stop above stops' : 'Start above starts'}
+      {startKey
+        ? withKey(running ? t('clicker.keys.stops', { key: KEY_MARK }) : t('clicker.keys.startsStops', { key: KEY_MARK }), startKey)
+        : running ? t('clicker.keys.stopAbove') : t('clicker.keys.startAbove')}
       <span className="ck-dot" aria-hidden="true">·</span>
-      {pauseKey ? <><kbd className="ck-key">{keycaps(pauseKey)}</kbd>{paused ? 'resumes' : 'pauses'}</> : paused ? 'Resume above resumes' : 'Pause above pauses'}
-      {!running && <><span className="ck-dot" aria-hidden="true">·</span>{startKey && pauseKey ? 'both only while this page is open' : 'only while this page is open'}</>}
+      {pauseKey
+        ? withKey(paused ? t('clicker.keys.resumes', { key: KEY_MARK }) : t('clicker.keys.pauses', { key: KEY_MARK }), pauseKey)
+        : paused ? t('clicker.keys.resumeAbove') : t('clicker.keys.pauseAbove')}
+      {!running && <><span className="ck-dot" aria-hidden="true">·</span>{startKey && pauseKey ? t('clicker.keys.bothWhileOpen') : t('clicker.keys.whileOpen')}</>}
     </p>
   );
 }
@@ -553,13 +567,16 @@ function LastRun() {
   if (stats.count === 0 && stats.blocked === 0) return null;
   const reason = stats.endReason;
   const Icon = reason === 'stopped' ? Square : reason === 'error' ? TriangleAlert : Check;
+  const ran = { count: stats.count, n: grouped(stats.count), clock: clock(stats.elapsedMs / 1000), end: endWords(reason) };
   return (
     <p className="ck-last">
       <Icon aria-hidden="true" />
       <span>
-        {`Last run${endedAt ? ` ${hhmm(endedAt)}` : ''} · ${grouped(stats.count)} click${stats.count === 1 ? '' : 's'} in ${clock(stats.elapsedMs / 1000)} · ${endWords(reason)}`}
+        {endedAt
+          ? t('clicker.lastRun.at', { count: ran.count, n: ran.n, time: fmtHora(new Date(endedAt)), clock: ran.clock, end: ran.end })
+          : t('clicker.lastRun.noTime', { count: ran.count, n: ran.n, clock: ran.clock, end: ran.end })}
         {stats.blocked > 0 && (
-          <span className="ck-last-warn">{` · ${grouped(stats.blocked)} ${stats.blocked === 1 ? 'click was' : 'clicks were'} rejected by Windows — input was blocked`}</span>
+          <span className="ck-last-warn">{` · ${t('clicker.lastRun.blocked', { count: stats.blocked, n: grouped(stats.blocked) })}`}</span>
         )}
       </span>
     </p>
@@ -587,7 +604,7 @@ function Figure() {
   return (
     <figure className="ck-figure">
       <div className="ck-display" role="img" style={size}
-        aria-label={`Display ${n} with the click ${area ? 'area drawn' : 'point marked'} on it`}>
+        aria-label={area ? t('clicker.display.areaLabel', { n }) : t('clicker.display.pointLabel', { n })}>
         <span className="ck-taskbar" />
         {area && (
           <span className="ck-area" data-label-in={(area.y - d.y) / d.h < 0.12 || undefined}
@@ -599,7 +616,8 @@ function Figure() {
         {point && <span className="ck-point" style={{ left: pct(point.x - d.x, d.w), top: pct(point.y - d.y, d.h) }} />}
       </div>
       <figcaption className="ck-figure-caption">
-        {`Display ${n} · ${d.w} × ${d.h} · ${area ? `area at ${area.x}, ${area.y}` : point ? `point at ${point.x}, ${point.y}` : ''}`}
+        {area ? t('clicker.display.area', { n, w: d.w, h: d.h, x: area.x, y: area.y })
+          : point ? t('clicker.display.point', { n, w: d.w, h: d.h, x: point.x, y: point.y }) : null}
       </figcaption>
     </figure>
   );
@@ -610,15 +628,15 @@ function Figure() {
 function Settings({ running }: { running: boolean }) {
   const selected = useClickerUi(s => s.selected);
   return (
-    <aside className="ck-settings" aria-label="Clicker settings">
+    <aside className="ck-settings" aria-label={t('clicker.settings.title')}>
       <div className="ck-settings-head">
         <span className="ck-settings-icon" aria-hidden="true"><MousePointerClick /></span>
         <div className="ck-settings-titles">
-          <span className="ck-settings-title">Clicker settings</span>
-          <span className="ck-settings-sub">{selected ? `Saved in ${selected}` : 'Not in a preset · New keeps them'}</span>
+          <span className="ck-settings-title">{t('clicker.settings.title')}</span>
+          <span className="ck-settings-sub">{selected ? t('clicker.settings.savedIn', { name: selected }) : t('clicker.settings.notInPreset')}</span>
         </div>
       </div>
-      {running && <p className="ck-readonly"><Lock aria-hidden="true" />Read-only while it clicks. Stop to change.</p>}
+      {running && <p className="ck-readonly"><Lock aria-hidden="true" />{t('clicker.settings.readOnly')}</p>}
       <fieldset className="ck-settings-body" disabled={running}>
         <ClickSection />
         <WhereSection />
@@ -626,7 +644,7 @@ function Settings({ running }: { running: boolean }) {
         <TuningSection />
         <HotkeysSection />
       </fieldset>
-      <div className="ck-settings-foot">Applies as you type · Ctrl+Z undoes</div>
+      <div className="ck-settings-foot">{t('clicker.settings.foot')}</div>
     </aside>
   );
 }
@@ -637,10 +655,11 @@ function useCommit() {
   return (patch: Partial<Fields>, control?: string) => commitFields(patch, sendOf(clicker), control);
 }
 
-function Sec({ title, children }: { title: string; children: ReactNode }) {
+/** A section of the settings. `glossary`: its title is a name of the glossary, the same in every language. */
+function Sec({ title, glossary, children }: { title: string; glossary?: boolean; children: ReactNode }) {
   return (
     <section className="ck-sec" aria-label={title}>
-      <h2 className="ck-sec-title">{title}</h2>
+      <h2 className="ck-sec-title" data-glossary={glossary ? '' : undefined}>{title}</h2>
       {children}
     </section>
   );
@@ -670,34 +689,35 @@ function ClickSection() {
     commit({ cursorClickDelay: String(r.ms) });
   };
   const note = rateNote(fields, clampedAt);
+  const buttons = tn('clicker.buttons');
   return (
-    <Sec title="Click">
-      <span className="ck-label">Button</span>
+    <Sec title={t('clicker.click.title')}>
+      <span className="ck-label">{t('clicker.click.button')}</span>
       <Segmented
-        label="Button"
+        label={t('clicker.click.button')}
         value={fields.cursorClickButton}
-        options={[{ value: 'Left', label: 'Left' }, { value: 'Right', label: 'Right' }, { value: 'Middle', label: 'Middle' }]}
+        options={BUTTONS.map(b => ({ value: b, label: buttons[b] }))}
         onChange={(b) => commit({ cursorClickButton: b })}
       />
-      <span className="ck-label">Rate</span>
+      <span className="ck-label">{t('clicker.click.rate')}</span>
       <div className="ck-rate">
         <span className="ck-rate-field">
-          <DraftField stepId="clicker" field={`rate-${unit}`} label="Rate" kind="mono" stored={rateShown(fields, unit)}
-            parse={(t) => (delayFor(t, unit, fieldsNow()) ? t : null)} onApply={commitRate} />
-          <button type="button" className="insp-icon-button ck-rate-menu" aria-label="Choose a rate" aria-haspopup="menu" aria-expanded={!!menu}
+          <DraftField stepId="clicker" field={`rate-${unit}`} label={t('clicker.click.rate')} kind="mono" stored={rateShown(fields, unit)}
+            parse={(text) => (delayFor(text, unit, fieldsNow()) ? text : null)} onApply={commitRate} />
+          <button type="button" className="insp-icon-button ck-rate-menu" aria-label={t('clicker.click.chooseRate')} aria-haspopup="menu" aria-expanded={!!menu}
             onClick={(e) => setMenu(menu ? null : { anchor: anchorBelow(e.currentTarget, 'end'), button: e.currentTarget })}>
             <ChevronDown aria-hidden="true" />
           </button>
         </span>
         <Segmented<'cps' | 'ms'>
-          label="Rate unit"
+          label={t('clicker.click.unit')}
           value={unit}
           options={[{ value: 'cps', label: '/s' }, { value: 'ms', label: 'ms' }]}
           onChange={(u) => useClickerUi.setState({ unit: u })}
         />
       </div>
       {menu && (
-        <Menu anchor={menu.anchor} label="Rates" toggle={menu.button} onClose={() => setMenu(null)}
+        <Menu anchor={menu.anchor} label={t('clicker.click.rates')} toggle={menu.button} onClose={() => setMenu(null)}
           entries={quickRates(fields, unit).map(o => ({ label: o.label, checked: o.value === rateShown(fields, unit), onSelect: () => commitRate(o.value) }))} />
       )}
       <p className="ck-hint">{rateLine(fields)}</p>
@@ -709,7 +729,7 @@ function ClickSection() {
 // What the capture bar says the Clicker's pickers are for: the selected preset, when there is one.
 const captureFor = () => {
   const preset = useClickerUi.getState().selected;
-  return preset ? `for Clicker, ${preset}` : 'for Clicker';
+  return preset ? t('clicker.where.captureForPreset', { name: preset }) : t('clicker.where.captureFor');
 };
 
 function WhereSection() {
@@ -733,21 +753,22 @@ function WhereSection() {
   const toggleSpread = (on: boolean) => commit(on
     ? { ...seedOn('cursorClickPositionJitter', fields.cursorClickPositionJitter), cursorClickUsePositionJitter: true, cursorClickUseArea: false, cursorClickUseFixed: false }
     : { ...seedOff('cursorClickPositionJitter', fields.cursorClickPositionJitter), cursorClickUsePositionJitter: false });
+  const places = tn('clicker.where.options');
   return (
-    <Sec title="Where">
+    <Sec title={t('clicker.where.title')}>
       <Segmented<Where>
-        label="Where"
+        label={t('clicker.where.title')}
         value={where}
-        options={[{ value: 'cursor', label: 'Cursor' }, { value: 'area', label: 'Area' }, { value: 'fixed', label: 'Fixed point' }]}
+        options={[{ value: 'cursor', label: places.cursor }, { value: 'area', label: places.area }, { value: 'fixed', label: places.fixed }]}
         onChange={choose}
       />
       {where === 'cursor' && (
         <>
-          <Row label="Spread" off={!spreadOn} toggle={<Switch label="Spread around the cursor" checked={spreadOn} onChange={toggleSpread} />}>
-            <DraftField stepId="clicker" field="spread" label="Spread" kind="int" min={0} max={MAX_SPREAD_PX} prefix="±" unit="px" stored={fields.cursorClickPositionJitter}
+          <Row label={t('clicker.where.spread')} off={!spreadOn} toggle={<Switch label={t('clicker.where.spreadSwitch')} checked={spreadOn} onChange={toggleSpread} />}>
+            <DraftField stepId="clicker" field="spread" label={t('clicker.where.spread')} kind="int" min={0} max={MAX_SPREAD_PX} prefix="±" unit="px" stored={fields.cursorClickPositionJitter}
               onApply={(v) => { forgetSeed('cursorClickPositionJitter'); commit({ cursorClickPositionJitter: v, ...(spreadOn ? {} : { cursorClickUsePositionJitter: true }) }); }} />
           </Row>
-          <p className="ck-hint">{spreadOn && spreadPx(fields) > 0 ? `A random point up to ${spreadPx(fields)} px from the cursor on every click.` : 'Every click lands where the cursor is.'}</p>
+          <p className="ck-hint">{spreadOn && spreadPx(fields) > 0 ? t('clicker.where.spreadHint', { px: spreadPx(fields) }) : t('clicker.where.atCursor')}</p>
         </>
       )}
       {where === 'area' && area && (
@@ -755,25 +776,25 @@ function WhereSection() {
           <div className="ck-card">
             <span className="ck-card-text">
               <span className="ck-card-value">{area.w} × {area.h}</span>
-              <span className="ck-card-sub">at {area.x}, {area.y}</span>
+              <span className="ck-card-sub">{t('clicker.where.at', { x: area.x, y: area.y })}</span>
             </span>
-            <button type="button" className="insp-button ck-small" onClick={() => clicker.pickAreaFor(captureFor())}><Crop aria-hidden="true" />Redraw</button>
-            <button type="button" className="insp-icon-button ck-clear" aria-label="Clear area" onClick={() => commit({ cursorClickUseArea: false, cursorClickArea: null })}><X aria-hidden="true" /></button>
+            <button type="button" className="insp-button ck-small" onClick={() => clicker.pickAreaFor(captureFor())}><Crop aria-hidden="true" />{t('clicker.where.redraw')}</button>
+            <button type="button" className="insp-icon-button ck-clear" aria-label={t('clicker.where.clearArea')} onClick={() => commit({ cursorClickUseArea: false, cursorClickArea: null })}><X aria-hidden="true" /></button>
           </div>
-          <p className="ck-hint">A new random point inside the box on every click.</p>
+          <p className="ck-hint">{t('clicker.where.areaHint')}</p>
         </>
       )}
       {where === 'fixed' && (
         <>
           <div className="ck-card">
             <span className="ck-card-text">
-              <span className="ck-card-value">{point ? `${point.x}, ${point.y}` : 'At start'}</span>
-              <span className="ck-card-sub">{point ? 'Every click on this point' : 'Where the cursor is when it starts'}</span>
+              <span className="ck-card-value">{point ? `${point.x}, ${point.y}` : t('clicker.where.atStart')}</span>
+              <span className="ck-card-sub">{point ? t('clicker.where.onPoint') : t('clicker.where.whereStarts')}</span>
             </span>
-            <button type="button" className="insp-button ck-small" onClick={() => clicker.pickPointFor(captureFor())}><Crosshair aria-hidden="true" />{point ? 'Pick again' : 'Pick a point'}</button>
-            {point && <button type="button" className="insp-icon-button ck-clear" aria-label="Clear fixed point" onClick={() => commit({ cursorClickFixedPoint: null })}><X aria-hidden="true" /></button>}
+            <button type="button" className="insp-button ck-small" onClick={() => clicker.pickPointFor(captureFor())}><Crosshair aria-hidden="true" />{point ? t('clicker.where.pickAgain') : t('clicker.where.pickPoint')}</button>
+            {point && <button type="button" className="insp-icon-button ck-clear" aria-label={t('clicker.where.clearPoint')} onClick={() => commit({ cursorClickFixedPoint: null })}><X aria-hidden="true" /></button>}
           </div>
-          <p className="ck-hint">One point every click. Without one, it locks where the cursor is at start.</p>
+          <p className="ck-hint">{t('clicker.where.pointHint')}</p>
         </>
       )}
     </Sec>
@@ -787,17 +808,17 @@ function StopSection() {
   const timeOn = fields.cursorClickUseMaxDuration;
   const seconds = String(Math.max(1, Math.round((parseInt(fields.cursorClickMaxDuration, 10) || 60000) / 1000)));
   return (
-    <Sec title="Stop after">
-      <Row label="Clicks" off={!loopsOn} toggle={<Switch label="Limit clicks" checked={loopsOn}
+    <Sec title={t('clicker.stop.title')}>
+      <Row label={t('clicker.stop.clicks')} off={!loopsOn} toggle={<Switch label={t('clicker.stop.clicksSwitch')} checked={loopsOn}
         onChange={(on) => commit({ ...(on ? seedOn('cursorClickLoops', fields.cursorClickLoops) : seedOff('cursorClickLoops', fields.cursorClickLoops)), cursorClickUseLoops: on })} />}>
-        <DraftField stepId="clicker" field="loops" label="Click limit" kind="int" min={1} max={MAX_CLICKS} stored={fields.cursorClickLoops}
+        <DraftField stepId="clicker" field="loops" label={t('clicker.stop.clicksField')} kind="int" min={1} max={MAX_CLICKS} stored={fields.cursorClickLoops}
           onApply={(v) => { forgetSeed('cursorClickLoops'); commit({ cursorClickLoops: v, ...(loopsOn ? {} : { cursorClickUseLoops: true }) }); }} />
       </Row>
-      <Row label="Time" off={!timeOn} toggle={<Switch label="Limit time" checked={timeOn} onChange={(on) => commit({ cursorClickUseMaxDuration: on })} />}>
-        <DraftField stepId="clicker" field="time" label="Time limit" kind="int" min={1} max={MAX_TIME_S} unit="s" stored={seconds}
+      <Row label={t('clicker.stop.time')} off={!timeOn} toggle={<Switch label={t('clicker.stop.timeSwitch')} checked={timeOn} onChange={(on) => commit({ cursorClickUseMaxDuration: on })} />}>
+        <DraftField stepId="clicker" field="time" label={t('clicker.stop.timeField')} kind="int" min={1} max={MAX_TIME_S} unit="s" stored={seconds}
           onApply={(v) => commit({ cursorClickMaxDuration: String((parseInt(v, 10) || 60) * 1000), ...(timeOn ? {} : { cursorClickUseMaxDuration: true }) })} />
       </Row>
-      <p className="ck-hint">Whichever comes first. Paused time does not count.</p>
+      <p className="ck-hint">{t('clicker.stop.hint')}</p>
     </Sec>
   );
 }
@@ -811,38 +832,38 @@ function TuningSection() {
   // Game move walks the cursor to the point; at the cursor itself there is nowhere to walk.
   const noWalk = game && whereOf(fields) === 'cursor' && spreadPx(fields) === 0;
   return (
-    <Sec title="Tuning">
-      <Row label="Jitter" off={!jitterOn} toggle={<Switch label="Rate jitter" checked={jitterOn}
+    <Sec title={t('clicker.tuning.title')}>
+      <Row label={t('clicker.tuning.jitter')} off={!jitterOn} toggle={<Switch label={t('clicker.tuning.jitterSwitch')} checked={jitterOn}
         onChange={(on) => commit({ ...(on ? seedOn('cursorClickDelayJitter', fields.cursorClickDelayJitter) : seedOff('cursorClickDelayJitter', fields.cursorClickDelayJitter)), cursorClickUseJitter: on })} />}>
-        <DraftField stepId="clicker" field="jitter" label="Jitter" kind="int" min={0} max={100} unit="%" stored={fields.cursorClickDelayJitter}
+        <DraftField stepId="clicker" field="jitter" label={t('clicker.tuning.jitter')} kind="int" min={0} max={100} unit="%" stored={fields.cursorClickDelayJitter}
           onApply={(v) => { forgetSeed('cursorClickDelayJitter'); commit({ cursorClickDelayJitter: v, ...(jitterOn ? {} : { cursorClickUseJitter: true }) }); }} />
       </Row>
-      <Row label="Hold">
-        <DraftField stepId="clicker" field="hold" label="Hold" kind="int" min={0} max={2000} unit="ms" stored={fields.cursorClickHold}
+      <Row label={t('clicker.tuning.hold')}>
+        <DraftField stepId="clicker" field="hold" label={t('clicker.tuning.hold')} kind="int" min={0} max={2000} unit="ms" stored={fields.cursorClickHold}
           onApply={(v) => commit({ cursorClickHold: v })} />
       </Row>
-      <Row label="Gap" off={!gapOn} toggle={<Switch label="Gap" checked={gapOn} onChange={(on) => commit({ cursorClickUseInterval: on })} />}>
-        <DraftField stepId="clicker" field="gap" label="Gap" kind="int" min={0} max={60000} unit="ms" stored={fields.cursorClickInterval}
+      <Row label={t('clicker.tuning.gap')} off={!gapOn} toggle={<Switch label={t('clicker.tuning.gap')} checked={gapOn} onChange={(on) => commit({ cursorClickUseInterval: on })} />}>
+        <DraftField stepId="clicker" field="gap" label={t('clicker.tuning.gap')} kind="int" min={0} max={60000} unit="ms" stored={fields.cursorClickInterval}
           onApply={(v) => commit({ cursorClickInterval: v, ...(gapOn ? {} : { cursorClickUseInterval: true }) })} />
       </Row>
-      <Row label="Game move" toggle={<Switch label="Game move" checked={game} onChange={(on) => commit({ cursorClickGameMove: on })} />} />
-      <p className="ck-hint">Game move walks the cursor instead of jumping, for games like Roblox. Costs a few ms per click.</p>
-      {noWalk && <p className="ck-hint" data-tone="warn">No effect at the cursor: there is nowhere to walk.</p>}
+      <Row label={t('clicker.tuning.gameMove')} toggle={<Switch label={t('clicker.tuning.gameMove')} checked={game} onChange={(on) => commit({ cursorClickGameMove: on })} />} />
+      <p className="ck-hint">{t('clicker.tuning.gameMoveHint')}</p>
+      {noWalk && <p className="ck-hint" data-tone="warn">{t('clicker.tuning.noWalk')}</p>}
     </Sec>
   );
 }
 
 function HotkeysSection() {
   return (
-    <Sec title="Hotkeys">
+    <Sec title={t('clicker.hotkeys.title')} glossary>
       <div className="ck-hotkey">
-        <span className="ck-row-label">Start and stop</span>
-        <HotkeyField settingKey="cursorClickStartHotkey" label="Start and stop" />
+        <span className="ck-row-label">{t('clicker.hotkeys.startStop')}</span>
+        <HotkeyField settingKey="cursorClickStartHotkey" label={t('clicker.hotkeys.startStop')} />
       </div>
       <ConflictNote settingKey="cursorClickStartHotkey" />
       <div className="ck-hotkey">
-        <span className="ck-row-label">Pause</span>
-        <HotkeyField settingKey="cursorClickPauseHotkey" label="Pause" />
+        <span className="ck-row-label">{t('common.actions.pause')}</span>
+        <HotkeyField settingKey="cursorClickPauseHotkey" label={t('common.actions.pause')} />
       </div>
       <ConflictNote settingKey="cursorClickPauseHotkey" />
     </Sec>

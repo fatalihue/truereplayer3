@@ -1,0 +1,111 @@
+import type en from '../en-US/dialogs.ts';
+import type { Catalogo } from '../tipos.ts';
+
+export default {
+  file: {
+    macros: { zero: 'Nenhuma macro', one: '{{count}} macro', other: '{{count}} macros' },
+  },
+
+  security: {
+    title: 'Atenção',
+    intro: 'As macros rodam ações automáticas de mouse e teclado. Só importe macros de fontes em que você confia.',
+    canTitle: 'As macros importadas podem:',
+    canClick: 'Clicar em qualquer lugar da tela',
+    canType: 'Digitar qualquer texto (até senhas, se um campo de senha estiver em foco)',
+    canTrigger: 'Disparar sozinhas nas janelas que você permitir',
+    dontShow: 'Não mostrar novamente',
+    escHint: 'Esc cancela',
+    continue: 'Continuar para revisão',
+  },
+
+  importPreview: {
+    title: 'Importar macros',
+    conflicts: { zero: 'Nenhum conflito de nome', one: '{{count}} conflito de nome', other: '{{count}} conflitos de nome' },
+    conflictsTip: 'Definido linha a linha abaixo',
+    incompatible: { zero: 'Nenhuma incompatível', one: '{{count}} incompatível', other: '{{count}} incompatíveis' },
+    incompatibleTip: { zero: 'Não podem ser selecionadas', one: 'Não pode ser selecionada', other: 'Não podem ser selecionadas' },
+    organization: '+ organização das pastas',
+    exported: 'Exportação: {{date}}',
+    format: 'Formato v{{version}}',
+    yourApp: 'Seu app v{{version}}',
+    selectAll: 'Selecionar tudo',
+    applyAll: {
+      zero: 'Nenhum conflito de nome — aplicar a todos:',
+      one: '{{count}} conflito de nome — aplicar a todos:',
+      other: '{{count}} conflitos de nome — aplicar a todos:',
+    },
+    resolveAll: 'Resolver todos os conflitos de nome',
+    resolveOne: 'Resolver o conflito de nome de {{name}}',
+    resolution: {
+      overwrite: 'Substituir',
+      skip: 'Ignorar',
+      renameTip: "Importa como 'Nome (2)'",
+      overwriteTip: 'Substitui a sua macro local',
+      skipTip: 'Não é importada',
+    },
+    willImport: { zero: 'Nenhuma será importada', one: '{{count}} será importada', other: '{{count}} serão importadas' },
+    skipped: { zero: 'nenhuma ignorada', one: '{{count}} ignorada', other: '{{count}} ignoradas' },
+    willImportOf: {
+      zero: 'Nenhuma de {{total}} será importada',
+      one: '{{count}} de {{total}} será importada',
+      other: '{{count}} de {{total}} serão importadas',
+    },
+    importSelected: 'Importar selecionadas ({{n}})',
+
+    requires: 'Requer o TrueReplayer {{version}} ou posterior',
+    updated: 'Atualizada {{when}}',
+    created: 'Criação: {{date}}',
+    hotstringTip: 'Dispara quando este texto é digitado.',
+    repeats: 'repete {{n}}×',
+    targets: 'Janela-alvo: {{target}}',
+    trigger: 'Gatilho de automação',
+    triggerTip: 'Gatilho de automação — chega desarmado',
+    runs: 'Roda:',
+    depBundled: 'Incluída — importada junto',
+    depLocal: 'Fora do arquivo — usa a sua macro local',
+    depMissing: 'Não existe aqui nem localmente — o passo não faz nada',
+    steps: { zero: 'Nenhum passo', one: '{{n}} passo', other: '{{n}} passos' },
+    images: { zero: 'Nenhuma imagem', one: '{{n}} imagem', other: '{{n}} imagens' },
+    dataRows: { zero: 'Nenhuma linha de dados', one: '{{n}} linha de dados', other: '{{n}} linhas de dados' },
+    cantImport: 'Requer o TrueReplayer {{version}} ou posterior — não pode ser importada.',
+    incoming: 'Do arquivo v{{version}}',
+    incomingWhen: 'Do arquivo v{{version}} · {{when}}',
+    yours: 'A sua v{{version}}',
+    yoursWhen: 'A sua v{{version}} · {{when}}',
+    nameExists: 'O nome já existe:',
+  },
+
+  importResult: {
+    title: 'Importação concluída',
+    imported: { zero: 'Importadas ({{count}})', one: 'Importada ({{count}})', other: 'Importadas ({{count}})' },
+    renamed: '— renomeada (“{{from}}” já existia)',
+    skipped: { zero: 'Ignoradas ({{count}})', one: 'Ignorada ({{count}})', other: 'Ignoradas ({{count}})' },
+    skippedNote: 'Conflitos de nome em que você escolheu {{>dialogs.importPreview.resolution.skip}}, ou entradas com nomes inválidos.',
+    images: {
+      zero: 'Imagens de referência não restauradas ({{count}})',
+      one: 'Imagem de referência não restaurada ({{count}})',
+      other: 'Imagens de referência não restauradas ({{count}})',
+    },
+    imagesNote: 'O motivo de cada arquivo está nos logs. Ao reproduzir, os passos Wait Image que usam essas imagens param a macro.',
+    folders: 'Pastas',
+    organization: 'Organização das pastas importada.',
+    adopted: {
+      zero: 'Janela-alvo definida nas pastas existentes: {{names}}.',
+      one: 'Janela-alvo definida na pasta existente: {{names}}.',
+      other: 'Janela-alvo definida nas pastas existentes: {{names}}.',
+    },
+    kept: {
+      zero: 'A janela-alvo que você já tinha foi mantida nas pastas: {{names}} — as macros importadas ali vão usar a {{em}}sua{{end}} janela-alvo, não a de quem enviou.',
+      one: 'A janela-alvo que você já tinha foi mantida na pasta: {{names}} — as macros importadas ali vão usar a {{em}}sua{{end}} janela-alvo, não a de quem enviou.',
+      other: 'A janela-alvo que você já tinha foi mantida nas pastas: {{names}} — as macros importadas ali vão usar a {{em}}sua{{end}} janela-alvo, não a de quem enviou.',
+    },
+    hotkeys: { zero: 'Conflitos de hotkey ({{count}})', one: 'Conflito de hotkey ({{count}})', other: 'Conflitos de hotkey ({{count}})' },
+  },
+
+  askInput: {
+    title: 'Resposta necessária',
+    menuHint: 'Esc cancela a execução',
+    fieldHint: 'Enter envia · Esc cancela a execução',
+    submit: 'Enviar',
+  },
+} satisfies Catalogo<typeof en>;

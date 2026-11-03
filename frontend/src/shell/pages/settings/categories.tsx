@@ -5,7 +5,6 @@ import { useBridge } from '../../../bridge/BridgeContext';
 import type { HotkeySettingKey, OcrLanguagesPayload, SettingsState } from '../../../bridge/messageTypes';
 import { readLanguagePick, useAppActions, useExtensionHelp, useOcrLanguages, useSettings, type LanguagePick } from '../../../logic/useSettings';
 import { t } from '../../../i18n';
-import { useTt } from '../../../state/LanguageContext';
 import { useToast } from '../../../state/ToastContext';
 import { ocrLanguageNote, ocrLanguageOptions, ocrPickerLanguages } from '../../../utils/ocrLanguages';
 import { DraftField, Switch } from '../../inspector/fields';
@@ -82,29 +81,28 @@ function settingNumber(key: keyof SettingsState & string, label: string, max: nu
 function TrayControl() {
   const on = useSetting('minimizeToTray');
   const settings = useSettings();
-  return <Switch label={`Close keeps ${APP_NAME} in the tray`} checked={on} onChange={settings.setMinimizeToTray} />;
+  return <Switch label={t('settings.rows.tray.label', { app: APP_NAME })} checked={on} onChange={settings.setMinimizeToTray} />;
 }
 function CompactWhileRunningControl() {
   const on = useSetting('compactWhileRunning') ?? false;
   const settings = useSettings();
-  return <Switch label="Compact view while a macro runs" checked={on} onChange={(v) => settings.change('compactWhileRunning', v)} />;
+  return <Switch label={t('settings.rows.compactRun.label')} checked={on} onChange={(v) => settings.change('compactWhileRunning', v)} />;
 }
 function RunOnStartupControl() {
   const on = useSetting('runOnStartup');
   const settings = useSettings();
-  return <Switch label="Run on startup" checked={on} onChange={settings.setRunOnStartup} />;
+  return <Switch label={t('settings.rows.runOnStartup.label')} checked={on} onChange={settings.setRunOnStartup} />;
 }
 function StartMinimizedControl() {
   const on = useSetting('startMinimized');
   const startup = useSetting('runOnStartup');
   const settings = useSettings();
-  const tt = useTt();
   return (
     <Switch
-      label="Startup minimized"
+      label={t('settings.rows.startMinimized.label')}
       checked={on}
       disabled={!startup}
-      tip={startup ? undefined : tt('Turn on Run on startup first', 'Ligue o Run on startup antes')}
+      tip={startup ? undefined : t('settings.rows.startMinimized.needsStartup')}
       onChange={settings.setStartMinimized}
     />
   );
@@ -112,12 +110,12 @@ function StartMinimizedControl() {
 function RunEndFlashControl() {
   const on = useSetting('runEndFlash');
   const settings = useSettings();
-  return <Switch label="Flash on replay end" checked={on} onChange={settings.setRunEndFlash} />;
+  return <Switch label={t('settings.rows.runEndFlash.label')} checked={on} onChange={settings.setRunEndFlash} />;
 }
 function RunEndSoundControl() {
   const on = useSetting('runEndSound');
   const settings = useSettings();
-  return <Switch label="Sound on replay end" checked={on} onChange={settings.setRunEndSound} />;
+  return <Switch label={t('settings.rows.runEndSound.label')} checked={on} onChange={settings.setRunEndSound} />;
 }
 /**
  * The interface's language (settings-132, D30): Windows, English or Português, each language in its own
@@ -167,16 +165,15 @@ function LanguageControl() {
 /** Reset all settings… (D23): asks first, in the page (SettingsPage's dialog). */
 function ResetControl() {
   const busy = useApp(a => a.status !== 'ready');
-  const tt = useTt();
   return (
     <button
       type="button"
       className="insp-button"
       disabled={busy}
-      data-tip={busy ? tt('Stop the run or the recording first', 'Pare a execução ou a gravação antes') : undefined}
+      data-tip={busy ? t('settings.busy') : undefined}
       onClick={() => askReset()}
     >
-      Reset…
+      {t('settings.reset.button')}
     </button>
   );
 }
@@ -187,16 +184,15 @@ export const onResetAsked = (ask: () => void) => { askReset = ask; };
 /** Import from TrueReplayer 2… (Tr2Import): the dialog that also makes the first-run offer. */
 function ImportTr2Control() {
   const busy = useApp(a => a.status !== 'ready');
-  const tt = useTt();
   return (
     <button
       type="button"
       className="insp-button"
       disabled={busy}
-      data-tip={busy ? tt('Stop the run or the recording first', 'Pare a execução ou a gravação antes') : undefined}
+      data-tip={busy ? t('settings.busy') : undefined}
       onClick={() => openImport()}
     >
-      Import…
+      {t('common.actions.importEllipsis')}
     </button>
   );
 }
@@ -209,14 +205,14 @@ function JitterControl() {
   return (
     <span className="set-pair">
       <span className="set-num">
-        <DraftField stepId="settings" field="delayVariation" label="Jitter" kind="int" min={0} max={100} unit="%" stored={String(value ?? '')} disabled={!on} onApply={(v) => settings.change('delayVariation', v)} />
+        <DraftField stepId="settings" field="delayVariation" label={t('settings.rows.jitter.label')} kind="int" min={0} max={100} unit="%" stored={String(value ?? '')} disabled={!on} onApply={(v) => settings.change('delayVariation', v)} />
       </span>
-      <Switch label="Jitter on" checked={on} onChange={(v) => settings.change('useDelayVariation', v)} />
+      <Switch label={t('settings.rows.jitter.on')} checked={on} onChange={(v) => settings.change('useDelayVariation', v)} />
     </span>
   );
 }
 
-const PathStepNumber = settingNumber('moveStepPx', 'Path step', 2000, 'px');
+const PathStepNumber = settingNumber('moveStepPx', t('settings.rows.pathStep.label'), 2000, 'px');
 /** Path step, with today's note at 0: Game Mode stays on, and the cursor jumps. */
 function PathStepControl() {
   const value = useSetting('moveStepPx');
@@ -224,7 +220,7 @@ function PathStepControl() {
   return (
     <span className="set-stack">
       <PathStepNumber />
-      {zero && <span className="insp-hint" role="status">No walk — single jump</span>}
+      {zero && <span className="insp-hint" role="status">{t('settings.rows.pathStep.noWalk')}</span>}
     </span>
   );
 }
@@ -240,32 +236,37 @@ function OcrLanguageControl() {
   const settings = useSettings();
   const langs = useOcrLanguages(true);
   const [menu, setMenu] = useState<HTMLButtonElement | null>(null);
+  // The languages are named by the engine, each in its own name ("Português", "English"), the same in
+  // every language of the interface; only Auto comes from the catalog.
   const options = [
     ...ocrLanguageOptions(langs ? ocrPickerLanguages(langs.offered, langs.available) : []),
-    { value: '', label: langs?.auto ? `Auto (${langs.auto})` : 'Auto' },
+    { value: '', label: langs?.auto ? t('settings.rows.ocrLanguage.autoWith', { name: langs.auto }) : t('settings.rows.ocrLanguage.auto') },
   ];
-  const shown = options.find(o => o.value.toLowerCase() === pick.toLowerCase())?.label ?? (pick || 'Auto');
+  const picked = options.find(o => o.value.toLowerCase() === pick.toLowerCase());
+  const shown = picked?.label ?? (pick || t('settings.rows.ocrLanguage.auto'));
+  // A language's name (or the tag of one this PC no longer lists), not Auto.
+  const named = picked ? picked.value !== '' : pick !== '';
   useInstallToasts(langs);
   return (
     <span className="set-stack">
       <button
         type="button"
         className="insp-button set-choice"
-        aria-label="Language"
+        aria-label={t('settings.rows.ocrLanguage.label')}
         aria-haspopup="menu"
         aria-expanded={!!menu}
         onClick={(e) => setMenu(menu ? null : e.currentTarget)}
       >
-        <span className="set-choice-label">{shown}</span>
+        <span className="set-choice-label" data-glossary={named ? '' : undefined}>{shown}</span>
         <ChevronDown aria-hidden="true" />
       </button>
       {menu && (
         <Menu
           anchor={anchorBelow(menu, 'end')}
-          label="Language"
+          label={t('settings.rows.ocrLanguage.label')}
           toggle={menu}
           focusFirst
-          entries={options.map(o => ({ label: o.label, checked: o.value.toLowerCase() === pick.toLowerCase(), onSelect: () => settings.change('ocrLanguage', o.value) }))}
+          entries={options.map(o => ({ label: o.label, named: o.value !== '', checked: o.value.toLowerCase() === pick.toLowerCase(), onSelect: () => settings.change('ocrLanguage', o.value) }))}
           onClose={() => setMenu(null)}
         />
       )}
@@ -275,7 +276,6 @@ function OcrLanguageControl() {
 }
 
 function OcrNote({ pick, langs, onInstall }: { pick: string; langs: OcrLanguagesPayload; onInstall: (tag: string) => void }) {
-  const tt = useTt();
   const note = ocrLanguageNote(pick, langs);
   if (!note) return null;
   const install = note.kind === 'missing' ? note.install : null;
@@ -288,12 +288,11 @@ function OcrNote({ pick, langs, onInstall }: { pick: string; langs: OcrLanguages
           type="button"
           className="set-link"
           disabled={!!langs.installing}
-          aria-label={`Install ${name} text recognition`}
-          data-tip={tt('Adds the Windows OCR pack for this language. Windows asks for permission; the download comes from Windows Update.',
-                       'Adiciona o pacote de OCR do Windows para este idioma. O Windows pede permissão; o download vem do Windows Update.')}
+          aria-label={t('settings.rows.ocrLanguage.installLabel', { name })}
+          data-tip={t('settings.rows.ocrLanguage.installTip')}
           onClick={() => onInstall(install.tag)}
         >
-          Install
+          {t('settings.rows.ocrLanguage.install')}
         </button>
       )}
     </span>
@@ -304,26 +303,25 @@ function OcrNote({ pick, langs, onInstall }: { pick: string; langs: OcrLanguages
 function useInstallToasts(langs: OcrLanguagesPayload | null) {
   const { subscribe } = useBridge();
   const { showToast } = useToast();
-  const tt = useTt();
-  const latest = useRef({ langs, tt, showToast });
-  useEffect(() => { latest.current = { langs, tt, showToast }; });
+  const latest = useRef({ langs, showToast });
+  useEffect(() => { latest.current = { langs, showToast }; });
   useEffect(() => subscribe((msg) => {
     if (msg.type !== 'ocr:installResult') return;
-    const { langs: l, tt, showToast: toast } = latest.current;
+    const { langs: l, showToast: toast } = latest.current;
     const r = msg.payload;
     const opt = l && ocrLanguageOptions(ocrPickerLanguages(l.offered, l.available)).find(o => o.value.toLowerCase() === r.tag.toLowerCase());
     const name = opt?.label ?? r.tag;
     if (r.ok) {
       toast(r.restartApp
-        ? tt(`${name} text recognition installed — restart ${APP_NAME} to use it.`, `Reconhecimento de texto em ${name} instalado — reinicie o ${APP_NAME} para usar.`)
+        ? t('settings.ocrInstall.restartApp', { name, app: APP_NAME })
         : r.restartWindows
-          ? tt(`${name} text recognition installed — restart Windows to finish.`, `Reconhecimento de texto em ${name} instalado — reinicie o Windows para concluir.`)
-          : tt(`${name} text recognition installed.`, `Reconhecimento de texto em ${name} instalado.`),
+          ? t('settings.ocrInstall.restartWindows', { name })
+          : t('settings.ocrInstall.done', { name }),
       'success');
     } else if (r.canceled) {
-      toast(tt('Install canceled — Windows needs your permission to add the pack.', 'Instalação cancelada — o Windows precisa da sua permissão para adicionar o pacote.'), 'info');
+      toast(t('settings.ocrInstall.canceled'), 'info');
     } else {
-      toast(tt(`Couldn't install ${name} text recognition: ${r.error ?? 'unknown error'}`, `Não foi possível instalar o reconhecimento de texto em ${name}: ${r.error ?? 'erro desconhecido'}`), 'error');
+      toast(t('settings.ocrInstall.failed', { name, error: r.error ?? t('settings.ocrInstall.unknownError') }), 'error');
     }
   }), [subscribe]);
 }
@@ -335,7 +333,6 @@ function useInstallToasts(langs: OcrLanguagesPayload | null) {
  * opening, because opening it was the asking).
  */
 function BrowserPanel() {
-  const tt = useTt();
   const reply = useExtensionHelp(false);
   const connection = useExtension(s => s.connection);
   const outdated = useExtension(s => s.outdated);
@@ -347,27 +344,26 @@ function BrowserPanel() {
   const answered = askedOver !== undefined && reply !== askedOver;
   const connected = connection !== 'unknown' ? connection === 'connected' : reply ? reply.connected : null;
   const steps = [
-    tt('Open chrome://extensions (Edge: edge://extensions, Brave: brave://extensions).', 'Abra chrome://extensions (Edge: edge://extensions, Brave: brave://extensions).'),
-    tt('Turn on "Developer mode".', 'Ative o "Modo do desenvolvedor".'),
-    tt('Click "Load unpacked" and pick this folder:', 'Clique em "Carregar sem compactação" e escolha esta pasta:'),
+    t('settings.browser.steps.open'),
+    t('settings.browser.steps.developerMode'),
+    t('settings.browser.steps.loadUnpacked'),
   ];
   return (
     <div className="set-panel">
       {/* Two channels on the state, never colour alone — the status bar's own rule. */}
       <p className="set-state" data-state={outdated ? 'reload' : connected === null ? undefined : connected ? 'connected' : 'off'} role="status">
         {outdated
-          ? tt(`Version ${outdated.current} is loaded and this app expects ${outdated.expected}. Reload it in chrome://extensions.`,
-               `A versão ${outdated.current} está carregada e este app espera a ${outdated.expected}. Recarregue em chrome://extensions.`)
+          ? t('settings.browser.outdated', { current: outdated.current, expected: outdated.expected })
           : connected === null ? ' '
             : connected
-              ? tt('The TrueReplayer extension is connected.', 'A extensão do TrueReplayer está conectada.')
-              : tt('Connect the TrueReplayer extension to Chrome (or Edge).', 'Conecte a extensão do TrueReplayer ao Chrome (ou Edge).')}
+              ? t('settings.browser.connected')
+              : t('settings.browser.disconnected')}
       </p>
       <ol className="set-steps">
         {steps.map(s => <li key={s}>{s}</li>)}
       </ol>
-      {/* The path is the payload: selectable even when a copy fails. */}
-      <div className="set-path">{reply ? reply.path : '…'}</div>
+      {/* The path is the payload: selectable even when a copy fails. A path is data, the same in every language. */}
+      <div className="set-path" data-glossary="">{reply ? reply.path : '…'}</div>
       <div className="set-actions">
         <button
           type="button"
@@ -376,19 +372,19 @@ function BrowserPanel() {
           onClick={() => { setAskedOver(reply); send({ type: 'extension:help', payload: {} }); }}
         >
           <ClipboardCopy aria-hidden="true" />
-          Copy path
+          {t('settings.browser.copyPath')}
         </button>
         <button type="button" className="insp-button" disabled={!reply?.exists} onClick={appActions.openExtensionFolder}>
           <FolderOpen aria-hidden="true" />
-          Open folder
+          {t('settings.browser.openFolder')}
         </button>
       </div>
       <p className="insp-hint" role="status">
         {!reply ? null
-          : !reply.exists ? <span data-error="">{tt(`This folder is missing. Reinstall ${APP_NAME} to restore it.`, `Esta pasta não existe. Reinstale o ${APP_NAME} para restaurá-la.`)}</span>
-          : answered && reply.copied ? tt(`The path is copied. The extension updates itself along with ${APP_NAME}.`, `O caminho foi copiado. A extensão se atualiza sozinha junto com o ${APP_NAME}.`)
-          : answered ? tt(`Could not copy the path — select it above. The extension updates itself along with ${APP_NAME}.`, `Não deu para copiar o caminho — selecione-o acima. A extensão se atualiza sozinha junto com o ${APP_NAME}.`)
-          : tt(`The extension updates itself along with ${APP_NAME}.`, `A extensão se atualiza sozinha junto com o ${APP_NAME}.`)}
+          : !reply.exists ? <span data-error="">{t('settings.browser.missing', { app: APP_NAME })}</span>
+          : answered && reply.copied ? t('settings.browser.copied', { app: APP_NAME })
+          : answered ? t('settings.browser.copyFailed', { app: APP_NAME })
+          : t('settings.browser.updatesItself', { app: APP_NAME })}
       </p>
     </div>
   );
@@ -396,15 +392,15 @@ function BrowserPanel() {
 
 function CopyDiagnosticsControl() {
   const app = useAppActions();
-  return <button type="button" className="insp-button" onClick={app.copyDiagnostics}><ClipboardCopy aria-hidden="true" />Copy diagnostics</button>;
+  return <button type="button" className="insp-button" onClick={app.copyDiagnostics}><ClipboardCopy aria-hidden="true" />{t('settings.rows.copyDiagnostics.label')}</button>;
 }
 function LogsControl() {
   const app = useAppActions();
-  return <button type="button" className="insp-button" onClick={app.openLogsFolder}><ScrollText aria-hidden="true" />Open logs folder</button>;
+  return <button type="button" className="insp-button" onClick={app.openLogsFolder}><ScrollText aria-hidden="true" />{t('settings.rows.logs.label')}</button>;
 }
 function ReloadControl() {
   const app = useAppActions();
-  return <button type="button" className="insp-button" onClick={app.reloadUI}><RefreshCw aria-hidden="true" />Reload UI</button>;
+  return <button type="button" className="insp-button" onClick={app.reloadUI}><RefreshCw aria-hidden="true" />{t('settings.rows.reload.label')}</button>;
 }
 
 /**
@@ -419,7 +415,7 @@ function AppearanceLoader() {
   return mod ? <mod.AppearancePanel /> : null;
 }
 function AppearanceIntro() {
-  return <p className="set-intro">Themes, density and motion. Every change shows at once, in the whole app, and Ctrl+Z undoes it.</p>;
+  return <p className="set-intro">{t('settings.appearance.intro')}</p>;
 }
 
 /** A hotkey's row (hotkeys.tsx): its key with Change and ✕, and under the description its conflict. */
@@ -428,7 +424,8 @@ function hotkeyRow(id: string, settingKey: HotkeySettingKey, label: string, more
     id,
     label,
     hint: more.hint,
-    words: `hotkey shortcut key ${more.words}`,
+    // The words every hotkey is found by, then the row's own: a bag of words, never shown.
+    words: `${t('settings.hotkeys.words')} ${more.words}`,
     Control: function Hotkey() { return <HotkeyField settingKey={settingKey} label={label} />; },
     Note: settingKey === 'copyScreenTextHotkey'
       ? ScreenTextNote
@@ -438,53 +435,55 @@ function hotkeyRow(id: string, settingKey: HotkeySettingKey, label: string, more
 
 // ── The categories, in the concept's order (SettingsHotkeys board). ──
 
+// The texts are the catalog's (i18n/*/settings.ts), in the build's language: the search reads the label,
+// the hint and the words of that language.
 export const CATEGORIES: Category[] = [
   {
     id: 'general',
-    label: 'General',
+    label: t('settings.categories.general'),
     built: true,
     groups: [
       {
-        title: 'Window',
+        title: t('settings.groups.window'),
         rows: [
-          { id: 'tray', label: `Close keeps ${APP_NAME} in the tray`, hint: 'The X hides the window in the tray instead of closing the app.', words: 'system tray minimize close', Control: TrayControl },
-          { id: 'compact-run', label: 'Compact view while a macro runs', hint: 'When a run starts and you switch to another app, the window turns into the compact view.', words: 'compact small picture in picture always on top overlay run', Control: CompactWhileRunningControl },
+          { id: 'tray', label: t('settings.rows.tray.label', { app: APP_NAME }), hint: t('settings.rows.tray.hint'), words: t('settings.rows.tray.words'), Control: TrayControl },
+          { id: 'compact-run', label: t('settings.rows.compactRun.label'), hint: t('settings.rows.compactRun.hint'), words: t('settings.rows.compactRun.words'), Control: CompactWhileRunningControl },
         ],
       },
       {
-        title: 'Startup',
+        title: t('settings.groups.startup'),
         rows: [
-          { id: 'runOnStartup', label: 'Run on startup', hint: 'Opens with Windows.', words: 'boot login autostart', Control: RunOnStartupControl },
-          { id: 'startMinimized', label: 'Startup minimized', hint: 'Opened with Windows, it starts in the tray.', words: 'hidden tray', Control: StartMinimizedControl },
-          { id: 'runAsAdmin', label: 'Run as administrator', hint: `From the next time ${APP_NAME} opens; Windows asks for permission. Needed to click in windows that run as administrator.`, words: 'elevated uac admin', Control: settingSwitch('runAsAdmin', 'Run as administrator') },
+          { id: 'runOnStartup', label: t('settings.rows.runOnStartup.label'), hint: t('settings.rows.runOnStartup.hint'), words: t('settings.rows.runOnStartup.words'), Control: RunOnStartupControl },
+          { id: 'startMinimized', label: t('settings.rows.startMinimized.label'), hint: t('settings.rows.startMinimized.hint'), words: t('settings.rows.startMinimized.words'), Control: StartMinimizedControl },
+          { id: 'runAsAdmin', label: t('settings.rows.runAsAdmin.label'), hint: t('settings.rows.runAsAdmin.hint', { app: APP_NAME }), words: t('settings.rows.runAsAdmin.words'), Control: settingSwitch('runAsAdmin', t('settings.rows.runAsAdmin.label')) },
         ],
       },
       {
-        title: 'When a run ends',
-        note: 'Only while the window is behind another one — usually the game.',
+        title: t('settings.groups.runEnds'),
+        note: t('settings.groups.runEndsNote'),
         rows: [
-          { id: 'runEndFlash', label: 'Flash on replay end', hint: 'Flashes the taskbar button.', words: 'notify taskbar', Control: RunEndFlashControl },
-          { id: 'runEndSound', label: 'Sound on replay end', hint: 'Plays the Windows sound — another one if the run failed.', words: 'notify beep audio', Control: RunEndSoundControl },
+          { id: 'runEndFlash', label: t('settings.rows.runEndFlash.label'), hint: t('settings.rows.runEndFlash.hint'), words: t('settings.rows.runEndFlash.words'), Control: RunEndFlashControl },
+          { id: 'runEndSound', label: t('settings.rows.runEndSound.label'), hint: t('settings.rows.runEndSound.hint'), words: t('settings.rows.runEndSound.words'), Control: RunEndSoundControl },
         ],
       },
       {
-        title: 'Interface',
+        title: t('settings.groups.interface'),
         rows: [
           // Found by either language's words, whatever the one on screen (plan of languages, §3.6).
           { id: 'language', label: t('settings.language.label'), hint: t('settings.language.hint'), words: 'language idioma lingua língua portuguese português portugues english inglês ingles interface', Control: LanguageControl },
         ],
       },
       {
-        title: 'Your files',
+        title: t('settings.groups.files'),
         rows: [
           {
             id: 'dataFolder',
-            label: 'Open data folder',
-            hint: 'Your macros, their images, the settings, the theme and the snippets, in one folder. Copy it to keep everything.',
-            words: 'documents files backup copy move images explorer',
+            label: t('settings.rows.dataFolder.label'),
+            hint: t('settings.rows.dataFolder.hint'),
+            words: t('settings.rows.dataFolder.words'),
             Control: function DataFolder() {
               const app = useAppActions();
-              return <button type="button" className="insp-button" onClick={app.openDataFolder}><FolderOpen aria-hidden="true" />Open data folder</button>;
+              return <button type="button" className="insp-button" onClick={app.openDataFolder}><FolderOpen aria-hidden="true" />{t('settings.rows.dataFolder.label')}</button>;
             },
           },
         ],
@@ -492,125 +491,125 @@ export const CATEGORIES: Category[] = [
       {
         title: TR2_NAME,
         rows: [
-          { id: 'importTr2', label: `Import from ${TR2_NAME}`, hint: `A copy of its macros, settings, remaps, theme and snippets. ${TR2_NAME} is not changed.`, words: 'import copy migrate old version previous', Control: ImportTr2Control },
+          { id: 'importTr2', label: t('settings.rows.importTr2.label', { tr2: TR2_NAME }), hint: t('settings.rows.importTr2.hint', { tr2: TR2_NAME }), words: t('settings.rows.importTr2.words'), Control: ImportTr2Control },
         ],
       },
       {
-        title: 'Reset',
+        title: t('settings.groups.reset'),
         rows: [
-          { id: 'reset', label: 'Reset all settings', hint: 'Every setting back to its default. Your macros, their steps and the Clicker presets stay.', words: 'defaults restore factory', Control: ResetControl },
+          { id: 'reset', label: t('settings.rows.reset.label'), hint: t('settings.rows.reset.hint'), words: t('settings.rows.reset.words'), Control: ResetControl },
         ],
       },
     ],
   },
   {
     id: 'hotkeys',
-    label: 'Hotkeys',
+    label: t('settings.categories.hotkeys'),
     built: true,
     Intro: HotkeysIntro,
     Badge: HotkeysBadge,
     groups: [
       {
-        title: 'Recording and replay',
+        title: t('settings.groups.recordReplay'),
         rows: [
-          hotkeyRow('record', 'recordingHotkey', 'Record', { hint: 'Starts and stops recording into the open macro, or into a new one when none is open', words: 'recording' }),
-          hotkeyRow('replay', 'replayHotkey', 'Replay or stop', { hint: 'Runs the open macro, or stops whatever is running', words: 'run play' }),
-          hotkeyRow('shortcuts', 'profileKeyToggleHotkey', 'Shortcuts on or off', { hint: 'Silences macro hotkeys, hotstrings and Key Remaps at once', words: 'profile keys toggle silence pause' }),
+          hotkeyRow('record', 'recordingHotkey', t('settings.hotkeys.record.label'), { hint: t('settings.hotkeys.record.hint'), words: t('settings.hotkeys.record.words') }),
+          hotkeyRow('replay', 'replayHotkey', t('settings.hotkeys.replay.label'), { hint: t('settings.hotkeys.replay.hint'), words: t('settings.hotkeys.replay.words') }),
+          hotkeyRow('shortcuts', 'profileKeyToggleHotkey', t('settings.hotkeys.shortcuts.label'), { hint: t('settings.hotkeys.shortcuts.hint'), words: t('settings.hotkeys.shortcuts.words') }),
         ],
       },
       {
-        title: 'Window',
+        title: t('settings.groups.window'),
         rows: [
-          hotkeyRow('front', 'foregroundHotkey', `Bring ${APP_NAME} to the front`, { words: 'foreground focus show window', noKeyWhy: 'the tray icon does it' }),
-          hotkeyRow('clicker', 'modeToggleHotkey', 'Open the Clicker', { hint: 'Pressed again, back to the macros', words: 'mode toggle clicker macro' }),
+          hotkeyRow('front', 'foregroundHotkey', t('settings.hotkeys.front.label', { app: APP_NAME }), { words: t('settings.hotkeys.front.words'), noKeyWhy: t('settings.hotkeys.front.noKeyWhy') }),
+          hotkeyRow('clicker', 'modeToggleHotkey', t('settings.hotkeys.clicker.label'), { hint: t('settings.hotkeys.clicker.hint'), words: t('settings.hotkeys.clicker.words') }),
         ],
       },
       {
-        title: 'Clicker',
-        note: 'Only while the Clicker is on.',
+        title: t('settings.groups.clicker'),
+        note: t('settings.groups.clickerNote'),
         rows: [
-          hotkeyRow('clickerStart', 'cursorClickStartHotkey', 'Start and stop', { hint: 'Starts the clicks, or stops them', words: 'clicker autoclicker' }),
-          hotkeyRow('clickerPause', 'cursorClickPauseHotkey', 'Pause', { hint: 'Pauses the clicks, or resumes them', words: 'clicker autoclicker resume' }),
+          hotkeyRow('clickerStart', 'cursorClickStartHotkey', t('settings.hotkeys.clickerStart.label'), { hint: t('settings.hotkeys.clickerStart.hint'), words: t('settings.hotkeys.clickerStart.words') }),
+          hotkeyRow('clickerPause', 'cursorClickPauseHotkey', t('settings.hotkeys.clickerPause.label'), { hint: t('settings.hotkeys.clickerPause.hint'), words: t('settings.hotkeys.clickerPause.words') }),
         ],
       },
       {
-        title: 'Screen and clipboard',
+        title: t('settings.groups.screenClipboard'),
         rows: [
-          hotkeyRow('clip', 'captureSlotHotkey', 'Copy the selection to a clip slot', { hint: 'Fills the next {clip:N} for Send Text', words: 'capture slot clipboard selection' }),
-          hotkeyRow('screenText', 'copyScreenTextHotkey', 'Copy text from the screen', { hint: 'Reads a region with Screen Text', words: 'ocr read region clipboard' }),
+          hotkeyRow('clip', 'captureSlotHotkey', t('settings.hotkeys.clip.label'), { hint: t('settings.hotkeys.clip.hint'), words: t('settings.hotkeys.clip.words') }),
+          hotkeyRow('screenText', 'copyScreenTextHotkey', t('settings.hotkeys.screenText.label'), { hint: t('settings.hotkeys.screenText.hint'), words: t('settings.hotkeys.screenText.words') }),
         ],
       },
     ],
   },
   {
     id: 'appearance',
-    label: 'Appearance',
+    label: t('settings.categories.appearance'),
     built: true,
     Intro: AppearanceIntro,
     Panel: AppearanceLoader,
     warm: () => { void preload(loadAppearance); },
-    words: 'theme themes color colour accent dark light follow windows vivid pastel monochrome random my own save custom density compact normal spacious motion animations text size font corner roundness radius zoom scale data monospace',
+    words: t('settings.appearance.words'),
   },
   {
     id: 'recording',
-    label: 'Recording and playback',
+    label: t('settings.categories.recording'),
     built: true,
     groups: [
       {
-        title: 'Recording',
+        title: t('settings.groups.recording'),
         rows: [
-          { id: 'realTiming', label: 'Record the real timing', hint: 'Off: every recorded click and key gets the delay below instead of the time you took.', words: 'delay timing', Control: settingSwitch('useCustomDelay', 'Record the real timing', true) },
-          { id: 'delay', label: 'Delay for new steps', hint: 'The delay a new step starts with: from the insert row, from the browser extension, and recorded ones when the real timing is off.', words: 'ms wait', Control: settingNumber('customDelay', 'Delay for new steps', 60000, 'ms', 100) },
+          { id: 'realTiming', label: t('settings.rows.realTiming.label'), hint: t('settings.rows.realTiming.hint'), words: t('settings.rows.realTiming.words'), Control: settingSwitch('useCustomDelay', t('settings.rows.realTiming.label'), true) },
+          { id: 'delay', label: t('settings.rows.delay.label'), hint: t('settings.rows.delay.hint'), words: t('settings.rows.delay.words'), Control: settingNumber('customDelay', t('settings.rows.delay.label'), 60000, 'ms', 100) },
         ],
       },
       {
-        title: 'Playback',
-        note: 'The default for macros without their own; each macro can set its own in Replay ▾.',
+        title: t('settings.groups.playback'),
+        note: t('settings.groups.playbackNote'),
         rows: [
-          { id: 'returnCursor', label: 'Return cursor', hint: 'The cursor goes back to where it was when the run started.', words: 'mouse restore position', Control: settingSwitch('restoreCursor', 'Return cursor') },
-          { id: 'gameMode', label: 'Game Mode', hint: 'The cursor walks a path so games accept the move; off, it jumps.', words: 'smooth movement roblox path', Control: settingSwitch('smoothMovement', 'Game Mode') },
-          { id: 'fastApproach', label: 'Fast approach', hint: 'Teleports long moves and walks only the last stretch. Turn off if a game misclicks.', words: 'teleport settle', Control: settingSwitch('fastApproach', 'Fast approach'), shown: s => s.smoothMovement },
-          { id: 'jitter', label: 'Jitter', hint: 'Random ±% on each delay — less robotic.', words: 'variation random delay', Control: JitterControl },
+          { id: 'returnCursor', label: t('settings.rows.returnCursor.label'), hint: t('settings.rows.returnCursor.hint'), words: t('settings.rows.returnCursor.words'), Control: settingSwitch('restoreCursor', t('settings.rows.returnCursor.label')) },
+          { id: 'gameMode', label: t('settings.rows.gameMode.label'), hint: t('settings.rows.gameMode.hint'), words: t('settings.rows.gameMode.words'), Control: settingSwitch('smoothMovement', t('settings.rows.gameMode.label')) },
+          { id: 'fastApproach', label: t('settings.rows.fastApproach.label'), hint: t('settings.rows.fastApproach.hint'), words: t('settings.rows.fastApproach.words'), Control: settingSwitch('fastApproach', t('settings.rows.fastApproach.label')), shown: s => s.smoothMovement },
+          { id: 'jitter', label: t('settings.rows.jitter.label'), hint: t('settings.rows.jitter.hint'), words: t('settings.rows.jitter.words'), Control: JitterControl },
         ],
       },
       {
-        title: 'Game Mode tuning',
-        note: 'For every macro, and for the Clicker\'s Game move.',
+        title: t('settings.groups.tuning'),
+        note: t('settings.groups.tuningNote'),
         rows: [
-          { id: 'clickDelay', label: 'Click delay', hint: 'Pause before each button event. Applies with Game Mode off too.', words: 'mouse button press', Control: settingNumber('moveClickDelay', 'Click delay', 1000, 'ms') },
-          { id: 'pathStep', label: 'Path step', hint: 'Max px per step. Lower = smoother, slower. ~20 for Roblox.', words: 'smooth px', Control: PathStepControl, shown: s => s.smoothMovement },
-          { id: 'stepDelay', label: 'Step delay', hint: 'Wait between the steps of the path.', words: 'smooth ms', Control: settingNumber('moveStepDelay', 'Step delay', 100, 'ms'), shown: s => s.smoothMovement },
-          { id: 'distance', label: 'Distance', hint: 'Walked stretch before the target after a teleport. ~80 px.', words: 'fast approach settle px', Control: settingNumber('settleDistance', 'Distance', 4000, 'px'), shown: s => s.smoothMovement && s.fastApproach },
+          { id: 'clickDelay', label: t('settings.rows.clickDelay.label'), hint: t('settings.rows.clickDelay.hint'), words: t('settings.rows.clickDelay.words'), Control: settingNumber('moveClickDelay', t('settings.rows.clickDelay.label'), 1000, 'ms') },
+          { id: 'pathStep', label: t('settings.rows.pathStep.label'), hint: t('settings.rows.pathStep.hint'), words: t('settings.rows.pathStep.words'), Control: PathStepControl, shown: s => s.smoothMovement },
+          { id: 'stepDelay', label: t('settings.rows.stepDelay.label'), hint: t('settings.rows.stepDelay.hint'), words: t('settings.rows.stepDelay.words'), Control: settingNumber('moveStepDelay', t('settings.rows.stepDelay.label'), 100, 'ms'), shown: s => s.smoothMovement },
+          { id: 'distance', label: t('settings.rows.distance.label'), hint: t('settings.rows.distance.hint'), words: t('settings.rows.distance.words'), Control: settingNumber('settleDistance', t('settings.rows.distance.label'), 4000, 'px'), shown: s => s.smoothMovement && s.fastApproach },
         ],
       },
     ],
   },
   {
     id: 'screen',
-    label: 'Screen Text',
+    label: t('settings.categories.screen'),
     built: true,
     groups: [
       {
-        title: 'Text recognition',
-        note: 'Read by Wait Text, Text on screen, Set Variable\'s Screen, the automations and the Copy text from the screen hotkey.',
+        title: t('settings.groups.textRecognition'),
+        note: t('settings.groups.textRecognitionNote'),
         rows: [
-          { id: 'ocrLanguage', label: 'Language', hint: 'Português by default; a language this PC lacks installs from here.', words: 'ocr install read text portuguese english', Control: OcrLanguageControl },
+          { id: 'ocrLanguage', label: t('settings.rows.ocrLanguage.label'), hint: t('settings.rows.ocrLanguage.hint'), words: t('settings.rows.ocrLanguage.words'), Control: OcrLanguageControl },
         ],
       },
     ],
   },
-  { id: 'browser', label: 'Browser extension', built: true, Panel: BrowserPanel, words: 'chrome edge brave extension unpacked folder path connect' },
+  { id: 'browser', label: t('settings.categories.browser'), built: true, Panel: BrowserPanel, words: t('settings.browser.words') },
   {
     id: 'diagnostics',
-    label: 'Diagnostics',
+    label: t('settings.categories.diagnostics'),
     built: true,
     groups: [
       {
-        title: 'When something goes wrong',
+        title: t('settings.groups.diagnostics'),
         rows: [
-          { id: 'copyDiagnostics', label: 'Copy diagnostics', hint: 'The version, the system and the recent log lines, for a bug report.', words: 'support bug report about version', Control: CopyDiagnosticsControl },
-          { id: 'logs', label: 'Open logs folder', hint: 'Where the session logs are kept.', words: 'support log session', Control: LogsControl },
-          { id: 'reload', label: 'Reload UI', hint: 'Reloads the interface; the engine, and a run in progress, go on.', words: 'refresh stuck frozen', Control: ReloadControl },
+          { id: 'copyDiagnostics', label: t('settings.rows.copyDiagnostics.label'), hint: t('settings.rows.copyDiagnostics.hint'), words: t('settings.rows.copyDiagnostics.words'), Control: CopyDiagnosticsControl },
+          { id: 'logs', label: t('settings.rows.logs.label'), hint: t('settings.rows.logs.hint'), words: t('settings.rows.logs.words'), Control: LogsControl },
+          { id: 'reload', label: t('settings.rows.reload.label'), hint: t('settings.rows.reload.hint'), words: t('settings.rows.reload.words'), Control: ReloadControl },
         ],
       },
     ],

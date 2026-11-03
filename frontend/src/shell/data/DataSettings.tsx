@@ -1,5 +1,5 @@
+import { fmtNum, t } from '../../i18n';
 import { scanRowTokenUsage, orphanHead, type ColumnUsage } from '../../lib/rowTokenUsage';
-import { useTt } from '../../state/LanguageContext';
 import { useToast } from '../../state/ToastContext';
 import { focusList } from '../inspector/inspectorState';
 import { Section, Segmented, Switch } from '../inspector/fields';
@@ -7,14 +7,42 @@ import { selection } from '../list/selection';
 import { useApp, useShell } from '../store';
 import { showMacroTab, useUi } from '../ui';
 import { useShellBand } from '../useShellBand';
-import { useDataOps, useShown, validName, type DataOps } from './model';
+import { CUT, useDataOps, useShown, validName, type DataOps } from './model';
 
-/** "step 4", "steps 4 and 15", "steps 2, 4 and 9", "7 steps". */
-function stepsText(steps: number[]): string {
+/** Who reads a column, beside its token: "used by step 4", "used by steps 4 and 15", "used by steps 2, 4 and 9", "used by 7 steps". */
+function usedBy(steps: number[]): string {
   const n = steps.map(i => i + 1);
-  if (n.length === 1) return `step ${n[0]}`;
-  if (n.length > 3) return `${n.length} steps`;
-  return `steps ${n.slice(0, -1).join(', ')} and ${n[n.length - 1]}`;
+  if (n.length === 1) return t('dataLoop.settings.usedOne', { number: n[0] });
+  if (n.length > 3) return t('dataLoop.settings.usedMany', { n: fmtNum(n.length) });
+  return t('dataLoop.settings.usedList', { list: n.slice(0, -1).join(', '), last: n[n.length - 1] });
+}
+
+/**
+ * The alert of a token no column answers: who reads it, said as the steps above are, and what it
+ * does when another macro runs this one (passers). The token is CUT, for its <code>.
+ */
+function orphanText(steps: number[], passers: string[]): string {
+  const n = steps.map(i => i + 1);
+  const list = n.slice(0, -1).join(', ');
+  const last = n[n.length - 1];
+  const token = CUT;
+  if (passers.length > 0) {
+    const macros = passers.join(', ');
+    if (n.length === 1) return t('dataLoop.settings.orphan.oneStepFrom', { number: n[0], token, macros });
+    if (n.length > 3) return t('dataLoop.settings.orphan.manyStepsFrom', { n: fmtNum(n.length), token, macros });
+    return t('dataLoop.settings.orphan.someStepsFrom', { list, last, token, macros });
+  }
+  if (n.length === 1) return t('dataLoop.settings.orphan.oneStep', { number: n[0], token });
+  if (n.length > 3) return t('dataLoop.settings.orphan.manySteps', { n: fmtNum(n.length), token });
+  return t('dataLoop.settings.orphan.someSteps', { list, last, token });
+}
+
+/** For what If a row fails counts, as one sentence: one to three ways the table is walked. */
+function scopeText(scope: string[]): string | null {
+  if (scope.length === 0) return null;
+  if (scope.length === 1) return t('dataLoop.settings.scope1', { a: scope[0] });
+  if (scope.length === 2) return t('dataLoop.settings.scope2', { a: scope[0], b: scope[1] });
+  return t('dataLoop.settings.scope3', { a: scope[0], b: scope[1], c: scope[2] });
 }
 
 /** The table's first filled cell in a row: what names the row ("row 3 (João Pereira)"). */
@@ -37,7 +65,6 @@ export function DataSettings({ locked, note }: { locked: boolean; note: string |
   const open = useApp(a => a.activeProfile);
   const asked = useUi(s => s.dataSettings);
   const band = useShellBand();
-  const tt = useTt();
   const { showToast } = useToast();
   const rows = shown.saved;
   const cols = shown.headers.length;
@@ -62,8 +89,8 @@ export function DataSettings({ locked, note }: { locked: boolean; note: string |
 
   const copy = (token: string) => {
     navigator.clipboard?.writeText(token).then(
-      () => showToast(tt(`${token} copied`, `${token} copiado`), 'success'),
-      () => showToast(tt('Could not copy — click inside the window and try again.', 'Não foi possível copiar — clique dentro da janela e tente de novo.'), 'error'),
+      () => showToast(t('dataLoop.settings.copied', { token }), 'success'),
+      () => showToast(t('dataLoop.copyFailed'), 'error'),
     );
   };
   // The step, selected in the list: the Inspector opens it there.
@@ -76,93 +103,99 @@ export function DataSettings({ locked, note }: { locked: boolean; note: string |
     });
   };
   const scope = [
-    shown.loopOverData ? 'every row in one go' : null,
-    forEach ? 'For Each Data Row blocks' : null,
-    callers.length === 1 ? `“${callers[0]}” running this macro once per data row` : callers.length > 1 ? `${callers.length} macros running this one once per data row` : null,
+    shown.loopOverData ? t('dataLoop.settings.scopeAll') : null,
+    forEach ? t('dataLoop.settings.scopeForEach') : null,
+    callers.length === 1 ? t('dataLoop.settings.scopeCaller', { name: callers[0] }) : callers.length > 1 ? t('dataLoop.settings.scopeCallers', { n: fmtNum(callers.length) }) : null,
   ].filter(Boolean) as string[];
+  const scopeHint = scopeText(scope);
+
+  // The card of the mode that walks the rows: the marked row, in bold where the sentence puts it.
+  const named = rowName(shown.rows[cursor]);
+  const marked = named ? t('dataLoop.settings.rowNamed', { number: cursor + 1, name: named }) : t('dataLoop.settings.row', { number: cursor + 1 });
+  const [before, after = ''] = (rows > 1
+    ? t('dataLoop.settings.nextMoves', { row: CUT, next: cursor + 2 > rows ? 1 : cursor + 2 })
+    : t('dataLoop.settings.nextAlways', { row: CUT })).split(CUT);
 
   return (
     <>
       <div className="insp-head">
         <span className="insp-tile dl-tile"><span className="step-icon" data-icon="table-2" /></span>
         <div className="insp-title">
-          <span className="insp-name" data-display="">Data Loop</span>
-          <span className="insp-sub">{none ? 'No table yet' : `${rows === 1 ? '1 row' : `${rows} rows`} · ${cols === 1 ? '1 column' : `${cols} columns`}`}</span>
+          <span className="insp-name" data-display="" data-glossary="">Data Loop</span>
+          <span className="insp-sub">{none ? t('dataLoop.noTable') : `${t('dataLoop.rows', { count: rows, n: fmtNum(rows) })} · ${t('dataLoop.columns', { count: cols, n: fmtNum(cols) })}`}</span>
         </div>
         {asked && band === 'over' && (
-          <button type="button" className="insp-close" aria-label="Close Data Loop settings" onClick={() => { useUi.setState({ dataSettings: false }); focusList(); }}>
+          <button type="button" className="insp-close" aria-label={t('dataLoop.settings.close')} onClick={() => { useUi.setState({ dataSettings: false }); focusList(); }}>
             <span className="step-icon" data-icon="x" />
           </button>
         )}
       </div>
       <div className="insp-body">
-        {none && <p className="insp-hint">With a table, how replay walks its rows is set here.</p>}
+        {none && <p className="insp-hint">{t('dataLoop.settings.noTableHint')}</p>}
         {/* Today's note from 1,000 rows (paineis-118): the whole table lives in the macro's file. */}
-        {rows >= LARGE_TABLE && <p className="insp-hint" role="status">Large table — the macro’s file grows with it.</p>}
-        {!none && <Section label="How replay uses the rows">
+        {rows >= LARGE_TABLE && <p className="insp-hint" role="status">{t('dataLoop.settings.large')}</p>}
+        {!none && <Section label={t('dataLoop.settings.uses')}>
           <Segmented
-            label="How replay uses the rows"
+            label={t('dataLoop.settings.uses')}
             value={shown.loopOverData ? 'all' : 'next'}
             disabled={locked}
             options={[
-              { value: 'next', label: 'Next row each time', tip: tt('Each replay uses one row, then moves to the next', 'Cada replay usa uma linha e passa para a próxima') },
-              { value: 'all', label: 'Every row, in one go', tip: tt('One replay runs once per row; it overrides the Loops and the hotkey’s looping', 'Um replay roda uma vez por linha; vence os Loops e a repetição do atalho') },
+              { value: 'next', label: t('dataLoop.settings.modes.next'), tip: t('dataLoop.settings.nextTip') },
+              { value: 'all', label: t('dataLoop.settings.modes.all'), tip: t('dataLoop.settings.allTip') },
             ]}
             onChange={(v) => ops.setLoop(v === 'all')}
           />
           {rows === 0 ? (
             <div className="dl-card" data-tone={shown.loopOverData ? 'error' : undefined} role="status">
-              {shown.loopOverData ? 'No rows — replay won’t start.' : 'The table has no rows yet: each replay will use the next one.'}
+              {shown.loopOverData ? t('dataLoop.settings.noRowsAll') : t('dataLoop.settings.noRowsNext')}
             </div>
           ) : cursorMode ? (
             <div className="dl-card" data-tone="ok">
-              The next replay uses <strong>row {cursor + 1}{rowName(shown.rows[cursor]) ? ` (${rowName(shown.rows[cursor])})` : ''}</strong>
-              {rows > 1 ? <> and then moves to row {cursor + 2 > rows ? 1 : cursor + 2}. After the last row it starts over at row 1.</> : <>, every time.</>}
-              {' '}A replay you stop has still used its row.
+              {before}<strong>{marked}</strong>{after}
             </div>
           ) : (
             <div className="dl-card" data-tone="ok">
-              Each replay runs all {rows === 1 ? '1 row' : `${rows} rows`}, once per row — in place of the Loops and the hotkey’s looping.
+              {t('dataLoop.settings.allRows', { count: rows, n: fmtNum(rows) })}
             </div>
           )}
           {cursorMode && rows > 0 && (
             <div className="insp-row">
-              <span className="insp-row-label">Next row</span>
-              <span className="dl-next-row">{cursor + 1} of {rows}</span>
+              <span className="insp-row-label">{t('dataLoop.settings.nextRow')}</span>
+              <span className="dl-next-row">{t('dataLoop.settings.nextOf', { number: cursor + 1, total: fmtNum(rows) })}</span>
               <button
                 type="button"
                 className="insp-button"
                 disabled={locked || cursor === 0}
-                data-tip={tt('The next replay starts at the top of the table', 'O próximo replay começa no topo da tabela')}
+                data-tip={t('dataLoop.settings.backToFirstTip')}
                 onClick={() => ops.resetCursor()}
               >
-                Back to row 1
+                {t('dataLoop.settings.backToFirst')}
               </button>
             </div>
           )}
           {cursorMode && rows > 1 && (
             <div className="insp-row">
-              <span className="insp-row-label">Tell me when the list wraps</span>
+              <span className="insp-row-label">{t('dataLoop.settings.wraps')}</span>
               <Switch
-                label="Tell me when the list wraps"
+                label={t('dataLoop.settings.wraps')}
                 checked={shown.notifyOnLapComplete}
                 disabled={locked}
-                tip={tt('A chime and a tray balloon when a replay uses the last row', 'Um som e um balão na bandeja quando um replay usa a última linha')}
+                tip={t('dataLoop.settings.wrapsTip')}
                 onChange={(on) => ops.setNotify(on)}
               />
             </div>
           )}
         </Section>}
 
-        {!none && scope.length > 0 && (
-          <Section label="If a row fails" hint={`Counts for ${scope.join(', and for ')}. Skipped rows are summed up when the run ends.`}>
+        {!none && scopeHint && (
+          <Section label={t('dataLoop.settings.fails')} hint={scopeHint}>
             <Segmented
-              label="If a row fails"
+              label={t('dataLoop.settings.fails')}
               value={shown.onRowError}
               disabled={locked}
               options={[
-                { value: 'halt', label: 'Stop', tip: tt('The run stops at the first row that fails', 'A execução para na primeira linha que falha') },
-                { value: 'skip', label: 'Skip the row', tip: tt('The row is logged and the run goes on with the next', 'A linha é registrada e a execução segue com a próxima') },
+                { value: 'halt', label: t('common.actions.stop'), tip: t('dataLoop.settings.haltTip') },
+                { value: 'skip', label: t('dataLoop.settings.skip'), tip: t('dataLoop.settings.skipTip') },
               ]}
               onChange={(v) => ops.setOnRowError(v)}
             />
@@ -170,7 +203,7 @@ export function DataSettings({ locked, note }: { locked: boolean; note: string |
         )}
 
         {(cols > 0 || orphans.length > 0) && (
-          <Section label="Columns" hint="Names ignore case. {row} is the row number.">
+          <Section label={t('dataLoop.columnsLabel')} hint={t('dataLoop.settings.columnsHint')}>
             {shown.headers.map((h, c) => (
               <ColumnLine
                 key={c}
@@ -196,7 +229,7 @@ export function DataSettings({ locked, note }: { locked: boolean; note: string |
           </Section>
         )}
       </div>
-      <div className="insp-foot" data-locked={note ? '' : undefined}>{note ?? 'Applies as you type · Ctrl+Z undoes'}</div>
+      <div className="insp-foot" data-locked={note ? '' : undefined}>{note ?? t('dataLoop.settings.foot')}</div>
     </>
   );
 }
@@ -211,22 +244,21 @@ function ColumnLine({ c, name, usage, inheritors, locked, onCopy, onFix }: {
   onCopy: (token: string) => void;
   onFix: () => void;
 }) {
-  const tt = useTt();
   if (!validName(name)) {
     return (
       <div className="dl-col" data-invalid="">
         <span className="step-icon dl-warn" data-icon="triangle-alert" />
-        <span className="dl-col-name">{name || `(empty, column ${c + 1})`}</span>
-        <span className="dl-col-what">not a token name</span>
+        <span className="dl-col-name">{name || t('dataLoop.settings.emptyColumn', { number: c + 1 })}</span>
+        <span className="dl-col-what">{t('dataLoop.settings.notToken')}</span>
         <button
           type="button"
           className="insp-button"
           disabled={locked}
-          aria-label={`Fix column name ${name || `column ${c + 1}`}`}
-          data-tip={tt('Puts _ in place of { } and :, and keeps it unique', 'Troca { } e : por _ e mantém o nome único')}
+          aria-label={name ? t('dataLoop.settings.fixLabel', { name }) : t('dataLoop.settings.fixLabelUnnamed', { number: c + 1 })}
+          data-tip={t('dataLoop.settings.fixTip')}
           onClick={onFix}
         >
-          Fix
+          {t('dataLoop.settings.fix')}
         </button>
       </div>
     );
@@ -239,13 +271,12 @@ function ColumnLine({ c, name, usage, inheritors, locked, onCopy, onFix }: {
       <span
         className="dl-col-what"
         data-tip={!used && inheritors.length > 0
-          ? tt(`Not read by this macro’s steps. ${inheritors.join(', ')} run(s) on this macro’s row (Run Macro without “once per data row”) and may read it — check before deleting it.`,
-            `Não é lida pelos passos deste macro. ${inheritors.join(', ')} roda(m) na linha deste macro (Run Macro sem “once per data row”) e pode(m) lê-la — confira antes de apagá-la.`)
+          ? t('dataLoop.settings.inherited', { count: inheritors.length, macros: inheritors.join(', ') })
           : undefined}
       >
-        {used ? `used by ${stepsText(usage!.steps)}` : inheritors.length > 0 ? 'not used here' : 'not used yet'}
+        {used ? usedBy(usage!.steps) : inheritors.length > 0 ? t('dataLoop.settings.notUsedHere') : t('dataLoop.settings.notUsedYet')}
       </span>
-      <button type="button" className="insp-icon-button" aria-label={`Copy token ${token}`} data-tip={tt('Copy token', 'Copiar o token')} onClick={() => onCopy(token)}>
+      <button type="button" className="insp-icon-button" aria-label={t('dataLoop.settings.copyTokenLabel', { token })} data-tip={t('dataLoop.settings.copyToken')} onClick={() => onCopy(token)}>
         <span className="step-icon" data-icon="copy" />
       </button>
     </div>
@@ -261,18 +292,18 @@ function Orphan({ usage, passers, locked, onAdd, onGo }: {
   onGo: () => void;
 }) {
   const token = `{${orphanHead(usage)}:${usage.name}}`;
-  const who = usage.steps.length === 1 ? `Step ${usage.steps[0] + 1} reads` : `${stepsText(usage.steps).replace(/^s/, 'S')} read`;
+  // The token, in <code>, where the catalog's sentence puts it.
+  const [before, after = ''] = orphanText(usage.steps, passers).split(CUT);
   return (
     <div className="dl-orphan" role="alert">
       <span className="step-icon" data-icon="triangle-alert" />
       <div className="dl-orphan-body">
         <span>
-          {who} <code>{token}</code>, but there is no such column, so it types nothing
-          {passers.length > 0 ? <> when this macro runs on its own; run from {passers.join(', ')}, it reads that macro’s row.</> : '.'}
+          {before}<code>{token}</code>{after}
         </span>
         <span className="dl-orphan-actions">
-          <button type="button" className="insp-button" disabled={locked || !validName(usage.name)} onClick={onAdd}>Add column {usage.name}</button>
-          <button type="button" className="insp-button" onClick={onGo}>Go to step {usage.steps[0] + 1}</button>
+          <button type="button" className="insp-button" disabled={locked || !validName(usage.name)} onClick={onAdd}>{t('dataLoop.settings.addColumn', { name: usage.name })}</button>
+          <button type="button" className="insp-button" onClick={onGo}>{t('dataLoop.settings.goToStep', { number: usage.steps[0] + 1 })}</button>
         </span>
       </div>
     </div>

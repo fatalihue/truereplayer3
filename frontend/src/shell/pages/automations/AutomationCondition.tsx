@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { AppWindow, Clipboard, Cpu, FileCheck, Image, Pipette, ScanText, type LucideIcon } from 'lucide-react';
 import type { ActionItem, AutomationEntry, TriggerConfig } from '../../../bridge/messageTypes';
+import { t } from '../../../i18n';
 import { useAutomations } from '../../../logic/useAutomations';
-import { useTt } from '../../../state/LanguageContext';
 import { CHECKS } from '../../inspector/checks';
 import { CheckTargetContext, type AnchorWindow, type CheckTarget } from '../../inspector/checkTarget';
 import { Section, Switch } from '../../inspector/fields';
@@ -36,43 +36,43 @@ const KINDS: { type: Kind; Icon: LucideIcon }[] = [
   { type: 'FileExists', Icon: FileCheck },
   { type: 'ClipboardChanged', Icon: Clipboard },
 ];
-/** The check of the If's list a condition is, by name, icon and description; the clipboard's is its own. */
+/** The check of the If's list a condition is, by name (glossary), icon and description; the clipboard's is its own. */
 const look = (type: Kind) => (type === 'ClipboardChanged'
-  ? { name: 'Clipboard', icon: 'clipboard', desc: 'The copied text changes' }
+  ? { name: 'Clipboard', icon: 'clipboard', desc: t('automations.condition.clipboardDesc') }
   : CHECKS.find(c => c.type === type)!);
-const kindOf = (t: TriggerConfig): Kind => KINDS.find(k => k.type === t.conditionType)?.type ?? 'WindowOpen';
+const kindOf = (trigger: TriggerConfig): Kind => KINDS.find(k => k.type === trigger.conditionType)?.type ?? 'WindowOpen';
 /** The three conditions with a point or a region, which can follow a window. */
 const placed = (k: Kind) => k === 'PixelColorMatch' || k === 'ImageFound' || k === 'ScreenText';
 
 /** The automation's trigger as the Inspector's checks read a step: the same names, a region as four numbers. */
-function stepOf(t: TriggerConfig, profile: string): ActionItem {
-  const r = t.searchRegion;
+function stepOf(trigger: TriggerConfig, profile: string): ActionItem {
+  const r = trigger.searchRegion;
   return {
     id: `automation:${profile}`,
     actionType: 'If',
-    conditionType: t.conditionType === 'ClipboardChanged' ? 'ClipboardMatch' : t.conditionType,
-    windowProcessName: t.windowProcessName ?? '',
-    windowTitle: t.windowTitle ?? '',
-    windowTitleMatchMode: t.windowTitleMatchMode ?? 'contains',
-    windowMatchForegroundOnly: t.windowMatchForegroundOnly,
-    filePath: t.filePath ?? '',
-    pixelX: t.pixelX,
-    pixelY: t.pixelY,
-    pixelColor: t.pixelColor ?? '',
-    pixelTolerance: t.pixelTolerance,
-    imagePath: t.imagePath ?? '',
-    imageBase64: t.imageBase64 || null,
-    confidence: t.imageConfidence || 0.8,
+    conditionType: trigger.conditionType === 'ClipboardChanged' ? 'ClipboardMatch' : trigger.conditionType,
+    windowProcessName: trigger.windowProcessName ?? '',
+    windowTitle: trigger.windowTitle ?? '',
+    windowTitleMatchMode: trigger.windowTitleMatchMode ?? 'contains',
+    windowMatchForegroundOnly: trigger.windowMatchForegroundOnly,
+    filePath: trigger.filePath ?? '',
+    pixelX: trigger.pixelX,
+    pixelY: trigger.pixelY,
+    pixelColor: trigger.pixelColor ?? '',
+    pixelTolerance: trigger.pixelTolerance,
+    imagePath: trigger.imagePath ?? '',
+    imageBase64: trigger.imageBase64 || null,
+    confidence: trigger.imageConfidence || 0.8,
     waitImageSearchX: r ? r.x : null,
     waitImageSearchY: r ? r.y : null,
     waitImageSearchW: r ? r.w : null,
     waitImageSearchH: r ? r.h : null,
-    conditionOperator: t.conditionOperator ?? null,
-    conditionOperand: t.conditionOperand ?? '',
-    ocrReadAs: t.ocrReadAs ?? null,
-    ocrTextColor: t.ocrTextColor ?? '',
-    ocrColorTolerance: t.ocrColorTolerance ?? 70,
-    clipboardPattern: t.clipboardPattern ?? '',
+    conditionOperator: trigger.conditionOperator ?? null,
+    conditionOperand: trigger.conditionOperand ?? '',
+    ocrReadAs: trigger.ocrReadAs ?? null,
+    ocrTextColor: trigger.ocrTextColor ?? '',
+    ocrColorTolerance: trigger.ocrColorTolerance ?? 70,
+    clipboardPattern: trigger.clipboardPattern ?? '',
   } as unknown as ActionItem;
 }
 
@@ -110,22 +110,21 @@ function patchOf(edits: StepEdit[]): Partial<TriggerConfig> {
 
 /** Why the coordinates were cleared when "Relative to a window" turned (today's panel's words). */
 const CLEARED = {
-  toWindow: 'Coordinates cleared — they were screen coordinates. Pick again to store them relative to the window.',
-  toScreen: 'Coordinates cleared — they were relative to the window. Pick again to store them as screen coordinates.',
+  toWindow: t('automations.condition.clearedToWindow'),
+  toScreen: t('automations.condition.clearedToScreen'),
 } as const;
 
 /**
  * The condition: which one (a menu of the seven, with what it was before a change: Ctrl+Z brings it
  * back), the window its coordinates follow, its own fields — the If's — and why it never fires as it is.
  */
-export function Condition({ name, t, never, change, cmds }: { name: string; t: TriggerConfig; never: string | null; change: Change; cmds: Cmds }) {
-  const tt = useTt();
-  const kind = kindOf(t);
+export function Condition({ name, trigger, never, change, cmds }: { name: string; trigger: TriggerConfig; never: string | null; change: Change; cmds: Cmds }) {
+  const kind = kindOf(trigger);
   const [menu, setMenu] = useState<{ anchor: MenuAnchor; keyboard: boolean; button: HTMLButtonElement } | null>(null);
   const [was, setWas] = useState<string | null>(null);
   const [cleared, setCleared] = useState<keyof typeof CLEARED | null>(null);
-  const anchored = placed(kind) && t.useRelativeCoordinates;
-  const anchor: AnchorWindow = { processName: t.windowProcessName ?? '', windowTitle: t.windowTitle ?? '', titleMatchMode: t.windowTitleMatchMode === 'regex' ? 'regex' : 'contains' };
+  const anchored = placed(kind) && trigger.useRelativeCoordinates;
+  const anchor: AnchorWindow = { processName: trigger.windowProcessName ?? '', windowTitle: trigger.windowTitle ?? '', titleMatchMode: trigger.windowTitleMatchMode === 'regex' ? 'regex' : 'contains' };
   const target: CheckTarget = {
     edit: (edits) => {
       change(patchOf(edits), edits.map(e => e.field).join('+'));
@@ -133,12 +132,12 @@ export function Condition({ name, t, never, change, cmds }: { name: string; t: T
     },
     tools: anchored ? { absolute: true, anchor } : { absolute: true },
     profile: name,
-    captureFor: `for the ${name} automation`,
+    captureFor: t('automations.condition.captureFor', { name }),
     captureImage: () => imageAsks.set(cmds.captureImage(name), name),
     chooseImage: () => imageAsks.set(cmds.chooseImage(name), name),
     cropImage: () => useAutomationsUi.setState({ crop: name }),
   };
-  const step = stepOf(t, name);
+  const step = stepOf(trigger, name);
   const cur = look(kind);
 
   const choose = (next: Kind) => {
@@ -152,61 +151,61 @@ export function Condition({ name, t, never, change, cmds }: { name: string; t: T
   // "Relative to a window" says which space the stored numbers are in, and nothing can convert them:
   // turning it clears the point and the region (one re-pick), and says so for the field on screen.
   const relative = (on: boolean) => {
-    const hadPoint = t.pixelX !== 0 || t.pixelY !== 0;
-    const hadRegion = !!t.searchRegion;
+    const hadPoint = trigger.pixelX !== 0 || trigger.pixelY !== 0;
+    const hadRegion = !!trigger.searchRegion;
     change({ useRelativeCoordinates: on, ...(hadPoint ? { pixelX: 0, pixelY: 0 } : {}), ...(hadRegion ? { searchRegion: null } : {}) });
     setCleared((kind === 'PixelColorMatch' ? hadPoint : hadRegion) ? (on ? 'toWindow' : 'toScreen') : null);
   };
   // The notice speaks while the field it is about is still empty.
-  const showCleared = cleared && (kind === 'PixelColorMatch' ? t.pixelX === 0 && t.pixelY === 0 : !t.searchRegion);
-  const windowName = (t.windowProcessName ?? '').trim() || (t.windowTitle ?? '').trim();
+  const showCleared = cleared && (kind === 'PixelColorMatch' ? trigger.pixelX === 0 && trigger.pixelY === 0 : !trigger.searchRegion);
+  const windowName = (trigger.windowProcessName ?? '').trim() || (trigger.windowTitle ?? '').trim();
 
   return (
     <CheckTargetContext.Provider value={target}>
-      <Section label="Condition" hint={was ? `Was ${was} · Ctrl+Z brings it back` : 'The same condition editor as the If and While steps.'}>
+      <Section label={t('automations.condition.label')} hint={was ? t('conditions.was', { name: was }) : t('automations.condition.hint')}>
         <button
           type="button"
           className="insp-check-button"
           aria-haspopup="menu"
           aria-expanded={!!menu}
-          aria-label={`Condition: ${cur.name}`}
+          aria-label={t('automations.condition.named', { name: cur.name })}
           onClick={(e) => setMenu(menu ? null : { anchor: anchorBelow(e.currentTarget, 'start'), keyboard: e.detail === 0, button: e.currentTarget })}
         >
           <span className="step-icon" data-icon={cur.icon} />
-          <span className="insp-check-name">{cur.name}</span>
+          <span className="insp-check-name" data-glossary="">{cur.name}</span>
           <span className="step-icon" data-icon="chevron-down" />
         </button>
       </Section>
       {menu && (
         <Menu
           anchor={menu.anchor}
-          label="Conditions"
+          label={t('automations.condition.menu')}
           focusFirst={menu.keyboard}
           toggle={menu.button}
           onClose={() => setMenu(null)}
           entries={KINDS.map(({ type, Icon }) => {
             const c = look(type);
-            return { label: c.name, icon: Icon, checked: type === kind, tip: c.desc, onSelect: () => choose(type) };
+            return { label: c.name, named: true, icon: Icon, checked: type === kind, tip: c.desc, onSelect: () => choose(type) };
           })}
         />
       )}
       {placed(kind) && (
         <>
           <div className="insp-row">
-            <span className="insp-row-label">Relative to a window</span>
-            <Switch label="Relative to a window" tip={tt('Coordinates follow the window instead of the screen', 'As coordenadas seguem a janela em vez da tela')}
-              checked={t.useRelativeCoordinates} onChange={relative} />
+            <span className="insp-row-label">{t('automations.condition.relative')}</span>
+            <Switch label={t('automations.condition.relative')} tip={t('automations.condition.relativeTip')}
+              checked={trigger.useRelativeCoordinates} onChange={relative} />
           </div>
-          {t.useRelativeCoordinates && <WindowCheck step={step} locked={false} anchor />}
-          {t.useRelativeCoordinates && (
-            <p className="am-msg">{windowName ? `Relative to ${windowName}’s top-left corner` : 'Relative to the window’s top-left corner — name it above'}</p>
+          {trigger.useRelativeCoordinates && <WindowCheck step={step} locked={false} anchor />}
+          {trigger.useRelativeCoordinates && (
+            <p className="am-msg">{windowName ? t('automations.condition.relativeTo', { window: windowName }) : t('automations.condition.relativeToUnnamed')}</p>
           )}
           {showCleared && cleared && <p className="am-msg" data-tone="warn" role="status">{CLEARED[cleared]}</p>}
           <div className="insp-rule" />
         </>
       )}
       <Fields kind={kind} step={step} />
-      {never && <p className="am-msg" data-tone="warn">Never fires as it is: {never}</p>}
+      {never && <p className="am-msg" data-tone="warn">{t('automations.runs.never', { reason: never })}</p>}
     </CheckTargetContext.Provider>
   );
 }
@@ -231,7 +230,7 @@ export function CropView({ entry }: { entry: AutomationEntry }) {
   useEffect(() => {
     if (!mod) void preload(loadReferenceCrop);
   }, [mod]);
-  const t = entry.trigger;
+  const trigger = entry.trigger;
   const name = entry.profile;
   const leave = () => {
     useAutomationsUi.setState({ crop: null });
@@ -239,18 +238,18 @@ export function CropView({ entry }: { entry: AutomationEntry }) {
   };
   // The image went (another condition, an undo): nothing left to crop.
   useEffect(() => {
-    if (t.conditionType !== 'ImageFound' || !t.imagePath) useAutomationsUi.setState({ crop: null });
-  }, [t.conditionType, t.imagePath]);
+    if (trigger.conditionType !== 'ImageFound' || !trigger.imagePath) useAutomationsUi.setState({ crop: null });
+  }, [trigger.conditionType, trigger.imagePath]);
   const CropEditor = mod?.CropEditor;
-  if (!CropEditor || !t.imagePath) return <div className="am-panel-body" />;
+  if (!CropEditor || !trigger.imagePath) return <div className="am-panel-body" />;
   return (
     <CropEditor
-      imagePath={t.imagePath}
-      imageBase64={t.imageBase64}
-      sub={`Automation of ${name} · expanded`}
+      imagePath={trigger.imagePath}
+      imageBase64={trigger.imageBase64}
+      sub={t('automations.condition.cropSub', { name })}
       colors={{ bg: 'color-mix(in srgb, var(--color-replay) 14%, transparent)', fg: 'var(--color-replay-fg)' }}
       onDone={(rect) => {
-        if (t.imagePath) imageAsks.set(cmds.cropReference(name, t.imagePath, rect), name);
+        if (trigger.imagePath) imageAsks.set(cmds.cropReference(name, trigger.imagePath, rect), name);
         leave();
       }}
       onRecapture={() => imageAsks.set(cmds.captureImage(name), name)}

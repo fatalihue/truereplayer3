@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { t } from '../../i18n';
 import { useLanguage } from '../../state/LanguageContext';
 import { formatMs } from '../../utils/displayUtils';
 
@@ -305,7 +306,7 @@ export function NumberInput({
               onMouseDown={(e) => e.preventDefault()}
               onClick={inc}
               disabled={!canInc}
-              aria-label="Increase"
+              aria-label={t('ui.number.increase')}
               className="flex-1 min-h-0 flex items-center justify-center rounded-[3px] bg-bg-elevated text-text-secondary hover:bg-bg-card hover:text-text-primary active:bg-bg-surface disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronUp size={9} strokeWidth={2.5} />
@@ -316,7 +317,7 @@ export function NumberInput({
               onMouseDown={(e) => e.preventDefault()}
               onClick={dec}
               disabled={!canDec}
-              aria-label="Decrease"
+              aria-label={t('ui.number.decrease')}
               className="flex-1 min-h-0 flex items-center justify-center rounded-[3px] bg-bg-elevated text-text-secondary hover:bg-bg-card hover:text-text-primary active:bg-bg-surface disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronDown size={9} strokeWidth={2.5} />

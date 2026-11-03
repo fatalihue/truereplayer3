@@ -129,7 +129,7 @@ export default {
     source: 'Valor',
   },
 
-  // O "action" do inglês é o passo da lista; "Loop over data" é o nome antigo do modo do Data Loop.
+  // O "action" do inglês é o passo da lista; o modo do Data Loop é citado pela opção dele (dataLoop.settings.modes).
   preview: {
     reason: {
       literal: 'Enviado literalmente, com as chaves — o argumento não está em uma forma que o motor aceita.',
@@ -144,7 +144,7 @@ export default {
       'runtime-loop': 'A volta do bloco While / For Each mais interno — não há valor fora de uma execução.',
       'runtime-datarow': 'O número da linha de dados atual — não há valor fora de uma execução.',
       'runtime-row': 'A linha do próprio passo na lista — não há valor fora de uma execução.',
-      'runtime-rowcursor': 'Loop over data desativado: cada execução pega a PRÓXIMA linha, e essa posição fica guardada entre as execuções.',
+      'runtime-rowcursor': 'Com “{{>dataLoop.settings.modes.next}}”, cada execução pega a PRÓXIMA linha, e essa posição fica guardada entre as execuções.',
       'runtime-norows': 'A tabela de dados não tem linhas, então isto fica vazio ao reproduzir.',
       'runtime-cursor': 'Avança sozinho: a linha depende de quantas execuções vieram antes.',
       'unmodeled-chain': 'O construtor não consegue representar esta cadeia, então não mostra resultado. Ela roda mesmo assim.',

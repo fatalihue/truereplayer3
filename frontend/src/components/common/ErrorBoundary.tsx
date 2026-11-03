@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { t } from '../../i18n';
 
 /**
  * Last-resort catch for render exceptions. Without it, one throw anywhere in
@@ -57,12 +58,10 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBound
           }}
         >
           <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>
-            The interface hit an error
+            {t('ui.crash.title')}
           </div>
           <div style={{ fontSize: 12, opacity: 0.75, lineHeight: 1.5, marginBottom: 12 }}>
-            Your macros and recordings are safe — this only affected the window's
-            rendering. Reload to continue; if it keeps happening, the text below
-            says where.
+            {t('ui.crash.body')}
           </div>
           {/* userSelect text: the ONE place error text must be copyable even
               though the app suppresses selection globally. */}
@@ -99,7 +98,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBound
               color: 'var(--color-accent-ink, #1c1c1c)',
             }}
           >
-            Reload interface
+            {t('ui.crash.reload')}
           </button>
         </div>
       </div>

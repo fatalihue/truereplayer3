@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { useBridge } from '../bridge/BridgeContext';
 import { useMacro } from '../logic/useMacro';
+import { fmtNum, LANG, t } from '../i18n';
 
 export type ToastType = 'success' | 'error' | 'info';
 
@@ -78,7 +79,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       timersRef.current.delete(id);
       deadlinesRef.current.delete(id);
       remainingRef.current.delete(id);
-      setToasts(prev => prev.filter(t => t.id !== id));
+      setToasts(prev => prev.filter(item => item.id !== id));
     }, ms);
     timersRef.current.set(id, timer);
   }, []);
@@ -91,7 +92,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     }
     deadlinesRef.current.delete(id);
     remainingRef.current.delete(id);
-    setToasts(prev => prev.filter(t => t.id !== id));
+    setToasts(prev => prev.filter(item => item.id !== id));
   }, []);
 
   const pauseToast = useCallback((id: number) => {
@@ -150,23 +151,35 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         // panel component whose mounting the CommandPalette's "Export All Profiles"
         // has no relationship with. The "Show in folder" action echoes the exportId,
         // pinning this toast to the file THIS export wrote (paths stay server-side).
+        // Whole sentences from the catalog, one after the other: the first always, the others when
+        // they happen.
         const p = msg.payload;
         const partial = p.exportedCount < p.requestedCount;
-        let m = partial
-          ? `Exported ${p.exportedCount} of ${p.requestedCount} macro(s)`
-          : `Exported ${p.exportedCount} macro(s)`;
-        if (p.fileName) m += ` to ${p.fileName}`;
-        m += '.';
-        if (partial) m += ` ${p.requestedCount - p.exportedCount} could not be loaded.`;
-        if (p.bundledDependencies.length > 0)
-          m += ` Included ${p.bundledDependencies.length} macro(s) they run: ${p.bundledDependencies.join(', ')}.`;
-        if (p.missingImages > 0) m += ` ${p.missingImages} reference image(s) were missing and not included.`;
+        const n = fmtNum(p.exportedCount);
+        const total = fmtNum(p.requestedCount);
+        const frases = [
+          partial
+            ? (p.fileName
+              ? t('ui.export.partialTo', { count: p.requestedCount, n, total, file: p.fileName })
+              : t('ui.export.partial', { count: p.requestedCount, n, total }))
+            : (p.fileName
+              ? t('ui.export.doneTo', { count: p.exportedCount, n, file: p.fileName })
+              : t('ui.export.done', { count: p.exportedCount, n })),
+        ];
+        if (partial) frases.push(t('ui.export.notLoaded', { n: fmtNum(p.requestedCount - p.exportedCount) }));
+        const deps = p.bundledDependencies;
+        if (deps.length > 0) {
+          const names = new Intl.ListFormat(LANG, { type: 'conjunction' }).format(deps);
+          frases.push(t('ui.export.included', { count: deps.length, n: fmtNum(deps.length), names }));
+        }
+        if (p.missingImages > 0) frases.push(t('ui.export.missingImages', { count: p.missingImages, n: fmtNum(p.missingImages) }));
+        const m = frases.join(' ');
         const hasDisclosures = partial || p.bundledDependencies.length > 0 || p.missingImages > 0;
         showToast(m, {
           // A partial export reports data loss — never render it success-green.
           type: hasDisclosures ? 'info' : 'success',
           duration: hasDisclosures ? 8000 : undefined,
-          action: { label: 'Show in folder', onClick: () => macro.revealExport(p.exportId) },
+          action: { label: t('ui.toast.showInFolder'), onClick: () => macro.revealExport(p.exportId) },
         });
       }
     });

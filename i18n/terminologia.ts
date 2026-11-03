@@ -25,7 +25,7 @@ export const TERMINOLOGIA: readonly Termo[] = [
   { ingles: 'run (substantivo)', portugues: 'execução', porque: 'Microsoft: "Executar"' },
   { ingles: 'run (verbo)', portugues: 'rodar; "executar" quando o assunto é do Windows', porque: '"rodar" é curto e corrente' },
   { ingles: 'record, recording', portugues: 'gravar, gravação', porque: 'Office: "Gravar Macro"', en: /\brecord/i, pt: /grav/i },
-  { ingles: 'replay, replaying', portugues: 'reproduzir, reproduzindo', porque: 'Microsoft: "Reproduzir"', en: /\breplay/i, pt: /reproduz/i },
+  { ingles: 'replay, replaying', portugues: 'reproduzir, reproduzindo', porque: 'Microsoft: "Reproduzir"', en: /\breplay/i, pt: /reprodu[zç]/i },
   { ingles: 'pause', portugues: 'pausar (o passo Pause fica)', porque: 'Microsoft: "Pausar"', en: /\bpaus/i, pt: /paus/i },
   { ingles: 'resume', portugues: 'retomar', porque: 'Microsoft: "Retomar"', en: /\bresum/i, pt: /retom/i },
   { ingles: 'stop (verbo)', portugues: 'parar (o passo Stop fica)', porque: 'Microsoft: "Parar"' },

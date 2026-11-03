@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode, type KeyboardEvent, type MouseEvent } from 'react';
 import { X } from 'lucide-react';
+import { t } from '../../i18n';
 import { Button } from './Button';
 import { IconButton } from './IconButton';
 import { DialogLayerContext } from './dialogLayer';
@@ -263,8 +264,8 @@ export function DialogShell({
   // this the dialog would strand in the leaving state.
   useEffect(() => {
     if (!leaving) return;
-    const t = setTimeout(onClose, 400);
-    return () => clearTimeout(t);
+    const timer = setTimeout(onClose, 400);
+    return () => clearTimeout(timer);
   }, [leaving, onClose]);
 
   const requestClose = () => {
@@ -394,7 +395,7 @@ export function DialogShell({
             {titleMeta != null && <span className="text-caption text-text-tertiary shrink-0">{titleMeta}</span>}
           </div>
           {showClose && (
-            <IconButton size="sm" aria-label="Close" className="ml-auto" onClick={requestClose}>
+            <IconButton size="sm" aria-label={t('common.actions.close')} className="ml-auto" onClick={requestClose}>
               <X size={14} />
             </IconButton>
           )}

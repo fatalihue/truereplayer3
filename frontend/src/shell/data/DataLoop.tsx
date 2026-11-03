@@ -1,13 +1,13 @@
 import { useEffect, useRef } from 'react';
+import { t } from '../../i18n';
 import { useEditorClaim } from '../../logic/useEditorClaim';
-import { useTt } from '../../state/LanguageContext';
 import { useToast } from '../../state/ToastContext';
 import { clickerOnNote } from '../library/model';
 import { useApp } from '../store';
 import { useUi } from '../ui';
 import { DataGrid } from './DataGrid';
 import { DataPaste } from './DataPaste';
-import { openPaste, readTableFile, useDataOps, useDataTab, useShown } from './model';
+import { CUT, openPaste, readTableFile, useDataOps, useDataTab, useShown } from './model';
 import '../inspector/editors.css';
 import './dataLoop.css';
 import './dataIcons.css';
@@ -40,9 +40,9 @@ export function DataMain() {
   useEditorClaim('data-panel', pending);
 
   // The dock's line on this tab: the open cell's keys, else what a click on a row number does.
-  const hint = editing?.kind === 'cell' ? 'Enter confirms · Alt+Enter breaks the line · Esc puts it back'
-    : editing?.kind === 'header' ? 'Enter renames the column · Esc keeps its name'
-    : !paste && !empty && cursorMode && shown.saved > 0 && !locked ? 'Click a row number to make it the next row'
+  const hint = editing?.kind === 'cell' ? t('dataLoop.hint.cell')
+    : editing?.kind === 'header' ? t('dataLoop.hint.header')
+    : !paste && !empty && cursorMode && shown.saved > 0 && !locked ? t('dataLoop.hint.cursor')
     : null;
   useEffect(() => { useUi.setState({ dataHint: hint }); }, [hint]);
   useEffect(() => () => { useUi.setState({ dataHint: null }); }, []);
@@ -63,7 +63,6 @@ function DataEmpty({ locked }: { locked: boolean }) {
   const macro = useApp(a => a.activeProfile) ?? '';
   const clicker = useApp(a => a.settings.useCursorClick);
   const modeKey = useApp(a => a.settings.modeToggleHotkey);
-  const tt = useTt();
   const { showToast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -82,13 +81,15 @@ function DataEmpty({ locked }: { locked: boolean }) {
     return () => document.removeEventListener('paste', onPaste);
   }, [locked]);
 
-  const note = clicker ? clickerOnNote(modeKey) : 'Read-only while it runs';
+  const note = clicker ? clickerOnNote(modeKey) : t('dataLoop.empty.readOnly');
+  // The example token, in <code>, where the catalog's sentence puts it.
+  const [before, after = ''] = t('dataLoop.empty.text', { token: CUT }).split(CUT);
   return (
     <div className="dl-empty">
       <span className="step-icon dl-empty-icon" data-icon="table-2" />
-      <p className="dl-empty-title">No table yet</p>
+      <p className="dl-empty-title">{t('dataLoop.noTable')}</p>
       <p className="dl-empty-text">
-        Give the macro a list: one row per run, or every row in one go. Each column becomes a token, like <code>{'{row:name}'}</code>.
+        {before}<code>{'{row:name}'}</code>{after}
       </p>
       {locked ? (
         <p className="dl-empty-text">{note}</p>
@@ -96,9 +97,9 @@ function DataEmpty({ locked }: { locked: boolean }) {
         <>
           <div className="dl-empty-actions">
             <button type="button" className="insp-button dl-primary" onClick={() => openPaste('')}>
-              Paste from a spreadsheet <kbd className="kbd">Ctrl+V</kbd>
+              {t('dataLoop.empty.paste')} <kbd className="kbd">Ctrl+V</kbd>
             </button>
-            <button type="button" className="insp-button" onClick={() => fileRef.current?.click()}>Import CSV…</button>
+            <button type="button" className="insp-button" onClick={() => fileRef.current?.click()}>{t('dataLoop.importCsv')}</button>
           </div>
           <div className="dl-empty-actions">
             <button
@@ -109,16 +110,16 @@ function DataEmpty({ locked }: { locked: boolean }) {
                 useDataTab.setState({ editing: { kind: 'header', c: 0, macro }, active: { r: -1, c: 0 } });
               }}
             >
-              Start an empty table
+              {t('dataLoop.empty.startEmpty')}
             </button>
             <span className="dl-empty-sep" aria-hidden="true">·</span>
             <button
               type="button"
               className="insp-link"
-              data-tip={tt('Three rows of name, email and amount, to try the tokens', 'Três linhas de name, email e amount, para experimentar os tokens')}
+              data-tip={t('dataLoop.empty.sampleTip')}
               onClick={() => ops.useSample()}
             >
-              Use sample data
+              {t('dataLoop.empty.sample')}
             </button>
           </div>
           <input
@@ -132,7 +133,7 @@ function DataEmpty({ locked }: { locked: boolean }) {
               if (!file) return;
               readTableFile(file).then(
                 (text) => { if (text !== '') openPaste(text); },
-                () => showToast(tt('Could not read that file.', 'Não foi possível ler esse arquivo.'), 'error'),
+                () => showToast(t('dataLoop.readFailed'), 'error'),
               );
             }}
           />
